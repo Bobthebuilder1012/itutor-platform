@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Add Child - iTutor</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-gray-50">
+  <nav class="bg-white shadow-sm border-b">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between h-16">
+        <div class="flex">
+          <div class="flex-shrink-0 flex items-center">
+            <h1 class="text-xl font-bold text-blue-600">iTutor</h1>
+          </div>
+          <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
+            <a href="parent-dashboard.html" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+              Dashboard
+            </a>
+            <a href="parent-add-child.html" class="border-blue-500 text-gray-900 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+              Add Child
+            </a>
+          </div>
+        </div>
+        <div class="flex items-center space-x-4">
+          <span class="text-sm text-gray-700" id="userName">Loading...</span>
+          <button onclick="handleLogout()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm font-medium">
+            Logout
+          </button>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+    <div class="px-4 py-6 sm:px-0">
+      <div class="max-w-2xl mx-auto">
+        <h1 class="text-3xl font-bold text-gray-900 mb-6">Add Child</h1>
+
+        <div class="bg-white shadow rounded-lg p-6">
+          <form id="addChildForm" class="space-y-6">
+            <div id="errorMessage"></div>
+
+            <div>
+              <label for="full_name" class="block text-sm font-medium text-gray-700">Full Name *</label>
+              <input type="text" id="full_name" name="full_name" required
+                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 px-3 py-2 border">
+            </div>
+
+            <div>
+              <label for="email" class="block text-sm font-medium text-gray-700">Email Address *</label>
+              <input type="email" id="email" name="email" required
+                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 px-3 py-2 border">
+            </div>
+
+            <div>
+              <label for="password" class="block text-sm font-medium text-gray-700">Password *</label>
+              <input type="password" id="password" name="password" required minlength="6"
+                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 px-3 py-2 border">
+              <p class="mt-1 text-sm text-gray-500">Minimum 6 characters</p>
+            </div>
+
+            <div>
+              <label for="school" class="block text-sm font-medium text-gray-700">School *</label>
+              <input type="text" id="school" name="school" required
+                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 px-3 py-2 border">
+            </div>
+
+            <div>
+              <label for="form_level" class="block text-sm font-medium text-gray-700">Form Level *</label>
+              <select id="form_level" name="form_level" required
+                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 px-3 py-2 border">
+                <option value="">Select form level</option>
+                <option value="Form 1">Form 1</option>
+                <option value="Form 2">Form 2</option>
+                <option value="Form 3">Form 3</option>
+                <option value="Form 4">Form 4</option>
+                <option value="Form 5">Form 5</option>
+                <option value="Form 6">Form 6</option>
+              </select>
+            </div>
+
+            <div>
+              <label for="subjects_of_study" class="block text-sm font-medium text-gray-700">Subjects of Study *</label>
+              <input type="text" id="subjects_of_study" name="subjects_of_study" required
+                placeholder="e.g., Physics, Chemistry, Mathematics"
+                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 px-3 py-2 border">
+              <p class="mt-1 text-sm text-gray-500">Enter subjects separated by commas</p>
+            </div>
+
+            <div class="flex items-center justify-between pt-4">
+              <a href="parent-dashboard.html"
+                class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-md font-medium">
+                Cancel
+              </a>
+              <button type="submit" id="submitBtn"
+                class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md font-medium disabled:opacity-50">
+                Add Child
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+    const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    let currentProfile = null;
+
+    async function loadProfile() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          window.location.href = 'index.html';
+          return;
+        }
+
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (profile.role !== 'parent') {
+          window.location.href = `${profile.role}-dashboard.html`;
+          return;
+        }
+
+        currentProfile = profile;
+        document.getElementById('userName').textContent = profile.full_name;
+      } catch (error) {
+        console.error('Error loading profile:', error);
+      }
+    }
+
+    document.getElementById('addChildForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const submitBtn = document.getElementById('submitBtn');
+      const errorDiv = document.getElementById('errorMessage');
+      
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Adding...';
+      errorDiv.innerHTML = '';
+
+      try {
+        const formData = new FormData(e.target);
+        const data = Object.fromEntries(formData);
+        
+        const subjectsArray = data.subjects_of_study
+          .split(',')
+          .map(s => s.trim())
+          .filter(s => s.length > 0);
+
+        // Create authenticated user
+        const { data: authData, error: signUpError } = await supabase.auth.signUp({
+          email: data.email,
+          password: data.password,
+          options: {
+            data: {
+              full_name: data.full_name,
+              role: 'student'
+            }
+          }
+        });
+
+        if (signUpError) throw signUpError;
+        if (!authData.user) throw new Error('Failed to create user');
+
+        // Create profile
+        const { data: childProfile, error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            id: authData.user.id,
+            email: data.email,
+            full_name: data.full_name,
+            school: data.school,
+            form_level: data.form_level,
+            subjects_of_study: subjectsArray,
+            role: 'student',
+            billing_mode: 'parent_required',
+            rating_count: 0
+          })
+          .select()
+          .single();
+
+        if (profileError) throw profileError;
+
+        // Link to parent
+        const { error: linkError } = await supabase
+          .from('parent_child_links')
+          .insert({
+            parent_id: currentProfile.id,
+            child_id: childProfile.id
+          });
+
+        if (linkError) throw linkError;
+
+        window.location.href = 'parent-dashboard.html';
+      } catch (error) {
+        console.error('Error adding child:', error);
+        errorDiv.innerHTML = `<div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">${error.message}</div>`;
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Add Child';
+      }
+    });
+
+    async function handleLogout() {
+      await supabase.auth.signOut();
+      window.location.href = 'index.html';
+    }
+
+    loadProfile();
+  </script>
+</body>
+</html>
+
+

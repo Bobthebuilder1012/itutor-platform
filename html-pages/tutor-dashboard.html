@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tutor Dashboard - iTutor</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-gray-50">
+  <!-- Navigation -->
+  <nav class="bg-white shadow-sm border-b">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between h-16">
+        <div class="flex">
+          <div class="flex-shrink-0 flex items-center">
+            <h1 class="text-xl font-bold text-blue-600">iTutor</h1>
+          </div>
+          <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
+            <a href="tutor-dashboard.html" class="border-blue-500 text-gray-900 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+              Dashboard
+            </a>
+            <a href="tutor-sessions.html" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+              Sessions
+            </a>
+            <a href="tutor-verification.html" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+              Verification
+            </a>
+          </div>
+        </div>
+        <div class="flex items-center space-x-4">
+          <span class="text-sm text-gray-700" id="userName">Loading...</span>
+          <button onclick="handleLogout()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm font-medium">
+            Logout
+          </button>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+    <div class="px-4 py-6 sm:px-0">
+      <h1 class="text-3xl font-bold text-gray-900 mb-6">Tutor Dashboard</h1>
+
+      <!-- Profile Info -->
+      <div class="bg-white shadow rounded-lg p-6 mb-6">
+        <h2 class="text-xl font-semibold mb-4">Your Profile</h2>
+        <div id="profileInfo">
+          <div class="animate-pulse space-y-4">
+            <div class="h-4 bg-gray-200 rounded w-1/4"></div>
+            <div class="h-6 bg-gray-200 rounded w-3/4"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Subjects Taught -->
+      <div class="bg-white shadow rounded-lg p-6 mb-6">
+        <h2 class="text-xl font-semibold mb-4">Subjects You Teach</h2>
+        <div id="subjectsContent">
+          <p class="text-gray-500">Loading subjects...</p>
+        </div>
+      </div>
+
+      <!-- Quick Links -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <a href="tutor-sessions.html">
+          <div class="bg-white shadow rounded-lg p-6 hover:shadow-lg transition-shadow cursor-pointer">
+            <h3 class="text-lg font-semibold mb-2">My Sessions</h3>
+            <p class="text-gray-600">View all your tutoring sessions</p>
+            <p class="text-2xl font-bold text-blue-600 mt-2" id="sessionsCount">-</p>
+          </div>
+        </a>
+        <a href="tutor-verification.html">
+          <div class="bg-white shadow rounded-lg p-6 hover:shadow-lg transition-shadow cursor-pointer">
+            <h3 class="text-lg font-semibold mb-2">Verification</h3>
+            <p class="text-gray-600">Upload your certificates</p>
+          </div>
+        </a>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+    const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    async function loadDashboard() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          window.location.href = 'index.html';
+          return;
+        }
+
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (profile.role !== 'tutor') {
+          window.location.href = `${profile.role}-dashboard.html`;
+          return;
+        }
+
+        document.getElementById('userName').textContent = profile.full_name;
+
+        const profileHTML = `
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <p class="text-sm text-gray-500">Name</p>
+              <p class="font-medium">${profile.full_name}</p>
+            </div>
+            <div>
+              <p class="text-sm text-gray-500">Email</p>
+              <p class="font-medium">${profile.email}</p>
+            </div>
+            ${profile.school ? `
+            <div>
+              <p class="text-sm text-gray-500">School</p>
+              <p class="font-medium">${profile.school}</p>
+            </div>
+            ` : ''}
+            <div>
+              <p class="text-sm text-gray-500">Rating</p>
+              <div class="flex items-center">
+                <svg class="h-5 w-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                </svg>
+                <span class="ml-1 font-medium">${profile.rating_average ? profile.rating_average.toFixed(1) : 'N/A'}</span>
+                <span class="ml-1 text-gray-500 text-sm">(${profile.rating_count} ratings)</span>
+              </div>
+            </div>
+          </div>
+        `;
+        document.getElementById('profileInfo').innerHTML = profileHTML;
+
+        // Fetch tutor subjects
+        const { data: tutorSubjects } = await supabase
+          .from('tutor_subjects')
+          .select('*, subjects(*)')
+          .eq('tutor_id', profile.id);
+
+        if (tutorSubjects && tutorSubjects.length > 0) {
+          const subjectsHTML = tutorSubjects.map(ts => `
+            <div class="border rounded-lg p-4">
+              <h3 class="font-semibold">${ts.subjects?.name || 'Unknown Subject'}</h3>
+              <p class="text-sm text-gray-600">${ts.subjects?.curriculum} - ${ts.subjects?.level}</p>
+              <p class="text-lg font-bold text-blue-600 mt-2">TT$${ts.price_per_hour_ttd}/hour</p>
+            </div>
+          `).join('');
+          document.getElementById('subjectsContent').innerHTML = `<div class="grid grid-cols-1 md:grid-cols-2 gap-4">${subjectsHTML}</div>`;
+        } else {
+          document.getElementById('subjectsContent').innerHTML = '<p class="text-gray-500">No subjects added yet</p>';
+        }
+
+        // Fetch sessions count
+        const { data: sessions } = await supabase
+          .from('sessions')
+          .select('*')
+          .eq('tutor_id', profile.id)
+          .limit(5);
+
+        document.getElementById('sessionsCount').textContent = sessions?.length || 0;
+
+      } catch (error) {
+        console.error('Error loading dashboard:', error);
+      }
+    }
+
+    async function handleLogout() {
+      await supabase.auth.signOut();
+      window.location.href = 'index.html';
+    }
+
+    loadDashboard();
+  </script>
+</body>
+</html>
+
+

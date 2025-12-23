@@ -1,0 +1,130 @@
+'use client';
+
+type ProfileHeaderProps = {
+  fullName: string;
+  role: 'student' | 'tutor' | 'parent';
+  school?: string | null;
+  country?: string | null;
+  subjectsLine?: string | null;
+  ratingAverage?: number | null;
+  ratingCount?: number | null;
+};
+
+export default function ProfileHeader({
+  fullName,
+  role,
+  school,
+  country,
+  subjectsLine,
+  ratingAverage,
+  ratingCount,
+}: ProfileHeaderProps) {
+  const getInitials = (name: string) => {
+    const parts = name.trim().split(' ');
+    if (parts.length >= 2) {
+      return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+    }
+    return name.substring(0, 2).toUpperCase();
+  };
+
+  const getRoleColor = () => {
+    switch (role) {
+      case 'student':
+        return 'bg-blue-100 text-blue-700';
+      case 'tutor':
+        return 'bg-green-100 text-green-700';
+      case 'parent':
+        return 'bg-purple-100 text-purple-700';
+      default:
+        return 'bg-gray-100 text-gray-700';
+    }
+  };
+
+  const getRoleLabel = () => {
+    switch (role) {
+      case 'student':
+        return 'Student';
+      case 'tutor':
+        return 'Tutor';
+      case 'parent':
+        return 'Parent';
+      default:
+        return role;
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
+      <div className="flex items-start justify-between">
+        {/* Left side: Avatar + Info */}
+        <div className="flex items-start gap-4">
+          {/* Avatar */}
+          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-2xl font-bold shadow-md flex-shrink-0">
+            {getInitials(fullName)}
+          </div>
+
+          {/* Info */}
+          <div>
+            {/* Name */}
+            <h1 className="text-2xl font-bold text-gray-900 mb-1">
+              {fullName}
+            </h1>
+
+            {/* Role chip */}
+            <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${getRoleColor()} mb-2`}>
+              {getRoleLabel()}
+            </span>
+
+            {/* Secondary info */}
+            <div className="space-y-1 text-sm text-gray-600">
+              {school && (
+                <div className="flex items-center gap-1.5">
+                  <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                  </svg>
+                  <span>{school}</span>
+                </div>
+              )}
+              {country && (
+                <div className="flex items-center gap-1.5">
+                  <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <span>{country}</span>
+                </div>
+              )}
+              {subjectsLine && (
+                <div className="flex items-center gap-1.5">
+                  <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <span className="text-gray-500">{subjectsLine}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Right side: Rating (tutors only) */}
+        {role === 'tutor' && (ratingAverage !== null && ratingAverage !== undefined) && (
+          <div className="flex flex-col items-end">
+            <div className="flex items-center gap-1 mb-1">
+              <svg className="h-6 w-6 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+              </svg>
+              <span className="text-2xl font-bold text-gray-900">
+                {ratingAverage.toFixed(1)}
+              </span>
+            </div>
+            <p className="text-sm text-gray-500">
+              {ratingCount} {ratingCount === 1 ? 'review' : 'reviews'}
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+

@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Child Profile - iTutor</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-gray-50">
+  <nav class="bg-white shadow-sm border-b">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between h-16">
+        <div class="flex">
+          <div class="flex-shrink-0 flex items-center">
+            <h1 class="text-xl font-bold text-blue-600">iTutor</h1>
+          </div>
+          <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
+            <a href="parent-dashboard.html" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+              Dashboard
+            </a>
+            <a href="parent-add-child.html" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+              Add Child
+            </a>
+          </div>
+        </div>
+        <div class="flex items-center space-x-4">
+          <span class="text-sm text-gray-700" id="userName">Loading...</span>
+          <button onclick="handleLogout()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm font-medium">
+            Logout
+          </button>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+    <div class="px-4 py-6 sm:px-0">
+      <div class="flex items-center mb-6">
+        <a href="parent-dashboard.html" class="mr-4 text-gray-600 hover:text-gray-900">
+          ← Back
+        </a>
+        <h1 class="text-3xl font-bold text-gray-900" id="pageTitle">Child Profile</h1>
+      </div>
+
+      <div id="profileContent">
+        <p class="text-gray-500">Loading...</p>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+    const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    async function loadChildProfile() {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const childId = urlParams.get('id');
+
+        if (!childId) {
+          window.location.href = 'parent-dashboard.html';
+          return;
+        }
+
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          window.location.href = 'index.html';
+          return;
+        }
+
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        document.getElementById('userName').textContent = profile.full_name;
+
+        // Verify parent-child relationship
+        const { data: link } = await supabase
+          .from('parent_child_links')
+          .select('*')
+          .eq('parent_id', profile.id)
+          .eq('child_id', childId)
+          .single();
+
+        if (!link) {
+          document.getElementById('profileContent').innerHTML = '<div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">Child not found</div>';
+          return;
+        }
+
+        // Fetch child profile
+        const { data: child, error: childError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', childId)
+          .single();
+
+        if (childError) throw childError;
+
+        document.getElementById('pageTitle').textContent = `${child.full_name}'s Profile`;
+
+        const profileHTML = `
+          <div class="bg-white shadow rounded-lg p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">Student Information</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <p class="text-sm text-gray-500">Full Name</p>
+                <p class="font-medium">${child.full_name}</p>
+              </div>
+              <div>
+                <p class="text-sm text-gray-500">Email</p>
+                <p class="font-medium">${child.email}</p>
+              </div>
+              <div>
+                <p class="text-sm text-gray-500">School</p>
+                <p class="font-medium">${child.school || 'Not set'}</p>
+              </div>
+              <div>
+                <p class="text-sm text-gray-500">Form Level</p>
+                <p class="font-medium">${child.form_level || 'Not set'}</p>
+              </div>
+              <div class="md:col-span-2">
+                <p class="text-sm text-gray-500 mb-2">Subjects of Study</p>
+                <div class="flex flex-wrap gap-2">
+                  ${child.subjects_of_study && child.subjects_of_study.length > 0
+                    ? child.subjects_of_study.map(subject => 
+                        `<span class="bg-blue-100 text-blue-800 text-sm px-3 py-1 rounded-full">${subject}</span>`
+                      ).join('')
+                    : '<span class="text-gray-400">No subjects added</span>'}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white shadow rounded-lg p-6">
+            <h2 class="text-xl font-semibold mb-4">Quick Actions</h2>
+            <div class="flex flex-col sm:flex-row gap-3">
+              <a href="parent-child-sessions.html?id=${childId}"
+                class="inline-flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium">
+                View Sessions
+              </a>
+              <a href="parent-child-ratings.html?id=${childId}"
+                class="inline-flex items-center justify-center bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-md font-medium">
+                View Ratings
+              </a>
+            </div>
+          </div>
+        `;
+
+        document.getElementById('profileContent').innerHTML = profileHTML;
+
+      } catch (error) {
+        console.error('Error loading child profile:', error);
+        document.getElementById('profileContent').innerHTML = '<div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">Error loading profile</div>';
+      }
+    }
+
+    async function handleLogout() {
+      await supabase.auth.signOut();
+      window.location.href = 'index.html';
+    }
+
+    loadChildProfile();
+  </script>
+</body>
+</html>
+
+

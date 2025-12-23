@@ -1,0 +1,118 @@
+/* iTutor Custom Colors */
+:root {
+  --primary-green: #2BA46F;
+  --primary-green-dark: #23875B;
+  --primary-green-light: #3BCB8A;
+  --neutral-grey-light: #F7F9FA;
+  --neutral-grey-border: #E4E7E9;
+  --neutral-grey-text: #1A1A1A;
+}
+
+/* Custom styles for iTutor auth page */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+  color: var(--neutral-grey-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Smooth transitions for interactive elements */
+button, input, select, textarea {
+  transition: all 0.2s ease-in-out;
+}
+
+/* Focus visible for accessibility */
+*:focus-visible {
+  outline: 2px solid var(--primary-green);
+  outline-offset: 2px;
+}
+
+/* Custom scrollbar for textareas */
+textarea::-webkit-scrollbar {
+  width: 8px;
+}
+
+textarea::-webkit-scrollbar-track {
+  background: var(--neutral-grey-light);
+  border-radius: 4px;
+}
+
+textarea::-webkit-scrollbar-thumb {
+  background: var(--neutral-grey-border);
+  border-radius: 4px;
+}
+
+textarea::-webkit-scrollbar-thumb:hover {
+  background: #c5c9cc;
+}
+
+/* Primary button styling */
+.btn-primary {
+  background-color: var(--primary-green);
+  color: white;
+}
+
+.btn-primary:hover {
+  background-color: var(--primary-green-dark);
+}
+
+.btn-primary:focus {
+  ring-color: var(--primary-green-light);
+}
+
+/* Active tab/role button */
+.tab-active, .role-active {
+  background-color: var(--primary-green);
+  color: white;
+  border-color: var(--primary-green);
+}
+
+/* Multi-select pill active state */
+.pill-active {
+  background-color: var(--primary-green);
+  color: white;
+  border-color: var(--primary-green);
+}
+
+/* Input focus ring */
+input:focus, select:focus, textarea:focus {
+  border-color: var(--primary-green);
+  ring-color: var(--primary-green);
+}
+
+/* Border colors */
+.border-custom {
+  border-color: var(--neutral-grey-border);
+}
+
+/* Label styling */
+label {
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+/* Button styling refinements */
+button {
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+/* Input placeholder styling */
+::placeholder {
+  color: #A0A4A8;
+  opacity: 1;
+}
+
+/* Card styling */
+.auth-card {
+  backdrop-filter: blur(10px);
+}
+
+/* Smooth page transitions */
+@media (prefers-reduced-motion: no-preference) {
+  * {
+    scroll-behavior: smooth;
+  }
+}
+
+

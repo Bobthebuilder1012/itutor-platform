@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>iTutor - Login & Sign Up</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="styles.css">
+  <!--
+    NOTE: In production, tutor signup would be a separate page/form accessed via 
+    a link in the footer of the landing page. This unified form is for prototype purposes.
+    Main landing page signup link -> Student/Parent registration
+    Footer "Become a Tutor" link -> Tutor registration (separate page)
+  -->
+</head>
+<body class="min-h-screen flex items-center justify-center px-4 py-8" style="background: linear-gradient(135deg, #E8F5F0 0%, #F7F9FA 50%, #FFFFFF 100%);">
+    <div class="w-full max-w-4xl bg-white rounded-2xl p-6 md:p-8" style="box-shadow: 0 20px 60px -15px rgba(0, 0, 0, 0.1), 0 10px 20px -10px rgba(0, 0, 0, 0.04);">
+    <!-- Header with Logo -->
+    <div class="text-center mb-8">
+      <div class="flex items-center justify-center mb-3">
+        <!-- Logo Icon -->
+        <svg width="40" height="40" viewBox="0 0 100 100" class="mr-2">
+          <circle cx="25" cy="25" r="12" fill="#2BA46F"/>
+          <path d="M 35 25 Q 50 55, 70 85" stroke="#2BA46F" stroke-width="20" fill="none" stroke-linecap="round"/>
+        </svg>
+        <!-- Logo Text -->
+        <h1 class="text-4xl md:text-5xl font-bold" style="color: #1A1A1A; letter-spacing: -0.02em;">itutor</h1>
+      </div>
+      <p class="text-sm md:text-base" style="color: #1A1A1A; opacity: 0.7;">Your learning journey starts here</p>
+    </div>
+
+    <!-- Tab Navigation -->
+    <div class="flex gap-2 mb-8" style="border-bottom: 1px solid #E4E7E9;">
+      <button 
+        id="loginTabBtn" 
+        class="tab-btn flex-1 py-3 px-4 font-medium text-center rounded-t-lg transition-all border-b-2"
+        data-tab="login"
+        style="color: #1A1A1A;"
+      >
+        Login
+      </button>
+      <button 
+        id="createTabBtn" 
+        class="tab-btn flex-1 py-3 px-4 font-medium text-center rounded-t-lg transition-all border-b-2"
+        data-tab="create"
+        style="color: #1A1A1A;"
+      >
+        Create Account
+      </button>
+    </div>
+
+    <!-- Login Form Container -->
+    <div id="loginContainer" data-tab-content="login">
+      <form id="loginForm" novalidate class="space-y-6">
+        <div>
+          <label for="loginEmail" class="block text-sm font-medium mb-2" style="color: #1A1A1A;">Email</label>
+          <input 
+            type="email" 
+            id="loginEmail" 
+            name="email"
+            class="w-full px-4 py-3 rounded-lg focus:ring-2 focus:outline-none transition"
+          style="border: 1px solid #E4E7E9;"
+          onfocus="this.style.borderColor='#2BA46F'; this.style.boxShadow='0 0 0 3px rgba(43, 164, 111, 0.1)'"
+          onblur="this.style.borderColor='#E4E7E9'; this.style.boxShadow='none'"
+            placeholder="your.email@example.com"
+          >
+          <p id="loginEmailError" class="hidden mt-1 text-sm text-red-600"></p>
+        </div>
+
+        <div>
+          <label for="loginPassword" class="block text-sm font-medium mb-2" style="color: #1A1A1A;">Password</label>
+          <input 
+            type="password" 
+            id="loginPassword" 
+            name="password"
+            class="w-full px-4 py-3 rounded-lg focus:ring-2 focus:outline-none transition"
+          style="border: 1px solid #E4E7E9;"
+          onfocus="this.style.borderColor='#2BA46F'; this.style.boxShadow='0 0 0 3px rgba(43, 164, 111, 0.1)'"
+          onblur="this.style.borderColor='#E4E7E9'; this.style.boxShadow='none'"
+            placeholder="Enter your password"
+          >
+          <p id="loginPasswordError" class="hidden mt-1 text-sm text-red-600"></p>
+        </div>
+
+        <div class="flex items-center justify-between">
+          <div class="flex items-center">
+            <input 
+              type="checkbox" 
+              id="rememberMe" 
+              name="rememberMe"
+              class="h-4 w-4 rounded"
+            style="color: #2BA46F; border-color: #E4E7E9;"
+            >
+            <label for="rememberMe" class="ml-2 block text-sm text-gray-700">Remember me</label>
+          </div>
+          <a href="#" class="text-sm transition" style="color: #2BA46F;" onmouseover="this.style.color='#23875B'" onmouseout="this.style.color='#2BA46F'">Forgot password?</a>
+        </div>
+
+        <button 
+          type="submit"
+          class="w-full text-white py-3 px-4 rounded-lg focus:ring-4 focus:outline-none transition font-medium text-lg"
+          style="background-color: #2BA46F;"
+          onmouseover="this.style.backgroundColor='#23875B'"
+          onmouseout="this.style.backgroundColor='#2BA46F'"
+        >
+          Log In
+        </button>
+      </form>
+    </div>
+
+    <!-- Create Account Form Container -->
+    <div id="createContainer" data-tab-content="create" class="hidden">
+      <!-- Role Selector -->
+      <div class="mb-8">
+        <p class="text-sm font-medium mb-3 text-center" style="color: #1A1A1A; opacity: 0.7;">I am a...</p>
+        <div class="flex flex-wrap gap-2 justify-center">
+          <button 
+            type="button"
+            class="role-btn px-6 py-2 rounded-full border-2 font-medium transition-all"
+            data-role="student"
+            style="border-color: #E4E7E9; color: #1A1A1A;"
+          >
+            Student
+          </button>
+          <button 
+            type="button"
+            class="role-btn px-6 py-2 rounded-full border-2 font-medium transition-all"
+            data-role="parent"
+            style="border-color: #E4E7E9; color: #1A1A1A;"
+          >
+            Parent
+          </button>
+          <button 
+            type="button"
+            class="role-btn px-6 py-2 rounded-full border-2 font-medium transition-all"
+            data-role="tutor"
+            style="border-color: #E4E7E9; color: #1A1A1A;"
+          >
+            Tutor
+          </button>
+        </div>
+      </div>
+
+      <form id="createForm" novalidate class="space-y-6">
+        <!-- Common Fields -->
+        <div class="grid md:grid-cols-2 gap-6">
+        <div>
+          <label for="fullName" class="block text-sm font-medium mb-2" style="color: #1A1A1A;">Full Name <span class="text-red-500">*</span></label>
+            <input 
+              type="text" 
+              id="fullName" 
+              name="fullName"
+              class="w-full px-4 py-3 rounded-lg focus:ring-2 focus:outline-none transition"
+          style="border: 1px solid #E4E7E9;"
+          onfocus="this.style.borderColor='#2BA46F'; this.style.boxShadow='0 0 0 3px rgba(43, 164, 111, 0.1)'"
+          onblur="this.style.borderColor='#E4E7E9'; this.style.boxShadow='none'"
+              placeholder="John Doe"
+            >
+            <p id="fullNameError" class="hidden mt-1 text-sm text-red-600"></p>
+          </div>
+
+          <div>
+            <label for="createEmail" class="block text-sm font-medium mb-2" style="color: #1A1A1A;">Email <span class="text-red-500">*</span></label>
+            <input 
+              type="email" 
+              id="createEmail" 
+              name="email"
+              class="w-full px-4 py-3 rounded-lg focus:ring-2 focus:outline-none transition"
+          style="border: 1px solid #E4E7E9;"
+          onfocus="this.style.borderColor='#2BA46F'; this.style.boxShadow='0 0 0 3px rgba(43, 164, 111, 0.1)'"
+          onblur="this.style.borderColor='#E4E7E9'; this.style.boxShadow='none'"
+              placeholder="your.email@example.com"
+            >
+            <p id="createEmailError" class="hidden mt-1 text-sm text-red-600"></p>
+          </div>
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-6">
+          <div>
+            <label for="createPassword" class="block text-sm font-medium mb-2" style="color: #1A1A1A;">Password <span class="text-red-500">*</span></label>
+            <input 
+              type="password" 
+              id="createPassword" 
+              name="password"
+              class="w-full px-4 py-3 rounded-lg focus:ring-2 focus:outline-none transition"
+          style="border: 1px solid #E4E7E9;"
+          onfocus="this.style.borderColor='#2BA46F'; this.style.boxShadow='0 0 0 3px rgba(43, 164, 111, 0.1)'"
+          onblur="this.style.borderColor='#E4E7E9'; this.style.boxShadow='none'"
+              placeholder="Minimum 8 characters"
+            >
+            <p class="mt-1 text-xs text-gray-500">Minimum 8 characters</p>
+            <p id="createPasswordError" class="hidden mt-1 text-sm text-red-600"></p>
+          </div>
+
+          <div>
+            <label for="confirmPassword" class="block text-sm font-medium mb-2" style="color: #1A1A1A;">Confirm Password <span class="text-red-500">*</span></label>
+            <input 
+              type="password" 
+              id="confirmPassword" 
+              name="confirmPassword"
+              class="w-full px-4 py-3 rounded-lg focus:ring-2 focus:outline-none transition"
+          style="border: 1px solid #E4E7E9;"
+          onfocus="this.style.borderColor='#2BA46F'; this.style.boxShadow='0 0 0 3px rgba(43, 164, 111, 0.1)'"
+          onblur="this.style.borderColor='#E4E7E9'; this.style.boxShadow='none'"
+              placeholder="Re-enter password"
+            >
+            <p id="confirmPasswordError" class="hidden mt-1 text-sm text-red-600"></p>
+          </div>
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-6">
+          <div>
+            <label for="mobileNumber" class="block text-sm font-medium mb-2" style="color: #1A1A1A;">Mobile Number (TTD) <span class="text-red-500">*</span></label>
+            <input 
+              type="tel" 
+              id="mobileNumber" 
+              name="mobileNumber"
+              class="w-full px-4 py-3 rounded-lg focus:ring-2 focus:outline-none transition"
+          style="border: 1px solid #E4E7E9;"
+          onfocus="this.style.borderColor='#2BA46F'; this.style.boxShadow='0 0 0 3px rgba(43, 164, 111, 0.1)'"
+          onblur="this.style.borderColor='#E4E7E9'; this.style.boxShadow='none'"
+              placeholder="868-123-4567"
+            >
+            <p id="mobileNumberError" class="hidden mt-1 text-sm text-red-600"></p>
+          </div>
+
+          <div>
+            <label for="preferredContact" class="block text-sm font-medium mb-2" style="color: #1A1A1A;">Preferred Contact Method <span class="text-red-500">*</span></label>
+            <select 
+              id="preferredContact" 
+              name="preferredContact"
+              class="w-full px-4 py-3 rounded-lg focus:ring-2 focus:outline-none transition"
+          style="border: 1px solid #E4E7E9;"
+          onfocus="this.style.borderColor='#2BA46F'; this.style.boxShadow='0 0 0 3px rgba(43, 164, 111, 0.1)'"
+          onblur="this.style.borderColor='#E4E7E9'; this.style.boxShadow='none'"
+            >
+              <option value="">Select...</option>
+              <option value="whatsapp">WhatsApp</option>
+              <option value="call">Call</option>
+              <option value="sms">SMS</option>
+              <option value="email">Email</option>
+            </select>
+            <p id="preferredContactError" class="hidden mt-1 text-sm text-red-600"></p>
+          </div>
+        </div>
+
+        <!-- Role-specific fields will be inserted here -->
+        <div id="roleSpecificFields"></div>
+
+        <!-- Terms checkbox -->
+        <div class="flex items-start">
+          <input 
+            type="checkbox" 
+            id="termsAgree" 
+            name="termsAgree"
+            class="h-4 w-4 mt-1 rounded"
+            style="color: #2BA46F; border-color: #E4E7E9;"
+          >
+          <label for="termsAgree" class="ml-2 block text-sm" style="color: #1A1A1A;">
+            I agree to the <a href="#" style="color: #2BA46F;" onmouseover="this.style.color='#23875B'" onmouseout="this.style.color='#2BA46F'">Terms and Privacy Policy</a> <span class="text-red-500">*</span>
+          </label>
+        </div>
+        <p id="termsAgreeError" class="hidden text-sm text-red-600"></p>
+
+        <button 
+          type="submit"
+          class="w-full text-white py-3 px-4 rounded-lg focus:ring-4 focus:outline-none transition font-medium text-lg"
+          style="background-color: #2BA46F;"
+          onmouseover="this.style.backgroundColor='#23875B'"
+          onmouseout="this.style.backgroundColor='#2BA46F'"
+        >
+          Create Account
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // State
+    let activeTab = 'login';
+    let activeRole = 'student';
+
+    // Tab switching
+    const tabButtons = document.querySelectorAll('.tab-btn');
+    const loginContainer = document.getElementById('loginContainer');
+    const createContainer = document.getElementById('createContainer');
+
+    function switchTab(tab) {
+      activeTab = tab;
+      
+      // Update button styles
+      tabButtons.forEach(btn => {
+        const btnTab = btn.getAttribute('data-tab');
+        if (btnTab === tab) {
+          btn.style.borderColor = '#2BA46F';
+          btn.style.color = '#2BA46F';
+        } else {
+          btn.style.borderColor = 'transparent';
+          btn.style.color = '#1A1A1A';
+        }
+      });
+
+      // Show/hide containers
+      if (tab === 'login') {
+        loginContainer.classList.remove('hidden');
+        createContainer.classList.add('hidden');
+      } else {
+        loginContainer.classList.add('hidden');
+        createContainer.classList.remove('hidden');
+      }
+    }
+
+    // Initialize
+    switchTab('login');
+
+    document.getElementById('loginTabBtn').addEventListener('click', () => switchTab('login'));
+    document.getElementById('createTabBtn').addEventListener('click', () => switchTab('create'));
+
+    // Validation helpers
+    function isValidEmail(email) {
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    }
+
+    function showError(elementId, message) {
+      const errorEl = document.getElementById(elementId);
+      errorEl.textContent = message;
+      errorEl.classList.remove('hidden');
+    }
+
+    function hideError(elementId) {
+      const errorEl = document.getElementById(elementId);
+      errorEl.classList.add('hidden');
+    }
+
+    // Role switching
+    const roleButtons = document.querySelectorAll('.role-btn');
+    const roleSpecificContainer = document.getElementById('roleSpecificFields');
+
+    function switchRole(role) {
+      activeRole = role;
+      
+      // Update button styles
+      roleButtons.forEach(btn => {
+        const btnRole = btn.getAttribute('data-role');
+        if (btnRole === role) {
+          btn.style.backgroundColor = '#2BA46F';
+          btn.style.color = 'white';
+          btn.style.borderColor = '#2BA46F';
+        } else {
+          btn.style.backgroundColor = 'transparent';
+          btn.style.color = '#1A1A1A';
+          btn.style.borderColor = '#E4E7E9';
+        }
+      });
+
+      // Load role-specific fields
+      loadRoleSpecificFields(role);
+    }
+
+    function loadRoleSpecificFields(role) {
+      roleSpecificContainer.innerHTML = getRoleFieldsHTML(role);
+      initializeMultiSelect();
+    }
+
+    function getRoleFieldsHTML(role) {
+      if (role === 'student') {
+        return `
+          <div class="space-y-6 border-t pt-6">
+            <h3 class="text-lg font-semibold" style="color: #1A1A1A;">Student Information</h3>
+            
+            <div class="grid md:grid-cols-2 gap-6">
+              <div>
+                <label for="schoolName" class="block text-sm font-medium mb-2" style="color: #1A1A1A;">School Name</label>
+                <input type="text" id="schoolName" name="schoolName" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none transition" placeholder="Your school">
+                <p id="schoolNameError" class="hidden mt-1 text-sm text-red-600"></p>
+              </div>
+
+              <div>
+                <label for="formLevel" class="block text-sm font-medium mb-2" style="color: #1A1A1A;">Form / Level</label>
+                <select id="formLevel" name="formLevel" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none transition">
+                  <option value="">Select...</option>
+                  <option value="form1">Form 1</option>
+                  <option value="form2">Form 2</option>
+                  <option value="form3">Form 3</option>
+                  <option value="form4">Form 4</option>
+                  <option value="form5">Form 5</option>
+                  <option value="lower6">Lower 6</option>
+                  <option value="upper6">Upper 6</option>
+                  <option value="other">Other</option>
+                </select>
+                <p id="formLevelError" class="hidden mt-1 text-sm text-red-600"></p>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium mb-2" style="color: #1A1A1A;">Exam Type</label>
+              <div class="flex flex-wrap gap-2" id="examTypeContainer">
+                <button type="button" class="multi-select-pill px-4 py-2 rounded-full border-2 transition-all" data-value="csec" style="border-color: #E4E7E9; color: #1A1A1A;">CSEC</button>
+                <button type="button" class="multi-select-pill px-4 py-2 rounded-full border-2 transition-all" data-value="cape" style="border-color: #E4E7E9; color: #1A1A1A;">CAPE</button>
+                <button type="button" class="multi-select-pill px-4 py-2 rounded-full border-2 transition-all" data-value="other" style="border-color: #E4E7E9; color: #1A1A1A;">Other</button>
+              </div>
+            </div>
+
+            <div>
+              <label for="subjectsNeedHelp" class="block text-sm font-medium mb-2" style="color: #1A1A1A;">Subjects You Need Help With</label>
+              <textarea id="subjectsNeedHelp" name="subjectsNeedHelp" rows="3" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none transition" placeholder="e.g., Mathematics, Physics, Chemistry"></textarea>
+              <p id="subjectsNeedHelpError" class="hidden mt-1 text-sm text-red-600"></p>
+            </div>
+
+            <div>
+              <label for="preferredSessionType" class="block text-sm font-medium mb-2" style="color: #1A1A1A;">Preferred Session Type</label>
+              <select id="preferredSessionType" name="preferredSessionType" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none transition">
+                <option value="">Select...</option>
+                <option value="1to1online">1-to-1 Online</option>
+                <option value="smallgroup">Small Group Online</option>
+                <option value="inperson">In-Person</option>
+                <option value="mixed">Mixed</option>
+              </select>
+              <p id="preferredSessionTypeError" class="hidden mt-1 text-sm text-red-600"></p>
+            </div>
+
+            <div>
+              <label for="goals" class="block text-sm font-medium mb-2" style="color: #1A1A1A;">Goals</label>
+              <textarea id="goals" name="goals" rows="3" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none transition" placeholder="e.g., Pass all CSEC subjects, Grade 1 in Mathematics"></textarea>
+              <p id="goalsError" class="hidden mt-1 text-sm text-red-600"></p>
+            </div>
+          </div>
+        `;
+      } else if (role === 'parent') {
+        return `
+          <div class="space-y-4 border-t pt-6">
+            <div class="rounded-lg p-4" style="background-color: #E8F5F0; border: 1px solid #2BA46F;">
+              <p class="text-sm" style="color: #1A1A1A;">
+                <span class="font-medium">Parent Account:</span> Once registered, you'll be able to add your children's profiles and manage their tutoring sessions from your dashboard.
+              </p>
+            </div>
+          </div>
+        `;
+      } else if (role === 'tutor') {
+        return `
+          <div class="space-y-6 border-t pt-6">
+            <h3 class="text-lg font-semibold" style="color: #1A1A1A;">Tutor Information</h3>
+            
+            <div class="grid md:grid-cols-2 gap-6">
+              <div>
+                <label for="currentSchool" class="block text-sm font-medium mb-2" style="color: #1A1A1A;">Current School / Institution</label>
+                <input type="text" id="currentSchool" name="currentSchool" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none transition" placeholder="Your institution">
+                <p id="currentSchoolError" class="hidden mt-1 text-sm text-red-600"></p>
+              </div>
+
+              <div>
+                <label for="currentLevel" class="block text-sm font-medium mb-2" style="color: #1A1A1A;">Current Level</label>
+                <select id="currentLevel" name="currentLevel" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none transition">
+                  <option value="">Select...</option>
+                  <option value="lower6">Lower 6</option>
+                  <option value="upper6">Upper 6</option>
+                  <option value="university">University</option>
+                  <option value="graduate">Graduate</option>
+                  <option value="other">Other</option>
+                </select>
+                <p id="currentLevelError" class="hidden mt-1 text-sm text-red-600"></p>
+              </div>
+            </div>
+
+            <div>
+              <label for="subjectsCanTeach" class="block text-sm font-medium mb-2" style="color: #1A1A1A;">Subjects You Can Teach</label>
+              <textarea id="subjectsCanTeach" name="subjectsCanTeach" rows="3" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none transition" placeholder="e.g., Mathematics, Physics, Chemistry"></textarea>
+              <p id="subjectsCanTeachError" class="hidden mt-1 text-sm text-red-600"></p>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium mb-2" style="color: #1A1A1A;">Levels You Can Teach</label>
+              <div class="flex flex-wrap gap-2" id="levelsCanTeachContainer">
+                <button type="button" class="multi-select-pill px-4 py-2 rounded-full border-2 transition-all" data-value="form1-3" style="border-color: #E4E7E9; color: #1A1A1A;">Form 1–3</button>
+                <button type="button" class="multi-select-pill px-4 py-2 rounded-full border-2 transition-all" data-value="form4-5" style="border-color: #E4E7E9; color: #1A1A1A;">Form 4–5 (CSEC)</button>
+                <button type="button" class="multi-select-pill px-4 py-2 rounded-full border-2 transition-all" data-value="lower6" style="border-color: #E4E7E9; color: #1A1A1A;">Lower 6</button>
+                <button type="button" class="multi-select-pill px-4 py-2 rounded-full border-2 transition-all" data-value="upper6" style="border-color: #E4E7E9; color: #1A1A1A;">Upper 6 (CAPE)</button>
+              </div>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+              <div>
+                <label for="yearsExperience" class="block text-sm font-medium mb-2" style="color: #1A1A1A;">Years of Tutoring Experience</label>
+                <input type="number" id="yearsExperience" name="yearsExperience" min="0" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none transition" placeholder="e.g., 2">
+                <p id="yearsExperienceError" class="hidden mt-1 text-sm text-red-600"></p>
+              </div>
+
+              <div>
+                <label for="hourlyRate" class="block text-sm font-medium mb-2" style="color: #1A1A1A;">Hourly Rate (TTD)</label>
+                <input type="number" id="hourlyRate" name="hourlyRate" min="0" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none transition" placeholder="e.g., 100">
+                <p id="hourlyRateError" class="hidden mt-1 text-sm text-red-600"></p>
+              </div>
+            </div>
+
+            <div>
+              <label for="shortBio" class="block text-sm font-medium mb-2" style="color: #1A1A1A;">Short Bio</label>
+              <textarea id="shortBio" name="shortBio" rows="3" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none transition" placeholder="Tell us about yourself and your teaching experience"></textarea>
+              <p id="shortBioError" class="hidden mt-1 text-sm text-red-600"></p>
+            </div>
+
+            <div>
+              <label for="availabilityNotes" class="block text-sm font-medium mb-2" style="color: #1A1A1A;">Availability Notes</label>
+              <textarea id="availabilityNotes" name="availabilityNotes" rows="2" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none transition" placeholder="e.g., Weekday evenings, Saturday mornings"></textarea>
+              <p id="availabilityNotesError" class="hidden mt-1 text-sm text-red-600"></p>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium mb-2" style="color: #1A1A1A;">Preferred Session Type</label>
+              <div class="flex flex-wrap gap-2" id="tutorSessionTypeContainer">
+                <button type="button" class="multi-select-pill px-4 py-2 rounded-full border-2 transition-all" data-value="online" style="border-color: #E4E7E9; color: #1A1A1A;">Online</button>
+                <button type="button" class="multi-select-pill px-4 py-2 rounded-full border-2 transition-all" data-value="inperson" style="border-color: #E4E7E9; color: #1A1A1A;">In-Person</button>
+                <button type="button" class="multi-select-pill px-4 py-2 rounded-full border-2 transition-all" data-value="both" style="border-color: #E4E7E9; color: #1A1A1A;">Both</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      return '';
+    }
+
+    // Multi-select pill functionality
+    function initializeMultiSelect() {
+      const pillButtons = document.querySelectorAll('.multi-select-pill');
+      pillButtons.forEach(btn => {
+        btn.addEventListener('click', function() {
+          const isActive = this.style.backgroundColor === 'rgb(43, 164, 111)';
+          if (isActive) {
+            this.style.backgroundColor = 'transparent';
+            this.style.color = '#1A1A1A';
+            this.style.borderColor = '#E4E7E9';
+          } else {
+            this.style.backgroundColor = '#2BA46F';
+            this.style.color = 'white';
+            this.style.borderColor = '#2BA46F';
+          }
+        });
+      });
+    }
+
+    function getSelectedPills(containerId) {
+      const container = document.getElementById(containerId);
+      if (!container) return [];
+      const pills = container.querySelectorAll('.multi-select-pill');
+      const selected = Array.from(pills).filter(btn => 
+        btn.style.backgroundColor === 'rgb(43, 164, 111)'
+      );
+      return selected.map(btn => btn.getAttribute('data-value'));
+    }
+
+    roleButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const role = btn.getAttribute('data-role');
+        switchRole(role);
+      });
+    });
+
+    // Initialize with student role
+    switchRole('student');
+
+    // Login form handling
+    const loginForm = document.getElementById('loginForm');
+    loginForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      
+      // Clear previous errors
+      hideError('loginEmailError');
+      hideError('loginPasswordError');
+
+      const email = document.getElementById('loginEmail').value.trim();
+      const password = document.getElementById('loginPassword').value.trim();
+      const rememberMe = document.getElementById('rememberMe').checked;
+
+      let isValid = true;
+
+      // Validate email
+      if (!email) {
+        showError('loginEmailError', 'Email is required');
+        isValid = false;
+      } else if (!isValidEmail(email)) {
+        showError('loginEmailError', 'Please enter a valid email address');
+        isValid = false;
+      }
+
+      // Validate password
+      if (!password) {
+        showError('loginPasswordError', 'Password is required');
+        isValid = false;
+      }
+
+      if (isValid) {
+        const payload = { email, password, rememberMe };
+        console.log('Login payload:', payload);
+        alert('Login successful! Check console for payload.');
+      }
+    });
+
+    // Create account form handling
+    const createForm = document.getElementById('createForm');
+    createForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      
+      // Clear all errors
+      document.querySelectorAll('#createContainer .text-red-600').forEach(el => el.classList.add('hidden'));
+
+      // Get common fields
+      const fullName = document.getElementById('fullName').value.trim();
+      const email = document.getElementById('createEmail').value.trim();
+      const password = document.getElementById('createPassword').value.trim();
+      const confirmPassword = document.getElementById('confirmPassword').value.trim();
+      const mobileNumber = document.getElementById('mobileNumber').value.trim();
+      const preferredContact = document.getElementById('preferredContact').value;
+      const termsAgree = document.getElementById('termsAgree').checked;
+
+      let isValid = true;
+
+      // Validate common fields
+      if (!fullName) {
+        showError('fullNameError', 'Full name is required');
+        isValid = false;
+      }
+
+      if (!email) {
+        showError('createEmailError', 'Email is required');
+        isValid = false;
+      } else if (!isValidEmail(email)) {
+        showError('createEmailError', 'Please enter a valid email address');
+        isValid = false;
+      }
+
+      if (!password) {
+        showError('createPasswordError', 'Password is required');
+        isValid = false;
+      } else if (password.length < 8) {
+        showError('createPasswordError', 'Password must be at least 8 characters');
+        isValid = false;
+      }
+
+      if (!confirmPassword) {
+        showError('confirmPasswordError', 'Please confirm your password');
+        isValid = false;
+      } else if (password !== confirmPassword) {
+        showError('confirmPasswordError', 'Passwords do not match');
+        isValid = false;
+      }
+
+      if (!mobileNumber) {
+        showError('mobileNumberError', 'Mobile number is required');
+        isValid = false;
+      }
+
+      if (!preferredContact) {
+        showError('preferredContactError', 'Please select a contact method');
+        isValid = false;
+      }
+
+      if (!termsAgree) {
+        showError('termsAgreeError', 'You must agree to the Terms and Privacy Policy');
+        isValid = false;
+      }
+
+      // Build payload based on role
+      if (isValid) {
+        const payload = {
+          role: activeRole,
+          fullName,
+          email,
+          password,
+          mobileNumber,
+          preferredContact
+        };
+
+        // Add role-specific fields
+        if (activeRole === 'student') {
+          const schoolName = document.getElementById('schoolName')?.value.trim();
+          const formLevel = document.getElementById('formLevel')?.value;
+          const examType = getSelectedPills('examTypeContainer');
+          const subjectsNeedHelp = document.getElementById('subjectsNeedHelp')?.value.trim();
+          const preferredSessionType = document.getElementById('preferredSessionType')?.value;
+          const goals = document.getElementById('goals')?.value.trim();
+
+          payload.student = {
+            schoolName,
+            formLevel,
+            examType,
+            subjectsNeedHelp,
+            preferredSessionType,
+            goals
+          };
+        } else if (activeRole === 'parent') {
+          // Parents only need common fields - no extra information required
+          payload.parent = {};
+        } else if (activeRole === 'tutor') {
+          const currentSchool = document.getElementById('currentSchool')?.value.trim();
+          const currentLevel = document.getElementById('currentLevel')?.value;
+          const subjectsCanTeach = document.getElementById('subjectsCanTeach')?.value.trim();
+          const levelsCanTeach = getSelectedPills('levelsCanTeachContainer');
+          const yearsExperience = document.getElementById('yearsExperience')?.value;
+          const shortBio = document.getElementById('shortBio')?.value.trim();
+          const hourlyRate = document.getElementById('hourlyRate')?.value;
+          const availabilityNotes = document.getElementById('availabilityNotes')?.value.trim();
+          const tutorSessionType = getSelectedPills('tutorSessionTypeContainer');
+
+          payload.tutor = {
+            currentSchool,
+            currentLevel,
+            subjectsCanTeach,
+            levelsCanTeach,
+            yearsExperience,
+            shortBio,
+            hourlyRate,
+            availabilityNotes,
+            preferredSessionType: tutorSessionType
+          };
+        }
+
+        console.log('Create Account payload:', payload);
+        alert('Account created! Check console for payload.');
+      }
+    });
+  </script>
+</body>
+</html>
+
+

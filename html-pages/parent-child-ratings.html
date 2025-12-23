@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Child Ratings - iTutor</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-gray-50">
+  <nav class="bg-white shadow-sm border-b">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between h-16">
+        <div class="flex">
+          <div class="flex-shrink-0 flex items-center">
+            <h1 class="text-xl font-bold text-blue-600">iTutor</h1>
+          </div>
+          <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
+            <a href="parent-dashboard.html" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+              Dashboard
+            </a>
+            <a href="parent-add-child.html" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+              Add Child
+            </a>
+          </div>
+        </div>
+        <div class="flex items-center space-x-4">
+          <span class="text-sm text-gray-700" id="userName">Loading...</span>
+          <button onclick="handleLogout()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm font-medium">
+            Logout
+          </button>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+    <div class="px-4 py-6 sm:px-0">
+      <div class="flex items-center mb-6">
+        <a href="parent-dashboard.html" class="mr-4 text-gray-600 hover:text-gray-900">
+          ← Back
+        </a>
+        <h1 class="text-3xl font-bold text-gray-900" id="pageTitle">Child's Ratings</h1>
+      </div>
+
+      <div class="bg-white shadow rounded-lg p-6">
+        <div id="ratingsContent">
+          <p class="text-gray-500">Loading ratings...</p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+    const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    function renderStars(count) {
+      return Array(5).fill(0).map((_, i) => `
+        <svg class="h-5 w-5 ${i < count ? 'text-yellow-400' : 'text-gray-300'}" fill="currentColor" viewBox="0 0 20 20">
+          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+        </svg>
+      `).join('');
+    }
+
+    async function loadChildRatings() {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const childId = urlParams.get('id');
+
+        if (!childId) {
+          window.location.href = 'parent-dashboard.html';
+          return;
+        }
+
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          window.location.href = 'index.html';
+          return;
+        }
+
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        document.getElementById('userName').textContent = profile.full_name;
+
+        const { data: link } = await supabase
+          .from('parent_child_links')
+          .select('*')
+          .eq('parent_id', profile.id)
+          .eq('child_id', childId)
+          .single();
+
+        if (!link) {
+          document.getElementById('ratingsContent').innerHTML = '<div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">Child not found</div>';
+          return;
+        }
+
+        const { data: child } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', childId)
+          .single();
+
+        document.getElementById('pageTitle').textContent = `${child.full_name}'s Ratings`;
+
+        const { data: ratings } = await supabase
+          .from('public_ratings')
+          .select('*')
+          .eq('student_id', childId)
+          .order('created_at', { ascending: false });
+
+        if (ratings && ratings.length > 0) {
+          const ratingsHTML = ratings.map(rating => `
+            <div class="border-b pb-6 last:border-b-0 mb-6">
+              <div class="flex justify-between items-start mb-2">
+                <div class="flex items-center">
+                  ${renderStars(rating.stars)}
+                  <span class="ml-2 font-semibold">${rating.stars}/5</span>
+                </div>
+                <span class="text-sm text-gray-500">${new Date(rating.created_at).toLocaleDateString()}</span>
+              </div>
+              ${rating.comment ? `<p class="text-gray-700 mt-2">${rating.comment}</p>` : ''}
+            </div>
+          `).join('');
+          document.getElementById('ratingsContent').innerHTML = `<div class="space-y-6">${ratingsHTML}</div>`;
+        } else {
+          document.getElementById('ratingsContent').innerHTML = '<div class="text-center py-12"><p class="text-gray-500">No ratings yet</p></div>';
+        }
+
+      } catch (error) {
+        console.error('Error loading ratings:', error);
+        document.getElementById('ratingsContent').innerHTML = '<p class="text-red-500">Error loading ratings</p>';
+      }
+    }
+
+    async function handleLogout() {
+      await supabase.auth.signOut();
+      window.location.href = 'index.html';
+    }
+
+    loadChildRatings();
+  </script>
+</body>
+</html>
+
+

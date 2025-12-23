@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Certificate Verification - iTutor</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-gray-50">
+  <nav class="bg-white shadow-sm border-b">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between h-16">
+        <div class="flex">
+          <div class="flex-shrink-0 flex items-center">
+            <h1 class="text-xl font-bold text-blue-600">iTutor</h1>
+          </div>
+          <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
+            <a href="tutor-dashboard.html" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+              Dashboard
+            </a>
+            <a href="tutor-sessions.html" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+              Sessions
+            </a>
+            <a href="tutor-verification.html" class="border-blue-500 text-gray-900 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+              Verification
+            </a>
+          </div>
+        </div>
+        <div class="flex items-center space-x-4">
+          <span class="text-sm text-gray-700" id="userName">Loading...</span>
+          <button onclick="handleLogout()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-md text-sm font-medium">
+            Logout
+          </button>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+    <div class="px-4 py-6 sm:px-0">
+      <h1 class="text-3xl font-bold text-gray-900 mb-6">Certificate Verification</h1>
+
+      <!-- Upload Section -->
+      <div class="bg-white shadow rounded-lg p-6 mb-6">
+        <h2 class="text-xl font-semibold mb-4">Upload Certificate</h2>
+        <p class="text-gray-600 mb-4">
+          Upload your CSEC or CAPE certificate for verification (PDF, JPG, PNG)
+        </p>
+
+        <div class="border-2 border-dashed border-gray-300 rounded-lg p-6">
+          <input
+            type="file"
+            id="fileInput"
+            accept=".pdf,.jpg,.jpeg,.png"
+            class="block w-full text-sm text-gray-500
+              file:mr-4 file:py-2 file:px-4
+              file:rounded-md file:border-0
+              file:text-sm file:font-semibold
+              file:bg-blue-50 file:text-blue-700
+              hover:file:bg-blue-100"
+          />
+        </div>
+
+        <button onclick="uploadFile()" id="uploadBtn" class="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md font-medium">
+          Upload
+        </button>
+
+        <div id="uploadStatus" class="mt-4"></div>
+      </div>
+
+      <!-- Verification History -->
+      <div class="bg-white shadow rounded-lg p-6">
+        <h2 class="text-xl font-semibold mb-4">Verification History</h2>
+        <div id="verificationsList">
+          <p class="text-gray-500">Loading verifications...</p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+    const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    let currentProfile = null;
+
+    async function loadVerifications() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          window.location.href = 'index.html';
+          return;
+        }
+
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        currentProfile = profile;
+        document.getElementById('userName').textContent = profile.full_name;
+
+        const { data: verifications } = await supabase
+          .from('tutor_verifications')
+          .select('*')
+          .eq('tutor_id', profile.id)
+          .order('created_at', { ascending: false });
+
+        if (verifications && verifications.length > 0) {
+          const versHTML = verifications.map(v => `
+            <div class="border rounded-lg p-4 flex justify-between items-start mb-4">
+              <div class="flex-1">
+                <span class="px-3 py-1 text-sm rounded-full ${
+                  v.status === 'approved' ? 'bg-green-100 text-green-800' :
+                  v.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                  'bg-red-100 text-red-800'
+                }">${v.status}</span>
+                <p class="text-sm text-gray-500 mt-2">Submitted: ${new Date(v.created_at).toLocaleDateString()}</p>
+                ${v.notes ? `<p class="text-sm text-gray-700 mt-2"><strong>Notes:</strong> ${v.notes}</p>` : ''}
+              </div>
+              <a href="${v.uploaded_doc_url}" target="_blank" class="ml-4 text-blue-600 hover:text-blue-800 text-sm font-medium">View</a>
+            </div>
+          `).join('');
+          document.getElementById('verificationsList').innerHTML = versHTML;
+        } else {
+          document.getElementById('verificationsList').innerHTML = '<div class="text-center py-12"><p class="text-gray-500">No verifications yet</p></div>';
+        }
+      } catch (error) {
+        console.error('Error loading verifications:', error);
+      }
+    }
+
+    async function uploadFile() {
+      const fileInput = document.getElementById('fileInput');
+      const file = fileInput.files[0];
+      const uploadBtn = document.getElementById('uploadBtn');
+      const statusDiv = document.getElementById('uploadStatus');
+
+      if (!file) {
+        statusDiv.innerHTML = '<p class="text-red-600">Please select a file</p>';
+        return;
+      }
+
+      if (!currentProfile) {
+        statusDiv.innerHTML = '<p class="text-red-600">Profile not loaded</p>';
+        return;
+      }
+
+      uploadBtn.disabled = true;
+      uploadBtn.textContent = 'Uploading...';
+      statusDiv.innerHTML = '<div class="flex items-center text-blue-600"><div class="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600 mr-2"></div><span>Uploading...</span></div>';
+
+      try {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${currentProfile.id}-${Date.now()}.${fileExt}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('verification_docs')
+          .upload(fileName, file);
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('verification_docs')
+          .getPublicUrl(fileName);
+
+        const { error: insertError } = await supabase
+          .from('tutor_verifications')
+          .insert({
+            tutor_id: currentProfile.id,
+            uploaded_doc_url: publicUrl,
+            status: 'pending'
+          });
+
+        if (insertError) throw insertError;
+
+        statusDiv.innerHTML = '<div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">Certificate uploaded successfully!</div>';
+        fileInput.value = '';
+        loadVerifications();
+      } catch (error) {
+        console.error('Error uploading file:', error);
+        statusDiv.innerHTML = `<div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">${error.message}</div>`;
+      } finally {
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = 'Upload';
+      }
+    }
+
+    async function handleLogout() {
+      await supabase.auth.signOut();
+      window.location.href = 'index.html';
+    }
+
+    loadVerifications();
+  </script>
+</body>
+</html>
+
+

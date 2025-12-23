@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Create Account</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="bg-gradient-custom min-h-screen flex items-center justify-center p-4">
+  <div class="bg-white rounded-lg card-shadow w-full max-w-md p-8">
+    <div class="text-center mb-8">
+      <h1 class="text-3xl font-bold text-gray-900">Create Account</h1>
+      <p class="text-gray-600 mt-2">Sign up to get started</p>
+    </div>
+
+    <div id="successState" class="hidden text-center">
+      <div class="mb-6 p-4 bg-green-100 border border-green-400 text-green-700 rounded" role="alert" aria-live="polite" aria-atomic="true">
+        <p class="font-medium">Account created successfully!</p>
+        <p class="mt-2">You can now sign in with your credentials.</p>
+      </div>
+      <a 
+        href="index.html"
+        class="inline-block bg-indigo-600 text-white py-3 px-6 rounded-lg hover:bg-indigo-700 focus:ring-4 focus:ring-indigo-300 focus:outline-none transition font-medium"
+        aria-label="Go to sign in page"
+      >
+        Go to Sign In
+      </a>
+    </div>
+
+    <form id="registerForm" class="space-y-6" novalidate aria-label="Registration form">
+      <div>
+        <label for="name" class="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
+        <input 
+          type="text" 
+          id="name" 
+          name="name" 
+          class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none transition"
+          placeholder="John Doe"
+          aria-describedby="nameError"
+          aria-required="true"
+          autocomplete="name"
+        >
+        <p id="nameError" class="hidden text-red-600 text-sm mt-1" role="alert" aria-live="polite"></p>
+      </div>
+
+      <div>
+        <label for="email" class="block text-sm font-medium text-gray-700 mb-2">Email address</label>
+        <input 
+          type="email" 
+          id="email" 
+          name="email" 
+          class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none transition"
+          placeholder="you@example.com"
+          aria-describedby="emailError"
+          aria-required="true"
+          autocomplete="email"
+        >
+        <p id="emailError" class="hidden text-red-600 text-sm mt-1" role="alert" aria-live="polite"></p>
+      </div>
+
+      <div>
+        <label for="password" class="block text-sm font-medium text-gray-700 mb-2">Password</label>
+        <input 
+          type="password" 
+          id="password" 
+          name="password" 
+          class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none transition"
+          placeholder="Create a password"
+          aria-describedby="passwordHint passwordError"
+          aria-required="true"
+          autocomplete="new-password"
+        >
+        <p id="passwordHint" class="text-gray-500 text-xs mt-1">Minimum 8 characters</p>
+        <p id="passwordError" class="hidden text-red-600 text-sm mt-1" role="alert" aria-live="polite"></p>
+      </div>
+
+      <div>
+        <label for="confirmPassword" class="block text-sm font-medium text-gray-700 mb-2">Confirm Password</label>
+        <input 
+          type="password" 
+          id="confirmPassword" 
+          name="confirmPassword" 
+          class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none transition"
+          placeholder="Confirm your password"
+          aria-describedby="confirmPasswordError"
+          aria-required="true"
+          autocomplete="new-password"
+        >
+        <p id="confirmPasswordError" class="hidden text-red-600 text-sm mt-1" role="alert" aria-live="polite"></p>
+      </div>
+
+      <div class="flex items-center">
+        <input 
+          type="checkbox" 
+          id="terms" 
+          name="terms"
+          class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+        >
+        <label for="terms" class="ml-2 block text-sm text-gray-700">
+          I agree to the <a href="#" class="text-indigo-600 hover:text-indigo-500">Terms and Conditions</a>
+        </label>
+      </div>
+      <p id="termsError" class="hidden text-red-600 text-sm" aria-live="polite"></p>
+
+      <button 
+        type="submit"
+        class="w-full bg-indigo-600 text-white py-3 px-4 rounded-lg hover:bg-indigo-700 focus:ring-4 focus:ring-indigo-300 focus:outline-none transition font-medium text-base md:text-lg"
+        aria-label="Create your account"
+      >
+        Create Account
+      </button>
+    </form>
+
+    <p class="text-center text-sm text-gray-600 mt-6">
+      Already have an account? 
+      <a href="index.html" class="text-indigo-600 hover:text-indigo-500 font-medium transition">Sign in</a>
+    </p>
+  </div>
+
+  <script>
+    const form = document.getElementById('registerForm');
+    const successState = document.getElementById('successState');
+    const nameInput = document.getElementById('name');
+    const emailInput = document.getElementById('email');
+    const passwordInput = document.getElementById('password');
+    const confirmPasswordInput = document.getElementById('confirmPassword');
+    const termsInput = document.getElementById('terms');
+    
+    const nameError = document.getElementById('nameError');
+    const emailError = document.getElementById('emailError');
+    const passwordError = document.getElementById('passwordError');
+    const confirmPasswordError = document.getElementById('confirmPasswordError');
+    const termsError = document.getElementById('termsError');
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      
+      let isValid = true;
+      
+      nameError.classList.add('hidden');
+      emailError.classList.add('hidden');
+      passwordError.classList.add('hidden');
+      confirmPasswordError.classList.add('hidden');
+      termsError.classList.add('hidden');
+
+      const name = nameInput.value.trim();
+      const email = emailInput.value.trim();
+      const password = passwordInput.value.trim();
+      const confirmPassword = confirmPasswordInput.value.trim();
+      const termsAccepted = termsInput.checked;
+
+      if (!name) {
+        nameError.textContent = 'Name is required';
+        nameError.classList.remove('hidden');
+        isValid = false;
+      }
+
+      if (!email) {
+        emailError.textContent = 'Email is required';
+        emailError.classList.remove('hidden');
+        isValid = false;
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        emailError.textContent = 'Please enter a valid email address';
+        emailError.classList.remove('hidden');
+        isValid = false;
+      }
+
+      if (!password) {
+        passwordError.textContent = 'Password is required';
+        passwordError.classList.remove('hidden');
+        isValid = false;
+      } else if (password.length < 8) {
+        passwordError.textContent = 'Password must be at least 8 characters';
+        passwordError.classList.remove('hidden');
+        isValid = false;
+      }
+
+      if (!confirmPassword) {
+        confirmPasswordError.textContent = 'Please confirm your password';
+        confirmPasswordError.classList.remove('hidden');
+        isValid = false;
+      } else if (password !== confirmPassword) {
+        confirmPasswordError.textContent = 'Passwords do not match';
+        confirmPasswordError.classList.remove('hidden');
+        isValid = false;
+      }
+
+      if (!termsAccepted) {
+        termsError.textContent = 'You must agree to the Terms and Conditions';
+        termsError.classList.remove('hidden');
+        isValid = false;
+      }
+
+      if (isValid) {
+        form.classList.add('hidden');
+        successState.classList.remove('hidden');
+      }
+    });
+  </script>
+</body>
+</html>
+
+
