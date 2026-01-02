@@ -1,0 +1,28 @@
+═══════════════════════════════════════════════════════════
+  🚨 URGENT: FIX 406 ERROR (Not Acceptable)
+═══════════════════════════════════════════════════════════
+
+The 406 error means RLS (Row Level Security) is blocking the query.
+
+✅ DO THIS NOW (takes 1 minute):
+
+1. Open Supabase Dashboard → SQL Editor
+2. Copy ALL of FIX_STUDENT_PROFILE_RLS.sql
+3. Paste and click "Run"
+4. Wait for success message
+5. Restart dev server: npm run dev
+6. Hard refresh browser: Ctrl+Shift+R
+
+═══════════════════════════════════════════════════════════
+
+After this:
+✓ 406 errors will be gone
+✓ Student names will appear (not "unknown student")
+✓ View Profile button will work
+
+═══════════════════════════════════════════════════════════
+
+
+
+
+

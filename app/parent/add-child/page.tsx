@@ -62,8 +62,8 @@ export default function AddChild() {
       return;
     }
 
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters.');
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.');
       setSubmitting(false);
       return;
     }
@@ -90,10 +90,18 @@ export default function AddChild() {
       console.log('📤 Sending request to create child...');
 
       // Call our API route to create the child server-side
+      // Get the current session token
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error('No active session found. Please log in again.');
+      }
+
       const response = await fetch('/api/parent/add-child', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           email,
@@ -182,7 +190,7 @@ export default function AddChild() {
                   disabled={submitting}
                 />
                 <p className="mt-1 text-sm text-gray-500">
-                  Minimum 6 characters
+                  Minimum 8 characters
                 </p>
               </div>
 

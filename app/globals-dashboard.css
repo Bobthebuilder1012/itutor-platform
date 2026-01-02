@@ -1,0 +1,51 @@
+/* Bright Dashboard Theme - Keep header dark */
+
+/* Card styles - bright white */
+.dashboard-card {
+  @apply bg-white shadow-lg rounded-2xl border border-gray-200 hover:shadow-xl transition-shadow;
+}
+
+/* Text colors - darker for readability */
+.dashboard-title {
+  @apply text-gray-900 font-bold;
+}
+
+.dashboard-text {
+  @apply text-gray-700;
+}
+
+.dashboard-muted {
+  @apply text-gray-500;
+}
+
+/* Stat cards - colorful backgrounds */
+.stat-card-green {
+  @apply bg-gradient-to-br from-emerald-50 to-green-100 border-green-200;
+}
+
+.stat-card-blue {
+  @apply bg-gradient-to-br from-blue-50 to-indigo-100 border-blue-200;
+}
+
+.stat-card-purple {
+  @apply bg-gradient-to-br from-purple-50 to-pink-100 border-purple-200;
+}
+
+.stat-card-orange {
+  @apply bg-gradient-to-br from-orange-50 to-amber-100 border-orange-200;
+}
+
+/* Button styles */
+.btn-primary {
+  @apply bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-white shadow-md hover:shadow-lg;
+}
+
+.btn-secondary {
+  @apply bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 hover:border-gray-400 shadow-sm;
+}
+
+/* Keep navbar dark */
+nav {
+  @apply bg-itutor-black/50;
+}
+

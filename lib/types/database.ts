@@ -23,8 +23,18 @@ export interface Profile {
   attendance_rate?: number;
   rating_average?: number;
   rating_count: number;
+  avatar_url?: string | null;
   created_at: string;
   updated_at: string;
+  is_reviewer?: boolean;
+  tutor_verification_status?: string;
+  tutor_verified_at?: string;
+  is_suspended?: boolean;
+  suspension_reason?: string;
+  suspended_at?: string;
+  suspended_by?: string;
+  suspension_lifted_at?: string;
+  suspension_lifted_by?: string;
 }
 
 export interface ParentChildLink {

@@ -4,6 +4,21 @@ import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 
+// Helper function to detect network errors
+function isNetworkError(error: unknown): boolean {
+  if (error instanceof TypeError && error.message === 'Failed to fetch') {
+    return true;
+  }
+  if (error instanceof Error && (
+    error.message.includes('network') ||
+    error.message.includes('Network') ||
+    error.message.includes('fetch')
+  )) {
+    return true;
+  }
+  return !navigator.onLine;
+}
+
 export default function TutorLoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
@@ -23,7 +38,7 @@ export default function TutorLoginPage() {
       });
 
       if (signInError || !data.user) {
-        setError('Invalid email or password');
+        setError('Incorrect email or password');
         setLoading(false);
         return;
       }
@@ -49,8 +64,12 @@ export default function TutorLoginPage() {
       }
 
       router.push('/tutor/dashboard');
-    } catch {
-      setError('An unexpected error occurred. Please try again.');
+    } catch (err) {
+      if (isNetworkError(err)) {
+        setError('Connect to the Internet');
+      } else {
+        setError('An unexpected error occurred. Please try again.');
+      }
       setLoading(false);
     }
   };
@@ -59,7 +78,7 @@ export default function TutorLoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 px-4">
       <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">Tutor Login</h1>
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">iTutor Login</h1>
           <p className="text-gray-600">Sign in to manage your tutoring sessions.</p>
         </div>
 
@@ -114,6 +133,7 @@ export default function TutorLoginPage() {
     </div>
   );
 }
+
 
 
 

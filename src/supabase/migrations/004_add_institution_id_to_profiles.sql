@@ -17,3 +17,8 @@ ON public.profiles(institution_id);
 COMMENT ON COLUMN public.profiles.institution_id IS 'Reference to the institution (school/college) the user is associated with';
 
 
+
+
+
+
+

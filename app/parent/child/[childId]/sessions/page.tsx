@@ -51,7 +51,7 @@ export default function ChildSessions() {
           .from('sessions')
           .select('*')
           .eq('student_id', childId)
-          .order('scheduled_start', { ascending: false })
+          .order('scheduled_start_at', { ascending: false })
       ]);
 
       if (childRes.data) setChild(childRes.data);
@@ -126,10 +126,10 @@ export default function ChildSessions() {
                     <tr key={session.id}>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
-                          {new Date(session.scheduled_start).toLocaleDateString()}
+                          {new Date(session.scheduled_start_at).toLocaleDateString()}
                         </div>
                         <div className="text-sm text-gray-500">
-                          {new Date(session.scheduled_start).toLocaleTimeString([], {
+                          {new Date(session.scheduled_start_at).toLocaleTimeString([], {
                             hour: '2-digit',
                             minute: '2-digit'
                           })}
@@ -140,15 +140,17 @@ export default function ChildSessions() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`px-2 py-1 text-xs rounded-full ${
-                          session.status === 'completed' ? 'bg-green-100 text-green-800' :
-                          session.status === 'booked' ? 'bg-blue-100 text-blue-800' :
+                          session.status === 'COMPLETED_ASSUMED' ? 'bg-green-100 text-green-800' :
+                          session.status === 'SCHEDULED' || session.status === 'JOIN_OPEN' ? 'bg-blue-100 text-blue-800' :
+                          session.status === 'CANCELLED' ? 'bg-red-100 text-red-800' :
+                          session.status === 'NO_SHOW_STUDENT' ? 'bg-yellow-100 text-yellow-800' :
                           'bg-gray-100 text-gray-800'
                         }`}>
                           {session.status}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        ${session.amount_ttd.toFixed(2)}
+                        ${session.charge_amount_ttd.toFixed(2)}
                       </td>
                     </tr>
                   ))}

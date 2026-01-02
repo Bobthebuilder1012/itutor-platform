@@ -16,14 +16,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className="scroll-smooth">
       <body className={inter.className}>
         {children}
-        <footer className="w-full border-t border-gray-200 mt-8 py-4 text-center">
-          <Link href="/tutor/login" className="text-sm text-muted-foreground hover:underline">
-            Tutor Login
-          </Link>
-        </footer>
       </body>
     </html>
   );

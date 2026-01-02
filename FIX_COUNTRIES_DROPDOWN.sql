@@ -127,3 +127,8 @@ SELECT code, name FROM countries WHERE is_active = true ORDER BY sort_order, nam
 SELECT '✅ FIX COMPLETE! Refresh your signup page.' AS result;
 
 
+
+
+
+
+

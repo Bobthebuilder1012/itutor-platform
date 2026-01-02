@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import SubjectMultiSelect from '@/components/SubjectMultiSelect';
 import InstitutionAutocomplete from '@/components/InstitutionAutocomplete';
-import { setUserSubjects } from '@/lib/supabase/userSubjects';
 import { Institution } from '@/lib/hooks/useInstitutionsSearch';
 
 const TEACHING_LEVELS = [
@@ -94,27 +93,80 @@ export default function TutorOnboardingPage() {
         .update({
           school: selectedInstitution.name,
           institution_id: selectedInstitution.id,
-          teaching_levels: selectedLevels,
         })
         .eq('id', userId);
 
       if (updateError) {
-        setError('Error updating profile. Please try again.');
+        console.error('Profile update error:', updateError);
+        setError(`Error updating profile: ${updateError.message}`);
         setSubmitting(false);
         return;
       }
 
-      // Set user subjects in junction table
-      const { error: subjectsError } = await setUserSubjects(userId!, selectedSubjects);
+      // Get subject IDs from labels
+      const { data: subjects, error: fetchError } = await supabase
+        .from('subjects')
+        .select('id, label')
+        .in('label', selectedSubjects);
 
-      if (subjectsError) {
-        setError('Error saving subjects. Please try again.');
+      if (fetchError || !subjects || subjects.length === 0) {
+        console.error('Subjects fetch error:', fetchError);
+        setError('Error finding selected subjects. Please try again.');
         setSubmitting(false);
         return;
       }
 
+      // Delete existing tutor_subjects
+      const { error: deleteError } = await supabase
+        .from('tutor_subjects')
+        .delete()
+        .eq('tutor_id', userId);
+
+      if (deleteError) {
+        console.error('Delete error:', deleteError);
+        setError('Error clearing previous subjects. Please try again.');
+        setSubmitting(false);
+        return;
+      }
+
+      // Insert new tutor_subjects
+      const tutorSubjects = subjects.map((subject) => ({
+        tutor_id: userId,
+        subject_id: subject.id,
+        price_per_hour_ttd: 100, // Default price, can be changed later
+        mode: 'either', // Default to flexible teaching mode
+      }));
+
+      const { error: insertError } = await supabase
+        .from('tutor_subjects')
+        .insert(tutorSubjects);
+
+      if (insertError) {
+        console.error('Insert error:', insertError);
+        setError(`Error saving subjects: ${insertError.message}`);
+        setSubmitting(false);
+        return;
+      }
+
+      // Verify subjects were saved
+      const { data: savedSubjects, error: verifyError } = await supabase
+        .from('tutor_subjects')
+        .select('id')
+        .eq('tutor_id', userId);
+
+      console.log('Saved subjects:', savedSubjects);
+
+      if (verifyError || !savedSubjects || savedSubjects.length === 0) {
+        console.error('Verification failed:', verifyError);
+        setError('Subjects were not saved correctly. Please try again.');
+        setSubmitting(false);
+        return;
+      }
+
+      console.log('Onboarding complete, redirecting to dashboard');
       router.push('/tutor/dashboard');
-    } catch {
+    } catch (err) {
+      console.error('Unexpected error:', err);
       setError('An unexpected error occurred. Please try again.');
       setSubmitting(false);
     }

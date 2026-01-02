@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createClient } from '@supabase/supabase-js';
 
 export async function POST(request: NextRequest) {
   // Debug: Log all environment variables related to Supabase
@@ -12,51 +11,13 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { email, password, fullName, institutionId, institutionName, formLevel, subjects } = body;
 
-    // Get parent's session
-    const supabase = createRouteHandlerClient({ cookies });
-    const { data: { session } } = await supabase.auth.getSession();
-
-    if (!session) {
-      console.error('No session found');
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
-
-    console.log('Session user ID:', session.user.id);
-
-    // Verify parent is actually a parent
-    const { data: parentProfile, error: profileFetchError } = await supabase
-      .from('profiles')
-      .select('role, country')
-      .eq('id', session.user.id)
-      .single();
-
-    console.log('Parent profile:', parentProfile);
-    console.log('Profile fetch error:', profileFetchError);
-
-    if (!parentProfile) {
-      return NextResponse.json({ 
-        error: 'Profile not found. Please ensure you have completed signup.',
-        debug: { userId: session.user.id, profileFetchError }
-      }, { status: 404 });
-    }
-
-    if (parentProfile.role !== 'parent') {
-      return NextResponse.json({ 
-        error: `Only parents can add children. Your role: ${parentProfile.role}`,
-        debug: { role: parentProfile.role }
-      }, { status: 403 });
-    }
-
-    // Check environment variables
+    // Check environment variables first
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-    console.log('Supabase URL exists:', !!supabaseUrl);
-    console.log('Service Role Key exists:', !!serviceRoleKey);
-    console.log('Service Role Key length:', serviceRoleKey?.length || 0);
-
-    if (!supabaseUrl) {
-      return NextResponse.json({ error: 'NEXT_PUBLIC_SUPABASE_URL is not configured' }, { status: 500 });
+    if (!supabaseUrl || !anonKey) {
+      return NextResponse.json({ error: 'Supabase configuration missing' }, { status: 500 });
     }
 
     if (!serviceRoleKey) {
@@ -65,8 +26,15 @@ export async function POST(request: NextRequest) {
       }, { status: 500 });
     }
 
-    // Create admin client with service role key
-    const { createClient } = await import('@supabase/supabase-js');
+    // Get parent's session from Authorization header
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
+    const token = authHeader.substring(7);
+    
+    // Create admin client with service role key (for all operations)
     const supabaseAdmin = createClient(
       supabaseUrl,
       serviceRoleKey,
@@ -77,6 +45,40 @@ export async function POST(request: NextRequest) {
         }
       }
     );
+
+    // Verify the user's token
+    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
+
+    if (userError || !user) {
+      console.error('User error:', userError);
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
+    console.log('User ID:', user.id);
+
+    // Verify parent is actually a parent (using admin client to bypass RLS)
+    const { data: parentProfile, error: profileFetchError } = await supabaseAdmin
+      .from('profiles')
+      .select('role, country')
+      .eq('id', user.id)
+      .single();
+
+    console.log('Parent profile:', parentProfile);
+    console.log('Profile fetch error:', profileFetchError);
+
+    if (!parentProfile) {
+      return NextResponse.json({ 
+        error: 'Profile not found. Please ensure you have completed signup.',
+        debug: { userId: user.id, profileFetchError }
+      }, { status: 404 });
+    }
+
+    if (parentProfile.role !== 'parent') {
+      return NextResponse.json({ 
+        error: `Only parents can add children. Your role: ${parentProfile.role}`,
+        debug: { role: parentProfile.role }
+      }, { status: 403 });
+    }
 
     // Create the child auth user
     const { data: authData, error: signUpError } = await supabaseAdmin.auth.admin.createUser({
@@ -98,12 +100,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create user' }, { status: 500 });
     }
 
-    // Create profile for child
-    const { data: childProfile, error: profileError } = await supabase
+    // Generate username from email
+    const username = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+    
+    // Create or update profile for child (using admin client with upsert)
+    const { data: childProfile, error: profileError } = await supabaseAdmin
       .from('profiles')
-      .insert({
+      .upsert({
         id: authData.user.id,
         email,
+        username,
         full_name: fullName,
         school: institutionName,
         institution_id: institutionId,
@@ -112,23 +118,27 @@ export async function POST(request: NextRequest) {
         billing_mode: 'parent_required',
         rating_count: 0,
         country: parentProfile.country || 'TT',
+      }, {
+        onConflict: 'id'
       })
       .select()
       .single();
 
     if (profileError) {
       console.error('Profile error:', profileError);
-      // Try to clean up auth user
+      // Try to clean up auth user if it was just created
       await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
       return NextResponse.json({ error: `Profile creation failed: ${profileError.message}` }, { status: 500 });
     }
 
-    // Create parent-child link
-    const { error: linkError } = await supabase
+    // Create parent-child link (using admin client with upsert to handle duplicates)
+    const { error: linkError } = await supabaseAdmin
       .from('parent_child_links')
-      .insert({
-        parent_id: session.user.id,
+      .upsert({
+        parent_id: user.id,
         child_id: childProfile.id
+      }, {
+        onConflict: 'parent_id,child_id'
       });
 
     if (linkError) {
@@ -136,10 +146,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Failed to link parent and child: ${linkError.message}` }, { status: 500 });
     }
 
-    // Save subjects
+    // Save subjects (using admin client)
     if (subjects && subjects.length > 0) {
       // Get subject IDs from labels
-      const { data: subjectRecords } = await supabase
+      const { data: subjectRecords } = await supabaseAdmin
         .from('subjects')
         .select('id')
         .in('label', subjects);
@@ -150,7 +160,7 @@ export async function POST(request: NextRequest) {
           subject_id: s.id,
         }));
 
-        await supabase.from('user_subjects').insert(userSubjects);
+        await supabaseAdmin.from('user_subjects').insert(userSubjects);
       }
     }
 
