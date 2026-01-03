@@ -50,12 +50,22 @@ export default function ParentDashboard() {
 
     if (loading) return;
     
-    if (!profile || profile.role !== 'parent') {
+    // Only redirect if loading is complete and there's definitely no profile
+    if (!loading && !profile) {
       router.push('/login');
       return;
     }
 
-    fetchChildren();
+    // Only redirect if we have a profile but it's the wrong role
+    if (!loading && profile && profile.role !== 'parent') {
+      router.push('/login');
+      return;
+    }
+
+    // Only fetch children if we have a valid profile
+    if (profile && profile.role === 'parent') {
+      fetchChildren();
+    }
   }, [profile, loading, router, testMode]);
 
   async function fetchChildren() {

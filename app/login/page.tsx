@@ -1,7 +1,7 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { FormEvent, useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 
 // Helper function to detect network errors
@@ -21,11 +21,68 @@ function isNetworkError(error: unknown): boolean {
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showEmailSent, setShowEmailSent] = useState(false);
+  const [resendEmail, setResendEmail] = useState('');
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendSuccess, setResendSuccess] = useState('');
+  const [resendError, setResendError] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  // Check for email sent parameter
+  useEffect(() => {
+    const emailSent = searchParams.get('emailSent');
+    const userEmail = searchParams.get('email');
+    
+    if (emailSent === 'true' && userEmail) {
+      setShowEmailSent(true);
+      setResendEmail(userEmail);
+      setEmail(userEmail);
+      // Start 60-second cooldown
+      setResendCooldown(60);
+    }
+  }, [searchParams]);
+
+  // Countdown timer
+  useEffect(() => {
+    if (resendCooldown > 0) {
+      const timer = setTimeout(() => {
+        setResendCooldown(resendCooldown - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [resendCooldown]);
+
+  const handleResendEmail = async () => {
+    if (resendCooldown > 0) return;
+    
+    setResendLoading(true);
+    setResendError('');
+    setResendSuccess('');
+
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: resendEmail,
+      });
+
+      if (error) {
+        setResendError(error.message);
+      } else {
+        setResendSuccess('Verification email sent! Please check your inbox.');
+        setResendCooldown(60); // Reset cooldown
+      }
+    } catch (err) {
+      setResendError('Failed to resend email. Please try again.');
+    } finally {
+      setResendLoading(false);
+    }
+  };
 
   const handleLogin = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -66,6 +123,16 @@ export default function LoginPage() {
       if (profileError || !profile) {
         setError('Unable to fetch user profile.');
         setLoading(false);
+        return;
+      }
+
+      // If profile exists but has no role, redirect to signup to complete registration
+      if (!profile.role) {
+        setError('Your account setup is incomplete. Please complete your registration.');
+        await supabase.auth.signOut();
+        setTimeout(() => {
+          router.push('/signup');
+        }, 2000);
         return;
       }
 
@@ -142,6 +209,69 @@ export default function LoginPage() {
         </div>
 
         <form onSubmit={handleLogin} className="space-y-5">
+          {showEmailSent && (
+            <div className="bg-green-900/20 border-2 border-green-500/50 text-green-200 px-4 py-4 rounded-lg backdrop-blur-sm space-y-3 relative">
+              <button
+                onClick={() => setShowEmailSent(false)}
+                className="absolute top-2 right-2 text-green-400 hover:text-green-300 transition-colors"
+                type="button"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 mt-0.5">
+                  <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div className="flex-1 pr-4">
+                  <p className="font-semibold text-green-100 mb-1">Account Created!</p>
+                  <p className="text-sm text-green-200 mb-3">
+                    Please check your email to verify your account. After verification, you can log in below.
+                  </p>
+                  
+                  <div className="bg-green-950/30 border border-green-600/30 rounded-md p-3 mb-3">
+                    <p className="text-xs text-green-300 font-medium mb-1">Didn't receive the email?</p>
+                    <ul className="text-xs text-green-300/90 space-y-0.5 list-disc list-inside">
+                      <li>Check your spam or junk folder</li>
+                      <li>Make sure you entered the correct email</li>
+                      <li>Wait a few minutes for delivery</li>
+                    </ul>
+                  </div>
+
+                  {resendSuccess && (
+                    <div className="bg-green-800/30 border border-green-400/30 text-green-100 px-3 py-2 rounded-md text-sm mb-2">
+                      {resendSuccess}
+                    </div>
+                  )}
+                  
+                  {resendError && (
+                    <div className="bg-red-900/30 border border-red-400/30 text-red-200 px-3 py-2 rounded-md text-sm mb-2">
+                      {resendError}
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={handleResendEmail}
+                    disabled={resendCooldown > 0 || resendLoading}
+                    className="w-full bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {resendLoading ? (
+                      'Sending...'
+                    ) : resendCooldown > 0 ? (
+                      `Resend email (${resendCooldown}s)`
+                    ) : (
+                      'Resend verification email'
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          
           {error && (
             <div className="bg-red-900/20 border border-red-500/50 text-red-400 px-4 py-3 rounded-lg backdrop-blur-sm">
               <p className="text-sm">{error}</p>
@@ -165,9 +295,17 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-2">
-              Password
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label htmlFor="password" className="block text-sm font-medium text-gray-300">
+                Password
+              </label>
+              <a 
+                href="/forgot-password" 
+                className="text-sm text-itutor-green hover:text-emerald-400 font-medium transition-colors"
+              >
+                Forgot password?
+              </a>
+            </div>
             <input
               type="password"
               id="password"

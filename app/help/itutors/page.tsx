@@ -4,8 +4,10 @@ import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { helpArticles, categories } from '@/data/itutorHelpArticles';
 import PublicPageHeader from '@/components/PublicPageHeader';
+import { useProfile } from '@/lib/hooks/useProfile';
 
 export default function ITutorHelpCentrePage() {
+  const { profile, loading: profileLoading } = useProfile();
   const [searchQuery, setSearchQuery] = useState('');
 
   // Filter articles based on search query
@@ -37,7 +39,7 @@ export default function ITutorHelpCentrePage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <PublicPageHeader />
+      <PublicPageHeader profile={profile} loading={profileLoading} />
 
       {/* Hero Section */}
       <section className="bg-gradient-to-br from-itutor-green via-emerald-500 to-teal-400 py-16">

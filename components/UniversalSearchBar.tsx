@@ -243,7 +243,8 @@ export default function UniversalSearchBar({ userRole, onResultClick }: SearchBa
 
   const handleSubjectSearch = () => {
     if (query.length >= 2 && searchMode === 'subject') {
-      const role = userRole === 'student' || userRole === 'parent' ? 'student' : 'tutor';
+      // Route each user role to their correct search page
+      const role = userRole === 'tutor' ? 'tutor' : userRole;
       router.push(`/${role}/search?subject=${encodeURIComponent(query)}&mode=subject`);
     }
   };

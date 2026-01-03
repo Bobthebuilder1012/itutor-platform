@@ -143,63 +143,41 @@ export default function ParentSignupPage() {
         return;
       }
 
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Check if profile already exists
-      const { data: existingProfile } = await supabase
+      // Create profile directly (trigger approach didn't work reliably)
+      // Use upsert to handle both create and update scenarios
+      const { error: upsertError } = await supabase
         .from('profiles')
-        .select('id, role')
-        .eq('id', authData.user.id)
-        .single();
+        .upsert({
+          id: authData.user.id,
+          email: authData.user.email,
+          role,
+          username: username.trim(),
+          full_name: fullName,
+          country: countryCode,
+          terms_accepted: true,
+          terms_accepted_at: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }, {
+          onConflict: 'id'
+        });
 
-      if (existingProfile) {
-        // Profile exists, update all fields including role
-        const { error: updateError } = await supabase
-          .from('profiles')
-          .update({
-            role,
-            username: username.trim(),
-            full_name: fullName,
-            country: countryCode,
-            terms_accepted: true,
-            terms_accepted_at: new Date().toISOString(),
-          })
-          .eq('id', authData.user.id);
-
-        if (updateError) {
-          if (updateError.code === '23505') {
-            setError('This username is already taken. Please choose another.');
-          } else {
-            setError(`Error updating profile: ${updateError.message}`);
-          }
-          setLoading(false);
-          return;
+      if (upsertError) {
+        if (upsertError.code === '23505') {
+          setError('This username is already taken. Please choose another.');
+        } else {
+          setError(`Error creating profile: ${upsertError.message}`);
         }
-      } else {
-        // Profile doesn't exist, create it
-        const { error: insertError } = await supabase
-          .from('profiles')
-          .insert({
-            id: authData.user.id,
-            role,
-            username: username.trim(),
-            full_name: fullName,
-            email,
-            country: countryCode,
-            terms_accepted: true,
-            terms_accepted_at: new Date().toISOString(),
-          });
+        await supabase.auth.signOut();
+        setLoading(false);
+        return;
+      }
 
-        if (insertError) {
-          if (insertError.code === '23505') {
-            setError('This username is already taken. Please choose another.');
-          } else {
-            setError(`Error creating profile: ${insertError.message}`);
-          }
-          await supabase.auth.signOut();
-          setLoading(false);
-          return;
-        }
+      // Check if email confirmation is required
+      if (authData.user.identities && authData.user.identities.length === 0) {
+        // Email confirmation required - redirect to login with params
+        router.push(`/login?emailSent=true&email=${encodeURIComponent(email)}`);
+        return;
       }
 
       router.push('/parent/dashboard');

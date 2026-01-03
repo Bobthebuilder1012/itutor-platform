@@ -60,8 +60,20 @@ export default function TutorDashboard() {
 
     if (loading) return;
     
-    if (!profile || profile.role !== 'tutor') {
+    // Only redirect if loading is complete and there's definitely no profile
+    if (!loading && !profile) {
       router.push('/login');
+      return;
+    }
+
+    // Only redirect if we have a profile but it's the wrong role
+    if (!loading && profile && profile.role !== 'tutor') {
+      router.push('/login');
+      return;
+    }
+
+    // Only proceed with onboarding check if we have a valid profile
+    if (!profile || profile.role !== 'tutor') {
       return;
     }
 

@@ -47,7 +47,7 @@ export default function Footer({ role = null }: FooterProps = {}) {
             </ul>
           </div>
 
-          {/* Hide "Become an iTutor" section for tutors and reviewers */}
+          {/* Show "Become an iTutor" section for non-tutors/non-reviewers */}
           {role !== 'tutor' && role !== 'reviewer' && (
             <div>
               <h3 className="text-itutor-white font-semibold mb-6 text-lg">Become an iTutor</h3>
@@ -74,6 +74,31 @@ export default function Footer({ role = null }: FooterProps = {}) {
                     className="text-itutor-muted hover:text-itutor-white transition-colors"
                   >
                     iTutor Help Centre
+                  </Link>
+                </li>
+              </ul>
+            </div>
+          )}
+
+          {/* Show Help Centre for tutors and reviewers */}
+          {(role === 'tutor' || role === 'reviewer') && (
+            <div>
+              <h3 className="text-itutor-white font-semibold mb-6 text-lg">Resources</h3>
+              <ul className="space-y-3">
+                <li>
+                  <Link
+                    href="/help/itutors"
+                    className="text-itutor-muted hover:text-itutor-white transition-colors"
+                  >
+                    iTutor Help Centre
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    href="/itutors/requirements"
+                    className="text-itutor-muted hover:text-itutor-white transition-colors"
+                  >
+                    Requirements
                   </Link>
                 </li>
               </ul>

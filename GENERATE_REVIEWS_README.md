@@ -96,3 +96,5 @@ DELETE FROM public.ratings WHERE tutor_id = 'tutor-uuid-here';
 
 
 
+
+

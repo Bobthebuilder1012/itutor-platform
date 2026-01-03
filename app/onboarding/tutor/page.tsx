@@ -174,40 +174,49 @@ export default function TutorOnboardingPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 via-teal-50 to-blue-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-emerald-200 border-t-emerald-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600 font-medium">Loading...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 px-4 py-8">
-      <div className="bg-white rounded-2xl shadow-xl p-8 max-w-3xl w-full">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 via-teal-50 to-blue-50 px-4 py-8 relative overflow-hidden">
+      {/* Decorative background elements */}
+      <div className="absolute top-0 left-0 w-96 h-96 bg-gradient-to-br from-emerald-300/30 to-teal-200/30 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2"></div>
+      <div className="absolute bottom-0 right-0 w-96 h-96 bg-gradient-to-br from-blue-200/30 to-cyan-200/30 rounded-full blur-3xl translate-x-1/2 translate-y-1/2"></div>
+      
+      <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-8 max-w-3xl w-full relative border border-white/50">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="w-20 h-20 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg transform hover:scale-105 transition-transform duration-200">
+            <svg className="h-10 w-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
             </svg>
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Set up your tutor profile</h1>
-          <p className="text-gray-600">
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent mb-3">
+            Set up your tutor profile
+          </h1>
+          <p className="text-gray-700 text-lg">
             Add your subjects and teaching levels so students can find you.
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-              <p className="text-sm">{error}</p>
+            <div className="bg-red-50 border-2 border-red-300 text-red-700 px-4 py-3 rounded-xl shadow-sm">
+              <p className="text-sm font-medium">{error}</p>
             </div>
           )}
 
           {/* School/Institution */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+          <div className="bg-gradient-to-br from-emerald-50/50 to-teal-50/50 p-6 rounded-xl border border-emerald-100/50">
+            <label className="block text-sm font-semibold text-gray-800 mb-2">
               School or Institution <span className="text-red-500">*</span>
             </label>
-            <p className="text-sm text-gray-500 mb-3">
+            <p className="text-sm text-gray-600 mb-3">
               Search for your school, college, or university
             </p>
             <InstitutionAutocomplete
@@ -221,11 +230,11 @@ export default function TutorOnboardingPage() {
           </div>
 
           {/* Subjects */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
+          <div className="bg-gradient-to-br from-blue-50/50 to-cyan-50/50 p-6 rounded-xl border border-blue-100/50">
+            <label className="block text-sm font-semibold text-gray-800 mb-3">
               Subjects You Can Teach <span className="text-red-500">*</span>
             </label>
-            <p className="text-sm text-gray-500 mb-3">Type to search and select subjects you're qualified to teach</p>
+            <p className="text-sm text-gray-600 mb-3">Type to search and select subjects you're qualified to teach</p>
             <SubjectMultiSelect
               selectedSubjects={selectedSubjects}
               onChange={setSelectedSubjects}
@@ -235,21 +244,21 @@ export default function TutorOnboardingPage() {
           </div>
 
           {/* Teaching Levels */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
+          <div className="bg-gradient-to-br from-teal-50/50 to-emerald-50/50 p-6 rounded-xl border border-teal-100/50">
+            <label className="block text-sm font-semibold text-gray-800 mb-3">
               Teaching Levels <span className="text-red-500">*</span>
             </label>
-            <p className="text-sm text-gray-500 mb-3">Select all levels you can teach</p>
+            <p className="text-sm text-gray-600 mb-3">Select all levels you can teach</p>
             <div className="flex flex-wrap gap-3">
               {TEACHING_LEVELS.map((level) => (
                 <button
                   key={level}
                   type="button"
                   onClick={() => toggleLevel(level)}
-                  className={`px-4 py-2 rounded-full border-2 text-sm font-medium transition ${
+                  className={`px-5 py-2.5 rounded-xl border-2 text-sm font-semibold transition-all duration-200 shadow-sm ${
                     selectedLevels.includes(level)
-                      ? 'bg-green-600 text-white border-green-600'
-                      : 'bg-white text-gray-700 border-gray-300 hover:border-green-400'
+                      ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white border-emerald-500 shadow-emerald-500/30 transform scale-105'
+                      : 'bg-white text-gray-700 border-gray-300 hover:border-emerald-400 hover:shadow-md'
                   }`}
                   disabled={submitting}
                 >
@@ -258,8 +267,8 @@ export default function TutorOnboardingPage() {
               ))}
             </div>
             {selectedLevels.length > 0 && (
-              <p className="text-sm text-gray-600 mt-3">
-                Selected: {selectedLevels.length} level{selectedLevels.length !== 1 ? 's' : ''}
+              <p className="text-sm text-emerald-700 font-medium mt-3">
+                ✓ Selected: {selectedLevels.length} level{selectedLevels.length !== 1 ? 's' : ''}
               </p>
             )}
           </div>
@@ -267,9 +276,19 @@ export default function TutorOnboardingPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 focus:ring-4 focus:ring-green-300 focus:outline-none transition font-medium text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white py-4 px-6 rounded-xl hover:from-emerald-600 hover:to-teal-700 focus:ring-4 focus:ring-emerald-300 focus:outline-none transition-all duration-200 font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-emerald-500/30 transform hover:scale-[1.02] active:scale-[0.98] mt-8"
           >
-            {submitting ? 'Saving...' : 'Complete Profile'}
+            {submitting ? (
+              <span className="flex items-center justify-center">
+                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Saving...
+              </span>
+            ) : (
+              'Complete Profile'
+            )}
           </button>
         </form>
       </div>

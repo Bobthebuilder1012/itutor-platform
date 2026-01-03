@@ -2,12 +2,15 @@
 
 import Link from 'next/link';
 import PublicPageHeader from '@/components/PublicPageHeader';
+import { useProfile } from '@/lib/hooks/useProfile';
 
 export default function PrivacyPolicyPage() {
+  const { profile, loading: profileLoading } = useProfile();
+  
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <PublicPageHeader />
+      <PublicPageHeader profile={profile} loading={profileLoading} />
 
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-16 max-w-4xl">
         {/* Header */}

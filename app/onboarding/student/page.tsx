@@ -110,40 +110,49 @@ export default function StudentOnboardingPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-emerald-200 border-t-emerald-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600 font-medium">Loading...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 px-4 py-8">
-      <div className="bg-white rounded-2xl shadow-xl p-8 max-w-2xl w-full">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 px-4 py-8 relative overflow-hidden">
+      {/* Decorative background elements */}
+      <div className="absolute top-0 left-0 w-96 h-96 bg-gradient-to-br from-emerald-200/30 to-blue-200/30 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2"></div>
+      <div className="absolute bottom-0 right-0 w-96 h-96 bg-gradient-to-br from-purple-200/30 to-pink-200/30 rounded-full blur-3xl translate-x-1/2 translate-y-1/2"></div>
+      
+      <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-8 max-w-2xl w-full relative border border-white/50">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="w-20 h-20 bg-gradient-to-br from-emerald-400 to-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg transform hover:scale-105 transition-transform duration-200">
+            <svg className="h-10 w-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
             </svg>
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Complete your student profile</h1>
-          <p className="text-gray-600">
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-emerald-600 to-blue-600 bg-clip-text text-transparent mb-3">
+            Complete your student profile
+          </h1>
+          <p className="text-gray-700 text-lg">
             Tell iTutor about your school, form and subjects so we can match you with the right tutors.
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-              <p className="text-sm">{error}</p>
+            <div className="bg-red-50 border-2 border-red-300 text-red-700 px-4 py-3 rounded-xl shadow-sm">
+              <p className="text-sm font-medium">{error}</p>
             </div>
           )}
 
           {/* School/Institution */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+          <div className="bg-gradient-to-br from-blue-50/50 to-purple-50/50 p-6 rounded-xl border border-blue-100/50">
+            <label className="block text-sm font-semibold text-gray-800 mb-2">
               School <span className="text-red-500">*</span>
             </label>
-            <p className="text-sm text-gray-500 mb-3">
+            <p className="text-sm text-gray-600 mb-3">
               Search for your secondary school
             </p>
             <InstitutionAutocomplete
@@ -157,15 +166,15 @@ export default function StudentOnboardingPage() {
           </div>
 
           {/* Form Level */}
-          <div>
-            <label htmlFor="formLevel" className="block text-sm font-medium text-gray-700 mb-2">
+          <div className="bg-gradient-to-br from-emerald-50/50 to-teal-50/50 p-6 rounded-xl border border-emerald-100/50">
+            <label htmlFor="formLevel" className="block text-sm font-semibold text-gray-800 mb-2">
               Form Level <span className="text-red-500">*</span>
             </label>
             <select
               id="formLevel"
               value={formLevel}
               onChange={(e) => setFormLevel(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none transition"
+              className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 focus:outline-none transition bg-white shadow-sm hover:border-emerald-300"
               disabled={submitting}
             >
               <option value="">Select your form level</option>
@@ -178,11 +187,11 @@ export default function StudentOnboardingPage() {
           </div>
 
           {/* Subjects */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
+          <div className="bg-gradient-to-br from-purple-50/50 to-pink-50/50 p-6 rounded-xl border border-purple-100/50">
+            <label className="block text-sm font-semibold text-gray-800 mb-3">
               Subjects of Study <span className="text-red-500">*</span>
             </label>
-            <p className="text-sm text-gray-500 mb-3">Type to search and select subjects you're currently studying</p>
+            <p className="text-sm text-gray-600 mb-3">Type to search and select subjects you're currently studying</p>
             <SubjectMultiSelect
               selectedSubjects={selectedSubjects}
               onChange={setSelectedSubjects}
@@ -194,9 +203,19 @@ export default function StudentOnboardingPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 focus:ring-4 focus:ring-blue-300 focus:outline-none transition font-medium text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-gradient-to-r from-emerald-500 to-blue-600 text-white py-4 px-6 rounded-xl hover:from-emerald-600 hover:to-blue-700 focus:ring-4 focus:ring-emerald-300 focus:outline-none transition-all duration-200 font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-emerald-500/30 transform hover:scale-[1.02] active:scale-[0.98] mt-8"
           >
-            {submitting ? 'Saving...' : 'Complete Profile'}
+            {submitting ? (
+              <span className="flex items-center justify-center">
+                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Saving...
+              </span>
+            ) : (
+              'Complete Profile'
+            )}
           </button>
         </form>
       </div>

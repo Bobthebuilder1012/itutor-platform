@@ -163,3 +163,5 @@ GRANT EXECUTE ON FUNCTION validate_consecutive_slots TO authenticated;
 
 
 
+
+

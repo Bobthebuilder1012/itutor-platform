@@ -2,12 +2,15 @@
 
 import Link from 'next/link';
 import PublicPageHeader from '@/components/PublicPageHeader';
+import { useProfile } from '@/lib/hooks/useProfile';
 
 export default function ITutorRequirementsPage() {
+  const { profile, loading: profileLoading } = useProfile();
+  
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
       {/* Header */}
-      <PublicPageHeader />
+      <PublicPageHeader profile={profile} loading={profileLoading} />
 
       {/* Hero Section */}
       <section className="bg-gradient-to-br from-itutor-green via-emerald-500 to-teal-400 py-20">

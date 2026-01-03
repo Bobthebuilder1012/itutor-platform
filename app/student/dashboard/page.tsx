@@ -57,8 +57,20 @@ export default function StudentDashboard() {
 
     if (loading) return;
     
-    if (!profile || profile.role !== 'student') {
+    // Only redirect if loading is complete and there's definitely no profile
+    if (!loading && !profile) {
       router.push('/login');
+      return;
+    }
+
+    // Only redirect if we have a profile but it's the wrong role
+    if (!loading && profile && profile.role !== 'student') {
+      router.push('/login');
+      return;
+    }
+
+    // Only proceed with onboarding check if we have a valid profile
+    if (!profile || profile.role !== 'student') {
       return;
     }
 

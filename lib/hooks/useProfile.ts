@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { Profile } from '@/lib/types/database';
 import { User } from '@supabase/supabase-js';
@@ -10,8 +10,13 @@ export function useProfile() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const hasFetched = useRef(false);
 
   useEffect(() => {
+    // Prevent multiple fetches
+    if (hasFetched.current) return;
+    hasFetched.current = true;
+
     async function fetchProfile() {
       try {
         const { data: { user } } = await supabase.auth.getUser();

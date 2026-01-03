@@ -5,8 +5,10 @@ import Link from 'next/link';
 import { helpArticles } from '@/data/itutorHelpArticles';
 import ReactMarkdown from 'react-markdown';
 import PublicPageHeader from '@/components/PublicPageHeader';
+import { useProfile } from '@/lib/hooks/useProfile';
 
 export default function HelpArticlePage() {
+  const { profile, loading: profileLoading } = useProfile();
   const params = useParams();
   const slug = params.slug as string;
 
@@ -34,7 +36,7 @@ export default function HelpArticlePage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <PublicPageHeader />
+      <PublicPageHeader profile={profile} loading={profileLoading} />
 
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 max-w-4xl">
         {/* Breadcrumbs */}

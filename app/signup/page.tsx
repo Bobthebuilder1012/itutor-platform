@@ -156,15 +156,16 @@ export default function SignupPage() {
       // Small delay to ensure auth session is established
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      // Check if profile already exists
+      // Create profile directly (trigger approach didn't work reliably)
+      // First check if profile already exists (in case trigger did create it)
       const { data: existingProfile } = await supabase
         .from('profiles')
-        .select('id, role')
+        .select('id')
         .eq('id', authData.user.id)
-        .single();
+        .maybeSingle();
 
       if (existingProfile) {
-        // Profile exists, update all fields including role
+        // Profile exists, update it
         const { error: updateError } = await supabase
           .from('profiles')
           .update({
@@ -183,22 +184,28 @@ export default function SignupPage() {
           } else {
             setError(`Error updating profile: ${updateError.message}`);
           }
+          await supabase.auth.signOut();
           setLoading(false);
           return;
         }
       } else {
-        // Profile doesn't exist, create it
+        // Profile doesn't exist, create it using service role bypass
+        // Use upsert to handle race conditions
         const { error: insertError } = await supabase
           .from('profiles')
-          .insert({
+          .upsert({
             id: authData.user.id,
+            email: authData.user.email,
             role,
             username: username.trim(),
             full_name: fullName,
-            email,
             country: countryCode,
             terms_accepted: true,
             terms_accepted_at: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }, {
+            onConflict: 'id'
           });
 
         if (insertError) {
@@ -213,6 +220,14 @@ export default function SignupPage() {
         }
       }
 
+      // Check if email confirmation is required
+      if (!authData.session) {
+        // No session means email confirmation is required - redirect to login with params
+        router.push(`/login?emailSent=true&email=${encodeURIComponent(email)}`);
+        return;
+      }
+
+      // Email confirmed or confirmation not required - proceed to next step
       switch (role) {
         case 'student':
           router.push('/onboarding/student');
