@@ -163,10 +163,11 @@ export default function SearchResultsPage() {
         if (commentsData) {
           commentsData.forEach(comment => {
             if (!topCommentsMap.has(comment.tutor_id)) {
+              const student = comment.student as any;
               topCommentsMap.set(comment.tutor_id, {
                 comment: comment.comment,
                 stars: comment.stars,
-                student_name: comment.student?.display_name || comment.student?.full_name || comment.student?.username || 'Anonymous'
+                student_name: student?.display_name || student?.full_name || student?.username || 'Anonymous'
               });
             }
           });

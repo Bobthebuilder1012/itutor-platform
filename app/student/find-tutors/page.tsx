@@ -171,7 +171,7 @@ export default function FindTutorsPage() {
           topComment: topComment ? {
             comment: topComment.comment,
             stars: topComment.stars,
-            student_name: topComment.student?.display_name || topComment.student?.full_name || topComment.student?.username || 'Anonymous'
+            student_name: (topComment.student as any)?.display_name || (topComment.student as any)?.full_name || (topComment.student as any)?.username || 'Anonymous'
           } : null
         };
       });

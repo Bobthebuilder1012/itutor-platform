@@ -170,7 +170,7 @@ export default function ShareProfileModal({
               Download QR Code
             </button>
 
-            {navigator.share && (
+            {typeof navigator !== 'undefined' && 'share' in navigator && (
               <button
                 onClick={handleNativeShare}
                 className="w-full px-6 py-3 bg-white hover:bg-gray-50 text-gray-700 border-2 border-gray-200 rounded-lg font-semibold transition-all flex items-center justify-center gap-2"
@@ -187,6 +187,7 @@ export default function ShareProfileModal({
     </div>
   );
 }
+
 
 
 

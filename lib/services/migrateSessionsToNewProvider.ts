@@ -77,8 +77,8 @@ export async function migrateSessionsToNewProvider(
         try {
           meetingInfo = await createMeeting(tempSession);
           console.log(`✅ Meeting created successfully:`, {
-            meetingId: meetingInfo.id,
-            joinUrl: meetingInfo.joinUrl
+            meetingId: meetingInfo.meeting_external_id,
+            joinUrl: meetingInfo.join_url
           });
         } catch (meetingError) {
           console.error(`❌ Failed to create meeting for session ${session.id}:`, meetingError);
@@ -92,8 +92,8 @@ export async function migrateSessionsToNewProvider(
           .from('sessions')
           .update({
             provider: newProvider,
-            meeting_external_id: meetingInfo.id,
-            join_url: meetingInfo.joinUrl,
+            meeting_external_id: meetingInfo.meeting_external_id,
+            join_url: meetingInfo.join_url,
             meeting_created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           })

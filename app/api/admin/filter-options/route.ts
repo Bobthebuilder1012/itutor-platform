@@ -43,7 +43,11 @@ export async function GET(request: NextRequest) {
       }
 
       // Get unique schools and sort alphabetically
-      const uniqueSchools = [...new Set(schoolsData.map((p: any) => p.school))].sort();
+      const seen: Record<string, true> = {};
+const uniqueSchools = schoolsData
+  .map((p: any) => p.school)
+  .filter((s: string) => s && !seen[s] && (seen[s] = true))
+  .sort();
 
       return NextResponse.json({ schools: uniqueSchools });
     }
@@ -69,6 +73,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
+
 
 
 

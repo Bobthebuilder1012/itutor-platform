@@ -231,3 +231,4 @@ Fallback: Gmail (not ideal for high volume)
 **Long-term Solution:**
 Set up SendGrid or AWS SES before deploying to production!
 
+

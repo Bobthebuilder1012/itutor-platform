@@ -21,3 +21,4 @@ COMMENT ON COLUMN public.profiles.avatar_url IS 'Public URL to user profile pict
 
 
 
+

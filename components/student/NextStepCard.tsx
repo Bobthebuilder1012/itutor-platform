@@ -4,7 +4,7 @@ import { Session } from '@/lib/types/database';
 
 type NextStepCardProps = {
   upcomingSessions: Session[];
-  subjects: string[] | null;
+  subjects: string[] | null | undefined;
   onFindTutor: () => void;
   onAddSubjects: () => void;
 };

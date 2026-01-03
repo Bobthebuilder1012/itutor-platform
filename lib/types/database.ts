@@ -4,6 +4,8 @@ export interface Profile {
   id: string;
   role: UserRole;
   full_name: string;
+  username?: string;
+  display_name?: string;
   email: string;
   phone_number?: string;
   dob?: string;
@@ -12,6 +14,7 @@ export interface Profile {
   country_code?: string;
   region?: string;
   school?: string;
+  institution_id?: string;
   form_level?: string;
   subjects_of_study?: string[];
   tutor_subjects?: string[];
@@ -23,6 +26,7 @@ export interface Profile {
   attendance_rate?: number;
   rating_average?: number;
   rating_count: number;
+  bio?: string | null;
   avatar_url?: string | null;
   created_at: string;
   updated_at: string;
@@ -41,6 +45,7 @@ export interface ParentChildLink {
   id: string;
   parent_id: string;
   child_id: string;
+  child_color?: string;
   created_at: string;
 }
 
@@ -62,19 +67,24 @@ export interface TutorSubject {
   created_at: string;
 }
 
+// Note: For detailed Session types, import from '@/lib/types/sessions'
+// This is a simplified version for basic database operations
 export interface Session {
   id: string;
+  booking_id: string;
   student_id: string;
   tutor_id: string;
   subject_id: string;
-  payer_id: string;
-  status: 'booked' | 'in_progress' | 'completed' | 'cancelled';
+  payer_id?: string;
+  provider: 'google_meet' | 'zoom';
+  status: 'SCHEDULED' | 'JOIN_OPEN' | 'COMPLETED_ASSUMED' | 'NO_SHOW_STUDENT' | 'EARLY_END_SHORT' | 'CANCELLED';
   payment_status: 'unpaid' | 'pending' | 'paid' | 'failed' | 'refunded';
-  scheduled_start: string;
-  scheduled_end: string;
+  scheduled_start_at: string;
+  scheduled_end_at: string;
   duration_minutes: number;
-  price_per_hour_ttd: number;
-  amount_ttd: number;
+  price_per_hour_ttd?: number;
+  amount_ttd?: number;
+  charge_amount_ttd: number;
   created_at: string;
   updated_at: string;
 }

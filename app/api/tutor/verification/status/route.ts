@@ -64,7 +64,7 @@ export async function GET() {
         created_at: data.created_at,
         reviewed_at: data.reviewed_at,
         reviewer_reason: data.reviewer_reason,
-        reviewer_name: data.reviewer?.full_name
+        reviewer_name: (data.reviewer as any)?.full_name || null
       }
     });
   } catch (error) {

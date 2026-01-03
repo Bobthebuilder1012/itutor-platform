@@ -45,3 +45,4 @@ SELECT COUNT(*) as total_syllabuses FROM syllabuses;
 
 
 
+

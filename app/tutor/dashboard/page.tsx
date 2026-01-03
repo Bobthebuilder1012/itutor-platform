@@ -79,6 +79,8 @@ export default function TutorDashboard() {
 
     // Check if onboarding is complete by verifying school and subjects exist
     async function checkOnboardingComplete() {
+      if (!profile) return;
+      
       console.log('Checking onboarding status for tutor:', profile.id);
       console.log('Profile school:', profile.school);
       

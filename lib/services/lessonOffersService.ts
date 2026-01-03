@@ -174,9 +174,8 @@ export async function counterOffer(
       .from('lesson_offers')
       .update({
         status: 'countered',
-        counter_proposed_start: payload.counter_proposed_start,
-        counter_duration_minutes: payload.counter_duration_minutes || null,
-        counter_note: payload.counter_note || null,
+        counter_proposed_start_at: payload.counter_proposed_start_at,
+        counter_tutor_note: payload.counter_tutor_note || null,
         last_action_by: 'student',
         updated_at: new Date().toISOString()
       })

@@ -5,7 +5,8 @@ import { useRouter, useParams } from 'next/navigation';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
-import { Session, Profile } from '@/lib/types/database';
+import { Profile } from '@/lib/types/database';
+import { Session } from '@/lib/types/sessions';
 
 export default function ChildSessions() {
   const { profile, loading } = useProfile();

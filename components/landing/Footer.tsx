@@ -1,7 +1,7 @@
 import Link from 'next/link';
 
 interface FooterProps {
-  role?: 'student' | 'tutor' | 'parent' | 'reviewer' | null;
+  role?: 'student' | 'tutor' | 'parent' | 'reviewer' | 'admin' | null;
 }
 
 export default function Footer({ role = null }: FooterProps = {}) {

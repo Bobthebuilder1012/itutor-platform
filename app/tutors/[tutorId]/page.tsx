@@ -510,8 +510,7 @@ export default function PublicTutorProfilePage() {
 
               <TutorCalendarWidget
                 tutorId={tutorId}
-                onTimeSlotSelect={(slot) => setSelectedTimeSlot(slot)}
-                selectedTimeSlot={selectedTimeSlot}
+                onSlotSelect={(startAt, endAt) => setSelectedTimeSlot({ start: startAt, end: endAt })}
               />
 
               <button
@@ -535,9 +534,8 @@ export default function PublicTutorProfilePage() {
       <VerifiedSubjectsModal
         isOpen={verifiedSubjectsModalOpen}
         onClose={() => setVerifiedSubjectsModalOpen(false)}
+        tutorId={tutorId}
         tutorName={displayName}
-        csecSubjects={csecSubjects}
-        capeSubjects={capeSubjects}
       />
 
       {/* Sign Up Prompt Modal */}

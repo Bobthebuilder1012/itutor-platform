@@ -34,8 +34,8 @@ export default function VerifiedBadge({ size = 'md', className = '' }: VerifiedB
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-label="Verified"
-      title="Verified iTutor"
     >
+      <title>Verified iTutor</title>
       {/* Perfectly symmetrical badge shape */}
       <path
         d={pathData}

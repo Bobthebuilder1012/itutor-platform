@@ -230,7 +230,6 @@ export default function RescheduleSessionModal({
               tutorId={tutorId}
               onSlotSelect={handleSlotSelect}
               maxWeeksAhead={8}
-              durationMinutes={duration}
             />
           </div>
 

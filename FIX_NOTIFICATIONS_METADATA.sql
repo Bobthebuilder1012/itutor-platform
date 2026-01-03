@@ -34,3 +34,4 @@ SELECT '✅ Metadata column added to notifications table!' AS status;
 
 
 
+

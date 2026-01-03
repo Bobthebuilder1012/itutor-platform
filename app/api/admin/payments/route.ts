@@ -78,9 +78,26 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch student, tutor, and subject details separately
-    const studentIds = [...new Set(sessions?.map(s => s.student_id).filter(Boolean) || [])];
-    const tutorIds = [...new Set(sessions?.map(s => s.tutor_id).filter(Boolean) || [])];
-    const subjectIds = [...new Set(sessions?.map(s => s.subject_id).filter(Boolean) || [])];
+    const unique = <T,>(arr: T[]) => {
+      const seen = new Set<T>();
+      return arr.filter(x => {
+        if (seen.has(x)) return false;
+        seen.add(x);
+        return true;
+      });
+    };
+    
+    const studentIds = unique(
+      (sessions ?? []).map(s => s.student_id).filter(Boolean)
+    );
+    
+    const tutorIds = unique(
+      (sessions ?? []).map(s => s.tutor_id).filter(Boolean)
+    );
+    
+    const subjectIds = unique(
+      (sessions ?? []).map(s => s.subject_id).filter(Boolean)
+    );
 
     // Only fetch if there are IDs to fetch
     const [studentsData, tutorsData, subjectsData] = await Promise.all([

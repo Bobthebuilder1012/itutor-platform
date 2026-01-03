@@ -13,7 +13,7 @@ import Footer from '@/components/landing/Footer';
 
 interface DashboardLayoutProps {
   children: ReactNode;
-  role: 'student' | 'tutor' | 'parent' | 'reviewer';
+  role: 'student' | 'tutor' | 'parent' | 'reviewer' | 'admin';
   userName: string;
 }
 

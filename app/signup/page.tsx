@@ -228,16 +228,8 @@ export default function SignupPage() {
       }
 
       // Email confirmed or confirmation not required - proceed to next step
-      switch (role) {
-        case 'student':
-          router.push('/onboarding/student');
-          break;
-        case 'parent':
-          router.push('/parent/dashboard');
-          break;
-        case 'tutor':
-          router.push('/onboarding/tutor');
-          break;
+      if (role === 'student') {
+        router.push('/onboarding/student');
       }
     } catch (err) {
       if (isNetworkError(err)) {

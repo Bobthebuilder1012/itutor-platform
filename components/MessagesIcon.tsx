@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase/client';
 
 interface MessagesIconProps {
   userId: string;
-  role: 'student' | 'tutor' | 'parent' | 'reviewer';
+  role: 'student' | 'tutor' | 'parent' | 'reviewer' | 'admin';
 }
 
 export default function MessagesIcon({ userId, role }: MessagesIconProps) {

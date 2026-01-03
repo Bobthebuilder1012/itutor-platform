@@ -10,6 +10,7 @@ type CountrySelectProps = {
   onChange: (countryCode: string) => void;
   disabled?: boolean;
   error?: boolean;
+  className?: string;
 };
 
 export default function CountrySelect({
@@ -17,6 +18,7 @@ export default function CountrySelect({
   onChange,
   disabled = false,
   error = false,
+  className = '',
 }: CountrySelectProps) {
   const [countries, setCountries] = useState<Country[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,7 +85,7 @@ export default function CountrySelect({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       disabled={disabled}
-      className={`w-full px-4 py-3 bg-gray-800/50 border-2 border-gray-700 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition ${
+      className={className || `w-full px-4 py-3 bg-gray-800/50 border-2 border-gray-700 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition ${
         error
           ? 'border-red-500/50 focus:border-red-500 focus:ring-red-500/50'
           : ''

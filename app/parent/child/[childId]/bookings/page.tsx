@@ -7,12 +7,12 @@ import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
 import { formatDateTime } from '@/lib/utils/calendar';
-import { getBookingStatusColor, getBookingStatusLabel } from '@/lib/types/booking';
+import { getBookingStatusColor, getBookingStatusLabel, BookingStatus } from '@/lib/types/booking';
 import { getDisplayName } from '@/lib/utils/displayName';
 
 type Booking = {
   id: string;
-  status: string;
+  status: BookingStatus;
   created_at: string;
   requested_start_at: string;
   confirmed_start_at: string | null;
@@ -108,7 +108,7 @@ export default function ChildBookingsPage() {
     
     switch (activeTab) {
       case 'pending':
-        return bookings.filter(b => b.status === 'PENDING' || b.status === 'COUNTERED');
+        return bookings.filter(b => b.status === 'PENDING' || b.status === 'COUNTER_PROPOSED');
       case 'confirmed':
         return bookings.filter(b => b.status === 'CONFIRMED' && new Date(b.confirmed_start_at || b.requested_start_at) > now);
       case 'cancelled':
@@ -123,7 +123,7 @@ export default function ChildBookingsPage() {
   const filteredBookings = filterBookings(bookings);
   const tabs = [
     { id: 'all' as const, label: 'All', count: bookings.length, color: 'text-gray-600 hover:text-gray-900 border-gray-300' },
-    { id: 'pending' as const, label: 'Pending', count: bookings.filter(b => b.status === 'PENDING' || b.status === 'COUNTERED').length, color: 'text-yellow-600 hover:text-yellow-800 border-yellow-400' },
+    { id: 'pending' as const, label: 'Pending', count: bookings.filter(b => b.status === 'PENDING' || b.status === 'COUNTER_PROPOSED').length, color: 'text-yellow-600 hover:text-yellow-800 border-yellow-400' },
     { id: 'confirmed' as const, label: 'Confirmed', count: bookings.filter(b => b.status === 'CONFIRMED' && new Date(b.confirmed_start_at || b.requested_start_at) > new Date()).length, color: 'text-green-600 hover:text-green-800 border-green-400' },
     { id: 'cancelled' as const, label: 'Cancelled', count: bookings.filter(b => b.status === 'CANCELLED' || b.status === 'DECLINED').length, color: 'text-red-600 hover:text-red-800 border-red-400' },
     { id: 'past' as const, label: 'Past', count: bookings.filter(b => (b.status === 'CONFIRMED' && new Date(b.confirmed_start_at || b.requested_start_at) <= new Date()) || b.status === 'COMPLETED').length, color: 'text-blue-600 hover:text-blue-800 border-blue-400' }
@@ -259,6 +259,7 @@ export default function ChildBookingsPage() {
     </DashboardLayout>
   );
 }
+
 
 
 

@@ -9,6 +9,14 @@ import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 
 export async function POST(request: NextRequest) {
+  const results: {
+    success: { requestId: string | number; tutorId: string }[];
+    failed: { requestId: string | number; error: string }[];
+  } = {
+    success: [],
+    failed: [],
+  };
+  
   try {
     const { request_ids, decision, global_reviewer_reason } =
       await request.json();
@@ -121,11 +129,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Process each request
-    const results = {
-      success: [],
-      failed: [],
-    };
-
     for (const req of requests) {
       try {
         // Determine reason to use

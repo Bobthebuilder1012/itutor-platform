@@ -4,11 +4,11 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { formatDateTime } from '@/lib/utils/calendar';
 import Link from 'next/link';
-import { getBookingStatusColor, getBookingStatusLabel } from '@/lib/types/booking';
+import { getBookingStatusColor, getBookingStatusLabel, BookingStatus } from '@/lib/types/booking';
 
 type Booking = {
   id: string;
-  status: string;
+  status: BookingStatus;
   created_at: string;
   requested_start_at: string;
   confirmed_start_at: string | null;
@@ -138,6 +138,7 @@ export default function ChildrenBookings({ childIds }: { childIds: string[] }) {
     </div>
   );
 }
+
 
 
 
