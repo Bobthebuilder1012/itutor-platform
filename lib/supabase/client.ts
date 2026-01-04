@@ -1,19 +1,15 @@
 import { createBrowserClient } from '@supabase/ssr';
 
+// Environment variables are accessed directly by createBrowserClient at runtime
+// Do NOT add build-time checks here - they will break Next.js build on Vercel
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
+// Runtime check (browser only) - logs warning but doesn't throw
 if (typeof window !== 'undefined') {
-  console.log('🔍 Supabase Config Check:');
-  console.log('URL:', supabaseUrl || 'MISSING');
-  console.log('Key present:', !!supabaseAnonKey);
   if (!supabaseUrl || !supabaseAnonKey) {
-    console.error('❌ Supabase environment variables not set! Did you restart the dev server?');
+    console.error('❌ Supabase environment variables not set! Check your .env.local file.');
   }
-}
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables. Check your .env.local file and restart dev server.');
 }
 
 export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
