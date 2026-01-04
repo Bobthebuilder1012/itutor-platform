@@ -5,6 +5,8 @@ import { getCommunityById, updateCommunity, getMemberCount } from '@/lib/supabas
 import { checkModeratorPermission } from '@/lib/utils/rateLimits';
 import type { UpdateCommunityData } from '@/lib/types/community';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(
   request: NextRequest,
   { params }: { params: { communityId: string } }

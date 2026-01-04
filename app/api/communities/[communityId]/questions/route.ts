@@ -5,6 +5,8 @@ import { getQuestions, createQuestion } from '@/lib/supabase/community';
 import { checkQuestionLimit, checkPostPermission } from '@/lib/utils/rateLimits';
 import type { CreateQuestionData, QuestionFilters } from '@/lib/types/community';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(
   request: NextRequest,
   { params }: { params: { communityId: string } }

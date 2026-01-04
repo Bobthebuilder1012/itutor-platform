@@ -5,6 +5,8 @@ import { createReport, getReports, updateReportStatus } from '@/lib/supabase/com
 import { checkModeratorPermission } from '@/lib/utils/rateLimits';
 import type { CreateReportData } from '@/lib/types/community';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(
   request: NextRequest,
   { params }: { params: { communityId: string } }

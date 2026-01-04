@@ -5,6 +5,8 @@ import { createAnswer } from '@/lib/supabase/community';
 import { checkAnswerLimit, checkPostPermission } from '@/lib/utils/rateLimits';
 import type { CreateAnswerData } from '@/lib/types/community';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { communityId: string; questionId: string } }

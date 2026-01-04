@@ -4,6 +4,8 @@ import { cookies } from 'next/headers';
 import { getQuestionById, pinQuestion, unpinQuestion, lockQuestion, unlockQuestion, deleteQuestion, markBestAnswer } from '@/lib/supabase/community';
 import { checkModeratorPermission } from '@/lib/utils/rateLimits';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(
   request: NextRequest,
   { params }: { params: { communityId: string; questionId: string } }

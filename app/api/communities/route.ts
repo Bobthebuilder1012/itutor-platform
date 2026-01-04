@@ -4,6 +4,8 @@ import { cookies } from 'next/headers';
 import { getCommunities, createCommunity } from '@/lib/supabase/community';
 import type { CreateCommunityData } from '@/lib/types/community';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   try {
     const cookieStore = cookies();

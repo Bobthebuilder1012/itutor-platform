@@ -5,6 +5,8 @@ import { moderateUser, getModActions } from '@/lib/supabase/community';
 import { checkModeratorPermission } from '@/lib/utils/rateLimits';
 import type { ModerateUserData } from '@/lib/types/community';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(
   request: NextRequest,
   { params }: { params: { communityId: string } }
