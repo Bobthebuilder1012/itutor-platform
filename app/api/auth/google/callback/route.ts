@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js';
 import { encrypt } from '@/lib/utils/encryption';
 import { migrateSessionsToNewProvider } from '@/lib/services/migrateSessionsToNewProvider';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   // Use service role for callback (user context in state parameter)
   const supabase = createClient(
