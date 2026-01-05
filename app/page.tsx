@@ -1,10 +1,8 @@
 import Header from '@/components/landing/Header';
 import Hero from '@/components/landing/Hero';
-import FeaturedCarousel from '@/components/landing/FeaturedCarousel';
 import SubjectPills from '@/components/landing/SubjectPills';
 import HowItWorksSection from '@/components/landing/HowItWorksSection';
 import FeaturesChecklist from '@/components/landing/FeaturesChecklist';
-import SuccessStories from '@/components/landing/SuccessStories';
 import MotivationSection from '@/components/landing/MotivationSection';
 import SupportBlocks from '@/components/landing/SupportBlocks';
 import FAQAccordion from '@/components/landing/FAQAccordion';
@@ -19,11 +17,9 @@ export default function HomePage() {
       <Header />
       <main>
         <Hero />
-        <FeaturedCarousel />
         <SubjectPills />
         <HowItWorksSection />
         <FeaturesChecklist />
-        <SuccessStories />
         <MotivationSection />
         <SupportBlocks />
         <FAQAccordion />
