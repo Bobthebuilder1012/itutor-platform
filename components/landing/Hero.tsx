@@ -2,7 +2,7 @@ import Link from 'next/link';
 
 export default function Hero() {
   return (
-    <section className="relative bg-gradient-to-br from-white via-green-50 to-emerald-50 pt-44 pb-20 sm:pt-52 md:pt-60 lg:pt-64 sm:pb-28 overflow-hidden">
+    <section className="relative bg-gradient-to-br from-white via-green-50 to-emerald-50 pt-36 pb-16 sm:pt-44 md:pt-48 lg:pt-52 sm:pb-20 overflow-hidden">
       {/* Bright Gradient Overlays - Constrained for mobile */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute top-20 left-0 sm:-left-20 w-64 sm:w-96 h-64 sm:h-96 bg-gradient-to-br from-itutor-green/30 to-emerald-400/30 rounded-full blur-3xl animate-pulse"></div>

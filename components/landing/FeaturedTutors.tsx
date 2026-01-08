@@ -43,13 +43,13 @@ export default function FeaturedTutors({ tutors }: FeaturedTutorsProps) {
   // Empty state
   if (tutors.length === 0) {
     return (
-      <section className="bg-gradient-to-b from-emerald-50 to-white py-16 sm:py-20">
+      <section className="bg-gradient-to-b from-emerald-50 to-white py-8 sm:py-12">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-4xl mx-auto text-center">
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 mb-4">
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 mb-3">
               Top Caribbean Tutors
             </h2>
-            <p className="text-lg text-gray-600 mb-8">
+            <p className="text-lg text-gray-600 mb-6">
               No tutors available yet. Be the first to join our platform!
             </p>
             <Link
@@ -65,11 +65,11 @@ export default function FeaturedTutors({ tutors }: FeaturedTutorsProps) {
   }
 
   return (
-    <section className="bg-gradient-to-b from-emerald-50 to-white py-16 sm:py-20">
+    <section className="bg-gradient-to-b from-emerald-50 to-white py-8 sm:py-12">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
-        <div className="text-center mb-12">
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 mb-4">
+        <div className="text-center mb-6">
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 mb-3">
             Top Caribbean Tutors
           </h2>
           <p className="text-lg sm:text-xl text-gray-600 max-w-3xl mx-auto">
@@ -78,7 +78,7 @@ export default function FeaturedTutors({ tutors }: FeaturedTutorsProps) {
         </div>
 
         {/* Filter Chips */}
-        <div className="flex flex-wrap justify-center gap-3 mb-12">
+        <div className="flex flex-wrap justify-center gap-3 mb-8">
           {filters.map((filter) => (
             <button
               key={filter.id}
@@ -94,12 +94,18 @@ export default function FeaturedTutors({ tutors }: FeaturedTutorsProps) {
           ))}
         </div>
 
-        {/* Tutors Grid */}
+        {/* Horizontal Scrolling Tutors */}
         {filteredTutors.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {filteredTutors.map((tutor) => (
-              <TutorCard key={tutor.id} tutor={tutor} />
-            ))}
+          <div className="relative">
+            <div className="overflow-x-auto scrollbar-hide pb-4 scroll-smooth">
+              <div className="flex gap-6 min-w-min px-1">
+                {filteredTutors.map((tutor) => (
+                  <div key={tutor.id} className="w-80 flex-shrink-0">
+                    <TutorCard tutor={tutor} />
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         ) : (
           <div className="text-center py-12">
@@ -116,16 +122,14 @@ export default function FeaturedTutors({ tutors }: FeaturedTutorsProps) {
         )}
 
         {/* Browse More CTA */}
-        {filteredTutors.length >= 8 && (
-          <div className="text-center mt-12">
-            <Link
-              href="/search"
-              className="inline-block px-8 py-4 bg-white text-itutor-green font-bold rounded-xl border-2 border-itutor-green hover:bg-green-50 hover:scale-105 transition-all duration-300 shadow-lg"
-            >
-              Browse All Tutors
-            </Link>
-          </div>
-        )}
+        <div className="text-center mt-8">
+          <Link
+            href="/search"
+            className="inline-block px-8 py-4 bg-white text-itutor-green font-bold rounded-xl border-2 border-itutor-green hover:bg-green-50 hover:scale-105 transition-all duration-300 shadow-lg"
+          >
+            Browse All Tutors
+          </Link>
+        </div>
       </div>
     </section>
   );
