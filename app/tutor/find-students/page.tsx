@@ -55,7 +55,7 @@ export default function FindStudentsPage() {
       // Fetch all student profiles with subjects_of_study array
       const { data: studentProfiles, error: profilesError } = await supabase
         .from('profiles')
-        .select('id, full_name, username, display_name, avatar_url, school, form_level, country, bio, subjects_of_study')
+        .select('id, full_name, username, display_name, avatar_url, institution_id, form_level, country, bio, subjects_of_study')
         .eq('role', 'student');
 
       if (profilesError) {

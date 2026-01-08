@@ -1,7 +1,6 @@
 import Header from '@/components/landing/Header';
 import Hero from '@/components/landing/Hero';
 import FeaturedTutors from '@/components/landing/FeaturedTutors';
-import SubjectPills from '@/components/landing/SubjectPills';
 import HowItWorksSection from '@/components/landing/HowItWorksSection';
 import FeaturesChecklist from '@/components/landing/FeaturesChecklist';
 import MotivationSection from '@/components/landing/MotivationSection';
@@ -24,7 +23,6 @@ export default async function HomePage() {
       <main>
         <Hero />
         <FeaturedTutors tutors={tutors} />
-        <SubjectPills />
         <HowItWorksSection />
         <FeaturesChecklist />
         <MotivationSection />

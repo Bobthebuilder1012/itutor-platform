@@ -59,7 +59,7 @@ export default function StudentProfilePage() {
       // Fetch student profile
       const { data: studentData, error: studentError } = await supabase
         .from('profiles')
-        .select('id, full_name, username, display_name, avatar_url, school, country, subjects_of_study, bio')
+        .select('id, full_name, username, display_name, avatar_url, institution_id, country, subjects_of_study, bio')
         .eq('id', studentId)
         .eq('role', 'student')
         .single();

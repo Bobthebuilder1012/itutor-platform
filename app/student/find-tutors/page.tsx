@@ -63,7 +63,7 @@ export default function FindTutorsPage() {
       // Fetch all tutor profiles with bio
       const { data: tutorProfiles, error: profilesError } = await supabase
         .from('profiles')
-        .select('id, full_name, username, display_name, avatar_url, school, country, bio, tutor_verification_status')
+        .select('id, full_name, username, display_name, avatar_url, institution_id, country, bio, tutor_verification_status')
         .eq('role', 'tutor')
         .order('tutor_verification_status', { ascending: false, nullsFirst: false }); // Verified tutors first
 
