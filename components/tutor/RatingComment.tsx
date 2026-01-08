@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { useProfile } from '@/lib/hooks/useProfile';
+import { useAuthPrompt } from '@/hooks/useAuthPrompt';
+import AuthPromptModal from '@/components/AuthPromptModal';
 
 type RatingCommentProps = {
   rating: {
@@ -18,6 +20,7 @@ type RatingCommentProps = {
 
 export default function RatingComment({ rating, onReactionUpdate }: RatingCommentProps) {
   const { profile } = useProfile();
+  const { isOpen: authPromptOpen, action: authAction, redirectUrl, promptAuth, closePrompt } = useAuthPrompt();
   const [userReaction, setUserReaction] = useState<'like' | 'dislike' | null>(null);
   const [helpfulCount, setHelpfulCount] = useState(rating.helpful_count || 0);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -52,7 +55,13 @@ export default function RatingComment({ rating, onReactionUpdate }: RatingCommen
   }
 
   async function handleReaction(reactionType: 'like' | 'dislike') {
-    if (!profile?.id || isProcessing) return;
+    if (isProcessing) return;
+
+    // Check if user is authenticated
+    if (!profile?.id) {
+      promptAuth('like');
+      return;
+    }
 
     setIsProcessing(true);
     try {
@@ -121,40 +130,46 @@ export default function RatingComment({ rating, onReactionUpdate }: RatingCommen
           })}
         </p>
 
-        {/* Like/Dislike Buttons */}
-        {profile && (
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => handleReaction('like')}
-              disabled={isProcessing}
-              className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium transition-all ${
-                userReaction === 'like'
-                  ? 'bg-green-500 text-white'
-                  : 'bg-white border border-gray-300 text-gray-700 hover:border-green-500 hover:bg-green-50'
-              } ${isProcessing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-            >
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z" />
-              </svg>
-              <span>{helpfulCount > 0 ? helpfulCount : ''}</span>
-            </button>
+        {/* Like/Dislike Buttons - Always shown */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => handleReaction('like')}
+            disabled={isProcessing}
+            className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium transition-all ${
+              userReaction === 'like'
+                ? 'bg-green-500 text-white'
+                : 'bg-white border border-gray-300 text-gray-700 hover:border-green-500 hover:bg-green-50'
+            } ${isProcessing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z" />
+            </svg>
+            <span>{helpfulCount > 0 ? helpfulCount : ''}</span>
+          </button>
 
-            <button
-              onClick={() => handleReaction('dislike')}
-              disabled={isProcessing}
-              className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium transition-all ${
-                userReaction === 'dislike'
-                  ? 'bg-red-500 text-white'
-                  : 'bg-white border border-gray-300 text-gray-700 hover:border-red-500 hover:bg-red-50'
-              } ${isProcessing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-            >
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M18 9.5a1.5 1.5 0 11-3 0v-6a1.5 1.5 0 013 0v6zM14 9.667v-5.43a2 2 0 00-1.105-1.79l-.05-.025A4 4 0 0011.055 2H5.64a2 2 0 00-1.962 1.608l-1.2 6A2 2 0 004.44 12H8v4a2 2 0 002 2 1 1 0 001-1v-.667a4 4 0 01.8-2.4l1.4-1.866a4 4 0 00.8-2.4z" />
-              </svg>
-            </button>
-          </div>
-        )}
+          <button
+            onClick={() => handleReaction('dislike')}
+            disabled={isProcessing}
+            className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium transition-all ${
+              userReaction === 'dislike'
+                ? 'bg-red-500 text-white'
+                : 'bg-white border border-gray-300 text-gray-700 hover:border-red-500 hover:bg-red-50'
+            } ${isProcessing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M18 9.5a1.5 1.5 0 11-3 0v-6a1.5 1.5 0 013 0v6zM14 9.667v-5.43a2 2 0 00-1.105-1.79l-.05-.025A4 4 0 0011.055 2H5.64a2 2 0 00-1.962 1.608l-1.2 6A2 2 0 004.44 12H8v4a2 2 0 002 2 1 1 0 001-1v-.667a4 4 0 01.8-2.4l1.4-1.866a4 4 0 00.8-2.4z" />
+            </svg>
+          </button>
+        </div>
       </div>
+
+      {/* Auth Prompt Modal */}
+      <AuthPromptModal
+        isOpen={authPromptOpen}
+        onClose={closePrompt}
+        action={authAction}
+        redirectUrl={redirectUrl}
+      />
     </div>
   );
 }

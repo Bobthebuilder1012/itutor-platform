@@ -136,6 +136,15 @@ export default function LoginPage() {
         return;
       }
 
+      // Check for redirect parameter
+      const redirectUrl = searchParams.get('redirect');
+      
+      // If there's a redirect URL, go there instead of dashboard
+      if (redirectUrl) {
+        router.push(decodeURIComponent(redirectUrl));
+        return;
+      }
+
       // Check if user is an admin/reviewer first
       if (profile.is_reviewer || profile.role === 'admin') {
         router.push('/reviewer/dashboard');

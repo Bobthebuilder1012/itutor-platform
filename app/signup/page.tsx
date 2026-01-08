@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import CountrySelect from '@/components/CountrySelect';
 
@@ -24,6 +24,7 @@ function isNetworkError(error: unknown): boolean {
 
 export default function SignupPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
@@ -220,16 +221,25 @@ export default function SignupPage() {
         }
       }
 
+      // Check for redirect parameter
+      const redirectUrl = searchParams.get('redirect');
+      const redirectParam = redirectUrl ? `&redirect=${encodeURIComponent(redirectUrl)}` : '';
+
       // Check if email confirmation is required
       if (!authData.session) {
         // No session means email confirmation is required - redirect to login with params
-        router.push(`/login?emailSent=true&email=${encodeURIComponent(email)}`);
+        router.push(`/login?emailSent=true&email=${encodeURIComponent(email)}${redirectParam}`);
         return;
       }
 
       // Email confirmed or confirmation not required - proceed to next step
       if (role === 'student') {
-        router.push('/onboarding/student');
+        // If there's a redirect URL, go there after successful signup
+        if (redirectUrl) {
+          router.push(decodeURIComponent(redirectUrl));
+        } else {
+          router.push('/onboarding/student');
+        }
       }
     } catch (err) {
       if (isNetworkError(err)) {

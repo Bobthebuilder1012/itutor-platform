@@ -9,6 +9,8 @@ import VerifiedBadge from '@/components/VerifiedBadge';
 import VerifiedSubjectsButton from '@/components/tutor/VerifiedSubjectsButton';
 import VerifiedSubjectsModal from '@/components/tutor/VerifiedSubjectsModal';
 import RatingComment from '@/components/tutor/RatingComment';
+import AuthPromptModal from '@/components/AuthPromptModal';
+import { useAuthPrompt } from '@/hooks/useAuthPrompt';
 import Link from 'next/link';
 
 type TutorProfile = {
@@ -44,9 +46,11 @@ export default function PublicTutorProfilePage() {
   const router = useRouter();
   const params = useParams();
   const tutorId = params.tutorId as string;
+  const { isOpen: authPromptOpen, action: authAction, redirectUrl, promptAuth, closePrompt } = useAuthPrompt();
   
   const [tutor, setTutor] = useState<TutorProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [selectedSubject, setSelectedSubject] = useState<TutorProfile['subjects'][0] | null>(null);
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<{ start: string; end: string } | null>(null);
   const [verifiedSubjectsModalOpen, setVerifiedSubjectsModalOpen] = useState(false);
@@ -58,7 +62,13 @@ export default function PublicTutorProfilePage() {
   useEffect(() => {
     fetchTutorProfile();
     fetchVerifiedSubjects();
+    checkAuth();
   }, [tutorId]);
+
+  async function checkAuth() {
+    const { data: { session } } = await supabase.auth.getSession();
+    setIsAuthenticated(!!session);
+  }
 
   async function fetchVerifiedSubjects() {
     try {
@@ -195,6 +205,13 @@ export default function PublicTutorProfilePage() {
       alert('Please select a subject and time slot');
       return;
     }
+
+    // Check if user is authenticated
+    if (!isAuthenticated) {
+      promptAuth('book', `/tutors/${tutorId}`);
+      return;
+    }
+
     setShowBookingPrompt(true);
   };
 
@@ -536,6 +553,16 @@ export default function PublicTutorProfilePage() {
         onClose={() => setVerifiedSubjectsModalOpen(false)}
         tutorId={tutorId}
         tutorName={displayName}
+        csecSubjects={csecSubjects}
+        capeSubjects={capeSubjects}
+      />
+
+      {/* Auth Prompt Modal */}
+      <AuthPromptModal
+        isOpen={authPromptOpen}
+        onClose={closePrompt}
+        action={authAction}
+        redirectUrl={redirectUrl}
       />
 
       {/* Sign Up Prompt Modal */}
