@@ -12,10 +12,19 @@ export type FeaturedTutor = {
 };
 
 export async function getFeaturedTutors(): Promise<FeaturedTutor[]> {
+  // Use service role key for server-side data fetching
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    }
   );
+
+  console.log('🔍 Fetching featured tutors...');
 
   // Fetch tutors with their subjects and pricing
   const { data: tutorsData, error: tutorsError } = await supabase
@@ -27,16 +36,21 @@ export async function getFeaturedTutors(): Promise<FeaturedTutor[]> {
     .limit(12);
 
   if (tutorsError) {
-    console.error('Error fetching tutors:', tutorsError);
+    console.error('❌ Error fetching tutors:', tutorsError);
     return [];
   }
 
+  console.log(`✅ Found ${tutorsData?.length || 0} tutors`);
+
   if (!tutorsData || tutorsData.length === 0) {
+    console.log('⚠️ No tutors found in database');
     return [];
   }
 
   // Fetch tutor subjects with pricing
   const tutorIds = tutorsData.map((t) => t.id);
+  console.log(`📚 Fetching subjects for ${tutorIds.length} tutors...`);
+  
   const { data: subjectsData, error: subjectsError } = await supabase
     .from('tutor_subjects')
     .select(
@@ -52,7 +66,9 @@ export async function getFeaturedTutors(): Promise<FeaturedTutor[]> {
     .in('tutor_id', tutorIds);
 
   if (subjectsError) {
-    console.error('Error fetching subjects:', subjectsError);
+    console.error('❌ Error fetching subjects:', subjectsError);
+  } else {
+    console.log(`✅ Found ${subjectsData?.length || 0} subject mappings`);
   }
 
   // Check for verified tutors
@@ -62,7 +78,9 @@ export async function getFeaturedTutors(): Promise<FeaturedTutor[]> {
     .in('tutor_id', tutorIds);
 
   if (verifiedError) {
-    console.error('Error fetching verified status:', verifiedError);
+    console.error('❌ Error fetching verified status:', verifiedError);
+  } else {
+    console.log(`✅ Found ${verifiedData?.length || 0} verified tutors`);
   }
 
   const verifiedTutorIds = new Set(verifiedData?.map((v) => v.tutor_id) || []);
@@ -98,7 +116,7 @@ export async function getFeaturedTutors(): Promise<FeaturedTutor[]> {
   });
 
   // Sort: verified first, then by rating
-  return featuredTutors.sort((a, b) => {
+  const sortedTutors = featuredTutors.sort((a, b) => {
     if (a.isVerified !== b.isVerified) {
       return a.isVerified ? -1 : 1;
     }
@@ -109,5 +127,8 @@ export async function getFeaturedTutors(): Promise<FeaturedTutor[]> {
     }
     return b.rating_count - a.rating_count;
   });
+
+  console.log(`🎯 Returning ${sortedTutors.length} featured tutors`);
+  return sortedTutors;
 }
 
