@@ -177,8 +177,8 @@ export default function LandingSearchBar() {
 
   return (
     <div className="relative w-full" ref={dropdownRef}>
-      {/* Search Mode Toggle */}
-      <div className="flex gap-1 mb-2">
+      {/* Search Mode Toggle - Brighter for visibility */}
+      <div className="flex gap-2 mb-2 justify-center">
         <button
           onClick={() => {
             setSearchMode('tutor');
@@ -187,10 +187,10 @@ export default function LandingSearchBar() {
             setSubjectSuggestions([]);
             setShowDropdown(false);
           }}
-          className={`px-3 py-1 text-xs font-medium rounded-full transition-all ${
+          className={`px-4 py-1.5 text-xs font-bold rounded-full transition-all ${
             searchMode === 'tutor'
-              ? 'bg-itutor-green/20 text-itutor-green border border-itutor-green/30'
-              : 'text-itutor-muted/60 hover:text-itutor-muted hover:bg-itutor-border/30'
+              ? 'bg-itutor-green text-itutor-black shadow-lg shadow-itutor-green/30'
+              : 'bg-gray-700 text-gray-300 hover:text-white hover:bg-gray-600'
           }`}
         >
           By Name
@@ -203,17 +203,17 @@ export default function LandingSearchBar() {
             setSubjectSuggestions([]);
             setShowDropdown(false);
           }}
-          className={`px-3 py-1 text-xs font-medium rounded-full transition-all ${
+          className={`px-4 py-1.5 text-xs font-bold rounded-full transition-all ${
             searchMode === 'subject'
-              ? 'bg-itutor-green/20 text-itutor-green border border-itutor-green/30'
-              : 'text-itutor-muted/60 hover:text-itutor-muted hover:bg-itutor-border/30'
+              ? 'bg-itutor-green text-itutor-black shadow-lg shadow-itutor-green/30'
+              : 'bg-gray-700 text-gray-300 hover:text-white hover:bg-gray-600'
           }`}
         >
           By Subject
         </button>
       </div>
 
-      {/* Search Input */}
+      {/* Search Input - Brighter for better visibility */}
       <div className="relative">
         <input
           type="text"
@@ -226,10 +226,10 @@ export default function LandingSearchBar() {
             }
           }}
           placeholder={placeholder}
-          className="w-full px-5 py-3 pl-12 bg-itutor-card border border-itutor-border rounded-xl text-itutor-white placeholder-itutor-muted focus:outline-none focus:border-itutor-green transition-colors"
+          className="w-full px-5 py-3 pl-12 bg-gray-800 border-2 border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:border-itutor-green focus:bg-gray-750 transition-all shadow-lg"
         />
         <svg
-          className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-itutor-muted"
+          className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
