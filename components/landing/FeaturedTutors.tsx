@@ -43,7 +43,10 @@ export default function FeaturedTutors({ tutors }: FeaturedTutorsProps) {
   // Empty state
   if (tutors.length === 0) {
     return (
-      <section className="bg-gradient-to-b from-emerald-50 to-white py-8 sm:py-12">
+      <section className="relative bg-white py-16 sm:py-20 border-t-4 border-gray-100">
+        {/* Decorative top wave/divider */}
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-itutor-green/20 to-transparent"></div>
+        
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-4xl mx-auto text-center">
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 mb-3">
@@ -65,10 +68,13 @@ export default function FeaturedTutors({ tutors }: FeaturedTutorsProps) {
   }
 
   return (
-    <section className="bg-gradient-to-b from-emerald-50 to-white py-8 sm:py-12">
+    <section className="relative bg-white py-16 sm:py-20 border-t-4 border-gray-100">
+      {/* Decorative top wave/divider */}
+      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-itutor-green/20 to-transparent"></div>
+      
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
-        <div className="text-center mb-6">
+        <div className="text-center mb-10">
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 mb-3">
             Top Caribbean Tutors
           </h2>
