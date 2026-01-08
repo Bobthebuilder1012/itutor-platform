@@ -8,8 +8,8 @@ export default function Header() {
     <header className="absolute top-0 left-0 right-0 z-50 bg-itutor-black">
       <nav className="w-full mx-auto px-4 lg:px-6">
         <div className="flex items-center justify-between py-2 gap-4">
-          {/* Logo - Larger and pushed left */}
-          <Link href="/" className="flex-shrink-0 ml-0 sm:-ml-1">
+          {/* Logo - Larger */}
+          <Link href="/" className="flex-shrink-0 ml-0 sm:ml-0">
             <img
               src="/assets/logo/itutor-logo-dark.png"
               alt="iTutor"
