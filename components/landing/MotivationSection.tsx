@@ -45,7 +45,7 @@ export default function MotivationSection() {
             </span>
           </h2>
           <p className="text-lg sm:text-xl lg:text-2xl text-itutor-muted leading-relaxed max-w-3xl mx-auto mb-8">
-            Join thousands of Caribbean students achieving their academic goals with personalized tutoring.
+            Join Caribbean students achieving their academic goals with personalized tutoring.
           </p>
           
           {/* Action Buttons */}
