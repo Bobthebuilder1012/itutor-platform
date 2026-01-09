@@ -2,10 +2,13 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get('code');
   const next = requestUrl.searchParams.get('next') || '/';
+  const type = requestUrl.searchParams.get('type'); // email confirmation type
 
   if (code) {
     const cookieStore = cookies();
@@ -87,7 +90,8 @@ export async function GET(request: NextRequest) {
 
       // Check if profile is complete
       if (role === 'student') {
-        const hasBasicInfo = profile.school && profile.form_level;
+        // For students, check both old 'school' field and new 'institution_id'
+        const hasBasicInfo = (profile.school || profile.institution_id) && profile.form_level;
         const hasSubjects = profile.subjects_of_study && profile.subjects_of_study.length > 0;
 
         if (!hasBasicInfo || !hasSubjects) {
