@@ -4,7 +4,6 @@ import { FormEvent, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import CountrySelect from '@/components/CountrySelect';
-import SocialLoginButton from '@/components/SocialLoginButton';
 
 type UserRole = 'student' | 'parent' | 'tutor';
 
@@ -270,20 +269,6 @@ export default function SignupPage() {
         </div>
 
         <form onSubmit={handleSignup} className="space-y-5">
-          {/* Social Login */}
-          <div className="space-y-4">
-            <SocialLoginButton provider="google" mode="signup" />
-            
-            <div className="relative my-6">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-700"></div>
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-gray-900 text-gray-400">Or sign up with email</span>
-              </div>
-            </div>
-          </div>
-
           {error && (
             <div className="bg-red-900/20 border border-red-500/50 text-red-200 px-4 py-3 rounded-lg">
               <p className="text-sm">{error}</p>
