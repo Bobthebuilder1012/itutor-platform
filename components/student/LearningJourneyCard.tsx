@@ -14,19 +14,19 @@ export default function LearningJourneyCard({
   const hasProgress = completedSessions > 0;
 
   return (
-    <div className="bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-200 rounded-2xl p-8 shadow-md">
-      <div className="flex items-start gap-4 mb-6">
+    <div className="bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-200 rounded-2xl p-4 sm:p-6 md:p-8 shadow-md">
+      <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 mb-6">
         <div className="bg-amber-500 rounded-full p-3 flex-shrink-0">
-          <svg className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="h-6 w-6 sm:h-8 sm:w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
           </svg>
         </div>
-        <div className="flex-1">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Your learning journey</h2>
+        <div className="flex-1 text-center sm:text-left">
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">Your learning journey</h2>
           {hasProgress ? (
-            <p className="text-gray-700">Keep up the great work!</p>
+            <p className="text-sm sm:text-base text-gray-700">Keep up the great work!</p>
           ) : (
-            <p className="text-gray-600">Progress appears here after your first session.</p>
+            <p className="text-sm sm:text-base text-gray-600">Progress appears here after your first session.</p>
           )}
         </div>
       </div>
