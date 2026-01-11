@@ -132,10 +132,18 @@ export default function SignupPage() {
         return;
       }
 
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/403090cb-4ee1-4433-9d50-c21c9a1713e4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/signup/page.tsx:135',message:'BEFORE signUp call',data:{email:email,emailDomain:email.split('@')[1]},timestamp:Date.now(),sessionId:'debug-session',runId:'school-email-test',hypothesisId:'A,B,D'})}).catch(()=>{});
+      // #endregion
+
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
       });
+
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/403090cb-4ee1-4433-9d50-c21c9a1713e4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/signup/page.tsx:140',message:'AFTER signUp call',data:{email:email,hasError:!!signUpError,errorMessage:signUpError?.message,errorStatus:signUpError?.status,hasUser:!!authData?.user,userId:authData?.user?.id,hasSession:!!authData?.session,emailConfirmedAt:authData?.user?.email_confirmed_at},timestamp:Date.now(),sessionId:'debug-session',runId:'school-email-test',hypothesisId:'A,B,D'})}).catch(()=>{});
+      // #endregion
 
       if (signUpError) {
         // Provide more helpful error messages
@@ -226,6 +234,9 @@ export default function SignupPage() {
       const redirectParam = redirectUrl ? `&redirect=${encodeURIComponent(redirectUrl)}` : '';
 
       // Check if email confirmation is required
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/403090cb-4ee1-4433-9d50-c21c9a1713e4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/signup/page.tsx:228',message:'Checking email confirmation requirement',data:{email:email,hasSession:!!authData.session,emailConfirmationRequired:!authData.session,redirectingTo:!authData.session?'login-email-sent':'onboarding'},timestamp:Date.now(),sessionId:'debug-session',runId:'school-email-test',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       if (!authData.session) {
         // No session means email confirmation is required - redirect to login with params
         router.push(`/login?emailSent=true&email=${encodeURIComponent(email)}${redirectParam}`);
