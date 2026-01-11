@@ -31,7 +31,7 @@ export async function getFeaturedTutors(): Promise<FeaturedTutor[]> {
     .from('profiles')
     .select('id, full_name, avatar_url, rating_average, rating_count')
     .eq('role', 'tutor')
-    .order('rating_average', { ascending: false, nullsLast: true })
+    .order('rating_average', { ascending: false, nullsFirst: false })
     .order('rating_count', { ascending: false })
     .limit(12);
 
