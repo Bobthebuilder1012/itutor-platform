@@ -106,7 +106,7 @@ export default function LandingSearchBar() {
     }
   };
 
-  const placeholder = 'What subjects are you interested in?';
+  const placeholder = 'Search subjects...';
 
   return (
     <div className="relative w-full" ref={dropdownRef}>
