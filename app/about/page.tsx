@@ -1,14 +1,14 @@
-import Header from '@/components/landing/Header';
+import PublicPageHeader from '@/components/PublicPageHeader';
 import Footer from '@/components/landing/Footer';
 
 export default function AboutPage() {
   return (
     <div className="relative min-h-screen bg-white">
-      <Header />
+      <PublicPageHeader />
       
-      <main className="pt-20">
+      <main>
         {/* Hero Section */}
-        <section className="relative h-[500px] sm:h-[600px] overflow-hidden">
+        <section className="relative h-[400px] sm:h-[500px] overflow-hidden">
           {/* Background Image */}
           <div className="absolute inset-0 bg-gradient-to-r from-emerald-600 to-teal-500">
             <div className="absolute inset-0" style={{

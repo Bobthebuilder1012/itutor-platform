@@ -14,7 +14,8 @@ type StudentProfile = {
   username: string | null;
   display_name: string | null;
   avatar_url: string | null;
-  school: string | null;
+  school?: string | null;
+  institution_id?: string | null;
   country: string;
   subjects_of_study: string[] | null;
   bio: string | null;

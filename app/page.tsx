@@ -18,7 +18,7 @@ export default async function HomePage() {
   const tutors = await getFeaturedTutors();
 
   return (
-    <div className="relative min-h-screen bg-itutor-black">
+    <div className="relative min-h-screen">
       <Header />
       <main>
         <Hero />

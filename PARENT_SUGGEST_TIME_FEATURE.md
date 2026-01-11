@@ -285,3 +285,8 @@ No database migrations needed - uses existing booking table columns.
 
 
 
+
+
+
+
+

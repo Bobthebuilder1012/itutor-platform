@@ -34,3 +34,8 @@ COMMENT ON COLUMN public.bookings.price_per_hour_ttd IS
 
 
 
+
+
+
+
+

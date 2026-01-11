@@ -155,7 +155,6 @@ export default function LoginPage() {
         case 'student':
           // If this is a child account created by a parent, skip profile check
           if (profile.billing_mode === 'parent_required') {
-            console.log('Child account detected, going to dashboard');
             router.push('/student/dashboard');
             break;
           }

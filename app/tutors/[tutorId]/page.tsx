@@ -19,7 +19,8 @@ type TutorProfile = {
   username: string | null;
   display_name: string | null;
   avatar_url: string | null;
-  school: string | null;
+  school?: string | null;
+  institution_id?: string | null;
   country: string;
   bio: string | null;
   tutor_verification_status: string | null;

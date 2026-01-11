@@ -129,9 +129,3 @@ SELECT '✅ FIX COMPLETE! Refresh your signup page.' AS result;
 
 
 
-
-
-
-
-
-

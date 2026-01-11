@@ -47,3 +47,5 @@ COMMIT;
 -- This policy now works because it only queries the profiles table
 -- which the user has access to, not the auth.users table.
 
+
+

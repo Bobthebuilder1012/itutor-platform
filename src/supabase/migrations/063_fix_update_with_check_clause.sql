@@ -37,3 +37,5 @@ COMMIT;
 -- Key difference: WITH CHECK only requires created_at check, not role IS NULL
 -- This allows the transition from role=NULL to role='student' during signup
 
+
+

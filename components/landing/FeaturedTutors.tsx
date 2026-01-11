@@ -50,10 +50,10 @@ export default function FeaturedTutors({ tutors }: FeaturedTutorsProps) {
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-4xl mx-auto text-center">
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 mb-3">
-              Top Caribbean Tutors
+              Top Caribbean iTutors
             </h2>
             <p className="text-lg text-gray-600 mb-6">
-              No tutors available yet. Be the first to join our platform!
+              No iTutors available yet. Be the first to join our platform!
             </p>
             <Link
               href="/signup/tutor"
@@ -76,10 +76,10 @@ export default function FeaturedTutors({ tutors }: FeaturedTutorsProps) {
         {/* Section Header */}
         <div className="text-center mb-10">
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 mb-3">
-            Top Caribbean Tutors
+            Top Caribbean iTutors
           </h2>
           <p className="text-lg sm:text-xl text-gray-600 max-w-3xl mx-auto">
-            Verified tutors, clear pricing, exam-focused help.
+            Verified iTutors, clear pricing, exam-focused help.
           </p>
         </div>
 
@@ -116,13 +116,13 @@ export default function FeaturedTutors({ tutors }: FeaturedTutorsProps) {
         ) : (
           <div className="text-center py-12">
             <p className="text-xl text-gray-600 mb-4">
-              No tutors found for this filter.
+              No iTutors found for this filter.
             </p>
             <button
               onClick={() => setActiveFilter('all')}
               className="text-itutor-green font-semibold hover:underline"
             >
-              View all tutors
+              View all iTutors
             </button>
           </div>
         )}
@@ -133,7 +133,7 @@ export default function FeaturedTutors({ tutors }: FeaturedTutorsProps) {
             href="/search"
             className="inline-block px-8 py-4 bg-white text-itutor-green font-bold rounded-xl border-2 border-itutor-green hover:bg-green-50 hover:scale-105 transition-all duration-300 shadow-lg"
           >
-            Browse All Tutors
+            Browse All iTutors
           </Link>
         </div>
       </div>

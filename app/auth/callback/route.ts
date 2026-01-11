@@ -47,15 +47,13 @@ export async function GET(request: NextRequest) {
     // Check if profile exists
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('id, role, full_name, country, school, form_level, subjects_of_study, billing_mode')
+      .select('id, role, full_name, country, school, form_level, subjects_of_study, billing_mode, institution_id')
       .eq('id', userId)
       .single();
 
     // If profile doesn't exist, create it
     if (profileError && profileError.code === 'PGRST116') {
       // PGRST116 = no rows returned
-      console.log('Creating new profile for OAuth user:', userId);
-
       const newProfile = {
         id: userId,
         email: session.user.email!,

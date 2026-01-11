@@ -64,12 +64,20 @@ export default function SearchResultsPage() {
     setLoading(true);
     try {
       // Find subject IDs matching the search
-      const { data: subjectsData } = await supabase
+      const { data: subjectsData, error: subjectsError } = await supabase
         .from('subjects')
-        .select('id')
-        .or(`name.ilike.%${subject}%,label.ilike.%${subject}%`);
+        .select('id, name, label')
+        .ilike('name', `%${subject}%`);
+
+      console.log('🔍 Searching for subject:', subject);
+      console.log('📚 Found subjects:', subjectsData);
+
+      if (subjectsError) {
+        console.error('❌ Error fetching subjects:', subjectsError);
+      }
 
       if (!subjectsData || subjectsData.length === 0) {
+        console.log('⚠️ No subjects found matching:', subject);
         setResults([]);
         setLoading(false);
         return;
@@ -78,12 +86,21 @@ export default function SearchResultsPage() {
       const subjectIds = subjectsData.map(s => s.id);
       
       // Find tutors teaching these subjects
-      const { data: tutorSubjectsData } = await supabase
+      const { data: tutorSubjectsData, error: tutorSubjectsError } = await supabase
         .from('tutor_subjects')
         .select('tutor_id, subject_id, price_per_hour_ttd')
         .in('subject_id', subjectIds);
 
+      console.log('👨‍🏫 Found tutor_subjects entries:', tutorSubjectsData?.length || 0);
+
+      if (tutorSubjectsError) {
+        console.error('❌ Error fetching tutor_subjects:', tutorSubjectsError);
+      }
+
       if (!tutorSubjectsData || tutorSubjectsData.length === 0) {
+        console.log('⚠️ No tutors found teaching these subjects. This might mean:');
+        console.log('   - Test tutors need entries in tutor_subjects table');
+        console.log('   - Or no tutors have been set up to teach', subjectsData.map(s => s.label).join(', '));
         setResults([]);
         setLoading(false);
         return;
@@ -417,7 +434,7 @@ export default function SearchResultsPage() {
             <svg className="w-20 h-20 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <p className="text-xl text-gray-600 mb-2">No iTutors found</p>
+            <p className="text-xl text-gray-600 mb-2">There are no iTutors teaching this subject yet</p>
             <p className="text-gray-500">Try adjusting your filters or search for a different subject</p>
           </div>
         ) : (

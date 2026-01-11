@@ -61,3 +61,8 @@ Run the corrected migration file to create the `lesson_offers` table with the pr
 
 
 
+
+
+
+
+
