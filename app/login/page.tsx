@@ -85,7 +85,9 @@ export default function LoginPage() {
       }
     } catch (err) {
       // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/403090cb-4ee1-4433-9d50-c21c9a1713e4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/login/page.tsx:81',message:'CAUGHT exception in resend',data:{email:resendEmail,errorType:err?.constructor?.name,errorMessage:err?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'school-email-test',hypothesisId:'B,D'})}).catch(()=>{});
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      const errorType = err instanceof Error ? err.constructor.name : typeof err;
+      fetch('http://127.0.0.1:7243/ingest/403090cb-4ee1-4433-9d50-c21c9a1713e4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/login/page.tsx:81',message:'CAUGHT exception in resend',data:{email:resendEmail,errorType:errorType,errorMessage:errorMessage},timestamp:Date.now(),sessionId:'debug-session',runId:'school-email-test',hypothesisId:'B,D'})}).catch(()=>{});
       // #endregion
       setResendError('Failed to resend email. Please try again.');
     } finally {
