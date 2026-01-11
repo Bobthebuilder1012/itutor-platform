@@ -22,6 +22,8 @@ type VerifiedSubjectsModalProps = {
   onClose: () => void;
   tutorId: string;
   tutorName: string;
+  csecSubjects?: any[];
+  capeSubjects?: any[];
 };
 
 export default function VerifiedSubjectsModal({
