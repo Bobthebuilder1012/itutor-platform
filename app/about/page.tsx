@@ -9,10 +9,10 @@ export default function AboutPage() {
       <main>
         {/* Hero Section */}
         <section className="relative h-[400px] sm:h-[500px] overflow-hidden">
-          {/* Background Image */}
+          {/* Background Image - Caribbean students in classroom */}
           <div className="absolute inset-0 bg-gradient-to-r from-emerald-600 to-teal-500">
             <div className="absolute inset-0" style={{
-              backgroundImage: 'url("https://images.unsplash.com/photo-1503676260728-1c00da094a0b?w=1600&q=80")',
+              backgroundImage: 'url("https://images.unsplash.com/photo-1427504494785-3a9ca7044f45?w=1600&q=80")',
               backgroundSize: 'cover',
               backgroundPosition: 'center',
               opacity: 0.3
@@ -51,11 +51,11 @@ export default function AboutPage() {
           </div>
         </section>
 
-        {/* Full-width Image Section */}
+        {/* Full-width Image Section - Student studying/learning challenges */}
         <section className="relative h-[400px] sm:h-[500px] overflow-hidden">
           <div className="absolute inset-0">
             <div className="absolute inset-0" style={{
-              backgroundImage: 'url("https://images.unsplash.com/photo-1509062522246-3755977927d7?w=1600&q=80")',
+              backgroundImage: 'url("https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=1600&q=80")',
               backgroundSize: 'cover',
               backgroundPosition: 'center'
             }}></div>
@@ -167,11 +167,11 @@ export default function AboutPage() {
         </section>
 
 
-        {/* Built for Everyone - Image Section */}
+        {/* Built for Everyone - Collaborative learning */}
         <section className="relative h-[400px] sm:h-[500px] overflow-hidden">
           <div className="absolute inset-0">
             <div className="absolute inset-0" style={{
-              backgroundImage: 'url("https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=1600&q=80")',
+              backgroundImage: 'url("https://images.unsplash.com/photo-1524178232363-1fb2b075b655?w=1600&q=80")',
               backgroundSize: 'cover',
               backgroundPosition: 'center'
             }}></div>
@@ -310,11 +310,11 @@ export default function AboutPage() {
           </div>
         </section>
 
-        {/* Our Vision - Full Width Image */}
+        {/* Our Vision - Educational success and achievement */}
         <section className="relative h-[500px] sm:h-[600px] overflow-hidden">
           <div className="absolute inset-0">
             <div className="absolute inset-0" style={{
-              backgroundImage: 'url("https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1600&q=80")',
+              backgroundImage: 'url("https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=1600&q=80")',
               backgroundSize: 'cover',
               backgroundPosition: 'center'
             }}></div>
