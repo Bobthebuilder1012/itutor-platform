@@ -120,10 +120,17 @@ export default function VideoSetupPage() {
   }
 
   async function handleConnect(provider: VideoProvider) {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/403090cb-4ee1-4433-9d50-c21c9a1713e4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/tutor/video-setup/page.tsx:122',message:'handleConnect called',data:{provider,hasProfile:!!profile,hasConnection:!!connection,futureSessions,profileId:profile?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'google-oauth-frontend',hypothesisId:'A,D'})}).catch(()=>{});
+    // #endregion
+
     if (!profile) return;
     
     // Check if tutor has future sessions
     if (connection && futureSessions > 0) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/403090cb-4ee1-4433-9d50-c21c9a1713e4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/tutor/video-setup/page.tsx:126',message:'Blocked - has future sessions',data:{futureSessions,currentProvider:connection.provider,requestedProvider:provider},timestamp:Date.now(),sessionId:'debug-session',runId:'google-oauth-frontend',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       alert(
         `⚠️ Cannot Switch Video Provider\n\n` +
         `You have ${futureSessions} upcoming session${futureSessions > 1 ? 's' : ''} scheduled.\n\n` +
@@ -136,12 +143,22 @@ export default function VideoSetupPage() {
     }
     
     if (connection) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/403090cb-4ee1-4433-9d50-c21c9a1713e4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/tutor/video-setup/page.tsx:138',message:'Existing connection - showing confirmation',data:{currentProvider:connection.provider,requestedProvider:provider},timestamp:Date.now(),sessionId:'debug-session',runId:'google-oauth-frontend',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       if (!confirm(`Switch from ${connection.provider.replace('_', ' ')} to ${provider.replace('_', ' ')}? Your existing connection will be replaced.`)) {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/403090cb-4ee1-4433-9d50-c21c9a1713e4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/tutor/video-setup/page.tsx:140',message:'User cancelled switch',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'google-oauth-frontend',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
         return;
       }
     }
 
     setSwitching(true);
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/403090cb-4ee1-4433-9d50-c21c9a1713e4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/tutor/video-setup/page.tsx:144',message:'About to redirect to OAuth',data:{provider,hasConnection:!!connection},timestamp:Date.now(),sessionId:'debug-session',runId:'google-oauth-frontend',hypothesisId:'A,C,E'})}).catch(()=>{});
+    // #endregion
     
     try {
       // Redirect to OAuth flow
@@ -149,8 +166,15 @@ export default function VideoSetupPage() {
         ? '/api/auth/google/connect'
         : '/api/auth/zoom/connect';
       
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/403090cb-4ee1-4433-9d50-c21c9a1713e4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/tutor/video-setup/page.tsx:152',message:'Redirecting to OAuth URL',data:{connectUrl,fullUrl:window.location.origin+connectUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'google-oauth-frontend',hypothesisId:'A,C,E'})}).catch(()=>{});
+      // #endregion
+      
       window.location.href = connectUrl;
     } catch (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/403090cb-4ee1-4433-9d50-c21c9a1713e4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/tutor/video-setup/page.tsx:154',message:'Error during redirect',data:{error:String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'google-oauth-frontend',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
       console.error('Error initiating OAuth:', error);
       alert('An error occurred. Please try again.');
       setSwitching(false);

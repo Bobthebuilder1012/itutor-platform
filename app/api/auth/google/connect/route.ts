@@ -70,7 +70,13 @@ export async function GET(request: Request) {
       hasRedirectUri: !!redirectUri
     });
     return NextResponse.json({ 
-      error: 'Server configuration error. Please contact support.' 
+      error: 'Server configuration error. Please contact support.',
+      details: 'Missing Google OAuth credentials',
+      missing: {
+        clientId: !clientId,
+        redirectUri: !redirectUri
+      },
+      debug: true
     }, { status: 500 });
   }
 
