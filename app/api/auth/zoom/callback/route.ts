@@ -21,9 +21,29 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    // Validate environment variables
+    const clientId = process.env.ZOOM_CLIENT_ID;
+    const clientSecret = process.env.ZOOM_CLIENT_SECRET;
+    const redirectUri = process.env.ZOOM_REDIRECT_URI;
+
+    if (!clientId || !clientSecret || !redirectUri) {
+      console.error('❌ Missing Zoom OAuth credentials:', {
+        hasClientId: !!clientId,
+        hasClientSecret: !!clientSecret,
+        hasRedirectUri: !!redirectUri
+      });
+      return NextResponse.redirect(new URL('/tutor/video-setup?error=server_config', request.url));
+    }
+
+    console.log('🔄 Exchanging OAuth code for tokens...', {
+      hasCode: !!code,
+      redirectUri,
+      tutorId: state
+    });
+
     // Exchange code for tokens
     const credentials = Buffer.from(
-      `${process.env.ZOOM_CLIENT_ID}:${process.env.ZOOM_CLIENT_SECRET}`
+      `${clientId}:${clientSecret}`
     ).toString('base64');
 
     const tokenResponse = await fetch('https://zoom.us/oauth/token', {
@@ -34,14 +54,19 @@ export async function GET(request: NextRequest) {
       },
       body: new URLSearchParams({
         code,
-        redirect_uri: process.env.ZOOM_REDIRECT_URI!,
+        redirect_uri: redirectUri,
         grant_type: 'authorization_code'
       })
     });
 
     if (!tokenResponse.ok) {
       const errorData = await tokenResponse.text();
-      console.error('Token exchange failed:', errorData);
+      console.error('❌ Token exchange failed:', {
+        status: tokenResponse.status,
+        statusText: tokenResponse.statusText,
+        error: errorData,
+        redirectUri
+      });
       throw new Error('Failed to exchange code for tokens');
     }
 
