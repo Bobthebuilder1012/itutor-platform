@@ -86,20 +86,6 @@ export async function GET(request: NextRequest) {
     if (profile) {
       const role = profile.role;
 
-      // If role is null, profile is incomplete - need to complete signup
-      if (!role) {
-        // Try to determine role from user metadata
-        const metadataRole = session.user.user_metadata?.role;
-        if (metadataRole === 'tutor') {
-          return NextResponse.redirect(new URL('/onboarding/tutor', request.url));
-        } else if (metadataRole === 'parent') {
-          return NextResponse.redirect(new URL('/parent/dashboard', request.url));
-        } else {
-          // Default to student onboarding
-          return NextResponse.redirect(new URL('/onboarding/student', request.url));
-        }
-      }
-
       // Check if profile is complete
       if (role === 'student') {
         // For students, check both old 'school' field and new 'institution_id'
@@ -114,10 +100,6 @@ export async function GET(request: NextRequest) {
       } else if (role === 'parent') {
         return NextResponse.redirect(new URL('/parent/dashboard', request.url));
       } else if (role === 'tutor') {
-        // Check if tutor has completed onboarding (school, subjects)
-        if (!profile.institution_id) {
-          return NextResponse.redirect(new URL('/onboarding/tutor', request.url));
-        }
         return NextResponse.redirect(new URL('/tutor/dashboard', request.url));
       } else if (role === 'admin') {
         return NextResponse.redirect(new URL('/admin/dashboard', request.url));

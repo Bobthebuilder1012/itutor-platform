@@ -125,6 +125,15 @@ export default function TutorSignupPage() {
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          data: {
+            full_name: fullName,
+            username: username.trim(),
+            role: role,
+            country: countryCode,
+            terms_accepted: true,
+          }
+        }
       });
 
       if (signUpError) {
@@ -143,8 +152,16 @@ export default function TutorSignupPage() {
         return;
       }
 
-      // Create profile directly (trigger approach didn't work reliably)
-      // Use upsert to handle both create and update scenarios
+      // Check if email confirmation is required BEFORE trying to upsert
+      // If no session, we can't perform authenticated operations
+      if (!authData.session) {
+        // Email confirmation required - trigger will create basic profile
+        // Profile will be completed after email confirmation via callback
+        router.push(`/login?emailSent=true&email=${encodeURIComponent(email)}`);
+        return;
+      }
+
+      // We have a session, proceed with profile upsert
       const { error: upsertError } = await supabase
         .from('profiles')
         .upsert({
@@ -183,13 +200,6 @@ export default function TutorSignupPage() {
       if (!verifyProfile || verifyProfile.role !== 'tutor') {
         setError('Profile created but role verification failed. Please contact support.');
         setLoading(false);
-        return;
-      }
-
-      // Check if email confirmation is required
-      if (authData.user.identities && authData.user.identities.length === 0) {
-        // Email confirmation required - redirect to login with params
-        router.push(`/login?emailSent=true&email=${encodeURIComponent(email)}`);
         return;
       }
 
