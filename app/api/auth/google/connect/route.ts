@@ -41,10 +41,31 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
+  // Validate required environment variables
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const redirectUri = process.env.GOOGLE_REDIRECT_URI;
+
+  if (!clientId || !redirectUri) {
+    console.error('❌ Missing Google OAuth environment variables:', {
+      hasClientId: !!clientId,
+      hasRedirectUri: !!redirectUri
+    });
+    return NextResponse.json({ 
+      error: 'Server configuration error. Please contact support.' 
+    }, { status: 500 });
+  }
+
+  // Log configuration for debugging (remove client_id for security)
+  console.log('🔍 Google OAuth Configuration:', {
+    redirectUri,
+    userId: user.id,
+    timestamp: new Date().toISOString()
+  });
+
   // Build OAuth URL
   const params = new URLSearchParams({
-    client_id: process.env.GOOGLE_CLIENT_ID!,
-    redirect_uri: process.env.GOOGLE_REDIRECT_URI!,
+    client_id: clientId,
+    redirect_uri: redirectUri,
     response_type: 'code',
     scope: 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/userinfo.email',
     access_type: 'offline',
@@ -53,6 +74,8 @@ export async function GET(request: Request) {
   });
 
   const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+  
+  console.log('✅ Redirecting to Google OAuth:', authUrl.substring(0, 100) + '...');
   
   return NextResponse.redirect(authUrl);
 }
