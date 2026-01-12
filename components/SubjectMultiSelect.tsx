@@ -64,7 +64,7 @@ export default function SubjectMultiSelect({
       
       const { data, error, count } = await supabase
         .from('subjects')
-        .select('id, name, curriculum, level', { count: 'exact' })
+        .select('id, name, curriculum, level, label', { count: 'exact' })
         .ilike('name', `%${searchQuery}%`)
         .order('name', { ascending: true })
         .limit(15);
@@ -100,7 +100,8 @@ export default function SubjectMultiSelect({
           name: s.name,
           curriculum: s.curriculum,
           level: s.level,
-          label: `${s.name} (${s.curriculum} ${s.level})`
+          // Use the label from database instead of constructing it
+          label: s.label || `${s.name} (${s.curriculum})`
         }))
         .filter(subject => !selectedSubjects.includes(subject.label)) || [];
 

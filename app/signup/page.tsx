@@ -261,24 +261,24 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-white px-4 py-8 relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center bg-white px-3 py-4 sm:px-4 sm:py-8 relative overflow-hidden">
       <div className="absolute inset-0 opacity-5">
         <div className="absolute top-20 left-10 w-72 h-72 bg-itutor-green rounded-full blur-3xl animate-pulse"></div>
         <div className="absolute bottom-20 right-10 w-72 h-72 bg-emerald-500 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
       </div>
       
-      <div className="bg-gradient-to-br from-gray-800 via-gray-900 to-gray-950 border border-gray-700 rounded-2xl shadow-2xl p-8 sm:p-10 max-w-2xl w-full relative z-10 backdrop-blur-sm">
-        <div className="text-center mb-8">
+      <div className="bg-gradient-to-br from-gray-800 via-gray-900 to-gray-950 border border-gray-700 rounded-2xl shadow-2xl p-4 sm:p-8 md:p-10 max-w-2xl w-full relative z-10 backdrop-blur-sm">
+        <div className="text-center mb-4 sm:mb-6 md:mb-8">
           <img
             src="/assets/logo/itutor-logo-dark.png"
             alt="iTutor"
-            className="h-32 sm:h-40 md:h-48 w-auto mx-auto mb-6 drop-shadow-2xl"
+            className="h-16 sm:h-24 md:h-32 w-auto mx-auto mb-3 sm:mb-4 md:mb-6 drop-shadow-2xl"
           />
-          <h1 className="text-3xl sm:text-4xl font-bold text-itutor-white mb-2">Create your iTutor account</h1>
-          <p className="text-itutor-muted">Sign up as a student to get started.</p>
+          <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-itutor-white mb-1 sm:mb-2">Create your iTutor account</h1>
+          <p className="text-sm sm:text-base text-itutor-muted">Sign up as a student to get started.</p>
         </div>
 
-        <form onSubmit={handleSignup} className="space-y-5">
+        <form onSubmit={handleSignup} className="space-y-3 sm:space-y-4 md:space-y-5">
           {error && (
             <div className="bg-red-900/20 border border-red-500/50 text-red-200 px-4 py-3 rounded-lg backdrop-blur-sm">
               <p className="text-sm">{error}</p>
@@ -286,7 +286,7 @@ export default function SignupPage() {
           )}
 
           <div>
-            <label htmlFor="fullName" className="block text-sm font-medium text-itutor-white mb-2">
+            <label htmlFor="fullName" className="block text-xs sm:text-sm font-medium text-itutor-white mb-1 sm:mb-2">
               Full name
             </label>
             <input
@@ -294,7 +294,7 @@ export default function SignupPage() {
               id="fullName"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition-all duration-200 placeholder:text-gray-400 text-itutor-white backdrop-blur-sm hover:bg-gray-900/70"
+              className="w-full px-3 py-2 sm:px-4 sm:py-3 text-sm sm:text-base bg-gray-900/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition-all duration-200 placeholder:text-gray-400 text-itutor-white backdrop-blur-sm hover:bg-gray-900/70"
               placeholder="Jane Doe"
               required
               disabled={loading}
@@ -302,7 +302,7 @@ export default function SignupPage() {
           </div>
 
           <div>
-            <label htmlFor="username" className="block text-sm font-medium text-itutor-white mb-2">
+            <label htmlFor="username" className="block text-xs sm:text-sm font-medium text-itutor-white mb-1 sm:mb-2">
               Username
             </label>
             <div className="relative">
@@ -311,7 +311,7 @@ export default function SignupPage() {
                 id="username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className={`w-full px-4 py-3 pr-10 bg-gray-900/50 border rounded-lg focus:ring-2 focus:outline-none transition-all duration-200 placeholder:text-gray-400 text-itutor-white backdrop-blur-sm hover:bg-gray-900/70 ${
+                className={`w-full px-3 py-2 sm:px-4 sm:py-3 pr-9 sm:pr-10 text-sm sm:text-base bg-gray-900/50 border rounded-lg focus:ring-2 focus:outline-none transition-all duration-200 placeholder:text-gray-400 text-itutor-white backdrop-blur-sm hover:bg-gray-900/70 ${
                   usernameError
                     ? 'border-red-500 focus:ring-red-500 focus:border-red-500'
                     : usernameAvailable
@@ -348,7 +348,7 @@ export default function SignupPage() {
           </div>
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-itutor-white mb-2">
+            <label htmlFor="email" className="block text-xs sm:text-sm font-medium text-itutor-white mb-1 sm:mb-2">
               Email address
             </label>
             <input
@@ -356,7 +356,7 @@ export default function SignupPage() {
               id="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition-all duration-200 placeholder:text-gray-400 text-itutor-white backdrop-blur-sm hover:bg-gray-900/70"
+              className="w-full px-3 py-2 sm:px-4 sm:py-3 text-sm sm:text-base bg-gray-900/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition-all duration-200 placeholder:text-gray-400 text-itutor-white backdrop-blur-sm hover:bg-gray-900/70"
               placeholder="you@example.com"
               required
               disabled={loading}
@@ -364,7 +364,7 @@ export default function SignupPage() {
           </div>
 
           <div>
-            <label htmlFor="country" className="block text-sm font-medium text-itutor-white mb-2">
+            <label htmlFor="country" className="block text-xs sm:text-sm font-medium text-itutor-white mb-1 sm:mb-2">
               Country
             </label>
             <CountrySelect
@@ -375,7 +375,7 @@ export default function SignupPage() {
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-itutor-white mb-2">
+            <label htmlFor="password" className="block text-xs sm:text-sm font-medium text-itutor-white mb-1 sm:mb-2">
               Password
             </label>
             <input
@@ -383,7 +383,7 @@ export default function SignupPage() {
               id="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition-all duration-200 placeholder:text-gray-400 text-itutor-white backdrop-blur-sm hover:bg-gray-900/70"
+              className="w-full px-3 py-2 sm:px-4 sm:py-3 text-sm sm:text-base bg-gray-900/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition-all duration-200 placeholder:text-gray-400 text-itutor-white backdrop-blur-sm hover:bg-gray-900/70"
               placeholder="Enter a secure password"
               required
               disabled={loading}
@@ -391,7 +391,7 @@ export default function SignupPage() {
           </div>
 
           <div>
-            <label htmlFor="confirmPassword" className="block text-sm font-medium text-itutor-white mb-2">
+            <label htmlFor="confirmPassword" className="block text-xs sm:text-sm font-medium text-itutor-white mb-1 sm:mb-2">
               Confirm password
             </label>
             <input
@@ -399,7 +399,7 @@ export default function SignupPage() {
               id="confirmPassword"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition-all duration-200 placeholder:text-gray-400 text-itutor-white backdrop-blur-sm hover:bg-gray-900/70"
+              className="w-full px-3 py-2 sm:px-4 sm:py-3 text-sm sm:text-base bg-gray-900/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition-all duration-200 placeholder:text-gray-400 text-itutor-white backdrop-blur-sm hover:bg-gray-900/70"
               placeholder="Re-enter your password"
               required
               disabled={loading}
@@ -431,20 +431,20 @@ export default function SignupPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-gradient-to-r from-itutor-green to-emerald-500 text-itutor-black py-3 px-4 rounded-lg hover:shadow-lg hover:shadow-itutor-green/50 hover:scale-[1.02] focus:ring-4 focus:ring-itutor-green/30 focus:outline-none transition-all duration-300 font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-gradient-to-r from-itutor-green to-emerald-500 text-itutor-black py-2.5 sm:py-3 px-4 rounded-lg hover:shadow-lg hover:shadow-itutor-green/50 hover:scale-[1.02] focus:ring-4 focus:ring-itutor-green/30 focus:outline-none transition-all duration-300 font-bold text-base sm:text-lg disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? 'Creating your account...' : 'Sign up'}
           </button>
         </form>
 
-        <div className="mt-6 text-center space-y-3">
-          <p className="text-sm text-itutor-muted">
+        <div className="mt-4 sm:mt-6 text-center space-y-2 sm:space-y-3">
+          <p className="text-xs sm:text-sm text-itutor-muted">
             Signing up for your child?{' '}
             <a href="/signup/parent" className="text-itutor-green hover:text-emerald-400 font-medium transition-colors">
               Sign up as a parent/guardian
             </a>
           </p>
-          <p className="text-sm text-itutor-muted">
+          <p className="text-xs sm:text-sm text-itutor-muted">
             Already have an account?{' '}
             <a href="/login" className="text-itutor-green hover:text-emerald-400 font-medium transition-colors">
               Sign in
