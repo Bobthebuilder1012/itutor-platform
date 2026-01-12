@@ -11,11 +11,13 @@
 
 BEGIN;
 
--- Drop the problematic INSERT policy that queries auth.users
+-- Drop ALL old INSERT policies (including v6 if it exists)
 DROP POLICY IF EXISTS "profiles_insert_own_or_new_user_v3" ON public.profiles;
 DROP POLICY IF EXISTS "profiles_service_role_insert_v3" ON public.profiles;
 DROP POLICY IF EXISTS "profiles_user_insert_own_v2" ON public.profiles;
 DROP POLICY IF EXISTS "profiles_service_role_insert_v2" ON public.profiles;
+DROP POLICY IF EXISTS "profiles_insert_own_v6" ON public.profiles;
+DROP POLICY IF EXISTS "profiles_service_role_insert_v6" ON public.profiles;
 
 -- Create a simplified INSERT policy that doesn't query auth.users
 -- This allows:
