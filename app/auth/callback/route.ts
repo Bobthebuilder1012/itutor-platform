@@ -44,6 +44,14 @@ export async function GET(request: NextRequest) {
 
     const userId = session.user.id;
 
+    // For email confirmations (not OAuth), redirect to confirmation success page
+    // OAuth logins have a provider in app_metadata (e.g., 'google', 'github')
+    // Email signups/confirmations have 'email' as provider
+    const isEmailConfirmation = session.user.app_metadata.provider === 'email';
+    if (isEmailConfirmation) {
+      return NextResponse.redirect(new URL('/auth/confirmed', request.url));
+    }
+
     // Check if profile exists
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
