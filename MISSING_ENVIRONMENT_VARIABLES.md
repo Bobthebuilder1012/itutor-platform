@@ -1,7 +1,7 @@
 # OAuth Environment Variables - Configuration Guide
 
 ## Current Status
-Environment variables have been configured. This deployment will activate the updated credentials.
+Environment variables have been configured with new client secret. This deployment will activate the updated credentials.
 
 ## Required Environment Variables
 
