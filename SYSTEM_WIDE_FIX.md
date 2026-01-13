@@ -287,3 +287,4 @@ After applying migrations, any new user signup should work perfectly. If issues 
 3. Browser console errors
 4. Frontend is deployed (Vercel)
 
+

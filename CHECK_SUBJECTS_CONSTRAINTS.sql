@@ -17,3 +17,4 @@ WHERE table_schema = 'public'
   AND table_name = 'subjects'
 ORDER BY ordinal_position;
 
+

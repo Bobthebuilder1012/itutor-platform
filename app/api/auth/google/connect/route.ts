@@ -104,7 +104,16 @@ export async function GET(request: Request) {
 
   const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
   
-  console.log('✅ Redirecting to Google OAuth:', authUrl.substring(0, 100) + '...');
+  // DIAGNOSTIC: Log the EXACT URL and credentials being used
+  console.log('========== GOOGLE OAUTH DIAGNOSTIC ==========');
+  console.log('Full Auth URL:', authUrl);
+  console.log('Client ID being sent:', clientId);
+  console.log('Client ID length:', clientId.length);
+  console.log('Client ID first 30 chars:', clientId.substring(0, 30));
+  console.log('Client ID last 30 chars:', clientId.substring(clientId.length - 30));
+  console.log('Redirect URI:', redirectUri);
+  console.log('User ID:', user.id);
+  console.log('============================================');
 
   // #region agent log
   fetch('http://127.0.0.1:7243/ingest/403090cb-4ee1-4433-9d50-c21c9a1713e4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/auth/google/connect/route.ts:95',message:'Redirecting to Google',data:{authUrlPrefix:authUrl.substring(0,150)},timestamp:Date.now(),sessionId:'debug-session',runId:'google-oauth-debug',hypothesisId:'E'})}).catch(()=>{});

@@ -95,3 +95,4 @@ If you encounter any issues, please share:
 - Screenshots of the Supabase logs (Database > Logs)
 - The Supabase Auth settings (Authentication > Settings > Email Auth)
 
+

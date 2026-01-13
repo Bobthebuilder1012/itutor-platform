@@ -80,3 +80,4 @@ COMMENT ON TABLE public.support_requests IS 'Stores support requests from users 
 
 
 
+

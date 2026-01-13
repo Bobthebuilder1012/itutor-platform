@@ -99,3 +99,4 @@ SELECT level, COUNT(*) as count FROM public.subjects GROUP BY level;
 
 
 
+

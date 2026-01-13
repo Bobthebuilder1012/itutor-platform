@@ -39,3 +39,4 @@ SELECT '✅ Constraint removed! Lesson offers should work now.' AS status;
 
 
 
+

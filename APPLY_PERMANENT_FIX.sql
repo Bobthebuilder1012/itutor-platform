@@ -192,3 +192,4 @@ COMMIT;
 -- - Run DEBUG_EMAIL_CONFIRMATION.sql for more details
 -- =====================================================
 
+

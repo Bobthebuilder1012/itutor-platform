@@ -48,3 +48,4 @@ WHERE curriculum IN ('CSEC', 'CAPE')
   AND name ILIKE '%computer%'
 ORDER BY curriculum, name;
 
+

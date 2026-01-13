@@ -140,3 +140,4 @@ UPDATE public.profiles SET role = 'tutor', username = 'yourname', terms_accepted
 
 Choose whichever you prefer!
 
+

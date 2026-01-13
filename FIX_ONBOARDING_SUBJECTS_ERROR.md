@@ -103,3 +103,4 @@ This creates a public read policy on the subjects table so authenticated users c
 
 After applying, tutor onboarding should work for all users! ✅
 
+

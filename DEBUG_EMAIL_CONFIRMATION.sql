@@ -60,3 +60,4 @@ WHERE email = 'YOUR_EMAIL_HERE';  -- ⚠️ CHANGE THIS
 --   → Supabase Auth settings issue (see solution below)
 -- =====================================================
 
+

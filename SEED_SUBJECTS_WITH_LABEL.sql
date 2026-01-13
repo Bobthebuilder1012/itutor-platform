@@ -99,3 +99,4 @@ SELECT curriculum, COUNT(*) as count FROM public.subjects GROUP BY curriculum;
 
 
 
+

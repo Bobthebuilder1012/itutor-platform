@@ -298,3 +298,4 @@ When creating new dashboard cards:
 3. Audit parent dashboard for similar issues
 4. Apply same patterns to any problematic components
 
+

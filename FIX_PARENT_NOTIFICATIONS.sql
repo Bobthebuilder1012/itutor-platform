@@ -43,3 +43,4 @@ SELECT 'Parent notification types added successfully!' AS status;
 
 
 
+
