@@ -21,10 +21,10 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Validate environment variables
-    const clientId = process.env.ZOOM_CLIENT_ID;
-    const clientSecret = process.env.ZOOM_CLIENT_SECRET;
-    const redirectUri = process.env.ZOOM_REDIRECT_URI;
+    // Validate environment variables (trim to remove any whitespace/newlines)
+    const clientId = process.env.ZOOM_CLIENT_ID?.trim();
+    const clientSecret = process.env.ZOOM_CLIENT_SECRET?.trim();
+    const redirectUri = process.env.ZOOM_REDIRECT_URI?.trim();
 
     if (!clientId || !clientSecret || !redirectUri) {
       console.error('❌ Missing Zoom OAuth credentials:', {
