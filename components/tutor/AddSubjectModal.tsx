@@ -152,6 +152,7 @@ export default function AddSubjectModal({
         tutor_id: tutorId,
         subject_id: subject.id,
         price_per_hour_ttd: parseFloat(price),
+        mode: 'either', // Default to flexible teaching mode (online/in-person/either)
       }));
 
       const { error } = await supabase
