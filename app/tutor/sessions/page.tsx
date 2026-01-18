@@ -36,16 +36,26 @@ export default function TutorSessionsPage() {
         .order('scheduled_start_at', { ascending: true });
 
       if (error) {
+        console.error('Session fetch error:', error);
         const { data: fallbackData } = await supabase
           .from('sessions')
           .select('*')
           .eq('tutor_id', profile?.id)
           .order('scheduled_start_at', { ascending: true });
+        console.log('Fallback sessions:', fallbackData);
         setSessions(fallbackData || []);
       } else {
+        console.log('Sessions loaded:', data);
+        if (data && data.length > 0) {
+          console.log('First session sample:', data[0]);
+          // Log all unique statuses
+          const statuses = [...new Set(data.map((s: any) => s.status))];
+          console.log('All unique statuses in data:', statuses);
+        }
         setSessions(data || []);
       }
     } catch (err) {
+      console.error('Session load error:', err);
       setSessions([]);
     } finally {
       setSessionsLoading(false);
@@ -75,27 +85,61 @@ export default function TutorSessionsPage() {
           </div>
         ) : (
           <div className="space-y-3 sm:space-y-4">
-            {sessions.map((session) => (
-              <div key={session.id} className="bg-white border-2 border-gray-200 rounded-lg p-4 hover:border-itutor-green transition-colors">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-base sm:text-lg font-semibold text-gray-900 truncate">Session</h3>
-                    <p className="text-sm text-gray-600 mt-1">with {session.student?.full_name || 'Student'}</p>
-                    <p className="text-xs sm:text-sm text-gray-500 mt-2">
-                      {new Date(session.scheduled_start_at).toLocaleString()}
-                    </p>
+            {sessions.map((session) => {
+              const sessionDate = new Date(session.scheduled_start_at);
+              const now = new Date();
+              const isPast = sessionDate < now;
+              
+              // Check booking status first (cancellation is stored there)
+              const bookingStatus = session.booking?.status?.toUpperCase();
+              const sessionStatus = session.status?.toUpperCase();
+              
+              let displayStatus = session.status;
+              let statusColor = 'bg-gray-100 text-gray-800';
+              
+              // Check if booking was cancelled first
+              if (bookingStatus === 'CANCELLED' || sessionStatus === 'CANCELLED') {
+                displayStatus = 'Cancelled';
+                statusColor = 'bg-red-100 text-red-800';
+              } else if (sessionStatus === 'COMPLETED' || sessionStatus === 'COMPLETED_ASSUMED') {
+                displayStatus = 'Completed';
+                statusColor = 'bg-green-100 text-green-800';
+              } else if (sessionStatus === 'IN_PROGRESS' || sessionStatus === 'JOIN_OPEN') {
+                displayStatus = 'In Progress';
+                statusColor = 'bg-purple-100 text-purple-800';
+              } else if (sessionStatus === 'NO_SHOW_STUDENT') {
+                displayStatus = 'No Show';
+                statusColor = 'bg-orange-100 text-orange-800';
+              } else if (sessionStatus === 'SCHEDULED' || sessionStatus === 'BOOKED' || bookingStatus === 'CONFIRMED') {
+                if (isPast) {
+                  displayStatus = 'Past (Not Completed)';
+                  statusColor = 'bg-gray-100 text-gray-800';
+                } else {
+                  displayStatus = 'Upcoming';
+                  statusColor = 'bg-blue-100 text-blue-800';
+                }
+              } else {
+                displayStatus = session.status || 'Unknown';
+                statusColor = 'bg-gray-100 text-gray-800';
+              }
+              
+              return (
+                <div key={session.id} className="bg-white border-2 border-gray-200 rounded-lg p-4 hover:border-itutor-green transition-colors">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-base sm:text-lg font-semibold text-gray-900 truncate">Session</h3>
+                      <p className="text-sm text-gray-600 mt-1">with {session.student?.full_name || 'Student'}</p>
+                      <p className="text-xs sm:text-sm text-gray-500 mt-2">
+                        {sessionDate.toLocaleString()}
+                      </p>
+                    </div>
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ${statusColor}`}>
+                      {displayStatus}
+                    </span>
                   </div>
-                  <span className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
-                    session.status === 'completed' ? 'bg-green-100 text-green-800' :
-                    session.status === 'confirmed' ? 'bg-blue-100 text-blue-800' :
-                    session.status === 'cancelled' ? 'bg-red-100 text-red-800' :
-                    'bg-gray-100 text-gray-800'
-                  }`}>
-                    {session.status}
-                  </span>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
