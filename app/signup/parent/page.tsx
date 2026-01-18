@@ -146,6 +146,14 @@ export default function ParentSignupPage() {
         return;
       }
 
+      // If identities is empty, Supabase indicates the email already exists
+      const identitiesCount = authData.user?.identities?.length ?? 0;
+      if (identitiesCount === 0) {
+        setError('This email is already in use. Please sign in instead.');
+        setLoading(false);
+        return;
+      }
+
       if (!authData.user) {
         setError('Unable to complete signup. Please try again.');
         setLoading(false);

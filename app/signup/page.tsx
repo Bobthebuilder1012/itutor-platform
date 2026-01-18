@@ -148,8 +148,13 @@ export default function SignupPage() {
 
       if (signUpError) {
         // Provide more helpful error messages
-        if (signUpError.message.includes('already registered')) {
-          setError('This email is already registered. Please log in instead.');
+        const normalizedMessage = signUpError.message.toLowerCase();
+        const isEmailInUse =
+          normalizedMessage.includes('already registered') ||
+          normalizedMessage.includes('user already registered') ||
+          normalizedMessage.includes('email already');
+        if (isEmailInUse) {
+          setError('This email is already in use. Please sign in instead.');
         } else {
           setError(signUpError.message);
         }
@@ -157,9 +162,26 @@ export default function SignupPage() {
         return;
       }
 
+      // If identities is empty, Supabase indicates the email already exists
+      const identitiesCount = authData.user?.identities?.length ?? 0;
+      if (identitiesCount === 0) {
+        setError('This email is already in use. Please sign in instead.');
+        setLoading(false);
+        return;
+      }
+
       if (!authData.user) {
         setError('Unable to complete signup. Please try again.');
         setLoading(false);
+        return;
+      }
+
+      const redirectUrl = searchParams.get('redirect');
+      const redirectParam = redirectUrl ? `&redirect=${encodeURIComponent(redirectUrl)}` : '';
+
+      // If email confirmation is required, skip profile creation for now
+      if (!authData.session) {
+        router.push(`/login?emailSent=true&email=${encodeURIComponent(email)}${redirectParam}`);
         return;
       }
 
@@ -228,17 +250,6 @@ export default function SignupPage() {
           setLoading(false);
           return;
         }
-      }
-
-      // Check for redirect parameter
-      const redirectUrl = searchParams.get('redirect');
-      const redirectParam = redirectUrl ? `&redirect=${encodeURIComponent(redirectUrl)}` : '';
-
-      // Check if email confirmation is required
-      if (!authData.session) {
-        // No session means email confirmation is required - redirect to login with params
-        router.push(`/login?emailSent=true&email=${encodeURIComponent(email)}${redirectParam}`);
-        return;
       }
 
       // Email confirmed or confirmation not required - proceed to next step

@@ -251,8 +251,8 @@ export default function StudentBookingsPage() {
           ))}
         </div>
 
-        {/* Bulk Actions (Confirmed Tab Only) */}
-        {activeTab === 'confirmed' && filteredBookings.length > 0 && (
+        {/* Bulk Actions (Confirmed in All/Confirmed Tabs) */}
+        {(activeTab === 'confirmed' || activeTab === 'all') && filteredBookings.length > 0 && (
           <div className="bg-white border-2 border-gray-200 rounded-xl p-4 mb-6 shadow-lg">
             <div className="flex flex-wrap gap-4 items-center justify-between">
               <div className="flex gap-3">

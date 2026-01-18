@@ -48,6 +48,7 @@ export default function TutorBookingThreadPage() {
   const [counterMessage, setCounterMessage] = useState('');
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const meetingRetryAttempted = useRef(false);
 
   useEffect(() => {
     if (profileLoading) return;
@@ -128,9 +129,28 @@ export default function TutorBookingThreadPage() {
           .select('*')
           .eq('booking_id', bookingId)
           .single();
-        
         if (!sessionError && sessionData) {
           setSession(sessionData as Session);
+          if (!sessionData.join_url && !sessionData.meeting_external_id && !meetingRetryAttempted.current) {
+            meetingRetryAttempted.current = true;
+            try {
+              await fetch('/api/sessions/create-for-booking', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ booking_id: bookingId })
+              });
+              const { data: refreshedSession } = await supabase
+                .from('sessions')
+                .select('*')
+                .eq('booking_id', bookingId)
+                .single();
+              if (refreshedSession) {
+                setSession(refreshedSession as Session);
+              }
+            } catch (retryError) {
+              console.error('Meeting link retry failed:', retryError);
+            }
+          }
         }
       }
 
@@ -286,6 +306,32 @@ export default function TutorBookingThreadPage() {
     }
   }
 
+  async function handleCancelBooking() {
+    if (!confirm('Cancel this confirmed booking? The student will be notified.')) return;
+    const reason = prompt('Reason for cancellation? (optional)');
+
+    setActionLoading(true);
+    try {
+      const response = await fetch('/api/bookings/tutor-cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ booking_id: bookingId, reason: reason || null })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        alert('Failed to cancel booking: ' + errorText);
+      } else {
+        alert('Booking cancelled');
+      }
+      await loadBookingData();
+    } catch (error) {
+      console.error('Error cancelling booking:', error);
+      alert('Failed to cancel booking');
+    } finally {
+      setActionLoading(false);
+    }
+  }
   function handleOpenCounterOffer() {
     const defaults = getDefaultDateTime();
     setCounterDate(defaults.date);
@@ -355,6 +401,7 @@ export default function TutorBookingThreadPage() {
   const displayStartTime = booking.confirmed_start_at || booking.requested_start_at;
   const displayEndTime = booking.confirmed_end_at || booking.requested_end_at;
   const canRespond = booking.status === 'PENDING' || booking.status === 'COUNTER_PROPOSED';
+  const canCancel = booking.status === 'CONFIRMED';
 
   return (
     <DashboardLayout role="tutor" userName={getDisplayName(profile)}>
@@ -428,29 +475,42 @@ export default function TutorBookingThreadPage() {
           )}
 
           {/* Action Buttons */}
-          {canRespond && (
+          {(canRespond || canCancel) && (
             <div className="mt-6 pt-6 border-t border-gray-700 flex flex-wrap gap-3">
-              <button
-                onClick={handleConfirmBooking}
-                disabled={actionLoading}
-                className="flex-1 min-w-[150px] bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-white py-3 px-4 rounded-lg font-semibold transition disabled:opacity-50"
-              >
-                ✓ Confirm Booking
-              </button>
-              <button
-                onClick={handleOpenCounterOffer}
-                disabled={actionLoading}
-                className="flex-1 min-w-[150px] bg-gray-700 hover:bg-gray-600 text-itutor-white py-3 px-4 rounded-lg font-semibold transition disabled:opacity-50"
-              >
-                Propose Different Time
-              </button>
-              <button
-                onClick={handleDeclineBooking}
-                disabled={actionLoading}
-                className="flex-1 min-w-[150px] bg-red-900/30 hover:bg-red-900/50 text-red-400 py-3 px-4 rounded-lg font-semibold transition disabled:opacity-50"
-              >
-                ✗ Decline
-              </button>
+              {canRespond && (
+                <>
+                  <button
+                    onClick={handleConfirmBooking}
+                    disabled={actionLoading}
+                    className="flex-1 min-w-[150px] bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-white py-3 px-4 rounded-lg font-semibold transition disabled:opacity-50"
+                  >
+                    ✓ Confirm Booking
+                  </button>
+                  <button
+                    onClick={handleOpenCounterOffer}
+                    disabled={actionLoading}
+                    className="flex-1 min-w-[150px] bg-gray-700 hover:bg-gray-600 text-itutor-white py-3 px-4 rounded-lg font-semibold transition disabled:opacity-50"
+                  >
+                    Propose Different Time
+                  </button>
+                  <button
+                    onClick={handleDeclineBooking}
+                    disabled={actionLoading}
+                    className="flex-1 min-w-[150px] bg-red-900/30 hover:bg-red-900/50 text-red-400 py-3 px-4 rounded-lg font-semibold transition disabled:opacity-50"
+                  >
+                    ✗ Decline
+                  </button>
+                </>
+              )}
+              {canCancel && (
+                <button
+                  onClick={handleCancelBooking}
+                  disabled={actionLoading}
+                  className="flex-1 min-w-[150px] bg-red-900/30 hover:bg-red-900/50 text-red-400 py-3 px-4 rounded-lg font-semibold transition disabled:opacity-50"
+                >
+                  ✗ Cancel Booking
+                </button>
+              )}
             </div>
           )}
         </div>

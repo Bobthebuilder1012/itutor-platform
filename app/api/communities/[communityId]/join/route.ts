@@ -2,11 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { getCommunityById, joinCommunity, leaveCommunity, getUserMembership } from '@/lib/supabase/community';
-
-// #region agent log
-fetch('http://127.0.0.1:7243/ingest/403090cb-4ee1-4433-9d50-c21c9a1713e4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/communities/[communityId]/join/route.ts:MODULE_LOAD',message:'Module loaded - checking env vars',data:{supabaseUrl:process.env.NEXT_PUBLIC_SUPABASE_URL,hasAnonKey:!!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,C,D'})}).catch(()=>{});
-// #endregion
-
 // Force dynamic rendering - prevent static optimization
 export const dynamic = 'force-dynamic';
 
@@ -15,16 +10,7 @@ export async function POST(
   { params }: { params: { communityId: string } }
 ) {
   try {
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/403090cb-4ee1-4433-9d50-c21c9a1713e4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/communities/[communityId]/join/route.ts:POST_ENTRY',message:'POST handler entered',data:{communityId:params.communityId,envUrl:process.env.NEXT_PUBLIC_SUPABASE_URL},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B,C'})}).catch(()=>{});
-    // #endregion
-    
     const cookieStore = cookies();
-    
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/403090cb-4ee1-4433-9d50-c21c9a1713e4',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/communities/[communityId]/join/route.ts:BEFORE_CLIENT',message:'Before createServerClient',data:{url:process.env.NEXT_PUBLIC_SUPABASE_URL,urlType:typeof process.env.NEXT_PUBLIC_SUPABASE_URL,urlLength:process.env.NEXT_PUBLIC_SUPABASE_URL?.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C,D'})}).catch(()=>{});
-    // #endregion
-    
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,

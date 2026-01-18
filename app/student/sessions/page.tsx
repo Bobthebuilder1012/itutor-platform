@@ -18,31 +18,48 @@ export default function StudentSessionsPage() {
       return;
     }
 
-    if (profile?.role !== 'student') {
+    // Wait for profile to load before checking role
+    if (!profileLoading && profile?.role !== 'student') {
       router.push('/');
       return;
     }
 
-    loadSessions();
+    // Only load sessions if profile is loaded and is student
+    if (!profileLoading && profile?.role === 'student') {
+      loadSessions();
+    }
   }, [profile, profileLoading, router]);
 
   async function loadSessions() {
     try {
-      // Load sessions for this student
+      // Load sessions for this student with tutor info
       const { data, error } = await supabase
         .from('sessions')
         .select(`
           *,
-          tutor:tutor_id(full_name, avatar_url),
-          subject:subject_id(name, label)
+          tutor:profiles!fk_sessions_tutor(full_name, avatar_url),
+          booking:bookings!fk_sessions_booking(*)
         `)
         .eq('student_id', profile?.id)
-        .order('scheduled_at', { ascending: true });
+        .order('scheduled_start_at', { ascending: true });
 
-      if (error) throw error;
-      setSessions(data || []);
+      if (error) {
+        console.error('Error loading sessions:', error);
+        // Fallback: load sessions without joins
+        const { data: simpleSessions, error: simpleError } = await supabase
+          .from('sessions')
+          .select('*')
+          .eq('student_id', profile?.id)
+          .order('scheduled_start_at', { ascending: true });
+        
+        if (simpleError) throw simpleError;
+        setSessions(simpleSessions || []);
+      } else {
+        setSessions(data || []);
+      }
     } catch (error) {
       console.error('Error loading sessions:', error);
+      setSessions([]);
     } finally {
       setLoading(false);
     }
@@ -86,10 +103,10 @@ export default function StudentSessionsPage() {
               <div key={session.id} className="bg-white border-2 border-gray-200 rounded-lg p-4 hover:border-itutor-green transition-colors">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-base sm:text-lg font-semibold text-gray-900 truncate">{session.subject?.label || 'Session'}</h3>
+                    <h3 className="text-base sm:text-lg font-semibold text-gray-900 truncate">Session</h3>
                     <p className="text-sm text-gray-600 mt-1">with {session.tutor?.full_name || 'Tutor'}</p>
                     <p className="text-xs sm:text-sm text-gray-500 mt-2">
-                      {new Date(session.scheduled_at).toLocaleString()}
+                      {new Date(session.scheduled_start_at).toLocaleString()}
                     </p>
                   </div>
                   <span className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ${

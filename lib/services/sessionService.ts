@@ -47,7 +47,28 @@ export async function createSessionForBooking(bookingId: string): Promise<Sessio
 
   if (existingSession) {
     console.log('ℹ️ Session already exists:', existingSession.id);
-    return existingSession as Session;
+    const existing = existingSession as Session;
+    if (!existing.join_url || !existing.meeting_external_id) {
+      console.log('🔁 Existing session missing meeting link. Retrying meeting creation...');
+      try {
+        const meetingInfo = await createMeeting(existing);
+        const { data: updatedSession } = await supabase
+          .from('sessions')
+          .update({
+            meeting_external_id: meetingInfo.meeting_external_id,
+            join_url: meetingInfo.join_url,
+            meeting_created_at: meetingInfo.meeting_created_at
+          })
+          .eq('id', existing.id)
+          .select()
+          .single();
+        return (updatedSession as Session) || existing;
+      } catch (err) {
+        console.error('❌ Retry meeting creation failed:', err);
+        return existing;
+      }
+    }
+    return existing;
   }
 
   // 3. Ensure tutor has video provider connected

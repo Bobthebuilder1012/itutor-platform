@@ -121,7 +121,6 @@ export default function VideoSetupPage() {
 
   async function handleConnect(provider: VideoProvider) {
     if (!profile) return;
-    
     // Check if tutor has future sessions
     if (connection && futureSessions > 0) {
       alert(
@@ -148,7 +147,6 @@ export default function VideoSetupPage() {
       const connectUrl = provider === 'google_meet' 
         ? '/api/auth/google/connect'
         : '/api/auth/zoom/connect';
-      
       window.location.href = connectUrl;
     } catch (error) {
       console.error('Error initiating OAuth:', error);
