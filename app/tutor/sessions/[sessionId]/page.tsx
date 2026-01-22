@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import Link from 'next/link';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
 import SessionJoinButton from '@/components/sessions/SessionJoinButton';
+import CancelSessionModal from '@/components/tutor/CancelSessionModal';
 import { formatDateTime, formatTimeRange } from '@/lib/utils/calendar';
 import type { Session } from '@/lib/types/sessions';
 
@@ -20,6 +22,7 @@ export default function TutorSessionDetailPage() {
   const [booking, setBooking] = useState<any>(null);
   const [subject, setSubject] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [showCancelModal, setShowCancelModal] = useState(false);
 
   useEffect(() => {
     if (profileLoading) return;
@@ -97,23 +100,34 @@ export default function TutorSessionDetailPage() {
 
   const sessionDate = new Date(session.scheduled_start_at);
   const sessionEndDate = new Date(new Date(session.scheduled_start_at).getTime() + session.duration_minutes * 60000);
-  const now = new Date();
-  const canJoin = sessionDate <= new Date(now.getTime() + 5 * 60000); // Can join 5 min before
+  const canCancel = session.status === 'SCHEDULED' || session.status === 'JOIN_OPEN';
 
   return (
     <DashboardLayout role="tutor" userName={profile?.full_name || 'Tutor'}>
       <div className="max-w-4xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => router.push('/tutor/sessions')}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <h1 className="text-3xl font-bold text-gray-900">Session Details</h1>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => router.push('/tutor/sessions')}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <h1 className="text-3xl font-bold text-gray-900">Session Details</h1>
+          </div>
+          
+          {/* Cancel Button */}
+          {canCancel && (
+            <button
+              onClick={() => setShowCancelModal(true)}
+              className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 font-semibold rounded-lg transition-colors"
+            >
+              Cancel Session
+            </button>
+          )}
         </div>
 
         {/* Session Status Card */}
@@ -166,7 +180,7 @@ export default function TutorSessionDetailPage() {
           </div>
 
           {/* Join Button */}
-          {session.join_url && canJoin && (
+          {session.join_url && (
             <div className="border-t border-gray-200 pt-4">
               <SessionJoinButton session={session} userRole="tutor" />
             </div>
@@ -186,7 +200,10 @@ export default function TutorSessionDetailPage() {
         {/* Student Info */}
         <div className="bg-white border-2 border-gray-200 rounded-xl p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Student Information</h3>
-          <div className="flex items-center gap-4">
+          <Link 
+            href={`/tutor/student-profile/${student?.id}`}
+            className="flex items-center gap-4 hover:bg-gray-50 -m-2 p-2 rounded-lg transition-colors"
+          >
             {student?.avatar_url ? (
               <img 
                 src={student.avatar_url} 
@@ -198,11 +215,16 @@ export default function TutorSessionDetailPage() {
                 {student?.full_name?.charAt(0) || 'S'}
               </div>
             )}
-            <div>
-              <p className="font-semibold text-gray-900">{student?.full_name || 'Student'}</p>
+            <div className="flex-1">
+              <p className="font-semibold text-gray-900 hover:text-itutor-green transition-colors">
+                {student?.full_name || 'Student'}
+              </p>
               <p className="text-sm text-gray-600">{student?.email}</p>
             </div>
-          </div>
+            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </Link>
         </div>
 
         {/* Session Details */}
@@ -234,9 +256,6 @@ export default function TutorSessionDetailPage() {
         {session.join_url && (
           <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-6">
             <h3 className="text-lg font-semibold text-blue-900 mb-2">Meeting Link</h3>
-            <p className="text-sm text-blue-700 mb-3">
-              {canJoin ? 'You can join now!' : 'Available 5 minutes before session start'}
-            </p>
             <a
               href={session.join_url}
               target="_blank"
@@ -248,6 +267,16 @@ export default function TutorSessionDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Cancel Session Modal */}
+      <CancelSessionModal
+        session={session}
+        isOpen={showCancelModal}
+        onClose={() => setShowCancelModal(false)}
+        onSuccess={() => {
+          router.push('/tutor/sessions');
+        }}
+      />
     </DashboardLayout>
   );
 }

@@ -1,8 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import { Session } from '@/lib/types/sessions';
-import { isJoinWindowOpen } from '@/lib/types/sessions';
 
 type SessionJoinButtonProps = {
   session: Session;
@@ -10,75 +8,6 @@ type SessionJoinButtonProps = {
 };
 
 export default function SessionJoinButton({ session, userRole }: SessionJoinButtonProps) {
-  const [timeUntilJoin, setTimeUntilJoin] = useState<number>(0);
-  const [canJoin, setCanJoin] = useState(false);
-
-  useEffect(() => {
-    function updateJoinStatus() {
-      const scheduledStart = new Date(session.scheduled_start_at);
-      const joinOpenTime = new Date(scheduledStart.getTime() - 5 * 60000);
-      const now = new Date();
-
-      setCanJoin(isJoinWindowOpen(session.scheduled_start_at));
-      
-      if (now < joinOpenTime) {
-        setTimeUntilJoin(Math.floor((joinOpenTime.getTime() - now.getTime()) / 1000));
-      } else {
-        setTimeUntilJoin(0);
-      }
-    }
-
-    updateJoinStatus();
-    const interval = setInterval(updateJoinStatus, 1000);
-    
-    return () => clearInterval(interval);
-  }, [session.scheduled_start_at]);
-
-  function formatTime(seconds: number): string {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-    
-    if (hours > 0) {
-      return `${hours}h ${minutes}m ${secs}s`;
-    } else if (minutes > 0) {
-      return `${minutes}m ${secs}s`;
-    } else {
-      return `${secs}s`;
-    }
-  }
-
-  if (!canJoin) {
-    return (
-      <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-6">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="p-2 bg-blue-500 rounded-lg">
-            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <div>
-            <h3 className="font-bold text-gray-900">Session Starts Soon</h3>
-            <p className="text-sm text-gray-600">Join button opens in:</p>
-          </div>
-        </div>
-        
-        <div className="text-center py-4 bg-white rounded-lg border border-blue-200">
-          <p className="text-3xl font-bold text-blue-600">{formatTime(timeUntilJoin)}</p>
-          <p className="text-xs text-gray-600 mt-1">Until join available (5 min before start)</p>
-        </div>
-
-        <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <p className="text-sm text-gray-800">
-            <span className="font-semibold">⚠️ Important:</span> If you don't join within{' '}
-            <span className="font-bold text-red-600">{session.no_show_wait_minutes} minutes</span>{' '}
-            after the session starts, the {userRole === 'student' ? 'tutor may end the session' : 'session may be marked as no-show'}.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   if (!session.join_url) {
     return (
       <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-6">
@@ -123,8 +52,6 @@ export default function SessionJoinButton({ session, userRole }: SessionJoinButt
     </div>
   );
 }
-
-
 
 
 
