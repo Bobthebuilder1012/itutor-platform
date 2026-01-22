@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
@@ -122,7 +123,11 @@ export default function TutorSessionsPage() {
               }
               
               return (
-                <div key={session.id} className="bg-white border-2 border-gray-200 rounded-lg p-4 hover:border-itutor-green transition-colors">
+                <Link 
+                  key={session.id} 
+                  href={`/tutor/sessions/${session.id}`}
+                  className="block bg-white border-2 border-gray-200 rounded-lg p-4 hover:border-itutor-green hover:shadow-md transition-all cursor-pointer"
+                >
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <h3 className="text-base sm:text-lg font-semibold text-gray-900 truncate">Session</h3>
@@ -135,7 +140,13 @@ export default function TutorSessionsPage() {
                       {displayStatus}
                     </span>
                   </div>
-                </div>
+                  <div className="mt-3 flex items-center text-sm text-itutor-green font-medium">
+                    View Details
+                    <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </Link>
               );
             })}
           </div>
