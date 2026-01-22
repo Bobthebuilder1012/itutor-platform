@@ -216,9 +216,9 @@ export default function TutorSessionDetailPage() {
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-600">Price</span>
+              <span className="text-gray-600">Charge Amount</span>
               <span className="font-medium text-gray-900">
-                ${session.agreed_price_ttd} TTD
+                ${session.charge_amount_ttd} TTD
               </span>
             </div>
             {booking?.message && (
