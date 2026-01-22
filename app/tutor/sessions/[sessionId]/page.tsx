@@ -201,7 +201,7 @@ export default function TutorSessionDetailPage() {
         <div className="bg-white border-2 border-gray-200 rounded-xl p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Student Information</h3>
           <Link 
-            href={`/tutor/student-profile/${student?.id}`}
+            href={`/tutor/students/${student?.id}`}
             className="flex items-center gap-4 hover:bg-gray-50 -m-2 p-2 rounded-lg transition-colors"
           >
             {student?.avatar_url ? (
