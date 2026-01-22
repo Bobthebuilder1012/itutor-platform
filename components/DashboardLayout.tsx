@@ -59,6 +59,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         return [
           { href: '/tutor/find-students', label: 'Find Students' },
           { href: '/tutor/bookings', label: 'Booking Requests' },
+          { href: '/tutor/curriculum', label: 'Curriculum' },
           { href: '/communities', label: 'Communities' },
           { href: '/tutor/sessions', label: 'Sessions' },
           { href: '/tutor/settings', label: 'Settings' },
