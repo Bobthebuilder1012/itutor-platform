@@ -25,6 +25,9 @@ export default function TutorSessionsPage() {
 
   async function loadSessions() {
     try {
+      // Only show upcoming, non-cancelled sessions
+      const now = new Date().toISOString();
+      
       const { data, error } = await supabase
         .from('sessions')
         .select(`
@@ -33,26 +36,21 @@ export default function TutorSessionsPage() {
           booking:bookings!fk_sessions_booking(*)
         `)
         .eq('tutor_id', profile?.id)
+        .gte('scheduled_start_at', now) // Only upcoming sessions
+        .in('status', ['SCHEDULED', 'JOIN_OPEN']) // Only active statuses
         .order('scheduled_start_at', { ascending: true });
 
       if (error) {
         console.error('Session fetch error:', error);
-        const { data: fallbackData } = await supabase
-          .from('sessions')
-          .select('*')
-          .eq('tutor_id', profile?.id)
-          .order('scheduled_start_at', { ascending: true });
-        console.log('Fallback sessions:', fallbackData);
-        setSessions(fallbackData || []);
+        setSessions([]);
       } else {
         console.log('Sessions loaded:', data);
-        if (data && data.length > 0) {
-          console.log('First session sample:', data[0]);
-          // Log all unique statuses
-          const statuses = [...new Set(data.map((s: any) => s.status))];
-          console.log('All unique statuses in data:', statuses);
-        }
-        setSessions(data || []);
+        // Filter out any sessions with cancelled bookings
+        const activeSessions = (data || []).filter(session => 
+          session.booking?.status !== 'CANCELLED' && 
+          session.booking?.status !== 'DECLINED'
+        );
+        setSessions(activeSessions);
       }
     } catch (err) {
       console.error('Session load error:', err);
