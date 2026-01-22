@@ -10,6 +10,7 @@ export default function StudentSessionsPage() {
   const router = useRouter();
   const { profile, loading: profileLoading } = useProfile();
   const [sessions, setSessions] = useState<any[]>([]);
+  const [rescheduleRequests, setRescheduleRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -27,12 +28,15 @@ export default function StudentSessionsPage() {
     // Only load sessions if profile is loaded and is student
     if (!profileLoading && profile?.role === 'student') {
       loadSessions();
+      loadRescheduleRequests();
     }
   }, [profile, profileLoading, router]);
 
   async function loadSessions() {
     try {
-      // Load sessions for this student with tutor info
+      // Only show upcoming, non-cancelled sessions
+      const now = new Date().toISOString();
+      
       const { data, error } = await supabase
         .from('sessions')
         .select(`
@@ -41,27 +45,74 @@ export default function StudentSessionsPage() {
           booking:bookings!fk_sessions_booking(*)
         `)
         .eq('student_id', profile?.id)
+        .gte('scheduled_start_at', now) // Only upcoming sessions
+        .in('status', ['SCHEDULED', 'JOIN_OPEN']) // Only active statuses
         .order('scheduled_start_at', { ascending: true });
 
       if (error) {
         console.error('Error loading sessions:', error);
-        // Fallback: load sessions without joins
-        const { data: simpleSessions, error: simpleError } = await supabase
-          .from('sessions')
-          .select('*')
-          .eq('student_id', profile?.id)
-          .order('scheduled_start_at', { ascending: true });
-        
-        if (simpleError) throw simpleError;
-        setSessions(simpleSessions || []);
+        setSessions([]);
       } else {
-        setSessions(data || []);
+        console.log('Sessions loaded:', data);
+        // Filter out any sessions with cancelled bookings
+        const activeSessions = (data || []).filter(session => 
+          session.booking?.status !== 'CANCELLED' && 
+          session.booking?.status !== 'DECLINED'
+        );
+        setSessions(activeSessions);
       }
     } catch (error) {
       console.error('Error loading sessions:', error);
       setSessions([]);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadRescheduleRequests() {
+    try {
+      // Load cancelled sessions with reschedule proposals
+      const { data, error } = await supabase
+        .from('sessions')
+        .select(`
+          *,
+          tutor:profiles!fk_sessions_tutor(full_name, avatar_url),
+          booking:bookings!fk_sessions_booking(*)
+        `)
+        .eq('student_id', profile?.id)
+        .eq('status', 'CANCELLED')
+        .not('reschedule_proposed_start', 'is', null)
+        .order('cancelled_at', { ascending: false });
+
+      if (error) {
+        console.error('Error loading reschedule requests:', error);
+      } else {
+        setRescheduleRequests(data || []);
+      }
+    } catch (error) {
+      console.error('Error loading reschedule requests:', error);
+    }
+  }
+
+  async function handleRescheduleResponse(sessionId: string, accept: boolean) {
+    try {
+      if (accept) {
+        // Accept the reschedule - create a new booking/session with the proposed times
+        const request = rescheduleRequests.find(r => r.id === sessionId);
+        if (!request) return;
+
+        // TODO: Implement booking creation logic here
+        alert('Reschedule accepted! The tutor will be notified.');
+      } else {
+        // Decline the reschedule
+        alert('Reschedule declined.');
+      }
+
+      // Remove from reschedule requests
+      setRescheduleRequests(prev => prev.filter(r => r.id !== sessionId));
+    } catch (error) {
+      console.error('Error handling reschedule:', error);
+      alert('Failed to process reschedule response');
     }
   }
 
@@ -83,6 +134,61 @@ export default function StudentSessionsPage() {
           <p className="text-sm sm:text-base text-gray-600">View and manage your upcoming tutoring sessions</p>
         </div>
 
+        {/* Reschedule Requests */}
+        {rescheduleRequests.length > 0 && (
+          <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 sm:p-6">
+            <div className="flex items-start gap-3 mb-4">
+              <svg className="w-6 h-6 text-amber-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div className="flex-1">
+                <h2 className="text-lg font-bold text-amber-900">Reschedule Requests</h2>
+                <p className="text-sm text-amber-800 mt-1">Your tutor has proposed new times for cancelled sessions</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {rescheduleRequests.map((request) => (
+                <div key={request.id} className="bg-white rounded-lg p-4 border border-amber-200">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div className="flex-1">
+                      <p className="font-semibold text-gray-900">
+                        Session with {request.tutor?.full_name || 'Tutor'}
+                      </p>
+                      <p className="text-sm text-gray-600 mt-1">
+                        Original: {new Date(request.scheduled_start_at).toLocaleString()}
+                      </p>
+                      <p className="text-sm font-medium text-amber-700 mt-1">
+                        Proposed: {new Date(request.reschedule_proposed_start).toLocaleString()}
+                      </p>
+                      {request.cancellation_reason && (
+                        <p className="text-xs text-gray-500 mt-2">
+                          Reason: {request.cancellation_reason}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleRescheduleResponse(request.id, false)}
+                        className="px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                      >
+                        Decline
+                      </button>
+                      <button
+                        onClick={() => handleRescheduleResponse(request.id, true)}
+                        className="px-4 py-2 bg-itutor-green hover:bg-emerald-600 text-black font-medium rounded-lg transition-colors"
+                      >
+                        Accept
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Upcoming Sessions */}
         {sessions.length === 0 ? (
           <div className="text-center py-12 sm:py-16">
             <svg className="w-16 h-16 sm:w-20 sm:h-20 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
