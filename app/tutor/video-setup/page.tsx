@@ -158,12 +158,32 @@ export default function VideoSetupPage() {
   async function handleDisconnect() {
     if (!connection) return;
 
-    if (!confirm('Are you sure? You cannot accept new bookings without a video provider. You can switch to a different provider instead.')) {
+    if (!confirm('Are you sure you want to disconnect your video provider? You will not be able to accept new bookings until you reconnect.')) {
       return;
     }
 
-    // For MVP: Prevent disconnection
-    alert('You must have a video provider connected. Please switch to a different provider instead of disconnecting.');
+    setLoading(true);
+    try {
+      // Delete the connection from the database
+      const { error } = await supabase
+        .from('tutor_video_provider_connections')
+        .delete()
+        .eq('tutor_id', profile?.id);
+
+      if (error) {
+        console.error('Error disconnecting provider:', error);
+        alert('Failed to disconnect. Please try again.');
+        setLoading(false);
+        return;
+      }
+
+      // Refresh the page to update the UI
+      window.location.reload();
+    } catch (error) {
+      console.error('Error disconnecting provider:', error);
+      alert('An error occurred. Please try again.');
+      setLoading(false);
+    }
   }
 
   if (profileLoading || loading || !profile) {
@@ -326,6 +346,13 @@ export default function VideoSetupPage() {
                 >
                   {futureSessions > 0 ? '🔒 Switch to Zoom (Disabled)' : 'Switch to Zoom'}
                 </button>
+                <button
+                  onClick={handleDisconnect}
+                  disabled={loading || switching}
+                  className="w-full px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loading ? 'Disconnecting...' : 'Disconnect'}
+                </button>
               </div>
             ) : (
               <button
@@ -377,6 +404,13 @@ export default function VideoSetupPage() {
                   className="w-full px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {futureSessions > 0 ? '🔒 Switch to Google Meet (Disabled)' : 'Switch to Google Meet'}
+                </button>
+                <button
+                  onClick={handleDisconnect}
+                  disabled={loading || switching}
+                  className="w-full px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loading ? 'Disconnecting...' : 'Disconnect'}
                 </button>
               </div>
             ) : (
