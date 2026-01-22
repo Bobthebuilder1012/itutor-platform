@@ -77,6 +77,21 @@ export default function FindTutorsPage() {
       console.log('✅ Fetched tutor profiles:', tutorProfiles?.length || 0);
       console.log('Tutor profiles data:', tutorProfiles);
 
+      // Filter out tutors without video provider connections
+      const { data: videoConnections, error: connectionsError } = await supabase
+        .from('tutor_video_provider_connections')
+        .select('tutor_id')
+        .eq('connection_status', 'connected');
+
+      if (connectionsError) {
+        console.error('❌ Error fetching video connections:', connectionsError);
+      }
+
+      const tutorsWithVideo = new Set(videoConnections?.map(c => c.tutor_id) || []);
+      const activeTutorProfiles = tutorProfiles?.filter(t => tutorsWithVideo.has(t.id)) || [];
+      
+      console.log(`✅ Filtered to ${activeTutorProfiles.length} tutors with video providers`);
+
       // Fetch tutor subjects separately
       const { data: tutorSubjects, error: subjectsError } = await supabase
         .from('tutor_subjects')
@@ -133,7 +148,7 @@ export default function FindTutorsPage() {
       if (commentsError) throw commentsError;
 
       // Process data - manually join tutor_subjects with subjects
-      const tutorsWithData: Tutor[] = tutorProfiles.map(tutor => {
+      const tutorsWithData: Tutor[] = activeTutorProfiles.map(tutor => {
         const subjects = tutorSubjects
           .filter(ts => ts.tutor_id === tutor.id)
           .map(ts => {
@@ -181,7 +196,7 @@ export default function FindTutorsPage() {
       const tutorsWithSubjects = tutorsWithData.filter(t => t.subjects.length > 0);
 
       console.log('=== TUTOR LOADING SUMMARY ===');
-      console.log('Total tutor profiles:', tutorProfiles?.length || 0);
+      console.log('Total tutor profiles:', activeTutorProfiles?.length || 0);
       console.log('Tutors with subjects:', tutorsWithSubjects.length);
       console.log('Tutors:', tutorsWithSubjects.map(t => ({
         name: t.display_name || t.username || t.full_name,

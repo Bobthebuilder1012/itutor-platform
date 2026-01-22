@@ -158,7 +158,28 @@ export default function VideoSetupPage() {
   async function handleDisconnect() {
     if (!connection) return;
 
-    if (!confirm('Are you sure you want to disconnect your video provider? You will not be able to accept new bookings until you reconnect.')) {
+    // Check for upcoming sessions
+    if (futureSessions > 0) {
+      alert(
+        `⚠️ Cannot Disconnect Video Provider\n\n` +
+        `You have ${futureSessions} upcoming session${futureSessions > 1 ? 's' : ''} scheduled.\n\n` +
+        `To disconnect your video provider, you must first:\n\n` +
+        `• Wait for all sessions to complete, or\n` +
+        `• Cancel your upcoming sessions\n\n` +
+        `This prevents issues with meeting links for your students.`
+      );
+      return;
+    }
+
+    if (!confirm(
+      '⚠️ WARNING: Disconnect Video Provider?\n\n' +
+      'If you disconnect:\n\n' +
+      '• You will NOT be visible to students searching for tutors\n' +
+      '• You CANNOT accept any booking requests\n' +
+      '• You CANNOT send lesson offers\n\n' +
+      'You must reconnect a video provider to resume tutoring.\n\n' +
+      'Are you absolutely sure you want to disconnect?'
+    )) {
       return;
     }
 
@@ -215,12 +236,20 @@ export default function VideoSetupPage() {
                 </svg>
               </div>
               <div className="flex-1">
-                <h3 className="text-lg font-bold text-red-900 mb-2">⚠️ Not Video-Ready</h3>
-                <p className="text-red-800 mb-3">
-                  You must connect a video provider before accepting new bookings. Students need a way to join your sessions!
+                <h3 className="text-lg font-bold text-red-900 mb-2">⚠️ Account Not Active</h3>
+                <p className="text-red-800 mb-3 font-semibold">
+                  Your tutor profile is currently hidden from students because you don't have a video provider connected.
                 </p>
-                <p className="text-sm text-red-700">
-                  Choose Google Meet or Zoom below to get started.
+                <div className="bg-red-100 border border-red-200 rounded-lg p-3 mb-3">
+                  <p className="text-sm font-semibold text-red-900 mb-1">Currently you CANNOT:</p>
+                  <ul className="text-sm text-red-800 space-y-1">
+                    <li>• Appear in student search results</li>
+                    <li>• Accept booking requests</li>
+                    <li>• Send lesson offers to students</li>
+                  </ul>
+                </div>
+                <p className="text-sm text-red-700 font-semibold">
+                  👉 Connect Google Meet or Zoom below to activate your tutor account.
                 </p>
               </div>
             </div>
@@ -348,10 +377,11 @@ export default function VideoSetupPage() {
                 </button>
                 <button
                   onClick={handleDisconnect}
-                  disabled={loading || switching}
+                  disabled={loading || switching || futureSessions > 0}
+                  title={futureSessions > 0 ? `Cannot disconnect while you have ${futureSessions} upcoming session${futureSessions > 1 ? 's' : ''}` : ''}
                   className="w-full px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {loading ? 'Disconnecting...' : 'Disconnect'}
+                  {loading ? 'Disconnecting...' : futureSessions > 0 ? '🔒 Disconnect (Disabled)' : 'Disconnect'}
                 </button>
               </div>
             ) : (
@@ -407,10 +437,11 @@ export default function VideoSetupPage() {
                 </button>
                 <button
                   onClick={handleDisconnect}
-                  disabled={loading || switching}
+                  disabled={loading || switching || futureSessions > 0}
+                  title={futureSessions > 0 ? `Cannot disconnect while you have ${futureSessions} upcoming session${futureSessions > 1 ? 's' : ''}` : ''}
                   className="w-full px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {loading ? 'Disconnecting...' : 'Disconnect'}
+                  {loading ? 'Disconnecting...' : futureSessions > 0 ? '🔒 Disconnect (Disabled)' : 'Disconnect'}
                 </button>
               </div>
             ) : (
@@ -448,9 +479,39 @@ export default function VideoSetupPage() {
             </li>
             <li className="flex items-start gap-2">
               <span className="text-blue-600 font-bold mt-0.5">4.</span>
-              <span>You can switch providers anytime, but you cannot remove your connection entirely</span>
+              <span>You can switch or disconnect providers, but only when you have no upcoming sessions</span>
             </li>
           </ul>
+        </div>
+
+        {/* Important Requirements Section */}
+        <div className="mt-4 bg-amber-50 border-2 border-amber-200 rounded-2xl p-6">
+          <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
+            <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            ⚠️ Important: Video Provider is Required
+          </h3>
+          <div className="space-y-2 text-sm text-gray-800">
+            <p className="font-semibold">Without a connected video provider:</p>
+            <ul className="space-y-1.5 ml-4">
+              <li className="flex items-start gap-2">
+                <span className="text-amber-600 font-bold mt-0.5">❌</span>
+                <span><strong>You will NOT appear</strong> in student search results</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-amber-600 font-bold mt-0.5">❌</span>
+                <span><strong>You CANNOT accept</strong> any booking requests</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-amber-600 font-bold mt-0.5">❌</span>
+                <span><strong>You CANNOT send</strong> lesson offers to students</span>
+              </li>
+            </ul>
+            <p className="mt-3 font-semibold text-amber-800">
+              A video provider connection is required to ensure all sessions have working meeting links for your students.
+            </p>
+          </div>
         </div>
 
         {/* OAuth Info */}
