@@ -168,7 +168,7 @@ export default function TutorSessionDetailPage() {
           {/* Join Button */}
           {session.join_url && canJoin && (
             <div className="border-t border-gray-200 pt-4">
-              <SessionJoinButton session={session} role="tutor" />
+              <SessionJoinButton session={session} userRole="tutor" />
             </div>
           )}
 
