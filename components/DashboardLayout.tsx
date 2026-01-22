@@ -212,16 +212,18 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
                 </div>
               )}
 
-              {/* Username - Hidden on very small screens */}
-              <span className="hidden md:block text-sm text-gray-300 truncate max-w-[120px]">{userName}</span>
-              
-              {/* Logout Button */}
-              <button
-                onClick={handleLogout}
-                className="bg-gradient-to-r from-gray-800 to-gray-700 hover:from-gray-700 hover:to-gray-600 text-itutor-white px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all duration-200 border border-gray-600 hover:border-itutor-green"
-              >
-                Logout
-              </button>
+              {/* Username and Logout - Pushed to the right */}
+              <div className="flex items-center gap-2 sm:gap-3 ml-4 sm:ml-6 lg:ml-8">
+                <span className="hidden md:block text-sm text-gray-300 truncate max-w-[120px]">{userName}</span>
+                
+                {/* Logout Button */}
+                <button
+                  onClick={handleLogout}
+                  className="bg-gradient-to-r from-gray-800 to-gray-700 hover:from-gray-700 hover:to-gray-600 text-itutor-white px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all duration-200 border border-gray-600 hover:border-itutor-green"
+                >
+                  Logout
+                </button>
+              </div>
             </div>
           </div>
         </div>
