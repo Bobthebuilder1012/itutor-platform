@@ -6,7 +6,6 @@ import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
 import SessionJoinButton from '@/components/sessions/SessionJoinButton';
-import { getDisplayName } from '@/lib/utils/displayName';
 import { formatDateTime, formatTimeRange } from '@/lib/utils/calendar';
 import type { Session } from '@/lib/types/sessions';
 
@@ -78,7 +77,7 @@ export default function TutorSessionDetailPage() {
 
   if (loading || profileLoading) {
     return (
-      <DashboardLayout role="tutor" userName={getDisplayName(profile)}>
+      <DashboardLayout role="tutor" userName={profile?.full_name || 'Tutor'}>
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-itutor-green"></div>
         </div>
@@ -88,7 +87,7 @@ export default function TutorSessionDetailPage() {
 
   if (!session) {
     return (
-      <DashboardLayout role="tutor" userName={getDisplayName(profile)}>
+      <DashboardLayout role="tutor" userName={profile?.full_name || 'Tutor'}>
         <div className="text-center py-12">
           <p className="text-gray-600">Session not found</p>
         </div>
@@ -102,7 +101,7 @@ export default function TutorSessionDetailPage() {
   const canJoin = sessionDate <= new Date(now.getTime() + 5 * 60000); // Can join 5 min before
 
   return (
-    <DashboardLayout role="tutor" userName={getDisplayName(profile)}>
+    <DashboardLayout role="tutor" userName={profile?.full_name || 'Tutor'}>
       <div className="max-w-4xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center gap-4">
