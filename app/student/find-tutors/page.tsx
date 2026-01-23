@@ -44,6 +44,7 @@ export default function FindTutorsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
   const [selectedRating, setSelectedRating] = useState<string>('');
+  const [selectedPrice, setSelectedPrice] = useState<string>('');
 
   useEffect(() => {
     if (loading) return;
@@ -244,6 +245,21 @@ export default function FindTutorsPage() {
       );
     }
 
+    // Filter by price
+    if (selectedPrice) {
+      if (selectedPrice === 'free') {
+        // Only show tutors with at least one free subject
+        filtered = filtered.filter(tutor =>
+          tutor.subjects.some(s => s.price_per_hour_ttd === 0)
+        );
+      } else {
+        const maxPrice = parseFloat(selectedPrice);
+        filtered = filtered.filter(tutor =>
+          tutor.subjects.some(s => s.price_per_hour_ttd <= maxPrice)
+        );
+      }
+    }
+
     // Sort: Prioritize tutors who teach student's subjects, then by rating
     if (profile?.subjects_of_study && profile.subjects_of_study.length > 0) {
       filtered.sort((a, b) => {
@@ -268,7 +284,7 @@ export default function FindTutorsPage() {
     }
 
     return filtered;
-  }, [tutors, searchQuery, selectedSubjects, selectedRating, profile]);
+  }, [tutors, searchQuery, selectedSubjects, selectedRating, selectedPrice, profile]);
 
   if (loading || !profile) {
     return (
@@ -288,44 +304,63 @@ export default function FindTutorsPage() {
         </div>
 
         {/* Search and Filters */}
-        <div className="bg-gradient-to-br from-gray-800 to-gray-900 border border-gray-700 rounded-2xl p-6 mb-6">
+        <div className="bg-gradient-to-br from-gray-800 to-gray-900 border border-gray-700 rounded-xl p-4 mb-4">
           {/* Search Bar */}
-          <div className="mb-4">
+          <div className="mb-3">
             <div className="relative">
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search tutors by name..."
-                className="w-full px-4 py-3 pl-11 bg-white border-2 border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-500"
+                className="w-full px-3 py-2 pl-10 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition text-sm"
               />
-              <svg className="absolute left-3 top-3.5 h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </div>
           </div>
 
           {/* Filters */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div>
-              <label className="block text-sm font-medium text-white mb-2">
-                Filter by Subjects
+              <label className="block text-xs font-medium text-gray-300 mb-1">
+                Subjects
               </label>
               <SubjectMultiSelect
                 selectedSubjects={selectedSubjects}
                 onChange={setSelectedSubjects}
-                placeholder="Select subjects to filter..."
+                placeholder="Select subjects..."
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-white mb-2">
-                Minimum Rating
+              <label className="block text-xs font-medium text-gray-300 mb-1">
+                Price Range
+              </label>
+              <select
+                value={selectedPrice}
+                onChange={(e) => setSelectedPrice(e.target.value)}
+                className="w-full px-3 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition text-sm"
+              >
+                <option value="">Any Price</option>
+                <option value="free">Free Sessions</option>
+                <option value="50">Up to $50</option>
+                <option value="100">Up to $100</option>
+                <option value="150">Up to $150</option>
+                <option value="200">Up to $200</option>
+                <option value="300">Up to $300</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-300 mb-1">
+                Rating
               </label>
               <select
                 value={selectedRating}
                 onChange={(e) => setSelectedRating(e.target.value)}
-                className="w-full px-4 py-2.5 bg-white border-2 border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition"
+                className="w-full px-3 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition text-sm"
               >
                 <option value="">Any Rating</option>
                 <option value="4.5">4.5+ Stars</option>
@@ -334,25 +369,28 @@ export default function FindTutorsPage() {
                 <option value="3.0">3.0+ Stars</option>
               </select>
             </div>
-          </div>
 
-          {/* Clear Filters */}
-          {(searchQuery || selectedSubjects.length > 0 || selectedRating) && (
-            <button
-              onClick={() => {
-                setSearchQuery('');
-                setSelectedSubjects([]);
-                setSelectedRating('');
-              }}
-              className="mt-4 text-sm text-itutor-green hover:text-emerald-400 font-medium transition-colors"
-            >
-              Clear all filters
-            </button>
-          )}
+            {/* Clear Filters Button (aligned in grid) */}
+            <div className="flex items-end">
+              {(searchQuery || selectedSubjects.length > 0 || selectedRating || selectedPrice) && (
+                <button
+                  onClick={() => {
+                    setSearchQuery('');
+                    setSelectedSubjects([]);
+                    setSelectedRating('');
+                    setSelectedPrice('');
+                  }}
+                  className="w-full px-3 py-2 text-sm text-itutor-green hover:text-emerald-400 font-medium transition-colors border border-itutor-green/30 rounded-lg hover:border-itutor-green/60"
+                >
+                  Clear Filters
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Results Count */}
-        <div className="mb-4">
+        <div className="mb-3">
           <p className="text-gray-600 text-sm">
             Showing {filteredTutors.length} {filteredTutors.length === 1 ? 'tutor' : 'tutors'}
           </p>
