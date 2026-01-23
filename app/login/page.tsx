@@ -34,17 +34,45 @@ export default function LoginPage() {
   const [resendError, setResendError] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
 
-  // Check for email sent parameter
+  // Check for email sent parameter and error messages
   useEffect(() => {
     const emailSent = searchParams.get('emailSent');
     const userEmail = searchParams.get('email');
+    const errorParam = searchParams.get('error');
+    const messageParam = searchParams.get('message');
     
+    // Handle email confirmation success/failure
     if (emailSent === 'true' && userEmail) {
       setShowEmailSent(true);
       setResendEmail(userEmail);
       setEmail(userEmail);
       // Start 60-second cooldown
       setResendCooldown(60);
+    }
+    
+    // Handle callback errors
+    if (errorParam) {
+      let errorMessage = '';
+      switch (errorParam) {
+        case 'oauth_failed':
+          errorMessage = messageParam ? decodeURIComponent(messageParam) : 'Authentication failed. Please try again.';
+          break;
+        case 'no_session':
+          errorMessage = 'Unable to establish session. Please log in manually below.';
+          break;
+        case 'invalid_callback':
+          errorMessage = 'Invalid authentication callback. Please log in again.';
+          break;
+        case 'profile_fetch_failed':
+          errorMessage = 'Unable to load your profile. Please contact support if this persists.';
+          break;
+        case 'profile_creation_failed':
+          errorMessage = 'Unable to create your profile. Please try again.';
+          break;
+        default:
+          errorMessage = 'An error occurred. Please try logging in.';
+      }
+      setError(errorMessage);
     }
   }, [searchParams]);
 
