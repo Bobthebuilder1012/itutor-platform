@@ -64,13 +64,13 @@ export default function ProfileHeader({
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-xl border-2 border-gray-200 p-6 mb-6 hover:shadow-itutor-green/20 transition-all duration-300">
-      <div className="flex items-start justify-between">
+    <div className="bg-white rounded-2xl shadow-xl border-2 border-gray-200 p-4 sm:p-6 mb-6 hover:shadow-itutor-green/20 transition-all duration-300">
+      <div className="flex flex-col sm:flex-row items-start sm:justify-between gap-4">
         {/* Left side: Avatar + Info */}
-        <div className="flex items-start gap-4">
+        <div className="flex items-start gap-3 sm:gap-4 w-full sm:w-auto">
           {/* Avatar */}
           <div
-            className={`relative w-20 h-20 rounded-full shadow-md flex-shrink-0 ${
+            className={`relative w-16 h-16 sm:w-20 sm:h-20 rounded-full shadow-md flex-shrink-0 ${
               onAvatarClick ? 'cursor-pointer group' : ''
             }`}
             onClick={onAvatarClick}
@@ -79,10 +79,10 @@ export default function ProfileHeader({
               <img
                 src={avatarUrl}
                 alt={fullName}
-                className="w-20 h-20 rounded-full object-cover"
+                className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover"
               />
             ) : (
-              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-2xl font-bold">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xl sm:text-2xl font-bold">
                 {getInitials(fullName)}
               </div>
             )}
@@ -112,15 +112,15 @@ export default function ProfileHeader({
           </div>
 
           {/* Info */}
-          <div>
+          <div className="flex-1 min-w-0">
             {/* Name */}
-            <h1 className="text-2xl font-bold text-gray-900 mb-1 flex items-center gap-2">
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 mb-1 flex flex-wrap items-center gap-2">
               {fullName}
               {role === 'tutor' && isVerified && <VerifiedBadge size="md" />}
             </h1>
 
             {/* Role chip */}
-            <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${getRoleColor()} mb-2`}>
+            <span className={`inline-block px-2 sm:px-3 py-1 rounded-full text-xs font-semibold ${getRoleColor()} mb-2`}>
               {getRoleLabel()}
               {role === 'tutor' && isVerified && <span className="ml-1">✓</span>}
             </span>
@@ -170,18 +170,18 @@ export default function ProfileHeader({
           </div>
         </div>
 
-        {/* Right side: Rating (tutors only) */}
+        {/* Right side: Rating (tutors only) - Stacks on mobile, side on desktop */}
         {role === 'tutor' && (ratingAverage !== null && ratingAverage !== undefined) && (
-          <div className="flex flex-col items-end">
+          <div className="flex flex-col sm:items-end items-start w-full sm:w-auto sm:flex-shrink-0">
             <div className="flex items-center gap-1 mb-1">
-              <svg className="h-6 w-6 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+              <svg className="h-5 w-5 sm:h-6 sm:w-6 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
               </svg>
-              <span className="text-2xl font-bold text-gray-900">
+              <span className="text-xl sm:text-2xl font-bold text-gray-900">
                 {ratingAverage.toFixed(1)}
               </span>
             </div>
-            <p className="text-sm text-gray-600">
+            <p className="text-xs sm:text-sm text-gray-600">
               {ratingCount} {ratingCount === 1 ? 'review' : 'reviews'}
             </p>
           </div>
