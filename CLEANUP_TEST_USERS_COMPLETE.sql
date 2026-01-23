@@ -36,8 +36,8 @@ BEGIN
 
     -- Step 5: Delete conversations (references profiles via participant IDs)
     DELETE FROM conversations
-    WHERE participant1_id = ANY(test_user_ids)
-       OR participant2_id = ANY(test_user_ids);
+    WHERE participant_1_id = ANY(test_user_ids)
+       OR participant_2_id = ANY(test_user_ids);
     RAISE NOTICE 'Deleted conversations';
 
     -- Step 6: Delete lesson_offers (references profiles via tutor_id and student_id)
