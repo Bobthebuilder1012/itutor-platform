@@ -58,26 +58,37 @@ BEGIN
        OR student_id = ANY(test_user_ids);
     RAISE NOTICE 'Deleted bookings';
 
-    -- Step 9: Delete tutor-specific records
+    -- Step 9: Delete payment-related records
+    DELETE FROM commission_ledger WHERE tutor_id = ANY(test_user_ids);
+    DELETE FROM tutor_balances WHERE tutor_id = ANY(test_user_ids);
+    DELETE FROM tutor_earnings WHERE tutor_id = ANY(test_user_ids);
+    DELETE FROM payments 
+    WHERE student_id = ANY(test_user_ids)
+       OR payer_id = ANY(test_user_ids)
+       OR tutor_id = ANY(test_user_ids);
+    RAISE NOTICE 'Deleted payment records';
+
+    -- Step 10: Delete tutor-specific records
     DELETE FROM tutor_subjects WHERE tutor_id = ANY(test_user_ids);
     DELETE FROM tutor_video_provider_connections WHERE tutor_id = ANY(test_user_ids);
     RAISE NOTICE 'Deleted tutor-specific records';
 
-    -- Step 10: Delete parent-child relationships
+    -- Step 11: Delete parent-child relationships
     DELETE FROM parent_child_links
     WHERE parent_id = ANY(test_user_ids)
        OR child_id = ANY(test_user_ids);
     RAISE NOTICE 'Deleted parent_child_links';
 
-    -- Step 11: Delete verification records
-    DELETE FROM tutor_verification_documents WHERE tutor_id = ANY(test_user_ids);
-    RAISE NOTICE 'Deleted verification documents';
+    -- Step 12: Delete verification records
+    DELETE FROM tutor_verified_subject_grades WHERE tutor_id = ANY(test_user_ids);
+    DELETE FROM tutor_verifications WHERE tutor_id = ANY(test_user_ids);
+    RAISE NOTICE 'Deleted verification records';
 
-    -- Step 12: Now safe to delete profiles
+    -- Step 13: Now safe to delete profiles
     DELETE FROM profiles WHERE id = ANY(test_user_ids);
     RAISE NOTICE 'Deleted profiles';
 
-    -- Step 13: Delete from auth.users (if you have permission)
+    -- Step 14: Delete from auth.users (if you have permission)
     DELETE FROM auth.users
     WHERE email LIKE '%liamdhruvr%' 
        OR email LIKE '%liamrampersd%';
