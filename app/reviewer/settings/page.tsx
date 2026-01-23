@@ -332,15 +332,15 @@ export default function ReviewerSettingsPage() {
 
   return (
     <DashboardLayout role="reviewer" userName={currentDisplayName}>
-      {/* Mobile: Horizontal Tabs */}
-      <div className="lg:hidden mb-6">
-        <div className="bg-white border-2 border-gray-200 rounded-2xl p-2">
-          <div className="flex overflow-x-auto scrollbar-hide gap-2">
+      {/* Mobile & Tablet: Horizontal Tabs */}
+      <div className="md:hidden mb-4">
+        <div className="bg-white border-2 border-gray-200 rounded-xl p-1.5">
+          <div className="flex overflow-x-auto scrollbar-hide gap-1">
             <button
               onClick={() => setActiveSection('profile')}
-              className={`flex-shrink-0 px-4 py-3 rounded-xl font-medium transition-colors whitespace-nowrap ${
+              className={`flex-shrink-0 px-3 py-2 rounded-lg font-medium transition-colors whitespace-nowrap text-xs ${
                 activeSection === 'profile'
-                  ? 'bg-itutor-green text-white'
+                  ? 'bg-gradient-to-r from-itutor-green to-emerald-600 text-white shadow-md'
                   : 'text-gray-700 hover:bg-gray-100'
               }`}
             >
@@ -348,9 +348,9 @@ export default function ReviewerSettingsPage() {
             </button>
             <button
               onClick={() => setActiveSection('security')}
-              className={`flex-shrink-0 px-4 py-3 rounded-xl font-medium transition-colors whitespace-nowrap ${
+              className={`flex-shrink-0 px-3 py-2 rounded-lg font-medium transition-colors whitespace-nowrap text-xs ${
                 activeSection === 'security'
-                  ? 'bg-itutor-green text-white'
+                  ? 'bg-gradient-to-r from-itutor-green to-emerald-600 text-white shadow-md'
                   : 'text-gray-700 hover:bg-gray-100'
               }`}
             >
@@ -358,9 +358,9 @@ export default function ReviewerSettingsPage() {
             </button>
             <button
               onClick={() => setActiveSection('payment')}
-              className={`flex-shrink-0 px-4 py-3 rounded-xl font-medium transition-colors whitespace-nowrap ${
+              className={`flex-shrink-0 px-3 py-2 rounded-lg font-medium transition-colors whitespace-nowrap text-xs ${
                 activeSection === 'payment'
-                  ? 'bg-itutor-green text-white'
+                  ? 'bg-gradient-to-r from-itutor-green to-emerald-600 text-white shadow-md'
                   : 'text-gray-700 hover:bg-gray-100'
               }`}
             >
@@ -370,45 +370,45 @@ export default function ReviewerSettingsPage() {
         </div>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-6">
+      <div className="flex flex-col md:flex-row gap-4 md:gap-6">
         {/* Desktop: Sidebar Navigation */}
-        <div className="hidden lg:block w-64 flex-shrink-0">
-          <nav className="space-y-2">
+        <div className="hidden md:block w-52 flex-shrink-0">
+          <nav className="space-y-1 bg-white border-2 border-gray-200 rounded-xl p-1.5">
             <button
               onClick={() => setActiveSection('profile')}
-              className={`w-full text-left px-4 py-3 rounded-lg font-medium transition-colors ${
+              className={`w-full text-left px-3 py-2.5 rounded-lg font-medium transition-colors text-xs ${
                 activeSection === 'profile'
-                  ? 'bg-itutor-green text-white'
-                  : 'bg-white text-gray-700 hover:bg-gray-100 border-2 border-gray-200'
+                  ? 'bg-gradient-to-r from-itutor-green to-emerald-600 text-white shadow-md'
+                  : 'text-gray-700 hover:bg-gray-100'
               }`}
             >
-              Profile Information
+              Profile Info
             </button>
             <button
               onClick={() => setActiveSection('security')}
-              className={`w-full text-left px-4 py-3 rounded-lg font-medium transition-colors ${
+              className={`w-full text-left px-3 py-2.5 rounded-lg font-medium transition-colors text-xs ${
                 activeSection === 'security'
-                  ? 'bg-itutor-green text-white'
-                  : 'bg-white text-gray-700 hover:bg-gray-100 border-2 border-gray-200'
+                  ? 'bg-gradient-to-r from-itutor-green to-emerald-600 text-white shadow-md'
+                  : 'text-gray-700 hover:bg-gray-100'
               }`}
             >
-              Security & Password
+              Security
             </button>
             <button
               onClick={() => setActiveSection('payment')}
-              className={`w-full text-left px-4 py-3 rounded-lg font-medium transition-colors ${
+              className={`w-full text-left px-3 py-2.5 rounded-lg font-medium transition-colors text-xs ${
                 activeSection === 'payment'
-                  ? 'bg-itutor-green text-white'
-                  : 'bg-white text-gray-700 hover:bg-gray-100 border-2 border-gray-200'
+                  ? 'bg-gradient-to-r from-itutor-green to-emerald-600 text-white shadow-md'
+                  : 'text-gray-700 hover:bg-gray-100'
               }`}
             >
-              Payment Settings
+              Payment
             </button>
           </nav>
         </div>
 
         {/* Main Content */}
-        <div className="flex-1 w-full">
+        <div className="flex-1 min-w-0">
           {/* Global Messages */}
           {message && (
             <div className="mb-6 bg-green-50 border-2 border-green-300 text-green-800 px-4 py-3 rounded-lg">
