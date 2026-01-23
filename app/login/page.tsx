@@ -28,20 +28,33 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showEmailSent, setShowEmailSent] = useState(false);
+  const [emailConfirmed, setEmailConfirmed] = useState(false);
   const [resendEmail, setResendEmail] = useState('');
   const [resendLoading, setResendLoading] = useState(false);
   const [resendSuccess, setResendSuccess] = useState('');
   const [resendError, setResendError] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
 
-  // Check for email sent parameter and error messages
+  // Check for email sent parameter, confirmation, and error messages
   useEffect(() => {
     const emailSent = searchParams.get('emailSent');
+    const confirmed = searchParams.get('confirmed');
     const userEmail = searchParams.get('email');
     const errorParam = searchParams.get('error');
     const messageParam = searchParams.get('message');
     
-    // Handle email confirmation success/failure
+    // Handle email confirmation success
+    if (confirmed === 'true') {
+      setEmailConfirmed(true);
+      if (userEmail) {
+        setEmail(userEmail);
+      }
+      // Don't show the emailSent banner if email is already confirmed
+      setShowEmailSent(false);
+      return;
+    }
+    
+    // Handle email sent (awaiting confirmation)
     if (emailSent === 'true' && userEmail) {
       setShowEmailSent(true);
       setResendEmail(userEmail);
@@ -61,7 +74,8 @@ export default function LoginPage() {
           errorMessage = 'Unable to establish session. Please log in manually below.';
           break;
         case 'invalid_callback':
-          errorMessage = 'Invalid authentication callback. Please log in again.';
+        case 'missing_code':
+          errorMessage = 'Invalid authentication link. Please try logging in.';
           break;
         case 'profile_fetch_failed':
           errorMessage = 'Unable to load your profile. Please contact support if this persists.';
@@ -245,6 +259,38 @@ export default function LoginPage() {
         </div>
 
         <form onSubmit={handleLogin} className="space-y-5">
+          {/* Email Confirmed Success Banner */}
+          {emailConfirmed && (
+            <div className="bg-green-900/20 border-2 border-green-500/50 text-green-200 px-4 py-4 rounded-lg backdrop-blur-sm relative">
+              <button
+                onClick={() => setEmailConfirmed(false)}
+                className="absolute top-2 right-2 text-green-400 hover:text-green-300 transition-colors"
+                type="button"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 mt-0.5">
+                  <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div className="flex-1 pr-4">
+                  <p className="font-bold text-green-100 mb-2 text-lg">✅ Email Confirmed!</p>
+                  <p className="text-sm text-green-200 mb-2">
+                    Your email has been successfully verified. You can now log in to your iTutor account.
+                  </p>
+                  <p className="text-xs text-green-300">
+                    Enter your email and password below to continue.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Email Sent (Awaiting Confirmation) Banner */}
           {showEmailSent && (
             <div className="bg-green-900/20 border-2 border-green-500/50 text-green-200 px-4 py-4 rounded-lg backdrop-blur-sm space-y-3 relative">
               <button
