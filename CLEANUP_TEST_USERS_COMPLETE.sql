@@ -64,10 +64,10 @@ BEGIN
     RAISE NOTICE 'Deleted tutor-specific records';
 
     -- Step 10: Delete parent-child relationships
-    DELETE FROM parent_students
+    DELETE FROM parent_child_links
     WHERE parent_id = ANY(test_user_ids)
-       OR student_id = ANY(test_user_ids);
-    RAISE NOTICE 'Deleted parent_students';
+       OR child_id = ANY(test_user_ids);
+    RAISE NOTICE 'Deleted parent_child_links';
 
     -- Step 11: Delete verification records
     DELETE FROM tutor_verification_documents WHERE tutor_id = ANY(test_user_ids);
