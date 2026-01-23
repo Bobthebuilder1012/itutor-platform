@@ -332,9 +332,47 @@ export default function ReviewerSettingsPage() {
 
   return (
     <DashboardLayout role="reviewer" userName={currentDisplayName}>
-      <div className="flex gap-6">
-        {/* Sidebar Navigation */}
-        <div className="w-64 flex-shrink-0">
+      {/* Mobile: Horizontal Tabs */}
+      <div className="lg:hidden mb-6">
+        <div className="bg-white border-2 border-gray-200 rounded-2xl p-2">
+          <div className="flex overflow-x-auto scrollbar-hide gap-2">
+            <button
+              onClick={() => setActiveSection('profile')}
+              className={`flex-shrink-0 px-4 py-3 rounded-xl font-medium transition-colors whitespace-nowrap ${
+                activeSection === 'profile'
+                  ? 'bg-itutor-green text-white'
+                  : 'text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              Profile
+            </button>
+            <button
+              onClick={() => setActiveSection('security')}
+              className={`flex-shrink-0 px-4 py-3 rounded-xl font-medium transition-colors whitespace-nowrap ${
+                activeSection === 'security'
+                  ? 'bg-itutor-green text-white'
+                  : 'text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              Security
+            </button>
+            <button
+              onClick={() => setActiveSection('payment')}
+              className={`flex-shrink-0 px-4 py-3 rounded-xl font-medium transition-colors whitespace-nowrap ${
+                activeSection === 'payment'
+                  ? 'bg-itutor-green text-white'
+                  : 'text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              Payment
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* Desktop: Sidebar Navigation */}
+        <div className="hidden lg:block w-64 flex-shrink-0">
           <nav className="space-y-2">
             <button
               onClick={() => setActiveSection('profile')}
@@ -370,7 +408,7 @@ export default function ReviewerSettingsPage() {
         </div>
 
         {/* Main Content */}
-        <div className="flex-1">
+        <div className="flex-1 w-full">
           {/* Global Messages */}
           {message && (
             <div className="mb-6 bg-green-50 border-2 border-green-300 text-green-800 px-4 py-3 rounded-lg">

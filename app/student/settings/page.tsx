@@ -359,9 +359,35 @@ export default function StudentSettingsPage() {
           </div>
         )}
 
-        <div className="flex gap-6">
-          {/* Sidebar Navigation */}
-          <div className="w-64 flex-shrink-0">
+        {/* Mobile: Horizontal Tabs */}
+        <div className="lg:hidden mb-6">
+          <div className="bg-white border-2 border-gray-200 rounded-2xl p-2">
+            <div className="flex overflow-x-auto scrollbar-hide gap-2">
+              {sections.map((section) => (
+                <button
+                  key={section.id}
+                  onClick={() => setActiveSection(section.id)}
+                  className={`
+                    flex-shrink-0 flex flex-col items-center gap-2 px-4 py-3 rounded-xl font-medium transition-all whitespace-nowrap
+                    ${activeSection === section.id
+                      ? 'bg-gradient-to-r from-itutor-green to-emerald-600 text-white shadow-lg'
+                      : 'text-gray-700 hover:bg-gray-100'
+                    }
+                  `}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={section.icon} />
+                  </svg>
+                  <span className="text-xs">{section.label.replace(' & ', ' ')}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col lg:flex-row gap-6">
+          {/* Desktop: Sidebar Navigation */}
+          <div className="hidden lg:block w-64 flex-shrink-0">
             <div className="bg-white border-2 border-gray-200 rounded-2xl p-2 sticky top-6">
               <nav className="space-y-1">
                 {sections.map((section) => (
@@ -387,7 +413,7 @@ export default function StudentSettingsPage() {
           </div>
 
           {/* Content Area */}
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 w-full">
 
         {/* Profile Information */}
         {activeSection === 'profile' && (
