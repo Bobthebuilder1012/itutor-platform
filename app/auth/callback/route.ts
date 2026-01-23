@@ -72,120 +72,115 @@ export async function GET(request: NextRequest) {
     type: type
   });
 
-    // For email confirmations, redirect to login page with success message
-    // This ensures users complete the login flow properly after email verification
-    if (emailJustConfirmed || type === 'signup' || type === 'email') {
-      console.log('✅ Email confirmation detected - redirecting to login');
-      return NextResponse.redirect(new URL(`/login?confirmed=true&email=${encodeURIComponent(userEmail || '')}`, request.url));
-    }
-
-    // Check if profile exists
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('id, role, full_name, country, school, form_level, subjects_of_study, billing_mode, institution_id')
-      .eq('id', userId)
-      .single();
-
-    console.log('👤 Profile fetch result - exists:', !!profile, 'role:', profile?.role);
-
-    // If profile doesn't exist, create it (OAuth users)
-    if (profileError && profileError.code === 'PGRST116') {
-      console.log('📝 Creating new profile for OAuth user');
-      // PGRST116 = no rows returned
-      const newProfile = {
-        id: userId,
-        email: session.user.email!,
-        full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || 'User',
-        avatar_url: session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture || null,
-        role: 'student', // Default role for OAuth
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-
-      const { error: insertError } = await supabase
-        .from('profiles')
-        .insert([newProfile]);
-
-      if (insertError) {
-        console.error('❌ Error creating profile:', insertError);
-        return NextResponse.redirect(new URL('/login?error=profile_creation_failed', request.url));
-      }
-
-      console.log('✅ Profile created, redirecting to onboarding');
-      // Redirect to onboarding for new OAuth users
-      return NextResponse.redirect(new URL('/onboarding/student', request.url));
-    }
-
-    if (profileError) {
-      console.error('❌ Error fetching profile:', profileError);
-      return NextResponse.redirect(new URL('/login?error=profile_fetch_failed', request.url));
-    }
-
-    // Profile exists - determine where to redirect
-    if (profile) {
-      const role = profile.role;
-      console.log('🔀 Determining redirect for role:', role);
-
-      // If role is null, profile is incomplete - need to complete signup
-      if (!role) {
-        console.log('⚠️ No role set, checking user metadata');
-        // Try to determine role from user metadata
-        const metadataRole = session.user.user_metadata?.role;
-        console.log('📋 User metadata role:', metadataRole);
-        
-        if (metadataRole === 'tutor') {
-          console.log('➡️ Redirecting to tutor onboarding');
-          return NextResponse.redirect(new URL('/onboarding/tutor', request.url));
-        } else if (metadataRole === 'parent') {
-          console.log('➡️ Redirecting to parent dashboard');
-          return NextResponse.redirect(new URL('/parent/dashboard', request.url));
-        } else {
-          // Default to student onboarding
-          console.log('➡️ Redirecting to student onboarding (default)');
-          return NextResponse.redirect(new URL('/onboarding/student', request.url));
-        }
-      }
-
-      // Check if profile is complete based on role
-      if (role === 'student') {
-        const hasBasicInfo = (profile.school || profile.institution_id) && profile.form_level;
-        const hasSubjects = profile.subjects_of_study && profile.subjects_of_study.length > 0;
-
-        if (!hasBasicInfo || !hasSubjects) {
-          console.log('➡️ Student profile incomplete, redirecting to onboarding');
-          return NextResponse.redirect(new URL('/onboarding/student', request.url));
-        }
-
-        console.log('➡️ Redirecting to student dashboard');
-        return NextResponse.redirect(new URL('/student/dashboard', request.url));
-      } else if (role === 'parent') {
-        console.log('➡️ Redirecting to parent dashboard');
-        return NextResponse.redirect(new URL('/parent/dashboard', request.url));
-      } else if (role === 'tutor') {
-        // Check if tutor has completed onboarding
-        if (!profile.institution_id) {
-          console.log('➡️ Tutor profile incomplete, redirecting to onboarding');
-          return NextResponse.redirect(new URL('/onboarding/tutor', request.url));
-        }
-        console.log('➡️ Redirecting to tutor dashboard');
-        return NextResponse.redirect(new URL('/tutor/dashboard', request.url));
-      } else if (role === 'admin') {
-        console.log('➡️ Redirecting to admin dashboard');
-        return NextResponse.redirect(new URL('/admin/dashboard', request.url));
-      }
-
-      // If role exists but didn't match any case above, send to login with error
-      console.log('⚠️ Unknown role:', role, '- redirecting to login');
-      return NextResponse.redirect(new URL('/login?error=unknown_role', request.url));
-    }
-
-    // Profile doesn't exist (shouldn't happen since we create it or error above)
-    console.log('⚠️ Profile null - redirecting to login');
-    return NextResponse.redirect(new URL('/login?error=no_profile', request.url));
+  // For email confirmations, redirect to login page with success message
+  // This ensures users complete the login flow properly after email verification
+  if (emailJustConfirmed || type === 'signup' || type === 'email') {
+    console.log('✅ Email confirmation detected - redirecting to login');
+    return NextResponse.redirect(new URL(`/login?confirmed=true&email=${encodeURIComponent(userEmail || '')}`, request.url));
   }
 
-  // No code provided in callback
-  console.log('⚠️ Callback reached without code - redirecting to login');
-  return NextResponse.redirect(new URL('/login?error=invalid_callback', request.url));
+  // Check if profile exists
+  const { data: profile, error: profileError } = await supabase
+    .from('profiles')
+    .select('id, role, full_name, country, school, form_level, subjects_of_study, billing_mode, institution_id')
+    .eq('id', userId)
+    .single();
+
+  console.log('👤 Profile fetch result - exists:', !!profile, 'role:', profile?.role);
+
+  // If profile doesn't exist, create it (OAuth users)
+  if (profileError && profileError.code === 'PGRST116') {
+    console.log('📝 Creating new profile for OAuth user');
+    // PGRST116 = no rows returned
+    const newProfile = {
+      id: userId,
+      email: session.user.email!,
+      full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || 'User',
+      avatar_url: session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture || null,
+      role: 'student', // Default role for OAuth
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error: insertError } = await supabase
+      .from('profiles')
+      .insert([newProfile]);
+
+    if (insertError) {
+      console.error('❌ Error creating profile:', insertError);
+      return NextResponse.redirect(new URL('/login?error=profile_creation_failed', request.url));
+    }
+
+    console.log('✅ Profile created, redirecting to onboarding');
+    // Redirect to onboarding for new OAuth users
+    return NextResponse.redirect(new URL('/onboarding/student', request.url));
+  }
+
+  if (profileError) {
+    console.error('❌ Error fetching profile:', profileError);
+    return NextResponse.redirect(new URL('/login?error=profile_fetch_failed', request.url));
+  }
+
+  // Profile exists - determine where to redirect
+  if (profile) {
+    const role = profile.role;
+    console.log('🔀 Determining redirect for role:', role);
+
+    // If role is null, profile is incomplete - need to complete signup
+    if (!role) {
+      console.log('⚠️ No role set, checking user metadata');
+      // Try to determine role from user metadata
+      const metadataRole = session.user.user_metadata?.role;
+      console.log('📋 User metadata role:', metadataRole);
+      
+      if (metadataRole === 'tutor') {
+        console.log('➡️ Redirecting to tutor onboarding');
+        return NextResponse.redirect(new URL('/onboarding/tutor', request.url));
+      } else if (metadataRole === 'parent') {
+        console.log('➡️ Redirecting to parent dashboard');
+        return NextResponse.redirect(new URL('/parent/dashboard', request.url));
+      } else {
+        // Default to student onboarding
+        console.log('➡️ Redirecting to student onboarding (default)');
+        return NextResponse.redirect(new URL('/onboarding/student', request.url));
+      }
+    }
+
+    // Check if profile is complete based on role
+    if (role === 'student') {
+      const hasBasicInfo = (profile.school || profile.institution_id) && profile.form_level;
+      const hasSubjects = profile.subjects_of_study && profile.subjects_of_study.length > 0;
+
+      if (!hasBasicInfo || !hasSubjects) {
+        console.log('➡️ Student profile incomplete, redirecting to onboarding');
+        return NextResponse.redirect(new URL('/onboarding/student', request.url));
+      }
+
+      console.log('➡️ Redirecting to student dashboard');
+      return NextResponse.redirect(new URL('/student/dashboard', request.url));
+    } else if (role === 'parent') {
+      console.log('➡️ Redirecting to parent dashboard');
+      return NextResponse.redirect(new URL('/parent/dashboard', request.url));
+    } else if (role === 'tutor') {
+      // Check if tutor has completed onboarding
+      if (!profile.institution_id) {
+        console.log('➡️ Tutor profile incomplete, redirecting to onboarding');
+        return NextResponse.redirect(new URL('/onboarding/tutor', request.url));
+      }
+      console.log('➡️ Redirecting to tutor dashboard');
+      return NextResponse.redirect(new URL('/tutor/dashboard', request.url));
+    } else if (role === 'admin') {
+      console.log('➡️ Redirecting to admin dashboard');
+      return NextResponse.redirect(new URL('/admin/dashboard', request.url));
+    }
+
+    // If role exists but didn't match any case above, send to login with error
+    console.log('⚠️ Unknown role:', role, '- redirecting to login');
+    return NextResponse.redirect(new URL('/login?error=unknown_role', request.url));
+  }
+
+  // Profile doesn't exist (shouldn't happen since we create it or error above)
+  console.log('⚠️ Profile null - redirecting to login');
+  return NextResponse.redirect(new URL('/login?error=no_profile', request.url));
 }
 
