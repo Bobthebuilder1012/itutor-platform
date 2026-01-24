@@ -141,7 +141,7 @@ export default function VerifyCodePage() {
               Verify Your Email
             </h1>
             <p className="text-sm text-gray-600">
-              Enter the 6-digit code we sent to your email
+              Enter the 8-digit code we sent to your email
             </p>
           </div>
 
@@ -173,15 +173,15 @@ export default function VerifyCodePage() {
                 type="text"
                 id="code"
                 value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition text-center text-2xl font-bold tracking-widest"
-                placeholder="000000"
-                maxLength={6}
+                placeholder="00000000"
+                maxLength={8}
                 required
                 disabled={loading}
               />
               <p className="text-xs text-gray-500 mt-1 text-center">
-                Enter the 6-digit code from your email
+                Enter the 8-digit code from your email
               </p>
             </div>
 
@@ -202,7 +202,7 @@ export default function VerifyCodePage() {
             {/* Verify Button */}
             <button
               type="submit"
-              disabled={loading || code.length !== 6}
+              disabled={loading || code.length !== 8}
               className="w-full bg-gradient-to-r from-itutor-green to-emerald-500 text-black font-bold py-3 px-6 rounded-lg hover:shadow-lg hover:shadow-itutor-green/50 hover:scale-[1.02] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
             >
               {loading ? (
