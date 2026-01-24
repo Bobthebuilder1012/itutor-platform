@@ -72,11 +72,11 @@ export async function GET(request: NextRequest) {
     type: type
   });
 
-  // For email confirmations, redirect to login page with success message
-  // This ensures users complete the login flow properly after email verification
+  // For email confirmations, redirect to confirmation success page
+  // This page tells users to go to the login page
   if (emailJustConfirmed || type === 'signup' || type === 'email') {
-    console.log('✅ Email confirmation detected - redirecting to login');
-    return NextResponse.redirect(new URL(`/login?confirmed=true&email=${encodeURIComponent(userEmail || '')}`, request.url));
+    console.log('✅ Email confirmation detected - redirecting to confirmation page');
+    return NextResponse.redirect(new URL('/auth/confirmed', request.url));
   }
 
   // Check if profile exists
