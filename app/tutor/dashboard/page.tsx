@@ -139,12 +139,12 @@ export default function TutorDashboard() {
       const [sessionsRes, tutorSubjectsRes, allSubjectsRes, ratingsRes, videoProviderRes] = await Promise.all([
         supabase
           .from('sessions')
-          .select('*, bookings(subject_id)')
+          .select('*, bookings(subject_id, status)')
           .eq('tutor_id', profile.id)
           .gte('scheduled_start_at', now)
           .in('status', ['SCHEDULED', 'JOIN_OPEN'])
           .order('scheduled_start_at', { ascending: true })
-          .limit(5),
+          .limit(10),
         supabase
           .from('tutor_subjects')
           .select('*')
@@ -171,9 +171,15 @@ export default function TutorDashboard() {
       }
 
       if (sessionsRes.data) {
+        // Filter out cancelled bookings first
+        const activeSessions = sessionsRes.data.filter((session: any) => 
+          session.bookings?.status !== 'CANCELLED' && 
+          session.bookings?.status !== 'DECLINED'
+        );
+
         // Enrich sessions with student and subject names
         const enrichedSessions = await Promise.all(
-          sessionsRes.data.map(async (session: any) => {
+          activeSessions.slice(0, 5).map(async (session: any) => {
             const subjectId = session.bookings?.subject_id;
             
             const [studentRes, subjectRes] = await Promise.all([
