@@ -62,38 +62,22 @@ export default function VerifyCodePage() {
       if (data.session) {
         setSuccess(true);
         
-        // Fetch user profile to determine where to redirect
-        const { data: profile, error: profileError } = await supabase
-          .from('profiles')
-          .select('role, school, form_level')
-          .eq('id', data.session.user.id)
-          .single();
-
-        if (profileError) {
-          console.error('Error fetching profile:', profileError);
-          // Fallback to login if profile fetch fails
-          setTimeout(() => {
-            router.push('/login?confirmed=true');
-          }, 2000);
-          return;
-        }
-
+        // Get role from user metadata (set during signup)
+        const userRole = data.session.user.user_metadata?.role || 'student';
+        
+        console.log('✅ Email verified! User role:', userRole);
+        
         // Redirect to appropriate onboarding based on role
         setTimeout(() => {
-          if (profile.role === 'tutor') {
+          if (userRole === 'tutor') {
             router.push('/onboarding/tutor');
-          } else if (profile.role === 'parent') {
+          } else if (userRole === 'parent') {
             router.push('/onboarding/parent');
           } else {
-            // Student role - check if profile is complete
-            const isProfileComplete = profile.school && profile.form_level;
-            if (isProfileComplete) {
-              router.push('/student/dashboard');
-            } else {
-              router.push('/onboarding/student');
-            }
+            // Student role - always go to onboarding to complete profile
+            router.push('/onboarding/student');
           }
-        }, 2000);
+        }, 1500);
       } else {
         setError('Verification failed. Please try again.');
         setLoading(false);
