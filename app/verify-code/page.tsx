@@ -61,9 +61,38 @@ export default function VerifyCodePage() {
 
       if (data.session) {
         setSuccess(true);
-        // Redirect to login or dashboard after 2 seconds
+        
+        // Fetch user profile to determine where to redirect
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('role, school, form_level')
+          .eq('id', data.session.user.id)
+          .single();
+
+        if (profileError) {
+          console.error('Error fetching profile:', profileError);
+          // Fallback to login if profile fetch fails
+          setTimeout(() => {
+            router.push('/login?confirmed=true');
+          }, 2000);
+          return;
+        }
+
+        // Redirect to appropriate onboarding based on role
         setTimeout(() => {
-          router.push('/login?confirmed=true');
+          if (profile.role === 'tutor') {
+            router.push('/onboarding/tutor');
+          } else if (profile.role === 'parent') {
+            router.push('/onboarding/parent');
+          } else {
+            // Student role - check if profile is complete
+            const isProfileComplete = profile.school && profile.form_level;
+            if (isProfileComplete) {
+              router.push('/student/dashboard');
+            } else {
+              router.push('/onboarding/student');
+            }
+          }
         }, 2000);
       } else {
         setError('Verification failed. Please try again.');
@@ -118,7 +147,7 @@ export default function VerifyCodePage() {
               ✅ Email Verified!
             </h1>
             <p className="text-base text-gray-600 mb-4">
-              Your email has been successfully verified. Redirecting you to login...
+              Your email has been successfully verified. Redirecting you to complete your profile setup...
             </p>
           </div>
         </div>
