@@ -434,12 +434,17 @@ export default function LoginPage() {
               Sign up
             </a>
           </p>
-          <p className="text-sm text-gray-400">
-            Haven't verified your email?{' '}
-            <a href="/verify-code" className="text-itutor-green hover:text-emerald-400 font-semibold transition-colors">
-              Enter verification code
-            </a>
-          </p>
+          
+          {/* Only show verification link if user just signed up or has unverified email */}
+          {showEmailSent && (
+            <p className="text-sm text-gray-400">
+              Haven't verified your email?{' '}
+              <a href={`/verify-code${resendEmail ? `?email=${encodeURIComponent(resendEmail)}` : ''}`} className="text-itutor-green hover:text-emerald-400 font-semibold transition-colors">
+                Enter verification code
+              </a>
+            </p>
+          )}
+          
           <div className="pt-4 border-t border-gray-700">
             <a href="/" className="text-xs text-gray-500 hover:text-gray-400 transition-colors">
               ← Back to home
