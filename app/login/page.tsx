@@ -138,6 +138,14 @@ export default function LoginPage() {
       });
 
       if (signInError) {
+        // Check if error is due to unverified email
+        if (signInError.message.includes('Email not confirmed') || 
+            signInError.message.includes('not confirmed') ||
+            signInError.message.includes('verify your email')) {
+          // Redirect to verification page with email
+          router.push(`/verify-email?email=${encodeURIComponent(email)}`);
+          return;
+        }
         // Show user-friendly error message
         if (signInError.message.includes('Invalid login credentials') || 
             signInError.message.includes('Invalid') || 
@@ -424,6 +432,12 @@ export default function LoginPage() {
             Don't have an account?{' '}
             <a href="/signup" className="text-itutor-green hover:text-emerald-400 font-semibold transition-colors">
               Sign up
+            </a>
+          </p>
+          <p className="text-sm text-gray-400">
+            Haven't verified your email?{' '}
+            <a href="/verify-email" className="text-itutor-green hover:text-emerald-400 font-semibold transition-colors">
+              Resend verification
             </a>
           </p>
           <div className="pt-4 border-t border-gray-700">
