@@ -121,6 +121,9 @@ export default function VideoSetupPage() {
 
   async function handleConnect(provider: VideoProvider) {
     if (!profile) return;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/96e0dc54-0d29-41a7-8439-97ee7ad5934e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/tutor/video-setup/page.tsx:123',message:'Connect button clicked',data:{provider,tutorId:profile.id,hasExistingConnection:!!connection,futureSessions},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,B,C,D'})}).catch(()=>{});
+    // #endregion
     // Check if tutor has future sessions
     if (connection && futureSessions > 0) {
       alert(

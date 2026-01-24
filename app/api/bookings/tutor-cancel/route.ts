@@ -57,6 +57,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to cancel booking' }, { status: 500 });
     }
 
+    // Also update the session status if one exists
+    await admin
+      .from('sessions')
+      .update({
+        status: 'CANCELLED',
+        updated_at: new Date().toISOString()
+      })
+      .eq('booking_id', booking_id);
+
     if (reason) {
       await admin.from('booking_messages').insert({
         booking_id,

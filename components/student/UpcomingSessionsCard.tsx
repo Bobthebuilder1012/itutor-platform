@@ -72,6 +72,37 @@ export default function UpcomingSessionsCard({
 
   const nextSession = sessions[0];
 
+  // Calculate display status
+  const sessionDate = new Date(nextSession.scheduled_start_at);
+  const now = new Date();
+  const isPast = sessionDate < now;
+  const sessionStatus = nextSession.status?.toUpperCase();
+  
+  let displayStatus = 'Unknown';
+  let statusColor = 'bg-gradient-to-r from-gray-500 to-gray-600 text-white';
+  
+  if (sessionStatus === 'CANCELLED') {
+    displayStatus = 'Cancelled';
+    statusColor = 'bg-gradient-to-r from-red-500 to-red-600 text-white';
+  } else if (sessionStatus === 'COMPLETED' || sessionStatus === 'COMPLETED_ASSUMED') {
+    displayStatus = 'Completed';
+    statusColor = 'bg-gradient-to-r from-green-500 to-emerald-600 text-white';
+  } else if (sessionStatus === 'IN_PROGRESS' || sessionStatus === 'JOIN_OPEN') {
+    displayStatus = 'In Progress';
+    statusColor = 'bg-gradient-to-r from-purple-500 to-purple-600 text-white';
+  } else if (sessionStatus === 'NO_SHOW_STUDENT') {
+    displayStatus = 'No Show';
+    statusColor = 'bg-gradient-to-r from-orange-500 to-orange-600 text-white';
+  } else if (sessionStatus === 'SCHEDULED' || sessionStatus === 'BOOKED') {
+    if (isPast) {
+      displayStatus = 'Past';
+      statusColor = 'bg-gradient-to-r from-gray-500 to-gray-600 text-white';
+    } else {
+      displayStatus = 'Upcoming';
+      statusColor = 'bg-gradient-to-r from-blue-500 to-purple-500 text-white';
+    }
+  }
+
   return (
     <div className="bg-white border-2 border-gray-200 rounded-2xl p-8 shadow-md hover:shadow-lg transition-shadow">
       <div className="flex justify-between items-center mb-6">
@@ -96,8 +127,8 @@ export default function UpcomingSessionsCard({
               </p>
             )}
           </div>
-          <span className="px-3 py-1 text-xs font-semibold rounded-full bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-md">
-            Scheduled
+          <span className={`px-3 py-1 text-xs font-semibold rounded-full shadow-md ${statusColor}`}>
+            {displayStatus}
           </span>
         </div>
 

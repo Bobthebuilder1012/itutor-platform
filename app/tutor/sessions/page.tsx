@@ -39,7 +39,7 @@ export default function TutorSessionsPage() {
         .eq('tutor_id', profile?.id)
         .gte('scheduled_start_at', now) // Only upcoming sessions
         .in('status', ['SCHEDULED', 'JOIN_OPEN']) // Only active statuses
-        .order('scheduled_start_at', { ascending: true });
+        .order('scheduled_start_at', { ascending: false });
 
       if (error) {
         console.error('Session fetch error:', error);
@@ -93,7 +93,7 @@ export default function TutorSessionsPage() {
               const bookingStatus = session.booking?.status?.toUpperCase();
               const sessionStatus = session.status?.toUpperCase();
               
-              let displayStatus = session.status;
+              let displayStatus = 'Unknown';
               let statusColor = 'bg-gray-100 text-gray-800';
               
               // Check if booking was cancelled first
@@ -109,7 +109,7 @@ export default function TutorSessionsPage() {
               } else if (sessionStatus === 'NO_SHOW_STUDENT') {
                 displayStatus = 'No Show';
                 statusColor = 'bg-orange-100 text-orange-800';
-              } else if (sessionStatus === 'SCHEDULED' || sessionStatus === 'BOOKED' || bookingStatus === 'CONFIRMED') {
+              } else if (sessionStatus === 'SCHEDULED' || sessionStatus === 'BOOKED') {
                 if (isPast) {
                   displayStatus = 'Past (Not Completed)';
                   statusColor = 'bg-gray-100 text-gray-800';
@@ -117,9 +117,14 @@ export default function TutorSessionsPage() {
                   displayStatus = 'Upcoming';
                   statusColor = 'bg-blue-100 text-blue-800';
                 }
-              } else {
-                displayStatus = session.status || 'Unknown';
-                statusColor = 'bg-gray-100 text-gray-800';
+              } else if (bookingStatus === 'CONFIRMED') {
+                if (isPast) {
+                  displayStatus = 'Past (Not Completed)';
+                  statusColor = 'bg-gray-100 text-gray-800';
+                } else {
+                  displayStatus = 'Upcoming';
+                  statusColor = 'bg-blue-100 text-blue-800';
+                }
               }
               
               return (
@@ -132,9 +137,25 @@ export default function TutorSessionsPage() {
                     <div className="flex-1 min-w-0">
                       <h3 className="text-base sm:text-lg font-semibold text-gray-900 truncate">Session</h3>
                       <p className="text-sm text-gray-600 mt-1">with {session.student?.full_name || 'Student'}</p>
-                      <p className="text-xs sm:text-sm text-gray-500 mt-2">
-                        {sessionDate.toLocaleString()}
-                      </p>
+                      <div className="flex flex-wrap gap-3 mt-2 text-xs sm:text-sm text-gray-500">
+                        <span className="flex items-center gap-1">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          {sessionDate.toLocaleString()}
+                        </span>
+                        {session.duration_minutes && (
+                          <span className="flex items-center gap-1 font-medium text-gray-700">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            {session.duration_minutes >= 60 
+                              ? `${Math.floor(session.duration_minutes / 60)}h ${session.duration_minutes % 60 > 0 ? `${session.duration_minutes % 60}m` : ''}`
+                              : `${session.duration_minutes}m`
+                            }
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <span className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ${statusColor}`}>
                       {displayStatus}

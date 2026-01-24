@@ -45,6 +45,10 @@ export async function GET(request: Request) {
   const clientId = process.env.ZOOM_CLIENT_ID?.trim();
   const redirectUri = process.env.ZOOM_REDIRECT_URI?.trim();
 
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/96e0dc54-0d29-41a7-8439-97ee7ad5934e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/auth/zoom/connect/route.ts:45',message:'Raw ENV check',data:{rawClientId:process.env.ZOOM_CLIENT_ID,rawRedirectUri:process.env.ZOOM_REDIRECT_URI,clientIdLength:clientId?.length,redirectUriLength:redirectUri?.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})}).catch(()=>{});
+  // #endregion
+
   if (!clientId || !redirectUri) {
     console.error('❌ Missing Zoom OAuth environment variables:', {
       hasClientId: !!clientId,
@@ -61,6 +65,10 @@ export async function GET(request: Request) {
     }, { status: 500 });
   }
 
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/96e0dc54-0d29-41a7-8439-97ee7ad5934e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/auth/zoom/connect/route.ts:65',message:'ENV vars loaded',data:{clientId,redirectUri,userId:user.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,C,E'})}).catch(()=>{});
+  // #endregion
+
   // Build OAuth URL
   const params = new URLSearchParams({
     client_id: clientId,
@@ -70,6 +78,10 @@ export async function GET(request: Request) {
   });
 
   const authUrl = `https://zoom.us/oauth/authorize?${params.toString()}`;
+  
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/96e0dc54-0d29-41a7-8439-97ee7ad5934e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/auth/zoom/connect/route.ts:72',message:'OAuth URL constructed',data:{authUrl,paramsString:params.toString()},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,C,D'})}).catch(()=>{});
+  // #endregion
   
   return NextResponse.redirect(authUrl);
 }
