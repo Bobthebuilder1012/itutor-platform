@@ -142,8 +142,8 @@ export default function LoginPage() {
         if (signInError.message.includes('Email not confirmed') || 
             signInError.message.includes('not confirmed') ||
             signInError.message.includes('verify your email')) {
-          // Redirect to verification page with email
-          router.push(`/verify-email?email=${encodeURIComponent(email)}`);
+          // Redirect to code verification page with email
+          router.push(`/verify-code?email=${encodeURIComponent(email)}`);
           return;
         }
         // Show user-friendly error message
@@ -436,8 +436,8 @@ export default function LoginPage() {
           </p>
           <p className="text-sm text-gray-400">
             Haven't verified your email?{' '}
-            <a href="/verify-email" className="text-itutor-green hover:text-emerald-400 font-semibold transition-colors">
-              Resend verification
+            <a href="/verify-code" className="text-itutor-green hover:text-emerald-400 font-semibold transition-colors">
+              Enter verification code
             </a>
           </p>
           <div className="pt-4 border-t border-gray-700">

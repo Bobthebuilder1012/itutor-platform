@@ -179,9 +179,9 @@ export default function SignupPage() {
       const redirectUrl = searchParams.get('redirect');
       const redirectParam = redirectUrl ? `&redirect=${encodeURIComponent(redirectUrl)}` : '';
 
-      // If email confirmation is required, skip profile creation for now
+      // If email confirmation is required, redirect to code verification page
       if (!authData.session) {
-        router.push(`/login?emailSent=true&email=${encodeURIComponent(email)}${redirectParam}`);
+        router.push(`/verify-code?email=${encodeURIComponent(email)}${redirectParam}`);
         return;
       }
 
