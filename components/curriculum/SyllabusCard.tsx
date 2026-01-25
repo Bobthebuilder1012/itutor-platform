@@ -36,7 +36,7 @@ export default function SyllabusCard({ syllabus, onView, onDownload }: SyllabusC
       {/* Action Buttons */}
       <div className="flex gap-3 mt-4">
         <button
-          onClick={() => onView(syllabus.id)}
+          onClick={() => onDownload(syllabus.pdf_url)}
           className="flex-1 bg-gradient-to-r from-itutor-green to-emerald-600 text-white py-2 px-4 rounded-lg font-semibold hover:from-emerald-600 hover:to-itutor-green transition-all duration-300 shadow-md hover:shadow-lg flex items-center justify-center gap-2"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -47,7 +47,7 @@ export default function SyllabusCard({ syllabus, onView, onDownload }: SyllabusC
         </button>
 
         <button
-          onClick={() => onDownload(syllabus.pdf_url)}
+          onClick={() => onView(syllabus.id)}
           className="flex-1 bg-white border-2 border-itutor-green text-itutor-green py-2 px-4 rounded-lg font-semibold hover:bg-itutor-green hover:text-white transition-all duration-300 shadow-md hover:shadow-lg flex items-center justify-center gap-2"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

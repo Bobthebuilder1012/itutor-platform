@@ -17,6 +17,7 @@ interface DashboardLayoutProps {
   userName: string;
 }
 
+
 export default function DashboardLayout({ children, role, userName }: DashboardLayoutProps) {
   const router = useRouter();
   const { profile } = useProfile();
@@ -59,8 +60,8 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         return [
           { href: '/tutor/find-students', label: 'Find Students' },
           { href: '/tutor/bookings', label: 'Booking Requests' },
-          { href: '/tutor/curriculum', label: 'Curriculum' },
           { href: '/communities', label: 'Communities' },
+          { href: '/tutor/curriculum', label: 'Curriculum' },
           { href: '/tutor/sessions', label: 'Sessions' },
           { href: '/tutor/settings', label: 'Settings' },
         ];
@@ -102,23 +103,8 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
       <nav className="bg-black shadow-lg border-b border-gray-900 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            {/* Left: Hamburger Menu (Mobile) + Logo */}
-            <div className="flex items-center gap-3">
-              {/* Hamburger Menu Button - Mobile Only */}
-              <button
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="lg:hidden p-2 rounded-md text-gray-400 hover:text-itutor-green hover:bg-gray-800 focus:outline-none transition-colors"
-                aria-label="Open menu"
-              >
-                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  {mobileMenuOpen ? (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  ) : (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                  )}
-                </svg>
-              </button>
-
+            {/* Left: Logo + Navigation */}
+            <div className="flex items-center gap-2 sm:gap-3">
               {/* Logo */}
               <Link href={getDashboardLink()} className="flex-shrink-0 flex items-center group">
                 <img
@@ -128,13 +114,13 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
                 />
               </Link>
 
-              {/* Desktop Navigation Links */}
-              <div className="hidden lg:flex lg:ml-6 lg:space-x-6">
+              {/* Navigation Links */}
+              <div className="flex ml-2 sm:ml-3 md:ml-4 lg:ml-6 space-x-1 sm:space-x-2 md:space-x-3 lg:space-x-6 overflow-x-auto">
                 {getNavLinks().map((link) => (
                   <Link
                     key={link.href}
                     href={link.href}
-                    className="border-transparent text-gray-400 hover:text-itutor-green hover:border-itutor-green inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors duration-200"
+                    className="border-transparent text-gray-300 hover:text-itutor-green hover:border-itutor-green inline-flex items-center px-1 pt-1 border-b-2 text-[10px] sm:text-xs md:text-sm font-medium transition-colors duration-200 whitespace-nowrap"
                   >
                     {link.label}
                   </Link>
@@ -228,47 +214,6 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           </div>
         </div>
 
-        {/* Mobile Sliding Navigation Menu */}
-        {mobileMenuOpen && (
-          <>
-            {/* Backdrop */}
-            <div 
-              className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
-              onClick={() => setMobileMenuOpen(false)}
-            />
-            
-            {/* Slide-out Menu */}
-            <div className="fixed top-0 left-0 bottom-0 w-64 bg-gray-900 shadow-2xl z-50 lg:hidden transform transition-transform duration-300 ease-in-out overflow-y-auto">
-              <div className="p-6">
-                <div className="flex items-center justify-between mb-8">
-                  <h2 className="text-xl font-bold text-itutor-green">Menu</h2>
-                  <button
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="p-2 rounded-md text-gray-400 hover:text-itutor-green hover:bg-gray-800 transition-colors"
-                  >
-                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-                
-                <nav className="space-y-2">
-                  {getNavLinks().map((link) => (
-                    <Link
-                      key={link.href}
-                      href={link.href}
-                      onClick={() => setMobileMenuOpen(false)}
-                      className="flex items-center gap-3 px-4 py-3 text-gray-300 hover:bg-gray-800 hover:text-itutor-green rounded-lg transition-colors text-base font-medium"
-                    >
-                      <span className="w-1.5 h-1.5 bg-itutor-green rounded-full"></span>
-                      {link.label}
-                    </Link>
-                  ))}
-                </nav>
-              </div>
-            </div>
-          </>
-        )}
       </nav>
       
       <main className="flex-1 w-full py-4 px-2 sm:py-6 sm:px-4 lg:py-8 lg:px-6 lg:max-w-7xl lg:mx-auto">

@@ -71,6 +71,9 @@ export interface Booking {
   confirmed_start_at: string | null;
   confirmed_end_at: string | null;
   
+  // Duration
+  duration_minutes: number;
+  
   // Status
   status: BookingStatus;
   last_action_by: LastActionBy | null;

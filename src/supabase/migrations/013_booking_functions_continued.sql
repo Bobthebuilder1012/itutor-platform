@@ -166,12 +166,19 @@ BEGIN
         RAISE EXCEPTION 'Unauthorized';
     END IF;
 
-    -- Update status
+    -- Update booking status
     UPDATE public.bookings
     SET 
         status = 'CANCELLED',
         last_action_by = 'student'
     WHERE id = p_booking_id;
+
+    -- Update session status if a session exists for this booking
+    UPDATE public.sessions
+    SET 
+        status = 'CANCELLED',
+        updated_at = NOW()
+    WHERE booking_id = p_booking_id;
 
     -- Add message if provided
     IF p_reason IS NOT NULL THEN

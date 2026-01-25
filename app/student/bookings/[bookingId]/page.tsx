@@ -287,7 +287,10 @@ export default function BookingThreadPage() {
                       const durationMinutes = Math.round(durationMs / 60000);
                       const hours = Math.floor(durationMinutes / 60);
                       const mins = durationMinutes % 60;
-                      return hours > 0 ? `${hours}h ${mins}m` : `${mins} min`;
+                      if (hours > 0) {
+                        return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+                      }
+                      return `${mins} min`;
                     }
                     return '60 min';
                   })()}

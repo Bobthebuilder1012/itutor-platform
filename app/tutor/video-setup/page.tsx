@@ -100,9 +100,10 @@ export default function VideoSetupPage() {
 
     setCheckingSessions(true);
     try {
-      const { count, error } = await supabase
+      // Fetch sessions with booking status to filter out cancelled bookings
+      const { data, error } = await supabase
         .from('sessions')
-        .select('id', { count: 'exact', head: true })
+        .select('id, bookings!fk_sessions_booking(status)')
         .eq('tutor_id', profile.id)
         .in('status', ['SCHEDULED', 'JOIN_OPEN'])
         .gte('scheduled_start_at', new Date().toISOString());
@@ -110,7 +111,12 @@ export default function VideoSetupPage() {
       if (error) {
         console.error('Error checking sessions:', error);
       } else {
-        setFutureSessions(count || 0);
+        // Filter out sessions with cancelled or declined bookings
+        const activeSessions = (data || []).filter((session: any) => 
+          session.bookings?.status !== 'CANCELLED' && 
+          session.bookings?.status !== 'DECLINED'
+        );
+        setFutureSessions(activeSessions.length);
       }
     } catch (error) {
       console.error('Error checking sessions:', error);
@@ -121,6 +127,9 @@ export default function VideoSetupPage() {
 
   async function handleConnect(provider: VideoProvider) {
     if (!profile) return;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/96e0dc54-0d29-41a7-8439-97ee7ad5934e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/tutor/video-setup/page.tsx:123',message:'Connect button clicked',data:{provider,tutorId:profile.id,hasExistingConnection:!!connection,futureSessions},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,B,C,D'})}).catch(()=>{});
+    // #endregion
     // Check if tutor has future sessions
     if (connection && futureSessions > 0) {
       alert(

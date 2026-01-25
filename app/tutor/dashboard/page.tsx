@@ -139,12 +139,12 @@ export default function TutorDashboard() {
       const [sessionsRes, tutorSubjectsRes, allSubjectsRes, ratingsRes, videoProviderRes] = await Promise.all([
         supabase
           .from('sessions')
-          .select('*, bookings(subject_id)')
+          .select('*, bookings(subject_id, status)')
           .eq('tutor_id', profile.id)
           .gte('scheduled_start_at', now)
           .in('status', ['SCHEDULED', 'JOIN_OPEN'])
           .order('scheduled_start_at', { ascending: true })
-          .limit(5),
+          .limit(10),
         supabase
           .from('tutor_subjects')
           .select('*')
@@ -171,9 +171,15 @@ export default function TutorDashboard() {
       }
 
       if (sessionsRes.data) {
+        // Filter out cancelled bookings first
+        const activeSessions = sessionsRes.data.filter((session: any) => 
+          session.bookings?.status !== 'CANCELLED' && 
+          session.bookings?.status !== 'DECLINED'
+        );
+
         // Enrich sessions with student and subject names
         const enrichedSessions = await Promise.all(
-          sessionsRes.data.map(async (session: any) => {
+          activeSessions.slice(0, 5).map(async (session: any) => {
             const subjectId = session.bookings?.subject_id;
             
             const [studentRes, subjectRes] = await Promise.all([
@@ -680,46 +686,64 @@ export default function TutorDashboard() {
             <p className="text-gray-600">Loading sessions...</p>
           ) : sessions.length > 0 ? (
             <div className="space-y-3">
-              {sessions.map((session) => (
-                <div key={session.id} className="bg-gradient-to-br from-pink-50 to-purple-50 border-2 border-pink-200 rounded-xl p-4 hover:border-pink-400 hover:shadow-lg transition-all duration-200">
-                  <div className="flex justify-between items-start mb-3">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <h3 className="font-bold text-gray-900 text-lg">{session.subject_name}</h3>
-                        <span className={`px-3 py-1 text-xs font-semibold rounded-full shadow-lg ${
-                          session.status === 'COMPLETED_ASSUMED' ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white' :
-                          session.status === 'SCHEDULED' ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white' :
-                          session.status === 'JOIN_OPEN' ? 'bg-gradient-to-r from-green-500 to-green-600 text-white' :
-                          session.status === 'NO_SHOW_STUDENT' ? 'bg-gradient-to-r from-red-500 to-red-600 text-white' :
-                          'bg-gradient-to-r from-gray-500 to-gray-600 text-white'
-                        }`}>
-                          {session.status === 'COMPLETED_ASSUMED' ? 'Completed' :
-                           session.status === 'SCHEDULED' ? 'Scheduled' :
-                           session.status === 'JOIN_OPEN' ? 'Ready' :
-                           session.status === 'NO_SHOW_STUDENT' ? 'No Show' :
-                           session.status}
-                        </span>
+              {sessions.map((session) => {
+                const sessionDate = new Date(session.scheduled_start_at);
+                const now = new Date();
+                const isPast = sessionDate < now;
+                
+                const sessionStatus = session.status?.toUpperCase();
+                
+                let displayStatus = 'Upcoming';
+                let statusColor = 'bg-gradient-to-r from-blue-500 to-blue-600 text-white';
+                
+                if (sessionStatus === 'CANCELLED') {
+                  displayStatus = 'Cancelled';
+                  statusColor = 'bg-gradient-to-r from-red-500 to-red-600 text-white';
+                } else if (sessionStatus === 'COMPLETED' || sessionStatus === 'COMPLETED_ASSUMED') {
+                  displayStatus = 'Completed';
+                  statusColor = 'bg-gradient-to-r from-green-500 to-emerald-600 text-white';
+                } else if (sessionStatus === 'IN_PROGRESS' || sessionStatus === 'JOIN_OPEN') {
+                  displayStatus = 'In Progress';
+                  statusColor = 'bg-gradient-to-r from-purple-500 to-purple-600 text-white';
+                } else if (sessionStatus === 'NO_SHOW_STUDENT') {
+                  displayStatus = 'No Show';
+                  statusColor = 'bg-gradient-to-r from-orange-500 to-orange-600 text-white';
+                } else if (isPast && (sessionStatus === 'SCHEDULED' || sessionStatus === 'BOOKED')) {
+                  displayStatus = 'Past';
+                  statusColor = 'bg-gradient-to-r from-gray-500 to-gray-600 text-white';
+                }
+                
+                return (
+                  <div key={session.id} className="bg-gradient-to-br from-pink-50 to-purple-50 border-2 border-pink-200 rounded-xl p-4 hover:border-pink-400 hover:shadow-lg transition-all duration-200">
+                    <div className="flex justify-between items-start mb-3">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <h3 className="font-bold text-gray-900 text-lg">{session.subject_name}</h3>
+                          <span className={`px-3 py-1 text-xs font-semibold rounded-full shadow-lg ${statusColor}`}>
+                            {displayStatus}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-700 font-medium mb-2">
+                          with <span className="text-itutor-green font-semibold">{session.student_name}</span>
+                        </p>
+                        <p className="font-semibold text-gray-900">
+                          {new Date(session.scheduled_start_at).toLocaleDateString('en-US', {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric'
+                          })}
+                        </p>
+                        <p className="text-sm text-gray-600 mt-1">
+                          {new Date(session.scheduled_start_at).toLocaleTimeString('en-US', {
+                            hour: 'numeric',
+                            minute: '2-digit'
+                          })} • {session.duration_minutes} minutes
+                        </p>
                       </div>
-                      <p className="text-sm text-gray-700 font-medium mb-2">
-                        with <span className="text-itutor-green font-semibold">{session.student_name}</span>
-                      </p>
-                      <p className="font-semibold text-gray-900">
-                        {new Date(session.scheduled_start_at).toLocaleDateString('en-US', {
-                          weekday: 'short',
-                          month: 'short',
-                          day: 'numeric'
-                        })}
-                      </p>
-                      <p className="text-sm text-gray-600 mt-1">
-                        {new Date(session.scheduled_start_at).toLocaleTimeString('en-US', {
-                          hour: 'numeric',
-                          minute: '2-digit'
-                        })} • {session.duration_minutes} minutes
-                      </p>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="text-center py-12">
