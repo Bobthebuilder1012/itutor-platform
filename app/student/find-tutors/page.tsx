@@ -71,16 +71,22 @@ export default function FindTutorsPage() {
       console.log('=== STARTING TUTOR FETCH ===');
       
       // Fetch all institutions for the filter dropdown
-      const { data: institutionsData, error: institutionsError } = await supabase
-        .from('institutions')
-        .select('id, name')
-        .order('name');
+      let institutionsData: Institution[] = [];
+      try {
+        const { data, error: institutionsError } = await supabase
+          .from('institutions')
+          .select('id, name')
+          .order('name');
 
-      if (institutionsError) {
-        console.error('❌ Error fetching institutions:', institutionsError);
-      } else {
-        setInstitutions(institutionsData || []);
-        console.log('✅ Fetched institutions:', institutionsData?.length || 0);
+        if (institutionsError) {
+          console.error('❌ Error fetching institutions:', institutionsError);
+        } else {
+          institutionsData = data || [];
+          setInstitutions(institutionsData);
+          console.log('✅ Fetched institutions:', institutionsData.length);
+        }
+      } catch (err) {
+        console.error('❌ Exception fetching institutions:', err);
       }
       
       // Fetch all tutor profiles with bio
@@ -146,7 +152,10 @@ export default function FindTutorsPage() {
       const subjectsMap = new Map(allSubjectsData.map(s => [s.id, s]));
       
       // Create a map for quick institution lookup
-      const institutionsMap = new Map(institutionsData?.map(i => [i.id, i.name]) || []);
+      const institutionsMap = new Map<string, string>();
+      institutionsData.forEach(inst => {
+        institutionsMap.set(inst.id, inst.name);
+      });
 
       // Fetch all ratings for averages
       const { data: allRatings, error: allRatingsError } = await supabase
