@@ -17,6 +17,7 @@ type Tutor = {
   avatar_url: string | null;
   school?: string | null;
   institution_id?: string | null;
+  institution_name?: string | null;
   country: string;
   bio: string | null;
   tutor_verification_status: string | null;
@@ -36,15 +37,22 @@ type Tutor = {
   } | null;
 };
 
+type Institution = {
+  id: string;
+  name: string;
+};
+
 export default function FindTutorsPage() {
   const { profile, loading } = useProfile();
   const router = useRouter();
   const [tutors, setTutors] = useState<Tutor[]>([]);
   const [loadingTutors, setLoadingTutors] = useState(true);
+  const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
   const [selectedRating, setSelectedRating] = useState<string>('');
   const [selectedPrice, setSelectedPrice] = useState<string>('');
+  const [selectedSchool, setSelectedSchool] = useState<string>('');
 
   useEffect(() => {
     if (loading) return;
@@ -62,6 +70,19 @@ export default function FindTutorsPage() {
     try {
       console.log('=== STARTING TUTOR FETCH ===');
       
+      // Fetch all institutions for the filter dropdown
+      const { data: institutionsData, error: institutionsError } = await supabase
+        .from('institutions')
+        .select('id, name')
+        .order('name');
+
+      if (institutionsError) {
+        console.error('❌ Error fetching institutions:', institutionsError);
+      } else {
+        setInstitutions(institutionsData || []);
+        console.log('✅ Fetched institutions:', institutionsData?.length || 0);
+      }
+      
       // Fetch all tutor profiles with bio
       const { data: tutorProfiles, error: profilesError } = await supabase
         .from('profiles')
@@ -78,20 +99,23 @@ export default function FindTutorsPage() {
       console.log('✅ Fetched tutor profiles:', tutorProfiles?.length || 0);
       console.log('Tutor profiles data:', tutorProfiles);
 
-      // Filter out tutors without video provider connections
-      const { data: videoConnections, error: connectionsError } = await supabase
-        .from('tutor_video_provider_connections')
-        .select('tutor_id')
-        .eq('connection_status', 'connected');
+      // TEMPORARILY DISABLED: Filter out tutors without video provider connections
+      // TODO: Re-enable once tutors have connected their video providers
+      // const { data: videoConnections, error: connectionsError } = await supabase
+      //   .from('tutor_video_provider_connections')
+      //   .select('tutor_id')
+      //   .eq('connection_status', 'connected');
 
-      if (connectionsError) {
-        console.error('❌ Error fetching video connections:', connectionsError);
-      }
+      // if (connectionsError) {
+      //   console.error('❌ Error fetching video connections:', connectionsError);
+      // }
 
-      const tutorsWithVideo = new Set(videoConnections?.map(c => c.tutor_id) || []);
-      const activeTutorProfiles = tutorProfiles?.filter(t => tutorsWithVideo.has(t.id)) || [];
+      // const tutorsWithVideo = new Set(videoConnections?.map(c => c.tutor_id) || []);
+      // const activeTutorProfiles = tutorProfiles?.filter(t => tutorsWithVideo.has(t.id)) || [];
       
-      console.log(`✅ Filtered to ${activeTutorProfiles.length} tutors with video providers`);
+      const activeTutorProfiles = tutorProfiles || []; // Show all tutors for now
+      
+      console.log(`✅ Showing ${activeTutorProfiles.length} tutors (video provider filter disabled)`);
 
       // Fetch tutor subjects separately
       const { data: tutorSubjects, error: subjectsError } = await supabase
@@ -120,6 +144,9 @@ export default function FindTutorsPage() {
 
       // Create a map for quick subject lookup
       const subjectsMap = new Map(allSubjectsData.map(s => [s.id, s]));
+      
+      // Create a map for quick institution lookup
+      const institutionsMap = new Map(institutionsData?.map(i => [i.id, i.name]) || []);
 
       // Fetch all ratings for averages
       const { data: allRatings, error: allRatingsError } = await supabase
@@ -182,6 +209,7 @@ export default function FindTutorsPage() {
 
         return {
           ...tutor,
+          institution_name: tutor.institution_id ? institutionsMap.get(tutor.institution_id) : null,
           subjects,
           average_rating: avgRating,
           total_reviews: tutorRatings.length,
@@ -199,11 +227,6 @@ export default function FindTutorsPage() {
       console.log('=== TUTOR LOADING SUMMARY ===');
       console.log('Total tutor profiles:', activeTutorProfiles?.length || 0);
       console.log('Tutors with subjects:', tutorsWithSubjects.length);
-      console.log('Tutors:', tutorsWithSubjects.map(t => ({
-        name: t.display_name || t.username || t.full_name,
-        username: t.username,
-        subjectCount: t.subjects.length
-      })));
 
       setTutors(tutorsWithSubjects);
     } catch (error) {
@@ -234,6 +257,13 @@ export default function FindTutorsPage() {
     if (selectedSubjects.length > 0) {
       filtered = filtered.filter(tutor =>
         tutor.subjects.some(s => selectedSubjects.includes(s.name))
+      );
+    }
+
+    // Filter by school/institution
+    if (selectedSchool) {
+      filtered = filtered.filter(tutor =>
+        tutor.institution_id === selectedSchool
       );
     }
 
@@ -284,7 +314,7 @@ export default function FindTutorsPage() {
     }
 
     return filtered;
-  }, [tutors, searchQuery, selectedSubjects, selectedRating, selectedPrice, profile]);
+  }, [tutors, searchQuery, selectedSubjects, selectedRating, selectedPrice, selectedSchool, profile]);
 
   if (loading || !profile) {
     return (
@@ -322,7 +352,7 @@ export default function FindTutorsPage() {
           </div>
 
           {/* Filters */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
             <div>
               <label className="block text-xs font-medium text-gray-300 mb-1">
                 Subjects
@@ -332,6 +362,24 @@ export default function FindTutorsPage() {
                 onChange={setSelectedSubjects}
                 placeholder="Select subjects..."
               />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-300 mb-1">
+                School/Institution
+              </label>
+              <select
+                value={selectedSchool}
+                onChange={(e) => setSelectedSchool(e.target.value)}
+                className="w-full px-3 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition text-sm"
+              >
+                <option value="">All Schools</option>
+                {institutions.map(institution => (
+                  <option key={institution.id} value={institution.id}>
+                    {institution.name}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>
@@ -372,13 +420,14 @@ export default function FindTutorsPage() {
 
             {/* Clear Filters Button (aligned in grid) */}
             <div className="flex items-end">
-              {(searchQuery || selectedSubjects.length > 0 || selectedRating || selectedPrice) && (
+              {(searchQuery || selectedSubjects.length > 0 || selectedRating || selectedPrice || selectedSchool) && (
                 <button
                   onClick={() => {
                     setSearchQuery('');
                     setSelectedSubjects([]);
                     setSelectedRating('');
                     setSelectedPrice('');
+                    setSelectedSchool('');
                   }}
                   className="w-full px-3 py-2 text-sm text-itutor-green hover:text-emerald-400 font-medium transition-colors border border-itutor-green/30 rounded-lg hover:border-itutor-green/60"
                 >
@@ -450,8 +499,8 @@ export default function FindTutorsPage() {
                       {tutor.username && (
                         <p className="text-xs text-gray-500 truncate">@{tutor.username}</p>
                       )}
-                      {tutor.school && (
-                        <p className="text-sm text-gray-600 truncate">{tutor.school}</p>
+                      {tutor.institution_name && (
+                        <p className="text-sm text-gray-600 truncate">{tutor.institution_name}</p>
                       )}
                       {/* Always show rating */}
                       <div className="flex items-center gap-1 mt-1">
