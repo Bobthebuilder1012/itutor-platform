@@ -295,7 +295,7 @@ export default function FindTutorsPage() {
   }
 
   return (
-    <DashboardLayout role="student" userName={getDisplayName(profile)}>
+    <DashboardLayout role="student" userName={profile.username || getDisplayName(profile)}>
       <div className="px-4 py-3 sm:px-0">
         {/* Header */}
         <div className="mb-6">

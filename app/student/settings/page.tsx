@@ -342,7 +342,7 @@ export default function StudentSettingsPage() {
   ];
 
   return (
-    <DashboardLayout role="student" userName={getDisplayName(profile)}>
+    <DashboardLayout role="student" userName={profile.username || getDisplayName(profile)}>
       <div className="px-4 py-6 sm:px-0 max-w-7xl mx-auto">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Settings</h1>
         <p className="text-gray-600 mb-8">Manage your account settings and preferences</p>

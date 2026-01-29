@@ -79,7 +79,7 @@ export default function StudentMessagesPage() {
   }
 
   return (
-    <DashboardLayout role="student" userName={getDisplayName(profile)}>
+    <DashboardLayout role="student" userName={profile.username || getDisplayName(profile)}>
       <div className="px-4 py-6 sm:px-0 max-w-5xl mx-auto">
         {/* Header */}
         <div className="mb-6">

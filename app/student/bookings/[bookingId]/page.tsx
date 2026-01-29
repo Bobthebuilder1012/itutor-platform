@@ -235,7 +235,7 @@ export default function BookingThreadPage() {
   const canCancel = booking.status === 'PENDING' || booking.status === 'COUNTER_PROPOSED' || booking.status === 'CONFIRMED';
 
   return (
-    <DashboardLayout role="student" userName={getDisplayName(profile)}>
+    <DashboardLayout role="student" userName={profile.username || getDisplayName(profile)}>
       <div className="px-4 py-6 sm:px-0 max-w-4xl mx-auto">
         {/* Back Button */}
         <button
