@@ -173,7 +173,7 @@ export default function StudentDashboard() {
   };
 
   return (
-    <DashboardLayout role="student" userName={profile?.username || displayName}>
+    <DashboardLayout role="student" userName={displayName}>
       {/* Universal Search Bar */}
       {!testMode && profile && (
         <div className="px-4 sm:px-6 lg:px-8 pt-1 pb-2 bg-gradient-to-br from-gray-50 to-white">

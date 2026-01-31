@@ -233,7 +233,7 @@ export default function StudentSearchResultsPage() {
 
   if (!subject || mode !== 'subject') {
     return (
-      <DashboardLayout role="student" userName={profile.username || getDisplayName(profile)}>
+      <DashboardLayout role="student" userName={getDisplayName(profile)}>
         <div className="text-center py-12">
           <p className="text-gray-600">No search query provided</p>
           <button

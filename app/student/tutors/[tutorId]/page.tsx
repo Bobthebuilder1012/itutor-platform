@@ -234,7 +234,7 @@ export default function TutorProfilePage() {
 
   if (!tutor) {
     return (
-      <DashboardLayout role="student" userName={profile.username || getDisplayName(profile)}>
+      <DashboardLayout role="student" userName={getDisplayName(profile)}>
         <div className="text-center py-12">
           <p className="text-gray-600">Tutor not found</p>
         </div>

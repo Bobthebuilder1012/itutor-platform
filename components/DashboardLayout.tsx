@@ -131,7 +131,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
             {/* Right: Icons + Logout */}
             <div className="flex items-center gap-2 sm:gap-3">
               {/* Desktop: Show individual icons */}
-              <div className="flex items-center gap-3">
+              <div className="hidden sm:flex items-center gap-3">
                 {profile?.id && role !== 'reviewer' && <CalendarIcon userId={profile.id} role={role} />}
                 {profile?.id && role !== 'reviewer' && <MessagesIcon userId={profile.id} role={role} />}
                 {profile?.id && <NotificationBell userId={profile.id} />}
@@ -200,7 +200,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
 
               {/* Username and Logout - Pushed to the right */}
               <div className="flex items-center gap-2 sm:gap-3 ml-4 sm:ml-6 lg:ml-8">
-                <span className="text-sm text-gray-300 truncate max-w-[100px] sm:max-w-[120px]">{userName}</span>
+                <span className="hidden md:block text-sm text-gray-300 truncate max-w-[120px]">{userName}</span>
                 
                 {/* Logout Button */}
                 <button
