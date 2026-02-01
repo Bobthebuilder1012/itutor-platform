@@ -98,7 +98,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/communities', label: 'Communities' },
           { href: '/student/bookings', label: 'My Bookings' },
           { href: '/student/sessions', label: 'Sessions' },
-          { href: '/student/ratings', label: 'Ratings' },
+          { href: '/student/ratings', label: 'My Reviews' },
           { href: '/student/settings', label: 'Settings' },
         ];
       case 'tutor':
@@ -161,16 +161,16 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
 
               {/* Navigation Links */}
               <div className="flex-1 min-w-0">
-                <div className="flex ml-2 sm:ml-3 md:ml-4 lg:ml-6 space-x-1 sm:space-x-2 md:space-x-3 lg:space-x-6 overflow-x-auto whitespace-nowrap flex-nowrap">
-                {getNavLinks().map((link) => (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    className="border-transparent text-gray-300 hover:text-itutor-green hover:border-itutor-green inline-flex items-center px-1 pt-1 border-b-2 text-[10px] sm:text-xs md:text-sm font-medium transition-colors duration-200 whitespace-nowrap"
-                  >
-                    {link.label}
-                  </Link>
-                ))}
+                <div className="flex ml-2 sm:ml-3 md:ml-4 lg:ml-6 space-x-1 sm:space-x-2 md:space-x-3 lg:space-x-6 overflow-x-auto whitespace-nowrap flex-nowrap scrollbar-hide">
+                  {getNavLinks().map((link) => (
+                    <Link
+                      key={link.href}
+                      href={link.href}
+                      className="border-transparent text-gray-300 hover:text-itutor-green hover:border-itutor-green inline-flex items-center px-1 pt-1 border-b-2 text-[10px] sm:text-xs md:text-sm font-medium transition-colors duration-200 whitespace-nowrap"
+                    >
+                      {link.label}
+                    </Link>
+                  ))}
                 </div>
               </div>
             </div>

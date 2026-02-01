@@ -232,7 +232,8 @@ export default function BookingThreadPage() {
 
   const displayStartTime = booking.confirmed_start_at || booking.requested_start_at;
   const displayEndTime = booking.confirmed_end_at || booking.requested_end_at;
-  const canCancel = booking.status === 'PENDING' || booking.status === 'COUNTER_PROPOSED' || booking.status === 'CONFIRMED';
+  const hasSessionStarted = displayStartTime ? new Date(displayStartTime) <= new Date() : false;
+  const canCancel = (booking.status === 'PENDING' || booking.status === 'COUNTER_PROPOSED' || booking.status === 'CONFIRMED') && !hasSessionStarted;
 
   return (
     <DashboardLayout role="student" userName={getDisplayName(profile)}>
@@ -249,11 +250,11 @@ export default function BookingThreadPage() {
         </button>
 
         {/* Booking Header */}
-        <div className="bg-gradient-to-br from-gray-800 to-gray-900 border border-gray-700 rounded-2xl p-6 mb-6">
+        <div className="bg-gradient-to-br from-blue-50 to-purple-50 border border-blue-200 rounded-2xl p-6 mb-6 shadow-sm">
           <div className="flex items-start justify-between mb-4">
             <div>
-              <h1 className="text-2xl font-bold text-itutor-white mb-2">Booking with {tutorName}</h1>
-              <p className="text-gray-400">{subjectName}</p>
+              <h1 className="text-2xl font-bold text-gray-900 mb-2">Booking with {tutorName}</h1>
+              <p className="text-gray-600">{subjectName}</p>
             </div>
             <span className={`
               px-3 py-1.5 rounded-lg text-sm font-semibold border
@@ -264,7 +265,7 @@ export default function BookingThreadPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-            <div className="flex items-center gap-2 text-gray-300">
+            <div className="flex items-center gap-2 text-gray-700">
               <svg className="w-5 h-5 text-itutor-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
@@ -274,7 +275,7 @@ export default function BookingThreadPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2 text-gray-300">
+            <div className="flex items-center gap-2 text-gray-700">
               <svg className="w-5 h-5 text-itutor-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
@@ -299,7 +300,7 @@ export default function BookingThreadPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2 text-gray-300">
+            <div className="flex items-center gap-2 text-gray-700">
               <svg className="w-5 h-5 text-itutor-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
@@ -311,19 +312,19 @@ export default function BookingThreadPage() {
           </div>
 
           {booking.student_notes && (
-            <div className="mt-4 pt-4 border-t border-gray-700">
-              <p className="text-sm text-gray-400 mb-1">Your notes:</p>
-              <p className="text-gray-300">{booking.student_notes}</p>
+            <div className="mt-4 pt-4 border-t border-blue-200">
+              <p className="text-sm text-gray-600 mb-1">Your notes:</p>
+              <p className="text-gray-900">{booking.student_notes}</p>
             </div>
           )}
 
           {/* Cancel Button */}
           {canCancel && (
-            <div className="mt-4 pt-4 border-t border-gray-700">
+            <div className="mt-4 pt-4 border-t border-blue-200">
               <button
                 onClick={handleCancelBooking}
                 disabled={actionLoading}
-                className="text-red-400 hover:text-red-300 font-medium text-sm transition disabled:opacity-50"
+                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium text-sm transition disabled:opacity-50"
               >
                 Cancel Booking
               </button>
@@ -339,13 +340,13 @@ export default function BookingThreadPage() {
         )}
 
         {/* Messages Thread */}
-        <div className="bg-gradient-to-br from-gray-800 to-gray-900 border border-gray-700 rounded-2xl overflow-hidden">
-          <div className="p-4 border-b border-gray-700">
-            <h2 className="text-lg font-bold text-itutor-white">Messages</h2>
+        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+          <div className="p-4 border-b border-gray-200 bg-gray-50">
+            <h2 className="text-lg font-bold text-gray-900">Messages</h2>
           </div>
 
           {/* Messages List */}
-          <div className="h-96 overflow-y-auto p-4 space-y-4">
+          <div className="h-96 overflow-y-auto p-4 space-y-4 bg-gray-50">
             {messages.length === 0 ? (
               <div className="text-center text-gray-500 py-8">
                 No messages yet
@@ -355,7 +356,7 @@ export default function BookingThreadPage() {
                 if (msg.message_type === 'system') {
                   return (
                     <div key={msg.id} className="flex justify-center">
-                      <div className="bg-gray-700/50 px-4 py-2 rounded-full text-xs text-gray-400">
+                      <div className="bg-blue-50 px-4 py-2 rounded-full text-xs text-blue-600 border border-blue-200">
                         {msg.body}
                       </div>
                     </div>
@@ -366,21 +367,21 @@ export default function BookingThreadPage() {
                   return (
                     <div key={msg.id} className={`flex ${msg.is_own_message ? 'justify-end' : 'justify-start'}`}>
                       <div className="max-w-md">
-                        <div className="bg-blue-900/30 border border-blue-500/50 rounded-lg p-4">
+                        <div className="bg-blue-50 border border-blue-300 rounded-lg p-4">
                           <div className="flex items-center gap-2 mb-2">
-                            <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                             </svg>
-                            <span className="font-semibold text-blue-400">Alternative Time Proposed</span>
+                            <span className="font-semibold text-blue-700">Alternative Time Proposed</span>
                           </div>
-                          <p className="text-itutor-white font-medium mb-1">
+                          <p className="text-gray-900 font-medium mb-1">
                             {formatDateTime(msg.proposed_start_at!)}
                           </p>
-                          <p className="text-gray-400 text-sm mb-3">
+                          <p className="text-gray-600 text-sm mb-3">
                             {formatTimeRange(msg.proposed_start_at!, msg.proposed_end_at!)}
                           </p>
                           {msg.body && (
-                            <p className="text-gray-300 text-sm mb-3">{msg.body}</p>
+                            <p className="text-gray-700 text-sm mb-3">{msg.body}</p>
                           )}
                           {!msg.is_own_message && booking.status === 'COUNTER_PROPOSED' && (
                             <button
@@ -407,7 +408,7 @@ export default function BookingThreadPage() {
                       <div className={`rounded-lg p-3 ${
                         msg.is_own_message
                           ? 'bg-itutor-green text-white'
-                          : 'bg-gray-700 text-gray-100'
+                          : 'bg-white border border-gray-300 text-gray-900'
                       }`}>
                         <p>{msg.body}</p>
                       </div>
@@ -432,7 +433,7 @@ export default function BookingThreadPage() {
                   onChange={(e) => setNewMessage(e.target.value)}
                   placeholder="Type a message..."
                   disabled={sending}
-                  className="flex-1 px-4 py-2 bg-gray-900 border border-gray-700 text-itutor-white rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-500 disabled:opacity-50"
+                  className="flex-1 px-4 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-400 disabled:opacity-50"
                 />
                 <button
                   type="submit"

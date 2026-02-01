@@ -53,11 +53,11 @@ export default function StudentRatings() {
   return (
     <DashboardLayout role="student" userName={profile.full_name}>
       <div className="px-4 py-6 sm:px-0">
-        <h1 className="text-3xl font-bold text-gray-900 mb-6">My Ratings</h1>
+        <h1 className="text-3xl font-bold text-gray-900 mb-6">My Reviews</h1>
 
         <div className="bg-white shadow rounded-lg p-6">
           {loadingData ? (
-            <p className="text-gray-500">Loading ratings...</p>
+            <p className="text-gray-500">Loading reviews...</p>
           ) : ratings.length > 0 ? (
             <div className="space-y-6">
               {ratings.map((rating) => (
@@ -90,7 +90,7 @@ export default function StudentRatings() {
             </div>
           ) : (
             <div className="text-center py-12">
-              <p className="text-gray-500">No ratings yet</p>
+              <p className="text-gray-500">No reviews yet</p>
             </div>
           )}
         </div>

@@ -11,7 +11,6 @@ import AvatarUploadModal from '@/components/AvatarUploadModal';
 import AddSubjectModal from '@/components/tutor/AddSubjectModal';
 import EditSubjectModal from '@/components/tutor/EditSubjectModal';
 import EditProfileModal from '@/components/EditProfileModal';
-import UniversalSearchBar from '@/components/UniversalSearchBar';
 import SentOffersList from '@/components/offers/SentOffersList';
 import VideoProviderRequiredModal from '@/components/VideoProviderRequiredModal';
 import ShareProfileModal from '@/components/ShareProfileModal';
@@ -318,17 +317,6 @@ export default function TutorDashboard() {
         </div>
       )}
 
-      {/* Universal Search Bar - Full Width, Right Under Header */}
-      {!testMode && profile && (
-        <div className="px-4 sm:px-6 lg:px-8 pt-2 pb-1 bg-gradient-to-br from-gray-50 to-white">
-          <UniversalSearchBar
-            userRole="tutor"
-            onResultClick={(student) => {
-              router.push(`/tutor/students/${student.id}`);
-            }}
-          />
-        </div>
-      )}
 
       <div className="px-4 py-3 sm:px-0">
         {/* Test Mode Banner */}

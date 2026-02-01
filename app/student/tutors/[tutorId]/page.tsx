@@ -105,7 +105,7 @@ export default function TutorProfilePage() {
       // Fetch tutor profile
       const { data: tutorData, error: tutorError } = await supabase
         .from('profiles')
-        .select('id, full_name, username, display_name, avatar_url, institution_id, country, bio, tutor_verification_status')
+        .select('id, full_name, username, display_name, avatar_url, school, institution_id, country, bio, tutor_verification_status')
         .eq('id', tutorId)
         .eq('role', 'tutor')
         .single();

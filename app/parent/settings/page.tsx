@@ -342,27 +342,53 @@ export default function ParentSettingsPage() {
           </div>
         )}
 
-        <div className="flex gap-6">
-          {/* Sidebar Navigation */}
-          <div className="w-64 flex-shrink-0">
-            <div className="bg-white border-2 border-gray-200 rounded-2xl p-2 sticky top-6">
-              <nav className="space-y-1">
+        {/* Mobile & Tablet: Horizontal Tabs */}
+        <div className="md:hidden mb-4">
+          <div className="bg-white border-2 border-gray-200 rounded-xl p-1.5">
+            <div className="flex overflow-x-auto scrollbar-hide gap-1">
+              {sections.map((section) => (
+                <button
+                  key={section.id}
+                  onClick={() => setActiveSection(section.id)}
+                  className={`
+                    flex-shrink-0 flex flex-col items-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all whitespace-nowrap text-xs
+                    ${activeSection === section.id
+                      ? 'bg-gradient-to-r from-itutor-green to-emerald-600 text-white shadow-md'
+                      : 'text-gray-700 hover:bg-gray-100'
+                    }
+                  `}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={section.icon} />
+                  </svg>
+                  <span className="text-[10px]">{section.label.replace(' & ', ' ').replace('Information', 'Info')}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col md:flex-row gap-4 md:gap-6">
+          {/* Desktop: Sidebar Navigation */}
+          <div className="hidden md:block w-52 flex-shrink-0">
+            <div className="bg-white border-2 border-gray-200 rounded-xl p-1.5 sticky top-6">
+              <nav className="space-y-0.5">
                 {sections.map((section) => (
                   <button
                     key={section.id}
                     onClick={() => setActiveSection(section.id)}
                     className={`
-                      w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all
+                      w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg font-medium transition-all text-sm
                       ${activeSection === section.id
-                        ? 'bg-gradient-to-r from-itutor-green to-emerald-600 text-white shadow-lg'
+                        ? 'bg-gradient-to-r from-itutor-green to-emerald-600 text-white shadow-md'
                         : 'text-gray-700 hover:bg-gray-100'
                       }
                     `}
                   >
-                    <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={section.icon} />
                     </svg>
-                    <span className="text-sm">{section.label}</span>
+                    <span className="text-xs">{section.label}</span>
                   </button>
                 ))}
               </nav>
