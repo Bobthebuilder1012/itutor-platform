@@ -28,6 +28,12 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
 
   const effectiveUserId = profile?.id || authUserId;
   const showIcons = role !== 'reviewer';
+  const displayName =
+    profile?.username ||
+    userName ||
+    profile?.display_name ||
+    profile?.full_name ||
+    'User';
 
   useEffect(() => {
     let mounted = true;
@@ -143,7 +149,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             {/* Left: Logo + Navigation */}
-            <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+            <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 overflow-hidden">
               {/* Logo */}
               <Link href={getDashboardLink()} className="flex-shrink-0 flex items-center group">
                 <img
@@ -155,7 +161,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
 
               {/* Navigation Links */}
               <div className="flex-1 min-w-0">
-                <div className="flex ml-2 sm:ml-3 md:ml-4 lg:ml-6 space-x-1 sm:space-x-2 md:space-x-3 lg:space-x-6 overflow-x-auto whitespace-nowrap">
+                <div className="flex ml-2 sm:ml-3 md:ml-4 lg:ml-6 space-x-1 sm:space-x-2 md:space-x-3 lg:space-x-6 overflow-x-auto whitespace-nowrap flex-nowrap">
                 {getNavLinks().map((link) => (
                   <Link
                     key={link.href}
@@ -170,9 +176,9 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
             </div>
 
             {/* Right: Icons + Logout */}
-            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-              {/* Desktop: Show individual icons */}
-              <div className="hidden sm:flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0 pl-2">
+              {/* Icons */}
+              <div className="flex items-center gap-3">
                 {showIcons && (
                   <>
                     {/* Always show the icons so the header doesn't look empty. */}
@@ -217,70 +223,9 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
                 )}
               </div>
 
-              {/* Mobile: Consolidated Icon Menu */}
-              {showIcons && (
-                <div className="relative sm:hidden">
-                  <button
-                    onClick={() => setMobileIconMenuOpen(!mobileIconMenuOpen)}
-                    className="p-2 rounded-md text-gray-400 hover:text-itutor-green hover:bg-gray-800 focus:outline-none transition-colors relative"
-                    aria-label="Open notifications menu"
-                  >
-                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                    </svg>
-                  </button>
-
-                  {/* Mobile Icon Dropdown */}
-                  {mobileIconMenuOpen && (
-                    <>
-                      <div 
-                        className="fixed inset-0 z-40" 
-                        onClick={() => setMobileIconMenuOpen(false)}
-                      />
-                      <div className="absolute right-0 mt-2 w-56 bg-gray-900 rounded-lg shadow-lg border border-gray-700 py-2 z-50">
-                        {showIcons && (
-                          <>
-                            <Link
-                              href={role === 'tutor' ? '/tutor/calendar' : role === 'student' ? '/student/sessions' : '/parent/sessions'}
-                              onClick={() => setMobileIconMenuOpen(false)}
-                              className="flex items-center gap-3 px-4 py-3 text-gray-300 hover:bg-gray-800 hover:text-itutor-green transition-colors"
-                            >
-                              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                              </svg>
-                              <span>Calendar</span>
-                            </Link>
-                            <Link
-                              href={`/${role}/messages`}
-                              onClick={() => setMobileIconMenuOpen(false)}
-                              className="flex items-center gap-3 px-4 py-3 text-gray-300 hover:bg-gray-800 hover:text-itutor-green transition-colors"
-                            >
-                              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                              </svg>
-                              <span>Messages</span>
-                            </Link>
-                          </>
-                        )}
-                        <Link
-                          href={`/${role}/notifications`}
-                          onClick={() => setMobileIconMenuOpen(false)}
-                          className="flex items-center gap-3 px-4 py-3 text-gray-300 hover:bg-gray-800 hover:text-itutor-green transition-colors"
-                        >
-                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                          </svg>
-                          <span>Notifications</span>
-                        </Link>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-
               {/* Username and Logout - Pushed to the right */}
               <div className="flex items-center gap-2 sm:gap-3 ml-4 sm:ml-6 lg:ml-8">
-                <span className="hidden md:block text-sm text-gray-300 truncate max-w-[120px]">{userName}</span>
+                <span className="text-sm text-gray-300 truncate max-w-[120px]">{displayName}</span>
                 
                 {/* Logout Button */}
                 <button
