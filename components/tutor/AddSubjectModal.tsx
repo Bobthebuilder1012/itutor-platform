@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { Subject } from '@/lib/types/database';
+import PaidClassesLockNotice from '@/components/tutor/PaidClassesLockNotice';
 
 type AddSubjectModalProps = {
   isOpen: boolean;
@@ -31,17 +32,29 @@ export default function AddSubjectModal({
   const [searchQuery, setSearchQuery] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
+  const [paidClassesEnabled, setPaidClassesEnabled] = useState<boolean>(false);
 
   // Fetch available subjects when modal opens
   useEffect(() => {
     if (isOpen) {
       fetchSubjects();
+      fetchPaidClassesFlag();
       setSelectedSubjects([]);
       setSearchQuery('');
       setIsDropdownOpen(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
+
+  async function fetchPaidClassesFlag() {
+    try {
+      const res = await fetch('/api/feature-flags', { cache: 'no-store' });
+      const data = await res.json();
+      setPaidClassesEnabled(Boolean(data?.paidClassesEnabled));
+    } catch {
+      setPaidClassesEnabled(false);
+    }
+  }
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -110,7 +123,10 @@ export default function AddSubjectModal({
     
     const subject = allSubjects.find(s => s.id === subjectId);
     if (subject) {
-      setSelectedSubjects([...selectedSubjects, { subject, price: '100' }]);
+      setSelectedSubjects([
+        ...selectedSubjects,
+        { subject, price: paidClassesEnabled ? '100' : '0' }
+      ]);
       setSearchQuery('');
       setIsDropdownOpen(false);
     }
@@ -144,22 +160,32 @@ export default function AddSubjectModal({
         alert(`Please enter a valid price ($0 or more) for ${subject.name}`);
         return;
       }
+      if (!paidClassesEnabled && priceNum > 0) {
+        alert(
+          'Paid classes will be available shortly. During our initial launch period, tutors can host free classes only.'
+        );
+        return;
+      }
     }
 
     setLoading(true);
     try {
-      const tutorSubjects = selectedSubjects.map(({ subject, price }) => ({
-        tutor_id: tutorId,
-        subject_id: subject.id,
-        price_per_hour_ttd: parseFloat(price),
-        mode: 'either', // Default to flexible teaching mode (online/in-person/either)
-      }));
+      const response = await fetch('/api/tutor/subjects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subjects: selectedSubjects.map(({ subject, price }) => ({
+            subject_id: subject.id,
+            price_per_hour_ttd: parseFloat(price),
+            mode: 'either',
+          })),
+        }),
+      });
 
-      const { error } = await supabase
-        .from('tutor_subjects')
-        .insert(tutorSubjects);
-
-      if (error) throw error;
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result?.error || 'Failed to add subjects');
+      }
 
       alert(`${selectedSubjects.length} subject(s) added successfully!`);
       onSubjectAdded();
@@ -182,6 +208,7 @@ export default function AddSubjectModal({
       <div className="bg-gradient-to-br from-gray-800 to-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
         <h2 className="text-2xl font-bold text-itutor-white mb-2">Add New Subjects</h2>
         <p className="text-gray-400 text-sm mb-3">Search for subjects, then set your rate for each</p>
+        {!paidClassesEnabled && <PaidClassesLockNotice className="mb-4" />}
         
         {/* Free Session Recommendation */}
         <div className="bg-gradient-to-r from-blue-900/30 to-purple-900/30 border-2 border-blue-400/50 rounded-lg p-3 mb-6">
@@ -312,7 +339,8 @@ export default function AddSubjectModal({
                               step="1"
                               value={price}
                               onChange={(e) => updatePrice(subject.id, e.target.value)}
-                              className="w-24 bg-gray-900 text-itutor-white border border-gray-700 rounded-lg pl-7 pr-3 py-2 text-sm focus:ring-2 focus:ring-itutor-green focus:border-itutor-green"
+                              disabled={!paidClassesEnabled}
+                              className="w-24 bg-gray-900 text-itutor-white border border-gray-700 rounded-lg pl-7 pr-3 py-2 text-sm focus:ring-2 focus:ring-itutor-green focus:border-itutor-green disabled:opacity-60 disabled:cursor-not-allowed"
                               placeholder="100"
                             />
                           </div>

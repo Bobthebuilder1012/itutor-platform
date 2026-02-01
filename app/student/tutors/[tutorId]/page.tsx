@@ -58,6 +58,7 @@ export default function TutorProfilePage() {
   const [verifiedSubjects, setVerifiedSubjects] = useState<any[]>([]);
   const [csecSubjects, setCsecSubjects] = useState<any[]>([]);
   const [capeSubjects, setCapeSubjects] = useState<any[]>([]);
+  const [paidClassesEnabled, setPaidClassesEnabled] = useState<boolean>(false);
 
   useEffect(() => {
     if (profileLoading) return;
@@ -67,9 +68,20 @@ export default function TutorProfilePage() {
       return;
     }
 
+    fetchPaidClassesFlag();
     fetchTutorProfile();
     fetchVerifiedSubjects();
   }, [profile, profileLoading, router, tutorId]);
+
+  async function fetchPaidClassesFlag() {
+    try {
+      const res = await fetch('/api/feature-flags', { cache: 'no-store' });
+      const data = await res.json();
+      setPaidClassesEnabled(Boolean(data?.paidClassesEnabled));
+    } catch {
+      setPaidClassesEnabled(false);
+    }
+  }
 
   async function fetchVerifiedSubjects() {
     try {
@@ -130,7 +142,7 @@ export default function TutorProfilePage() {
             name: subject.label || subject.name,
             curriculum: subject.curriculum || subject.level || '',
             level: subject.level || '',
-            price_per_hour_ttd: ts.price_per_hour_ttd
+            price_per_hour_ttd: paidClassesEnabled ? ts.price_per_hour_ttd : 0
           } : null;
         })
         .filter((s): s is NonNullable<typeof s> => s !== null);

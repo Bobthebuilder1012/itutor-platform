@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase/client';
 import SubjectMultiSelect from '@/components/SubjectMultiSelect';
 import InstitutionAutocomplete from '@/components/InstitutionAutocomplete';
 import { Institution } from '@/lib/hooks/useInstitutionsSearch';
+import { PAID_CLASSES_DISABLED_MESSAGE } from '@/lib/featureFlags/paidClasses';
 
 const TEACHING_LEVELS = [
   'Form 1',
@@ -130,22 +131,32 @@ export default function TutorOnboardingPage() {
       }
 
       // Insert new tutor_subjects
-      const tutorSubjects = subjects.map((subject) => ({
-        tutor_id: userId,
-        subject_id: subject.id,
-        price_per_hour_ttd: 100, // Default price, can be changed later
-        mode: 'either', // Default to flexible teaching mode
-      }));
+      const flagsRes = await fetch('/api/feature-flags', { cache: 'no-store' });
+      const flags = await flagsRes.json();
+      const paidEnabled = Boolean(flags?.paidClassesEnabled);
 
-      const { error: insertError } = await supabase
-        .from('tutor_subjects')
-        .insert(tutorSubjects);
+      const response = await fetch('/api/tutor/subjects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subjects: subjects.map((subject) => ({
+            subject_id: subject.id,
+            price_per_hour_ttd: paidEnabled ? 100 : 0, // Default price; forced free during launch
+            mode: 'either',
+          })),
+        }),
+      });
 
-      if (insertError) {
-        console.error('Insert error:', insertError);
-        setError(`Error saving subjects: ${insertError.message}`);
+      const result = await response.json();
+      if (!response.ok) {
+        console.error('Insert error:', result);
+        setError(`Error saving subjects: ${result?.error || 'Unknown error'}`);
         setSubmitting(false);
         return;
+      }
+
+      if (!paidEnabled) {
+        console.log(PAID_CLASSES_DISABLED_MESSAGE);
       }
 
       // Verify subjects were saved

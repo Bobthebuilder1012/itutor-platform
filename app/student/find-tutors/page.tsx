@@ -45,6 +45,7 @@ export default function FindTutorsPage() {
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
   const [selectedRating, setSelectedRating] = useState<string>('');
   const [selectedPrice, setSelectedPrice] = useState<string>('');
+  const [paidClassesEnabled, setPaidClassesEnabled] = useState<boolean>(false);
 
   useEffect(() => {
     if (loading) return;
@@ -54,8 +55,19 @@ export default function FindTutorsPage() {
       return;
     }
 
+    fetchPaidClassesFlag();
     fetchTutors();
   }, [profile, loading, router]);
+
+  async function fetchPaidClassesFlag() {
+    try {
+      const res = await fetch('/api/feature-flags', { cache: 'no-store' });
+      const data = await res.json();
+      setPaidClassesEnabled(Boolean(data?.paidClassesEnabled));
+    } catch {
+      setPaidClassesEnabled(false);
+    }
+  }
 
   async function fetchTutors() {
     setLoadingTutors(true);
@@ -171,7 +183,7 @@ export default function FindTutorsPage() {
               name: subject.label || subject.name, // Use label for display
               curriculum: subject.curriculum || subject.level || '', // Try curriculum first, then level
               level: subject.level || '',
-              price_per_hour_ttd: ts.price_per_hour_ttd
+              price_per_hour_ttd: paidClassesEnabled ? ts.price_per_hour_ttd : 0
             };
           })
           .filter((s): s is NonNullable<typeof s> => s !== null);

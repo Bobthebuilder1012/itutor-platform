@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { TutorSubject, Subject } from '@/lib/types/database';
+import PaidClassesLockNotice from '@/components/tutor/PaidClassesLockNotice';
 
 type EditSubjectModalProps = {
   isOpen: boolean;
@@ -22,6 +23,7 @@ export default function EditSubjectModal({
   const [pricePerHour, setPricePerHour] = useState('100');
   const [loading, setLoading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [paidClassesEnabled, setPaidClassesEnabled] = useState<boolean>(false);
 
   // Calculate commission rate based on price
   const getCommissionRate = (price: number): number => {
@@ -42,6 +44,19 @@ export default function EditSubjectModal({
     }
   }, [tutorSubject]);
 
+  useEffect(() => {
+    async function fetchPaidClassesFlag() {
+      try {
+        const res = await fetch('/api/feature-flags', { cache: 'no-store' });
+        const data = await res.json();
+        setPaidClassesEnabled(Boolean(data?.paidClassesEnabled));
+      } catch {
+        setPaidClassesEnabled(false);
+      }
+    }
+    fetchPaidClassesFlag();
+  }, []);
+
   async function handleUpdateSubject() {
     if (!tutorSubject || !pricePerHour) return;
 
@@ -50,17 +65,25 @@ export default function EditSubjectModal({
       alert('Please enter a valid price ($0 or more)');
       return;
     }
+    if (!paidClassesEnabled && priceNum > 0) {
+      alert(
+        'Paid classes will be available shortly. During our initial launch period, tutors can host free classes only.'
+      );
+      return;
+    }
 
     setLoading(true);
     try {
-      const { error } = await supabase
-        .from('tutor_subjects')
-        .update({
-          price_per_hour_ttd: priceNum,
-        })
-        .eq('id', tutorSubject.id);
+      const response = await fetch('/api/tutor/subjects', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: tutorSubject.id, price_per_hour_ttd: priceNum }),
+      });
 
-      if (error) throw error;
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result?.error || 'Failed to update subject');
+      }
 
       alert('Subject updated successfully!');
       onSubjectUpdated();
@@ -106,6 +129,7 @@ export default function EditSubjectModal({
         <p className="text-gray-400 mb-6">
           {tutorSubject.subjects?.curriculum} - {tutorSubject.subjects?.name}
         </p>
+        {!paidClassesEnabled && <PaidClassesLockNotice className="mb-4" />}
 
         {!showDeleteConfirm ? (
           <>
@@ -124,7 +148,8 @@ export default function EditSubjectModal({
                     step="1"
                     value={pricePerHour}
                     onChange={(e) => setPricePerHour(e.target.value)}
-                    className="w-full bg-gray-900 text-itutor-white border border-gray-700 rounded-lg pl-8 pr-4 py-3 focus:ring-2 focus:ring-itutor-green focus:border-itutor-green"
+                    disabled={!paidClassesEnabled}
+                    className="w-full bg-gray-900 text-itutor-white border border-gray-700 rounded-lg pl-8 pr-4 py-3 focus:ring-2 focus:ring-itutor-green focus:border-itutor-green disabled:opacity-60 disabled:cursor-not-allowed"
                     placeholder="100"
                   />
                 </div>

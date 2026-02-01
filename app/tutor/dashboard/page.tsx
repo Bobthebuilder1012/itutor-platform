@@ -19,6 +19,7 @@ import { useAvatarUpload } from '@/lib/hooks/useAvatarUpload';
 import { Session, TutorSubject, Subject, Rating } from '@/lib/types/database';
 import { Area } from '@/lib/utils/imageCrop';
 import { getDisplayName } from '@/lib/utils/displayName';
+import PaidClassesLockNotice from '@/components/tutor/PaidClassesLockNotice';
 
 type TutorSubjectWithSubject = TutorSubject & {
   subjects?: Subject;
@@ -51,6 +52,7 @@ export default function TutorDashboard() {
   const [verifiedSubjects, setVerifiedSubjects] = useState<any[]>([]);
   const [csecSubjects, setCsecSubjects] = useState<any[]>([]);
   const [capeSubjects, setCapeSubjects] = useState<any[]>([]);
+  const [paidClassesEnabled, setPaidClassesEnabled] = useState<boolean>(false);
 
   useEffect(() => {
     if (testMode) {
@@ -111,7 +113,18 @@ export default function TutorDashboard() {
 
     checkOnboardingComplete();
     fetchVerifiedSubjects();
+    fetchPaidClassesFlag();
   }, [profile, loading, router, testMode]);
+
+  async function fetchPaidClassesFlag() {
+    try {
+      const res = await fetch('/api/feature-flags', { cache: 'no-store' });
+      const data = await res.json();
+      setPaidClassesEnabled(Boolean(data?.paidClassesEnabled));
+    } catch {
+      setPaidClassesEnabled(false);
+    }
+  }
 
   async function fetchVerifiedSubjects() {
     if (!profile?.id) return;
@@ -354,6 +367,11 @@ export default function TutorDashboard() {
         {/* Quick Action Buttons */}
         {!testMode && (
           <div className="mb-6 flex flex-wrap gap-3">
+            {!paidClassesEnabled && (
+              <div className="w-full">
+                <PaidClassesLockNotice />
+              </div>
+            )}
             <button
               onClick={() => setEditProfileModalOpen(true)}
               className="px-4 py-2 bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-black rounded-lg font-semibold transition flex items-center gap-2"
@@ -645,7 +663,7 @@ export default function TutorDashboard() {
                         {ts.subjects?.curriculum} - {ts.subjects?.level}
                       </p>
                       <p className="text-xl font-bold bg-gradient-to-r from-itutor-green to-emerald-600 bg-clip-text text-transparent mt-3">
-                        TT${ts.price_per_hour_ttd}/hour
+                        TT${paidClassesEnabled ? ts.price_per_hour_ttd : 0}/hour
                       </p>
                     </div>
                     <svg className="h-5 w-5 text-gray-500 group-hover:text-itutor-green transition-colors flex-shrink-0 ml-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
