@@ -8,6 +8,12 @@ const inter = Inter({ subsets: ['latin'] })
 export const metadata: Metadata = {
   title: 'iTutor - Caribbean Education Platform',
   description: 'Connect with tutors across Trinidad & Tobago and the Caribbean',
+  icons: {
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/assets/logo/itutor-favicon.png', type: 'image/png' },
+    ],
+  },
 };
 
 export default function RootLayout({

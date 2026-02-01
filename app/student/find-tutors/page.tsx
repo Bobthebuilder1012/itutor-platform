@@ -78,10 +78,11 @@ export default function FindTutorsPage() {
       console.log('✅ Fetched tutor profiles:', tutorProfiles?.length || 0);
       console.log('Tutor profiles data:', tutorProfiles);
 
-      // Filter out tutors without video provider connections
+      // TEMPORARILY DISABLED: Filter out tutors without video provider connections
+      // TODO: Re-enable once video providers are properly set up
       const { data: videoConnections, error: connectionsError } = await supabase
         .from('tutor_video_provider_connections')
-        .select('tutor_id')
+        .select('tutor_id, connection_status')
         .eq('connection_status', 'connected');
 
       if (connectionsError) {
@@ -89,9 +90,15 @@ export default function FindTutorsPage() {
       }
 
       const tutorsWithVideo = new Set(videoConnections?.map(c => c.tutor_id) || []);
-      const activeTutorProfiles = tutorProfiles?.filter(t => tutorsWithVideo.has(t.id)) || [];
+      console.log('Video connections found:', videoConnections?.length || 0);
+      console.log('Tutor IDs with video:', Array.from(tutorsWithVideo));
       
-      console.log(`✅ Filtered to ${activeTutorProfiles.length} tutors with video providers`);
+      // TEMPORARY FIX: Show all tutors regardless of video provider
+      // const activeTutorProfiles = tutorProfiles?.filter(t => tutorsWithVideo.has(t.id)) || [];
+      const activeTutorProfiles = tutorProfiles || [];
+      
+      console.log(`✅ Showing ${activeTutorProfiles.length} tutors (video filter disabled)`);
+      console.log('Active tutor profiles:', activeTutorProfiles.slice(0, 5).map(t => ({ id: t.id, name: t.full_name || t.username })));
 
       // Fetch tutor subjects separately
       const { data: tutorSubjects, error: subjectsError } = await supabase
@@ -198,6 +205,8 @@ export default function FindTutorsPage() {
 
       console.log('=== TUTOR LOADING SUMMARY ===');
       console.log('Total tutor profiles:', activeTutorProfiles?.length || 0);
+      console.log('Tutors with data (before subject filter):', tutorsWithData.length);
+      console.log('Tutors without subjects:', tutorsWithData.filter(t => t.subjects.length === 0).map(t => ({ name: t.full_name || t.username, id: t.id })));
       console.log('Tutors with subjects:', tutorsWithSubjects.length);
       console.log('Tutors:', tutorsWithSubjects.map(t => ({
         name: t.display_name || t.username || t.full_name,
