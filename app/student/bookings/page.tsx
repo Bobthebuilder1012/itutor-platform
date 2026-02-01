@@ -74,22 +74,30 @@ export default function StudentBookingsPage() {
   }
 
 
+  const isBookingPast = (booking: any) => {
+    if (booking.status === 'COMPLETED' || booking.status === 'DECLINED') return true;
+    if (booking.status === 'CONFIRMED') {
+      const endTime = booking.confirmed_end_at || booking.requested_end_at;
+      if (endTime) {
+        return new Date(endTime) < new Date();
+      }
+    }
+    return false;
+  };
+
   const filteredBookings = bookings.filter(booking => {
-    const bookingTime = booking.confirmed_start_at || booking.requested_start_at;
-    const isPast = bookingTime ? new Date(bookingTime) < new Date() : false;
-    
     if (activeTab === 'all') return true;
     if (activeTab === 'pending') {
       return booking.status === 'PENDING' || booking.status === 'COUNTER_PROPOSED';
     }
     if (activeTab === 'confirmed') {
-      return booking.status === 'CONFIRMED' && !isPast;
+      return booking.status === 'CONFIRMED' && !isBookingPast(booking);
     }
     if (activeTab === 'cancelled') {
       return booking.status === 'CANCELLED';
     }
     if (activeTab === 'past') {
-      return booking.status === 'COMPLETED' || booking.status === 'DECLINED' || (booking.status === 'CONFIRMED' && isPast);
+      return isBookingPast(booking);
     }
     return true;
   });
@@ -97,17 +105,9 @@ export default function StudentBookingsPage() {
   const tabs: { key: TabType; label: string; count: number }[] = [
     { key: 'all', label: 'All', count: bookings.length },
     { key: 'pending', label: 'Pending', count: bookings.filter(b => b.status === 'PENDING' || b.status === 'COUNTER_PROPOSED').length },
-    { key: 'confirmed', label: 'Confirmed', count: bookings.filter(b => {
-      const bookingTime = b.confirmed_start_at || b.requested_start_at;
-      const isPast = bookingTime ? new Date(bookingTime) < new Date() : false;
-      return b.status === 'CONFIRMED' && !isPast;
-    }).length },
+    { key: 'confirmed', label: 'Confirmed', count: bookings.filter(b => b.status === 'CONFIRMED' && !isBookingPast(b)).length },
     { key: 'cancelled', label: 'Cancelled', count: bookings.filter(b => b.status === 'CANCELLED').length },
-    { key: 'past', label: 'Past', count: bookings.filter(b => {
-      const bookingTime = b.confirmed_start_at || b.requested_start_at;
-      const isPast = bookingTime ? new Date(bookingTime) < new Date() : false;
-      return b.status === 'COMPLETED' || b.status === 'DECLINED' || (b.status === 'CONFIRMED' && isPast);
-    }).length }
+    { key: 'past', label: 'Past', count: bookings.filter(b => isBookingPast(b)).length }
   ];
 
   function getTabColor(tabKey: TabType, isActive: boolean) {

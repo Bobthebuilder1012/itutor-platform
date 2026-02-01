@@ -148,78 +148,85 @@ export default function TutorCalendarWidget({
       </div>
 
       {/* Calendar Grid */}
-      <div className="grid grid-cols-7 gap-2">
-        {/* Day Headers */}
-        {weekDays.map((day, idx) => (
-          <div key={idx} className="text-center pb-2 border-b-2 border-indigo-200">
-            <div className="text-xs text-indigo-600 uppercase font-semibold">{getDayName(day, true)}</div>
-            <div className="text-lg font-bold text-gray-900">
-              {day.getDate()}
+      <div className="flex flex-col">
+        {/* Day Headers - Fixed */}
+        <div className="grid grid-cols-7 gap-2 mb-2">
+          {weekDays.map((day, idx) => (
+            <div key={idx} className="text-center pb-2 border-b-2 border-indigo-200">
+              <div className="text-xs text-indigo-600 uppercase font-semibold">{getDayName(day, true)}</div>
+              <div className="text-lg font-bold text-gray-900">
+                {day.getDate()}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
 
-        {/* Day Columns with Slots */}
-        {weekDays.map((day, dayIdx) => {
-          const dateKey = day.toDateString();
-          const daySlots = slotsByDate.get(dateKey) || [];
+        {/* Scrollable Calendar Content */}
+        <div className="overflow-y-auto max-h-[600px] scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400">
+          <div className="grid grid-cols-7 gap-2">
+            {/* Day Columns with Slots */}
+            {weekDays.map((day, dayIdx) => {
+              const dateKey = day.toDateString();
+              const daySlots = slotsByDate.get(dateKey) || [];
 
-          return (
-            <div key={dayIdx} className="min-h-[300px] flex flex-col gap-2 pt-2">
-              {daySlots.length === 0 ? (
-                <div className="flex-1 flex items-center justify-center text-xs text-gray-500 bg-gray-50 rounded-lg">
-                  No times
-                </div>
-              ) : (
-                daySlots.map((slot, slotIdx) => {
-                  const isSelected = selectedSlot?.start === slot.start_at;
-                  
-                  let bgColor = 'bg-gradient-to-br from-gray-400 to-gray-500';
-                  let hoverColor = '';
-                  let cursor = 'cursor-not-allowed';
-                  let textColor = 'text-white';
-                  let ringColor = '';
+              return (
+                <div key={dayIdx} className="min-h-[300px] flex flex-col gap-2 pt-2">
+                  {daySlots.length === 0 ? (
+                    <div className="flex-1 flex items-center justify-center text-xs text-gray-500 bg-gray-50 rounded-lg">
+                      No times
+                    </div>
+                  ) : (
+                    daySlots.map((slot, slotIdx) => {
+                      const isSelected = selectedSlot?.start === slot.start_at;
+                      
+                      let bgColor = 'bg-gradient-to-br from-gray-400 to-gray-500';
+                      let hoverColor = '';
+                      let cursor = 'cursor-not-allowed';
+                      let textColor = 'text-white';
+                      let ringColor = '';
 
-                  if (slot.status === 'available') {
-                    bgColor = 'bg-gradient-to-br from-itutor-green to-emerald-600';
-                    hoverColor = 'hover:from-emerald-600 hover:to-itutor-green hover:scale-105 hover:shadow-md';
-                    cursor = 'cursor-pointer';
-                    textColor = 'text-white';
-                  } else if (slot.status === 'unavailable') {
-                    bgColor = 'bg-gradient-to-br from-red-500 to-red-600';
-                  }
-
-                  if (isSelected) {
-                    bgColor = 'bg-gradient-to-br from-blue-500 to-purple-600';
-                    ringColor = 'ring-2 ring-blue-400 ring-offset-2';
-                  }
-
-                  return (
-                    <button
-                      key={slotIdx}
-                      onClick={() => handleSlotClick(slot)}
-                      disabled={!slot.isSelectable}
-                      className={`
-                        ${bgColor} ${hoverColor} ${cursor} ${textColor} ${ringColor}
-                        p-2 rounded-lg text-xs font-semibold transition-all shadow-sm
-                        disabled:opacity-70
-                      `}
-                      title={
-                        slot.status === 'available' 
-                          ? 'Click to book'
-                          : slot.status === 'booked'
-                          ? 'Already booked'
-                          : 'Unavailable'
+                      if (slot.status === 'available') {
+                        bgColor = 'bg-gradient-to-br from-itutor-green to-emerald-600';
+                        hoverColor = 'hover:from-emerald-600 hover:to-itutor-green hover:scale-105 hover:shadow-md';
+                        cursor = 'cursor-pointer';
+                        textColor = 'text-white';
+                      } else if (slot.status === 'unavailable') {
+                        bgColor = 'bg-gradient-to-br from-red-500 to-red-600';
                       }
-                    >
-                      {formatTime(slot.start_at)}
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          );
-        })}
+
+                      if (isSelected) {
+                        bgColor = 'bg-gradient-to-br from-blue-500 to-purple-600';
+                        ringColor = 'ring-2 ring-blue-400 ring-offset-2';
+                      }
+
+                      return (
+                        <button
+                          key={slotIdx}
+                          onClick={() => handleSlotClick(slot)}
+                          disabled={!slot.isSelectable}
+                          className={`
+                            ${bgColor} ${hoverColor} ${cursor} ${textColor} ${ringColor}
+                            p-2 rounded-lg text-xs font-semibold transition-all shadow-sm
+                            disabled:opacity-70
+                          `}
+                          title={
+                            slot.status === 'available' 
+                              ? 'Click to book'
+                              : slot.status === 'booked'
+                              ? 'Already booked'
+                              : 'Unavailable'
+                          }
+                        >
+                          {formatTime(slot.start_at)}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       {/* Empty state if no slots at all */}

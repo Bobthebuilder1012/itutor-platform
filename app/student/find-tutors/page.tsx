@@ -45,6 +45,8 @@ export default function FindTutorsPage() {
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
   const [selectedRating, setSelectedRating] = useState<string>('');
   const [selectedPrice, setSelectedPrice] = useState<string>('');
+  const [selectedSchool, setSelectedSchool] = useState<string>('');
+  const [availableSchools, setAvailableSchools] = useState<string[]>([]);
 
   useEffect(() => {
     if (loading) return;
@@ -62,10 +64,10 @@ export default function FindTutorsPage() {
     try {
       console.log('=== STARTING TUTOR FETCH ===');
       
-      // Fetch all tutor profiles with bio
+      // Fetch all tutor profiles with bio and school
       const { data: tutorProfiles, error: profilesError } = await supabase
         .from('profiles')
-        .select('id, full_name, username, display_name, avatar_url, institution_id, country, bio, tutor_verification_status')
+        .select('id, full_name, username, display_name, avatar_url, school, institution_id, country, bio, tutor_verification_status')
         .eq('role', 'tutor')
         .order('tutor_verification_status', { ascending: false, nullsFirst: false }); // Verified tutors first
 
@@ -78,8 +80,7 @@ export default function FindTutorsPage() {
       console.log('✅ Fetched tutor profiles:', tutorProfiles?.length || 0);
       console.log('Tutor profiles data:', tutorProfiles);
 
-      // TEMPORARILY DISABLED: Filter out tutors without video provider connections
-      // TODO: Re-enable once video providers are properly set up
+      // Filter out tutors without video provider connections
       const { data: videoConnections, error: connectionsError } = await supabase
         .from('tutor_video_provider_connections')
         .select('tutor_id, connection_status')
@@ -90,14 +91,11 @@ export default function FindTutorsPage() {
       }
 
       const tutorsWithVideo = new Set(videoConnections?.map(c => c.tutor_id) || []);
-      console.log('Video connections found:', videoConnections?.length || 0);
-      console.log('Tutor IDs with video:', Array.from(tutorsWithVideo));
       
-      // TEMPORARY FIX: Show all tutors regardless of video provider
-      // const activeTutorProfiles = tutorProfiles?.filter(t => tutorsWithVideo.has(t.id)) || [];
-      const activeTutorProfiles = tutorProfiles || [];
+      // Only show tutors with active video connections
+      const activeTutorProfiles = tutorProfiles?.filter(t => tutorsWithVideo.has(t.id)) || [];
       
-      console.log(`✅ Showing ${activeTutorProfiles.length} tutors (video filter disabled)`);
+      console.log(`✅ Showing ${activeTutorProfiles.length} tutors with video connections`);
       console.log('Active tutor profiles:', activeTutorProfiles.slice(0, 5).map(t => ({ id: t.id, name: t.full_name || t.username })));
 
       // Fetch tutor subjects separately
@@ -214,6 +212,10 @@ export default function FindTutorsPage() {
         subjectCount: t.subjects.length
       })));
 
+      // Extract unique schools for filter
+      const schools = [...new Set(tutorsWithSubjects.map(t => t.school).filter(Boolean))] as string[];
+      setAvailableSchools(schools.sort());
+
       setTutors(tutorsWithSubjects);
     } catch (error) {
       console.error('Error fetching tutors:', error);
@@ -269,6 +271,11 @@ export default function FindTutorsPage() {
       }
     }
 
+    // Filter by school
+    if (selectedSchool) {
+      filtered = filtered.filter(tutor => tutor.school === selectedSchool);
+    }
+
     // Sort: Prioritize tutors who teach student's subjects, then by rating
     if (profile?.subjects_of_study && profile.subjects_of_study.length > 0) {
       filtered.sort((a, b) => {
@@ -293,7 +300,7 @@ export default function FindTutorsPage() {
     }
 
     return filtered;
-  }, [tutors, searchQuery, selectedSubjects, selectedRating, selectedPrice, profile]);
+  }, [tutors, searchQuery, selectedSubjects, selectedRating, selectedPrice, selectedSchool, profile]);
 
   if (loading || !profile) {
     return (
@@ -313,7 +320,7 @@ export default function FindTutorsPage() {
         </div>
 
         {/* Search and Filters */}
-        <div className="bg-gradient-to-br from-gray-800 to-gray-900 border border-gray-700 rounded-xl p-4 mb-4">
+        <div className="bg-white border-2 border-gray-200 rounded-xl p-4 mb-4 shadow-md">
           {/* Search Bar */}
           <div className="mb-3">
             <div className="relative">
@@ -331,9 +338,9 @@ export default function FindTutorsPage() {
           </div>
 
           {/* Filters */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-300 mb-1">
+              <label className="block text-xs font-medium text-gray-700 mb-1">
                 Subjects
               </label>
               <SubjectMultiSelect
@@ -344,7 +351,23 @@ export default function FindTutorsPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-gray-300 mb-1">
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                School
+              </label>
+              <select
+                value={selectedSchool}
+                onChange={(e) => setSelectedSchool(e.target.value)}
+                className="w-full px-3 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition text-sm"
+              >
+                <option value="">Any School</option>
+                {availableSchools.map(school => (
+                  <option key={school} value={school}>{school}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
                 Price Range
               </label>
               <select
@@ -363,7 +386,7 @@ export default function FindTutorsPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-gray-300 mb-1">
+              <label className="block text-xs font-medium text-gray-700 mb-1">
                 Rating
               </label>
               <select
@@ -381,13 +404,14 @@ export default function FindTutorsPage() {
 
             {/* Clear Filters Button (aligned in grid) */}
             <div className="flex items-end">
-              {(searchQuery || selectedSubjects.length > 0 || selectedRating || selectedPrice) && (
+              {(searchQuery || selectedSubjects.length > 0 || selectedRating || selectedPrice || selectedSchool) && (
                 <button
                   onClick={() => {
                     setSearchQuery('');
                     setSelectedSubjects([]);
                     setSelectedRating('');
                     setSelectedPrice('');
+                    setSelectedSchool('');
                   }}
                   className="w-full px-3 py-2 text-sm text-itutor-green hover:text-emerald-400 font-medium transition-colors border border-itutor-green/30 rounded-lg hover:border-itutor-green/60"
                 >
@@ -518,7 +542,7 @@ export default function FindTutorsPage() {
                         </span>
                       ))}
                       {tutor.subjects.length > 3 && (
-                        <span className="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300">
+                        <span className="text-xs px-2 py-1 rounded bg-blue-50 border border-blue-300 text-blue-700 font-medium">
                           +{tutor.subjects.length - 3} more
                         </span>
                       )}

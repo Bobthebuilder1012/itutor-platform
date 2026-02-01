@@ -93,12 +93,14 @@ export function canMarkNoShow(
   currentTime: Date = new Date()
 ): boolean {
   const scheduledStart = new Date(session.scheduled_start_at);
+  const scheduledEnd = new Date(scheduledStart.getTime() + session.duration_minutes * 60000);
   const noShowDeadline = new Date(
     scheduledStart.getTime() + session.no_show_wait_minutes * 60000
   );
   
   return (
     currentTime >= noShowDeadline &&
+    currentTime <= scheduledEnd &&
     (session.status === 'SCHEDULED' || session.status === 'JOIN_OPEN')
   );
 }

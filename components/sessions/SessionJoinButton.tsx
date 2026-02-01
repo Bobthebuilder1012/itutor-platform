@@ -8,10 +8,33 @@ type SessionJoinButtonProps = {
 };
 
 export default function SessionJoinButton({ session, userRole }: SessionJoinButtonProps) {
+  const now = new Date();
+  const scheduledStart = new Date(session.scheduled_start_at);
+  const scheduledEnd = new Date(scheduledStart.getTime() + session.duration_minutes * 60000);
+  const hasSessionEnded = now > scheduledEnd;
+
   if (!session.join_url) {
     return (
       <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-6">
         <p className="text-gray-800">Meeting link is being generated...</p>
+      </div>
+    );
+  }
+
+  if (hasSessionEnded) {
+    return (
+      <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-6">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="p-3 bg-gray-400 rounded-xl">
+            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-gray-900">Session Ended</h3>
+            <p className="text-sm text-gray-600">The meeting link is no longer available</p>
+          </div>
+        </div>
       </div>
     );
   }

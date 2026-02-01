@@ -73,19 +73,30 @@ export default function TutorBookingsPage() {
     }
   }
 
+  const isBookingPast = (booking: any) => {
+    if (booking.status === 'COMPLETED') return true;
+    if (booking.status === 'CONFIRMED') {
+      const endTime = booking.confirmed_end_at || booking.requested_end_at;
+      if (endTime) {
+        return new Date(endTime) < new Date();
+      }
+    }
+    return false;
+  };
+
   const filteredBookings = bookings.filter(booking => {
     if (activeTab === 'all') return true;
     if (activeTab === 'pending') {
       return booking.status === 'PENDING' || booking.status === 'COUNTER_PROPOSED';
     }
     if (activeTab === 'confirmed') {
-      return booking.status === 'CONFIRMED';
+      return booking.status === 'CONFIRMED' && !isBookingPast(booking);
     }
     if (activeTab === 'cancelled') {
       return booking.status === 'CANCELLED' || booking.status === 'DECLINED';
     }
     if (activeTab === 'past') {
-      return booking.status === 'COMPLETED';
+      return isBookingPast(booking);
     }
     return true;
   });
@@ -98,9 +109,9 @@ export default function TutorBookingsPage() {
       count: bookings.filter(b => b.status === 'PENDING' || b.status === 'COUNTER_PROPOSED').length,
       badge: true
     },
-    { key: 'confirmed', label: 'Confirmed', count: bookings.filter(b => b.status === 'CONFIRMED').length },
+    { key: 'confirmed', label: 'Confirmed', count: bookings.filter(b => b.status === 'CONFIRMED' && !isBookingPast(b)).length },
     { key: 'cancelled', label: 'Cancelled', count: bookings.filter(b => b.status === 'CANCELLED' || b.status === 'DECLINED').length },
-    { key: 'past', label: 'Past', count: bookings.filter(b => b.status === 'COMPLETED').length }
+    { key: 'past', label: 'Past', count: bookings.filter(b => isBookingPast(b)).length }
   ];
 
   if (profileLoading || !profile) {
