@@ -144,7 +144,9 @@ export default function TutorProfilePage() {
         cache: 'no-store',
       });
       const summary = await summaryRes.json().catch(() => ({}));
-      const avgRating = typeof summary?.averageRating === 'number' ? summary.averageRating : null;
+      const avgRaw = summary?.averageRating;
+      const avgNum = avgRaw == null ? null : Number(avgRaw);
+      const avgRating = Number.isFinite(avgNum) ? avgNum : null;
       const totalReviews = typeof summary?.ratingCount === 'number' ? summary.ratingCount : 0;
 
       setTutor({

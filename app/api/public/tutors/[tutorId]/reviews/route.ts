@@ -118,8 +118,12 @@ export async function GET(
       }));
     }
 
+    const avgRaw = (tutorProfile as any)?.rating_average ?? null;
+    const avgNum = avgRaw == null ? null : Number(avgRaw);
+    const averageRating = Number.isFinite(avgNum) ? avgNum : null;
+
     return NextResponse.json({
-      averageRating: tutorProfile?.rating_average ?? null,
+      averageRating,
       ratingCount: total,
       reviews,
       hasMore,
