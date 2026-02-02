@@ -11,7 +11,7 @@ import BookingRequestModal from '@/components/booking/BookingRequestModal';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import VerifiedSubjectsButton from '@/components/tutor/VerifiedSubjectsButton';
 import VerifiedSubjectsModal from '@/components/tutor/VerifiedSubjectsModal';
-import RatingComment from '@/components/tutor/RatingComment';
+import TutorReviewsModal from '@/components/tutor/TutorReviewsModal';
 
 type TutorProfile = {
   id: string;
@@ -33,14 +33,6 @@ type TutorProfile = {
   }>;
   average_rating: number | null;
   total_reviews: number;
-  ratings: Array<{
-    id: string;
-    stars: number;
-    comment: string | null;
-    created_at: string;
-    student_name: string;
-    helpful_count: number;
-  }>;
 };
 
 export default function TutorProfilePage() {
@@ -59,6 +51,7 @@ export default function TutorProfilePage() {
   const [csecSubjects, setCsecSubjects] = useState<any[]>([]);
   const [capeSubjects, setCapeSubjects] = useState<any[]>([]);
   const [paidClassesEnabled, setPaidClassesEnabled] = useState<boolean>(false);
+  const [reviewsModalOpen, setReviewsModalOpen] = useState(false);
 
   useEffect(() => {
     if (profileLoading) return;
@@ -147,68 +140,18 @@ export default function TutorProfilePage() {
         })
         .filter((s): s is NonNullable<typeof s> => s !== null);
 
-      // Fetch ratings sorted by popularity (helpful_count)
-      const { data: ratingsData, error: ratingsError } = await supabase
-        .from('ratings')
-        .select('id, stars, comment, created_at, student_id, helpful_count')
-        .eq('tutor_id', tutorId)
-        .not('comment', 'is', null) // Only show ratings with comments
-        .order('helpful_count', { ascending: false, nullsFirst: false })
-        .order('created_at', { ascending: false });
-
-      if (ratingsError) {
-        console.error('❌ Error fetching ratings:', ratingsError);
-        // Don't throw - continue without ratings
-      }
-      
-      console.log('✅ Fetched ratings:', ratingsData?.length || 0);
-
-      // Fetch student names for ratings
-      let ratings: Array<{
-        id: string;
-        stars: number;
-        comment: string | null;
-        created_at: string;
-        student_name: string;
-        helpful_count: number;
-      }> = [];
-      
-      let avgRating = null;
-
-      if (ratingsData && ratingsData.length > 0) {
-        const studentIds = ratingsData.map(r => r.student_id);
-        const { data: students, error: studentsError } = await supabase
-          .from('profiles')
-          .select('id, full_name, username, display_name')
-          .in('id', studentIds);
-
-        if (studentsError) {
-          console.error('❌ Error fetching student names:', studentsError);
-        }
-
-        const studentsMap = new Map(students?.map(s => [s.id, s]) || []);
-
-        ratings = ratingsData.map(r => {
-          const student = studentsMap.get(r.student_id);
-          return {
-            id: r.id,
-            stars: r.stars,
-            comment: r.comment,
-            created_at: r.created_at,
-            student_name: student ? getDisplayName(student) : 'Anonymous',
-            helpful_count: r.helpful_count || 0
-          };
-        });
-
-        avgRating = ratingsData.reduce((sum, r) => sum + r.stars, 0) / ratingsData.length;
-      }
+      const summaryRes = await fetch(`/api/public/tutors/${tutorId}/reviews?limit=0&offset=0`, {
+        cache: 'no-store',
+      });
+      const summary = await summaryRes.json().catch(() => ({}));
+      const avgRating = typeof summary?.averageRating === 'number' ? summary.averageRating : null;
+      const totalReviews = typeof summary?.ratingCount === 'number' ? summary.ratingCount : 0;
 
       setTutor({
         ...tutorData,
         subjects,
         average_rating: avgRating,
-        total_reviews: ratings.length,
-        ratings
+        total_reviews: totalReviews,
       });
     } catch (error) {
       console.error('Error fetching tutor profile:', error);
@@ -307,10 +250,16 @@ export default function TutorProfilePage() {
                 </span>
               </div>
 
-              {tutor.average_rating !== null && (
-                <div className="flex items-center gap-2 mb-4">
+              {tutor.average_rating !== null ? (
+                <button
+                  type="button"
+                  onClick={() => setReviewsModalOpen(true)}
+                  onMouseEnter={() => setReviewsModalOpen(true)}
+                  className="flex items-center gap-2 mb-4 group"
+                  aria-label="View student reviews"
+                >
                   <div className="flex text-2xl">
-                    {[1, 2, 3, 4, 5].map(star => (
+                    {[1, 2, 3, 4, 5].map((star) => (
                       <span
                         key={star}
                         className={star <= Math.round(tutor.average_rating!) ? 'text-yellow-400' : 'text-gray-300'}
@@ -319,13 +268,15 @@ export default function TutorProfilePage() {
                       </span>
                     ))}
                   </div>
-                  <span className="text-lg font-semibold text-gray-900">
+                  <span className="text-lg font-semibold text-gray-900 group-hover:underline">
                     {tutor.average_rating.toFixed(1)}
                   </span>
-                  <span className="text-sm text-gray-600">
+                  <span className="text-sm text-gray-600 group-hover:underline">
                     ({tutor.total_reviews} {tutor.total_reviews === 1 ? 'review' : 'reviews'})
                   </span>
-                </div>
+                </button>
+              ) : (
+                <div className="text-sm text-gray-600 mb-4">No reviews yet</div>
               )}
 
               {/* Biography */}
@@ -541,7 +492,7 @@ export default function TutorProfilePage() {
                 <h2 className="text-xl font-bold text-gray-900">Reviews</h2>
               </div>
               
-              {tutor.ratings.length === 0 ? (
+              {tutor.total_reviews === 0 ? (
                 <div className="text-center py-8">
                   <svg className="w-12 h-12 text-gray-300 mx-auto mb-2" fill="currentColor" viewBox="0 0 20 20">
                     <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
@@ -549,15 +500,13 @@ export default function TutorProfilePage() {
                   <p className="text-gray-600 text-sm">No reviews yet</p>
                 </div>
               ) : (
-                <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
-                  {tutor.ratings.map(rating => (
-                    <RatingComment 
-                      key={rating.id} 
-                      rating={rating}
-                      onReactionUpdate={fetchTutorProfile}
-                    />
-                  ))}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setReviewsModalOpen(true)}
+                  className="w-full rounded-xl px-4 py-3 font-semibold text-white bg-itutor-green hover:bg-itutor-green/90 transition-all"
+                >
+                  View reviews
+                </button>
               )}
             </div>
           </div>
@@ -590,6 +539,12 @@ export default function TutorProfilePage() {
         onClose={() => setVerifiedSubjectsModalOpen(false)}
         tutorId={tutorId}
         tutorName={getDisplayName(tutor)}
+      />
+
+      <TutorReviewsModal
+        tutorId={tutorId}
+        isOpen={reviewsModalOpen}
+        onClose={() => setReviewsModalOpen(false)}
       />
     </DashboardLayout>
   );

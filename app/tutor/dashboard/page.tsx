@@ -19,6 +19,7 @@ import { Session, TutorSubject, Subject, Rating } from '@/lib/types/database';
 import { Area } from '@/lib/utils/imageCrop';
 import { getDisplayName } from '@/lib/utils/displayName';
 import PaidClassesLockNotice from '@/components/tutor/PaidClassesLockNotice';
+import TutorReviewsModal from '@/components/tutor/TutorReviewsModal';
 
 type TutorSubjectWithSubject = TutorSubject & {
   subjects?: Subject;
@@ -40,6 +41,7 @@ export default function TutorDashboard() {
   const [averageRating, setAverageRating] = useState(0);
   const [sessionsTaught, setSessionsTaught] = useState(0);
   const [loadingData, setLoadingData] = useState(true);
+  const [reviewsModalOpen, setReviewsModalOpen] = useState(false);
   const [avatarModalOpen, setAvatarModalOpen] = useState(false);
   const [addSubjectModalOpen, setAddSubjectModalOpen] = useState(false);
   const [editSubjectModalOpen, setEditSubjectModalOpen] = useState(false);
@@ -237,9 +239,26 @@ export default function TutorDashboard() {
       }
       
       if (ratingsRes.data) {
-        setRatings(ratingsRes.data);
-        if (ratingsRes.data.length > 0) {
-          const avgStars = ratingsRes.data.reduce((sum, r) => sum + r.stars, 0) / ratingsRes.data.length;
+        // Defensive: if legacy duplicates exist (same student rated multiple times),
+        // treat only the latest rating per student as the "current" review.
+        const sorted = [...ratingsRes.data].sort((a: any, b: any) => {
+          const ta = new Date(a.created_at || 0).getTime();
+          const tb = new Date(b.created_at || 0).getTime();
+          return tb - ta;
+        });
+
+        const seenStudents = new Set<string>();
+        const uniqueLatest = sorted.filter((r: any) => {
+          const sid = r?.student_id;
+          if (!sid) return false;
+          if (seenStudents.has(sid)) return false;
+          seenStudents.add(sid);
+          return true;
+        });
+
+        setRatings(uniqueLatest);
+        if (uniqueLatest.length > 0) {
+          const avgStars = uniqueLatest.reduce((sum: number, r: any) => sum + Number(r.stars || 0), 0) / uniqueLatest.length;
           setAverageRating(Math.round(avgStars * 10) / 10);
         }
       }
@@ -595,7 +614,18 @@ export default function TutorDashboard() {
             </div>
           </div>
 
-          <div className="bg-white border-2 border-purple-200 shadow-lg rounded-2xl p-6 hover:shadow-purple-300/50 hover:scale-105 transition-all duration-300 group">
+          <button
+            type="button"
+            onClick={() => {
+              if (ratings.length > 0) setReviewsModalOpen(true);
+            }}
+            disabled={ratings.length === 0}
+            className={`bg-white border-2 border-purple-200 shadow-lg rounded-2xl p-6 transition-all duration-300 group text-left ${
+              ratings.length === 0
+                ? 'opacity-60 cursor-not-allowed'
+                : 'hover:shadow-purple-300/50 hover:scale-105'
+            }`}
+          >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-purple-600 mb-2 font-medium">Total Reviews</p>
@@ -609,7 +639,7 @@ export default function TutorDashboard() {
                 </svg>
               </div>
             </div>
-          </div>
+          </button>
         </div>
 
         {/* Sent Offers */}
@@ -819,6 +849,14 @@ export default function TutorDashboard() {
           </Link>
         </div>
       </div>
+
+      {profile?.id ? (
+        <TutorReviewsModal
+          tutorId={profile.id}
+          isOpen={reviewsModalOpen}
+          onClose={() => setReviewsModalOpen(false)}
+        />
+      ) : null}
     </DashboardLayout>
   );
 }

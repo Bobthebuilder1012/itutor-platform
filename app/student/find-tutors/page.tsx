@@ -20,6 +20,8 @@ type Tutor = {
   country: string;
   bio: string | null;
   tutor_verification_status: string | null;
+  rating_average?: number | null;
+  rating_count?: number | null;
   subjects: Array<{
     id: string;
     name: string;
@@ -79,7 +81,9 @@ export default function FindTutorsPage() {
       // Fetch all tutor profiles with bio and school
       const { data: tutorProfiles, error: profilesError } = await supabase
         .from('profiles')
-        .select('id, full_name, username, display_name, avatar_url, school, institution_id, country, bio, tutor_verification_status')
+        .select(
+          'id, full_name, username, display_name, avatar_url, school, institution_id, country, bio, tutor_verification_status, rating_average, rating_count'
+        )
         .eq('role', 'tutor')
         .order('tutor_verification_status', { ascending: false, nullsFirst: false }); // Verified tutors first
 
@@ -110,6 +114,18 @@ export default function FindTutorsPage() {
       console.log(`✅ Showing ${activeTutorProfiles.length} tutors with video connections`);
       console.log('Active tutor profiles:', activeTutorProfiles.slice(0, 5).map(t => ({ id: t.id, name: t.full_name || t.username })));
 
+      // Ratings summary (server-side, bypasses RLS). This ensures review counts show correctly.
+      const ratingsSummaryRes = await fetch('/api/public/tutors/ratings-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tutorIds: activeTutorProfiles.map(t => t.id) }),
+      });
+      const ratingsSummaryJson = await ratingsSummaryRes.json().catch(() => ({}));
+      const ratingsByTutorId = (ratingsSummaryJson?.byTutorId || {}) as Record<
+        string,
+        { ratingCount: number; averageRating: number | null }
+      >;
+
       // Fetch tutor subjects separately
       const { data: tutorSubjects, error: subjectsError } = await supabase
         .from('tutor_subjects')
@@ -138,33 +154,6 @@ export default function FindTutorsPage() {
       // Create a map for quick subject lookup
       const subjectsMap = new Map(allSubjectsData.map(s => [s.id, s]));
 
-      // Fetch all ratings for averages
-      const { data: allRatings, error: allRatingsError } = await supabase
-        .from('ratings')
-        .select('tutor_id, stars');
-
-      if (allRatingsError) throw allRatingsError;
-
-      // Fetch ratings with comments for top comment display (sorted by popularity)
-      const { data: ratingsWithComments, error: commentsError } = await supabase
-        .from('ratings')
-        .select(`
-          tutor_id, 
-          stars, 
-          comment,
-          helpful_count,
-          student:student_id (
-            display_name,
-            full_name,
-            username
-          )
-        `)
-        .not('comment', 'is', null)
-        .order('helpful_count', { ascending: false, nullsFirst: false })
-        .order('stars', { ascending: false });
-
-      if (commentsError) throw commentsError;
-
       // Process data - manually join tutor_subjects with subjects
       const tutorsWithData: Tutor[] = activeTutorProfiles.map(tutor => {
         const subjects = tutorSubjects
@@ -188,25 +177,16 @@ export default function FindTutorsPage() {
         
         console.log(`Tutor ${tutor.username || tutor.full_name}: ${subjects.length} subjects`);
 
-        const tutorRatings = allRatings.filter(r => r.tutor_id === tutor.id);
-        const avgRating = tutorRatings.length > 0
-          ? tutorRatings.reduce((sum, r) => sum + r.stars, 0) / tutorRatings.length
-          : null;
-
-        // Find top comment (highest stars, prefer 5 stars)
-        const tutorComments = ratingsWithComments.filter(r => r.tutor_id === tutor.id);
-        const topComment = tutorComments.length > 0 ? tutorComments[0] : null;
+        const summary = ratingsByTutorId[tutor.id];
+        const count = Number(summary?.ratingCount || 0);
+        const avgRating = count > 0 && summary?.averageRating != null ? Number(summary.averageRating) : null;
 
         return {
           ...tutor,
           subjects,
           average_rating: avgRating,
-          total_reviews: tutorRatings.length,
-          topComment: topComment ? {
-            comment: topComment.comment,
-            stars: topComment.stars,
-            student_name: (topComment.student as any)?.display_name || (topComment.student as any)?.full_name || (topComment.student as any)?.username || 'Anonymous'
-          } : null
+          total_reviews: count,
+          topComment: null
         };
       });
 
