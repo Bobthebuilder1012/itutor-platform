@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
-import { isPaidClassesEnabled } from '@/lib/featureFlags/paidClasses';
-import { paidClassesForbiddenResponse } from '@/lib/featureFlags/http';
 
 type CreateTutorSubjectsBody = {
   subjects: Array<{
@@ -51,15 +49,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'subjects is required' }, { status: 400 });
     }
 
-    const hasPaid = subjects.some((s) => (s?.price_per_hour_ttd || 0) > 0);
-    if (hasPaid && !isPaidClassesEnabled()) {
-      return paidClassesForbiddenResponse();
-    }
-
     const rows = subjects.map((s) => ({
       tutor_id: user.id,
       subject_id: s.subject_id,
-      price_per_hour_ttd: s.price_per_hour_ttd,
+      price_per_hour_ttd: Number.isFinite(Number(s.price_per_hour_ttd)) && Number(s.price_per_hour_ttd) > 0 ? Number(s.price_per_hour_ttd) : 100,
       mode: s.mode || 'either',
     }));
 
@@ -95,12 +88,8 @@ export async function PATCH(request: NextRequest) {
     }
 
     const price = Number(body.price_per_hour_ttd);
-    if (!Number.isFinite(price) || price < 0) {
+    if (!Number.isFinite(price) || price <= 0) {
       return NextResponse.json({ error: 'Invalid price' }, { status: 400 });
-    }
-
-    if (price > 0 && !isPaidClassesEnabled()) {
-      return paidClassesForbiddenResponse();
     }
 
     const { error } = await supabase

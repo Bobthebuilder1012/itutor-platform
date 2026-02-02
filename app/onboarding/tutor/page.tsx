@@ -141,7 +141,9 @@ export default function TutorOnboardingPage() {
         body: JSON.stringify({
           subjects: subjects.map((subject) => ({
             subject_id: subject.id,
-            price_per_hour_ttd: paidEnabled ? 100 : 0, // Default price; forced free during launch
+            // Always save a valid positive price to satisfy DB constraints.
+            // During launch, payments can still be forced free elsewhere via feature flag.
+            price_per_hour_ttd: 100,
             mode: 'either',
           })),
         }),

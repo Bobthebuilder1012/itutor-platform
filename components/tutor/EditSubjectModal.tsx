@@ -61,14 +61,8 @@ export default function EditSubjectModal({
     if (!tutorSubject || !pricePerHour) return;
 
     const priceNum = parseFloat(pricePerHour);
-    if (isNaN(priceNum) || priceNum < 0) {
-      alert('Please enter a valid price ($0 or more)');
-      return;
-    }
-    if (!paidClassesEnabled && priceNum > 0) {
-      alert(
-        'Paid classes will be available shortly. During our initial launch period, tutors can host free classes only.'
-      );
+    if (isNaN(priceNum) || priceNum <= 0) {
+      alert('Please enter a valid price (at least $1)');
       return;
     }
 
@@ -144,11 +138,10 @@ export default function EditSubjectModal({
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">$</span>
                   <input
                     type="number"
-                    min="0"
+                    min="1"
                     step="1"
                     value={pricePerHour}
                     onChange={(e) => setPricePerHour(e.target.value)}
-                    disabled={!paidClassesEnabled}
                     className="w-full bg-gray-900 text-itutor-white border border-gray-700 rounded-lg pl-8 pr-4 py-3 focus:ring-2 focus:ring-itutor-green focus:border-itutor-green disabled:opacity-60 disabled:cursor-not-allowed"
                     placeholder="100"
                   />

@@ -125,7 +125,7 @@ export default function AddSubjectModal({
     if (subject) {
       setSelectedSubjects([
         ...selectedSubjects,
-        { subject, price: paidClassesEnabled ? '100' : '0' }
+        { subject, price: '100' }
       ]);
       setSearchQuery('');
       setIsDropdownOpen(false);
@@ -156,14 +156,8 @@ export default function AddSubjectModal({
     // Validate all prices
     for (const { subject, price } of selectedSubjects) {
       const priceNum = parseFloat(price);
-      if (isNaN(priceNum) || priceNum < 0) {
-        alert(`Please enter a valid price ($0 or more) for ${subject.name}`);
-        return;
-      }
-      if (!paidClassesEnabled && priceNum > 0) {
-        alert(
-          'Paid classes will be available shortly. During our initial launch period, tutors can host free classes only.'
-        );
+      if (isNaN(priceNum) || priceNum <= 0) {
+        alert(`Please enter a valid price (at least $1) for ${subject.name}`);
         return;
       }
     }
