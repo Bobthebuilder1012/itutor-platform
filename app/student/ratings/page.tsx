@@ -6,11 +6,21 @@ import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
 import { Rating } from '@/lib/types/database';
+import { getDisplayName } from '@/lib/utils/displayName';
+
+type RatingWithTutor = Rating & {
+  tutor?: {
+    full_name?: string | null;
+    display_name?: string | null;
+    username?: string | null;
+    avatar_url?: string | null;
+  } | null;
+};
 
 export default function StudentRatings() {
   const { profile, loading } = useProfile();
   const router = useRouter();
-  const [ratings, setRatings] = useState<Rating[]>([]);
+  const [ratings, setRatings] = useState<RatingWithTutor[]>([]);
   const [loadingData, setLoadingData] = useState(true);
 
   useEffect(() => {
@@ -29,12 +39,22 @@ export default function StudentRatings() {
 
     try {
       const { data } = await supabase
-        .from('public_ratings')
-        .select('*')
+        .from('ratings')
+        .select(
+          'id, session_id, student_id, tutor_id, stars, comment, created_at, tutor:profiles!ratings_tutor_id_fkey(full_name, display_name, username, avatar_url)'
+        )
         .eq('student_id', profile.id)
         .order('created_at', { ascending: false });
 
-      if (data) setRatings(data);
+      if (data) {
+        const seen = new Set<string>();
+        const unique = (data as RatingWithTutor[]).filter((r) => {
+          if (seen.has(r.tutor_id)) return false;
+          seen.add(r.tutor_id);
+          return true;
+        });
+        setRatings(unique);
+      }
     } catch (error) {
       console.error('Error fetching ratings:', error);
     } finally {
@@ -62,6 +82,14 @@ export default function StudentRatings() {
             <div className="space-y-6">
               {ratings.map((rating) => (
                 <div key={rating.id} className="border-b pb-6 last:border-b-0">
+                  <div className="mb-2">
+                    <p className="text-sm font-semibold text-gray-900">
+                      {getDisplayName(rating.tutor || {})}
+                      {rating.tutor?.username ? (
+                        <span className="ml-2 text-sm font-normal text-gray-500">@{rating.tutor.username}</span>
+                      ) : null}
+                    </p>
+                  </div>
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex items-center">
                       {[...Array(5)].map((_, i) => (

@@ -256,7 +256,6 @@ export default function TutorProfilePage() {
                 <button
                   type="button"
                   onClick={() => setReviewsModalOpen(true)}
-                  onMouseEnter={() => setReviewsModalOpen(true)}
                   className="flex items-center gap-2 mb-4 group"
                   aria-label="View student reviews"
                 >

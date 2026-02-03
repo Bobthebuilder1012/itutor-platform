@@ -6,6 +6,16 @@ import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
 import { Rating, Profile } from '@/lib/types/database';
+import { getDisplayName } from '@/lib/utils/displayName';
+
+type RatingWithTutor = Rating & {
+  tutor?: {
+    full_name?: string | null;
+    display_name?: string | null;
+    username?: string | null;
+    avatar_url?: string | null;
+  } | null;
+};
 
 export default function ChildRatings() {
   const { profile, loading } = useProfile();
@@ -13,7 +23,7 @@ export default function ChildRatings() {
   const params = useParams();
   const childId = params?.childId as string;
   const [child, setChild] = useState<Profile | null>(null);
-  const [ratings, setRatings] = useState<Rating[]>([]);
+  const [ratings, setRatings] = useState<RatingWithTutor[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,14 +58,24 @@ export default function ChildRatings() {
       const [childRes, ratingsRes] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', childId).single(),
         supabase
-          .from('public_ratings')
-          .select('*')
+          .from('ratings')
+          .select(
+            'id, session_id, student_id, tutor_id, stars, comment, created_at, tutor:profiles!ratings_tutor_id_fkey(full_name, display_name, username, avatar_url)'
+          )
           .eq('student_id', childId)
           .order('created_at', { ascending: false })
       ]);
 
       if (childRes.data) setChild(childRes.data);
-      if (ratingsRes.data) setRatings(ratingsRes.data);
+      if (ratingsRes.data) {
+        const seen = new Set<string>();
+        const unique = (ratingsRes.data as RatingWithTutor[]).filter((r) => {
+          if (seen.has(r.tutor_id)) return false;
+          seen.add(r.tutor_id);
+          return true;
+        });
+        setRatings(unique);
+      }
     } catch (err) {
       console.error('Error fetching data:', err);
       setError('Failed to load ratings');
@@ -106,6 +126,14 @@ export default function ChildRatings() {
             <div className="space-y-6">
               {ratings.map((rating) => (
                 <div key={rating.id} className="border-b pb-6 last:border-b-0">
+                  <div className="mb-2">
+                    <p className="text-sm font-semibold text-gray-900">
+                      {getDisplayName(rating.tutor || {})}
+                      {rating.tutor?.username ? (
+                        <span className="ml-2 text-sm font-normal text-gray-500">@{rating.tutor.username}</span>
+                      ) : null}
+                    </p>
+                  </div>
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex items-center">
                       {[...Array(5)].map((_, i) => (

@@ -156,7 +156,11 @@ export default function SignupPage() {
           normalizedMessage.includes('user already registered') ||
           normalizedMessage.includes('email already');
         if (isEmailInUse) {
-          setError('This email is already in use. Please sign in instead.');
+          const redirectUrl = searchParams.get('redirect');
+          const redirectParam = redirectUrl ? `&redirect=${encodeURIComponent(redirectUrl)}` : '';
+          router.push(`/login?reason=email_in_use&email=${encodeURIComponent(email)}${redirectParam}`);
+          setLoading(false);
+          return;
         } else {
           setError(signUpError.message);
         }
@@ -167,7 +171,9 @@ export default function SignupPage() {
       // If identities is empty, Supabase indicates the email already exists
       const identitiesCount = authData.user?.identities?.length ?? 0;
       if (identitiesCount === 0) {
-        setError('This email is already in use. Please sign in instead.');
+        const redirectUrl = searchParams.get('redirect');
+        const redirectParam = redirectUrl ? `&redirect=${encodeURIComponent(redirectUrl)}` : '';
+        router.push(`/login?reason=email_in_use&email=${encodeURIComponent(email)}${redirectParam}`);
         setLoading(false);
         return;
       }

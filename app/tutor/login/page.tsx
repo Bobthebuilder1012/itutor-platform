@@ -1,7 +1,7 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { FormEvent, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 
 // Helper function to detect network errors
@@ -21,11 +21,21 @@ function isNetworkError(error: unknown): boolean {
 
 export default function TutorLoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    const reason = searchParams.get('reason');
+    const userEmail = searchParams.get('email');
+    if (reason === 'email_in_use') {
+      if (userEmail) setEmail(userEmail);
+      setError('This email is already in use. Please sign in instead.');
+    }
+  }, [searchParams]);
 
   const handleLogin = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -50,15 +60,25 @@ export default function TutorLoginPage() {
         .from('profiles')
         .select('role')
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
 
-      if (profileError || !profile) {
-        setError('This account is not a tutor account.');
-        setLoading(false);
-        return;
+      let profileData = profile;
+      if (profileError || !profileData) {
+        await fetch('/api/profile/ensure', { method: 'POST' }).catch(() => {});
+        const { data: ensuredProfile, error: ensuredError } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .maybeSingle();
+        if (ensuredError || !ensuredProfile) {
+          setError('This account is not a tutor account.');
+          setLoading(false);
+          return;
+        }
+        profileData = ensuredProfile;
       }
 
-      if (profile.role !== 'tutor') {
+      if (profileData.role !== 'tutor') {
         setError('This account is not a tutor account.');
         setLoading(false);
         return;

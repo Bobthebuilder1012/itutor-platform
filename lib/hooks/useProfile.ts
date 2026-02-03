@@ -32,11 +32,22 @@ export function useProfile() {
           .from('profiles')
           .select('*')
           .eq('id', user.id)
-          .single();
+          .maybeSingle();
 
         if (error) throw error;
 
-        setProfile(data);
+        if (!data) {
+          await fetch('/api/profile/ensure', { method: 'POST' }).catch(() => {});
+          const { data: ensured, error: ensuredError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', user.id)
+            .maybeSingle();
+          if (ensuredError) throw ensuredError;
+          setProfile(ensured || null);
+        } else {
+          setProfile(data);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to fetch profile');
       } finally {

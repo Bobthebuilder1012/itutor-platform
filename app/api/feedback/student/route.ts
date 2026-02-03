@@ -131,6 +131,13 @@ export async function POST(request: NextRequest) {
         if (updateError) {
           return NextResponse.json({ error: updateError.message }, { status: 400 });
         }
+
+        await admin
+          .from('ratings')
+          .delete()
+          .eq('student_id', user.id)
+          .eq('tutor_id', session.tutor_id)
+          .neq('id', existing.id);
       } else {
         const { error: insertError } = await admin.from('ratings').insert(payload);
         if (insertError) {

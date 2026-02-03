@@ -43,6 +43,7 @@ export default function LoginPage() {
     const userEmail = searchParams.get('email');
     const errorParam = searchParams.get('error');
     const messageParam = searchParams.get('message');
+    const reasonParam = searchParams.get('reason');
     
     // Handle email confirmation success
     if (confirmed === 'true') {
@@ -53,6 +54,13 @@ export default function LoginPage() {
       // Don't show the emailSent banner if email is already confirmed
       setShowEmailSent(false);
       return;
+    }
+
+    // Email exists (redirected from signup)
+    if (reasonParam === 'email_in_use') {
+      if (userEmail) setEmail(userEmail);
+      setShowEmailSent(false);
+      setError('This email is already in use. Please sign in instead.');
     }
     
     // Handle email sent (awaiting confirmation)
@@ -169,16 +177,29 @@ export default function LoginPage() {
         .from('profiles')
         .select('role, school, form_level, subjects_of_study, billing_mode, is_reviewer')
         .eq('id', authData.user.id)
-        .single();
+        .maybeSingle();
 
-      if (profileError || !profile) {
-        setError('Unable to fetch user profile.');
-        setLoading(false);
-        return;
+      let profileData = profile;
+
+      if (profileError || !profileData) {
+        await fetch('/api/profile/ensure', { method: 'POST' }).catch(() => {});
+        const { data: ensuredProfile, error: ensuredError } = await supabase
+          .from('profiles')
+          .select('role, school, form_level, subjects_of_study, billing_mode, is_reviewer')
+          .eq('id', authData.user.id)
+          .maybeSingle();
+
+        if (ensuredError || !ensuredProfile) {
+          setError('Unable to fetch user profile.');
+          setLoading(false);
+          return;
+        }
+
+        profileData = ensuredProfile;
       }
 
       // If profile exists but has no role, redirect to signup to complete registration
-      if (!profile.role) {
+      if (!profileData.role) {
         setError('Your account setup is incomplete. Please complete your registration.');
         await supabase.auth.signOut();
         setTimeout(() => {
@@ -197,21 +218,21 @@ export default function LoginPage() {
       }
 
       // Check if user is an admin/reviewer first
-      if (profile.is_reviewer || profile.role === 'admin') {
+      if (profileData.is_reviewer || profileData.role === 'admin') {
         router.push('/reviewer/dashboard');
         return;
       }
 
-      switch (profile.role) {
+      switch (profileData.role) {
         case 'student':
           // If this is a child account created by a parent, skip profile check
-          if (profile.billing_mode === 'parent_required') {
+          if (profileData.billing_mode === 'parent_required') {
             router.push('/student/dashboard');
             break;
           }
           
           // For regular students, check if profile is complete
-          const hasBasicInfo = profile.school && profile.form_level;
+          const hasBasicInfo = profileData.school && profileData.form_level;
           
           // Check for subjects in user_subjects table
           const { data: userSubjects } = await supabase
@@ -221,7 +242,7 @@ export default function LoginPage() {
             .limit(1);
           
           const hasSubjects = 
-            (profile.subjects_of_study && profile.subjects_of_study.length > 0) ||
+            (profileData.subjects_of_study && profileData.subjects_of_study.length > 0) ||
             (userSubjects && userSubjects.length > 0);
           
           const isStudentProfileComplete = hasBasicInfo && hasSubjects;

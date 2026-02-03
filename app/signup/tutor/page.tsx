@@ -140,7 +140,9 @@ export default function TutorSignupPage() {
 
       if (signUpError) {
         if (signUpError.message.includes('already registered')) {
-          setError('This email is already registered. Please log in instead.');
+          router.push(`/tutor/login?reason=email_in_use&email=${encodeURIComponent(email)}`);
+          setLoading(false);
+          return;
         } else {
           setError(signUpError.message);
         }
@@ -151,7 +153,7 @@ export default function TutorSignupPage() {
       // If identities is empty, Supabase indicates the email already exists
       const identitiesCount = authData.user?.identities?.length ?? 0;
       if (identitiesCount === 0) {
-        setError('This email is already in use. Please sign in instead.');
+        router.push(`/tutor/login?reason=email_in_use&email=${encodeURIComponent(email)}`);
         setLoading(false);
         return;
       }
