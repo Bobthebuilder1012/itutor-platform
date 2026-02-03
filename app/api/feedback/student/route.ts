@@ -76,20 +76,67 @@ export async function POST(request: NextRequest) {
 
     // One rating per (student, tutor). If it already exists, overwrite it (keep latest).
     const admin = getServiceClient();
-    const { error: upsertError } = await admin.from('ratings').upsert(
-      {
-        session_id: sessionId,
-        student_id: user.id,
-        tutor_id: session.tutor_id,
-        stars,
-        comment: comment && comment.trim().length > 0 ? comment.trim() : null,
-        created_at: new Date().toISOString(),
-      },
-      { onConflict: 'student_id,tutor_id' }
-    );
+
+    const payload = {
+      session_id: sessionId,
+      student_id: user.id,
+      tutor_id: session.tutor_id,
+      stars,
+      comment: comment && comment.trim().length > 0 ? comment.trim() : null,
+      created_at: new Date().toISOString(),
+    };
+
+    // Preferred path: requires a UNIQUE constraint on (student_id, tutor_id).
+    const { error: upsertError } = await admin
+      .from('ratings')
+      .upsert(payload, { onConflict: 'student_id,tutor_id' });
 
     if (upsertError) {
-      return NextResponse.json({ error: upsertError.message }, { status: 400 });
+      // Backward-compatible fallback: if the constraint isn't present yet in Supabase,
+      // emulate upsert by selecting and then updating/inserting.
+      const msg = String(upsertError.message || '');
+      const missingConstraint =
+        msg.includes('no unique or exclusion constraint') ||
+        msg.includes('ON CONFLICT') ||
+        msg.includes('42P10');
+
+      if (!missingConstraint) {
+        return NextResponse.json({ error: upsertError.message }, { status: 400 });
+      }
+
+      const { data: existing, error: existingError } = await admin
+        .from('ratings')
+        .select('id')
+        .eq('student_id', user.id)
+        .eq('tutor_id', session.tutor_id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existingError) {
+        return NextResponse.json({ error: existingError.message }, { status: 400 });
+      }
+
+      if (existing?.id) {
+        const { error: updateError } = await admin
+          .from('ratings')
+          .update({
+            session_id: payload.session_id,
+            stars: payload.stars,
+            comment: payload.comment,
+            created_at: payload.created_at,
+          })
+          .eq('id', existing.id);
+
+        if (updateError) {
+          return NextResponse.json({ error: updateError.message }, { status: 400 });
+        }
+      } else {
+        const { error: insertError } = await admin.from('ratings').insert(payload);
+        if (insertError) {
+          return NextResponse.json({ error: insertError.message }, { status: 400 });
+        }
+      }
     }
 
     return NextResponse.json({ ok: true });
