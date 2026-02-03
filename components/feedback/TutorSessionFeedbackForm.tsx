@@ -24,11 +24,24 @@ export default function TutorSessionFeedbackForm({
 
   const hasMeaningfulText = feedbackText.replace(/\s+/g, '').length > 0;
 
+  function formatTimeNoSeconds(d: Date) {
+    // No seconds, and collapse ":00" to just "10 AM" / "12 PM"
+    if (d.getMinutes() === 0) {
+      return new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: true }).format(d);
+    }
+    return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }).format(d);
+  }
+
   useEffect(() => {
     // Avoid server/client hydration mismatch by formatting only in the browser.
     const start = new Date(scheduledStartAt);
     const end = new Date(scheduledEndAt);
-    setFormattedTime(`${start.toLocaleString()} – ${end.toLocaleTimeString()}`);
+    const datePart = new Intl.DateTimeFormat('en-US', {
+      month: 'numeric',
+      day: 'numeric',
+      year: 'numeric',
+    }).format(start);
+    setFormattedTime(`${datePart}, ${formatTimeNoSeconds(start)} – ${formatTimeNoSeconds(end)}`);
   }, [scheduledStartAt, scheduledEndAt]);
 
   useEffect(() => {
