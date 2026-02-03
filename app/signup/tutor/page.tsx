@@ -167,9 +167,8 @@ export default function TutorSignupPage() {
       // Check if email confirmation is required BEFORE trying to upsert
       // If no session, we can't perform authenticated operations
       if (!authData.session) {
-        // Email confirmation required - trigger will create basic profile
-        // Profile will be completed after email confirmation via callback
-        router.push(`/login?emailSent=true&email=${encodeURIComponent(email)}`);
+        // Email confirmation required - redirect to verification code entry
+        router.push(`/verify-code?email=${encodeURIComponent(email)}`);
         return;
       }
 
