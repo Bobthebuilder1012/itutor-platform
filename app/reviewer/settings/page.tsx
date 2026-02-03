@@ -333,7 +333,7 @@ export default function ReviewerSettingsPage() {
   return (
     <DashboardLayout role="reviewer" userName={currentDisplayName}>
       {/* Mobile & Tablet: Horizontal Tabs */}
-      <div className="md:hidden mb-4">
+      <div className="md:!hidden mb-4">
         <div className="bg-white border-2 border-gray-200 rounded-xl p-1.5">
           <div className="flex overflow-x-auto scrollbar-hide gap-1">
             <button
@@ -372,7 +372,7 @@ export default function ReviewerSettingsPage() {
 
       <div className="flex flex-col md:flex-row gap-4 md:gap-6">
         {/* Desktop: Sidebar Navigation */}
-        <div className="hidden md:block w-52 flex-shrink-0">
+        <div className="hidden md:!block w-52 flex-shrink-0">
           <nav className="space-y-1 bg-white border-2 border-gray-200 rounded-xl p-1.5">
             <button
               onClick={() => setActiveSection('profile')}
