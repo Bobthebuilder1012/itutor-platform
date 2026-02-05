@@ -214,6 +214,34 @@ export default function TutorSignupPage() {
         return;
       }
 
+      // Send welcome email immediately and enqueue follow-up sequence
+      try {
+        // Send welcome email right away
+        await fetch('/api/send-welcome-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: authData.user.id })
+        });
+
+        // Enqueue follow-up emails (starting at stage 1, day 1)
+        const nextSendAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // +1 day
+        const { error: queueError } = await supabase
+          .from('onboarding_email_queue')
+          .insert({
+            user_id: authData.user.id,
+            user_type: role,
+            stage: 1,
+            next_send_at: nextSendAt.toISOString(),
+            last_sent_at: new Date().toISOString()
+          });
+        
+        if (queueError) {
+          console.error('Failed to enqueue onboarding email:', queueError);
+        }
+      } catch (queueErr) {
+        console.error('Error with onboarding email:', queueErr);
+      }
+
       router.push('/onboarding/tutor');
     } catch (err) {
       if (isNetworkError(err)) {

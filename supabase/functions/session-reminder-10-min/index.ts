@@ -1,0 +1,202 @@
+import { createClient } from 'npm:@supabase/supabase-js@2.89.0';
+import { SESSION_REMINDER_10_MIN } from '../_shared/notificationTemplates.ts';
+import { getFcmAccessToken, sendFcmMessage } from '../_shared/fcm.ts';
+
+type SessionRow = {
+  id: string;
+  scheduled_start_at: string;
+  student_id: string;
+  tutor_id: string;
+};
+
+type PushTokenRow = {
+  id: string;
+  user_id: string;
+  token: string;
+  platform: string;
+};
+
+const MAX_SEND_CONCURRENCY = 20;
+
+function env(name: string): string {
+  const v = Deno.env.get(name);
+  if (!v) throw new Error(`Missing env: ${name}`);
+  return v;
+}
+
+function iso(d: Date): string {
+  return d.toISOString();
+}
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+Deno.serve(async () => {
+  const startedAt = Date.now();
+
+  try {
+    const SUPABASE_URL = env('SUPABASE_URL');
+    const SUPABASE_SERVICE_ROLE_KEY = env('SUPABASE_SERVICE_ROLE_KEY');
+    const FCM_SERVICE_ACCOUNT_JSON = env('FCM_SERVICE_ACCOUNT_JSON');
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    // Window: now + 9min .. now + 11min
+    const now = new Date();
+    const windowStart = new Date(now.getTime() + 9 * 60 * 1000);
+    const windowEnd = new Date(now.getTime() + 11 * 60 * 1000);
+
+    const { data: sessions, error: sessionsError } = await supabase
+      .from('sessions')
+      .select('id, scheduled_start_at, student_id, tutor_id')
+      .eq('status', 'SCHEDULED')
+      .gte('scheduled_start_at', iso(windowStart))
+      .lte('scheduled_start_at', iso(windowEnd));
+
+    if (sessionsError) throw sessionsError;
+
+    const eligibleSessions = (sessions ?? []) as SessionRow[];
+    if (eligibleSessions.length === 0) {
+      return Response.json({
+        ok: true,
+        processedSessions: 0,
+        logged: 0,
+        durationMs: Date.now() - startedAt,
+      });
+    }
+
+    // Build candidate notification log entries (student + tutor)
+    const logEntries = eligibleSessions.flatMap((s) => [
+      { user_id: s.student_id, session_id: s.id, type: SESSION_REMINDER_10_MIN.type },
+      { user_id: s.tutor_id, session_id: s.id, type: SESSION_REMINDER_10_MIN.type },
+    ]);
+
+    // Atomic idempotency claim: insert log entries, ignore duplicates.
+    const { data: insertedLogs, error: logError } = await supabase
+      .from('notifications_log')
+      .insert(logEntries, { onConflict: 'user_id,session_id,type', ignoreDuplicates: true })
+      .select('user_id, session_id');
+
+    if (logError) throw logError;
+
+    const newLogs = (insertedLogs ?? []) as Array<{ user_id: string; session_id: string }>;
+    if (newLogs.length === 0) {
+      return Response.json({
+        ok: true,
+        processedSessions: eligibleSessions.length,
+        logged: 0,
+        durationMs: Date.now() - startedAt,
+      });
+    }
+
+    const userIds = Array.from(new Set(newLogs.map((l) => l.user_id)));
+
+    const { data: pushTokens, error: tokensError } = await supabase
+      .from('push_tokens')
+      .select('id, user_id, token, platform')
+      .in('user_id', userIds);
+
+    if (tokensError) throw tokensError;
+
+    const tokens = (pushTokens ?? []) as PushTokenRow[];
+    if (tokens.length === 0) {
+      return Response.json({
+        ok: true,
+        processedSessions: eligibleSessions.length,
+        logged: newLogs.length,
+        tokens: 0,
+        durationMs: Date.now() - startedAt,
+      });
+    }
+
+    const tokensByUser = new Map<string, PushTokenRow[]>();
+    for (const t of tokens) {
+      const arr = tokensByUser.get(t.user_id) ?? [];
+      arr.push(t);
+      tokensByUser.set(t.user_id, arr);
+    }
+
+    const sessionById = new Map(eligibleSessions.map((s) => [s.id, s] as const));
+
+    const { accessToken, projectId } = await getFcmAccessToken(FCM_SERVICE_ACCOUNT_JSON);
+
+    // Fanout: for each (user, session) that was newly logged, notify all tokens for that user.
+    const sends: Array<{
+      tokenRow: PushTokenRow;
+      userId: string;
+      sessionId: string;
+    }> = [];
+
+    for (const l of newLogs) {
+      const rows = tokensByUser.get(l.user_id);
+      if (!rows || rows.length === 0) continue;
+      for (const tokenRow of rows) {
+        sends.push({ tokenRow, userId: l.user_id, sessionId: l.session_id });
+      }
+    }
+
+    const attemptedTokenIds: string[] = [];
+    const sendBatches = chunk(sends, MAX_SEND_CONCURRENCY);
+
+    for (const batch of sendBatches) {
+      await Promise.allSettled(
+        batch.map(async ({ tokenRow, userId, sessionId }) => {
+          attemptedTokenIds.push(tokenRow.id);
+          try {
+            const session = sessionById.get(sessionId);
+            const deepLink =
+              session && userId === session.student_id
+                ? '/student/sessions'
+                : session && userId === session.tutor_id
+                ? '/tutor/sessions'
+                : undefined;
+            await sendFcmMessage({
+              accessToken,
+              projectId,
+              token: tokenRow.token,
+              title: SESSION_REMINDER_10_MIN.title,
+              body: SESSION_REMINDER_10_MIN.body,
+              data: {
+                session_id: sessionId,
+                ...(deepLink ? { deep_link: deepLink } : {}),
+              },
+            });
+          } catch {
+            // Fail silently per requirements.
+          }
+        })
+      );
+    }
+
+    // Best-effort: touch last_used_at for attempted tokens
+    if (attemptedTokenIds.length > 0) {
+      const nowIso = iso(new Date());
+      await supabase.from('push_tokens').update({ last_used_at: nowIso }).in('id', attemptedTokenIds);
+    }
+
+    return Response.json({
+      ok: true,
+      processedSessions: eligibleSessions.length,
+      logged: newLogs.length,
+      tokens: tokens.length,
+      sendsAttempted: sends.length,
+      durationMs: Date.now() - startedAt,
+    });
+  } catch (e) {
+    // Fail fast; cron will rerun. Idempotency prevents duplicates.
+    return Response.json(
+      {
+        ok: false,
+        error: e instanceof Error ? e.message : 'unknown_error',
+        durationMs: Date.now() - startedAt,
+      },
+      { status: 200 }
+    );
+  }
+});
+
