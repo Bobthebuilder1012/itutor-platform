@@ -24,7 +24,7 @@ export const metadata: Metadata = {
     siteName: 'iTutor',
     images: [
       {
-        url: '/og-image.png',
+        url: '/assets/logo/itutor-logo-dark.png',
         width: 1200,
         height: 630,
         alt: 'iTutor - Caribbean Education Platform',
@@ -37,7 +37,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'iTutor - Caribbean Education Platform',
     description: 'Connect with tutors across Trinidad & Tobago and the Caribbean',
-    images: ['/og-image.png'],
+    images: ['/assets/logo/itutor-logo-dark.png'],
   },
 };
 
