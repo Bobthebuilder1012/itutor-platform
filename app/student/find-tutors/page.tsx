@@ -8,6 +8,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import SubjectMultiSelect from '@/components/SubjectMultiSelect';
 import { getDisplayName } from '@/lib/utils/displayName';
 import VerifiedBadge from '@/components/VerifiedBadge';
+import { getAvatarColor } from '@/lib/utils/avatarColors';
 
 type Tutor = {
   id: string;
@@ -436,13 +437,13 @@ export default function FindTutorsPage() {
             <p className="text-gray-600 mt-4">Loading tutors...</p>
           </div>
         ) : filteredTutors.length === 0 ? (
-          <div className="text-center py-12 bg-gradient-to-br from-gray-800 to-gray-900 border border-gray-700 rounded-2xl">
-            <div className="bg-gray-800 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
-              <svg className="h-8 w-8 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="text-center py-12 bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 rounded-2xl">
+            <div className="bg-white rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 shadow-sm">
+              <svg className="h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </div>
-            <p className="text-gray-600 mb-2">No iTutors found</p>
+            <p className="text-gray-700 mb-2 font-medium">No iTutors Yet</p>
             <p className="text-sm text-gray-500">Try adjusting your filters</p>
           </div>
         ) : (
@@ -455,7 +456,7 @@ export default function FindTutorsPage() {
               return (
                 <div
                   key={tutor.id}
-                  className="bg-gradient-to-br from-green-50 to-blue-50 border-2 border-green-200 rounded-2xl p-6 hover:shadow-xl hover:border-green-400 transition-all duration-300 hover:scale-105"
+                  className="bg-white border-2 border-gray-200 rounded-2xl p-6 hover:shadow-xl hover:border-gray-300 transition-all duration-300 hover:scale-105"
                 >
                   {/* Recommended Badge - Only for verified tutors */}
                   {matchesStudentSubjects && tutor.tutor_verification_status === 'VERIFIED' && (
@@ -468,8 +469,8 @@ export default function FindTutorsPage() {
 
                   {/* Tutor Info */}
                   <div className="flex items-start gap-4 mb-4">
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-itutor-green to-emerald-600 flex items-center justify-center text-white font-bold text-xl flex-shrink-0">
-                      {tutor.avatar_url ? (
+                    <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${getAvatarColor(tutor.id)} flex items-center justify-center text-white font-bold text-xl flex-shrink-0`}>
+                      {tutor.avatar_url && tutor.avatar_url.trim() !== '' ? (
                         <img src={tutor.avatar_url} alt={getDisplayName(tutor)} className="w-full h-full rounded-full object-cover" />
                       ) : (
                         getDisplayName(tutor).charAt(0).toUpperCase()
@@ -516,7 +517,7 @@ export default function FindTutorsPage() {
 
                   {/* Top Comment */}
                   {tutor.topComment && (
-                    <div className="mb-4 bg-white/70 rounded-lg p-3 border border-green-200">
+                    <div className="mb-4 bg-gray-50 rounded-lg p-3 border border-gray-200">
                       <div className="flex items-center gap-1 mb-1">
                         {[...Array(tutor.topComment.stars)].map((_, i) => (
                           <span key={i} className="text-yellow-400 text-sm">★</span>
@@ -542,7 +543,7 @@ export default function FindTutorsPage() {
                         </span>
                       ))}
                       {tutor.subjects.length > 3 && (
-                        <span className="text-xs px-2 py-1 rounded bg-blue-50 border border-blue-300 text-blue-700 font-medium">
+                        <span className="text-xs px-2 py-1 rounded bg-blue-100 border border-blue-300 text-blue-700 font-medium">
                           +{tutor.subjects.length - 3} more
                         </span>
                       )}

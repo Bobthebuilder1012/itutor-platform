@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { Profile } from '@/lib/types/database';
 import ShareProfileModal from '@/components/ShareProfileModal';
+import { supabase } from '@/lib/supabase/client';
+import { getAvatarColor } from '@/lib/utils/avatarColors';
 
 type ProfileSnapshotCardProps = {
   profile: Profile;
@@ -20,9 +22,44 @@ export default function ProfileSnapshotCard({
   const firstName = profile.full_name?.split(' ')[0] || 'Student';
   const hasBio = profile.bio && profile.bio.trim().length > 0;
   const [shareModalOpen, setShareModalOpen] = useState(false);
+  
+  // Bio editing state
+  const [editingBio, setEditingBio] = useState(false);
+  const [bioText, setBioText] = useState(profile.bio || '');
+  const [savingBio, setSavingBio] = useState(false);
+  const [bioError, setBioError] = useState<string | null>(null);
+  const maxBioChars = 1000;
 
   const profileUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/student/profile/${profile.id}`;
   const profileName = profile.display_name || profile.full_name || 'Student';
+
+  const handleSaveBio = async () => {
+    setSavingBio(true);
+    setBioError(null);
+
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ bio: bioText.trim() || null })
+        .eq('id', profile.id);
+
+      if (error) throw error;
+
+      profile.bio = bioText.trim();
+      setEditingBio(false);
+    } catch (err) {
+      console.error('Error saving bio:', err);
+      setBioError(err instanceof Error ? err.message : 'Failed to save bio');
+    } finally {
+      setSavingBio(false);
+    }
+  };
+
+  const handleCancelBio = () => {
+    setBioText(profile.bio || '');
+    setEditingBio(false);
+    setBioError(null);
+  };
 
   return (
     <div className="bg-white border-2 border-gray-200 rounded-2xl p-4 sm:p-6 md:p-8 shadow-md hover:shadow-lg transition-shadow">
@@ -32,14 +69,14 @@ export default function ProfileSnapshotCard({
           onClick={onChangeAvatar}
           className="flex-shrink-0 group relative"
         >
-          {profile.avatar_url ? (
+          {profile.avatar_url && profile.avatar_url.trim() !== '' ? (
             <img
               src={profile.avatar_url}
               alt={firstName}
               className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover border-4 border-gray-200 group-hover:border-itutor-green transition-colors"
             />
           ) : (
-            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-itutor-green to-emerald-600 flex items-center justify-center text-white font-bold text-2xl sm:text-3xl border-4 border-gray-200 group-hover:border-itutor-green transition-colors">
+            <div className={`w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br ${getAvatarColor(profile.id)} flex items-center justify-center text-white font-bold text-2xl sm:text-3xl border-4 border-gray-200 group-hover:border-itutor-green transition-colors`}>
               {firstName.charAt(0)}
             </div>
           )}
@@ -94,16 +131,78 @@ export default function ProfileSnapshotCard({
 
       {/* About Me Section */}
       <div className="mb-6">
-        <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">About me</h4>
-        {hasBio ? (
-          <p className="text-gray-700 leading-relaxed">{profile.bio}</p>
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">About me</h4>
+          {hasBio && !editingBio && (
+            <button
+              onClick={() => setEditingBio(true)}
+              className="text-itutor-green hover:text-emerald-600 text-xs font-medium flex items-center gap-1"
+            >
+              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              Edit
+            </button>
+          )}
+        </div>
+        
+        {editingBio ? (
+          <div className="space-y-3">
+            <textarea
+              value={bioText}
+              onChange={(e) => setBioText(e.target.value)}
+              placeholder="Tell tutors what you're working on (e.g., 'Preparing for CSEC Maths')"
+              rows={5}
+              maxLength={maxBioChars}
+              className="w-full px-4 py-3 bg-white border-2 border-itutor-green rounded-lg focus:ring-2 focus:ring-itutor-green focus:outline-none transition placeholder-gray-400 resize-none text-gray-900"
+              autoFocus
+            />
+            <div className="flex justify-between items-center">
+              <p className="text-xs text-gray-500">
+                {bioText.length}/{maxBioChars} characters
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleCancelBio}
+                  disabled={savingBio}
+                  className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveBio}
+                  disabled={savingBio}
+                  className="px-4 py-2 text-sm bg-itutor-green hover:bg-emerald-600 text-white rounded-lg font-medium transition disabled:opacity-50 flex items-center gap-2"
+                >
+                  {savingBio ? (
+                    <>
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                      Saving...
+                    </>
+                  ) : (
+                    'Save'
+                  )}
+                </button>
+              </div>
+            </div>
+            {bioError && (
+              <p className="text-xs text-red-600">{bioError}</p>
+            )}
+          </div>
+        ) : hasBio ? (
+          <div 
+            onClick={() => setEditingBio(true)}
+            className="text-gray-700 leading-relaxed cursor-pointer hover:bg-gray-50 p-3 rounded-lg transition"
+          >
+            {profile.bio}
+          </div>
         ) : (
           <div className="bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg p-4">
             <p className="text-gray-600 text-sm mb-2">
               Tell tutors what you're working on (e.g., "Preparing for CSEC Maths")
             </p>
             <button
-              onClick={onEditProfile}
+              onClick={() => setEditingBio(true)}
               className="text-itutor-green hover:text-emerald-600 font-medium text-sm"
             >
               Add a bio →
