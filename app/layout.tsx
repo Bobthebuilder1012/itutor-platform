@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
-import Link from 'next/link';
 import './globals.css';
 
 const inter = Inter({ subsets: ['latin'] })
@@ -16,17 +15,17 @@ export const metadata: Metadata = {
     apple: [{ url: '/apple-touch-icon.png', type: 'image/png' }],
     shortcut: ['/favicon.png'],
   },
-  metadataBase: new URL('https://www.myitutor.com'),
+  metadataBase: new URL('https://myitutor.com'),
   openGraph: {
     title: 'iTutor - Caribbean Education Platform',
     description: 'Connect with tutors across Trinidad & Tobago and the Caribbean. Qualified educators and tutors for your child for nearly any subject. Find My Tutor. Live video session. Certified teachers. Flexible scheduling. Ages 3+.',
-    url: 'https://www.myitutor.com',
+    url: 'https://myitutor.com',
     siteName: 'iTutor',
     images: [
       {
-        url: '/itutor-og-logo.png',
-        width: 200,
-        height: 200,
+        url: '/og-image.png',
+        width: 1200,
+        height: 630,
         alt: 'iTutor - Caribbean Education Platform',
       },
     ],
@@ -34,10 +33,10 @@ export const metadata: Metadata = {
     type: 'website',
   },
   twitter: {
-    card: 'summary',
+    card: 'summary_large_image',
     title: 'iTutor - Caribbean Education Platform',
     description: 'Connect with tutors across Trinidad & Tobago and the Caribbean',
-    images: ['/itutor-og-logo.png'],
+    images: ['/og-image.png'],
   },
 };
 
