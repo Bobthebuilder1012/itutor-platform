@@ -21,10 +21,9 @@ export const metadata: Metadata = {
     description: 'Connect with tutors across Trinidad & Tobago and the Caribbean. Qualified educators and tutors for your child for nearly any subject. Find My Tutor. Live video session. Certified teachers. Flexible scheduling. Ages 3+.',
     url: 'https://myitutor.com',
     siteName: 'iTutor',
-    appId: process.env.NEXT_PUBLIC_FACEBOOK_APP_ID,
     images: [
       {
-        url: '/og-image-v3.png',
+        url: '/og-image-v4.png',
         width: 1200,
         height: 630,
         alt: 'iTutor - Caribbean Education Platform',
@@ -37,7 +36,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'iTutor - Caribbean Education Platform',
     description: 'Connect with tutors across Trinidad & Tobago and the Caribbean',
-    images: ['/og-image-v3.png'],
+    images: ['/og-image-v4.png'],
   },
 };
 

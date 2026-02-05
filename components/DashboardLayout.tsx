@@ -10,6 +10,7 @@ import NotificationBell from '@/components/NotificationBell';
 import MessagesIcon from '@/components/MessagesIcon';
 import CalendarIcon from '@/components/CalendarIcon';
 import Footer from '@/components/landing/Footer';
+import PushTokenRegistrar from '@/components/push/PushTokenRegistrar';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -142,6 +143,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 flex flex-col">
+      <PushTokenRegistrar />
       <nav className="bg-black shadow-lg border-b border-gray-900 sticky top-0 z-50">
         <div className="max-w-full xl:max-w-[1400px] 2xl:max-w-[1600px] mx-auto px-2 sm:px-4 lg:px-6 xl:px-8">
           <div className="flex items-center justify-between h-16">
