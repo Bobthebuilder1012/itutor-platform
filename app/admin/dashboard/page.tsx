@@ -38,14 +38,8 @@ export default function AdminDashboardPage() {
         .eq('id', user.id)
         .single();
 
-      if (profile?.role !== 'admin' && !profile?.is_reviewer) {
+      if (profile?.role !== 'admin') {
         router.push('/login');
-        return;
-      }
-
-      // Redirect reviewers to their dashboard
-      if (profile?.is_reviewer && profile?.role !== 'admin') {
-        router.push('/reviewer/dashboard');
         return;
       }
 

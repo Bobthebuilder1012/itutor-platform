@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceClient } from '@/lib/supabase/server';
-import { sendOnboardingEmail } from '@/lib/services/emailService';
+import { sendEmail, getEmailTemplate, personalizeEmail } from '@/lib/services/emailService';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,23 +55,43 @@ export async function POST(request: NextRequest) {
 
     const firstName = profile.full_name?.split(' ')[0] || 'there';
 
-    console.log('Sending onboarding email...');
-    const resendResponse = await sendOnboardingEmail({
-      userId,
-      userType: profile.role as 'student' | 'tutor' | 'parent',
-      stage: 0,
-      firstName,
-      email: profile.email
+    console.log('Fetching email template...');
+    const template = await getEmailTemplate(profile.role as 'student' | 'tutor' | 'parent', 0);
+    
+    if (!template) {
+      return NextResponse.json({
+        error: 'Email template not found',
+        details: `No template found for ${profile.role} stage 0`
+      }, { status: 404 });
+    }
+
+    console.log('Personalizing email...');
+    const personalizedSubject = personalizeEmail(template.subject, { firstName });
+    const personalizedHtml = personalizeEmail(template.html, { firstName });
+
+    console.log('Sending email...');
+    const result = await sendEmail({
+      to: profile.email,
+      subject: personalizedSubject,
+      html: personalizedHtml
     });
 
-    console.log('Email sent successfully:', resendResponse);
+    if (!result.success) {
+      console.error('Failed to send email:', result.error);
+      return NextResponse.json({
+        error: 'Failed to send email',
+        details: result.error
+      }, { status: 500 });
+    }
+
+    console.log('Email sent successfully:', result.messageId);
 
     const { error: logError } = await supabase.from('email_send_logs').insert({
       user_id: userId,
       stage: 0,
       email_type: `${profile.role}_stage_0`,
       status: 'success',
-      resend_email_id: resendResponse?.id || null
+      resend_email_id: result.messageId || null
     });
 
     if (logError) {
@@ -81,7 +101,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ 
       success: true, 
       message: 'Welcome email sent',
-      emailId: resendResponse?.id
+      emailId: result.messageId
     });
 
   } catch (error) {
