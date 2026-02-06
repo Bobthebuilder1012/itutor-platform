@@ -174,8 +174,8 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
 
             {/* Right: Icons + Username + Logout */}
             <div className="flex items-center gap-2 sm:gap-3 lg:gap-4 xl:gap-6">
-              {/* Desktop: Show individual icons */}
-              <div className="hidden sm:flex items-center gap-1.5 md:gap-2 lg:gap-3">
+              {/* Always show icons */}
+              <div className="flex items-center gap-1.5 md:gap-2 lg:gap-3">
                 {profile?.id && role !== 'reviewer' && <CalendarIcon userId={profile.id} role={role} />}
                 {profile?.id && role !== 'reviewer' && <MessagesIcon userId={profile.id} role={role} />}
                 {profile?.id && <NotificationBell userId={profile.id} />}
@@ -192,8 +192,8 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
                 </Link>
               </div>
 
-              {/* Mobile: Consolidated Icon Menu */}
-              {profile?.id && (
+              {/* Mobile backup: Consolidated Icon Menu (kept as fallback but hidden since icons always show) */}
+              {profile?.id && false && (
                 <div className="relative sm:hidden">
                   <button
                     onClick={() => setMobileIconMenuOpen(!mobileIconMenuOpen)}
@@ -265,11 +265,11 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
               )}
 
               {/* Divider */}
-              <div className="hidden lg:block h-6 w-px bg-gray-700"></div>
+              <div className="hidden md:block h-6 w-px bg-gray-700"></div>
 
               {/* Username and Logout */}
               <div className="flex items-center gap-2 sm:gap-3">
-                <span className="hidden lg:block text-sm text-gray-300 truncate max-w-[120px]">{displayName}</span>
+                <span className="hidden md:block text-sm text-gray-300 truncate max-w-[100px] lg:max-w-[120px]">{displayName}</span>
                 
                 {/* Logout Button */}
                 <button
