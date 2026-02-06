@@ -101,22 +101,34 @@ BEGIN
     booking_id,
     tutor_id,
     student_id,
-    subject_id,
+    provider,
     scheduled_start_at,
     scheduled_end_at,
     duration_minutes,
+    no_show_wait_minutes,
+    min_payable_minutes,
     status,
+    charge_scheduled_at,
+    charge_amount_ttd,
+    payout_amount_ttd,
+    platform_fee_ttd,
     notes
   ) VALUES (
     v_booking_id,
     v_tutor_id,
     v_jovan_id,
-    v_subject_id,
+    'google_meet',
     v_session_start,
     v_session_start + interval '1 hour',
     60,
-    'scheduled',
-    '🧪 TEST SESSION - Push notification test (10 min reminder)'
+    10,
+    15,
+    'SCHEDULED',
+    v_session_start + interval '1 hour',
+    0,
+    0,
+    0,
+    jsonb_build_object('test', true, 'purpose', '🧪 TEST SESSION - Push notification test (10 min reminder)')
   )
   RETURNING id INTO v_session_id;
 
