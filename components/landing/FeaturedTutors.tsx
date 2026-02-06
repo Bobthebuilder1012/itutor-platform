@@ -19,7 +19,7 @@ const filters = [
   { id: 'English', label: 'English' },
 ];
 
-export default function FeaturedTutors({ tutors }: FeaturedTutorsProps) {
+export default function FeaturedTutors({ tutors, paidClassesEnabled = false }: FeaturedTutorsProps) {
   const [activeFilter, setActiveFilter] = useState('all');
 
   // Filter tutors based on selected filter
