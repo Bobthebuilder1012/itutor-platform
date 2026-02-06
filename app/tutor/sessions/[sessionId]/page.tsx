@@ -23,6 +23,7 @@ export default function TutorSessionDetailPage() {
   const [subject, setSubject] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [retryingMeetingLink, setRetryingMeetingLink] = useState(false);
 
   useEffect(() => {
     if (profileLoading) return;
@@ -75,6 +76,33 @@ export default function TutorSessionDetailPage() {
       router.push('/tutor/sessions');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleRetryMeetingLink() {
+    if (!session) return;
+    
+    setRetryingMeetingLink(true);
+    try {
+      const response = await fetch('/api/sessions/retry-meeting-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: session.id })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create meeting link');
+      }
+
+      alert('Meeting link created successfully!');
+      await loadSessionData(); // Reload session data
+    } catch (error: any) {
+      console.error('Error retrying meeting link:', error);
+      alert(`Failed to create meeting link: ${error.message}`);
+    } finally {
+      setRetryingMeetingLink(false);
     }
   }
 
@@ -182,15 +210,27 @@ export default function TutorSessionDetailPage() {
           {/* Join Button */}
           {session.join_url && (
             <div className="border-t border-gray-200 pt-4">
-              <SessionJoinButton session={session} userRole="tutor" />
+              <SessionJoinButton session={session} userRole="tutor" onRetrySuccess={loadSessionData} />
             </div>
           )}
 
           {!session.join_url && session.status !== 'CANCELLED' && (
             <div className="border-t border-gray-200 pt-4">
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <p className="text-sm text-yellow-800">
-                  ⏳ Meeting link is being generated...
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-yellow-800">
+                    ⏳ Meeting link is being generated...
+                  </p>
+                  <button
+                    onClick={handleRetryMeetingLink}
+                    disabled={retryingMeetingLink}
+                    className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 disabled:bg-yellow-400 text-white text-sm font-medium rounded-lg transition-colors"
+                  >
+                    {retryingMeetingLink ? 'Retrying...' : 'Retry Now'}
+                  </button>
+                </div>
+                <p className="text-xs text-yellow-700 mt-2">
+                  If this persists, check your video provider connection in Settings
                 </p>
               </div>
             </div>

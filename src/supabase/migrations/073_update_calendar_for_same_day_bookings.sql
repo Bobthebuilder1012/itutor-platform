@@ -22,7 +22,7 @@ BEGIN
 
     -- Set minimum notice requirement
     IF v_allow_same_day THEN
-        v_minimum_notice := interval '1 hour';  -- Same-day booking: 1 hour notice
+        v_minimum_notice := interval '0 minutes';  -- Test mode: Show ALL slots (no minimum notice)
     ELSE
         v_minimum_notice := interval '24 hours'; -- Normal: 24 hours notice
     END IF;

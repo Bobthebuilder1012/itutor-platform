@@ -74,14 +74,21 @@ BEGIN
     -- Calculate hours until session starts
     v_hours_until_session := EXTRACT(EPOCH FROM (p_requested_start_at - now())) / 3600;
 
-    -- Enforce 24-hour advance notice unless tutor allows same-day bookings
-    IF NOT v_tutor_allows_same_day AND v_hours_until_session < 24 THEN
-        RAISE EXCEPTION 'Bookings must be made at least 24 hours in advance. Please select a time at least one day from now.';
-    END IF;
-
-    -- Prevent booking sessions in the past
-    IF p_requested_start_at <= now() THEN
-        RAISE EXCEPTION 'Cannot book sessions in the past. Please select a future time.';
+    -- Enforce booking time restrictions based on tutor settings
+    IF v_tutor_allows_same_day THEN
+        -- Test mode: Allow bookings at any time (no restrictions)
+        -- This allows testing of calendar and booking flow without time constraints
+        NULL; -- No validation needed
+    ELSE
+        -- Normal mode: Enforce 24-hour advance notice
+        IF v_hours_until_session < 24 THEN
+            RAISE EXCEPTION 'Bookings must be made at least 24 hours in advance. Please select a time at least one day from now.';
+        END IF;
+        
+        -- Prevent booking sessions in the past
+        IF p_requested_start_at <= now() THEN
+            RAISE EXCEPTION 'Cannot book sessions in the past. Please select a future time.';
+        END IF;
     END IF;
 
     -- Calculate actual duration from timestamps if not provided
