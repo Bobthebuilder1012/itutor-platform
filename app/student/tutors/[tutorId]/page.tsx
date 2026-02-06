@@ -435,14 +435,12 @@ export default function TutorProfilePage() {
                           <h3 className="font-bold text-gray-900 mb-1">{subject.name}</h3>
                           <p className="text-sm text-gray-600">{subject.curriculum}</p>
                         </div>
-                        {paidClassesEnabled && (
-                          <div className="text-right ml-2">
-                            <p className="text-lg font-bold text-itutor-green">
-                              ${subject.price_per_hour_ttd}
-                            </p>
-                            <p className="text-xs text-gray-600">per hour</p>
-                          </div>
-                        )}
+                        <div className="text-right ml-2">
+                          <p className="text-lg font-bold text-itutor-green">
+                            ${paidClassesEnabled ? subject.price_per_hour_ttd : 0}
+                          </p>
+                          <p className="text-xs text-gray-600">per hour</p>
+                        </div>
                       </div>
                       {selectedSubject?.id === subject.id && (
                         <div className="mt-2 flex items-center gap-1 text-xs text-itutor-green font-semibold">
@@ -477,8 +475,7 @@ export default function TutorProfilePage() {
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      Booking: {selectedSubject.name}
-                      {paidClassesEnabled && ` • $${selectedSubject.price_per_hour_ttd}/hour`}
+                      Booking: {selectedSubject.name} • ${paidClassesEnabled ? selectedSubject.price_per_hour_ttd : 0}/hour
                     </div>
                   </div>
                   <TutorCalendarWidget

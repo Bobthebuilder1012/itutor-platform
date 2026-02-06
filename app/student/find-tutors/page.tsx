@@ -333,7 +333,7 @@ export default function FindTutorsPage() {
           </div>
 
           {/* Filters */}
-          <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 ${paidClassesEnabled ? 'lg:grid-cols-5' : 'lg:grid-cols-4'}`}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">
                 Subjects
@@ -547,10 +547,10 @@ export default function FindTutorsPage() {
                     </div>
                   </div>
 
-                  {/* Price Range - only show if paid classes enabled and prices > 0 */}
-                  {paidClassesEnabled && tutor.subjects.length > 0 && (
+                  {/* Price Range - show $0 if paid classes disabled */}
+                  {tutor.subjects.length > 0 && (
                     <p className="text-sm text-gray-600 mb-4">
-                      From ${Math.min(...tutor.subjects.map(s => s.price_per_hour_ttd))}/hr
+                      From ${paidClassesEnabled ? Math.min(...tutor.subjects.map(s => s.price_per_hour_ttd)) : 0}/hr
                     </p>
                   )}
 

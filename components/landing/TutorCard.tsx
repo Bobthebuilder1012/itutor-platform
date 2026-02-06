@@ -88,17 +88,17 @@ export default function TutorCard({ tutor, showPrice = false }: TutorCardProps) 
         </div>
       </div>
 
-      {/* Price - only show if paid classes enabled */}
-      {showPrice && priceRange.min > 0 && (
-        <div className="mb-4">
-          <div className="text-2xl font-bold text-itutor-green">
-            {priceRange.min === priceRange.max
+      {/* Price - show $0 if paid classes disabled */}
+      <div className="mb-4">
+        <div className="text-2xl font-bold text-itutor-green">
+          {showPrice && priceRange.min > 0
+            ? priceRange.min === priceRange.max
               ? `$${priceRange.min}`
-              : `$${priceRange.min}-$${priceRange.max}`}
-            <span className="text-sm font-normal text-gray-600">/hr TTD</span>
-          </div>
+              : `$${priceRange.min}-$${priceRange.max}`
+            : '$0'}
+          <span className="text-sm font-normal text-gray-600">/hr TTD</span>
         </div>
-      )}
+      </div>
 
       {/* Subjects */}
       {displaySubjects.length > 0 && (
