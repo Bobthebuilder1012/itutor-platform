@@ -60,9 +60,14 @@ export default function SessionJoinButton({ session, userRole, onRetrySuccess }:
           )}
         </div>
         {userRole === 'tutor' && (
-          <p className="text-sm text-yellow-700">
-            Click Retry or check your video provider connection in Settings
-          </p>
+          <div className="space-y-1">
+            <p className="text-sm text-yellow-700">
+              Click Retry or check your video provider connection in Settings
+            </p>
+            <p className="text-xs text-yellow-600">
+              💡 If retry fails, try disconnecting and reconnecting your video provider in Settings
+            </p>
+          </div>
         )}
       </div>
     );

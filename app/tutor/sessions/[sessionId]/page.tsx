@@ -229,9 +229,14 @@ export default function TutorSessionDetailPage() {
                     {retryingMeetingLink ? 'Retrying...' : 'Retry Now'}
                   </button>
                 </div>
-                <p className="text-xs text-yellow-700 mt-2">
-                  If this persists, check your video provider connection in Settings
-                </p>
+                <div className="mt-2 space-y-1">
+                  <p className="text-xs text-yellow-700">
+                    If this persists, go to Settings and disconnect then reconnect your video provider
+                  </p>
+                  <p className="text-xs text-yellow-600">
+                    💡 Tip: Settings → Video Provider → Disconnect → Connect Google Meet/Zoom
+                  </p>
+                </div>
               </div>
             </div>
           )}
