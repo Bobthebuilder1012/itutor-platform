@@ -23,7 +23,7 @@ export default function ReviewerDashboard() {
   useEffect(() => {
     if (profileLoading) return;
 
-    if (!profile || !profile.is_reviewer) {
+    if (!profile || (!profile.is_reviewer && profile.role !== 'admin')) {
       router.push('/login');
       return;
     }
@@ -90,7 +90,7 @@ export default function ReviewerDashboard() {
   }
 
   return (
-    <DashboardLayout role="reviewer" userName={getDisplayName(profile)}>
+    <DashboardLayout role={profile.role === 'admin' ? 'admin' : 'reviewer'} userName={getDisplayName(profile)}>
       <div className="flex items-center justify-center min-h-[70vh]">
         <div className="text-center space-y-6">
           {/* Animated Icon */}

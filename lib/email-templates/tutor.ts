@@ -4,9 +4,9 @@ const baseStyles = `
   <style>
     body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f9fafb; }
     .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { text-align: center; padding: 30px 0; }
+    .header { text-align: center; padding: 30px 0; background: #000000; border-radius: 8px 8px 0 0; }
     .logo { height: 60px; width: auto; }
-    .content { background: #ffffff; padding: 40px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .content { background: #ffffff; padding: 40px; border-radius: 0 0 8px 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
     .title { font-size: 24px; color: #1f2937; margin-bottom: 20px; font-weight: 600; }
     .text { font-size: 16px; color: #4b5563; line-height: 1.6; margin-bottom: 20px; }
     .cta-button { display: inline-block; background: #199358; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 6px; font-weight: 600; margin: 20px 0; }
@@ -52,21 +52,27 @@ export function welcomeEmail({ firstName, ctaUrl }: EmailTemplateProps): EmailTe
               </p>
             </div>
             <p class="text">
-              Tutors who complete their profile in the first 24 hours get their first student 3x faster!
+              iTutors who complete their profile in the first 24 hours get their first student 3x faster!
             </p>
             <a href="${ctaUrl}" class="cta-button">Complete Your Profile</a>
             <p class="text">
-              Questions? Just reply to this email. We're here to help you succeed!
+              Questions? Contact us at <a href="mailto:hello@myitutor.com" style="color: #199358; text-decoration: none;">hello@myitutor.com</a>. We're here to help you succeed!
             </p>
           </div>
           <div class="footer">
-            <p>iTutor - Empowering Caribbean Educators</p>
             <div class="social-links">
-              <a href="https://www.facebook.com/share/1E91o2u1yM/">Facebook</a>
-              <a href="https://www.instagram.com/myitutor?igsh=Z3U5d2s3OG85N2V0">Instagram</a>
-              <a href="https://www.linkedin.com/company/myitutor/">LinkedIn</a>
+              <a href="https://www.facebook.com/share/1E91o2u1yM/" style="display: inline-block; margin: 0 8px;">
+                <img src="https://img.icons8.com/ios-filled/50/6b7280/facebook-new.png" alt="Facebook" style="width: 28px; height: 28px; filter: grayscale(100%);" />
+              </a>
+              <a href="https://www.instagram.com/myitutor?igsh=MXgyNjdrMTR1ampyag%3D%3D&utm_source=qr" style="display: inline-block; margin: 0 8px;">
+                <img src="https://img.icons8.com/ios-filled/50/6b7280/instagram-new.png" alt="Instagram" style="width: 28px; height: 28px; filter: grayscale(100%);" />
+              </a>
+              <a href="https://www.linkedin.com/company/myitutor/" style="display: inline-block; margin: 0 8px;">
+                <img src="https://img.icons8.com/ios-filled/50/6b7280/linkedin.png" alt="LinkedIn" style="width: 28px; height: 28px; filter: grayscale(100%);" />
+              </a>
             </div>
-            <p>Trinidad & Tobago | Barbados | Jamaica | Caribbean</p>
+            <p style="margin-top: 15px; color: #6b7280;">Trinidad & Tobago</p>
+            <p style="margin-top: 10px; color: #9ca3af; font-size: 13px;">iTutor 2026, All rights reserved</p>
           </div>
         </div>
       </body>
@@ -117,18 +123,24 @@ export function day1Email({ firstName, ctaUrl }: EmailTemplateProps): EmailTempl
               </p>
             </div>
             <p class="text">
-              <strong>Pro tip:</strong> Tutors who offer both online and in-person get 40% more bookings.
+              <strong>Pro tip:</strong> iTutors who offer both online and in-person get 40% more bookings.
             </p>
             <a href="${ctaUrl}" class="cta-button">Set Up Your Profile</a>
           </div>
           <div class="footer">
-            <p>iTutor - Empowering Caribbean Educators</p>
             <div class="social-links">
-              <a href="https://www.facebook.com/share/1E91o2u1yM/">Facebook</a>
-              <a href="https://www.instagram.com/myitutor?igsh=Z3U5d2s3OG85N2V0">Instagram</a>
-              <a href="https://www.linkedin.com/company/myitutor/">LinkedIn</a>
+              <a href="https://www.facebook.com/share/1E91o2u1yM/" style="display: inline-block; margin: 0 8px;">
+                <img src="https://img.icons8.com/ios-filled/50/6b7280/facebook-new.png" alt="Facebook" style="width: 28px; height: 28px; filter: grayscale(100%);" />
+              </a>
+              <a href="https://www.instagram.com/myitutor?igsh=MXgyNjdrMTR1ampyag%3D%3D&utm_source=qr" style="display: inline-block; margin: 0 8px;">
+                <img src="https://img.icons8.com/ios-filled/50/6b7280/instagram-new.png" alt="Instagram" style="width: 28px; height: 28px; filter: grayscale(100%);" />
+              </a>
+              <a href="https://www.linkedin.com/company/myitutor/" style="display: inline-block; margin: 0 8px;">
+                <img src="https://img.icons8.com/ios-filled/50/6b7280/linkedin.png" alt="LinkedIn" style="width: 28px; height: 28px; filter: grayscale(100%);" />
+              </a>
             </div>
-            <p>Trinidad & Tobago | Barbados | Jamaica | Caribbean</p>
+            <p style="margin-top: 15px; color: #6b7280;">Trinidad & Tobago</p>
+            <p style="margin-top: 10px; color: #9ca3af; font-size: 13px;">iTutor 2026, All rights reserved</p>
           </div>
         </div>
       </body>
@@ -172,26 +184,32 @@ export function day3Email({ firstName, ctaUrl }: EmailTemplateProps): EmailTempl
               </p>
               <p class="text">
                 <strong>💰 Price Competitively</strong><br>
-                Check similar tutors' rates in your subjects. You can always adjust prices later based on demand.
+                Check similar itutors' rates in your subjects. You can always adjust prices later based on demand.
               </p>
               <p class="text">
                 <strong>✅ Get Verified</strong><br>
-                Verified tutors with credentials get 2x more bookings. Upload your certificates or degree!
+                Verified itutors with credentials get 2x more bookings. Upload your certificates or degree!
               </p>
             </div>
             <p class="text">
-              Students are actively searching for tutors right now. Make sure your profile is ready!
+              Students are actively searching for itutors right now. Make sure your profile is ready!
             </p>
             <a href="${ctaUrl}" class="cta-button">View Your Profile</a>
           </div>
           <div class="footer">
-            <p>iTutor - Empowering Caribbean Educators</p>
             <div class="social-links">
-              <a href="https://www.facebook.com/share/1E91o2u1yM/">Facebook</a>
-              <a href="https://www.instagram.com/myitutor?igsh=Z3U5d2s3OG85N2V0">Instagram</a>
-              <a href="https://www.linkedin.com/company/myitutor/">LinkedIn</a>
+              <a href="https://www.facebook.com/share/1E91o2u1yM/" style="display: inline-block; margin: 0 8px;">
+                <img src="https://img.icons8.com/ios-filled/50/6b7280/facebook-new.png" alt="Facebook" style="width: 28px; height: 28px; filter: grayscale(100%);" />
+              </a>
+              <a href="https://www.instagram.com/myitutor?igsh=MXgyNjdrMTR1ampyag%3D%3D&utm_source=qr" style="display: inline-block; margin: 0 8px;">
+                <img src="https://img.icons8.com/ios-filled/50/6b7280/instagram-new.png" alt="Instagram" style="width: 28px; height: 28px; filter: grayscale(100%);" />
+              </a>
+              <a href="https://www.linkedin.com/company/myitutor/" style="display: inline-block; margin: 0 8px;">
+                <img src="https://img.icons8.com/ios-filled/50/6b7280/linkedin.png" alt="LinkedIn" style="width: 28px; height: 28px; filter: grayscale(100%);" />
+              </a>
             </div>
-            <p>Trinidad & Tobago | Barbados | Jamaica | Caribbean</p>
+            <p style="margin-top: 15px; color: #6b7280;">Trinidad & Tobago</p>
+            <p style="margin-top: 10px; color: #9ca3af; font-size: 13px;">iTutor 2026, All rights reserved</p>
           </div>
         </div>
       </body>
@@ -249,13 +267,19 @@ export function day5Email({ firstName, ctaUrl }: EmailTemplateProps): EmailTempl
             <a href="${ctaUrl}" class="cta-button">Edit Your Profile</a>
           </div>
           <div class="footer">
-            <p>iTutor - Empowering Caribbean Educators</p>
             <div class="social-links">
-              <a href="https://www.facebook.com/share/1E91o2u1yM/">Facebook</a>
-              <a href="https://www.instagram.com/myitutor?igsh=Z3U5d2s3OG85N2V0">Instagram</a>
-              <a href="https://www.linkedin.com/company/myitutor/">LinkedIn</a>
+              <a href="https://www.facebook.com/share/1E91o2u1yM/" style="display: inline-block; margin: 0 8px;">
+                <img src="https://img.icons8.com/ios-filled/50/6b7280/facebook-new.png" alt="Facebook" style="width: 28px; height: 28px; filter: grayscale(100%);" />
+              </a>
+              <a href="https://www.instagram.com/myitutor?igsh=MXgyNjdrMTR1ampyag%3D%3D&utm_source=qr" style="display: inline-block; margin: 0 8px;">
+                <img src="https://img.icons8.com/ios-filled/50/6b7280/instagram-new.png" alt="Instagram" style="width: 28px; height: 28px; filter: grayscale(100%);" />
+              </a>
+              <a href="https://www.linkedin.com/company/myitutor/" style="display: inline-block; margin: 0 8px;">
+                <img src="https://img.icons8.com/ios-filled/50/6b7280/linkedin.png" alt="LinkedIn" style="width: 28px; height: 28px; filter: grayscale(100%);" />
+              </a>
             </div>
-            <p>Trinidad & Tobago | Barbados | Jamaica | Caribbean</p>
+            <p style="margin-top: 15px; color: #6b7280;">Trinidad & Tobago</p>
+            <p style="margin-top: 10px; color: #9ca3af; font-size: 13px;">iTutor 2026, All rights reserved</p>
           </div>
         </div>
       </body>
@@ -293,7 +317,7 @@ export function day7Email({ firstName, ctaUrl }: EmailTemplateProps): EmailTempl
             </p>
             <div class="highlight">
               <p class="text">
-                ✅ Verified tutors appear first in search results<br>
+                ✅ Verified itutors appear first in search results<br>
                 ✅ Students trust verified profiles 2x more<br>
                 ✅ Verified badge increases booking rates by 150%<br>
                 ✅ Unlock higher rate tiers ($150-200/hour)
@@ -305,11 +329,11 @@ export function day7Email({ firstName, ctaUrl }: EmailTemplateProps): EmailTempl
             <p class="text">
               • University degrees or transcripts<br>
               • Teaching certificates (MOE, private school)<br>
-              • Professional credentials (CAPE results for Form 6 tutors)<br>
+              • Professional credentials (CAPE results for Form 6 itutors)<br>
               • CXC/CAPE Grade 1-2 certificates for subject verification
             </p>
             <p class="text">
-              <strong>Need help?</strong> Just reply to this email with:
+              <strong>Need help?</strong> Just email us at <a href="mailto:hello@myitutor.com" style="color: #199358; text-decoration: none;">hello@myitutor.com</a> with:
             </p>
             <p class="text">
               📚 Subjects you want to teach<br>
@@ -322,17 +346,23 @@ export function day7Email({ firstName, ctaUrl }: EmailTemplateProps): EmailTempl
             <a href="${ctaUrl}" class="cta-button">Complete Your Profile</a>
             <p class="text" style="margin-top: 30px; padding-top: 30px; border-top: 1px solid #e5e7eb;">
               <em>Already set up but not receiving bookings?</em><br>
-              Reply to this email and we'll review your profile and give you personalized tips.
+              Email us at <a href="mailto:hello@myitutor.com" style="color: #199358; text-decoration: none;">hello@myitutor.com</a> and we'll review your profile and give you personalized tips.
             </p>
           </div>
           <div class="footer">
-            <p>iTutor - Empowering Caribbean Educators</p>
             <div class="social-links">
-              <a href="https://www.facebook.com/share/1E91o2u1yM/">Facebook</a>
-              <a href="https://www.instagram.com/myitutor?igsh=Z3U5d2s3OG85N2V0">Instagram</a>
-              <a href="https://www.linkedin.com/company/myitutor/">LinkedIn</a>
+              <a href="https://www.facebook.com/share/1E91o2u1yM/" style="display: inline-block; margin: 0 8px;">
+                <img src="https://img.icons8.com/ios-filled/50/6b7280/facebook-new.png" alt="Facebook" style="width: 28px; height: 28px; filter: grayscale(100%);" />
+              </a>
+              <a href="https://www.instagram.com/myitutor?igsh=MXgyNjdrMTR1ampyag%3D%3D&utm_source=qr" style="display: inline-block; margin: 0 8px;">
+                <img src="https://img.icons8.com/ios-filled/50/6b7280/instagram-new.png" alt="Instagram" style="width: 28px; height: 28px; filter: grayscale(100%);" />
+              </a>
+              <a href="https://www.linkedin.com/company/myitutor/" style="display: inline-block; margin: 0 8px;">
+                <img src="https://img.icons8.com/ios-filled/50/6b7280/linkedin.png" alt="LinkedIn" style="width: 28px; height: 28px; filter: grayscale(100%);" />
+              </a>
             </div>
-            <p>Trinidad & Tobago | Barbados | Jamaica | Caribbean</p>
+            <p style="margin-top: 15px; color: #6b7280;">Trinidad & Tobago</p>
+            <p style="margin-top: 10px; color: #9ca3af; font-size: 13px;">iTutor 2026, All rights reserved</p>
           </div>
         </div>
       </body>

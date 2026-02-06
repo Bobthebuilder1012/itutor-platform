@@ -1,75 +1,143 @@
-import { getEmailForStage, getCtaUrl } from '@/lib/email-templates';
-import { UserType, EmailStage } from '@/lib/email-templates/types';
+// =====================================================
+// CENTRALIZED EMAIL SERVICE
+// =====================================================
+// Handles all email sending logic with Resend integration
 
-interface SendOnboardingEmailParams {
-  userId: string;
-  userType: UserType;
-  stage: EmailStage;
-  firstName: string;
-  email: string;
-}
+import { Resend } from 'resend';
 
-interface ResendResponse {
-  id: string;
-  from: string;
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+export interface SendEmailParams {
   to: string;
-  created_at: string;
+  subject: string;
+  html: string;
+  from?: string;
 }
 
-export async function sendOnboardingEmail(
-  params: SendOnboardingEmailParams
-): Promise<ResendResponse> {
-  const { userType, stage, firstName, email } = params;
+export interface EmailResult {
+  success: boolean;
+  messageId?: string;
+  error?: string;
+}
 
-  const ctaUrl = getCtaUrl(userType, stage);
-  const { html, subject } = getEmailForStage(userType, stage, {
-    firstName,
-    ctaUrl
-  });
-
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      from: 'iTutor <noreply@myitutor.com>',
-      to: email,
+/**
+ * Send an email using Resend
+ */
+export async function sendEmail({
+  to,
+  subject,
+  html,
+  from = process.env.RESEND_FROM_EMAIL || 'iTutor <hello@myitutor.com>',
+}: SendEmailParams): Promise<EmailResult> {
+  try {
+    const { data, error } = await resend.emails.send({
+      from,
+      to,
       subject,
-      html
-    })
-  });
+      html,
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Resend API error (${response.status}): ${errorText}`);
+    if (error) {
+      console.error('Resend error:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to send email',
+      };
+    }
+
+    return {
+      success: true,
+      messageId: data?.id,
+    };
+  } catch (error: any) {
+    console.error('Email service error:', error);
+    return {
+      success: false,
+      error: error?.message || 'Unknown error sending email',
+    };
   }
-
-  const data = await response.json();
-  return data;
 }
 
-export function calculateNextSendTime(currentStage: EmailStage): Date {
-  const now = Date.now();
-  let daysToAdd = 0;
+/**
+ * Get email template content from database by user type and stage
+ */
+export async function getEmailTemplate(
+  userType: 'student' | 'tutor' | 'parent',
+  stage: number
+): Promise<{ subject: string; html: string } | null> {
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
 
-  switch (currentStage) {
-    case 0:
-      daysToAdd = 1; // Day 1 after welcome
-      break;
-    case 1:
-      daysToAdd = 2; // Day 3 total
-      break;
-    case 2:
-      daysToAdd = 2; // Day 5 total
-      break;
-    case 3:
-      daysToAdd = 2; // Day 7 total
-      break;
-    default:
-      daysToAdd = 0;
+    const { data, error } = await supabase
+      .from('email_templates')
+      .select('subject, html_content')
+      .eq('user_type', userType)
+      .eq('stage', stage)
+      .single();
+
+    if (error || !data) {
+      console.error('Error fetching template:', error);
+      return null;
+    }
+
+    return {
+      subject: data.subject,
+      html: data.html_content,
+    };
+  } catch (error) {
+    console.error('Error in getEmailTemplate:', error);
+    return null;
   }
+}
 
-  return new Date(now + daysToAdd * 24 * 60 * 60 * 1000);
+/**
+ * Personalize email content by replacing placeholders
+ */
+export function personalizeEmail(
+  content: string,
+  user: {
+    firstName?: string;
+    fullName?: string;
+    displayName?: string;
+  }
+): string {
+  const firstName =
+    user.displayName || user.firstName || user.fullName?.split(' ')[0] || 'there';
+
+  return content.replace(/\{\{firstName\}\}/g, firstName);
+}
+
+/**
+ * Log email send result to database
+ */
+export async function logEmailSend(params: {
+  userId: string;
+  emailType: string;
+  recipientEmail: string;
+  subject: string;
+  status: 'success' | 'failed';
+  errorMessage?: string;
+}) {
+  try {
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    await supabase.from('email_send_logs').insert({
+      user_id: params.userId,
+      email_type: params.emailType,
+      recipient_email: params.recipientEmail,
+      subject: params.subject,
+      status: params.status,
+      error_message: params.errorMessage,
+    });
+  } catch (error) {
+    console.error('Error logging email send:', error);
+  }
 }

@@ -33,6 +33,8 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search'); // Optional search query
     const school = searchParams.get('school'); // Optional filter by school
     const subject = searchParams.get('subject'); // Optional filter by subject (for tutors/students)
+    const dateFrom = searchParams.get('dateFrom'); // Optional filter by join date (from)
+    const dateTo = searchParams.get('dateTo'); // Optional filter by join date (to)
 
     // Get all accounts with suspension fields
     let query = supabase
@@ -76,6 +78,17 @@ export async function GET(request: NextRequest) {
     // Filter by school
     if (school && school !== 'all') {
       query = query.eq('school', school);
+    }
+
+    // Filter by date range
+    if (dateFrom) {
+      query = query.gte('created_at', dateFrom);
+    }
+    if (dateTo) {
+      // Add one day to include the end date
+      const endDate = new Date(dateTo);
+      endDate.setDate(endDate.getDate() + 1);
+      query = query.lt('created_at', endDate.toISOString());
     }
 
     if (search) {

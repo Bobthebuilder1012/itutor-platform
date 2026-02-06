@@ -69,7 +69,7 @@ export default function ProfileSnapshotCard({
           onClick={onChangeAvatar}
           className="flex-shrink-0 group relative"
         >
-          {profile.avatar_url && profile.avatar_url.trim() !== '' ? (
+          {profile.avatar_url ? (
             <img
               src={profile.avatar_url}
               alt={firstName}

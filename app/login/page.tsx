@@ -196,8 +196,14 @@ export default function LoginPage() {
         return;
       }
 
-      // Check if user is an admin/reviewer first
-      if (profile.is_reviewer || profile.role === 'admin') {
+      // Check if user is an admin first
+      if (profile.role === 'admin') {
+        router.push('/admin/dashboard');
+        return;
+      }
+
+      // Check if user is a reviewer
+      if (profile.is_reviewer) {
         router.push('/reviewer/dashboard');
         return;
       }

@@ -120,7 +120,7 @@ export default function Footer({ role = null }: FooterProps = {}) {
                 </svg>
               </a>
               <a
-                href="https://www.instagram.com/myitutor?igsh=Z3U5d2s3OG85N2V0"
+                href="https://www.instagram.com/myitutor?igsh=MXgyNjdrMTR1ampyag%3D%3D&utm_source=qr"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-itutor-muted hover:text-itutor-green transition-colors"

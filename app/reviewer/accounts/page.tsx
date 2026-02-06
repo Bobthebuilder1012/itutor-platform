@@ -42,7 +42,7 @@ export default function AccountsPage() {
   const [subjects, setSubjects] = useState<Array<{id: string, name: string}>>([]);
 
   useEffect(() => {
-    if (!profileLoading && !profile?.is_reviewer) {
+    if (!profileLoading && !profile?.is_reviewer && profile?.role !== 'admin') {
       router.push('/');
     }
   }, [profile, profileLoading, router]);
@@ -107,7 +107,7 @@ export default function AccountsPage() {
   }
 
   return (
-    <DashboardLayout role="reviewer" userName={profile.full_name || 'Admin'}>
+    <DashboardLayout role={profile.role === 'admin' ? 'admin' : 'reviewer'} userName={profile.full_name || 'Admin'}>
       <div className="max-w-7xl mx-auto">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">User Account Management</h1>

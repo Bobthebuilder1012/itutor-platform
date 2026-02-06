@@ -65,7 +65,7 @@ export default function PaymentsPage() {
   const [tutorSearch, setTutorSearch] = useState('');
 
   useEffect(() => {
-    if (!profileLoading && !profile?.is_reviewer) {
+    if (!profileLoading && !profile?.is_reviewer && profile?.role !== 'admin') {
       router.push('/');
     }
   }, [profile, profileLoading, router]);
@@ -143,12 +143,12 @@ export default function PaymentsPage() {
     return <div className="min-h-screen bg-gray-50 flex items-center justify-center">Loading...</div>;
   }
 
-  if (!profile?.is_reviewer) {
+  if (!profile?.is_reviewer && profile?.role !== 'admin') {
     return null;
   }
 
   return (
-    <DashboardLayout role="reviewer" userName={profile.full_name || 'Admin'}>
+    <DashboardLayout role={profile.role === 'admin' ? 'admin' : 'reviewer'} userName={profile.full_name || 'Admin'}>
       <div className="max-w-7xl mx-auto">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Payment & Revenue Management</h1>
