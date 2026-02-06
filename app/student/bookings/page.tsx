@@ -80,14 +80,43 @@ export default function StudentBookingsPage() {
   }
 
 
+  const isBookingInProgress = (booking: any) => {
+    if (booking.status === 'CONFIRMED' && booking.session) {
+      const now = new Date();
+      const session = booking.session;
+      const sessionStart = new Date(session.scheduled_start_at);
+      const sessionEnd = new Date(session.scheduled_end_at || new Date(sessionStart.getTime() + (session.duration_minutes || 60) * 60000));
+      
+      return now >= sessionStart && now <= sessionEnd;
+    }
+    return false;
+  };
+
   const isBookingPast = (booking: any) => {
     if (booking.status === 'COMPLETED' || booking.status === 'DECLINED') return true;
+    
+    // Don't count in-progress sessions as past
+    if (isBookingInProgress(booking)) return false;
+    
+    // Check if booking has an associated session
+    if (booking.status === 'CONFIRMED' && booking.session) {
+      const now = new Date();
+      const session = booking.session;
+      const sessionStart = new Date(session.scheduled_start_at);
+      const sessionEnd = new Date(session.scheduled_end_at || new Date(sessionStart.getTime() + (session.duration_minutes || 60) * 60000));
+      
+      // Only consider it past if the session has ended
+      return now > sessionEnd;
+    }
+    
+    // Fallback for confirmed bookings without sessions
     if (booking.status === 'CONFIRMED') {
       const endTime = booking.confirmed_end_at || booking.requested_end_at;
       if (endTime) {
         return new Date(endTime) < new Date();
       }
     }
+    
     return false;
   };
 
@@ -197,7 +226,7 @@ export default function StudentBookingsPage() {
               if (booking.status === 'CONFIRMED' && (booking as any).session) {
                 const session = (booking as any).session;
                 const sessionStart = new Date(session.scheduled_start_at);
-                const sessionEnd = new Date(session.scheduled_end_at || new Date(sessionStart.getTime() + session.duration_minutes * 60000));
+                const sessionEnd = new Date(session.scheduled_end_at || new Date(sessionStart.getTime() + (session.duration_minutes || 60) * 60000));
                 
                 // Check if session is in progress
                 if (now >= sessionStart && now <= sessionEnd) {
