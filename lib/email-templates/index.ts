@@ -32,7 +32,6 @@ export function getCtaUrl(userType: UserType, stage: EmailStage): string {
     switch (stage) {
       case 0:
       case 1:
-      case 5:
         return `${baseUrl}/student/find-tutors`;
       case 2:
         return `${baseUrl}/help`;
