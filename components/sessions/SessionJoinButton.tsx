@@ -47,28 +47,18 @@ export default function SessionJoinButton({ session, userRole, onRetrySuccess }:
   if (!session.join_url) {
     return (
       <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-6">
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between">
           <p className="text-gray-800 font-medium">Meeting link is being generated...</p>
           {userRole === 'tutor' && (
             <button
               onClick={handleRetryMeetingLink}
               disabled={retrying}
-              className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 disabled:bg-yellow-400 text-white text-sm font-semibold rounded-lg transition-colors"
+              className="px-6 py-2.5 bg-yellow-600 hover:bg-yellow-700 disabled:bg-yellow-400 text-white font-semibold rounded-lg transition-colors"
             >
-              {retrying ? 'Retrying...' : 'Retry'}
+              {retrying ? 'Retrying...' : 'Retry Now'}
             </button>
           )}
         </div>
-        {userRole === 'tutor' && (
-          <div className="space-y-1">
-            <p className="text-sm text-yellow-700">
-              Click Retry or check your video provider connection in Settings
-            </p>
-            <p className="text-xs text-yellow-600">
-              💡 If retry fails, try disconnecting and reconnecting your video provider in Settings
-            </p>
-          </div>
-        )}
       </div>
     );
   }
