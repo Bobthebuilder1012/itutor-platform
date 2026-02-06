@@ -15,10 +15,10 @@ SELECT
   p.role,
   COUNT(pt.token) as push_token_count,
   jsonb_agg(jsonb_build_object(
-    'device_name', pt.device_name,
     'platform', pt.platform,
-    'created_at', pt.created_at
-  )) as tokens
+    'created_at', pt.created_at,
+    'last_used_at', pt.last_used_at
+  )) FILTER (WHERE pt.token IS NOT NULL) as tokens
 FROM profiles p
 LEFT JOIN push_tokens pt ON pt.user_id = p.id
 WHERE p.username = 'JovanMR' OR p.username = 'Jovan1234' OR p.email ILIKE '%jovangoodluck%' OR p.email ILIKE '%jovan%'
