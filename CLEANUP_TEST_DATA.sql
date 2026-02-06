@@ -39,7 +39,7 @@ END $$;
 SELECT 
   '✅ Cleanup Summary:' as status,
   COUNT(*) as remaining_sessions,
-  MAX(created_at) as most_recent_session
+  MAX(s.created_at) as most_recent_session
 FROM sessions s
 JOIN profiles p ON p.id = s.student_id
 WHERE p.username = 'JovanMR' OR p.username = 'Jovan1234' OR p.email ILIKE '%jovangoodluck%' OR p.email ILIKE '%jovan%';
@@ -47,7 +47,7 @@ WHERE p.username = 'JovanMR' OR p.username = 'Jovan1234' OR p.email ILIKE '%jova
 SELECT 
   '✅ Bookings Summary:' as status,
   COUNT(*) as remaining_bookings,
-  MAX(created_at) as most_recent_booking
+  MAX(b.created_at) as most_recent_booking
 FROM bookings b
 JOIN profiles p ON p.id = b.student_id
 WHERE p.username = 'JovanMR' OR p.username = 'Jovan1234' OR p.email ILIKE '%jovangoodluck%' OR p.email ILIKE '%jovan%';
