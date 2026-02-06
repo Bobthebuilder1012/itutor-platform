@@ -18,6 +18,7 @@ ORDER BY created_at DESC
 LIMIT 1;
 
 -- Step 2: Send test notification
+-- Using 'new_message' type (a valid type from the constraint)
 INSERT INTO notifications (
   user_id,
   type,
@@ -29,7 +30,7 @@ INSERT INTO notifications (
 )
 SELECT 
   id as user_id,
-  'TEST_NOTIFICATION' as type,
+  'new_message' as type,
   '🔔 Test Notification from iTutor' as title,
   'This is a test notification to verify your notifications are working! If you can see this in your notification bell, everything is set up correctly. 🎉' as message,
   jsonb_build_object(
@@ -65,7 +66,7 @@ SELECT
 FROM notifications n
 JOIN profiles p ON p.id = n.user_id
 WHERE (p.username = 'JovanMR' OR p.username = 'Jovan1234' OR p.email ILIKE '%jovangoodluck%' OR p.email ILIKE '%jovan%')
-  AND n.type = 'TEST_NOTIFICATION'
+  AND n.created_at > now() - interval '1 minute'
 ORDER BY n.created_at DESC
 LIMIT 1;
 
