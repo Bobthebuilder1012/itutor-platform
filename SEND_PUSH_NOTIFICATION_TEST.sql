@@ -47,11 +47,19 @@ BEGIN
   -- Get any tutor (for the test booking)
   SELECT id INTO v_tutor_id
   FROM profiles
-  WHERE role = 'tutor' AND is_tutor_approved = true
+  WHERE role = 'tutor' AND tutor_verification_status = 'VERIFIED'
   LIMIT 1;
 
   IF v_tutor_id IS NULL THEN
-    RAISE EXCEPTION 'No approved tutor found!';
+    -- If no verified tutor, just get any tutor
+    SELECT id INTO v_tutor_id
+    FROM profiles
+    WHERE role = 'tutor'
+    LIMIT 1;
+  END IF;
+
+  IF v_tutor_id IS NULL THEN
+    RAISE EXCEPTION 'No tutor found!';
   END IF;
 
   -- Get any subject
