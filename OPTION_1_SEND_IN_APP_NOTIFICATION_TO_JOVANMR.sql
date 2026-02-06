@@ -74,9 +74,9 @@ LIMIT 1;
 SELECT 
   '📊 JovanMR Notification Summary:' as summary,
   COUNT(*) as total_notifications,
-  COUNT(*) FILTER (WHERE is_read = false) as unread_notifications,
-  COUNT(*) FILTER (WHERE is_read = true) as read_notifications,
-  MAX(created_at) as latest_notification
+  COUNT(*) FILTER (WHERE n.is_read = false) as unread_notifications,
+  COUNT(*) FILTER (WHERE n.is_read = true) as read_notifications,
+  MAX(n.created_at) as latest_notification
 FROM notifications n
 JOIN profiles p ON p.id = n.user_id
 WHERE p.username = 'JovanMR' OR p.username = 'Jovan1234' OR p.email ILIKE '%jovangoodluck%' OR p.email ILIKE '%jovan%';
