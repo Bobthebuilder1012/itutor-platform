@@ -333,7 +333,7 @@ export default function FindTutorsPage() {
           </div>
 
           {/* Filters */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 ${paidClassesEnabled ? 'lg:grid-cols-5' : 'lg:grid-cols-4'}`}>
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">
                 Subjects
@@ -361,24 +361,27 @@ export default function FindTutorsPage() {
               </select>
             </div>
 
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Price Range
-              </label>
-              <select
-                value={selectedPrice}
-                onChange={(e) => setSelectedPrice(e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition text-sm"
-              >
-                <option value="">Any Price</option>
-                <option value="free">Free Sessions</option>
-                <option value="50">Up to $50</option>
-                <option value="100">Up to $100</option>
-                <option value="150">Up to $150</option>
-                <option value="200">Up to $200</option>
-                <option value="300">Up to $300</option>
-              </select>
-            </div>
+            {/* Price Range filter - only show if paid classes enabled */}
+            {paidClassesEnabled && (
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Price Range
+                </label>
+                <select
+                  value={selectedPrice}
+                  onChange={(e) => setSelectedPrice(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition text-sm"
+                >
+                  <option value="">Any Price</option>
+                  <option value="free">Free Sessions</option>
+                  <option value="50">Up to $50</option>
+                  <option value="100">Up to $100</option>
+                  <option value="150">Up to $150</option>
+                  <option value="200">Up to $200</option>
+                  <option value="300">Up to $300</option>
+                </select>
+              </div>
+            )}
 
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">
@@ -544,8 +547,8 @@ export default function FindTutorsPage() {
                     </div>
                   </div>
 
-                  {/* Price Range */}
-                  {tutor.subjects.length > 0 && (
+                  {/* Price Range - only show if paid classes enabled and prices > 0 */}
+                  {paidClassesEnabled && tutor.subjects.length > 0 && (
                     <p className="text-sm text-gray-600 mb-4">
                       From ${Math.min(...tutor.subjects.map(s => s.price_per_hour_ttd))}/hr
                     </p>
