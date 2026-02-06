@@ -46,7 +46,7 @@ Deno.serve(async () => {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    // Window: now + 9min .. now + 11min
+    // Window 1: now + 9min .. now + 11min (normal 10-minute reminder)
     const now = new Date();
     const windowStart = new Date(now.getTime() + 9 * 60 * 1000);
     const windowEnd = new Date(now.getTime() + 11 * 60 * 1000);
@@ -60,7 +60,66 @@ Deno.serve(async () => {
 
     if (sessionsError) throw sessionsError;
 
-    const eligibleSessions = (sessions ?? []) as SessionRow[];
+    const regularSessions = (sessions ?? []) as SessionRow[];
+    let eligibleSessions: SessionRow[] = [];
+
+    // Window 2: Catch sessions starting in <10 minutes that missed their notification
+    // This handles cases where sessions were booked very close to start time
+    const urgentWindowStart = now;
+    const urgentWindowEnd = new Date(now.getTime() + 10 * 60 * 1000);
+
+    const { data: urgentSessions, error: urgentError } = await supabase
+      .from('sessions')
+      .select('id, scheduled_start_at, student_id, tutor_id')
+      .eq('status', 'SCHEDULED')
+      .gt('scheduled_start_at', iso(urgentWindowStart))
+      .lt('scheduled_start_at', iso(urgentWindowEnd));
+
+    if (urgentError) throw urgentError;
+
+    let urgentSessionRows = (urgentSessions ?? []) as SessionRow[];
+
+    // Check which urgent sessions haven't been notified yet
+    if (urgentSessionRows.length > 0) {
+      const urgentSessionIds = urgentSessionRows.map(s => s.id);
+      
+      // Find sessions that already have notifications logged
+      const { data: existingLogs, error: logCheckError } = await supabase
+        .from('notifications_log')
+        .select('session_id')
+        .in('session_id', urgentSessionIds)
+        .eq('type', SESSION_REMINDER_10_MIN.type);
+
+      if (logCheckError) throw logCheckError;
+
+      const notifiedSessionIds = new Set((existingLogs ?? []).map(l => l.session_id));
+
+      // Add urgent sessions that haven't been notified to eligible sessions
+      const unnotifiedUrgentSessions = urgentSessionRows.filter(
+        s => !notifiedSessionIds.has(s.id)
+      );
+
+      // Merge with regular window sessions (remove duplicates by id)
+      const sessionMap = new Map(regularSessions.map(s => [s.id, s]));
+      for (const s of unnotifiedUrgentSessions) {
+        sessionMap.set(s.id, s);
+      }
+      urgentSessionRows = unnotifiedUrgentSessions;
+      eligibleSessions = Array.from(sessionMap.values());
+    } else {
+      eligibleSessions = regularSessions;
+    }
+
+    // Early exit if no sessions to process
+    if (eligibleSessions.length === 0) {
+      return Response.json({
+        ok: true,
+        processedSessions: 0,
+        urgentSessions: 0,
+        logged: 0,
+        durationMs: Date.now() - startedAt,
+      });
+    }
     if (eligibleSessions.length === 0) {
       return Response.json({
         ok: true,
@@ -182,6 +241,7 @@ Deno.serve(async () => {
     return Response.json({
       ok: true,
       processedSessions: eligibleSessions.length,
+      urgentSessions: urgentSessionRows?.length ?? 0,
       logged: newLogs.length,
       tokens: tokens.length,
       sendsAttempted: sends.length,
