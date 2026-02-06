@@ -7,7 +7,7 @@ interface TutorCardProps {
   showPrice?: boolean;
 }
 
-export default function TutorCard({ tutor }: TutorCardProps) {
+export default function TutorCard({ tutor, showPrice = false }: TutorCardProps) {
   const {
     id,
     full_name,
