@@ -4,6 +4,7 @@ import type { FeaturedTutor } from '@/lib/services/landingTutorsService';
 
 interface TutorCardProps {
   tutor: FeaturedTutor;
+  showPrice?: boolean;
 }
 
 export default function TutorCard({ tutor }: TutorCardProps) {
@@ -87,8 +88,8 @@ export default function TutorCard({ tutor }: TutorCardProps) {
         </div>
       </div>
 
-      {/* Price */}
-      {priceRange.min > 0 && (
+      {/* Price - only show if paid classes enabled */}
+      {showPrice && priceRange.min > 0 && (
         <div className="mb-4">
           <div className="text-2xl font-bold text-itutor-green">
             {priceRange.min === priceRange.max
