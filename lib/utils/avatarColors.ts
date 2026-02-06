@@ -1,26 +1,24 @@
 /**
- * Generate a consistent random color for user avatars (like Google)
+ * Generate a consistent random color for user avatars
  * The color will be the same for the same ID
+ * 
+ * Colors: Red, Blue, Green, Yellow, Purple, Pink, Orange, Aquamarine, 
+ * Dark Green, Dark Blue, Black, Brown
  */
 
 const avatarColors = [
-  'from-red-500 to-red-600',
-  'from-orange-500 to-orange-600',
-  'from-amber-500 to-amber-600',
-  'from-yellow-500 to-yellow-600',
-  'from-lime-500 to-lime-600',
-  'from-green-500 to-green-600',
-  'from-emerald-500 to-emerald-600',
-  'from-teal-500 to-teal-600',
-  'from-cyan-500 to-cyan-600',
-  'from-sky-500 to-sky-600',
-  'from-blue-500 to-blue-600',
-  'from-indigo-500 to-indigo-600',
-  'from-violet-500 to-violet-600',
-  'from-purple-500 to-purple-600',
-  'from-fuchsia-500 to-fuchsia-600',
-  'from-pink-500 to-pink-600',
-  'from-rose-500 to-rose-600',
+  'from-red-500 to-red-600',           // Red
+  'from-blue-500 to-blue-600',         // Blue
+  'from-green-500 to-green-600',       // Green
+  'from-yellow-400 to-yellow-500',     // Yellow
+  'from-purple-500 to-purple-600',     // Purple
+  'from-pink-500 to-pink-600',         // Pink
+  'from-orange-500 to-orange-600',     // Orange
+  'from-cyan-400 to-teal-500',         // Aquamarine
+  'from-green-700 to-green-800',       // Dark Green
+  'from-blue-700 to-blue-800',         // Dark Blue
+  'from-gray-800 to-gray-900',         // Black
+  'from-amber-700 to-amber-800',       // Brown
 ];
 
 /**

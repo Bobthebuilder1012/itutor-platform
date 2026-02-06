@@ -44,7 +44,7 @@ export default function ReviewerSettingsPage() {
   useEffect(() => {
     if (profileLoading) return;
     
-    if (!profile || !profile.is_reviewer) {
+    if (!profile || (!profile.is_reviewer && profile.role !== 'admin')) {
       router.push('/login');
       return;
     }
@@ -331,7 +331,7 @@ export default function ReviewerSettingsPage() {
   const currentDisplayName = getDisplayName(profile);
 
   return (
-    <DashboardLayout role="reviewer" userName={currentDisplayName}>
+    <DashboardLayout role={profile.role === 'admin' ? 'admin' : 'reviewer'} userName={currentDisplayName}>
       {/* Mobile & Tablet: Horizontal Tabs */}
       <div className="md:!hidden mb-4">
         <div className="bg-white border-2 border-gray-200 rounded-xl p-1.5">

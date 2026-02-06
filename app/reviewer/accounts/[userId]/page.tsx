@@ -28,7 +28,7 @@ export default function AccountDetailsPage() {
   const [suspensionReason, setSuspensionReason] = useState('');
 
   useEffect(() => {
-    if (!profileLoading && !profile?.is_reviewer) {
+    if (!profileLoading && !profile?.is_reviewer && profile?.role !== 'admin') {
       router.push('/');
     }
   }, [profile, profileLoading, router]);
@@ -124,7 +124,7 @@ export default function AccountDetailsPage() {
   const { profile: userProfile, additionalData, statistics, ratings, suspensionHistory } = accountDetails;
 
   return (
-    <DashboardLayout role="reviewer" userName={profile.full_name || 'Admin'}>
+    <DashboardLayout role={profile.role === 'admin' ? 'admin' : 'reviewer'} userName={profile.full_name || 'Admin'}>
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">

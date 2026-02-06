@@ -86,6 +86,8 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         return '/parent/dashboard';
       case 'reviewer':
         return '/reviewer/dashboard';
+      case 'admin':
+        return '/admin/dashboard';
       default:
         return '/';
     }
@@ -123,6 +125,14 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/reviewer/verified-tutors', label: 'Verified iTutors' },
           { href: '/reviewer/accounts', label: 'Account Management' },
           { href: '/reviewer/payments', label: 'Payments & Revenue' },
+        ];
+      case 'admin':
+        return [
+          { href: '/reviewer/verification/queue', label: 'Verification Queue' },
+          { href: '/reviewer/verified-tutors', label: 'Verified iTutors' },
+          { href: '/reviewer/accounts', label: 'Account Management' },
+          { href: '/reviewer/payments', label: 'Payments & Revenue' },
+          { href: '/admin/emails', label: 'Email Management' },
         ];
       default:
         return [];
@@ -174,10 +184,10 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
 
             {/* Right: Icons + Username + Logout */}
             <div className="flex items-center gap-2 sm:gap-3 lg:gap-4 xl:gap-6">
-              {/* Always show icons */}
+              {/* Always show icons (fixed for student UI issue) */}
               <div className="flex items-center gap-1.5 md:gap-2 lg:gap-3">
-                {profile?.id && role !== 'reviewer' && <CalendarIcon userId={profile.id} role={role} />}
-                {profile?.id && role !== 'reviewer' && <MessagesIcon userId={profile.id} role={role} />}
+                {profile?.id && role !== 'reviewer' && role !== 'admin' && <CalendarIcon userId={profile.id} role={role} />}
+                {profile?.id && role !== 'reviewer' && role !== 'admin' && <MessagesIcon userId={profile.id} role={role} />}
                 {profile?.id && <NotificationBell userId={profile.id} />}
                 {/* Settings Gear Icon */}
                 <Link
@@ -213,7 +223,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
                         onClick={() => setMobileIconMenuOpen(false)}
                       />
                       <div className="absolute right-0 mt-2 w-56 bg-gray-900 rounded-lg shadow-lg border border-gray-700 py-2 z-50">
-                        {role !== 'reviewer' && (
+                        {role !== 'reviewer' && role !== 'admin' && (
                           <>
                             <Link
                               href={`/${role}/calendar`}

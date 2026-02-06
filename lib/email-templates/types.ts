@@ -9,4 +9,4 @@ export interface EmailTemplate {
 }
 
 export type UserType = 'student' | 'tutor' | 'parent';
-export type EmailStage = 0 | 1 | 2 | 3 | 4;
+export type EmailStage = 0 | 1 | 2 | 3 | 4 | 5 | 7;

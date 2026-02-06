@@ -231,7 +231,7 @@ export default function MessagesSidePanel({ isOpen, onClose, userId, role }: Mes
                       <div className="flex items-start gap-3">
                         {/* Avatar */}
                         <div className={`w-12 h-12 rounded-full bg-gradient-to-br ${getAvatarColor(conversation.other_participant?.id || '')} flex items-center justify-center text-white font-bold flex-shrink-0`}>
-                          {conversation.other_participant?.avatar_url && conversation.other_participant.avatar_url.trim() !== '' ? (
+                          {conversation.other_participant?.avatar_url ? (
                             <img src={conversation.other_participant.avatar_url} alt="" className="w-full h-full rounded-full object-cover" />
                           ) : (
                             getDisplayName(conversation.other_participant).charAt(0).toUpperCase()

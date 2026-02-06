@@ -1,5 +1,7 @@
 'use client';
 
+'use client';
+
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -7,6 +9,7 @@ import { supabase } from '@/lib/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
 import { getDisplayName } from '@/lib/utils/displayName';
 import VerifiedBadge from '@/components/VerifiedBadge';
+import { getAvatarColor } from '@/lib/utils/avatarColors';
 import { format } from 'date-fns';
 
 interface VerifiedTutor {
@@ -35,7 +38,7 @@ export default function VerifiedTutorsPage() {
   useEffect(() => {
     if (profileLoading) return;
 
-    if (!profile || !profile.is_reviewer) {
+    if (!profile || (!profile.is_reviewer && profile.role !== 'admin')) {
       router.push('/login');
       return;
     }
@@ -183,7 +186,7 @@ export default function VerifiedTutorsPage() {
   });
 
   return (
-    <DashboardLayout role="reviewer" userName={displayName}>
+    <DashboardLayout role={profile.role === 'admin' ? 'admin' : 'reviewer'} userName={displayName}>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex justify-between items-start">
@@ -231,7 +234,7 @@ export default function VerifiedTutorsPage() {
               >
                 <div className="flex items-start gap-4 mb-4">
                   {/* Avatar */}
-                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-itutor-green to-emerald-600 flex items-center justify-center text-white font-bold text-xl flex-shrink-0">
+                  <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${getAvatarColor(tutor.id)} flex items-center justify-center text-white font-bold text-xl flex-shrink-0`}>
                     {tutor.avatar_url ? (
                       <img src={tutor.avatar_url} alt={getDisplayName(tutor)} className="w-full h-full rounded-full object-cover" />
                     ) : (

@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>iTutor Email Preview</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    
+    .header {
+      text-align: center;
+      color: white;
+      margin-bottom: 30px;
+    }
+    
+    .header h1 {
+      font-size: 32px;
+      margin-bottom: 10px;
+      font-weight: 700;
+    }
+    
+    .header p {
+      font-size: 16px;
+      opacity: 0.9;
+    }
+    
+    .controls {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    }
+    
+    .control-group {
+      display: flex;
+      gap: 15px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    
+    .control-group label {
+      font-weight: 600;
+      color: #333;
+      min-width: 100px;
+    }
+    
+    .control-group select,
+    .control-group input {
+      padding: 10px 15px;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 14px;
+      min-width: 200px;
+      transition: border-color 0.2s;
+    }
+    
+    .control-group select:focus,
+    .control-group input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    
+    .email-info {
+      background: #f7fafc;
+      padding: 15px;
+      border-radius: 8px;
+      margin-top: 15px;
+    }
+    
+    .email-info h3 {
+      color: #2d3748;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+    
+    .subject-line {
+      background: white;
+      padding: 12px;
+      border-radius: 6px;
+      border-left: 4px solid #667eea;
+      font-weight: 600;
+      color: #1a202c;
+    }
+    
+    .preview-container {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+      overflow: hidden;
+    }
+    
+    .preview-header {
+      background: #f7fafc;
+      padding: 15px 20px;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .preview-header h2 {
+      color: #2d3748;
+      font-size: 18px;
+    }
+    
+    .stage-indicator {
+      display: inline-block;
+      background: #667eea;
+      color: white;
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    
+    .preview-iframe {
+      width: 100%;
+      height: 700px;
+      border: none;
+      background: #f9fafb;
+    }
+    
+    .loading {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 700px;
+      color: #718096;
+    }
+    
+    .spinner {
+      border: 3px solid #e2e8f0;
+      border-top: 3px solid #667eea;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin-right: 15px;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    .stage-timeline {
+      display: flex;
+      gap: 10px;
+      margin-top: 15px;
+      flex-wrap: wrap;
+    }
+    
+    .stage-btn {
+      padding: 8px 16px;
+      border: 2px solid #e2e8f0;
+      background: white;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      color: #4a5568;
+      transition: all 0.2s;
+    }
+    
+    .stage-btn:hover {
+      border-color: #667eea;
+      color: #667eea;
+    }
+    
+    .stage-btn.active {
+      background: #667eea;
+      color: white;
+      border-color: #667eea;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📧 iTutor Email Preview</h1>
+      <p>Preview welcome and onboarding emails before sending them to users</p>
+    </div>
+    
+    <div class="controls">
+      <div class="control-group">
+        <label for="userType">User Type:</label>
+        <select id="userType" onchange="updatePreview()">
+          <option value="student">Student</option>
+          <option value="tutor">Tutor</option>
+        </select>
+        
+        <label for="firstName">First Name:</label>
+        <input type="text" id="firstName" value="Alex" onchange="updatePreview()" />
+      </div>
+      
+      <div class="stage-timeline">
+        <button class="stage-btn active" onclick="selectStage(0)">Welcome (Day 0)</button>
+        <button class="stage-btn" onclick="selectStage(1)">Day 1</button>
+        <button class="stage-btn" onclick="selectStage(2)">Day 3</button>
+        <button class="stage-btn" onclick="selectStage(3)">Day 5</button>
+        <button class="stage-btn" onclick="selectStage(4)">Day 7</button>
+      </div>
+      
+      <div class="email-info">
+        <h3>Subject Line:</h3>
+        <div class="subject-line" id="subjectLine">Loading...</div>
+      </div>
+    </div>
+    
+    <div class="preview-container">
+      <div class="preview-header">
+        <h2>Email Preview</h2>
+        <span class="stage-indicator" id="stageIndicator">Welcome Email</span>
+      </div>
+      <div id="loadingDiv" class="loading">
+        <div class="spinner"></div>
+        <span>Loading email preview...</span>
+      </div>
+      <iframe id="preview" class="preview-iframe" style="display: none;"></iframe>
+    </div>
+  </div>
+
+  <script>
+    let currentStage = 0;
+    
+    const stageNames = {
+      0: 'Welcome Email',
+      1: 'Day 1 Email',
+      2: 'Day 3 Email',
+      3: 'Day 5 Email',
+      4: 'Day 7 Email'
+    };
+    
+    const subjectLines = {
+      student: {
+        0: 'Welcome to iTutor, {name}! 🎓',
+        1: '{name}, ready for your first session?',
+        2: 'How iTutor works - Quick guide for {name}',
+        3: 'Top tutors available now, {name}',
+        4: '{name}, we\'re here to help you get started'
+      },
+      tutor: {
+        0: 'Welcome to iTutor, {name}! Complete your profile 🎓',
+        1: '{name}, set your availability and start earning',
+        2: 'How to get your first student on iTutor',
+        3: '{name}, tips to improve your tutor profile',
+        4: '{name}, need help getting verified?'
+      }
+    };
+    
+    function selectStage(stage) {
+      currentStage = stage;
+      
+      // Update button styles
+      document.querySelectorAll('.stage-btn').forEach((btn, idx) => {
+        if (idx === stage) {
+          btn.classList.add('active');
+        } else {
+          btn.classList.remove('active');
+        }
+      });
+      
+      // Update stage indicator
+      document.getElementById('stageIndicator').textContent = stageNames[stage];
+      
+      updatePreview();
+    }
+    
+    function updatePreview() {
+      const userType = document.getElementById('userType').value;
+      const firstName = document.getElementById('firstName').value || 'Alex';
+      const stage = currentStage;
+      
+      // Update subject line
+      const subject = subjectLines[userType][stage].replace('{name}', firstName);
+      document.getElementById('subjectLine').textContent = subject;
+      
+      // Show loading
+      document.getElementById('loadingDiv').style.display = 'flex';
+      document.getElementById('preview').style.display = 'none';
+      
+      // Build URL
+      const url = `/api/preview-email?userType=${userType}&stage=${stage}&firstName=${encodeURIComponent(firstName)}`;
+      
+      // Load preview
+      const iframe = document.getElementById('preview');
+      iframe.onload = function() {
+        document.getElementById('loadingDiv').style.display = 'none';
+        iframe.style.display = 'block';
+      };
+      iframe.src = url;
+    }
+    
+    // Initial load
+    updatePreview();
+  </script>
+</body>
+</html>

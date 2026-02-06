@@ -1,5 +1,7 @@
 'use client';
 
+'use client';
+
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -220,7 +222,7 @@ export default function TutorProfilePage() {
           <div className="flex flex-col md:flex-row gap-6 items-start">
             {/* Avatar */}
             <div className={`w-32 h-32 rounded-full bg-gradient-to-br ${getAvatarColor(tutor.id)} flex items-center justify-center text-white font-bold text-4xl flex-shrink-0 shadow-lg`}>
-              {tutor.avatar_url && tutor.avatar_url.trim() !== '' ? (
+              {tutor.avatar_url ? (
                 <img src={tutor.avatar_url} alt={getDisplayName(tutor)} className="w-full h-full rounded-full object-cover" />
               ) : (
                 getDisplayName(tutor).charAt(0).toUpperCase()

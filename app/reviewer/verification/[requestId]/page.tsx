@@ -207,7 +207,7 @@ export default function VerificationDetailPage({ params }: { params: { requestId
   const displayName = profile.full_name || profile.email?.split('@')[0] || 'Reviewer';
 
   return (
-    <DashboardLayout role="reviewer" userName={displayName}>
+    <DashboardLayout role={profile.role === 'admin' ? 'admin' : 'reviewer'} userName={displayName}>
       <div className="max-w-7xl mx-auto">
         <div className="mb-6">
           <button

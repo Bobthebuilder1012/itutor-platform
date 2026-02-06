@@ -1,158 +1,245 @@
+// =====================================================
+// CRON JOB: SEND ONBOARDING EMAILS
+// =====================================================
+// Runs every 15 minutes to send scheduled onboarding emails
+
 import { NextRequest, NextResponse } from 'next/server';
-import { getServiceClient } from '@/lib/supabase/server';
-import { sendOnboardingEmail, calculateNextSendTime } from '@/lib/services/emailService';
-import { UserType, EmailStage } from '@/lib/email-templates/types';
+import { createClient } from '@supabase/supabase-js';
+import { sendEmail, getEmailTemplate, personalizeEmail, logEmailSend } from '@/lib/services/emailService';
 
-export const maxDuration = 60;
-export const dynamic = 'force-dynamic';
-
-interface QueueItem {
-  id: string;
-  user_id: string;
-  user_type: UserType;
-  stage: EmailStage;
-  profiles: {
-    email: string;
-    full_name: string;
-  };
+// Verify cron secret for security
+function verifyCronSecret(request: NextRequest): boolean {
+  const authHeader = request.headers.get('authorization');
+  return authHeader === `Bearer ${process.env.CRON_SECRET}`;
 }
 
 export async function GET(request: NextRequest) {
+  console.log('=== Onboarding Email Cron Job Started ===');
+
+  // Verify cron secret
+  if (!verifyCronSecret(request)) {
+    console.log('Unauthorized cron attempt');
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
-    const authHeader = request.headers.get('authorization');
-    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    // Use service role key for admin access
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
 
-    const supabase = getServiceClient();
-    const results = { sent: 0, deactivated: 0, errors: 0, processed: 0 };
-
-    const { data: queueItems, error: fetchError } = await supabase
+    // 1. Find emails that are scheduled to be sent now
+    const now = new Date().toISOString();
+    const { data: pendingEmails, error: fetchError } = await supabase
       .from('onboarding_email_queue')
-      .select('id, user_id, user_type, stage, profiles!inner(email, full_name)')
-      .eq('is_active', true)
-      .lte('next_send_at', new Date().toISOString())
-      .limit(50);
+      .select('*')
+      .eq('status', 'pending')
+      .lte('scheduled_for', now)
+      .order('scheduled_for', { ascending: true })
+      .limit(50); // Process max 50 emails per run
 
     if (fetchError) {
-      console.error('Error fetching queue items:', fetchError);
-      return NextResponse.json({ error: 'Database error', details: fetchError.message }, { status: 500 });
+      console.error('Error fetching pending emails:', fetchError);
+      return NextResponse.json({ error: fetchError.message }, { status: 500 });
     }
 
-    if (!queueItems || queueItems.length === 0) {
-      return NextResponse.json({ message: 'No emails to send', ...results });
+    if (!pendingEmails || pendingEmails.length === 0) {
+      console.log('No pending emails to send');
+      return NextResponse.json({ message: 'No pending emails', sent: 0 });
     }
 
-    for (const item of queueItems as unknown as QueueItem[]) {
-      results.processed++;
+    console.log(`Found ${pendingEmails.length} pending emails`);
 
+    let sentCount = 0;
+    let failedCount = 0;
+
+    // 2. Process each pending email
+    for (const queueItem of pendingEmails) {
       try {
-        const isActivated = await checkActivation(supabase, item.user_id, item.user_type);
-
-        if (isActivated) {
+        // Check if user is still inactive (should receive email)
+        const shouldSendEmail = await checkUserInactive(supabase, queueItem.user_id, queueItem.user_type);
+        
+        if (!shouldSendEmail) {
+          console.log(`User ${queueItem.user_id} is now active - cancelling email`);
           await supabase
             .from('onboarding_email_queue')
-            .update({ 
-              is_active: false, 
-              updated_at: new Date().toISOString() 
-            })
-            .eq('id', item.id);
-          
-          results.deactivated++;
+            .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+            .eq('id', queueItem.id);
           continue;
         }
 
-        const firstName = item.profiles.full_name.split(' ')[0] || 'there';
-        
-        const resendResponse = await sendOnboardingEmail({
-          userId: item.user_id,
-          userType: item.user_type,
-          stage: item.stage,
-          firstName,
-          email: item.profiles.email
+        // Get user details
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('email, full_name, display_name')
+          .eq('id', queueItem.user_id)
+          .single();
+
+        if (profileError || !profile) {
+          console.error(`User profile not found: ${queueItem.user_id}`);
+          await supabase
+            .from('onboarding_email_queue')
+            .update({ 
+              status: 'failed', 
+              error_message: 'User profile not found',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', queueItem.id);
+          failedCount++;
+          continue;
+        }
+
+        // Get email template
+        const template = await getEmailTemplate(queueItem.user_type, queueItem.stage);
+        if (!template) {
+          console.error(`Template not found: ${queueItem.user_type} stage ${queueItem.stage}`);
+          await supabase
+            .from('onboarding_email_queue')
+            .update({ 
+              status: 'failed', 
+              error_message: 'Template not found',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', queueItem.id);
+          failedCount++;
+          continue;
+        }
+
+        // Personalize email
+        const personalizedSubject = personalizeEmail(template.subject, {
+          displayName: profile.display_name,
+          fullName: profile.full_name,
+        });
+        const personalizedHtml = personalizeEmail(template.html, {
+          displayName: profile.display_name,
+          fullName: profile.full_name,
         });
 
-        const nextStage = (item.stage + 1) as EmailStage;
-        const isComplete = nextStage > 4;
-
-        await supabase
-          .from('onboarding_email_queue')
-          .update({
-            stage: nextStage,
-            last_sent_at: new Date().toISOString(),
-            next_send_at: isComplete ? null : calculateNextSendTime(item.stage).toISOString(),
-            is_active: !isComplete,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', item.id);
-
-        await supabase.from('email_send_logs').insert({
-          user_id: item.user_id,
-          stage: item.stage,
-          email_type: `${item.user_type}_stage_${item.stage}`,
-          status: 'success',
-          resend_email_id: resendResponse.id
+        // Send email
+        const result = await sendEmail({
+          to: profile.email,
+          subject: personalizedSubject,
+          html: personalizedHtml,
         });
 
-        results.sent++;
+        if (result.success) {
+          // Mark as sent
+          await supabase
+            .from('onboarding_email_queue')
+            .update({ 
+              status: 'sent', 
+              sent_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', queueItem.id);
 
-      } catch (error) {
-        console.error(`Error processing email for user ${item.user_id}:`, error);
-        
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        
-        await supabase.from('email_send_logs').insert({
-          user_id: item.user_id,
-          stage: item.stage,
-          email_type: `${item.user_type}_stage_${item.stage}`,
-          status: 'error',
-          error_message: errorMessage
-        });
+          // Log success
+          await logEmailSend({
+            userId: queueItem.user_id,
+            emailType: `${queueItem.user_type}_stage_${queueItem.stage}`,
+            recipientEmail: profile.email,
+            subject: personalizedSubject,
+            status: 'success',
+          });
 
-        results.errors++;
+          sentCount++;
+          console.log(`✓ Sent email to ${profile.email} (${queueItem.user_type} stage ${queueItem.stage})`);
+        } else {
+          // Mark as failed
+          await supabase
+            .from('onboarding_email_queue')
+            .update({ 
+              status: 'failed', 
+              error_message: result.error,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', queueItem.id);
+
+          // Log failure
+          await logEmailSend({
+            userId: queueItem.user_id,
+            emailType: `${queueItem.user_type}_stage_${queueItem.stage}`,
+            recipientEmail: profile.email,
+            subject: personalizedSubject,
+            status: 'failed',
+            errorMessage: result.error,
+          });
+
+          failedCount++;
+          console.error(`✗ Failed to send email to ${profile.email}:`, result.error);
+        }
+      } catch (error: any) {
+        console.error('Error processing email:', error);
+        failedCount++;
       }
     }
 
-    return NextResponse.json({
-      success: true,
-      message: `Processed ${results.processed} emails`,
-      ...results
-    });
+    console.log(`=== Cron Job Complete: ${sentCount} sent, ${failedCount} failed ===`);
 
-  } catch (error) {
+    return NextResponse.json({
+      message: 'Emails processed',
+      sent: sentCount,
+      failed: failedCount,
+      total: pendingEmails.length,
+    });
+  } catch (error: any) {
     console.error('Cron job error:', error);
-    return NextResponse.json(
-      { 
-        error: 'Cron job failed', 
-        message: error instanceof Error ? error.message : 'Unknown error' 
-      }, 
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
-async function checkActivation(
-  supabase: ReturnType<typeof getServiceClient>,
+/**
+ * Check if user is still inactive and should receive onboarding emails
+ * Returns true if user should receive email, false if they're active
+ */
+async function checkUserInactive(
+  supabase: any,
   userId: string,
-  userType: UserType
+  userType: string
 ): Promise<boolean> {
-  if (userType === 'student' || userType === 'parent') {
-    const { data } = await supabase
-      .from('bookings')
-      .select('id')
-      .eq('student_id', userId)
-      .limit(1);
-    return !!data && data.length > 0;
-  }
+  try {
+    // For students: Check if they have booked any sessions
+    if (userType === 'student') {
+      const { count } = await supabase
+        .from('bookings')
+        .select('*', { count: 'exact', head: true })
+        .eq('student_id', userId);
+      
+      return count === 0; // Inactive if no bookings
+    }
 
-  if (userType === 'tutor') {
-    const { data } = await supabase
-      .from('tutor_subjects')
-      .select('id')
-      .eq('tutor_id', userId)
-      .limit(1);
-    return !!data && data.length > 0;
-  }
+    // For tutors: Check if they have completed profile setup
+    if (userType === 'tutor') {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('bio, tutor_type')
+        .eq('id', userId)
+        .single();
+      
+      const { count: subjectsCount } = await supabase
+        .from('tutor_subjects')
+        .select('*', { count: 'exact', head: true })
+        .eq('tutor_id', userId);
+      
+      // Inactive if profile incomplete (no bio or no subjects)
+      return !profile?.bio || !profile?.tutor_type || subjectsCount === 0;
+    }
 
-  return false;
+    // For parents: Check if they have added any children
+    if (userType === 'parent') {
+      const { count } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true })
+        .eq('parent_id', userId)
+        .eq('role', 'student');
+      
+      return count === 0; // Inactive if no children added
+    }
+
+    return true; // Default to sending email
+  } catch (error) {
+    console.error('Error checking user activity:', error);
+    return true; // On error, default to sending email
+  }
 }
