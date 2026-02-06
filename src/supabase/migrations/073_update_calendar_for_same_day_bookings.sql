@@ -44,7 +44,13 @@ BEGIN
         SELECT 
             -- Fix: interpret times in local timezone, not UTC
             ((ds.day || ' ' || ar.start_time)::timestamp AT TIME ZONE v_timezone)::timestamptz as window_start,
-            ((ds.day || ' ' || ar.end_time)::timestamp AT TIME ZONE v_timezone)::timestamptz as window_end,
+            -- Special case: if end_time is 00:00:00 (12:00 AM), treat it as 23:59:59 (11:59 PM) same day
+            ((ds.day || ' ' || 
+                CASE 
+                    WHEN ar.end_time = '00:00:00'::time THEN '23:59:59'::time
+                    ELSE ar.end_time
+                END
+            )::timestamp AT TIME ZONE v_timezone)::timestamptz as window_end,
             ar.slot_minutes,
             ar.buffer_minutes
         FROM date_series ds
@@ -53,7 +59,12 @@ BEGIN
         AND ar.is_active = true
         AND EXTRACT(DOW FROM ds.day) = ar.day_of_week
         AND ((ds.day || ' ' || ar.start_time)::timestamp AT TIME ZONE v_timezone)::timestamptz >= p_range_start
-        AND ((ds.day || ' ' || ar.end_time)::timestamp AT TIME ZONE v_timezone)::timestamptz <= p_range_end
+        AND ((ds.day || ' ' || 
+            CASE 
+                WHEN ar.end_time = '00:00:00'::time THEN '23:59:59'::time
+                ELSE ar.end_time
+            END
+        )::timestamp AT TIME ZONE v_timezone)::timestamptz <= p_range_end
     ),
     generated_slots AS (
         SELECT 
