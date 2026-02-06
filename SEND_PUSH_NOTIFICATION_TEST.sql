@@ -80,9 +80,8 @@ BEGIN
     requested_end_at,
     confirmed_start_at,
     confirmed_end_at,
-    duration_minutes,
     price_ttd,
-    notes
+    student_notes
   ) VALUES (
     v_jovan_id,
     v_tutor_id,
@@ -92,7 +91,6 @@ BEGIN
     v_session_start + interval '1 hour',
     v_session_start,
     v_session_start + interval '1 hour',
-    60,
     0,
     '🧪 TEST BOOKING - Push notification test'
   )
