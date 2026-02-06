@@ -85,9 +85,9 @@ export default function TutorSessionsPage() {
         ) : (
           <div className="space-y-3 sm:space-y-4">
             {sessions.map((session) => {
-              const sessionDate = new Date(session.scheduled_start_at);
+              const sessionStart = new Date(session.scheduled_start_at);
+              const sessionEnd = new Date(sessionStart.getTime() + (session.duration_minutes || 60) * 60000);
               const now = new Date();
-              const isPast = sessionDate < now;
               
               // Check booking status first (cancellation is stored there)
               const bookingStatus = session.booking?.status?.toUpperCase();
@@ -96,6 +96,11 @@ export default function TutorSessionsPage() {
               let displayStatus = 'Unknown';
               let statusColor = 'bg-gray-100 text-gray-800';
               
+              // Check if session has ended
+              const hasEnded = now > sessionEnd;
+              // Check if session is in progress (between start and end time)
+              const isInProgress = now >= sessionStart && now <= sessionEnd;
+              
               // Check if booking was cancelled first
               if (bookingStatus === 'CANCELLED' || sessionStatus === 'CANCELLED') {
                 displayStatus = 'Cancelled';
@@ -103,28 +108,21 @@ export default function TutorSessionsPage() {
               } else if (sessionStatus === 'COMPLETED' || sessionStatus === 'COMPLETED_ASSUMED') {
                 displayStatus = 'Completed';
                 statusColor = 'bg-green-100 text-green-800';
-              } else if (sessionStatus === 'IN_PROGRESS' || sessionStatus === 'JOIN_OPEN') {
-                displayStatus = 'In Progress';
-                statusColor = 'bg-purple-100 text-purple-800';
               } else if (sessionStatus === 'NO_SHOW_STUDENT') {
                 displayStatus = 'No Show';
                 statusColor = 'bg-orange-100 text-orange-800';
-              } else if (sessionStatus === 'SCHEDULED' || sessionStatus === 'BOOKED') {
-                if (isPast) {
-                  displayStatus = 'Past (Not Completed)';
-                  statusColor = 'bg-gray-100 text-gray-800';
-                } else {
-                  displayStatus = 'Upcoming';
-                  statusColor = 'bg-blue-100 text-blue-800';
-                }
-              } else if (bookingStatus === 'CONFIRMED') {
-                if (isPast) {
-                  displayStatus = 'Past (Not Completed)';
-                  statusColor = 'bg-gray-100 text-gray-800';
-                } else {
-                  displayStatus = 'Upcoming';
-                  statusColor = 'bg-blue-100 text-blue-800';
-                }
+              } else if (isInProgress && (sessionStatus === 'SCHEDULED' || sessionStatus === 'JOIN_OPEN')) {
+                // Session is currently happening
+                displayStatus = 'In Progress';
+                statusColor = 'bg-purple-100 text-purple-800';
+              } else if (hasEnded && (sessionStatus === 'SCHEDULED' || sessionStatus === 'JOIN_OPEN' || bookingStatus === 'CONFIRMED')) {
+                // Session has ended but not marked complete
+                displayStatus = 'Past (Not Completed)';
+                statusColor = 'bg-gray-100 text-gray-800';
+              } else if (sessionStatus === 'SCHEDULED' || sessionStatus === 'BOOKED' || sessionStatus === 'JOIN_OPEN' || bookingStatus === 'CONFIRMED') {
+                // Session is upcoming
+                displayStatus = 'Upcoming';
+                statusColor = 'bg-blue-100 text-blue-800';
               }
               
               return (
@@ -142,7 +140,7 @@ export default function TutorSessionsPage() {
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                           </svg>
-                          {sessionDate.toLocaleString()}
+                          {sessionStart.toLocaleString()}
                         </span>
                         {session.duration_minutes && (
                           <span className="flex items-center gap-1 font-medium text-gray-700">

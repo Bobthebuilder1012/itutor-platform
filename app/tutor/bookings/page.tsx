@@ -40,10 +40,10 @@ export default function TutorBookingsPage() {
     try {
       const data = await getTutorBookings(profile.id);
       
-      // Fetch student details and subject names
+      // Fetch student details, subject names, and session data
       const enrichedBookings = await Promise.all(
         data.map(async (booking) => {
-          const [studentRes, subjectRes] = await Promise.all([
+          const [studentRes, subjectRes, sessionRes] = await Promise.all([
             supabase
               .from('profiles')
               .select('username, display_name, full_name')
@@ -53,6 +53,11 @@ export default function TutorBookingsPage() {
               .from('subjects')
               .select('name, label')
               .eq('id', booking.subject_id)
+              .single(),
+            supabase
+              .from('sessions')
+              .select('id, status, scheduled_start_at, scheduled_end_at, duration_minutes')
+              .eq('booking_id', booking.id)
               .single()
           ]);
 
@@ -60,8 +65,9 @@ export default function TutorBookingsPage() {
             ...booking,
             student_name: studentRes.data ? getDisplayName(studentRes.data) : 'Unknown Student',
             student_username: studentRes.data?.username,
-            subject_name: subjectRes.data?.label || subjectRes.data?.name || 'Unknown Subject'
-          } as BookingWithDetails;
+            subject_name: subjectRes.data?.label || subjectRes.data?.name || 'Unknown Subject',
+            session: sessionRes.data || null
+          } as BookingWithDetails & { session: any };
         })
       );
 
@@ -193,6 +199,46 @@ export default function TutorBookingsPage() {
             {filteredBookings.map(booking => {
               const displayTime = booking.confirmed_start_at || booking.requested_start_at;
               const isPending = booking.status === 'PENDING' || booking.status === 'COUNTER_PROPOSED';
+              const now = new Date();
+              
+              // Determine display status
+              let displayStatus = getBookingStatusLabel(booking.status);
+              let statusColor = getBookingStatusColor(booking.status);
+              
+              // Override status for confirmed bookings with sessions
+              if (booking.status === 'CONFIRMED' && (booking as any).session) {
+                const session = (booking as any).session;
+                const sessionStart = new Date(session.scheduled_start_at);
+                const sessionEnd = new Date(session.scheduled_end_at || new Date(sessionStart.getTime() + session.duration_minutes * 60000));
+                
+                // Check if session is in progress
+                if (now >= sessionStart && now <= sessionEnd) {
+                  displayStatus = 'In Progress';
+                  statusColor = 'bg-purple-100 text-purple-700 border-purple-300';
+                }
+                // Check if session has ended
+                else if (now > sessionEnd) {
+                  // Show appropriate status based on session status
+                  if (session.status === 'COMPLETED_ASSUMED' || session.status === 'COMPLETED') {
+                    displayStatus = 'Completed';
+                    statusColor = 'bg-green-100 text-green-700 border-green-300';
+                  } else if (session.status === 'NO_SHOW_STUDENT') {
+                    displayStatus = 'No Show';
+                    statusColor = 'bg-orange-100 text-orange-700 border-orange-300';
+                  } else if (session.status === 'CANCELLED') {
+                    displayStatus = 'Cancelled';
+                    statusColor = 'bg-red-100 text-red-700 border-red-300';
+                  } else {
+                    displayStatus = 'Past (Not Completed)';
+                    statusColor = 'bg-gray-100 text-gray-700 border-gray-300';
+                  }
+                }
+              }
+              // For confirmed bookings without sessions that have passed
+              else if (booking.status === 'CONFIRMED' && displayTime && new Date(displayTime) < now) {
+                displayStatus = 'Past (Not Completed)';
+                statusColor = 'bg-gray-100 text-gray-700 border-gray-300';
+              }
               
               return (
                 <Link
@@ -286,9 +332,9 @@ export default function TutorBookingsPage() {
                     <div className="flex items-center gap-4">
                       <span className={`
                         px-3 py-1.5 rounded-lg text-sm font-semibold border
-                        ${getBookingStatusColor(booking.status)}
+                        ${statusColor}
                       `}>
-                        {getBookingStatusLabel(booking.status)}
+                        {displayStatus}
                       </span>
                       
                       <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
