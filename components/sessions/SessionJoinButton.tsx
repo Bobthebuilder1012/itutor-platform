@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Session } from '@/lib/types/sessions';
 
 type SessionJoinButtonProps = {
@@ -11,6 +12,8 @@ type SessionJoinButtonProps = {
 
 export default function SessionJoinButton({ session, userRole, onRetrySuccess }: SessionJoinButtonProps) {
   const [retrying, setRetrying] = useState(false);
+  const [needsReconnect, setNeedsReconnect] = useState(false);
+  const router = useRouter();
   const now = new Date();
   const scheduledStart = new Date(session.scheduled_start_at);
   const scheduledEnd = new Date(scheduledStart.getTime() + session.duration_minutes * 60000);
@@ -18,6 +21,7 @@ export default function SessionJoinButton({ session, userRole, onRetrySuccess }:
 
   async function handleRetryMeetingLink() {
     setRetrying(true);
+    setNeedsReconnect(false);
     try {
       const response = await fetch('/api/sessions/retry-meeting-link', {
         method: 'POST',
@@ -28,6 +32,11 @@ export default function SessionJoinButton({ session, userRole, onRetrySuccess }:
       const data = await response.json();
 
       if (!response.ok) {
+        // Check if it's an authentication error
+        if (response.status === 401 || data.action === 'disconnect_reconnect') {
+          setNeedsReconnect(true);
+          throw new Error('Video provider needs reconnection');
+        }
         throw new Error(data.error || 'Failed to create meeting link');
       }
 
@@ -38,25 +47,44 @@ export default function SessionJoinButton({ session, userRole, onRetrySuccess }:
       }
     } catch (error: any) {
       console.error('Error retrying meeting link:', error);
-      alert(`Failed to create meeting link: ${error.message}`);
+      if (!needsReconnect) {
+        alert(`Failed to create meeting link: ${error.message}`);
+      }
     } finally {
       setRetrying(false);
     }
+  }
+
+  function handleReconnect() {
+    router.push('/tutor/video-setup');
   }
 
   if (!session.join_url) {
     return (
       <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-6">
         <div className="flex items-center justify-between">
-          <p className="text-gray-800 font-medium">Meeting link is being generated...</p>
+          <p className="text-gray-800 font-medium">
+            {needsReconnect ? 'Video provider needs reconnection' : 'Meeting link is being generated...'}
+          </p>
           {userRole === 'tutor' && (
-            <button
-              onClick={handleRetryMeetingLink}
-              disabled={retrying}
-              className="px-6 py-2.5 bg-yellow-600 hover:bg-yellow-700 disabled:bg-yellow-400 text-white font-semibold rounded-lg transition-colors"
-            >
-              {retrying ? 'Retrying...' : 'Retry Now'}
-            </button>
+            <div className="flex gap-2">
+              {needsReconnect ? (
+                <button
+                  onClick={handleReconnect}
+                  className="px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition-colors"
+                >
+                  Reconnect Video Provider
+                </button>
+              ) : (
+                <button
+                  onClick={handleRetryMeetingLink}
+                  disabled={retrying}
+                  className="px-6 py-2.5 bg-yellow-600 hover:bg-yellow-700 disabled:bg-yellow-400 text-white font-semibold rounded-lg transition-colors"
+                >
+                  {retrying ? 'Retrying...' : 'Retry Now'}
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>
