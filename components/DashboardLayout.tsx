@@ -11,6 +11,8 @@ import MessagesIcon from '@/components/MessagesIcon';
 import CalendarIcon from '@/components/CalendarIcon';
 import Footer from '@/components/landing/Footer';
 import PushTokenRegistrar from '@/components/push/PushTokenRegistrar';
+import EnableNotificationsPrompt from '@/components/EnableNotificationsPrompt';
+import { initializePushNotifications } from '@/lib/services/browserPushService';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -52,6 +54,13 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
       mounted = false;
     };
   }, []);
+
+  // Initialize browser push notifications
+  useEffect(() => {
+    if (effectiveUserId) {
+      initializePushNotifications(effectiveUserId);
+    }
+  }, [effectiveUserId]);
 
   const handleCalendarNav = () => {
     if (role === 'tutor') router.push('/tutor/calendar');
@@ -296,6 +305,11 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
       </nav>
       
       <main className="flex-1 w-full py-4 px-2 sm:py-6 sm:px-4 lg:py-8 lg:px-6 lg:max-w-7xl lg:mx-auto">
+        {/* Browser Push Notification Prompt */}
+        {effectiveUserId && (
+          <EnableNotificationsPrompt userId={effectiveUserId} />
+        )}
+        
         <div className="bg-white rounded-lg sm:rounded-xl lg:rounded-2xl shadow-lg sm:shadow-xl p-3 sm:p-4 lg:p-6">
           {children}
         </div>
