@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.89.0';
 import { SESSION_REMINDER_10_MIN } from '../_shared/notificationTemplates.ts';
 import { getFcmAccessToken, sendFcmMessage } from '../_shared/fcm.ts';
+import { sendWebPush } from '../_shared/webPush.ts';
 
 type SessionRow = {
   id: string;
@@ -41,6 +42,9 @@ Deno.serve(async () => {
     const SUPABASE_URL = env('SUPABASE_URL');
     const SUPABASE_SERVICE_ROLE_KEY = env('SUPABASE_SERVICE_ROLE_KEY');
     const FCM_SERVICE_ACCOUNT_JSON = env('FCM_SERVICE_ACCOUNT_JSON');
+    const VAPID_PUBLIC_KEY = env('VAPID_PUBLIC_KEY');
+    const VAPID_PRIVATE_KEY = env('VAPID_PRIVATE_KEY');
+    const VAPID_SUBJECT = env('VAPID_SUBJECT');
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
       auth: { persistSession: false, autoRefreshToken: false },
