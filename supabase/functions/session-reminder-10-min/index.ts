@@ -186,7 +186,20 @@ Deno.serve(async () => {
 
     const sessionById = new Map(eligibleSessions.map((s) => [s.id, s] as const));
 
+    // Get FCM access token for mobile notifications
     const { accessToken, projectId } = await getFcmAccessToken(FCM_SERVICE_ACCOUNT_JSON);
+
+    // Separate tokens by platform
+    const fcmTokens: PushTokenRow[] = [];
+    const webTokens: PushTokenRow[] = [];
+
+    for (const token of tokens) {
+      if (token.platform === 'web') {
+        webTokens.push(token);
+      } else {
+        fcmTokens.push(token);
+      }
+    }
 
     // Fanout: for each (user, session) that was newly logged, notify all tokens for that user.
     const sends: Array<{
@@ -218,17 +231,37 @@ Deno.serve(async () => {
                 : session && userId === session.tutor_id
                 ? '/tutor/sessions'
                 : undefined;
-            await sendFcmMessage({
-              accessToken,
-              projectId,
-              token: tokenRow.token,
-              title: SESSION_REMINDER_10_MIN.title,
-              body: SESSION_REMINDER_10_MIN.body,
-              data: {
-                session_id: sessionId,
-                ...(deepLink ? { deep_link: deepLink } : {}),
-              },
-            });
+
+            // Send via FCM for mobile or Web Push for desktop
+            if (tokenRow.platform === 'web') {
+              // Parse web push subscription
+              const subscription = JSON.parse(tokenRow.token);
+              await sendWebPush({
+                subscription,
+                title: SESSION_REMINDER_10_MIN.title,
+                body: SESSION_REMINDER_10_MIN.body,
+                data: {
+                  session_id: sessionId,
+                  ...(deepLink ? { deep_link: deepLink } : {}),
+                },
+                vapidPublicKey: VAPID_PUBLIC_KEY,
+                vapidPrivateKey: VAPID_PRIVATE_KEY,
+                vapidSubject: VAPID_SUBJECT
+              });
+            } else {
+              // Send via FCM for mobile (android/ios)
+              await sendFcmMessage({
+                accessToken,
+                projectId,
+                token: tokenRow.token,
+                title: SESSION_REMINDER_10_MIN.title,
+                body: SESSION_REMINDER_10_MIN.body,
+                data: {
+                  session_id: sessionId,
+                  ...(deepLink ? { deep_link: deepLink } : {}),
+                },
+              });
+            }
           } catch {
             // Fail silently per requirements.
           }
