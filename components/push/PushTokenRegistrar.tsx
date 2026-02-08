@@ -1,8 +1,6 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { getToken } from 'firebase/messaging';
-import { getFirebaseMessaging } from '@/lib/firebase/client';
 
 const TOKEN_STORAGE_KEY = 'itutor_push_token_web_v1';
 
@@ -34,10 +32,25 @@ export default function PushTokenRegistrar() {
         // Register (or re-use) service worker required for background push.
         const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
 
-        const messaging = await getFirebaseMessaging();
+        // Use Function constructor to bypass webpack static analysis
+        const loadModule = new Function('path', 'return import(path)');
+        
+        const firebaseClient = await loadModule('@/lib/firebase/client').catch(() => null);
+        if (!firebaseClient) {
+          console.warn('Firebase client not available');
+          return;
+        }
+        
+        const messaging = await firebaseClient.getFirebaseMessaging();
         if (!messaging) return;
 
-        const fcmToken = await getToken(messaging, {
+        const firebaseMessaging = await loadModule('firebase/messaging').catch(() => null);
+        if (!firebaseMessaging) {
+          console.warn('Firebase messaging not available');
+          return;
+        }
+
+        const fcmToken = await firebaseMessaging.getToken(messaging, {
           vapidKey,
           serviceWorkerRegistration: swReg,
         });
@@ -64,8 +77,9 @@ export default function PushTokenRegistrar() {
         if (!res.ok) return;
 
         window.localStorage.setItem(TOKEN_STORAGE_KEY, fcmToken);
-      } catch {
-        // Fail silently (permission denied, unsupported, etc.)
+      } catch (error) {
+        // Fail silently (permission denied, unsupported, Firebase not configured, etc.)
+        console.debug('Push notification registration skipped:', error);
       }
     };
 

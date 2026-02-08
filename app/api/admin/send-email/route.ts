@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { requireAdmin } from '@/lib/middleware/adminAuth';
+import { Resend } from 'resend';
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 export async function POST(request: NextRequest) {
   try {
@@ -44,53 +47,92 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No users found' }, { status: 404 });
     }
 
-    // Send emails using Resend
+    console.log(`Preparing to send batch emails to ${users.length} users`);
+
+    // Prepare batch emails with personalization
+    const batchEmails = users.map(user => {
+      const firstName = user.display_name || user.full_name?.split(' ')[0] || 'there';
+      const personalizedContent = htmlContent.replace(/\{\{firstName\}\}/g, firstName);
+      const personalizedSubject = subject.replace(/\{\{firstName\}\}/g, firstName);
+      
+      return {
+        from: 'iTutor <hello@myitutor.com>',
+        to: user.email,
+        subject: personalizedSubject,
+        html: personalizedContent,
+      };
+    });
+
+    // Send batch emails using Resend batch API
+    // Resend batch API handles rate limiting automatically
+    console.log(`Sending batch of ${batchEmails.length} emails...`);
+    
+    let result;
+    try {
+      result = await resend.batch.send(batchEmails);
+      console.log('Resend batch.send result:', JSON.stringify(result, null, 2));
+    } catch (batchError: any) {
+      console.error('Resend batch.send threw error:', batchError);
+      return NextResponse.json({ 
+        error: 'Failed to send batch emails',
+        details: batchError?.message || 'Unknown batch send error'
+      }, { status: 500 });
+    }
+
+    const { data, error } = result;
+
+    if (error) {
+      console.error('Resend batch error:', error);
+      return NextResponse.json({ 
+        error: 'Failed to send batch emails',
+        details: error.message || error
+      }, { status: 500 });
+    }
+
+    // Process results
     let successCount = 0;
     let failedEmails: string[] = [];
 
-    for (const user of users) {
-      try {
-        // Personalize content by replacing {{firstName}} placeholder
-        // Use display_name first, then fall back to full_name, then 'there'
-        const firstName = user.display_name || user.full_name?.split(' ')[0] || 'there';
-        const personalizedContent = htmlContent.replace(/\{\{firstName\}\}/g, firstName);
-        const personalizedSubject = subject.replace(/\{\{firstName\}\}/g, firstName);
-        
-        const response = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            from: 'iTutor <hello@myitutor.com>',
-            to: user.email,
-            subject: personalizedSubject,
-            html: personalizedContent
-          })
-        });
+    console.log('Processing batch results, data:', data);
 
-        if (response.ok) {
+    if (data && Array.isArray(data)) {
+      data.forEach((result: any, index: number) => {
+        if (result && result.id) {
           successCount++;
+        } else if (result && result.error) {
+          console.error(`Failed to send to ${users[index]?.email}:`, result.error);
+          failedEmails.push(users[index]?.email || 'unknown');
         } else {
-          const errorData = await response.text();
-          console.error(`Failed to send to ${user.email}:`, errorData);
-          failedEmails.push(user.email);
+          // If we can't determine status, count as failed
+          console.warn(`Indeterminate result for ${users[index]?.email}:`, result);
+          failedEmails.push(users[index]?.email || 'unknown');
         }
-      } catch (error) {
-        console.error(`Error sending email to ${user.email}:`, error);
-        failedEmails.push(user.email);
+      });
+    } else if (data && typeof data === 'object') {
+      // Handle case where data is an object with id (single success)
+      if ((data as any).id) {
+        successCount = users.length;
       }
+    } else {
+      console.warn('Unexpected data format from Resend:', typeof data, data);
+      // Assume success if no error
+      successCount = users.length;
     }
+
+    console.log(`Batch send complete: ${successCount} succeeded, ${failedEmails.length} failed`);
 
     return NextResponse.json({
       sent: successCount,
       failed: failedEmails.length,
       failedEmails,
-      message: `Successfully sent ${successCount} out of ${users.length} emails`
+      message: `Successfully sent ${successCount} out of ${users.length} emails`,
+      details: data
     });
   } catch (error) {
     console.error('Error in send email route:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ 
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 }

@@ -52,7 +52,7 @@ INSERT INTO email_templates (name, subject, html_content, user_type, stage) VALU
         </a>
       </div>
       <p style="margin-top: 15px; color: #6b7280;">Trinidad & Tobago</p>
-      <p style="margin-top: 10px; color: #9ca3af; font-size: 13px;">iTutor 2026, All rights reserved</p>
+      <p style="margin-top: 10px; color: #9ca3af; font-size: 13px;">© iTutor. Nora Digital, Ltd.</p>
     </div>
   </div>
 </body>
@@ -96,7 +96,7 @@ INSERT INTO email_templates (name, subject, html_content, user_type, stage) VALU
     </div>
     <div class="footer">
       <p style="margin-top: 15px;">Trinidad & Tobago</p>
-      <p style="margin-top: 10px; color: #9ca3af; font-size: 13px;">iTutor 2026, All rights reserved</p>
+      <p style="margin-top: 10px; color: #9ca3af; font-size: 13px;">© iTutor. Nora Digital, Ltd.</p>
     </div>
   </div>
 </body>
@@ -138,7 +138,7 @@ INSERT INTO email_templates (name, subject, html_content, user_type, stage) VALU
     </div>
     <div style="text-align: center; padding: 30px 0; color: #6b7280;">
       <p>Trinidad & Tobago</p>
-      <p style="margin-top: 10px; color: #9ca3af; font-size: 13px;">iTutor 2026, All rights reserved</p>
+      <p style="margin-top: 10px; color: #9ca3af; font-size: 13px;">© iTutor. Nora Digital, Ltd.</p>
     </div>
   </div>
 </body>
@@ -177,7 +177,7 @@ INSERT INTO email_templates (name, subject, html_content, user_type, stage) VALU
       <p class="text">Congrats on joining the #1 tutoring platform in the Caribbean! You''re about to connect with students who need your expertise.</p>
       <p class="text"><strong>To start receiving booking requests, complete these quick steps:</strong></p>
       <div class="highlight">
-        <p class="text">✅ Add your subjects and hourly rates<br>✅ Set your availability (online/in-person)<br>✅ Write a short bio about your experience<br>✅ Upload credentials for verification</p>
+        <p class="text">✅ Add your subjects and hourly rates<br>✅ Set your availability<br>✅ Write a short bio about your experience<br>✅ Upload credentials for verification</p>
       </div>
       <p class="text">iTutors who complete their profile in the first 24 hours get their first student 3x faster!</p>
       <a href="https://myitutor.com/onboarding/tutor" class="cta-button">Complete Your Profile</a>
@@ -185,7 +185,7 @@ INSERT INTO email_templates (name, subject, html_content, user_type, stage) VALU
     </div>
     <div style="text-align: center; padding: 30px 0; color: #6b7280;">
       <p>Trinidad & Tobago</p>
-      <p style="margin-top: 10px; color: #9ca3af; font-size: 13px;">iTutor 2026, All rights reserved</p>
+      <p style="margin-top: 10px; color: #9ca3af; font-size: 13px;">© iTutor. Nora Digital, Ltd.</p>
     </div>
   </div>
 </body>
@@ -224,12 +224,12 @@ INSERT INTO email_templates (name, subject, html_content, user_type, stage) VALU
         <p class="text"><strong>1. Add Your Subjects</strong><br>List all subjects you can teach (Maths, Chemistry, English, etc.)</p>
         <p class="text"><strong>2. Set Competitive Rates</strong><br>Average rates: Form 1-3 ($50-80/hr), Form 4-5 ($80-120/hr), CAPE/University ($120-200/hr)</p>
       </div>
-      <p class="text"><strong>Pro tip:</strong> iTutors who offer both online and in-person get 40% more bookings.</p>
+      <p class="text"><strong>Pro tip:</strong> iTutors who complete their profiles within 24 hours get their first booking faster!</p>
       <a href="https://myitutor.com/onboarding/tutor" class="cta-button">Set Up Your Profile</a>
     </div>
     <div style="text-align: center; padding: 30px 0; color: #6b7280;">
       <p>Trinidad & Tobago</p>
-      <p style="margin-top: 10px; color: #9ca3af; font-size: 13px;">iTutor 2026, All rights reserved</p>
+      <p style="margin-top: 10px; color: #9ca3af; font-size: 13px;">© iTutor. Nora Digital, Ltd.</p>
     </div>
   </div>
 </body>

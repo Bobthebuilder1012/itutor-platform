@@ -5,7 +5,7 @@ const baseStyles = `
     body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f9fafb; }
     .container { max-width: 600px; margin: 0 auto; padding: 20px; }
     .header { text-align: center; padding: 30px 0; background: #000000; border-radius: 8px 8px 0 0; }
-    .logo { height: 60px; width: auto; }
+    .logo { height: 60px; width: auto; display: block; margin: 0 auto; }
     .content { background: #ffffff; padding: 40px; border-radius: 0 0 8px 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
     .title { font-size: 24px; color: #1f2937; margin-bottom: 20px; font-weight: 600; }
     .text { font-size: 16px; color: #4b5563; line-height: 1.6; margin-bottom: 20px; }
@@ -64,7 +64,7 @@ export function welcomeEmail({ firstName, ctaUrl }: EmailTemplateProps): EmailTe
               </a>
             </div>
             <p style="margin-top: 15px; color: #6b7280;">Trinidad & Tobago</p>
-            <p style="margin-top: 10px; color: #9ca3af; font-size: 13px;">iTutor 2026, All rights reserved</p>
+            <p style="margin-top: 10px; color: #9ca3af; font-size: 13px;">© iTutor. Nora Digital, Ltd.</p>
           </div>
         </div>
       </body>
@@ -124,7 +124,7 @@ export function day1Email({ firstName, ctaUrl }: EmailTemplateProps): EmailTempl
               </a>
             </div>
             <p style="margin-top: 15px; color: #6b7280;">Trinidad & Tobago</p>
-            <p style="margin-top: 10px; color: #9ca3af; font-size: 13px;">iTutor 2026, All rights reserved</p>
+            <p style="margin-top: 10px; color: #9ca3af; font-size: 13px;">© iTutor. Nora Digital, Ltd.</p>
           </div>
         </div>
       </body>
@@ -188,7 +188,7 @@ export function day3Email({ firstName, ctaUrl }: EmailTemplateProps): EmailTempl
               </a>
             </div>
             <p style="margin-top: 15px; color: #6b7280;">Trinidad & Tobago</p>
-            <p style="margin-top: 10px; color: #9ca3af; font-size: 13px;">iTutor 2026, All rights reserved</p>
+            <p style="margin-top: 10px; color: #9ca3af; font-size: 13px;">© iTutor. Nora Digital, Ltd.</p>
           </div>
         </div>
       </body>
@@ -249,7 +249,7 @@ export function day5Email({ firstName, ctaUrl }: EmailTemplateProps): EmailTempl
               </a>
             </div>
             <p style="margin-top: 15px; color: #6b7280;">Trinidad & Tobago</p>
-            <p style="margin-top: 10px; color: #9ca3af; font-size: 13px;">iTutor 2026, All rights reserved</p>
+            <p style="margin-top: 10px; color: #9ca3af; font-size: 13px;">© iTutor. Nora Digital, Ltd.</p>
           </div>
         </div>
       </body>
@@ -318,7 +318,7 @@ export function day7Email({ firstName, ctaUrl }: EmailTemplateProps): EmailTempl
               </a>
             </div>
             <p style="margin-top: 15px; color: #6b7280;">Trinidad & Tobago</p>
-            <p style="margin-top: 10px; color: #9ca3af; font-size: 13px;">iTutor 2026, All rights reserved</p>
+            <p style="margin-top: 10px; color: #9ca3af; font-size: 13px;">© iTutor. Nora Digital, Ltd.</p>
           </div>
         </div>
       </body>

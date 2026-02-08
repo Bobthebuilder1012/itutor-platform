@@ -4,7 +4,7 @@ type Session = {
   time: string;
   subject: string;
   tutorName: string;
-  sessionType: 'online' | 'in_person';
+  sessionType: 'online';
 };
 
 type UpcomingSessionsProps = {
@@ -27,12 +27,8 @@ export default function UpcomingSessions({ sessions }: UpcomingSessionsProps) {
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
                     <h3 className="text-lg font-bold text-itutor-white">{session.subject}</h3>
-                    <span className={`px-2.5 py-1 text-xs font-semibold rounded-full ${
-                      session.sessionType === 'online'
-                        ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white'
-                        : 'bg-gradient-to-r from-purple-500 to-purple-600 text-white'
-                    }`}>
-                      {session.sessionType === 'online' ? 'Online' : 'In-Person'}
+                    <span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-gradient-to-r from-blue-500 to-blue-600 text-white">
+                      Online
                     </span>
                   </div>
                   <p className="text-gray-400 text-sm mb-1">
@@ -43,11 +39,9 @@ export default function UpcomingSessions({ sessions }: UpcomingSessionsProps) {
                   </p>
                 </div>
                 
-                {session.sessionType === 'online' && (
-                  <button className="bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-white px-6 py-2.5 rounded-lg font-semibold shadow-lg hover:shadow-itutor-green/50 transition-all duration-300 whitespace-nowrap">
-                    Join Session
-                  </button>
-                )}
+                <button className="bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-white px-6 py-2.5 rounded-lg font-semibold shadow-lg hover:shadow-itutor-green/50 transition-all duration-300 whitespace-nowrap">
+                  Join Session
+                </button>
               </div>
             </div>
           ))}
