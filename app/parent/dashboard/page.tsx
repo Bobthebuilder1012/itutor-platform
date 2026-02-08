@@ -197,7 +197,7 @@ export default function ParentDashboard() {
                   time: '10:00 AM',
                   subject: 'CAPE Physics',
                   tutorName: 'Dr. James Mitchell',
-                  sessionType: 'in_person',
+                  sessionType: 'online',
                 },
               ]}
             />

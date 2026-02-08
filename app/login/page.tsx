@@ -253,7 +253,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-white px-4 py-8">
-      <div className="bg-gradient-to-br from-gray-800 to-gray-900 border border-gray-700 rounded-2xl shadow-2xl p-8 max-w-md w-full">
+      <div className="bg-black border border-gray-700 rounded-2xl shadow-2xl p-8 max-w-md w-full">
         <div className="text-center mb-8">
           <div className="mb-4 flex justify-center">
             <img 
