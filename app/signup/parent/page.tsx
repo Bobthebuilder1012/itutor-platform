@@ -242,13 +242,13 @@ export default function ParentSignupPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-black px-4 py-8 relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center bg-white px-4 py-8 relative overflow-hidden">
       <div className="absolute inset-0 opacity-5">
         <div className="absolute top-20 left-10 w-72 h-72 bg-itutor-green rounded-full blur-3xl animate-pulse"></div>
         <div className="absolute bottom-20 right-10 w-72 h-72 bg-emerald-500 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
       </div>
       
-      <div className="bg-gradient-to-br from-gray-800 via-gray-900 to-gray-950 border border-gray-700 rounded-2xl shadow-2xl p-8 sm:p-10 max-w-2xl w-full relative z-10 backdrop-blur-sm">
+      <div className="bg-black border border-gray-700 rounded-2xl shadow-2xl p-8 sm:p-10 max-w-2xl w-full relative z-10 backdrop-blur-sm">
         <div className="text-center mb-8">
           <img
             src="/assets/logo/itutor-logo-dark.png"
