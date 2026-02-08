@@ -77,7 +77,7 @@ export default function ResetPasswordPage() {
 
   if (checkingSession) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-itutor-black flex items-center justify-center p-4">
+      <div className="min-h-screen bg-black flex items-center justify-center p-4">
         <div className="bg-gray-800/50 backdrop-blur-md border-2 border-gray-700 rounded-2xl shadow-2xl p-8 w-full max-w-md">
           <div className="text-center">
             <div className="animate-spin w-12 h-12 border-4 border-itutor-green border-t-transparent rounded-full mx-auto mb-4"></div>
@@ -90,7 +90,7 @@ export default function ResetPasswordPage() {
 
   if (!validSession) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-itutor-black flex items-center justify-center p-4">
+      <div className="min-h-screen bg-black flex items-center justify-center p-4">
         <div className="bg-gray-800/50 backdrop-blur-md border-2 border-gray-700 rounded-2xl shadow-2xl p-8 sm:p-12 w-full max-w-md">
           <div className="text-center mb-8">
             <div className="mb-6 flex justify-center">
@@ -135,7 +135,7 @@ export default function ResetPasswordPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-itutor-black flex items-center justify-center p-4">
+      <div className="min-h-screen bg-black flex items-center justify-center p-4">
         <div className="bg-gray-800/50 backdrop-blur-md border-2 border-gray-700 rounded-2xl shadow-2xl p-8 sm:p-12 w-full max-w-md">
           <div className="text-center mb-8">
             <div className="mb-6 flex justify-center">
@@ -169,7 +169,7 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-itutor-black flex items-center justify-center p-4">
+    <div className="min-h-screen bg-black flex items-center justify-center p-4">
       <div className="bg-gray-800/50 backdrop-blur-md border-2 border-gray-700 rounded-2xl shadow-2xl p-8 sm:p-12 w-full max-w-md">
         <div className="text-center mb-8">
           <div className="mb-4 flex justify-center">

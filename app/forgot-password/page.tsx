@@ -77,7 +77,7 @@ export default function ForgotPasswordPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-itutor-black flex items-center justify-center p-4">
+      <div className="min-h-screen bg-black flex items-center justify-center p-4">
         <div className="bg-gray-800/50 backdrop-blur-md border-2 border-gray-700 rounded-2xl shadow-2xl p-8 sm:p-12 w-full max-w-md">
           <div className="text-center mb-8">
             <div className="mb-6 flex justify-center">
@@ -168,7 +168,7 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-itutor-black flex items-center justify-center p-4">
+    <div className="min-h-screen bg-black flex items-center justify-center p-4">
       <div className="bg-gray-800/50 backdrop-blur-md border-2 border-gray-700 rounded-2xl shadow-2xl p-8 sm:p-12 w-full max-w-md">
         <div className="text-center mb-8">
           <div className="mb-4 flex justify-center">
