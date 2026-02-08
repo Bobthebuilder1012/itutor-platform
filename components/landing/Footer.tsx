@@ -147,13 +147,13 @@ export default function Footer({ role = null }: FooterProps = {}) {
 
         <div className="pt-8 border-t border-itutor-border flex flex-col md:flex-row justify-between items-center gap-4">
           <p className="text-itutor-muted text-sm">
-            &copy; iTutor, 2025. All rights reserved.
+            &copy; iTutor. Nora Digital, Ltd.
           </p>
           <div className="flex gap-4 text-sm">
-            <Link href="/help" className="text-itutor-muted hover:text-itutor-white transition-colors">
+            <a href="mailto:support@myitutor.com" className="text-itutor-muted hover:text-itutor-white transition-colors">
               Help
-            </Link>
-            <Link href="/privacy" className="text-itutor-muted hover:text-itutor-white transition-colors">
+            </a>
+            <Link href="/terms" className="text-itutor-muted hover:text-itutor-white transition-colors">
               Privacy
             </Link>
             <Link

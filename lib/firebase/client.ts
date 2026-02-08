@@ -1,7 +1,10 @@
-import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
-import { getMessaging, isSupported, type Messaging } from 'firebase/messaging';
+// Client-side only Firebase utilities
+// This file should only be imported dynamically in client components
 
 function getFirebaseConfig() {
+  // Only run in browser
+  if (typeof window === 'undefined') return null;
+
   const config = {
     apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
     authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -19,20 +22,57 @@ function getFirebaseConfig() {
   return config as Required<typeof config>;
 }
 
-export function getFirebaseApp(): FirebaseApp | null {
+// Helper to dynamically load Firebase modules
+async function loadFirebaseModule(moduleName: string): Promise<any> {
+  try {
+    // Use Function constructor to prevent webpack from analyzing the import
+    const dynamicImport = new Function('moduleName', 'return import(moduleName)');
+    return await dynamicImport(moduleName);
+  } catch (error) {
+    console.debug(`Failed to load ${moduleName}:`, error);
+    return null;
+  }
+}
+
+export async function getFirebaseApp(): Promise<any | null> {
+  // Only run in browser
+  if (typeof window === 'undefined') return null;
+
   const config = getFirebaseConfig();
   if (!config) return null;
 
-  const existing = getApps();
-  if (existing.length > 0) return existing[0]!;
+  try {
+    const firebaseApp = await loadFirebaseModule('firebase/app');
+    if (!firebaseApp) return null;
 
-  return initializeApp(config);
+    const existing = firebaseApp.getApps();
+    if (existing.length > 0) return existing[0]!;
+
+    return firebaseApp.initializeApp(config);
+  } catch (error) {
+    console.debug('Firebase app initialization failed:', error);
+    return null;
+  }
 }
 
-export async function getFirebaseMessaging(): Promise<Messaging | null> {
-  const app = getFirebaseApp();
+export async function getFirebaseMessaging(): Promise<any | null> {
+  // Only run in browser
+  if (typeof window === 'undefined') return null;
+
+  const app = await getFirebaseApp();
   if (!app) return null;
-  if (!(await isSupported())) return null;
-  return getMessaging(app);
+
+  try {
+    const firebaseMessaging = await loadFirebaseModule('firebase/messaging');
+    if (!firebaseMessaging) return null;
+
+    const supported = await firebaseMessaging.isSupported();
+    if (!supported) return null;
+
+    return firebaseMessaging.getMessaging(app);
+  } catch (error) {
+    console.debug('Firebase messaging initialization failed:', error);
+    return null;
+  }
 }
 

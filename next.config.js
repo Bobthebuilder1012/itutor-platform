@@ -14,6 +14,18 @@ const nextConfig = {
       imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
       minimumCacheTTL: 60, // Cache images for 60 seconds
     },
+    // Webpack configuration to handle Firebase
+    webpack: (config, { isServer }) => {
+      // Exclude Firebase from server-side bundle
+      if (isServer) {
+        config.resolve.alias = {
+          ...config.resolve.alias,
+          'firebase/app': false,
+          'firebase/messaging': false,
+        };
+      }
+      return config;
+    },
   }
   
   module.exports = nextConfig

@@ -10,9 +10,13 @@ import NotificationBell from '@/components/NotificationBell';
 import MessagesIcon from '@/components/MessagesIcon';
 import CalendarIcon from '@/components/CalendarIcon';
 import Footer from '@/components/landing/Footer';
-import PushTokenRegistrar from '@/components/push/PushTokenRegistrar';
 import EnableNotificationsPrompt from '@/components/EnableNotificationsPrompt';
 import { initializePushNotifications } from '@/lib/services/browserPushService';
+import dynamic from 'next/dynamic';
+
+const PushTokenRegistrar = dynamic(() => import('@/components/push/PushTokenRegistrar'), {
+  ssr: false,
+});
 
 interface DashboardLayoutProps {
   children: ReactNode;
