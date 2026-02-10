@@ -481,7 +481,7 @@ export default function FindTutorsPage() {
               return (
                 <div
                   key={tutor.id}
-                  className="bg-gradient-to-br from-green-50 to-blue-50 border-2 border-green-200 rounded-2xl p-6 hover:shadow-xl hover:border-green-400 transition-all duration-300 hover:scale-105"
+                  className="bg-white border-2 border-gray-200 rounded-2xl p-6 hover:shadow-xl hover:border-itutor-green transition-all duration-300 hover:scale-105"
                 >
                   {/* Recommended Badge - Only for verified tutors */}
                   {matchesStudentSubjects && tutor.tutor_verification_status === 'VERIFIED' && (
