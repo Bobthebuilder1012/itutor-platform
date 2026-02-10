@@ -238,10 +238,10 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
               {/* Hamburger Menu (Mobile Only) */}
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="md:hidden p-2 rounded-md text-gray-400 hover:text-itutor-green hover:bg-gray-800 focus:outline-none transition-colors"
+                className="md:hidden p-1.5 rounded-md text-gray-400 hover:text-itutor-green hover:bg-gray-800 focus:outline-none transition-colors"
                 aria-label="Open menu"
               >
-                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
               </button>
@@ -251,7 +251,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
                 <img
                   src="/assets/logo/itutor-logo-dark.png"
                   alt="iTutor"
-                  className="h-7 sm:h-8 md:h-9 lg:h-10 xl:h-12 w-auto group-hover:scale-105 transition-transform duration-300"
+                  className="h-8 sm:h-9 md:h-10 lg:h-11 xl:h-12 w-auto group-hover:scale-105 transition-transform duration-300"
                 />
               </Link>
 
@@ -270,19 +270,19 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
             </div>
 
             {/* Right: Icons + Username + Logout */}
-            <div className="flex items-center gap-2 sm:gap-3 lg:gap-4 xl:gap-6">
+            <div className="flex items-center gap-1 sm:gap-2 lg:gap-4 xl:gap-6">
               {/* Always show icons (fixed for student UI issue) */}
-              <div className="flex items-center gap-1.5 md:gap-2 lg:gap-3">
+              <div className="flex items-center gap-0.5 sm:gap-1.5 md:gap-2 lg:gap-3">
                 {profile?.id && role !== 'reviewer' && role !== 'admin' && <CalendarIcon userId={profile.id} role={role} />}
                 {profile?.id && role !== 'reviewer' && role !== 'admin' && <MessagesIcon userId={profile.id} role={role} />}
                 {profile?.id && <NotificationBell userId={profile.id} />}
                 {/* Settings Gear Icon */}
                 <Link
                   href={`/${role}/settings`}
-                  className="p-2 rounded-md text-gray-400 hover:text-itutor-green hover:bg-gray-800 focus:outline-none transition-colors"
+                  className="p-1.5 sm:p-2 rounded-md text-gray-400 hover:text-itutor-green hover:bg-gray-800 focus:outline-none transition-colors"
                   aria-label="Settings"
                 >
-                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="h-5 w-5 sm:h-6 sm:w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
