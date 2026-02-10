@@ -82,7 +82,10 @@ export default function AdminDashboardPage() {
         .from('profiles')
         .select('role, created_at');
 
-      if (profileError) throw profileError;
+      if (profileError) {
+        console.error('Error fetching profiles:', profileError);
+        throw profileError;
+      }
 
       // Calculate stats from profiles
       const totalUsers = allProfiles?.length || 0;
@@ -98,26 +101,49 @@ export default function AdminDashboardPage() {
       ).length || 0;
 
       // Total sessions
-      const { count: totalSessions } = await supabase
+      const { count: totalSessions, error: totalSessionsError } = await supabase
         .from('sessions')
         .select('*', { count: 'exact', head: true });
 
+      if (totalSessionsError) {
+        console.error('Error fetching total sessions:', totalSessionsError);
+      }
+
       // Completed sessions
-      const { count: completedSessions } = await supabase
+      const { count: completedSessions, error: completedSessionsError } = await supabase
         .from('sessions')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'COMPLETED_ASSUMED');
 
+      if (completedSessionsError) {
+        console.error('Error fetching completed sessions:', completedSessionsError);
+      }
+
       // Scheduled sessions (upcoming)
-      const { count: scheduledSessions } = await supabase
+      const { count: scheduledSessions, error: scheduledSessionsError } = await supabase
         .from('sessions')
         .select('*', { count: 'exact', head: true })
         .in('status', ['SCHEDULED', 'JOIN_OPEN']);
 
+      if (scheduledSessionsError) {
+        console.error('Error fetching scheduled sessions:', scheduledSessionsError);
+      }
+
       // Total bookings
-      const { count: totalBookings } = await supabase
+      const { count: totalBookings, error: totalBookingsError } = await supabase
         .from('bookings')
         .select('*', { count: 'exact', head: true });
+
+      if (totalBookingsError) {
+        console.error('Error fetching total bookings:', totalBookingsError);
+      }
+
+      console.log('Stats fetched:', {
+        totalSessions,
+        completedSessions,
+        scheduledSessions,
+        totalBookings
+      });
 
       setStats({
         totalUsers,
@@ -164,7 +190,12 @@ export default function AdminDashboardPage() {
 
       const { data, error } = await query;
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching sessions:', error);
+        throw error;
+      }
+
+      console.log('Fetched sessions:', data?.length || 0, 'sessions');
 
       const sessionsWithNames = (data || []).map((s: any) => ({
         id: s.id,
