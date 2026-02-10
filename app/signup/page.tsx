@@ -308,7 +308,7 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-black px-3 py-4 sm:px-4 sm:py-8 relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center bg-white px-3 py-4 sm:px-4 sm:py-8 relative overflow-hidden">
       <div className="absolute inset-0 opacity-5">
         <div className="absolute top-20 left-10 w-72 h-72 bg-itutor-green rounded-full blur-3xl animate-pulse"></div>
         <div className="absolute bottom-20 right-10 w-72 h-72 bg-emerald-500 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>

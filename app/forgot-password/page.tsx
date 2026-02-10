@@ -77,13 +77,8 @@ export default function ForgotPasswordPage() {
 
   if (success) {
     return (
-<<<<<<< HEAD
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-itutor-black flex items-center justify-center p-4">
         <div className="bg-black backdrop-blur-md border-2 border-gray-700 rounded-2xl shadow-2xl p-8 sm:p-12 w-full max-w-md">
-=======
-      <div className="min-h-screen bg-black flex items-center justify-center p-4">
-        <div className="bg-gray-800/50 backdrop-blur-md border-2 border-gray-700 rounded-2xl shadow-2xl p-8 sm:p-12 w-full max-w-md">
->>>>>>> 626b1acdd06a6b5d76cea337bf8a38165eb274bb
           <div className="text-center mb-8">
             <div className="mb-6 flex justify-center">
               <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center">
@@ -173,13 +168,8 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-<<<<<<< HEAD
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-itutor-black flex items-center justify-center p-4">
-      <div className="bg-black backdrop-blur-md border-2 border-gray-700 rounded-2xl shadow-2xl p-8 sm:p-12 w-full max-w-md">
-=======
     <div className="min-h-screen bg-black flex items-center justify-center p-4">
       <div className="bg-gray-800/50 backdrop-blur-md border-2 border-gray-700 rounded-2xl shadow-2xl p-8 sm:p-12 w-full max-w-md">
->>>>>>> 626b1acdd06a6b5d76cea337bf8a38165eb274bb
         <div className="text-center mb-8">
           <div className="mb-4 flex justify-center">
             <img 
