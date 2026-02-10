@@ -5,70 +5,79 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Verify Your Email - iTutor</title>
 </head>
-<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 40px 20px;">
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f9fafb;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f9fafb; padding: 20px;">
     <tr>
       <td align="center">
-        <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); overflow: hidden;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);">
           
-          <!-- Header with iTutor Branding -->
+          <!-- Header with Logo/Branding -->
           <tr>
-            <td style="background: linear-gradient(135deg, #1f2937 0%, #111827 100%); padding: 40px 30px; text-align: center;">
-              <h1 style="margin: 0; color: #10b981; font-size: 32px; font-weight: bold;">iTutor</h1>
-              <p style="margin: 10px 0 0 0; color: #d1d5db; font-size: 16px;">Welcome to Your Learning Journey</p>
+            <td style="background: linear-gradient(135deg, #1a1f2e 0%, #0f1419 100%); padding: 40px 30px; text-align: center;">
+              <div style="margin-bottom: 15px;">
+                <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect width="48" height="48" rx="12" fill="#10b981"/>
+                  <path d="M18 15L30 33M18 33L30 15" stroke="white" stroke-width="3" stroke-linecap="round"/>
+                </svg>
+              </div>
+              <h1 style="margin: 0; color: #10b981; font-size: 36px; font-weight: 700; letter-spacing: -0.5px;">iTutor</h1>
+              <p style="margin: 8px 0 0 0; color: #9ca3af; font-size: 15px;">Welcome to Your Learning Journey</p>
             </td>
           </tr>
 
           <!-- Main Content -->
           <tr>
             <td style="padding: 40px 30px;">
-              <h2 style="margin: 0 0 20px 0; color: #111827; font-size: 24px; font-weight: 600;">Verify Your Email</h2>
+              <h2 style="margin: 0 0 16px 0; color: #111827; font-size: 28px; font-weight: 700; text-align: center;">Verify Your Email</h2>
               
-              <p style="margin: 0 0 20px 0; color: #4b5563; font-size: 16px; line-height: 1.6;">
+              <p style="margin: 0 0 24px 0; color: #6b7280; font-size: 16px; line-height: 1.5; text-align: center;">
                 Thank you for signing up with iTutor! To get started, please verify your email address by entering the code below:
               </p>
 
               <!-- Verification Code Box -->
-              <table width="100%" cellpadding="0" cellspacing="0" style="margin: 30px 0;">
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin: 32px 0;">
                 <tr>
-                  <td align="center" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); border-radius: 12px; padding: 30px;">
-                    <p style="margin: 0 0 10px 0; color: #ffffff; font-size: 14px; font-weight: 500; text-transform: uppercase; letter-spacing: 1px;">Your Verification Code</p>
-                    <p style="margin: 0; color: #ffffff; font-size: 38px; font-weight: bold; letter-spacing: 6px; font-family: 'Courier New', monospace;">{{ .Token }}</p>
+                  <td align="center" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); border-radius: 16px; padding: 32px 24px; box-shadow: 0 4px 6px rgba(16, 185, 129, 0.2);">
+                    <p style="margin: 0 0 12px 0; color: rgba(255,255,255,0.9); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px;">Your Verification Code</p>
+                    <p style="margin: 0; color: #ffffff; font-size: 40px; font-weight: 700; letter-spacing: 10px; font-family: 'Courier New', Courier, monospace;">{{ .Token }}</p>
                   </td>
                 </tr>
               </table>
 
-              <p style="margin: 20px 0; color: #4b5563; font-size: 14px; line-height: 1.6;">
-                Enter this code on the verification page to complete your signup. This code will expire in <strong>24 hours</strong>.
+              <p style="margin: 0 0 28px 0; color: #6b7280; font-size: 15px; line-height: 1.6; text-align: center;">
+                Enter this code on the verification page to complete your signup.<br>
+                This code will expire in <strong style="color: #111827;">24 hours</strong>.
               </p>
 
               <!-- Organization Email Notice -->
-              <table width="100%" cellpadding="0" cellspacing="0" style="margin: 30px 0;">
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin: 24px 0;">
                 <tr>
-                  <td style="background-color: #FEF3C7; border-left: 4px solid #F59E0B; border-radius: 8px; padding: 20px;">
-                    <p style="margin: 0 0 10px 0; color: #92400E; font-size: 14px; font-weight: 600;">
-                      📧 Note for Organization/Company Emails
+                  <td style="background-color: #fffbeb; border-left: 3px solid #f59e0b; border-radius: 6px; padding: 16px 20px;">
+                    <p style="margin: 0 0 8px 0; color: #92400e; font-size: 14px; font-weight: 600;">
+                      📧 Organization/Company Emails
                     </p>
-                    <p style="margin: 0; color: #92400E; font-size: 13px; line-height: 1.5;">
-                      If you're using a work or school email address, this email may take 5-30 minutes to arrive as your organization's security system vets it. Please check your spam/junk folder if you don't see it immediately.
+                    <p style="margin: 0; color: #78350f; font-size: 13px; line-height: 1.5;">
+                      If you're using a work or school email, delivery may take 5-30 minutes due to security scanning. Please check your spam folder if you don't see it immediately.
                     </p>
                   </td>
                 </tr>
               </table>
 
               <!-- Alternative Link -->
-              <div style="margin: 30px 0; padding: 20px; background-color: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
-                <p style="margin: 0 0 10px 0; color: #6b7280; font-size: 13px; font-weight: 500;">
-                  Prefer to click a link instead?
-                </p>
-                <p style="margin: 0;">
-                  <a href="{{ .ConfirmationURL }}" style="color: #10b981; font-size: 13px; text-decoration: underline; word-break: break-all;">
-                    Click here to verify your email
-                  </a>
-                </p>
-              </div>
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin: 28px 0 0 0;">
+                <tr>
+                  <td style="background-color: #f3f4f6; border-radius: 8px; padding: 20px; text-align: center;">
+                    <p style="margin: 0 0 12px 0; color: #4b5563; font-size: 14px; font-weight: 500;">
+                      Prefer to click a link instead?
+                    </p>
+                    <a href="{{ .ConfirmationURL }}" style="display: inline-block; background-color: #10b981; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-size: 14px; font-weight: 600; transition: background-color 0.2s;">
+                      Verify Email Now
+                    </a>
+                  </td>
+                </tr>
+              </table>
 
-              <p style="margin: 30px 0 0 0; color: #6b7280; font-size: 13px; line-height: 1.6;">
+              <p style="margin: 32px 0 0 0; color: #9ca3af; font-size: 13px; line-height: 1.5; text-align: center;">
                 If you didn't create an account with iTutor, you can safely ignore this email.
               </p>
             </td>
@@ -76,12 +85,12 @@
 
           <!-- Footer -->
           <tr>
-            <td style="background-color: #f9fafb; padding: 30px; text-align: center; border-top: 1px solid #e5e7eb;">
-              <p style="margin: 0 0 10px 0; color: #6b7280; font-size: 12px;">
-                Need help? Contact us at <a href="mailto:support@itutor.com" style="color: #10b981; text-decoration: none;">support@itutor.com</a>
+            <td style="background-color: #f9fafb; padding: 24px 30px; text-align: center; border-top: 1px solid #e5e7eb;">
+              <p style="margin: 0 0 8px 0; color: #6b7280; font-size: 13px;">
+                Need help? Contact us at <a href="mailto:support@itutor.com" style="color: #10b981; text-decoration: none; font-weight: 500;">support@itutor.com</a>
               </p>
-              <p style="margin: 0; color: #9ca3af; font-size: 11px;">
-                © {{ .SiteURL }} iTutor. All rights reserved.
+              <p style="margin: 0; color: #9ca3af; font-size: 12px;">
+                © 2026 iTutor. All rights reserved.
               </p>
             </td>
           </tr>
