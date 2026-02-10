@@ -135,13 +135,20 @@ export interface TutorResponseMetrics {
 
 // Public Calendar Data (returned by get_tutor_public_calendar RPC)
 export interface TutorPublicCalendar {
-  available_slots: TimeSlot[];
+  available_slots?: TimeSlot[]; // Legacy: Fixed time slots
+  availability_windows?: AvailabilityWindow[]; // New: Flexible booking windows
   busy_blocks: BusyBlock[];
+  allows_flexible_booking?: boolean;
 }
 
 export interface TimeSlot {
   start_at: string; // ISO timestamp
   end_at: string;
+}
+
+export interface AvailabilityWindow {
+  start_at: string; // ISO timestamp - window start
+  end_at: string; // ISO timestamp - window end
 }
 
 export interface BusyBlock {
