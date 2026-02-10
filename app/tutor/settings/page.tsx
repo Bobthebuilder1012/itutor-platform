@@ -20,6 +20,7 @@ export default function TutorSettingsPage() {
   const [email, setEmail] = useState('');
   const [school, setSchool] = useState('');
   const [country, setCountry] = useState('');
+  const [allowSameDayBookings, setAllowSameDayBookings] = useState(false);
   
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -52,6 +53,10 @@ export default function TutorSettingsPage() {
     setEmail(profile.email || '');
     setSchool(profile.school || '');
     setCountry(profile.country || '');
+    // Only load same-day bookings setting for specific test user
+    if (profile.email === 'jovangoodluck@myitutor.com') {
+      setAllowSameDayBookings(profile.allow_same_day_bookings || false);
+    }
   }, [profile, profileLoading, router]);
 
   const handleSaveProfile = async () => {
@@ -81,13 +86,18 @@ export default function TutorSettingsPage() {
         return;
       }
 
-      const updates = {
+      const updates: any = {
         username: username.trim(),
         display_name: displayName && displayName.trim() !== '' ? displayName.trim() : null,
         email,
         school: school || null,
         country,
       };
+
+      // Only allow same-day bookings toggle for specific test user
+      if (profile.email === 'jovangoodluck@myitutor.com') {
+        updates.allow_same_day_bookings = allowSameDayBookings;
+      }
 
       const { error: updateError } = await supabase
         .from('profiles')
@@ -352,7 +362,7 @@ export default function TutorSettingsPage() {
         )}
 
         {/* Mobile & Tablet: Horizontal Tabs */}
-        <div className="md:hidden mb-4">
+        <div className="md:!hidden mb-4">
           <div className="bg-white border-2 border-gray-200 rounded-xl p-1.5">
             <div className="flex overflow-x-auto scrollbar-hide gap-1">
               {sections.map((section) => (
@@ -379,7 +389,7 @@ export default function TutorSettingsPage() {
 
         <div className="flex flex-col md:flex-row gap-4 md:gap-6">
           {/* Desktop: Sidebar Navigation */}
-          <div className="hidden md:block w-52 flex-shrink-0">
+          <div className="hidden md:!block w-52 flex-shrink-0">
             <div className="bg-white border-2 border-gray-200 rounded-xl p-1.5 sticky top-6">
               <nav className="space-y-0.5">
                 {sections.map((section) => (
@@ -483,6 +493,46 @@ export default function TutorSettingsPage() {
               </label>
               <CountrySelect value={country} onChange={setCountry} />
             </div>
+
+            {/* Same-Day Bookings Toggle - Only for specific test user */}
+            {profile.email === 'jovangoodluck@myitutor.com' && (
+              <div className="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <svg className="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <label className="text-sm font-semibold text-gray-900">
+                        Allow Same-Day Bookings
+                      </label>
+                      <span className="text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full font-medium">
+                        TEST MODE
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-600">
+                      When enabled, students can book sessions on the same day without the 24-hour advance notice requirement. Useful for testing and last-minute availability.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAllowSameDayBookings(!allowSameDayBookings)}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-itutor-green focus:ring-offset-2 ${
+                      allowSameDayBookings ? 'bg-itutor-green' : 'bg-gray-200'
+                    }`}
+                    role="switch"
+                    aria-checked={allowSameDayBookings}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        allowSameDayBookings ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <button

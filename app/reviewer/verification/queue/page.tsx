@@ -70,7 +70,7 @@ export default function VerificationQueuePage() {
   const displayName = profile.full_name || profile.email?.split('@')[0] || 'Reviewer';
 
   return (
-    <DashboardLayout role="reviewer" userName={displayName}>
+    <DashboardLayout role={profile.role === 'admin' ? 'admin' : 'reviewer'} userName={displayName}>
       <div className="max-w-6xl mx-auto">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Verification Queue</h1>
         <p className="text-gray-600 mb-8">

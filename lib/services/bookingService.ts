@@ -68,19 +68,26 @@ export async function createBookingRequest(
   studentNotes?: string,
   durationMinutes: number = 60
 ): Promise<{ success: boolean; booking_id: string }> {
-  const { data, error } = await supabase.rpc('create_booking_request', {
-    p_student_id: studentId,
-    p_tutor_id: tutorId,
-    p_subject_id: subjectId,
-    p_session_type_id: sessionTypeId,
-    p_requested_start_at: requestedStartAt,
-    p_requested_end_at: requestedEndAt,
-    p_student_notes: studentNotes || null,
-    p_duration_minutes: durationMinutes
-  } as CreateBookingRequestParams & { p_duration_minutes: number });
+  const response = await fetch('/api/bookings/create', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      tutorId,
+      subjectId,
+      sessionTypeId,
+      requestedStartAt,
+      requestedEndAt,
+      studentNotes,
+      durationMinutes,
+    }),
+  });
 
-  if (error) throw error;
-  return data;
+  const result = await response.json();
+  if (!response.ok) {
+    throw new Error(result?.error || 'Failed to create booking request');
+  }
+
+  return result as { success: boolean; booking_id: string };
 }
 
 /**

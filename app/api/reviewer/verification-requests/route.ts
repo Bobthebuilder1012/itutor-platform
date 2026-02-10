@@ -32,16 +32,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check if user is a reviewer
+    // Check if user is a reviewer or admin
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('is_reviewer')
+      .select('is_reviewer, role')
       .eq('id', user.id)
       .single();
 
-    if (profileError || !profile?.is_reviewer) {
+    if (profileError || (!profile?.is_reviewer && profile?.role !== 'admin')) {
       return NextResponse.json(
-        { error: 'Access denied. Reviewer role required.' },
+        { error: 'Access denied. Reviewer or admin role required.' },
         { status: 403 }
       );
     }

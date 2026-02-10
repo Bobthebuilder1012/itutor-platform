@@ -39,6 +39,8 @@ export default function SignupPage() {
   const [usernameChecking, setUsernameChecking] = useState(false);
   const [usernameAvailable, setUsernameAvailable] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Debounced username check
   useEffect(() => {
@@ -154,7 +156,11 @@ export default function SignupPage() {
           normalizedMessage.includes('user already registered') ||
           normalizedMessage.includes('email already');
         if (isEmailInUse) {
-          setError('This email is already in use. Please sign in instead.');
+          const redirectUrl = searchParams.get('redirect');
+          const redirectParam = redirectUrl ? `&redirect=${encodeURIComponent(redirectUrl)}` : '';
+          router.push(`/login?reason=email_in_use&email=${encodeURIComponent(email)}${redirectParam}`);
+          setLoading(false);
+          return;
         } else {
           setError(signUpError.message);
         }
@@ -165,7 +171,9 @@ export default function SignupPage() {
       // If identities is empty, Supabase indicates the email already exists
       const identitiesCount = authData.user?.identities?.length ?? 0;
       if (identitiesCount === 0) {
-        setError('This email is already in use. Please sign in instead.');
+        const redirectUrl = searchParams.get('redirect');
+        const redirectParam = redirectUrl ? `&redirect=${encodeURIComponent(redirectUrl)}` : '';
+        router.push(`/login?reason=email_in_use&email=${encodeURIComponent(email)}${redirectParam}`);
         setLoading(false);
         return;
       }
@@ -252,6 +260,34 @@ export default function SignupPage() {
         }
       }
 
+      // Send welcome email immediately and enqueue follow-up sequence
+      try {
+        // Send welcome email right away
+        await fetch('/api/send-welcome-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: authData.user.id })
+        });
+
+        // Enqueue follow-up emails (starting at stage 1, day 1)
+        const nextSendAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // +1 day
+        const { error: queueError } = await supabase
+          .from('onboarding_email_queue')
+          .insert({
+            user_id: authData.user.id,
+            user_type: role,
+            stage: 1,
+            next_send_at: nextSendAt.toISOString(),
+            last_sent_at: new Date().toISOString()
+          });
+        
+        if (queueError) {
+          console.error('Failed to enqueue onboarding email:', queueError);
+        }
+      } catch (queueErr) {
+        console.error('Error with onboarding email:', queueErr);
+      }
+
       // Email confirmed or confirmation not required - proceed to next step
       if (role === 'student') {
         // If there's a redirect URL, go there after successful signup
@@ -272,7 +308,7 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-white px-3 py-4 sm:px-4 sm:py-8 relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center bg-black px-3 py-4 sm:px-4 sm:py-8 relative overflow-hidden">
       <div className="absolute inset-0 opacity-5">
         <div className="absolute top-20 left-10 w-72 h-72 bg-itutor-green rounded-full blur-3xl animate-pulse"></div>
         <div className="absolute bottom-20 right-10 w-72 h-72 bg-emerald-500 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
@@ -286,7 +322,13 @@ export default function SignupPage() {
             className="h-16 sm:h-24 md:h-32 w-auto mx-auto mb-3 sm:mb-4 md:mb-6 drop-shadow-2xl"
           />
           <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-itutor-white mb-1 sm:mb-2">Create your iTutor account</h1>
-          <p className="text-sm sm:text-base text-itutor-muted">Sign up as a student to get started.</p>
+          <p className="text-sm sm:text-base text-itutor-muted mb-3">Sign up as a student to get started.</p>
+          <a 
+            href="/signup/tutor" 
+            className="inline-block text-base sm:text-lg font-semibold text-itutor-green hover:text-emerald-400 transition-colors underline underline-offset-4 decoration-2 hover:scale-105 transform duration-200"
+          >
+            or sign up as a tutor instead →
+          </a>
         </div>
 
         <form onSubmit={handleSignup} className="space-y-3 sm:space-y-4 md:space-y-5">
@@ -389,32 +431,70 @@ export default function SignupPage() {
             <label htmlFor="password" className="block text-xs sm:text-sm font-medium text-itutor-white mb-1 sm:mb-2">
               Password
             </label>
-            <input
-              type="password"
-              id="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 sm:px-4 sm:py-3 text-sm sm:text-base bg-gray-900/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition-all duration-200 placeholder:text-gray-400 text-itutor-white backdrop-blur-sm hover:bg-gray-900/70"
-              placeholder="Enter a secure password"
-              required
-              disabled={loading}
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                id="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-3 py-2 sm:px-4 sm:py-3 pr-9 sm:pr-10 text-sm sm:text-base bg-gray-900/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition-all duration-200 placeholder:text-gray-400 text-itutor-white backdrop-blur-sm hover:bg-gray-900/70"
+                placeholder="Enter a secure password"
+                required
+                disabled={loading}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300 transition-colors"
+                tabIndex={-1}
+              >
+                {showPassword ? (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  </svg>
+                )}
+              </button>
+            </div>
           </div>
 
           <div>
             <label htmlFor="confirmPassword" className="block text-xs sm:text-sm font-medium text-itutor-white mb-1 sm:mb-2">
               Confirm password
             </label>
-            <input
-              type="password"
-              id="confirmPassword"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full px-3 py-2 sm:px-4 sm:py-3 text-sm sm:text-base bg-gray-900/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition-all duration-200 placeholder:text-gray-400 text-itutor-white backdrop-blur-sm hover:bg-gray-900/70"
-              placeholder="Re-enter your password"
-              required
-              disabled={loading}
-            />
+            <div className="relative">
+              <input
+                type={showConfirmPassword ? "text" : "password"}
+                id="confirmPassword"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="w-full px-3 py-2 sm:px-4 sm:py-3 pr-9 sm:pr-10 text-sm sm:text-base bg-gray-900/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition-all duration-200 placeholder:text-gray-400 text-itutor-white backdrop-blur-sm hover:bg-gray-900/70"
+                placeholder="Re-enter your password"
+                required
+                disabled={loading}
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300 transition-colors"
+                tabIndex={-1}
+              >
+                {showConfirmPassword ? (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  </svg>
+                )}
+              </button>
+            </div>
           </div>
 
           <div className="flex items-start gap-3">

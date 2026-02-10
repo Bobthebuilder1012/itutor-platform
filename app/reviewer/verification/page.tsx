@@ -47,7 +47,7 @@ export default function ReviewerVerificationPage() {
   useEffect(() => {
     if (profileLoading) return;
 
-    if (!profile || !profile.is_reviewer) {
+    if (!profile || (!profile.is_reviewer && profile.role !== 'admin')) {
       router.push('/login');
       return;
     }
@@ -175,7 +175,7 @@ export default function ReviewerVerificationPage() {
   const displayName = getDisplayName(profile);
 
   return (
-    <DashboardLayout role="reviewer" userName={displayName}>
+    <DashboardLayout role={profile.role === 'admin' ? 'admin' : 'reviewer'} userName={displayName}>
       <div className="space-y-6">
         {/* Header */}
         <div className="mb-8">

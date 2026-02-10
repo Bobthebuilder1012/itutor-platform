@@ -39,65 +39,64 @@ export async function POST(request: NextRequest) {
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
+  <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f9fafb; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { text-align: center; padding: 30px 0; background: #000000; border-radius: 8px 8px 0 0; }
+    .logo { height: 60px; width: auto; display: block; margin: 0 auto; }
+    .content { background: #ffffff; padding: 40px; border-radius: 0 0 8px 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .title { font-size: 24px; color: #1f2937; margin-bottom: 20px; font-weight: 600; }
+    .text { font-size: 16px; color: #4b5563; line-height: 1.6; margin-bottom: 20px; }
+    .code-box { background: linear-gradient(135deg, #199358 0%, #157a48 100%); border-radius: 12px; padding: 30px; text-align: center; margin: 30px 0; }
+    .code-label { margin: 0 0 10px 0; color: #ffffff; font-size: 14px; font-weight: 500; text-transform: uppercase; letter-spacing: 1px; }
+    .code { margin: 0; color: #ffffff; font-size: 42px; font-weight: bold; letter-spacing: 8px; font-family: 'Courier New', monospace; }
+    .footer { text-align: center; padding: 30px 0; color: #6b7280; font-size: 14px; }
+    .social-links { margin: 20px 0; }
+    .social-links a { display: inline-block; margin: 0 8px; }
+  </style>
 </head>
-<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f3f4f6;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 40px 20px;">
-    <tr>
-      <td align="center">
-        <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-          
-          <!-- Header -->
-          <tr>
-            <td style="background: linear-gradient(135deg, #1f2937 0%, #111827 100%); padding: 40px 30px; text-align: center; border-radius: 16px 16px 0 0;">
-              <h1 style="margin: 0; color: #10b981; font-size: 32px; font-weight: bold;">iTutor</h1>
-              <p style="margin: 10px 0 0 0; color: #d1d5db; font-size: 16px;">Welcome to Your Learning Journey</p>
-            </td>
-          </tr>
+<body>
+  <div class="container">
+    <div class="header">
+      <img src="https://myitutor.com/assets/logo/itutor-logo-dark.png" alt="iTutor" class="logo" style="height: 60px; width: auto; display: block; margin: 0 auto;" />
+    </div>
+    <div class="content">
+      <h1 class="title">Verify Your Email</h1>
+      <p class="text">
+        Thank you for signing up with iTutor! To get started, please verify your email address by entering the code below:
+      </p>
+      
+      <div class="code-box">
+        <p class="code-label">Your Verification Code</p>
+        <p class="code">${code}</p>
+      </div>
 
-          <!-- Content -->
-          <tr>
-            <td style="padding: 40px 30px;">
-              <h2 style="margin: 0 0 20px 0; color: #111827; font-size: 24px;">Verify Your Email</h2>
-              
-              <p style="margin: 0 0 20px 0; color: #4b5563; font-size: 16px;">
-                Thank you for signing up! Enter this code to verify your email:
-              </p>
+      <p class="text">
+        Enter this code on the verification page to complete your signup. This code will expire in <strong>1 hour</strong>.
+      </p>
 
-              <!-- Code Box -->
-              <table width="100%" cellpadding="0" cellspacing="0" style="margin: 30px 0;">
-                <tr>
-                  <td align="center" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); border-radius: 12px; padding: 30px;">
-                    <p style="margin: 0 0 10px 0; color: #ffffff; font-size: 14px; font-weight: 500; text-transform: uppercase;">Your Verification Code</p>
-                    <p style="margin: 0; color: #ffffff; font-size: 42px; font-weight: bold; letter-spacing: 8px; font-family: 'Courier New', monospace;">${code}</p>
-                  </td>
-                </tr>
-              </table>
-
-              <p style="margin: 20px 0; color: #4b5563; font-size: 14px;">
-                This code expires in <strong>10 minutes</strong>.
-              </p>
-
-              <p style="margin: 30px 0 0 0; color: #6b7280; font-size: 13px;">
-                If you didn't create an account, you can safely ignore this email.
-              </p>
-            </td>
-          </tr>
-
-          <!-- Footer -->
-          <tr>
-            <td style="background-color: #f9fafb; padding: 30px; text-align: center; border-top: 1px solid #e5e7eb;">
-              <p style="margin: 0; color: #9ca3af; font-size: 11px;">
-                © iTutor. All rights reserved.
-              </p>
-            </td>
-          </tr>
-
-        </table>
-      </td>
-    </tr>
-  </table>
+      <p class="text" style="margin-top: 30px; padding-top: 30px; border-top: 1px solid #e5e7eb; color: #6b7280; font-size: 14px;">
+        If you didn't create an account with iTutor, you can safely ignore this email.
+      </p>
+    </div>
+    <div class="footer">
+      <div class="social-links">
+        <a href="https://www.facebook.com/share/1E91o2u1yM/">
+          <img src="https://img.icons8.com/ios-filled/50/6b7280/facebook-new.png" alt="Facebook" style="width: 28px; height: 28px; filter: grayscale(100%);" />
+        </a>
+        <a href="https://www.instagram.com/myitutor?igsh=MXgyNjdrMTR1ampyag%3D%3D&utm_source=qr">
+          <img src="https://img.icons8.com/ios-filled/50/6b7280/instagram-new.png" alt="Instagram" style="width: 28px; height: 28px; filter: grayscale(100%);" />
+        </a>
+        <a href="https://www.linkedin.com/company/myitutor/">
+          <img src="https://img.icons8.com/ios-filled/50/6b7280/linkedin.png" alt="LinkedIn" style="width: 28px; height: 28px; filter: grayscale(100%);" />
+        </a>
+      </div>
+      <p style="margin-top: 15px; color: #6b7280;">Trinidad & Tobago</p>
+      <p style="margin-top: 10px; color: #9ca3af; font-size: 13px;">© iTutor. Nora Digital, Ltd.</p>
+    </div>
+  </div>
 </body>
 </html>
         `,

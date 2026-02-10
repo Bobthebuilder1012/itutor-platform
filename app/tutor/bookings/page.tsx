@@ -12,7 +12,7 @@ import { Booking, BookingStatus, BookingWithDetails } from '@/lib/types/booking'
 import { formatDateTime, getRelativeTime } from '@/lib/utils/calendar';
 import { getBookingStatusColor, getBookingStatusLabel } from '@/lib/types/booking';
 
-type TabType = 'pending' | 'confirmed' | 'past' | 'all';
+type TabType = 'all' | 'pending' | 'confirmed' | 'cancelled' | 'past';
 
 export default function TutorBookingsPage() {
   const { profile, loading: profileLoading } = useProfile();
@@ -20,7 +20,8 @@ export default function TutorBookingsPage() {
   
   const [bookings, setBookings] = useState<BookingWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<TabType>('pending');
+  const [activeTab, setActiveTab] = useState<TabType>('all');
+  const [paidClassesEnabled, setPaidClassesEnabled] = useState<boolean>(false);
 
   useEffect(() => {
     if (profileLoading) return;
@@ -40,10 +41,10 @@ export default function TutorBookingsPage() {
     try {
       const data = await getTutorBookings(profile.id);
       
-      // Fetch student details and subject names
+      // Fetch student details, subject names, and session data
       const enrichedBookings = await Promise.all(
         data.map(async (booking) => {
-          const [studentRes, subjectRes] = await Promise.all([
+          const [studentRes, subjectRes, sessionRes] = await Promise.all([
             supabase
               .from('profiles')
               .select('username, display_name, full_name')
@@ -53,6 +54,11 @@ export default function TutorBookingsPage() {
               .from('subjects')
               .select('name, label')
               .eq('id', booking.subject_id)
+              .single(),
+            supabase
+              .from('sessions')
+              .select('id, status, scheduled_start_at, scheduled_end_at, duration_minutes')
+              .eq('booking_id', booking.id)
               .single()
           ]);
 
@@ -60,8 +66,9 @@ export default function TutorBookingsPage() {
             ...booking,
             student_name: studentRes.data ? getDisplayName(studentRes.data) : 'Unknown Student',
             student_username: studentRes.data?.username,
-            subject_name: subjectRes.data?.label || subjectRes.data?.name || 'Unknown Subject'
-          } as BookingWithDetails;
+            subject_name: subjectRes.data?.label || subjectRes.data?.name || 'Unknown Subject',
+            session: sessionRes.data || null
+          } as BookingWithDetails & { session: any };
         })
       );
 
@@ -73,30 +80,74 @@ export default function TutorBookingsPage() {
     }
   }
 
+  const isBookingInProgress = (booking: any) => {
+    if (booking.status === 'CONFIRMED' && booking.session) {
+      const now = new Date();
+      const session = booking.session;
+      const sessionStart = new Date(session.scheduled_start_at);
+      const sessionEnd = new Date(session.scheduled_end_at || new Date(sessionStart.getTime() + (session.duration_minutes || 60) * 60000));
+      
+      return now >= sessionStart && now <= sessionEnd;
+    }
+    return false;
+  };
+
+  const isBookingPast = (booking: any) => {
+    if (booking.status === 'COMPLETED') return true;
+    
+    // Don't count in-progress sessions as past
+    if (isBookingInProgress(booking)) return false;
+    
+    // Check if booking has an associated session
+    if (booking.status === 'CONFIRMED' && booking.session) {
+      const now = new Date();
+      const session = booking.session;
+      const sessionStart = new Date(session.scheduled_start_at);
+      const sessionEnd = new Date(session.scheduled_end_at || new Date(sessionStart.getTime() + (session.duration_minutes || 60) * 60000));
+      
+      // Only consider it past if the session has ended
+      return now > sessionEnd;
+    }
+    
+    // Fallback for confirmed bookings without sessions
+    if (booking.status === 'CONFIRMED') {
+      const endTime = booking.confirmed_end_at || booking.requested_end_at;
+      if (endTime) {
+        return new Date(endTime) < new Date();
+      }
+    }
+    
+    return false;
+  };
+
   const filteredBookings = bookings.filter(booking => {
     if (activeTab === 'all') return true;
     if (activeTab === 'pending') {
       return booking.status === 'PENDING' || booking.status === 'COUNTER_PROPOSED';
     }
     if (activeTab === 'confirmed') {
-      return booking.status === 'CONFIRMED';
+      return booking.status === 'CONFIRMED' && !isBookingPast(booking);
+    }
+    if (activeTab === 'cancelled') {
+      return booking.status === 'CANCELLED' || booking.status === 'DECLINED';
     }
     if (activeTab === 'past') {
-      return booking.status === 'COMPLETED' || booking.status === 'DECLINED' || booking.status === 'CANCELLED';
+      return isBookingPast(booking);
     }
     return true;
   });
 
   const tabs: { key: TabType; label: string; count: number; badge?: boolean }[] = [
+    { key: 'all', label: 'All', count: bookings.length },
     { 
       key: 'pending', 
       label: 'Pending', 
       count: bookings.filter(b => b.status === 'PENDING' || b.status === 'COUNTER_PROPOSED').length,
       badge: true
     },
-    { key: 'confirmed', label: 'Confirmed', count: bookings.filter(b => b.status === 'CONFIRMED').length },
-    { key: 'past', label: 'Past', count: bookings.filter(b => b.status === 'COMPLETED' || b.status === 'DECLINED' || b.status === 'CANCELLED').length },
-    { key: 'all', label: 'All', count: bookings.length }
+    { key: 'confirmed', label: 'Confirmed', count: bookings.filter(b => b.status === 'CONFIRMED' && !isBookingPast(b)).length },
+    { key: 'cancelled', label: 'Cancelled', count: bookings.filter(b => b.status === 'CANCELLED' || b.status === 'DECLINED').length },
+    { key: 'past', label: 'Past', count: bookings.filter(b => isBookingPast(b)).length }
   ];
 
   if (profileLoading || !profile) {
@@ -178,6 +229,46 @@ export default function TutorBookingsPage() {
             {filteredBookings.map(booking => {
               const displayTime = booking.confirmed_start_at || booking.requested_start_at;
               const isPending = booking.status === 'PENDING' || booking.status === 'COUNTER_PROPOSED';
+              const now = new Date();
+              
+              // Determine display status
+              let displayStatus = getBookingStatusLabel(booking.status);
+              let statusColor = getBookingStatusColor(booking.status);
+              
+              // Override status for confirmed bookings with sessions
+              if (booking.status === 'CONFIRMED' && (booking as any).session) {
+                const session = (booking as any).session;
+                const sessionStart = new Date(session.scheduled_start_at);
+                const sessionEnd = new Date(session.scheduled_end_at || new Date(sessionStart.getTime() + (session.duration_minutes || 60) * 60000));
+                
+                // Check if session is in progress
+                if (now >= sessionStart && now <= sessionEnd) {
+                  displayStatus = 'In Progress';
+                  statusColor = 'bg-purple-100 text-purple-700 border-purple-300';
+                }
+                // Check if session has ended
+                else if (now > sessionEnd) {
+                  // Show appropriate status based on session status
+                  if (session.status === 'COMPLETED_ASSUMED' || session.status === 'COMPLETED') {
+                    displayStatus = 'Completed';
+                    statusColor = 'bg-green-100 text-green-700 border-green-300';
+                  } else if (session.status === 'NO_SHOW_STUDENT') {
+                    displayStatus = 'No Show';
+                    statusColor = 'bg-orange-100 text-orange-700 border-orange-300';
+                  } else if (session.status === 'CANCELLED') {
+                    displayStatus = 'Cancelled';
+                    statusColor = 'bg-red-100 text-red-700 border-red-300';
+                  } else {
+                    displayStatus = 'Past (Not Completed)';
+                    statusColor = 'bg-gray-100 text-gray-700 border-gray-300';
+                  }
+                }
+              }
+              // For confirmed bookings without sessions that have passed
+              else if (booking.status === 'CONFIRMED' && displayTime && new Date(displayTime) < now) {
+                displayStatus = 'Past (Not Completed)';
+                statusColor = 'bg-gray-100 text-gray-700 border-gray-300';
+              }
               
               return (
                 <Link
@@ -241,11 +332,22 @@ export default function TutorBookingsPage() {
                           </svg>
                           {getRelativeTime(displayTime)}
                         </span>
+                        {booking.duration_minutes && (
+                          <span className="flex items-center gap-1 font-medium text-gray-700">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            {booking.duration_minutes >= 60 
+                              ? `${Math.floor(booking.duration_minutes / 60)}h ${booking.duration_minutes % 60 > 0 ? `${booking.duration_minutes % 60}m` : ''}`
+                              : `${booking.duration_minutes}m`
+                            }
+                          </span>
+                        )}
                         <span className="flex items-center gap-1 font-semibold text-green-600">
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
-                          ${booking.price_ttd} TTD
+                          ${paidClassesEnabled ? booking.price_ttd : 0} TTD
                         </span>
                       </div>
 
@@ -260,9 +362,9 @@ export default function TutorBookingsPage() {
                     <div className="flex items-center gap-4">
                       <span className={`
                         px-3 py-1.5 rounded-lg text-sm font-semibold border
-                        ${getBookingStatusColor(booking.status)}
+                        ${statusColor}
                       `}>
-                        {getBookingStatusLabel(booking.status)}
+                        {displayStatus}
                       </span>
                       
                       <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

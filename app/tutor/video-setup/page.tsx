@@ -100,9 +100,10 @@ export default function VideoSetupPage() {
 
     setCheckingSessions(true);
     try {
-      const { count, error } = await supabase
+      // Fetch sessions with booking status to filter out cancelled bookings
+      const { data, error } = await supabase
         .from('sessions')
-        .select('id', { count: 'exact', head: true })
+        .select('id, bookings!fk_sessions_booking(status)')
         .eq('tutor_id', profile.id)
         .in('status', ['SCHEDULED', 'JOIN_OPEN'])
         .gte('scheduled_start_at', new Date().toISOString());
@@ -110,7 +111,12 @@ export default function VideoSetupPage() {
       if (error) {
         console.error('Error checking sessions:', error);
       } else {
-        setFutureSessions(count || 0);
+        // Filter out sessions with cancelled or declined bookings
+        const activeSessions = (data || []).filter((session: any) => 
+          session.bookings?.status !== 'CANCELLED' && 
+          session.bookings?.status !== 'DECLINED'
+        );
+        setFutureSessions(activeSessions.length);
       }
     } catch (error) {
       console.error('Error checking sessions:', error);
@@ -121,6 +127,9 @@ export default function VideoSetupPage() {
 
   async function handleConnect(provider: VideoProvider) {
     if (!profile) return;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/96e0dc54-0d29-41a7-8439-97ee7ad5934e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/tutor/video-setup/page.tsx:123',message:'Connect button clicked',data:{provider,tutorId:profile.id,hasExistingConnection:!!connection,futureSessions},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,B,C,D'})}).catch(()=>{});
+    // #endregion
     // Check if tutor has future sessions
     if (connection && futureSessions > 0) {
       alert(
@@ -510,6 +519,33 @@ export default function VideoSetupPage() {
             </ul>
             <p className="mt-3 font-semibold text-amber-800">
               A video provider connection is required to ensure all sessions have working meeting links for your students.
+            </p>
+          </div>
+        </div>
+
+        {/* Troubleshooting Section */}
+        <div className="mt-6 p-4 bg-purple-50 border-2 border-purple-300 rounded-xl">
+          <h3 className="font-bold text-gray-900 mb-2 flex items-center gap-2">
+            <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Troubleshooting: Meeting Link Not Generating?
+          </h3>
+          <div className="space-y-2 text-sm text-gray-800">
+            <p>If you see "Meeting link is being generated..." for a long time:</p>
+            <ol className="space-y-1.5 ml-4 list-decimal">
+              <li><strong>Click "Retry Now"</strong> button on the session page</li>
+              <li>If that doesn't work, <strong>disconnect and reconnect your video provider:</strong>
+                <ul className="ml-4 mt-1 space-y-1">
+                  <li>• Click "Disconnect" button above</li>
+                  <li>• Click "Connect Google Meet" or "Connect Zoom"</li>
+                  <li>• Complete the authorization</li>
+                  <li>• Go back to your session and click "Retry Now"</li>
+                </ul>
+              </li>
+            </ol>
+            <p className="mt-2 text-purple-800 font-medium">
+              💡 This usually happens when your authorization token expires. Reconnecting refreshes it.
             </p>
           </div>
         </div>

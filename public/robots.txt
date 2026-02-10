@@ -1,0 +1,14 @@
+# Allow all crawlers
+User-agent: *
+Allow: /
+
+# Explicitly allow Facebook's crawler
+User-agent: facebookexternalhit
+Allow: /
+
+# Allow Twitter's crawler
+User-agent: Twitterbot
+Allow: /
+
+# Sitemap location
+Sitemap: https://www.myitutor.com/sitemap.xml

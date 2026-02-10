@@ -36,6 +36,8 @@ export default function FindStudentsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
   const [selectedFormLevel, setSelectedFormLevel] = useState<string>('');
+  const [selectedSchool, setSelectedSchool] = useState<string>('');
+  const [availableSchools, setAvailableSchools] = useState<string[]>([]);
 
   useEffect(() => {
     if (loading) return;
@@ -53,10 +55,10 @@ export default function FindStudentsPage() {
     try {
       console.log('=== STARTING STUDENT FETCH ===');
       
-      // Fetch all student profiles with subjects_of_study array
+      // Fetch all student profiles with subjects_of_study array and school
       const { data: studentProfiles, error: profilesError } = await supabase
         .from('profiles')
-        .select('id, full_name, username, display_name, avatar_url, institution_id, form_level, country, bio, subjects_of_study')
+        .select('id, full_name, username, display_name, avatar_url, school, institution_id, form_level, country, bio, subjects_of_study')
         .eq('role', 'student');
 
       if (profilesError) {
@@ -177,6 +179,10 @@ export default function FindStudentsPage() {
       console.log('Students with subjects:', studentsWithData.length);
       console.log('Sample student data:', studentsWithData.slice(0, 2));
 
+      // Extract unique schools for filter
+      const schools = [...new Set(studentsWithData.map(s => s.school).filter(Boolean))] as string[];
+      setAvailableSchools(schools.sort());
+
       setStudents(studentsWithData);
     } catch (error) {
       console.error('Error fetching students:', error);
@@ -217,6 +223,11 @@ export default function FindStudentsPage() {
       );
     }
 
+    // Filter by school
+    if (selectedSchool) {
+      filtered = filtered.filter(student => student.school === selectedSchool);
+    }
+
     // Sort: Prioritize students studying tutor's subjects, then by newest
     if (profile?.subjects_of_study && profile.subjects_of_study.length > 0) {
       filtered.sort((a, b) => {
@@ -236,7 +247,7 @@ export default function FindStudentsPage() {
 
     console.log('After filtering:', filtered.length);
     return filtered;
-  }, [students, searchQuery, selectedSubjects, selectedFormLevel, profile]);
+  }, [students, searchQuery, selectedSubjects, selectedFormLevel, selectedSchool, profile]);
 
   if (loading || !profile) {
     return (
@@ -274,7 +285,7 @@ export default function FindStudentsPage() {
           </div>
 
           {/* Filters */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-white mb-2">
                 Filter by Subject Interests
@@ -284,6 +295,22 @@ export default function FindStudentsPage() {
                 onChange={setSelectedSubjects}
                 placeholder="Select subjects to filter..."
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-white mb-2">
+                School
+              </label>
+              <select
+                value={selectedSchool}
+                onChange={(e) => setSelectedSchool(e.target.value)}
+                className="w-full px-4 py-2.5 bg-white border-2 border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition"
+              >
+                <option value="">Any School</option>
+                {availableSchools.map(school => (
+                  <option key={school} value={school}>{school}</option>
+                ))}
+              </select>
             </div>
 
             <div>
@@ -308,12 +335,13 @@ export default function FindStudentsPage() {
           </div>
 
           {/* Clear Filters */}
-          {(searchQuery || selectedSubjects.length > 0 || selectedFormLevel) && (
+          {(searchQuery || selectedSubjects.length > 0 || selectedFormLevel || selectedSchool) && (
             <button
               onClick={() => {
                 setSearchQuery('');
                 setSelectedSubjects([]);
                 setSelectedFormLevel('');
+                setSelectedSchool('');
               }}
               className="mt-4 text-sm text-itutor-green hover:text-emerald-400 font-medium transition-colors"
             >

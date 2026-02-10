@@ -1,64 +1,25 @@
-═══════════════════════════════════════════════════════════
-  🎯 BOOKING SYSTEM FIXES - 3-MINUTE QUICK FIX
-═══════════════════════════════════════════════════════════
+========================================
+QUICK FIX: Apply This SQL to Supabase
+========================================
 
-✅ ISSUES FIXED:
-1. Error adding overnight teaching hours (10:45 PM to 5:00 AM)
-2. Reason field now optional for unavailability blocks
-3. Students can now see tutor calendars
+1. Go to: https://supabase.com/dashboard/project/nfkrfciozjxrodkusrhh/sql/new
 
-═══════════════════════════════════════════════════════════
+2. Copy EVERYTHING from FIX_TIMEZONE_AVAILABILITY.sql and paste it into the SQL editor
 
-📋 DO THIS RIGHT NOW (takes 2 minutes):
+3. Click "Run" (or press Ctrl+Enter)
 
-1. Open Supabase Dashboard → SQL Editor
-2. Copy ALL of FIX_BOOKING_SYSTEM.sql
-3. Paste and click "Run"
-4. Wait for ✓ checkmarks in output
-5. Stop dev server (Ctrl+C)
-6. Restart: npm run dev
-7. Hard refresh browser (Ctrl+Shift+R)
+4. You should see: "Success. No rows returned"
 
-═══════════════════════════════════════════════════════════
+5. Refresh your browser where the tutor calendar is showing
 
-🧪 TEST IT:
+6. The times should now match!
 
-AS TUTOR:
-  • Go to Availability
-  • Add hours: Monday 10:45 PM to 5:00 AM
-  • Should save with NO errors ✅
+========================================
 
-AS STUDENT:
-  • Go to Find Tutors
-  • Click on a tutor profile
-  • Scroll to calendar
-  • Should see green "Available" slots ✅
+WHAT THIS DOES:
+- Fixes the timezone conversion bug
+- Tutors entering "9:00 AM - 5:00 PM" will now show as "9:00 AM - 5:00 PM" to students
+- Before: Times were treated as UTC and converted (4 hour offset)
+- After: Times are treated as Trinidad time (correct)
 
-═══════════════════════════════════════════════════════════
-
-❌ IF IT STILL DOESN'T WORK:
-
-Run TEST_CALENDAR_SYSTEM.sql and share the output.
-
-═══════════════════════════════════════════════════════════
-
-📖 READ THESE FOR MORE HELP:
-  • FIXES_SUMMARY.md - Complete guide
-  • BOOKING_FIXES_README.md - Detailed docs
-  • TEST_CALENDAR_SYSTEM.sql - Debug script
-
-═══════════════════════════════════════════════════════════
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+========================================

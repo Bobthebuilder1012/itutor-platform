@@ -1,17 +1,110 @@
 'use client';
 
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Session } from '@/lib/types/sessions';
 
 type SessionJoinButtonProps = {
   session: Session;
   userRole: 'student' | 'tutor';
+  onRetrySuccess?: () => void;
 };
 
-export default function SessionJoinButton({ session, userRole }: SessionJoinButtonProps) {
+export default function SessionJoinButton({ session, userRole, onRetrySuccess }: SessionJoinButtonProps) {
+  const [retrying, setRetrying] = useState(false);
+  const [needsReconnect, setNeedsReconnect] = useState(false);
+  const router = useRouter();
+  const now = new Date();
+  const scheduledStart = new Date(session.scheduled_start_at);
+  const scheduledEnd = new Date(scheduledStart.getTime() + session.duration_minutes * 60000);
+  const hasSessionEnded = now > scheduledEnd;
+
+  async function handleRetryMeetingLink() {
+    setRetrying(true);
+    setNeedsReconnect(false);
+    try {
+      const response = await fetch('/api/sessions/retry-meeting-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: session.id })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        // Check if it's an authentication error
+        if (response.status === 401 || data.action === 'disconnect_reconnect') {
+          setNeedsReconnect(true);
+          throw new Error('Video provider needs reconnection');
+        }
+        throw new Error(data.error || 'Failed to create meeting link');
+      }
+
+      if (onRetrySuccess) {
+        onRetrySuccess();
+      } else {
+        window.location.reload();
+      }
+    } catch (error: any) {
+      console.error('Error retrying meeting link:', error);
+      if (!needsReconnect) {
+        alert(`Failed to create meeting link: ${error.message}`);
+      }
+    } finally {
+      setRetrying(false);
+    }
+  }
+
+  function handleReconnect() {
+    router.push('/tutor/video-setup');
+  }
+
   if (!session.join_url) {
     return (
       <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-6">
-        <p className="text-gray-800">Meeting link is being generated...</p>
+        <div className="flex items-center justify-between">
+          <p className="text-gray-800 font-medium">
+            {needsReconnect ? 'Video provider needs reconnection' : 'Meeting link is being generated...'}
+          </p>
+          {userRole === 'tutor' && (
+            <div className="flex gap-2">
+              {needsReconnect ? (
+                <button
+                  onClick={handleReconnect}
+                  className="px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition-colors"
+                >
+                  Reconnect Video Provider
+                </button>
+              ) : (
+                <button
+                  onClick={handleRetryMeetingLink}
+                  disabled={retrying}
+                  className="px-6 py-2.5 bg-yellow-600 hover:bg-yellow-700 disabled:bg-yellow-400 text-white font-semibold rounded-lg transition-colors"
+                >
+                  {retrying ? 'Retrying...' : 'Retry Now'}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (hasSessionEnded) {
+    return (
+      <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-6">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="p-3 bg-gray-400 rounded-xl">
+            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-gray-900">Session Ended</h3>
+            <p className="text-sm text-gray-600">The meeting link is no longer available</p>
+          </div>
+        </div>
       </div>
     );
   }

@@ -343,7 +343,7 @@ export default function ParentSettingsPage() {
         )}
 
         {/* Mobile & Tablet: Horizontal Tabs */}
-        <div className="md:hidden mb-4">
+        <div className="md:!hidden mb-4">
           <div className="bg-white border-2 border-gray-200 rounded-xl p-1.5">
             <div className="flex overflow-x-auto scrollbar-hide gap-1">
               {sections.map((section) => (
@@ -370,7 +370,7 @@ export default function ParentSettingsPage() {
 
         <div className="flex flex-col md:flex-row gap-4 md:gap-6">
           {/* Desktop: Sidebar Navigation */}
-          <div className="hidden md:block w-52 flex-shrink-0">
+          <div className="hidden md:!block w-52 flex-shrink-0">
             <div className="bg-white border-2 border-gray-200 rounded-xl p-1.5 sticky top-6">
               <nav className="space-y-0.5">
                 {sections.map((section) => (

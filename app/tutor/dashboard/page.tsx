@@ -11,7 +11,6 @@ import AvatarUploadModal from '@/components/AvatarUploadModal';
 import AddSubjectModal from '@/components/tutor/AddSubjectModal';
 import EditSubjectModal from '@/components/tutor/EditSubjectModal';
 import EditProfileModal from '@/components/EditProfileModal';
-import UniversalSearchBar from '@/components/UniversalSearchBar';
 import SentOffersList from '@/components/offers/SentOffersList';
 import VideoProviderRequiredModal from '@/components/VideoProviderRequiredModal';
 import ShareProfileModal from '@/components/ShareProfileModal';
@@ -19,6 +18,8 @@ import { useAvatarUpload } from '@/lib/hooks/useAvatarUpload';
 import { Session, TutorSubject, Subject, Rating } from '@/lib/types/database';
 import { Area } from '@/lib/utils/imageCrop';
 import { getDisplayName } from '@/lib/utils/displayName';
+import PaidClassesLockNotice from '@/components/tutor/PaidClassesLockNotice';
+import TutorReviewsModal from '@/components/tutor/TutorReviewsModal';
 
 type TutorSubjectWithSubject = TutorSubject & {
   subjects?: Subject;
@@ -40,6 +41,7 @@ export default function TutorDashboard() {
   const [averageRating, setAverageRating] = useState(0);
   const [sessionsTaught, setSessionsTaught] = useState(0);
   const [loadingData, setLoadingData] = useState(true);
+  const [reviewsModalOpen, setReviewsModalOpen] = useState(false);
   const [avatarModalOpen, setAvatarModalOpen] = useState(false);
   const [addSubjectModalOpen, setAddSubjectModalOpen] = useState(false);
   const [editSubjectModalOpen, setEditSubjectModalOpen] = useState(false);
@@ -51,6 +53,7 @@ export default function TutorDashboard() {
   const [verifiedSubjects, setVerifiedSubjects] = useState<any[]>([]);
   const [csecSubjects, setCsecSubjects] = useState<any[]>([]);
   const [capeSubjects, setCapeSubjects] = useState<any[]>([]);
+  const [paidClassesEnabled, setPaidClassesEnabled] = useState<boolean>(false);
 
   useEffect(() => {
     if (testMode) {
@@ -111,7 +114,18 @@ export default function TutorDashboard() {
 
     checkOnboardingComplete();
     fetchVerifiedSubjects();
+    fetchPaidClassesFlag();
   }, [profile, loading, router, testMode]);
+
+  async function fetchPaidClassesFlag() {
+    try {
+      const res = await fetch('/api/feature-flags', { cache: 'no-store' });
+      const data = await res.json();
+      setPaidClassesEnabled(Boolean(data?.paidClassesEnabled));
+    } catch {
+      setPaidClassesEnabled(false);
+    }
+  }
 
   async function fetchVerifiedSubjects() {
     if (!profile?.id) return;
@@ -139,12 +153,12 @@ export default function TutorDashboard() {
       const [sessionsRes, tutorSubjectsRes, allSubjectsRes, ratingsRes, videoProviderRes] = await Promise.all([
         supabase
           .from('sessions')
-          .select('*, bookings(subject_id)')
+          .select('*, bookings(subject_id, status)')
           .eq('tutor_id', profile.id)
           .gte('scheduled_start_at', now)
           .in('status', ['SCHEDULED', 'JOIN_OPEN'])
           .order('scheduled_start_at', { ascending: true })
-          .limit(5),
+          .limit(10),
         supabase
           .from('tutor_subjects')
           .select('*')
@@ -171,9 +185,15 @@ export default function TutorDashboard() {
       }
 
       if (sessionsRes.data) {
+        // Filter out cancelled bookings first
+        const activeSessions = sessionsRes.data.filter((session: any) => 
+          session.bookings?.status !== 'CANCELLED' && 
+          session.bookings?.status !== 'DECLINED'
+        );
+
         // Enrich sessions with student and subject names
         const enrichedSessions = await Promise.all(
-          sessionsRes.data.map(async (session: any) => {
+          activeSessions.slice(0, 5).map(async (session: any) => {
             const subjectId = session.bookings?.subject_id;
             
             const [studentRes, subjectRes] = await Promise.all([
@@ -219,9 +239,26 @@ export default function TutorDashboard() {
       }
       
       if (ratingsRes.data) {
-        setRatings(ratingsRes.data);
-        if (ratingsRes.data.length > 0) {
-          const avgStars = ratingsRes.data.reduce((sum, r) => sum + r.stars, 0) / ratingsRes.data.length;
+        // Defensive: if legacy duplicates exist (same student rated multiple times),
+        // treat only the latest rating per student as the "current" review.
+        const sorted = [...ratingsRes.data].sort((a: any, b: any) => {
+          const ta = new Date(a.created_at || 0).getTime();
+          const tb = new Date(b.created_at || 0).getTime();
+          return tb - ta;
+        });
+
+        const seenStudents = new Set<string>();
+        const uniqueLatest = sorted.filter((r: any) => {
+          const sid = r?.student_id;
+          if (!sid) return false;
+          if (seenStudents.has(sid)) return false;
+          seenStudents.add(sid);
+          return true;
+        });
+
+        setRatings(uniqueLatest);
+        if (uniqueLatest.length > 0) {
+          const avgStars = uniqueLatest.reduce((sum: number, r: any) => sum + Number(r.stars || 0), 0) / uniqueLatest.length;
           setAverageRating(Math.round(avgStars * 10) / 10);
         }
       }
@@ -299,17 +336,6 @@ export default function TutorDashboard() {
         </div>
       )}
 
-      {/* Universal Search Bar - Full Width, Right Under Header */}
-      {!testMode && profile && (
-        <div className="px-4 sm:px-6 lg:px-8 pt-2 pb-1 bg-gradient-to-br from-gray-50 to-white">
-          <UniversalSearchBar
-            userRole="tutor"
-            onResultClick={(student) => {
-              router.push(`/tutor/students/${student.id}`);
-            }}
-          />
-        </div>
-      )}
 
       <div className="px-4 py-3 sm:px-0">
         {/* Test Mode Banner */}
@@ -348,6 +374,11 @@ export default function TutorDashboard() {
         {/* Quick Action Buttons */}
         {!testMode && (
           <div className="mb-6 flex flex-wrap gap-3">
+            {!paidClassesEnabled && (
+              <div className="w-full">
+                <PaidClassesLockNotice />
+              </div>
+            )}
             <button
               onClick={() => setEditProfileModalOpen(true)}
               className="px-4 py-2 bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-black rounded-lg font-semibold transition flex items-center gap-2"
@@ -583,7 +614,18 @@ export default function TutorDashboard() {
             </div>
           </div>
 
-          <div className="bg-white border-2 border-purple-200 shadow-lg rounded-2xl p-6 hover:shadow-purple-300/50 hover:scale-105 transition-all duration-300 group">
+          <button
+            type="button"
+            onClick={() => {
+              if (ratings.length > 0) setReviewsModalOpen(true);
+            }}
+            disabled={ratings.length === 0}
+            className={`bg-white border-2 border-purple-200 shadow-lg rounded-2xl p-6 transition-all duration-300 group text-left ${
+              ratings.length === 0
+                ? 'opacity-60 cursor-not-allowed'
+                : 'hover:shadow-purple-300/50 hover:scale-105'
+            }`}
+          >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-purple-600 mb-2 font-medium">Total Reviews</p>
@@ -597,7 +639,7 @@ export default function TutorDashboard() {
                 </svg>
               </div>
             </div>
-          </div>
+          </button>
         </div>
 
         {/* Sent Offers */}
@@ -639,7 +681,7 @@ export default function TutorDashboard() {
                         {ts.subjects?.curriculum} - {ts.subjects?.level}
                       </p>
                       <p className="text-xl font-bold bg-gradient-to-r from-itutor-green to-emerald-600 bg-clip-text text-transparent mt-3">
-                        TT${ts.price_per_hour_ttd}/hour
+                        TT${paidClassesEnabled ? ts.price_per_hour_ttd : 0}/hour
                       </p>
                     </div>
                     <svg className="h-5 w-5 text-gray-500 group-hover:text-itutor-green transition-colors flex-shrink-0 ml-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -680,46 +722,64 @@ export default function TutorDashboard() {
             <p className="text-gray-600">Loading sessions...</p>
           ) : sessions.length > 0 ? (
             <div className="space-y-3">
-              {sessions.map((session) => (
-                <div key={session.id} className="bg-gradient-to-br from-pink-50 to-purple-50 border-2 border-pink-200 rounded-xl p-4 hover:border-pink-400 hover:shadow-lg transition-all duration-200">
-                  <div className="flex justify-between items-start mb-3">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <h3 className="font-bold text-gray-900 text-lg">{session.subject_name}</h3>
-                        <span className={`px-3 py-1 text-xs font-semibold rounded-full shadow-lg ${
-                          session.status === 'COMPLETED_ASSUMED' ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white' :
-                          session.status === 'SCHEDULED' ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white' :
-                          session.status === 'JOIN_OPEN' ? 'bg-gradient-to-r from-green-500 to-green-600 text-white' :
-                          session.status === 'NO_SHOW_STUDENT' ? 'bg-gradient-to-r from-red-500 to-red-600 text-white' :
-                          'bg-gradient-to-r from-gray-500 to-gray-600 text-white'
-                        }`}>
-                          {session.status === 'COMPLETED_ASSUMED' ? 'Completed' :
-                           session.status === 'SCHEDULED' ? 'Scheduled' :
-                           session.status === 'JOIN_OPEN' ? 'Ready' :
-                           session.status === 'NO_SHOW_STUDENT' ? 'No Show' :
-                           session.status}
-                        </span>
+              {sessions.map((session) => {
+                const sessionDate = new Date(session.scheduled_start_at);
+                const now = new Date();
+                const isPast = sessionDate < now;
+                
+                const sessionStatus = session.status?.toUpperCase();
+                
+                let displayStatus = 'Upcoming';
+                let statusColor = 'bg-gradient-to-r from-blue-500 to-blue-600 text-white';
+                
+                if (sessionStatus === 'CANCELLED') {
+                  displayStatus = 'Cancelled';
+                  statusColor = 'bg-gradient-to-r from-red-500 to-red-600 text-white';
+                } else if (sessionStatus === 'COMPLETED' || sessionStatus === 'COMPLETED_ASSUMED') {
+                  displayStatus = 'Completed';
+                  statusColor = 'bg-gradient-to-r from-green-500 to-emerald-600 text-white';
+                } else if (sessionStatus === 'IN_PROGRESS' || sessionStatus === 'JOIN_OPEN') {
+                  displayStatus = 'In Progress';
+                  statusColor = 'bg-gradient-to-r from-purple-500 to-purple-600 text-white';
+                } else if (sessionStatus === 'NO_SHOW_STUDENT') {
+                  displayStatus = 'No Show';
+                  statusColor = 'bg-gradient-to-r from-orange-500 to-orange-600 text-white';
+                } else if (isPast && (sessionStatus === 'SCHEDULED' || sessionStatus === 'BOOKED')) {
+                  displayStatus = 'Past';
+                  statusColor = 'bg-gradient-to-r from-gray-500 to-gray-600 text-white';
+                }
+                
+                return (
+                  <div key={session.id} className="bg-gradient-to-br from-pink-50 to-purple-50 border-2 border-pink-200 rounded-xl p-4 hover:border-pink-400 hover:shadow-lg transition-all duration-200">
+                    <div className="flex justify-between items-start mb-3">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <h3 className="font-bold text-gray-900 text-lg">{session.subject_name}</h3>
+                          <span className={`px-3 py-1 text-xs font-semibold rounded-full shadow-lg ${statusColor}`}>
+                            {displayStatus}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-700 font-medium mb-2">
+                          with <span className="text-itutor-green font-semibold">{session.student_name}</span>
+                        </p>
+                        <p className="font-semibold text-gray-900">
+                          {new Date(session.scheduled_start_at).toLocaleDateString('en-US', {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric'
+                          })}
+                        </p>
+                        <p className="text-sm text-gray-600 mt-1">
+                          {new Date(session.scheduled_start_at).toLocaleTimeString('en-US', {
+                            hour: 'numeric',
+                            minute: '2-digit'
+                          })} • {session.duration_minutes} minutes
+                        </p>
                       </div>
-                      <p className="text-sm text-gray-700 font-medium mb-2">
-                        with <span className="text-itutor-green font-semibold">{session.student_name}</span>
-                      </p>
-                      <p className="font-semibold text-gray-900">
-                        {new Date(session.scheduled_start_at).toLocaleDateString('en-US', {
-                          weekday: 'short',
-                          month: 'short',
-                          day: 'numeric'
-                        })}
-                      </p>
-                      <p className="text-sm text-gray-600 mt-1">
-                        {new Date(session.scheduled_start_at).toLocaleTimeString('en-US', {
-                          hour: 'numeric',
-                          minute: '2-digit'
-                        })} • {session.duration_minutes} minutes
-                      </p>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="text-center py-12">
@@ -789,6 +849,14 @@ export default function TutorDashboard() {
           </Link>
         </div>
       </div>
+
+      {profile?.id ? (
+        <TutorReviewsModal
+          tutorId={profile.id}
+          isOpen={reviewsModalOpen}
+          onClose={() => setReviewsModalOpen(false)}
+        />
+      ) : null}
     </DashboardLayout>
   );
 }

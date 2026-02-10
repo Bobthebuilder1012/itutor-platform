@@ -28,6 +28,7 @@ export default function StudentSearchResultsPage() {
 
   const [results, setResults] = useState<ProfileWithRating[]>([]);
   const [loading, setLoading] = useState(true);
+  const [paidClassesEnabled, setPaidClassesEnabled] = useState<boolean>(false);
   const [filters, setFilters] = useState({
     minRating: 0,
     school: 'all',
@@ -45,10 +46,21 @@ export default function StudentSearchResultsPage() {
     }
 
     if (subject && mode === 'subject') {
+      fetchPaidClassesFlag();
       performSearch();
       fetchSchools();
     }
   }, [profile, profileLoading, subject, mode, filters]);
+
+  async function fetchPaidClassesFlag() {
+    try {
+      const res = await fetch('/api/feature-flags', { cache: 'no-store' });
+      const data = await res.json();
+      setPaidClassesEnabled(Boolean(data?.paidClassesEnabled));
+    } catch {
+      setPaidClassesEnabled(false);
+    }
+  }
 
   async function fetchSchools() {
     try {
@@ -100,7 +112,7 @@ export default function StudentSearchResultsPage() {
       const tutorPriceMap = new Map<string, number>();
       tutorSubjectsData.forEach(ts => {
         if (!tutorPriceMap.has(ts.tutor_id)) {
-          tutorPriceMap.set(ts.tutor_id, ts.price_per_hour_ttd);
+          tutorPriceMap.set(ts.tutor_id, paidClassesEnabled ? ts.price_per_hour_ttd : 0);
         }
       });
 

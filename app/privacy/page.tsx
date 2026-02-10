@@ -297,7 +297,7 @@ export default function PrivacyPolicyPage() {
       <footer className="bg-itutor-black text-itutor-white py-8 mt-16">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <p className="text-itutor-muted">
-            &copy; {new Date().getFullYear()} iTutor. All rights reserved.
+            &copy; iTutor. Nora Digital, Ltd.
           </p>
           <div className="mt-4 flex justify-center gap-6 text-sm">
             <Link href="/terms" className="hover:text-itutor-green transition-colors">

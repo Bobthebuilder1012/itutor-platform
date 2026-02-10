@@ -87,6 +87,81 @@ export async function getTutorSyllabuses(tutorId: string): Promise<SyllabusWithS
 }
 
 /**
+ * Get all syllabuses for subjects a student studies
+ * Returns syllabuses with subject details, sorted by qualification and category
+ */
+export async function getStudentSyllabuses(studentId: string): Promise<SyllabusWithSubject[]> {
+  try {
+    // First, get the student's subject IDs from user_subjects table
+    const { data: studentSubjects, error: subjectsError } = await supabase
+      .from('user_subjects')
+      .select('subject_id')
+      .eq('user_id', studentId);
+
+    if (subjectsError) {
+      console.error('Error fetching student subjects:', subjectsError);
+      return [];
+    }
+
+    if (!studentSubjects || studentSubjects.length === 0) {
+      console.log('Student has no subjects');
+      return [];
+    }
+
+    // Extract subject IDs
+    const subjectIds = studentSubjects.map(us => us.subject_id);
+
+    // Now fetch syllabuses for those subjects
+    const { data, error } = await supabase
+      .from('syllabuses')
+      .select(`
+        *,
+        subjects:subject_id (
+          name,
+          curriculum,
+          level
+        )
+      `)
+      .in('subject_id', subjectIds)
+      .order('qualification', { ascending: true })
+      .order('category', { ascending: true })
+      .order('title', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching student syllabuses:', error);
+      return [];
+    }
+
+    if (!data) {
+      return [];
+    }
+
+    // Transform data to include subject details at top level
+    const syllabuses: SyllabusWithSubject[] = data.map((item: any) => ({
+      id: item.id,
+      subject_id: item.subject_id,
+      qualification: item.qualification,
+      category: item.category,
+      title: item.title,
+      version: item.version,
+      effective_year: item.effective_year,
+      pdf_url: item.pdf_url,
+      notes: item.notes,
+      created_at: item.created_at,
+      updated_at: item.updated_at,
+      subject_name: item.subjects?.name || 'Unknown Subject',
+      subject_curriculum: item.subjects?.curriculum || '',
+      subject_level: item.subjects?.level || '',
+    }));
+
+    return syllabuses;
+  } catch (error) {
+    console.error('Exception in getStudentSyllabuses:', error);
+    return [];
+  }
+}
+
+/**
  * Get a single syllabus by ID with subject details
  */
 export async function getSyllabusById(syllabusId: string): Promise<SyllabusWithSubject | null> {
@@ -206,6 +281,25 @@ export async function getTutorCurriculumGrouped(tutorId: string): Promise<TutorC
     return groupSyllabusesByQualificationAndCategory(syllabuses);
   } catch (error) {
     console.error('Exception in getTutorCurriculumGrouped:', error);
+    return [];
+  }
+}
+
+/**
+ * Get student's curriculum grouped by qualification and category
+ * Ready for UI rendering
+ */
+export async function getStudentCurriculumGrouped(studentId: string): Promise<TutorCurriculumData[]> {
+  try {
+    const syllabuses = await getStudentSyllabuses(studentId);
+
+    if (syllabuses.length === 0) {
+      return [];
+    }
+
+    return groupSyllabusesByQualificationAndCategory(syllabuses);
+  } catch (error) {
+    console.error('Exception in getStudentCurriculumGrouped:', error);
     return [];
   }
 }

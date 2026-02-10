@@ -72,11 +72,18 @@ export async function GET(request: NextRequest) {
     type: type
   });
 
-  // For email confirmations, redirect to confirmation success page
-  // This page tells users to go to the login page
+  // For email confirmations, redirect directly to onboarding based on role
   if (emailJustConfirmed || type === 'signup' || type === 'email') {
-    console.log('✅ Email confirmation detected - redirecting to confirmation page');
-    return NextResponse.redirect(new URL('/auth/confirmed', request.url));
+    console.log('✅ Email confirmation detected - redirecting to onboarding');
+    const userRole = session.user.user_metadata?.role || 'student';
+    
+    if (userRole === 'tutor') {
+      return NextResponse.redirect(new URL('/onboarding/tutor', request.url));
+    } else if (userRole === 'parent') {
+      return NextResponse.redirect(new URL('/parent/dashboard', request.url));
+    } else {
+      return NextResponse.redirect(new URL('/onboarding/student', request.url));
+    }
   }
 
   // Check if profile exists

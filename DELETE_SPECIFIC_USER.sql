@@ -1,84 +1,121 @@
 -- =====================================================
--- DELETE SPECIFIC USER (Alejandro Lee)
+-- DELETE SPECIFIC USER
 -- =====================================================
--- Safely delete a single user and all associated data
--- Handles foreign key constraints in correct order
+-- Deletes a specific user and their associated data
+-- =====================================================
 
 DO $$
 DECLARE
-  target_user_id uuid := '4ba237f3-bcef-4bb3-a59f-494ce8ef9210'; -- Alejandro Lee's ID
+    target_user_id UUID;
+    deleted_count INTEGER;
 BEGIN
-  RAISE NOTICE '🗑️ Starting deletion for user ID: %', target_user_id;
+    -- Find user by email
+    SELECT id INTO target_user_id
+    FROM profiles
+    WHERE email = 'alejandrolee@myitutor.com';
 
-  -- Step 1: Delete booking messages (the constraint that's blocking)
-  DELETE FROM public.booking_messages 
-  WHERE sender_id = target_user_id;
-  RAISE NOTICE '✅ Deleted booking_messages';
+    IF target_user_id IS NULL THEN
+        RAISE NOTICE '❌ User not found';
+        RETURN;
+    END IF;
 
-  -- Step 2: Delete notifications
-  DELETE FROM public.notifications WHERE user_id = target_user_id;
-  RAISE NOTICE '✅ Deleted notifications';
+    RAISE NOTICE 'Deleting user: %', target_user_id;
 
-  -- Step 3: Delete ratings
-  DELETE FROM public.ratings 
-  WHERE student_id = target_user_id OR tutor_id = target_user_id;
-  RAISE NOTICE '✅ Deleted ratings';
+    -- Delete bookings first (to avoid FK constraint issues)
+    DELETE FROM bookings 
+    WHERE tutor_id = target_user_id
+       OR student_id = target_user_id;
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RAISE NOTICE 'Deleted % bookings', deleted_count;
 
-  -- Step 4: Delete conversations
-  DELETE FROM public.conversations 
-  WHERE participant_1_id = target_user_id OR participant_2_id = target_user_id;
-  RAISE NOTICE '✅ Deleted conversations';
+    -- Delete booking_messages (after bookings are gone)
+    DELETE FROM booking_messages WHERE sender_id = target_user_id;
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RAISE NOTICE 'Deleted % booking_messages', deleted_count;
 
-  -- Step 5: Delete lesson offers
-  DELETE FROM public.lesson_offers 
-  WHERE student_id = target_user_id OR tutor_id = target_user_id;
-  RAISE NOTICE '✅ Deleted lesson_offers';
+    -- Delete notifications
+    DELETE FROM notifications WHERE user_id = target_user_id;
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RAISE NOTICE 'Deleted % notifications', deleted_count;
 
-  -- Step 6: Delete sessions
-  DELETE FROM public.sessions 
-  WHERE student_id = target_user_id OR tutor_id = target_user_id;
-  RAISE NOTICE '✅ Deleted sessions';
+    -- Delete ratings
+    DELETE FROM ratings 
+    WHERE student_id = target_user_id
+       OR tutor_id = target_user_id;
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RAISE NOTICE 'Deleted % ratings', deleted_count;
 
-  -- Step 7: Delete bookings
-  DELETE FROM public.bookings 
-  WHERE student_id = target_user_id OR tutor_id = target_user_id;
-  RAISE NOTICE '✅ Deleted bookings';
+    -- Delete conversations
+    DELETE FROM conversations 
+    WHERE participant_1_id = target_user_id
+       OR participant_2_id = target_user_id;
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RAISE NOTICE 'Deleted % conversations', deleted_count;
 
-  -- Step 8: Delete tutor-specific records
-  DELETE FROM public.tutor_subjects WHERE tutor_id = target_user_id;
-  DELETE FROM public.tutor_video_provider_connections WHERE tutor_id = target_user_id;
-  RAISE NOTICE '✅ Deleted tutor-specific records';
+    -- Delete lesson_offers
+    DELETE FROM lesson_offers 
+    WHERE tutor_id = target_user_id
+       OR student_id = target_user_id;
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RAISE NOTICE 'Deleted % lesson_offers', deleted_count;
 
-  -- Step 9: Delete payment records
-  DELETE FROM public.commission_ledger WHERE tutor_id = target_user_id;
-  DELETE FROM public.tutor_balances WHERE tutor_id = target_user_id;
-  DELETE FROM public.tutor_earnings WHERE tutor_id = target_user_id;
-  DELETE FROM public.payments 
-  WHERE student_id = target_user_id OR payer_id = target_user_id OR tutor_id = target_user_id;
-  RAISE NOTICE '✅ Deleted payment records';
+    -- Delete sessions
+    DELETE FROM sessions 
+    WHERE tutor_id = target_user_id
+       OR student_id = target_user_id;
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RAISE NOTICE 'Deleted % sessions', deleted_count;
 
-  -- Step 10: Delete parent-child relationships
-  DELETE FROM public.parent_child_links
-  WHERE parent_id = target_user_id OR child_id = target_user_id;
-  RAISE NOTICE '✅ Deleted parent_child_links';
+    -- Delete payment-related records
+    DELETE FROM commission_ledger WHERE tutor_id = target_user_id;
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RAISE NOTICE 'Deleted % commission_ledger records', deleted_count;
 
-  -- Step 11: Delete verification records
-  DELETE FROM public.tutor_verified_subject_grades WHERE tutor_id = target_user_id;
-  DELETE FROM public.tutor_verifications WHERE tutor_id = target_user_id;
-  RAISE NOTICE '✅ Deleted verification records';
+    DELETE FROM tutor_balances WHERE tutor_id = target_user_id;
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RAISE NOTICE 'Deleted % tutor_balances records', deleted_count;
 
-  -- Step 12: Delete profile
-  DELETE FROM public.profiles WHERE id = target_user_id;
-  RAISE NOTICE '✅ Deleted profile';
+    DELETE FROM tutor_earnings WHERE tutor_id = target_user_id;
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RAISE NOTICE 'Deleted % tutor_earnings records', deleted_count;
 
-  -- Step 13: Delete from auth.users (if you have permission)
-  DELETE FROM auth.users WHERE id = target_user_id;
-  RAISE NOTICE '✅ Deleted auth.users';
+    DELETE FROM payments WHERE payer_id = target_user_id;
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RAISE NOTICE 'Deleted % payments', deleted_count;
 
-  RAISE NOTICE '🎉 Successfully deleted user: %', target_user_id;
-  
-EXCEPTION
-  WHEN OTHERS THEN
-    RAISE NOTICE '❌ Error during deletion: %', SQLERRM;
-    RAISE EXCEPTION 'Deletion failed: %', SQLERRM;
+    -- Delete tutor-specific records
+    DELETE FROM tutor_subjects WHERE tutor_id = target_user_id;
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RAISE NOTICE 'Deleted % tutor_subjects', deleted_count;
+
+    DELETE FROM tutor_video_provider_connections WHERE tutor_id = target_user_id;
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RAISE NOTICE 'Deleted % tutor_video_provider_connections', deleted_count;
+
+    DELETE FROM tutor_verified_subject_grades WHERE tutor_id = target_user_id;
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RAISE NOTICE 'Deleted % tutor_verified_subject_grades', deleted_count;
+
+    DELETE FROM tutor_verifications WHERE tutor_id = target_user_id;
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RAISE NOTICE 'Deleted % tutor_verifications', deleted_count;
+
+    -- Delete parent-child relationships
+    DELETE FROM parent_child_links 
+    WHERE parent_id = target_user_id
+       OR child_id = target_user_id;
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RAISE NOTICE 'Deleted % parent_child_links', deleted_count;
+
+    -- Delete profile
+    DELETE FROM profiles WHERE id = target_user_id;
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RAISE NOTICE 'Deleted % profile', deleted_count;
+
+    -- Delete from auth.users
+    DELETE FROM auth.users WHERE id = target_user_id;
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    RAISE NOTICE 'Deleted % auth.users', deleted_count;
+
+    RAISE NOTICE '✅ User deletion complete!';
 END $$;

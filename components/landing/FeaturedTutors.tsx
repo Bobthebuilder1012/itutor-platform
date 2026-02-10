@@ -7,6 +7,7 @@ import type { FeaturedTutor } from '@/lib/services/landingTutorsService';
 
 interface FeaturedTutorsProps {
   tutors: FeaturedTutor[];
+  paidClassesEnabled?: boolean;
 }
 
 const filters = [
@@ -18,7 +19,7 @@ const filters = [
   { id: 'English', label: 'English' },
 ];
 
-export default function FeaturedTutors({ tutors }: FeaturedTutorsProps) {
+export default function FeaturedTutors({ tutors, paidClassesEnabled = false }: FeaturedTutorsProps) {
   const [activeFilter, setActiveFilter] = useState('all');
 
   // Filter tutors based on selected filter
@@ -101,7 +102,7 @@ export default function FeaturedTutors({ tutors }: FeaturedTutorsProps) {
               <div className="flex gap-6 min-w-min px-1">
                 {filteredTutors.map((tutor) => (
                   <div key={tutor.id} className="w-80 flex-shrink-0">
-                    <TutorCard tutor={tutor} />
+                    <TutorCard tutor={tutor} showPrice={paidClassesEnabled} />
                   </div>
                 ))}
               </div>

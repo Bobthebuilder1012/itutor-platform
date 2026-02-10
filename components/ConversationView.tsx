@@ -12,6 +12,7 @@ import type { MessageWithSender } from '@/lib/types/notifications';
 import { getDisplayName } from '@/lib/utils/displayName';
 import { formatTime } from '@/lib/utils/calendar';
 import { supabase } from '@/lib/supabase/client';
+import { getAvatarColor } from '@/lib/utils/avatarColors';
 
 interface ConversationViewProps {
   conversationId: string;
@@ -145,7 +146,7 @@ export default function ConversationView({
 
         {otherUser && (
           <>
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-itutor-green to-emerald-600 flex items-center justify-center text-white font-bold">
+            <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${getAvatarColor(otherUser.id)} flex items-center justify-center text-white font-bold`}>
               {otherUser.avatar_url ? (
                 <img src={otherUser.avatar_url} alt={getDisplayName(otherUser)} className="w-full h-full rounded-full object-cover" />
               ) : (

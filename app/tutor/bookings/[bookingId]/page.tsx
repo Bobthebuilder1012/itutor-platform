@@ -400,8 +400,9 @@ export default function TutorBookingThreadPage() {
 
   const displayStartTime = booking.confirmed_start_at || booking.requested_start_at;
   const displayEndTime = booking.confirmed_end_at || booking.requested_end_at;
+  const hasSessionStarted = displayStartTime ? new Date(displayStartTime) <= new Date() : false;
   const canRespond = booking.status === 'PENDING' || booking.status === 'COUNTER_PROPOSED';
-  const canCancel = booking.status === 'CONFIRMED';
+  const canCancel = booking.status === 'CONFIRMED' && !hasSessionStarted;
 
   return (
     <DashboardLayout role="tutor" userName={getDisplayName(profile)}>
@@ -418,15 +419,15 @@ export default function TutorBookingThreadPage() {
         </button>
 
         {/* Booking Header */}
-        <div className="bg-gradient-to-br from-gray-800 to-gray-900 border border-gray-700 rounded-2xl p-6 mb-6">
+        <div className="bg-gradient-to-br from-blue-50 to-purple-50 border border-blue-200 rounded-2xl p-6 mb-6 shadow-sm">
           <div className="flex items-start justify-between mb-4">
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-2">
-                <h1 className="text-2xl font-bold text-itutor-white">Session with {studentName}</h1>
+                <h1 className="text-2xl font-bold text-gray-900">Session with {studentName}</h1>
                 {studentId && studentName !== 'Unknown Student' && (
                   <button
                     onClick={() => router.push(`/tutor/students/${studentId}`)}
-                    className="text-sm text-itutor-green hover:text-emerald-400 font-medium transition-colors flex items-center gap-1"
+                    className="text-sm text-itutor-green hover:text-emerald-600 font-medium transition-colors flex items-center gap-1"
                   >
                     View Profile
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -435,7 +436,7 @@ export default function TutorBookingThreadPage() {
                   </button>
                 )}
               </div>
-              <p className="text-gray-400">{subjectName}</p>
+              <p className="text-gray-600">{subjectName}</p>
             </div>
             <span className={`
               px-3 py-1.5 rounded-lg text-sm font-semibold border flex-shrink-0
@@ -445,8 +446,8 @@ export default function TutorBookingThreadPage() {
             </span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-            <div className="flex items-center gap-2 text-gray-300">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+            <div className="flex items-center gap-2 text-gray-700">
               <svg className="w-5 h-5 text-itutor-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
@@ -456,7 +457,24 @@ export default function TutorBookingThreadPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2 text-gray-300">
+            {booking.duration_minutes && (
+              <div className="flex items-center gap-2 text-gray-700">
+                <svg className="w-5 h-5 text-itutor-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                  <div className="font-medium">
+                    {booking.duration_minutes >= 60 
+                      ? `${Math.floor(booking.duration_minutes / 60)}h ${booking.duration_minutes % 60 > 0 ? `${booking.duration_minutes % 60}m` : ''}`
+                      : `${booking.duration_minutes} minutes`
+                    }
+                  </div>
+                  <div className="text-gray-500 text-xs">Duration</div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 text-gray-700">
               <svg className="w-5 h-5 text-itutor-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
@@ -468,15 +486,15 @@ export default function TutorBookingThreadPage() {
           </div>
 
           {booking.student_notes && (
-            <div className="mt-4 pt-4 border-t border-gray-700">
-              <p className="text-sm text-gray-400 mb-1">Student's notes:</p>
-              <p className="text-gray-300">"{booking.student_notes}"</p>
+            <div className="mt-4 pt-4 border-t border-blue-200">
+              <p className="text-sm text-gray-600 mb-1">Student's notes:</p>
+              <p className="text-gray-900">"{booking.student_notes}"</p>
             </div>
           )}
 
           {/* Action Buttons */}
           {(canRespond || canCancel) && (
-            <div className="mt-6 pt-6 border-t border-gray-700 flex flex-wrap gap-3">
+            <div className="mt-6 pt-6 border-t border-blue-200 flex flex-wrap gap-3">
               {canRespond && (
                 <>
                   <button
@@ -506,7 +524,7 @@ export default function TutorBookingThreadPage() {
                 <button
                   onClick={handleCancelBooking}
                   disabled={actionLoading}
-                  className="flex-1 min-w-[150px] bg-red-900/30 hover:bg-red-900/50 text-red-400 py-3 px-4 rounded-lg font-semibold transition disabled:opacity-50"
+                  className="flex-1 min-w-[150px] bg-red-600 hover:bg-red-700 text-white py-3 px-4 rounded-lg font-semibold transition disabled:opacity-50"
                 >
                   ✗ Cancel Booking
                 </button>
@@ -531,12 +549,12 @@ export default function TutorBookingThreadPage() {
         {/* Counter Offer Modal */}
         {showCounterOffer && (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-gradient-to-br from-gray-800 to-gray-900 border border-gray-700 rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="bg-white border border-gray-200 rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-bold text-itutor-white">Propose Alternative Time</h2>
+                <h2 className="text-2xl font-bold text-gray-900">Propose Alternative Time</h2>
                 <button
                   onClick={() => setShowCounterOffer(false)}
-                  className="text-gray-400 hover:text-itutor-white"
+                  className="text-gray-400 hover:text-gray-900"
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -545,45 +563,45 @@ export default function TutorBookingThreadPage() {
               </div>
 
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-300 mb-2">Date</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Date</label>
                 <input
                   type="date"
                   value={counterDate}
                   onChange={(e) => setCounterDate(e.target.value)}
                   min={new Date().toISOString().slice(0, 10)}
-                  className="w-full px-4 py-3 bg-gray-900 border border-gray-700 text-itutor-white rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition"
+                  className="w-full px-4 py-3 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Start Time</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Start Time</label>
                   <input
                     type="time"
                     value={counterStartTime}
                     onChange={(e) => setCounterStartTime(e.target.value)}
-                    className="w-full px-4 py-3 bg-gray-900 border border-gray-700 text-itutor-white rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition"
+                    className="w-full px-4 py-3 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">End Time</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">End Time</label>
                   <input
                     type="time"
                     value={counterEndTime}
                     onChange={(e) => setCounterEndTime(e.target.value)}
-                    className="w-full px-4 py-3 bg-gray-900 border border-gray-700 text-itutor-white rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition"
+                    className="w-full px-4 py-3 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition"
                   />
                 </div>
               </div>
 
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-300 mb-2">Message (optional)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Message (optional)</label>
                 <textarea
                   value={counterMessage}
                   onChange={(e) => setCounterMessage(e.target.value)}
                   placeholder="Explain why you're proposing this time..."
                   rows={3}
-                  className="w-full px-4 py-3 bg-gray-900 border border-gray-700 text-itutor-white rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-500"
+                  className="w-full px-4 py-3 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-400"
                 />
               </div>
 
@@ -591,7 +609,7 @@ export default function TutorBookingThreadPage() {
                 <button
                   onClick={() => setShowCounterOffer(false)}
                   disabled={actionLoading}
-                  className="flex-1 bg-gray-700 hover:bg-gray-600 text-itutor-white py-3 px-4 rounded-lg font-semibold transition disabled:opacity-50"
+                  className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-900 py-3 px-4 rounded-lg font-semibold transition disabled:opacity-50"
                 >
                   Cancel
                 </button>
@@ -608,13 +626,13 @@ export default function TutorBookingThreadPage() {
         )}
 
         {/* Messages Thread */}
-        <div className="bg-gradient-to-br from-gray-800 to-gray-900 border border-gray-700 rounded-2xl overflow-hidden">
-          <div className="p-4 border-b border-gray-700">
-            <h2 className="text-lg font-bold text-itutor-white">Messages</h2>
+        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+          <div className="p-4 border-b border-gray-200 bg-gray-50">
+            <h2 className="text-lg font-bold text-gray-900">Messages</h2>
           </div>
 
           {/* Messages List */}
-          <div className="h-96 overflow-y-auto p-4 space-y-4">
+          <div className="h-96 overflow-y-auto p-4 space-y-4 bg-gray-50">
             {messages.length === 0 ? (
               <div className="text-center text-gray-500 py-8">
                 No messages yet
@@ -624,7 +642,7 @@ export default function TutorBookingThreadPage() {
                 if (msg.message_type === 'system') {
                   return (
                     <div key={msg.id} className="flex justify-center">
-                      <div className="bg-gray-700/50 px-4 py-2 rounded-full text-xs text-gray-400">
+                      <div className="bg-blue-50 px-4 py-2 rounded-full text-xs text-blue-600 border border-blue-200">
                         {msg.body}
                       </div>
                     </div>
@@ -635,21 +653,21 @@ export default function TutorBookingThreadPage() {
                   return (
                     <div key={msg.id} className={`flex ${msg.is_own_message ? 'justify-end' : 'justify-start'}`}>
                       <div className="max-w-md">
-                        <div className="bg-blue-900/30 border border-blue-500/50 rounded-lg p-4">
+                        <div className="bg-blue-50 border border-blue-300 rounded-lg p-4">
                           <div className="flex items-center gap-2 mb-2">
-                            <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                             </svg>
-                            <span className="font-semibold text-blue-400">Alternative Time Proposed</span>
+                            <span className="font-semibold text-blue-700">Alternative Time Proposed</span>
                           </div>
-                          <p className="text-itutor-white font-medium mb-1">
+                          <p className="text-gray-900 font-medium mb-1">
                             {formatDateTime(msg.proposed_start_at!)}
                           </p>
-                          <p className="text-gray-400 text-sm mb-3">
+                          <p className="text-gray-600 text-sm mb-3">
                             {formatTimeRange(msg.proposed_start_at!, msg.proposed_end_at!)}
                           </p>
                           {msg.body && (
-                            <p className="text-gray-300 text-sm">{msg.body}</p>
+                            <p className="text-gray-700 text-sm">{msg.body}</p>
                           )}
                         </div>
                         <p className="text-xs text-gray-500 mt-1 px-2">
@@ -667,7 +685,7 @@ export default function TutorBookingThreadPage() {
                       <div className={`rounded-lg p-3 ${
                         msg.is_own_message
                           ? 'bg-itutor-green text-white'
-                          : 'bg-gray-700 text-gray-100'
+                          : 'bg-white border border-gray-300 text-gray-900'
                       }`}>
                         <p>{msg.body}</p>
                       </div>
@@ -684,7 +702,7 @@ export default function TutorBookingThreadPage() {
 
           {/* Message Input */}
           {booking.status !== 'CANCELLED' && booking.status !== 'DECLINED' && (
-            <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-700">
+            <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-200 bg-white">
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -692,7 +710,7 @@ export default function TutorBookingThreadPage() {
                   onChange={(e) => setNewMessage(e.target.value)}
                   placeholder="Type a message..."
                   disabled={sending}
-                  className="flex-1 px-4 py-2 bg-gray-900 border border-gray-700 text-itutor-white rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-500 disabled:opacity-50"
+                  className="flex-1 px-4 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-400 disabled:opacity-50"
                 />
                 <button
                   type="submit"

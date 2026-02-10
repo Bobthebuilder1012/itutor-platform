@@ -7,9 +7,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { WiPayClient } from '@/lib/payments/wipayClient';
+import { isPaidClassesEnabled } from '@/lib/featureFlags/paidClasses';
+import { paidClassesForbiddenResponse } from '@/lib/featureFlags/http';
 
 export async function POST(request: NextRequest) {
   try {
+    if (!isPaidClassesEnabled()) {
+      return paidClassesForbiddenResponse();
+    }
+
     const { bookingId } = await request.json();
 
     if (!bookingId) {

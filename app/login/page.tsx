@@ -34,6 +34,7 @@ export default function LoginPage() {
   const [resendSuccess, setResendSuccess] = useState('');
   const [resendError, setResendError] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
+  const [showPassword, setShowPassword] = useState(false);
 
   // Check for email sent parameter, confirmation, and error messages
   useEffect(() => {
@@ -42,6 +43,7 @@ export default function LoginPage() {
     const userEmail = searchParams.get('email');
     const errorParam = searchParams.get('error');
     const messageParam = searchParams.get('message');
+    const reasonParam = searchParams.get('reason');
     
     // Handle email confirmation success
     if (confirmed === 'true') {
@@ -52,6 +54,13 @@ export default function LoginPage() {
       // Don't show the emailSent banner if email is already confirmed
       setShowEmailSent(false);
       return;
+    }
+
+    // Email exists (redirected from signup)
+    if (reasonParam === 'email_in_use') {
+      if (userEmail) setEmail(userEmail);
+      setShowEmailSent(false);
+      setError('This email is already in use. Please sign in instead.');
     }
     
     // Handle email sent (awaiting confirmation)
@@ -168,16 +177,29 @@ export default function LoginPage() {
         .from('profiles')
         .select('role, school, form_level, subjects_of_study, billing_mode, is_reviewer')
         .eq('id', authData.user.id)
-        .single();
+        .maybeSingle();
 
-      if (profileError || !profile) {
-        setError('Unable to fetch user profile.');
-        setLoading(false);
-        return;
+      let profileData = profile;
+
+      if (profileError || !profileData) {
+        await fetch('/api/profile/ensure', { method: 'POST' }).catch(() => {});
+        const { data: ensuredProfile, error: ensuredError } = await supabase
+          .from('profiles')
+          .select('role, school, form_level, subjects_of_study, billing_mode, is_reviewer')
+          .eq('id', authData.user.id)
+          .maybeSingle();
+
+        if (ensuredError || !ensuredProfile) {
+          setError('Unable to fetch user profile.');
+          setLoading(false);
+          return;
+        }
+
+        profileData = ensuredProfile;
       }
 
       // If profile exists but has no role, redirect to signup to complete registration
-      if (!profile.role) {
+      if (!profileData.role) {
         setError('Your account setup is incomplete. Please complete your registration.');
         await supabase.auth.signOut();
         setTimeout(() => {
@@ -195,22 +217,28 @@ export default function LoginPage() {
         return;
       }
 
-      // Check if user is an admin/reviewer first
-      if (profile.is_reviewer || profile.role === 'admin') {
+      // Check if user is an admin first
+      if (profileData.role === 'admin') {
+        router.push('/admin/dashboard');
+        return;
+      }
+
+      // Check if user is a reviewer
+      if (profileData.is_reviewer) {
         router.push('/reviewer/dashboard');
         return;
       }
 
-      switch (profile.role) {
+      switch (profileData.role) {
         case 'student':
           // If this is a child account created by a parent, skip profile check
-          if (profile.billing_mode === 'parent_required') {
+          if (profileData.billing_mode === 'parent_required') {
             router.push('/student/dashboard');
             break;
           }
           
           // For regular students, check if profile is complete
-          const hasBasicInfo = profile.school && profile.form_level;
+          const hasBasicInfo = profileData.school && profileData.form_level;
           
           // Check for subjects in user_subjects table
           const { data: userSubjects } = await supabase
@@ -220,7 +248,7 @@ export default function LoginPage() {
             .limit(1);
           
           const hasSubjects = 
-            (profile.subjects_of_study && profile.subjects_of_study.length > 0) ||
+            (profileData.subjects_of_study && profileData.subjects_of_study.length > 0) ||
             (userSubjects && userSubjects.length > 0);
           
           const isStudentProfileComplete = hasBasicInfo && hasSubjects;
@@ -252,8 +280,13 @@ export default function LoginPage() {
   };
 
   return (
+<<<<<<< HEAD
     <div className="min-h-screen flex items-center justify-center bg-white px-4 py-8">
       <div className="bg-black border border-gray-700 rounded-2xl shadow-2xl p-8 max-w-md w-full">
+=======
+    <div className="min-h-screen flex items-center justify-center bg-black px-4 py-8">
+      <div className="bg-gradient-to-br from-gray-800 to-gray-900 border border-gray-700 rounded-2xl shadow-2xl p-8 max-w-md w-full">
+>>>>>>> 626b1acdd06a6b5d76cea337bf8a38165eb274bb
         <div className="text-center mb-8">
           <div className="mb-4 flex justify-center">
             <img 
@@ -396,16 +429,35 @@ export default function LoginPage() {
                 Forgot password?
               </a>
             </div>
-            <input
-              type="password"
-              id="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 bg-gray-900 border border-gray-700 text-itutor-white rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-500"
-              placeholder="Enter your password"
-              required
-              disabled={loading}
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                id="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-4 py-3 pr-10 bg-gray-900 border border-gray-700 text-itutor-white rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-500"
+                placeholder="Enter your password"
+                required
+                disabled={loading}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300 transition-colors"
+                tabIndex={-1}
+              >
+                {showPassword ? (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  </svg>
+                )}
+              </button>
+            </div>
           </div>
 
           <button

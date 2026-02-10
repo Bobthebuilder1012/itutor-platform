@@ -23,6 +23,7 @@ export default function SearchResultsPage() {
   const searchParams = useSearchParams();
   const subject = searchParams.get('subject');
   const mode = searchParams.get('mode') || 'tutor';
+  const isBrowseAll = !subject || mode !== 'subject';
 
   const [results, setResults] = useState<ProfileWithRating[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,10 +36,9 @@ export default function SearchResultsPage() {
   const [availableSchools, setAvailableSchools] = useState<string[]>([]);
 
   useEffect(() => {
-    if (subject && mode === 'subject') {
-      performSearch();
-      fetchSchools();
-    }
+    fetchSchools();
+    if (subject && mode === 'subject') performSearch();
+    else fetchAllTutors();
   }, [subject, mode, filters]);
 
   async function fetchSchools() {
@@ -243,17 +243,104 @@ export default function SearchResultsPage() {
     }
   }
 
-  if (!subject || mode !== 'subject') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <p className="text-gray-600">No search query provided</p>
-          <Link href="/" className="text-itutor-green hover:underline mt-2 inline-block">
-            Go back to home
-          </Link>
-        </div>
-      </div>
-    );
+  async function fetchAllTutors() {
+    setLoading(true);
+    try {
+      let queryBuilder = supabase.from('profiles').select('*').eq('role', 'tutor');
+
+      if (filters.school !== 'all') {
+        queryBuilder = queryBuilder.eq('school', filters.school);
+      }
+
+      if (filters.verifiedOnly) {
+        queryBuilder = queryBuilder.eq('tutor_verification_status', 'VERIFIED');
+      }
+
+      const { data, error } = await queryBuilder;
+      if (error) throw error;
+
+      if (!data || data.length === 0) {
+        setResults([]);
+        return;
+      }
+
+      const tutorIds = data.map((p) => p.id);
+
+      // Get min price per tutor (used for browse-all sorting/filtering)
+      const { data: tutorSubjects, error: tutorSubjectsError } = await supabase
+        .from('tutor_subjects')
+        .select('tutor_id, price_per_hour_ttd')
+        .in('tutor_id', tutorIds);
+
+      if (tutorSubjectsError) {
+        console.error('Error fetching tutor_subjects:', tutorSubjectsError);
+      }
+
+      const minPriceByTutor = new Map<string, number>();
+      for (const ts of tutorSubjects || []) {
+        const tid = ts.tutor_id as string;
+        const price = Number(ts.price_per_hour_ttd);
+        if (!Number.isFinite(price)) continue;
+        const existing = minPriceByTutor.get(tid);
+        if (existing === undefined || price < existing) minPriceByTutor.set(tid, price);
+      }
+
+      // Ratings summary (server-side, bypasses RLS)
+      const ratingsSummaryRes = await fetch('/api/public/tutors/ratings-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tutorIds }),
+      });
+      const ratingsSummaryJson = await ratingsSummaryRes.json().catch(() => ({}));
+      const ratingsByTutorId = (ratingsSummaryJson?.byTutorId || {}) as Record<
+        string,
+        { ratingCount: number; averageRating: number | null }
+      >;
+
+      let profilesWithRatings = data.map((profile) => {
+        const summary = ratingsByTutorId[profile.id];
+        const count = Number(summary?.ratingCount || 0);
+        const avgRating = count > 0 && summary?.averageRating != null ? Number(summary.averageRating) : null;
+        const price = minPriceByTutor.get(profile.id);
+
+        return {
+          ...profile,
+          average_rating: avgRating,
+          total_reviews: count,
+          topComment: null,
+          subject_price: price ?? null,
+        };
+      });
+
+      if (filters.minRating > 0) {
+        profilesWithRatings = profilesWithRatings.filter(
+          (p) => p.average_rating !== null && p.average_rating >= filters.minRating
+        );
+      }
+
+      if (filters.maxPrice > 0) {
+        profilesWithRatings = profilesWithRatings.filter(
+          (p) => p.subject_price !== null && p.subject_price <= filters.maxPrice
+        );
+      }
+
+      profilesWithRatings.sort((a, b) => {
+        const aVerified = a.tutor_verification_status === 'VERIFIED' ? 1 : 0;
+        const bVerified = b.tutor_verification_status === 'VERIFIED' ? 1 : 0;
+        if (aVerified !== bVerified) return bVerified - aVerified;
+
+        const aRating = a.average_rating || 0;
+        const bRating = b.average_rating || 0;
+        return bRating - aRating;
+      });
+
+      setResults(profilesWithRatings);
+    } catch (err) {
+      console.error('Search error:', err);
+      setResults([]);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -302,7 +389,7 @@ export default function SearchResultsPage() {
         {/* Header Section */}
         <div className="mb-8 bg-gradient-to-r from-white via-green-50 to-white rounded-2xl p-4 sm:p-8 shadow-lg border-2 border-green-100">
           <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-extrabold bg-gradient-to-r from-gray-900 via-itutor-green to-emerald-600 bg-clip-text text-transparent mb-3 break-words">
-            iTutors teaching {subject}
+            {isBrowseAll ? 'Browse iTutors' : `iTutors teaching ${subject}`}
           </h1>
           <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-gray-700">
             <div className="flex items-center gap-2 bg-white px-3 sm:px-4 py-2 rounded-full shadow-sm border border-gray-200 text-sm sm:text-base">

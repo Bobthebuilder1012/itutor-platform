@@ -3,13 +3,20 @@
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import Link from 'next/link';
-import { ReactNode, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { useSuspensionCheck } from '@/lib/hooks/useSuspensionCheck';
 import NotificationBell from '@/components/NotificationBell';
 import MessagesIcon from '@/components/MessagesIcon';
 import CalendarIcon from '@/components/CalendarIcon';
 import Footer from '@/components/landing/Footer';
+import EnableNotificationsPrompt from '@/components/EnableNotificationsPrompt';
+import { initializePushNotifications } from '@/lib/services/browserPushService';
+import dynamic from 'next/dynamic';
+
+const PushTokenRegistrar = dynamic(() => import('@/components/push/PushTokenRegistrar'), {
+  ssr: false,
+});
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -17,12 +24,65 @@ interface DashboardLayoutProps {
   userName: string;
 }
 
+
 export default function DashboardLayout({ children, role, userName }: DashboardLayoutProps) {
   const router = useRouter();
   const { profile } = useProfile();
   const { isSuspended, loading: suspensionLoading } = useSuspensionCheck();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileIconMenuOpen, setMobileIconMenuOpen] = useState(false);
+  const [authUserId, setAuthUserId] = useState<string | null>(null);
+
+  const effectiveUserId = profile?.id || authUserId;
+  const showIcons = role !== 'reviewer';
+  const displayName =
+    profile?.username ||
+    userName ||
+    profile?.display_name ||
+    profile?.full_name ||
+    'User';
+
+  useEffect(() => {
+    let mounted = true;
+    supabase.auth
+      .getUser()
+      .then(({ data }) => {
+        if (!mounted) return;
+        setAuthUserId(data.user?.id || null);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setAuthUserId(null);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Initialize browser push notifications
+  useEffect(() => {
+    if (effectiveUserId) {
+      initializePushNotifications(effectiveUserId);
+    }
+  }, [effectiveUserId]);
+
+  const handleCalendarNav = () => {
+    if (role === 'tutor') router.push('/tutor/calendar');
+    else if (role === 'student') router.push('/student/sessions');
+    else if (role === 'parent') router.push('/parent/sessions');
+  };
+
+  const handleMessagesNav = () => {
+    if (role === 'student') router.push('/student/messages');
+    else if (role === 'tutor') router.push('/tutor/messages');
+    else if (role === 'parent') router.push('/parent/messages');
+  };
+
+  const handleNotificationsNav = () => {
+    if (role === 'student') router.push('/student/notifications');
+    else if (role === 'tutor') router.push('/tutor/notifications');
+    else if (role === 'parent') router.push('/parent/notifications');
+  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -39,6 +99,8 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         return '/parent/dashboard';
       case 'reviewer':
         return '/reviewer/dashboard';
+      case 'admin':
+        return '/admin/dashboard';
       default:
         return '/';
     }
@@ -50,19 +112,18 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         return [
           { href: '/student/find-tutors', label: 'Find iTutors' },
           { href: '/communities', label: 'Communities' },
+          { href: '/student/curriculum', label: 'Curriculum' },
           { href: '/student/bookings', label: 'My Bookings' },
           { href: '/student/sessions', label: 'Sessions' },
-          { href: '/student/ratings', label: 'Ratings' },
-          { href: '/student/settings', label: 'Settings' },
+          { href: '/student/ratings', label: 'My Reviews' },
         ];
       case 'tutor':
         return [
           { href: '/tutor/find-students', label: 'Find Students' },
           { href: '/tutor/bookings', label: 'Booking Requests' },
-          { href: '/tutor/curriculum', label: 'Curriculum' },
           { href: '/communities', label: 'Communities' },
+          { href: '/tutor/curriculum', label: 'Curriculum' },
           { href: '/tutor/sessions', label: 'Sessions' },
-          { href: '/tutor/settings', label: 'Settings' },
         ];
       case 'parent':
         return [
@@ -70,7 +131,6 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/communities', label: 'Communities' },
           { href: '/parent/approve-bookings', label: 'Booking Requests' },
           { href: '/parent/sessions', label: 'Sessions' },
-          { href: '/parent/settings', label: 'Settings' },
         ];
       case 'reviewer':
         return [
@@ -78,7 +138,14 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/reviewer/verified-tutors', label: 'Verified iTutors' },
           { href: '/reviewer/accounts', label: 'Account Management' },
           { href: '/reviewer/payments', label: 'Payments & Revenue' },
-          { href: '/reviewer/settings', label: 'Settings' },
+        ];
+      case 'admin':
+        return [
+          { href: '/reviewer/verification/queue', label: 'Verification Queue' },
+          { href: '/reviewer/verified-tutors', label: 'Verified iTutors' },
+          { href: '/reviewer/accounts', label: 'Account Management' },
+          { href: '/reviewer/payments', label: 'Payments & Revenue' },
+          { href: '/admin/emails', label: 'Email Management' },
         ];
       default:
         return [];
@@ -99,42 +166,102 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 flex flex-col">
-      <nav className="bg-black shadow-lg border-b border-gray-900 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            {/* Left: Hamburger Menu (Mobile) + Logo */}
-            <div className="flex items-center gap-3">
-              {/* Hamburger Menu Button - Mobile Only */}
+      <PushTokenRegistrar />
+      
+      {/* Mobile Side Drawer Overlay */}
+      {mobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 z-50 md:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+      
+      {/* Mobile Side Drawer */}
+      <div className={`fixed top-0 left-0 h-full w-64 bg-gray-900 z-50 transform transition-transform duration-300 ease-in-out md:hidden ${
+        mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
+      }`}>
+        <div className="flex flex-col h-full">
+          {/* Drawer Header */}
+          <div className="flex items-center justify-between p-4 border-b border-gray-700">
+            <img
+              src="/assets/logo/itutor-logo-dark.png"
+              alt="iTutor"
+              className="h-8 w-auto"
+            />
+            <button
+              onClick={() => setMobileMenuOpen(false)}
+              className="p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-800"
+            >
+              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          
+          {/* Drawer Navigation Links */}
+          <div className="flex-1 overflow-y-auto py-4">
+            {getNavLinks().map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center px-4 py-3 text-gray-300 hover:bg-gray-800 hover:text-itutor-green transition-colors border-l-4 border-transparent hover:border-itutor-green"
+              >
+                <span className="text-sm font-medium">{link.label}</span>
+              </Link>
+            ))}
+          </div>
+          
+          {/* Drawer Footer */}
+          <div className="border-t border-gray-700 p-4">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-r from-itutor-green to-emerald-600 flex items-center justify-center text-black font-bold">
+                {displayName.charAt(0).toUpperCase()}
+              </div>
+              <span className="text-sm text-gray-300 truncate">{displayName}</span>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="w-full bg-gradient-to-r from-gray-800 to-gray-700 hover:from-gray-700 hover:to-gray-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 border border-gray-600 hover:border-itutor-green"
+            >
+              Logout
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      <nav className="bg-black shadow-lg border-b border-gray-900 sticky top-0 z-40">
+        <div className="max-w-full xl:max-w-[1400px] 2xl:max-w-[1600px] mx-auto px-2 sm:px-4 lg:px-6 xl:px-8">
+          <div className="flex items-center justify-between h-16">
+            {/* Left: Hamburger + Logo + Navigation */}
+            <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 overflow-hidden">
+              {/* Hamburger Menu (Mobile Only) */}
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="lg:hidden p-2 rounded-md text-gray-400 hover:text-itutor-green hover:bg-gray-800 focus:outline-none transition-colors"
+                className="md:hidden p-2 rounded-md text-gray-400 hover:text-itutor-green hover:bg-gray-800 focus:outline-none transition-colors"
                 aria-label="Open menu"
               >
                 <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  {mobileMenuOpen ? (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  ) : (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                  )}
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
               </button>
-
+              
               {/* Logo */}
               <Link href={getDashboardLink()} className="flex-shrink-0 flex items-center group">
                 <img
                   src="/assets/logo/itutor-logo-dark.png"
                   alt="iTutor"
-                  className="h-8 sm:h-10 md:h-12 w-auto group-hover:scale-105 transition-transform duration-300"
+                  className="h-7 sm:h-8 md:h-9 lg:h-10 xl:h-12 w-auto group-hover:scale-105 transition-transform duration-300"
                 />
               </Link>
 
-              {/* Desktop Navigation Links */}
-              <div className="hidden lg:flex lg:ml-6 lg:space-x-6">
+              {/* Navigation Links (Desktop Only) */}
+              <div className="hidden md:flex ml-2 sm:ml-3 md:ml-4 lg:ml-6 space-x-1 sm:space-x-2 md:space-x-2 lg:space-x-4 xl:space-x-6">
                 {getNavLinks().map((link) => (
                   <Link
                     key={link.href}
                     href={link.href}
-                    className="border-transparent text-gray-400 hover:text-itutor-green hover:border-itutor-green inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors duration-200"
+                    className="border-transparent text-gray-300 hover:text-itutor-green hover:border-itutor-green inline-flex items-center px-0.5 sm:px-1 md:px-1.5 lg:px-2 pt-1 border-b-2 text-[9px] sm:text-[10px] md:text-xs lg:text-sm font-medium transition-colors duration-200 whitespace-nowrap"
                   >
                     {link.label}
                   </Link>
@@ -142,17 +269,28 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
               </div>
             </div>
 
-            {/* Right: Icons + Logout */}
-            <div className="flex items-center gap-2 sm:gap-3">
-              {/* Desktop: Show individual icons */}
-              <div className="hidden sm:flex items-center gap-3">
-                {profile?.id && role !== 'reviewer' && <CalendarIcon userId={profile.id} role={role} />}
-                {profile?.id && role !== 'reviewer' && <MessagesIcon userId={profile.id} role={role} />}
+            {/* Right: Icons + Username + Logout */}
+            <div className="flex items-center gap-2 sm:gap-3 lg:gap-4 xl:gap-6">
+              {/* Always show icons (fixed for student UI issue) */}
+              <div className="flex items-center gap-1.5 md:gap-2 lg:gap-3">
+                {profile?.id && role !== 'reviewer' && role !== 'admin' && <CalendarIcon userId={profile.id} role={role} />}
+                {profile?.id && role !== 'reviewer' && role !== 'admin' && <MessagesIcon userId={profile.id} role={role} />}
                 {profile?.id && <NotificationBell userId={profile.id} />}
+                {/* Settings Gear Icon */}
+                <Link
+                  href={`/${role}/settings`}
+                  className="p-2 rounded-md text-gray-400 hover:text-itutor-green hover:bg-gray-800 focus:outline-none transition-colors"
+                  aria-label="Settings"
+                >
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </Link>
               </div>
 
-              {/* Mobile: Consolidated Icon Menu */}
-              {profile?.id && (
+              {/* Mobile backup: Consolidated Icon Menu (kept as fallback but hidden since icons always show) */}
+              {profile?.id && false && (
                 <div className="relative sm:hidden">
                   <button
                     onClick={() => setMobileIconMenuOpen(!mobileIconMenuOpen)}
@@ -172,7 +310,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
                         onClick={() => setMobileIconMenuOpen(false)}
                       />
                       <div className="absolute right-0 mt-2 w-56 bg-gray-900 rounded-lg shadow-lg border border-gray-700 py-2 z-50">
-                        {role !== 'reviewer' && (
+                        {role !== 'reviewer' && role !== 'admin' && (
                           <>
                             <Link
                               href={`/${role}/calendar`}
@@ -206,20 +344,34 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
                           </svg>
                           <span>Notifications</span>
                         </Link>
+                        <Link
+                          href={`/${role}/settings`}
+                          onClick={() => setMobileIconMenuOpen(false)}
+                          className="flex items-center gap-3 px-4 py-3 text-gray-300 hover:bg-gray-800 hover:text-itutor-green transition-colors"
+                        >
+                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          </svg>
+                          <span>Settings</span>
+                        </Link>
                       </div>
                     </>
                   )}
                 </div>
               )}
 
-              {/* Username and Logout - Pushed to the right */}
-              <div className="flex items-center gap-2 sm:gap-3 ml-4 sm:ml-6 lg:ml-8">
-                <span className="hidden md:block text-sm text-gray-300 truncate max-w-[120px]">{userName}</span>
+              {/* Divider */}
+              <div className="hidden md:block h-6 w-px bg-gray-700"></div>
+
+              {/* Username and Logout */}
+              <div className="flex items-center gap-2 sm:gap-3">
+                <span className="hidden md:block text-sm text-gray-300 truncate max-w-[100px] lg:max-w-[120px]">{displayName}</span>
                 
                 {/* Logout Button */}
                 <button
                   onClick={handleLogout}
-                  className="bg-gradient-to-r from-gray-800 to-gray-700 hover:from-gray-700 hover:to-gray-600 text-itutor-white px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all duration-200 border border-gray-600 hover:border-itutor-green"
+                  className="bg-gradient-to-r from-gray-800 to-gray-700 hover:from-gray-700 hover:to-gray-600 text-itutor-white px-2 sm:px-3 md:px-3 lg:px-4 py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-xs md:text-sm font-medium transition-all duration-200 border border-gray-600 hover:border-itutor-green whitespace-nowrap"
                 >
                   Logout
                 </button>
@@ -228,50 +380,14 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           </div>
         </div>
 
-        {/* Mobile Sliding Navigation Menu */}
-        {mobileMenuOpen && (
-          <>
-            {/* Backdrop */}
-            <div 
-              className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
-              onClick={() => setMobileMenuOpen(false)}
-            />
-            
-            {/* Slide-out Menu */}
-            <div className="fixed top-0 left-0 bottom-0 w-64 bg-gray-900 shadow-2xl z-50 lg:hidden transform transition-transform duration-300 ease-in-out overflow-y-auto">
-              <div className="p-6">
-                <div className="flex items-center justify-between mb-8">
-                  <h2 className="text-xl font-bold text-itutor-green">Menu</h2>
-                  <button
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="p-2 rounded-md text-gray-400 hover:text-itutor-green hover:bg-gray-800 transition-colors"
-                  >
-                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-                
-                <nav className="space-y-2">
-                  {getNavLinks().map((link) => (
-                    <Link
-                      key={link.href}
-                      href={link.href}
-                      onClick={() => setMobileMenuOpen(false)}
-                      className="flex items-center gap-3 px-4 py-3 text-gray-300 hover:bg-gray-800 hover:text-itutor-green rounded-lg transition-colors text-base font-medium"
-                    >
-                      <span className="w-1.5 h-1.5 bg-itutor-green rounded-full"></span>
-                      {link.label}
-                    </Link>
-                  ))}
-                </nav>
-              </div>
-            </div>
-          </>
-        )}
       </nav>
       
       <main className="flex-1 w-full py-4 px-2 sm:py-6 sm:px-4 lg:py-8 lg:px-6 lg:max-w-7xl lg:mx-auto">
+        {/* Browser Push Notification Prompt */}
+        {effectiveUserId && (
+          <EnableNotificationsPrompt userId={effectiveUserId} />
+        )}
+        
         <div className="bg-white rounded-lg sm:rounded-xl lg:rounded-2xl shadow-lg sm:shadow-xl p-3 sm:p-4 lg:p-6">
           {children}
         </div>

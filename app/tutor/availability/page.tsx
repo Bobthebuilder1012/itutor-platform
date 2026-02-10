@@ -16,6 +16,15 @@ import { getDisplayName } from '@/lib/utils/displayName';
 import { TutorAvailabilityRule, TutorUnavailabilityBlock, DAYS_OF_WEEK } from '@/lib/types/booking';
 import { formatDate, formatTime, toISOString } from '@/lib/utils/calendar';
 
+// Helper function to convert 24-hour time to 12-hour format with AM/PM
+function format12Hour(time24: string): string {
+  const [hourStr, minute] = time24.split(':');
+  let hour = parseInt(hourStr);
+  const period = hour >= 12 ? 'PM' : 'AM';
+  hour = hour % 12 || 12;
+  return `${hour}:${minute} ${period}`;
+}
+
 export default function TutorAvailabilityPage() {
   const { profile, loading: profileLoading } = useProfile();
   const router = useRouter();
@@ -203,21 +212,103 @@ export default function TutorAvailabilityPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
-                      <input
-                        type="time"
-                        value={newRule.start_time}
-                        onChange={(e) => setNewRule({ ...newRule, start_time: e.target.value })}
-                        className="w-full px-3 py-2 bg-white border-2 border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green"
-                      />
+                      <div className="grid grid-cols-3 gap-2">
+                        <select
+                          value={newRule.start_time.split(':')[0] > '12' ? String(parseInt(newRule.start_time.split(':')[0]) - 12) : (newRule.start_time.split(':')[0] === '00' ? '12' : String(parseInt(newRule.start_time.split(':')[0])))}
+                          onChange={(e) => {
+                            const hour = parseInt(e.target.value);
+                            const currentMinute = newRule.start_time.split(':')[1];
+                            const isPM = parseInt(newRule.start_time.split(':')[0]) >= 12;
+                            const hour24 = isPM ? (hour === 12 ? 12 : hour + 12) : (hour === 12 ? 0 : hour);
+                            setNewRule({ ...newRule, start_time: `${String(hour24).padStart(2, '0')}:${currentMinute}` });
+                          }}
+                          className="px-2 py-2 bg-white border-2 border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green text-sm"
+                        >
+                          {Array.from({length: 12}, (_, i) => i + 1).map(h => (
+                            <option key={h} value={h}>{h}</option>
+                          ))}
+                        </select>
+                        <select
+                          value={newRule.start_time.split(':')[1]}
+                          onChange={(e) => {
+                            const currentHour = newRule.start_time.split(':')[0];
+                            setNewRule({ ...newRule, start_time: `${currentHour}:${e.target.value}` });
+                          }}
+                          className="px-2 py-2 bg-white border-2 border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green text-sm"
+                        >
+                          <option value="00">00</option>
+                          <option value="15">15</option>
+                          <option value="30">30</option>
+                          <option value="45">45</option>
+                        </select>
+                        <select
+                          value={parseInt(newRule.start_time.split(':')[0]) >= 12 ? 'PM' : 'AM'}
+                          onChange={(e) => {
+                            const [hourStr, minute] = newRule.start_time.split(':');
+                            let hour = parseInt(hourStr);
+                            if (e.target.value === 'PM') {
+                              hour = hour < 12 ? hour + 12 : hour;
+                            } else {
+                              hour = hour >= 12 ? hour - 12 : hour;
+                            }
+                            setNewRule({ ...newRule, start_time: `${String(hour).padStart(2, '0')}:${minute}` });
+                          }}
+                          className="px-2 py-2 bg-white border-2 border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green text-sm"
+                        >
+                          <option value="AM">AM</option>
+                          <option value="PM">PM</option>
+                        </select>
+                      </div>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">End Time</label>
-                      <input
-                        type="time"
-                        value={newRule.end_time}
-                        onChange={(e) => setNewRule({ ...newRule, end_time: e.target.value })}
-                        className="w-full px-3 py-2 bg-white border-2 border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green"
-                      />
+                      <div className="grid grid-cols-3 gap-2">
+                        <select
+                          value={newRule.end_time.split(':')[0] > '12' ? String(parseInt(newRule.end_time.split(':')[0]) - 12) : (newRule.end_time.split(':')[0] === '00' ? '12' : String(parseInt(newRule.end_time.split(':')[0])))}
+                          onChange={(e) => {
+                            const hour = parseInt(e.target.value);
+                            const currentMinute = newRule.end_time.split(':')[1];
+                            const isPM = parseInt(newRule.end_time.split(':')[0]) >= 12;
+                            const hour24 = isPM ? (hour === 12 ? 12 : hour + 12) : (hour === 12 ? 0 : hour);
+                            setNewRule({ ...newRule, end_time: `${String(hour24).padStart(2, '0')}:${currentMinute}` });
+                          }}
+                          className="px-2 py-2 bg-white border-2 border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green text-sm"
+                        >
+                          {Array.from({length: 12}, (_, i) => i + 1).map(h => (
+                            <option key={h} value={h}>{h}</option>
+                          ))}
+                        </select>
+                        <select
+                          value={newRule.end_time.split(':')[1]}
+                          onChange={(e) => {
+                            const currentHour = newRule.end_time.split(':')[0];
+                            setNewRule({ ...newRule, end_time: `${currentHour}:${e.target.value}` });
+                          }}
+                          className="px-2 py-2 bg-white border-2 border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green text-sm"
+                        >
+                          <option value="00">00</option>
+                          <option value="15">15</option>
+                          <option value="30">30</option>
+                          <option value="45">45</option>
+                        </select>
+                        <select
+                          value={parseInt(newRule.end_time.split(':')[0]) >= 12 ? 'PM' : 'AM'}
+                          onChange={(e) => {
+                            const [hourStr, minute] = newRule.end_time.split(':');
+                            let hour = parseInt(hourStr);
+                            if (e.target.value === 'PM') {
+                              hour = hour < 12 ? hour + 12 : hour;
+                            } else {
+                              hour = hour >= 12 ? hour - 12 : hour;
+                            }
+                            setNewRule({ ...newRule, end_time: `${String(hour).padStart(2, '0')}:${minute}` });
+                          }}
+                          className="px-2 py-2 bg-white border-2 border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green text-sm"
+                        >
+                          <option value="AM">AM</option>
+                          <option value="PM">PM</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
 
@@ -256,8 +347,8 @@ export default function TutorAvailabilityPage() {
                   <div key={rule.id} className="bg-white border-2 border-gray-300 rounded-lg p-3 flex justify-between items-center">
                     <div>
                       <p className="font-semibold text-gray-900">{DAYS_OF_WEEK[rule.day_of_week]}</p>
-                      <p className="text-sm text-gray-400">
-                        {rule.start_time.slice(0, 5)} - {rule.end_time.slice(0, 5)} • {rule.slot_minutes}min sessions
+                      <p className="text-sm text-gray-600">
+                        {format12Hour(rule.start_time)} - {format12Hour(rule.end_time)} • {rule.slot_minutes}min sessions
                       </p>
                     </div>
                     <button
@@ -275,7 +366,7 @@ export default function TutorAvailabilityPage() {
           </div>
 
           {/* Unavailability Blocks */}
-          <div className="bg-gradient-to-br from-gray-800 to-gray-900 border border-gray-700 rounded-2xl p-6">
+          <div className="bg-white border-2 border-gray-200 shadow-lg rounded-2xl p-6">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-bold text-gray-900">Unavailable Periods</h2>
               <button
@@ -301,12 +392,53 @@ export default function TutorAvailabilityPage() {
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
-                      <input
-                        type="time"
-                        value={newBlock.start_time}
-                        onChange={(e) => setNewBlock({ ...newBlock, start_time: e.target.value })}
-                        className="w-full px-3 py-2 bg-white border-2 border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green"
-                      />
+                      <div className="grid grid-cols-3 gap-2">
+                        <select
+                          value={newBlock.start_time.split(':')[0] > '12' ? String(parseInt(newBlock.start_time.split(':')[0]) - 12) : (newBlock.start_time.split(':')[0] === '00' ? '12' : String(parseInt(newBlock.start_time.split(':')[0])))}
+                          onChange={(e) => {
+                            const hour = parseInt(e.target.value);
+                            const currentMinute = newBlock.start_time.split(':')[1];
+                            const isPM = parseInt(newBlock.start_time.split(':')[0]) >= 12;
+                            const hour24 = isPM ? (hour === 12 ? 12 : hour + 12) : (hour === 12 ? 0 : hour);
+                            setNewBlock({ ...newBlock, start_time: `${String(hour24).padStart(2, '0')}:${currentMinute}` });
+                          }}
+                          className="px-2 py-2 bg-white border-2 border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green text-sm"
+                        >
+                          {Array.from({length: 12}, (_, i) => i + 1).map(h => (
+                            <option key={h} value={h}>{h}</option>
+                          ))}
+                        </select>
+                        <select
+                          value={newBlock.start_time.split(':')[1]}
+                          onChange={(e) => {
+                            const currentHour = newBlock.start_time.split(':')[0];
+                            setNewBlock({ ...newBlock, start_time: `${currentHour}:${e.target.value}` });
+                          }}
+                          className="px-2 py-2 bg-white border-2 border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green text-sm"
+                        >
+                          <option value="00">00</option>
+                          <option value="15">15</option>
+                          <option value="30">30</option>
+                          <option value="45">45</option>
+                        </select>
+                        <select
+                          value={parseInt(newBlock.start_time.split(':')[0]) >= 12 ? 'PM' : 'AM'}
+                          onChange={(e) => {
+                            const [hourStr, minute] = newBlock.start_time.split(':');
+                            let hour = parseInt(hourStr);
+                            if (e.target.value === 'PM') {
+                              hour = hour < 12 ? hour + 12 : hour;
+                            } else {
+                              hour = hour >= 12 ? hour - 12 : hour;
+                            }
+                            setNewBlock({ ...newBlock, start_time: `${String(hour).padStart(2, '0')}:${minute}` });
+                          }}
+                          className="px-2 py-2 bg-white border-2 border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green text-sm"
+                        >
+                          <option value="AM">AM</option>
+                          <option value="PM">PM</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
 
@@ -322,12 +454,53 @@ export default function TutorAvailabilityPage() {
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">End Time</label>
-                      <input
-                        type="time"
-                        value={newBlock.end_time}
-                        onChange={(e) => setNewBlock({ ...newBlock, end_time: e.target.value })}
-                        className="w-full px-3 py-2 bg-white border-2 border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green"
-                      />
+                      <div className="grid grid-cols-3 gap-2">
+                        <select
+                          value={newBlock.end_time.split(':')[0] > '12' ? String(parseInt(newBlock.end_time.split(':')[0]) - 12) : (newBlock.end_time.split(':')[0] === '00' ? '12' : String(parseInt(newBlock.end_time.split(':')[0])))}
+                          onChange={(e) => {
+                            const hour = parseInt(e.target.value);
+                            const currentMinute = newBlock.end_time.split(':')[1];
+                            const isPM = parseInt(newBlock.end_time.split(':')[0]) >= 12;
+                            const hour24 = isPM ? (hour === 12 ? 12 : hour + 12) : (hour === 12 ? 0 : hour);
+                            setNewBlock({ ...newBlock, end_time: `${String(hour24).padStart(2, '0')}:${currentMinute}` });
+                          }}
+                          className="px-2 py-2 bg-white border-2 border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green text-sm"
+                        >
+                          {Array.from({length: 12}, (_, i) => i + 1).map(h => (
+                            <option key={h} value={h}>{h}</option>
+                          ))}
+                        </select>
+                        <select
+                          value={newBlock.end_time.split(':')[1]}
+                          onChange={(e) => {
+                            const currentHour = newBlock.end_time.split(':')[0];
+                            setNewBlock({ ...newBlock, end_time: `${currentHour}:${e.target.value}` });
+                          }}
+                          className="px-2 py-2 bg-white border-2 border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green text-sm"
+                        >
+                          <option value="00">00</option>
+                          <option value="15">15</option>
+                          <option value="30">30</option>
+                          <option value="45">45</option>
+                        </select>
+                        <select
+                          value={parseInt(newBlock.end_time.split(':')[0]) >= 12 ? 'PM' : 'AM'}
+                          onChange={(e) => {
+                            const [hourStr, minute] = newBlock.end_time.split(':');
+                            let hour = parseInt(hourStr);
+                            if (e.target.value === 'PM') {
+                              hour = hour < 12 ? hour + 12 : hour;
+                            } else {
+                              hour = hour >= 12 ? hour - 12 : hour;
+                            }
+                            setNewBlock({ ...newBlock, end_time: `${String(hour).padStart(2, '0')}:${minute}` });
+                          }}
+                          className="px-2 py-2 bg-white border-2 border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green text-sm"
+                        >
+                          <option value="AM">AM</option>
+                          <option value="PM">PM</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
 
@@ -355,9 +528,9 @@ export default function TutorAvailabilityPage() {
             )}
 
             {loading ? (
-              <div className="text-center py-4 text-gray-400">Loading...</div>
+              <div className="text-center py-4 text-gray-600">Loading...</div>
             ) : unavailabilityBlocks.length === 0 ? (
-              <div className="text-center py-8 text-gray-400">
+              <div className="text-center py-8 text-gray-600">
                 <p>No unavailability blocks</p>
                 <p className="text-sm mt-2">Block time for events, holidays, etc.</p>
               </div>

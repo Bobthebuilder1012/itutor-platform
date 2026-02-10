@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
@@ -14,6 +14,7 @@ type SettingsSection = 'profile' | 'security' | 'payment';
 export default function StudentSettingsPage() {
   const { profile, loading: profileLoading } = useProfile();
   const router = useRouter();
+  const sidebarRef = useRef<HTMLDivElement | null>(null);
   
   const [activeSection, setActiveSection] = useState<SettingsSection>('profile');
   const [username, setUsername] = useState('');
@@ -323,6 +324,17 @@ export default function StudentSettingsPage() {
     }
   };
 
+  // Child accounts (created by parents) don't have payment settings
+  // NOTE: Defined before early returns to keep hook order stable across renders.
+  const isChildAccount = profile?.billing_mode === 'parent_required';
+
+  const sections = [
+    { id: 'profile' as SettingsSection, label: 'Profile Information', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z' },
+    { id: 'security' as SettingsSection, label: 'Security & Password', icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z' },
+    // Only show payment settings for regular students (not child accounts)
+    ...(!isChildAccount ? [{ id: 'payment' as SettingsSection, label: 'Payment Settings', icon: 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z' }] : []),
+  ];
+
   if (profileLoading || !profile) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -330,16 +342,6 @@ export default function StudentSettingsPage() {
       </div>
     );
   }
-
-  // Child accounts (created by parents) don't have payment settings
-  const isChildAccount = profile?.billing_mode === 'parent_required';
-  
-  const sections = [
-    { id: 'profile' as SettingsSection, label: 'Profile Information', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z' },
-    { id: 'security' as SettingsSection, label: 'Security & Password', icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z' },
-    // Only show payment settings for regular students (not child accounts)
-    ...(!isChildAccount ? [{ id: 'payment' as SettingsSection, label: 'Payment Settings', icon: 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z' }] : [])
-  ];
 
   return (
     <DashboardLayout role="student" userName={getDisplayName(profile)}>
@@ -360,7 +362,7 @@ export default function StudentSettingsPage() {
         )}
 
         {/* Mobile & Tablet: Horizontal Tabs */}
-        <div className="md:hidden mb-4">
+        <div className="md:!hidden mb-4">
           <div className="bg-white border-2 border-gray-200 rounded-xl p-1.5">
             <div className="flex overflow-x-auto scrollbar-hide gap-1">
               {sections.map((section) => (
@@ -387,7 +389,7 @@ export default function StudentSettingsPage() {
 
         <div className="flex flex-col md:flex-row gap-4 md:gap-6">
           {/* Desktop: Sidebar Navigation */}
-          <div className="hidden md:block w-52 flex-shrink-0">
+          <div ref={sidebarRef} className="hidden md:!block w-52 flex-shrink-0">
             <div className="bg-white border-2 border-gray-200 rounded-xl p-1.5 sticky top-6">
               <nav className="space-y-0.5">
                 {sections.map((section) => (
@@ -511,10 +513,7 @@ export default function StudentSettingsPage() {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Subjects I'm Studying
               </label>
-              <SubjectMultiSelect
-                selectedSubjects={subjects}
-                onChange={setSubjects}
-              />
+              <SubjectMultiSelect selectedSubjects={subjects} onChange={setSubjects} />
             </div>
           </div>
 
@@ -613,6 +612,7 @@ export default function StudentSettingsPage() {
               Delete Account
             </button>
           </div>
+
         </div>
         )}
 

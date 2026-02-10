@@ -11,6 +11,7 @@ import VerifiedSubjectsModal from '@/components/tutor/VerifiedSubjectsModal';
 import RatingComment from '@/components/tutor/RatingComment';
 import AuthPromptModal from '@/components/AuthPromptModal';
 import { useAuthPrompt } from '@/hooks/useAuthPrompt';
+import { getAvatarColor } from '@/lib/utils/avatarColors';
 import Link from 'next/link';
 
 type TutorProfile = {
@@ -281,7 +282,7 @@ export default function PublicTutorProfilePage() {
         <div className="bg-white border-2 border-indigo-200 shadow-xl rounded-2xl p-8 mb-6 hover:shadow-indigo-300/50 transition-all duration-300">
           <div className="flex flex-col md:flex-row gap-6 items-start">
             {/* Avatar */}
-            <div className="w-32 h-32 rounded-full bg-gradient-to-br from-itutor-green to-emerald-600 flex items-center justify-center text-white font-bold text-4xl flex-shrink-0 shadow-lg">
+            <div className={`w-32 h-32 rounded-full bg-gradient-to-br ${getAvatarColor(tutor.id)} flex items-center justify-center text-white font-bold text-4xl flex-shrink-0 shadow-lg`}>
               {tutor.avatar_url ? (
                 <img src={tutor.avatar_url} alt={displayName} className="w-full h-full rounded-full object-cover" />
               ) : (
