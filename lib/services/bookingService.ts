@@ -42,6 +42,27 @@ export async function getTutorPublicCalendar(
 }
 
 /**
+ * Validate if a requested time slot fits within tutor's availability
+ */
+export async function validateTimeSlotAvailability(
+  tutorId: string,
+  requestedStartAt: string,
+  requestedEndAt: string
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc('is_time_slot_available', {
+    p_tutor_id: tutorId,
+    p_requested_start: requestedStartAt,
+    p_requested_end: requestedEndAt
+  });
+
+  if (error) {
+    console.error('Error validating time slot:', error);
+    return false;
+  }
+  return data as boolean;
+}
+
+/**
  * Get tutor availability summary
  */
 export async function getTutorAvailabilitySummary(
