@@ -107,18 +107,28 @@
             button.disabled = true;
             statusDiv.style.display = 'block';
             statusDiv.className = 'loading';
-            statusDiv.innerHTML = '⏳ Finding sessions without meeting links...';
+            statusDiv.innerHTML = '⏳ Finding sessions without meeting links...<br><small>This may take 30+ seconds if there are many sessions...</small>';
 
             try {
                 // Use localhost:3001 (your dev server port)
+                console.log('🔄 Calling API: http://localhost:3001/api/sessions/create-missing-meetings');
+                
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
+                
                 const response = await fetch('http://localhost:3001/api/sessions/create-missing-meetings', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
-                    }
+                    },
+                    signal: controller.signal
                 });
 
+                clearTimeout(timeoutId);
+                console.log('✅ Response received:', response.status);
+
                 const data = await response.json();
+                console.log('📦 Data:', data);
 
                 if (response.ok) {
                     statusDiv.className = 'success';
@@ -143,22 +153,59 @@
                     throw new Error(data.error || 'Failed to create meeting links');
                 }
             } catch (error) {
+                console.error('❌ Full error:', error);
                 statusDiv.className = 'error';
-                statusDiv.innerHTML = `
-                    <div><strong>❌ Error</strong></div>
-                    <div style="margin-top: 10px;">
-                        ${error.message}
-                    </div>
-                    <div style="margin-top: 15px;">
-                        <strong>Possible Solutions:</strong>
-                        <ul style="margin: 10px 0; padding-left: 20px;">
-                            <li>Make sure you're running the dev server (npm run dev)</li>
-                            <li>Check that the tutor has a connected video provider</li>
-                            <li>Verify the tutor's OAuth tokens are not expired</li>
-                            <li>Check browser console for more details</li>
-                        </ul>
-                    </div>
-                `;
+                
+                if (error.name === 'AbortError') {
+                    statusDiv.innerHTML = `
+                        <div><strong>⏱️ Timeout</strong></div>
+                        <div style="margin-top: 10px;">
+                            The request took longer than 2 minutes. This usually means there are many sessions to process or the API is having issues.
+                        </div>
+                        <div style="margin-top: 15px;">
+                            <strong>Try:</strong>
+                            <ul style="margin: 10px 0; padding-left: 20px;">
+                                <li>Check the server terminal logs for progress</li>
+                                <li>Wait a bit longer and refresh the session page</li>
+                                <li>Use the "Retry Now" button on individual sessions</li>
+                            </ul>
+                        </div>
+                    `;
+                } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                    statusDiv.innerHTML = `
+                        <div><strong>🔌 Connection Error</strong></div>
+                        <div style="margin-top: 10px;">
+                            Cannot connect to the server. Is your dev server running?
+                        </div>
+                        <div style="margin-top: 15px;">
+                            <strong>Solutions:</strong>
+                            <ul style="margin: 10px 0; padding-left: 20px;">
+                                <li><strong>Make sure dev server is running:</strong> <code>npm run dev</code></li>
+                                <li><strong>Check it's on port 3001:</strong> Visit <a href="http://localhost:3001" target="_blank">http://localhost:3001</a></li>
+                                <li><strong>Check terminal output</strong> for server errors</li>
+                            </ul>
+                        </div>
+                        <div style="margin-top: 10px; padding: 10px; background: #fef3c7; border-radius: 4px;">
+                            <strong>Error details:</strong> ${error.message}
+                        </div>
+                    `;
+                } else {
+                    statusDiv.innerHTML = `
+                        <div><strong>❌ Error</strong></div>
+                        <div style="margin-top: 10px;">
+                            ${error.message}
+                        </div>
+                        <div style="margin-top: 15px;">
+                            <strong>Possible Solutions:</strong>
+                            <ul style="margin: 10px 0; padding-left: 20px;">
+                                <li>Make sure you're running the dev server (npm run dev)</li>
+                                <li>Check that the tutor has a connected video provider</li>
+                                <li>Verify the tutor's OAuth tokens are not expired</li>
+                                <li>Check browser console (F12) for more details</li>
+                            </ul>
+                        </div>
+                    `;
+                }
                 console.error('Error:', error);
             } finally {
                 button.disabled = false;
