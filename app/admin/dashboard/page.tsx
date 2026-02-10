@@ -6,9 +6,25 @@ import { supabase } from '@/lib/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
 import Link from 'next/link';
 
+type SessionWithDetails = {
+  id: string;
+  status: string;
+  scheduled_start_at: string;
+  scheduled_end_at: string;
+  charged_at: string | null;
+  duration_minutes: number;
+  charge_amount_ttd: number;
+  tutor_name: string;
+  student_name: string;
+  join_url: string | null;
+};
+
 export default function AdminDashboardPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [recentSessions, setRecentSessions] = useState<SessionWithDetails[]>([]);
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [stats, setStats] = useState({
     totalUsers: 0,
     totalStudents: 0,
@@ -16,12 +32,20 @@ export default function AdminDashboardPage() {
     totalParents: 0,
     recentSignups: 0,
     totalSessions: 0,
-    totalBookings: 0
+    totalBookings: 0,
+    completedSessions: 0,
+    scheduledSessions: 0
   });
 
   useEffect(() => {
     checkAdminAccess();
   }, []);
+
+  useEffect(() => {
+    if (!loading) {
+      fetchRecentSessions();
+    }
+  }, [loading, statusFilter]);
 
   const checkAdminAccess = async () => {
     try {
@@ -78,6 +102,18 @@ export default function AdminDashboardPage() {
         .from('sessions')
         .select('*', { count: 'exact', head: true });
 
+      // Completed sessions
+      const { count: completedSessions } = await supabase
+        .from('sessions')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'COMPLETED_ASSUMED');
+
+      // Scheduled sessions (upcoming)
+      const { count: scheduledSessions } = await supabase
+        .from('sessions')
+        .select('*', { count: 'exact', head: true })
+        .in('status', ['SCHEDULED', 'JOIN_OPEN']);
+
       // Total bookings
       const { count: totalBookings } = await supabase
         .from('bookings')
@@ -90,13 +126,103 @@ export default function AdminDashboardPage() {
         totalParents,
         recentSignups,
         totalSessions: totalSessions || 0,
-        totalBookings: totalBookings || 0
+        totalBookings: totalBookings || 0,
+        completedSessions: completedSessions || 0,
+        scheduledSessions: scheduledSessions || 0
       });
 
       setLoading(false);
     } catch (error) {
       console.error('Error fetching stats:', error);
       setLoading(false);
+    }
+  };
+
+  const fetchRecentSessions = async () => {
+    setSessionsLoading(true);
+    try {
+      let query = supabase
+        .from('sessions')
+        .select(`
+          id,
+          status,
+          scheduled_start_at,
+          scheduled_end_at,
+          charged_at,
+          duration_minutes,
+          charge_amount_ttd,
+          join_url,
+          tutor:tutor_id (full_name),
+          student:student_id (full_name)
+        `)
+        .order('scheduled_start_at', { ascending: false })
+        .limit(50);
+
+      if (statusFilter !== 'all') {
+        query = query.eq('status', statusFilter);
+      }
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+
+      const sessionsWithNames = (data || []).map((s: any) => ({
+        id: s.id,
+        status: s.status,
+        scheduled_start_at: s.scheduled_start_at,
+        scheduled_end_at: s.scheduled_end_at,
+        charged_at: s.charged_at,
+        duration_minutes: s.duration_minutes,
+        charge_amount_ttd: s.charge_amount_ttd,
+        join_url: s.join_url,
+        tutor_name: s.tutor?.full_name || 'Unknown',
+        student_name: s.student?.full_name || 'Unknown'
+      }));
+
+      setRecentSessions(sessionsWithNames);
+    } catch (error) {
+      console.error('Error fetching sessions:', error);
+    } finally {
+      setSessionsLoading(false);
+    }
+  };
+
+  const triggerProcessCharges = async () => {
+    if (!confirm('Manually trigger session completion for all ended sessions?')) return;
+    
+    try {
+      const response = await fetch('/api/cron/process-charges', {
+        method: 'POST'
+      });
+      const data = await response.json();
+      alert('Session processing triggered! Check console for details.');
+      console.log('Process charges result:', data);
+      
+      // Refresh data
+      await fetchStats();
+      await fetchRecentSessions();
+    } catch (error) {
+      console.error('Error triggering process charges:', error);
+      alert('Failed to trigger process charges');
+    }
+  };
+
+  const getStatusBadgeColor = (status: string) => {
+    switch (status) {
+      case 'SCHEDULED':
+        return 'bg-blue-100 text-blue-700 border-blue-300';
+      case 'JOIN_OPEN':
+        return 'bg-green-100 text-green-700 border-green-300';
+      case 'COMPLETED_ASSUMED':
+        return 'bg-emerald-100 text-emerald-700 border-emerald-300';
+      case 'CANCELLED':
+        return 'bg-red-100 text-red-700 border-red-300';
+      case 'NO_SHOW_STUDENT':
+        return 'bg-orange-100 text-orange-700 border-orange-300';
+      case 'EARLY_END_SHORT':
+        return 'bg-yellow-100 text-yellow-700 border-yellow-300';
+      default:
+        return 'bg-gray-100 text-gray-700 border-gray-300';
     }
   };
 
@@ -179,7 +305,7 @@ export default function AdminDashboardPage() {
         </div>
 
         {/* Secondary Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
           <div className="bg-white rounded-lg shadow p-6 border-l-4 border-amber-400">
             <h3 className="text-gray-600 text-sm font-medium">Recent Signups (7d)</h3>
             <p className="text-3xl font-bold text-gray-900 mt-2">{stats.recentSignups}</p>
@@ -190,9 +316,153 @@ export default function AdminDashboardPage() {
             <p className="text-3xl font-bold text-gray-900 mt-2">{stats.totalSessions}</p>
           </div>
 
+          <div className="bg-white rounded-lg shadow p-6 border-l-4 border-emerald-400">
+            <h3 className="text-gray-600 text-sm font-medium">Completed Sessions</h3>
+            <p className="text-3xl font-bold text-gray-900 mt-2">{stats.completedSessions}</p>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-6 border-l-4 border-blue-400">
+            <h3 className="text-gray-600 text-sm font-medium">Upcoming Sessions</h3>
+            <p className="text-3xl font-bold text-gray-900 mt-2">{stats.scheduledSessions}</p>
+          </div>
+
           <div className="bg-white rounded-lg shadow p-6 border-l-4 border-pink-400">
             <h3 className="text-gray-600 text-sm font-medium">Total Bookings</h3>
             <p className="text-3xl font-bold text-gray-900 mt-2">{stats.totalBookings}</p>
+          </div>
+        </div>
+
+        {/* Session Tracking */}
+        <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">Session Tracking</h2>
+              <p className="text-sm text-gray-600 mt-1">Monitor all sessions and their completion status</p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={triggerProcessCharges}
+                className="px-4 py-2 bg-itutor-green text-white rounded-lg hover:bg-green-600 transition-colors font-medium"
+              >
+                Trigger Session Processing
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2 mb-6">
+            {['all', 'SCHEDULED', 'JOIN_OPEN', 'COMPLETED_ASSUMED', 'CANCELLED', 'NO_SHOW_STUDENT'].map(status => (
+              <button
+                key={status}
+                onClick={() => setStatusFilter(status)}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  statusFilter === status
+                    ? 'bg-itutor-green text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {status === 'all' ? 'All Sessions' : status.replace(/_/g, ' ')}
+              </button>
+            ))}
+          </div>
+
+          {sessionsLoading ? (
+            <div className="text-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+              <p className="mt-4 text-gray-600">Loading sessions...</p>
+            </div>
+          ) : recentSessions.length === 0 ? (
+            <div className="text-center py-12 bg-gray-50 rounded-lg">
+              <p className="text-gray-600">No sessions found for this filter</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b-2 border-gray-200">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Date & Time</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">iTutor</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Student</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Duration</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Amount</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Charged</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Meeting</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {recentSessions.map((session) => {
+                    const startDate = new Date(session.scheduled_start_at);
+                    const endDate = new Date(session.scheduled_end_at);
+                    return (
+                      <tr key={session.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-gray-900">
+                            {startDate.toLocaleDateString('en-US', { 
+                              month: 'short', 
+                              day: 'numeric', 
+                              year: 'numeric' 
+                            })}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {startDate.toLocaleTimeString('en-US', { 
+                              hour: 'numeric', 
+                              minute: '2-digit', 
+                              hour12: true 
+                            })} - {endDate.toLocaleTimeString('en-US', { 
+                              hour: 'numeric', 
+                              minute: '2-digit', 
+                              hour12: true 
+                            })}
+                          </div>
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-gray-900">{session.tutor_name}</div>
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-gray-900">{session.student_name}</div>
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">{session.duration_minutes} min</div>
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-gray-900">TTD ${session.charge_amount_ttd.toFixed(2)}</div>
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full border ${getStatusBadgeColor(session.status)}`}>
+                            {session.status.replace(/_/g, ' ')}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          {session.charged_at ? (
+                            <span className="text-green-600 font-medium text-sm">✓ Charged</span>
+                          ) : (
+                            <span className="text-gray-400 text-sm">Not yet</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          {session.join_url ? (
+                            <span className="text-green-600 font-medium text-sm">✓ Created</span>
+                          ) : (
+                            <span className="text-orange-600 text-sm">Missing</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-start gap-3">
+              <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div className="text-sm text-blue-700">
+                <strong>About Session Completion:</strong> Sessions are automatically marked as completed and charged by a cron job that runs every minute in production. Use the "Trigger Session Processing" button to manually run this process during development or to catch up on delayed processing.
+              </div>
+            </div>
           </div>
         </div>
 
