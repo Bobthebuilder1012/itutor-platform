@@ -87,6 +87,10 @@
             This tool will find all confirmed sessions that don't have meeting links and create them automatically. 
             This happens when bookings are confirmed but the meeting link generation fails or doesn't run.
         </p>
+        <div style="padding: 15px; background: #fef3c7; border: 2px solid #f59e0b; border-radius: 8px; margin-bottom: 20px;">
+            <strong>⚠️ Make sure your dev server is running on port 3001!</strong><br>
+            Run: <code style="background: white; padding: 2px 8px; border-radius: 4px;">npm run dev</code>
+        </div>
         
         <button id="runBtn" onclick="createMeetingLinks()">
             🚀 Create All Missing Meeting Links
@@ -106,7 +110,8 @@
             statusDiv.innerHTML = '⏳ Finding sessions without meeting links...';
 
             try {
-                const response = await fetch('/api/sessions/create-missing-meetings', {
+                // Use localhost:3001 (your dev server port)
+                const response = await fetch('http://localhost:3001/api/sessions/create-missing-meetings', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -168,7 +173,7 @@
             statusDiv.innerHTML = `
                 <div><strong>ℹ️ How This Works</strong></div>
                 <div style="margin-top: 10px;">
-                    This page calls: <code>POST /api/sessions/create-missing-meetings</code>
+                    This page calls: <code>POST http://localhost:3001/api/sessions/create-missing-meetings</code>
                 </div>
                 <div style="margin-top: 10px;">
                     <strong>What it does:</strong>
