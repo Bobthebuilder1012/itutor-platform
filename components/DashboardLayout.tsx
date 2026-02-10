@@ -171,13 +171,13 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
       {/* Mobile Side Drawer Overlay */}
       {mobileMenuOpen && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-50 z-50 lg:hidden"
+          className="fixed inset-0 bg-black bg-opacity-50 z-50 sm:hidden"
           onClick={() => setMobileMenuOpen(false)}
         />
       )}
       
       {/* Mobile Side Drawer */}
-      <div className={`fixed top-0 left-0 h-full w-72 bg-gray-900 z-50 transform transition-transform duration-300 ease-in-out lg:hidden ${
+      <div className={`fixed top-0 left-0 h-full w-72 bg-gray-900 z-50 transform transition-transform duration-300 ease-in-out sm:hidden ${
         mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
       }`}>
         <div className="flex flex-col h-full">
@@ -234,11 +234,11 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         <div className="max-w-full mx-auto px-4 lg:px-6 xl:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Left: Hamburger + Logo + Navigation */}
-            <div className="flex items-center gap-2 sm:gap-3 lg:gap-4 flex-1 min-w-0">
-              {/* Hamburger Menu (Mobile/Tablet Only) */}
+            <div className="flex items-center gap-3 flex-1 min-w-0 overflow-hidden">
+              {/* Hamburger Menu (Small Mobile Only) */}
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="lg:hidden p-1.5 rounded-md text-gray-400 hover:text-itutor-green hover:bg-gray-800 focus:outline-none transition-colors"
+                className="sm:hidden p-2 rounded-md text-gray-400 hover:text-itutor-green hover:bg-gray-800 focus:outline-none transition-colors flex-shrink-0"
                 aria-label="Open menu"
               >
                 <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -251,17 +251,17 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
                 <img
                   src="/assets/logo/itutor-logo-dark.png"
                   alt="iTutor"
-                  className="h-8 sm:h-9 lg:h-10 w-auto group-hover:scale-105 transition-transform duration-300"
+                  className="h-9 w-auto group-hover:scale-105 transition-transform duration-300"
                 />
               </Link>
 
-              {/* Navigation Links (Desktop Only) */}
-              <div className="hidden lg:flex ml-6 xl:ml-8 space-x-1 xl:space-x-2">
+              {/* Navigation Links (Always Visible on sm+ screens) */}
+              <div className="sm:flex ml-3 md:ml-4 lg:ml-6 space-x-0.5 md:space-x-1 lg:space-x-2 overflow-x-auto flex-1" style={{display: window.innerWidth < 640 ? 'none' : 'flex'}}>
                 {getNavLinks().map((link) => (
                   <Link
                     key={link.href}
                     href={link.href}
-                    className="border-transparent text-gray-300 hover:text-itutor-green hover:border-itutor-green inline-flex items-center px-2 xl:px-3 py-2 border-b-2 text-sm font-medium transition-colors duration-200 whitespace-nowrap"
+                    className="border-transparent text-gray-300 hover:text-itutor-green hover:border-itutor-green inline-flex items-center px-1.5 md:px-2 lg:px-3 py-2 border-b-2 text-[10px] md:text-xs lg:text-sm font-medium transition-colors duration-200 whitespace-nowrap"
                   >
                     {link.label}
                   </Link>
@@ -362,16 +362,16 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
               )}
 
               {/* Divider */}
-              <div className="hidden lg:block h-6 w-px bg-gray-700"></div>
+              <div className="hidden sm:block h-6 w-px bg-gray-700"></div>
 
               {/* Username and Logout */}
-              <div className="flex items-center gap-3">
-                <span className="hidden lg:block text-sm font-medium text-gray-300 truncate max-w-[120px] xl:max-w-[150px]">{displayName}</span>
+              <div className="flex items-center gap-2 lg:gap-3">
+                <span className="hidden md:block text-sm font-medium text-gray-300 truncate max-w-[80px] lg:max-w-[120px]">{displayName}</span>
                 
                 {/* Logout Button */}
                 <button
                   onClick={handleLogout}
-                  className="bg-gradient-to-r from-gray-800 to-gray-700 hover:from-gray-700 hover:to-gray-600 text-white px-3 lg:px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 border border-gray-600 hover:border-itutor-green whitespace-nowrap shadow-sm hover:shadow-md"
+                  className="bg-gradient-to-r from-gray-800 to-gray-700 hover:from-gray-700 hover:to-gray-600 text-white px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-all duration-200 border border-gray-600 hover:border-itutor-green whitespace-nowrap shadow-sm hover:shadow-md"
                 >
                   Logout
                 </button>
