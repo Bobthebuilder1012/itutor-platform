@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
 import SubjectMultiSelect from '@/components/SubjectMultiSelect';
 import { getDisplayName } from '@/lib/utils/displayName';
+import { getAvatarColor } from '@/lib/utils/avatarColors';
 import VerifiedBadge from '@/components/VerifiedBadge';
 
 type Tutor = {
@@ -343,7 +344,7 @@ export default function FindTutorsPage() {
         </div>
 
         {/* Search and Filters */}
-        <div className="bg-gradient-to-br from-gray-800 to-gray-900 border border-gray-700 rounded-xl p-4 mb-4">
+        <div className="bg-white border-2 border-gray-200 rounded-xl p-4 mb-4 shadow-md">
           {/* Search Bar */}
           <div className="mb-3">
             <div className="relative">
@@ -363,7 +364,7 @@ export default function FindTutorsPage() {
           {/* Filters */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-300 mb-1">
+              <label className="block text-xs font-medium text-gray-700 mb-1">
                 Subjects
               </label>
               <SubjectMultiSelect
@@ -374,7 +375,7 @@ export default function FindTutorsPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-gray-300 mb-1">
+              <label className="block text-xs font-medium text-gray-700 mb-1">
                 School/Institution
               </label>
               <select
@@ -392,7 +393,7 @@ export default function FindTutorsPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-gray-300 mb-1">
+              <label className="block text-xs font-medium text-gray-700 mb-1">
                 Price Range
               </label>
               <select
@@ -411,7 +412,7 @@ export default function FindTutorsPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-gray-300 mb-1">
+              <label className="block text-xs font-medium text-gray-700 mb-1">
                 Rating
               </label>
               <select
@@ -461,9 +462,9 @@ export default function FindTutorsPage() {
             <p className="text-gray-600 mt-4">Loading tutors...</p>
           </div>
         ) : filteredTutors.length === 0 ? (
-          <div className="text-center py-12 bg-gradient-to-br from-gray-800 to-gray-900 border border-gray-700 rounded-2xl">
-            <div className="bg-gray-800 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
-              <svg className="h-8 w-8 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="text-center py-12 bg-white border-2 border-gray-200 rounded-2xl shadow-md">
+            <div className="bg-gray-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+              <svg className="h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </div>
@@ -493,7 +494,7 @@ export default function FindTutorsPage() {
 
                   {/* Tutor Info */}
                   <div className="flex items-start gap-4 mb-4">
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-itutor-green to-emerald-600 flex items-center justify-center text-white font-bold text-xl flex-shrink-0">
+                    <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${getAvatarColor(tutor.id)} flex items-center justify-center text-white font-bold text-xl flex-shrink-0`}>
                       {tutor.avatar_url ? (
                         <img src={tutor.avatar_url} alt={getDisplayName(tutor)} className="w-full h-full rounded-full object-cover" />
                       ) : (
@@ -567,7 +568,7 @@ export default function FindTutorsPage() {
                         </span>
                       ))}
                       {tutor.subjects.length > 3 && (
-                        <span className="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300">
+                        <span className="text-xs px-2 py-1 rounded bg-white border border-gray-300 text-gray-700">
                           +{tutor.subjects.length - 3} more
                         </span>
                       )}
