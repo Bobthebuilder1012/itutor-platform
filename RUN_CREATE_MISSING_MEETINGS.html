@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Missing Meeting Links</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .description {
+            color: #666;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+        button {
+            background: #10b981;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        button:hover {
+            background: #059669;
+            transform: translateY(-1px);
+        }
+        button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+            transform: none;
+        }
+        #status {
+            margin-top: 30px;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .loading {
+            background: #fef3c7;
+            border-left: 4px solid #f59e0b;
+        }
+        .success {
+            background: #d1fae5;
+            border-left: 4px solid #10b981;
+        }
+        .error {
+            background: #fee2e2;
+            border-left: 4px solid #ef4444;
+        }
+        .info {
+            background: #dbeafe;
+            border-left: 4px solid #3b82f6;
+        }
+        pre {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f9fafb;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔗 Create Missing Meeting Links</h1>
+        <p class="description">
+            This tool will find all confirmed sessions that don't have meeting links and create them automatically. 
+            This happens when bookings are confirmed but the meeting link generation fails or doesn't run.
+        </p>
+        <div style="padding: 15px; background: #fef3c7; border: 2px solid #f59e0b; border-radius: 8px; margin-bottom: 20px;">
+            <strong>⚠️ Make sure your dev server is running on port 3001!</strong><br>
+            Run: <code style="background: white; padding: 2px 8px; border-radius: 4px;">npm run dev</code>
+        </div>
+        
+        <button id="runBtn" onclick="createMeetingLinks()">
+            🚀 Create All Missing Meeting Links
+        </button>
+
+        <div id="status" style="display: none;"></div>
+    </div>
+
+    <script>
+        async function createMeetingLinks() {
+            const button = document.getElementById('runBtn');
+            const statusDiv = document.getElementById('status');
+            
+            button.disabled = true;
+            statusDiv.style.display = 'block';
+            statusDiv.className = 'loading';
+            statusDiv.innerHTML = '⏳ Finding sessions without meeting links...<br><small>This may take 30+ seconds if there are many sessions...</small>';
+
+            try {
+                // Use localhost:3001 (your dev server port)
+                console.log('🔄 Calling API: http://localhost:3001/api/sessions/create-missing-meetings');
+                
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
+                
+                const response = await fetch('http://localhost:3001/api/sessions/create-missing-meetings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    signal: controller.signal
+                });
+
+                clearTimeout(timeoutId);
+                console.log('✅ Response received:', response.status);
+
+                const data = await response.json();
+                console.log('📦 Data:', data);
+
+                if (response.ok) {
+                    statusDiv.className = 'success';
+                    statusDiv.innerHTML = `
+                        <div><strong>✅ Success!</strong></div>
+                        <div style="margin-top: 10px;">
+                            <div><strong>Total Sessions:</strong> ${data.total || 0}</div>
+                            <div><strong>✅ Successfully Created:</strong> ${data.success || 0}</div>
+                            <div><strong>❌ Failed:</strong> ${data.failed || 0}</div>
+                        </div>
+                        ${data.errors && data.errors.length > 0 ? `
+                            <div style="margin-top: 15px;">
+                                <strong>Errors:</strong>
+                                <pre>${JSON.stringify(data.errors, null, 2)}</pre>
+                            </div>
+                        ` : ''}
+                        <div style="margin-top: 15px; color: #059669;">
+                            <strong>🎉 Done! ${data.message}</strong>
+                        </div>
+                    `;
+                } else {
+                    throw new Error(data.error || 'Failed to create meeting links');
+                }
+            } catch (error) {
+                console.error('❌ Full error:', error);
+                statusDiv.className = 'error';
+                
+                if (error.name === 'AbortError') {
+                    statusDiv.innerHTML = `
+                        <div><strong>⏱️ Timeout</strong></div>
+                        <div style="margin-top: 10px;">
+                            The request took longer than 2 minutes. This usually means there are many sessions to process or the API is having issues.
+                        </div>
+                        <div style="margin-top: 15px;">
+                            <strong>Try:</strong>
+                            <ul style="margin: 10px 0; padding-left: 20px;">
+                                <li>Check the server terminal logs for progress</li>
+                                <li>Wait a bit longer and refresh the session page</li>
+                                <li>Use the "Retry Now" button on individual sessions</li>
+                            </ul>
+                        </div>
+                    `;
+                } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                    statusDiv.innerHTML = `
+                        <div><strong>🔌 Connection Error</strong></div>
+                        <div style="margin-top: 10px;">
+                            Cannot connect to the server. Is your dev server running?
+                        </div>
+                        <div style="margin-top: 15px;">
+                            <strong>Solutions:</strong>
+                            <ul style="margin: 10px 0; padding-left: 20px;">
+                                <li><strong>Make sure dev server is running:</strong> <code>npm run dev</code></li>
+                                <li><strong>Check it's on port 3001:</strong> Visit <a href="http://localhost:3001" target="_blank">http://localhost:3001</a></li>
+                                <li><strong>Check terminal output</strong> for server errors</li>
+                            </ul>
+                        </div>
+                        <div style="margin-top: 10px; padding: 10px; background: #fef3c7; border-radius: 4px;">
+                            <strong>Error details:</strong> ${error.message}
+                        </div>
+                    `;
+                } else {
+                    statusDiv.innerHTML = `
+                        <div><strong>❌ Error</strong></div>
+                        <div style="margin-top: 10px;">
+                            ${error.message}
+                        </div>
+                        <div style="margin-top: 15px;">
+                            <strong>Possible Solutions:</strong>
+                            <ul style="margin: 10px 0; padding-left: 20px;">
+                                <li>Make sure you're running the dev server (npm run dev)</li>
+                                <li>Check that the tutor has a connected video provider</li>
+                                <li>Verify the tutor's OAuth tokens are not expired</li>
+                                <li>Check browser console (F12) for more details</li>
+                            </ul>
+                        </div>
+                    `;
+                }
+                console.error('Error:', error);
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        // Show info about the API endpoint
+        window.addEventListener('DOMContentLoaded', () => {
+            const statusDiv = document.getElementById('status');
+            statusDiv.style.display = 'block';
+            statusDiv.className = 'info';
+            statusDiv.innerHTML = `
+                <div><strong>ℹ️ How This Works</strong></div>
+                <div style="margin-top: 10px;">
+                    This page calls: <code>POST http://localhost:3001/api/sessions/create-missing-meetings</code>
+                </div>
+                <div style="margin-top: 10px;">
+                    <strong>What it does:</strong>
+                    <ul style="margin: 10px 0; padding-left: 20px;">
+                        <li>Finds all upcoming sessions without join URLs</li>
+                        <li>Creates Google Meet or Zoom meetings for each</li>
+                        <li>Updates the session records with meeting links</li>
+                        <li>Handles token refresh automatically</li>
+                    </ul>
+                </div>
+                <div style="margin-top: 10px; padding: 10px; background: #fef3c7; border-radius: 4px;">
+                    <strong>⚠️ Note:</strong> Make sure tutors have their video providers connected in Settings → Video Setup
+                </div>
+            `;
+        });
+    </script>
+</body>
+</html>

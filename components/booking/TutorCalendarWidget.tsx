@@ -52,11 +52,31 @@ export default function TutorCalendarWidget({
       const rangeStart = toISOString(weekDays[0]);
       const rangeEnd = toISOString(new Date(weekDays[6].getTime() + 24 * 60 * 60 * 1000 - 1));
       
+      console.log('Loading calendar for tutor:', tutorId);
+      console.log('Date range:', rangeStart, 'to', rangeEnd);
+      
       const data = await getTutorPublicCalendar(tutorId, rangeStart, rangeEnd);
-      setCalendarData(data);
+      
+      console.log('Calendar data received:', data);
+      console.log('Data structure:', {
+        has_availability_windows: !!data?.availability_windows,
+        has_available_slots: !!data?.available_slots,
+        has_busy_blocks: !!data?.busy_blocks,
+        allows_flexible: data?.allows_flexible_booking
+      });
+      
+      // Ensure busy_blocks is always an array
+      const normalizedData = {
+        ...data,
+        busy_blocks: data?.busy_blocks || [],
+        available_slots: data?.available_slots || [],
+        availability_windows: data?.availability_windows || []
+      };
+      
+      setCalendarData(normalizedData);
     } catch (error) {
       console.error('Error loading calendar:', error);
-      alert('Failed to load calendar');
+      alert('Failed to load calendar: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setLoading(false);
     }
