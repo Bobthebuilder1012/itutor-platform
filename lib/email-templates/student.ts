@@ -326,3 +326,90 @@ export function day7Email({ firstName, ctaUrl }: EmailTemplateProps): EmailTempl
     `
   };
 }
+
+export function longWeekendPromoEmail({ firstName, ctaUrl }: EmailTemplateProps): EmailTemplate {
+  return {
+    subject: `🎉 Long weekend coming up, ${firstName}! Perfect time to book sessions`,
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        ${baseStyles}
+        <style>
+          .highlight-box { background: #f0fdf4; border-left: 4px solid #199358; padding: 20px; margin: 25px 0; border-radius: 4px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <img src="${process.env.NEXT_PUBLIC_SITE_URL || 'https://myitutor.com'}/assets/logo/itutor-logo-dark.png" alt="iTutor" class="logo" />
+          </div>
+          <div class="content">
+            <h1 class="title">🎉 Long Weekend Coming Up!</h1>
+            <p class="text">
+              Hi ${firstName},
+            </p>
+            <p class="text">
+              The long weekend is almost here - and what better time to catch up on your studies? 
+              While everyone else is relaxing, you can use this extra time to get ahead in your classes!
+            </p>
+            
+            <div class="highlight-box">
+              <p class="text" style="margin-bottom: 10px; font-weight: 600; color: #199358;">
+                ⏰ Perfect Time to Book:
+              </p>
+              <p class="text" style="margin-bottom: 0;">
+                📚 Catch up on topics you're struggling with<br>
+                📝 Prepare for upcoming tests and exams<br>
+                🎯 Get ahead on assignments and projects<br>
+                💡 Review before the new school week starts
+              </p>
+            </div>
+
+            <p class="text">
+              <strong>Why book during the long weekend?</strong>
+            </p>
+            <p class="text">
+              ✅ <strong>More availability</strong> - iTutors have extra time slots open<br>
+              ✅ <strong>No time pressure</strong> - Schedule longer, more thorough sessions<br>
+              ✅ <strong>Fresh start</strong> - Go into next week feeling confident and prepared<br>
+              ✅ <strong>Beat the rush</strong> - Book now before spots fill up!
+            </p>
+
+            <p class="text">
+              Whether you need help with Maths, Sciences, English, or exam prep, our top-rated iTutors are ready to help you succeed.
+            </p>
+
+            <a href="${ctaUrl}" class="cta-button">Find Your iTutor Now</a>
+
+            <p class="text" style="font-size: 14px; color: #6b7280; margin-top: 30px;">
+              <em>💡 Pro Tip: Sessions booked 24-48 hours in advance give you the best choice of time slots. Don't wait until the last minute!</em>
+            </p>
+
+            <p class="text" style="margin-top: 30px; padding-top: 30px; border-top: 1px solid #e5e7eb;">
+              Have questions? We're here to help! Contact us at <a href="mailto:hello@myitutor.com" style="color: #199358; text-decoration: none;">hello@myitutor.com</a>
+            </p>
+          </div>
+          <div class="footer">
+            <div class="social-links">
+              <a href="https://www.facebook.com/share/1E91o2u1yM/" style="display: inline-block; margin: 0 8px;">
+                <img src="https://img.icons8.com/ios-filled/50/6b7280/facebook-new.png" alt="Facebook" style="width: 28px; height: 28px; filter: grayscale(100%);" />
+              </a>
+              <a href="https://www.instagram.com/myitutor?igsh=MXgyNjdrMTR1ampyag%3D%3D&utm_source=qr" style="display: inline-block; margin: 0 8px;">
+                <img src="https://img.icons8.com/ios-filled/50/6b7280/instagram-new.png" alt="Instagram" style="width: 28px; height: 28px; filter: grayscale(100%);" />
+              </a>
+              <a href="https://www.linkedin.com/company/myitutor/" style="display: inline-block; margin: 0 8px;">
+                <img src="https://img.icons8.com/ios-filled/50/6b7280/linkedin.png" alt="LinkedIn" style="width: 28px; height: 28px; filter: grayscale(100%);" />
+              </a>
+            </div>
+            <p style="margin-top: 15px; color: #6b7280;">Trinidad & Tobago</p>
+            <p style="margin-top: 10px; color: #9ca3af; font-size: 13px;">© iTutor. Nora Digital, Ltd.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `
+  };
+}
