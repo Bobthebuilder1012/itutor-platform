@@ -2,7 +2,7 @@
 -- This adds !important to ensure white text shows up in email clients
 
 UPDATE email_templates
-SET html_content = REPLACE(
+SET html_content = REPLACE()
   html_content,
   '.cta-button { display: inline-block; background: #199358; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 6px; font-weight: 600; margin: 20px 0; }',
   '.cta-button { display: inline-block; background: #199358; color: #ffffff !important; text-decoration: none; padding: 14px 32px; border-radius: 6px; font-weight: 600; margin: 20px 0; }'
