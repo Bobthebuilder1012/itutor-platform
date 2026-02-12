@@ -88,15 +88,15 @@ export default function TutorCard({ tutor, showPrice = false }: TutorCardProps) 
         </div>
       </div>
 
-      {/* Price - show $0 if paid classes disabled */}
+      {/* Price - show FREE if paid sessions disabled */}
       <div className="mb-4">
         <div className="text-2xl font-bold text-itutor-green">
-          {showPrice && priceRange.min > 0
+          {process.env.NEXT_PUBLIC_ENABLE_PAID_SESSIONS === 'true' && showPrice && priceRange.min > 0
             ? priceRange.min === priceRange.max
               ? `$${priceRange.min}`
               : `$${priceRange.min}-$${priceRange.max}`
-            : '$0'}
-          <span className="text-sm font-normal text-gray-600">/hr TTD</span>
+            : 'FREE'}
+          <span className="text-sm font-normal text-gray-600 ml-1">sessions</span>
         </div>
       </div>
 

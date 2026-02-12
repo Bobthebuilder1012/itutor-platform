@@ -578,7 +578,9 @@ export default function FindTutorsPage() {
                   {/* Price Range */}
                   {tutor.subjects.length > 0 && (
                     <p className="text-sm text-gray-600 mb-4">
-                      From ${Math.min(...tutor.subjects.map(s => s.price_per_hour_ttd))}/hr
+                      {process.env.NEXT_PUBLIC_ENABLE_PAID_SESSIONS === 'true' 
+                        ? `From $${Math.min(...tutor.subjects.map(s => s.price_per_hour_ttd))}/hr`
+                        : 'FREE sessions'}
                     </p>
                   )}
 
