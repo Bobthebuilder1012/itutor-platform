@@ -495,10 +495,16 @@ export default function PublicTutorProfilePage() {
                 >
                   <div className="flex justify-between items-start mb-2">
                     <h3 className="font-bold text-gray-900 text-lg">{subject.name}</h3>
-                    <span className="text-2xl font-bold text-itutor-green">${subject.price_per_hour_ttd}</span>
+                    <span className="text-2xl font-bold text-itutor-green">
+                      {process.env.NEXT_PUBLIC_ENABLE_PAID_SESSIONS === 'true' 
+                        ? `$${subject.price_per_hour_ttd}`
+                        : 'FREE'}
+                    </span>
                   </div>
                   <p className="text-sm text-gray-600 mb-1">{subject.curriculum}</p>
-                  <p className="text-xs text-gray-500">per hour</p>
+                  <p className="text-xs text-gray-500">
+                    {process.env.NEXT_PUBLIC_ENABLE_PAID_SESSIONS === 'true' ? 'per hour' : 'sessions'}
+                  </p>
                 </button>
               ))}
             </div>
@@ -523,7 +529,9 @@ export default function PublicTutorProfilePage() {
                   📚 {selectedSubject.name}
                 </p>
                 <p className="text-xs text-gray-600">
-                  {selectedSubject.curriculum} • ${selectedSubject.price_per_hour_ttd}/hour
+                  {selectedSubject.curriculum} • {process.env.NEXT_PUBLIC_ENABLE_PAID_SESSIONS === 'true' 
+                    ? `$${selectedSubject.price_per_hour_ttd}/hour`
+                    : 'FREE sessions'}
                 </p>
               </div>
 
@@ -620,7 +628,11 @@ export default function PublicTutorProfilePage() {
                   </div>
                   <div className="flex justify-between pt-2 border-t border-blue-300">
                     <span className="text-gray-600">Price:</span>
-                    <span className="font-bold text-itutor-green text-lg">${selectedSubject.price_per_hour_ttd}/hr</span>
+                    <span className="font-bold text-itutor-green text-lg">
+                      {process.env.NEXT_PUBLIC_ENABLE_PAID_SESSIONS === 'true' 
+                        ? `$${selectedSubject.price_per_hour_ttd}/hr`
+                        : 'FREE'}
+                    </span>
                   </div>
                 </div>
               </div>
