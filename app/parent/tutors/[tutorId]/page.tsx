@@ -559,11 +559,9 @@ export default function ParentTutorProfilePage() {
                           <p className="text-lg font-bold text-purple-600">
                             {process.env.NEXT_PUBLIC_ENABLE_PAID_SESSIONS === 'true' 
                               ? `$${subject.price_per_hour_ttd}`
-                              : 'FREE'}
+                              : '$0.00'}
                           </p>
-                          <p className="text-xs text-gray-600">
-                            {process.env.NEXT_PUBLIC_ENABLE_PAID_SESSIONS === 'true' ? 'per hour' : 'sessions'}
-                          </p>
+                          <p className="text-xs text-gray-600">per hour</p>
                         </div>
                       </div>
                       {selectedSubject?.id === subject.id && (
@@ -601,7 +599,7 @@ export default function ParentTutorProfilePage() {
                       </svg>
                       Booking: {selectedSubject.name} • {process.env.NEXT_PUBLIC_ENABLE_PAID_SESSIONS === 'true' 
                         ? `$${selectedSubject.price_per_hour_ttd}/hour`
-                        : 'FREE sessions'}
+                        : '$0.00/hour'}
                     </div>
                   </div>
                   <TutorCalendarWidget

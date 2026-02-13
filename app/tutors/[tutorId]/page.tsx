@@ -498,13 +498,11 @@ export default function PublicTutorProfilePage() {
                     <span className="text-2xl font-bold text-itutor-green">
                       {process.env.NEXT_PUBLIC_ENABLE_PAID_SESSIONS === 'true' 
                         ? `$${subject.price_per_hour_ttd}`
-                        : 'FREE'}
+                        : '$0.00'}
                     </span>
                   </div>
                   <p className="text-sm text-gray-600 mb-1">{subject.curriculum}</p>
-                  <p className="text-xs text-gray-500">
-                    {process.env.NEXT_PUBLIC_ENABLE_PAID_SESSIONS === 'true' ? 'per hour' : 'sessions'}
-                  </p>
+                  <p className="text-xs text-gray-500">per hour</p>
                 </button>
               ))}
             </div>
@@ -531,7 +529,7 @@ export default function PublicTutorProfilePage() {
                 <p className="text-xs text-gray-600">
                   {selectedSubject.curriculum} • {process.env.NEXT_PUBLIC_ENABLE_PAID_SESSIONS === 'true' 
                     ? `$${selectedSubject.price_per_hour_ttd}/hour`
-                    : 'FREE sessions'}
+                    : '$0.00/hour'}
                 </p>
               </div>
 
@@ -631,7 +629,7 @@ export default function PublicTutorProfilePage() {
                     <span className="font-bold text-itutor-green text-lg">
                       {process.env.NEXT_PUBLIC_ENABLE_PAID_SESSIONS === 'true' 
                         ? `$${selectedSubject.price_per_hour_ttd}/hr`
-                        : 'FREE'}
+                        : '$0.00/hr'}
                     </span>
                   </div>
                 </div>

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import type { FeaturedTutor } from '@/lib/services/landingTutorsService';
+import { getAvatarColor } from '@/lib/utils/avatarColors';
 
 interface TutorCardProps {
   tutor: FeaturedTutor;
@@ -45,7 +46,7 @@ export default function TutorCard({ tutor, showPrice = false }: TutorCardProps) 
               className="w-16 h-16 rounded-full object-cover"
             />
           ) : (
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-itutor-green to-emerald-500 flex items-center justify-center text-white font-bold text-xl">
+            <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${getAvatarColor(id)} flex items-center justify-center text-white font-bold text-xl`}>
               {initials}
             </div>
           )}
@@ -88,15 +89,15 @@ export default function TutorCard({ tutor, showPrice = false }: TutorCardProps) 
         </div>
       </div>
 
-      {/* Price - show FREE if paid sessions disabled */}
+      {/* Price - show $0.00 if paid sessions disabled */}
       <div className="mb-4">
         <div className="text-2xl font-bold text-itutor-green">
           {process.env.NEXT_PUBLIC_ENABLE_PAID_SESSIONS === 'true' && showPrice && priceRange.min > 0
             ? priceRange.min === priceRange.max
               ? `$${priceRange.min}`
               : `$${priceRange.min}-$${priceRange.max}`
-            : 'FREE'}
-          <span className="text-sm font-normal text-gray-600 ml-1">sessions</span>
+            : '$0.00'}
+          <span className="text-sm font-normal text-gray-600">/hr TTD</span>
         </div>
       </div>
 
