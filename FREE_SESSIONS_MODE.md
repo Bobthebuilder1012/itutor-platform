@@ -15,29 +15,38 @@ NEXT_PUBLIC_ENABLE_PAID_SESSIONS=false
 ## What Changes When Set to `false`
 
 ### Landing Page
-- Featured tutor cards show "FREE sessions" instead of hourly rates
-- Non-logged-in visitors see all tutors offering free sessions
+- Featured tutor cards show "$0.00/hr TTD" instead of actual hourly rates
+- Non-logged-in visitors see all tutors with $0.00 pricing
+
+### Search Results Pages
+- Public search results (`/search`) show "$0.00/hr" for all tutors
+- Student search results (`/student/search`) show "$0.00/hr" for all tutors
+- Parent search results (`/parent/search`) show "$0.00/hr" for all tutors
+- Price filters still work behind the scenes for when payments are enabled
 
 ### Student Find Tutors Page
-- All tutors show "FREE sessions" instead of "From $X/hr"
+- All tutors show "$0.00/hr" instead of "From $X/hr"
 - Price filters still work behind the scenes for when payments are enabled
 
 ### Tutor Profile Pages (Student & Parent Views)
-- Subject cards show "FREE" instead of dollar amounts
-- "per hour" text changes to "sessions"
-- Booking confirmation shows "FREE" instead of price breakdown
+- Subject cards show "$0.00" instead of actual dollar amounts
+- "per hour" text remains consistent
+- Booking confirmation shows "$0.00/hr" instead of actual price
 
 ### Booking Flow
-- All booking confirmations show "FREE" pricing
-- No mention of hourly rates or charges
+- All booking confirmations show "$0.00/hr" pricing
+- Maintains pricing format consistency throughout
 
 ## Files Modified
 
 1. `.env.local` - Added feature flag
 2. `components/landing/TutorCard.tsx` - Landing page tutor cards
-3. `app/student/find-tutors/page.tsx` - Find tutors page pricing display
-4. `app/tutors/[tutorId]/page.tsx` - Student view of tutor profiles
-5. `app/parent/tutors/[tutorId]/page.tsx` - Parent view of tutor profiles
+3. `app/search/page.tsx` - Public search results page
+4. `app/student/search/page.tsx` - Student search results page
+5. `app/parent/search/page.tsx` - Parent search results page
+6. `app/student/find-tutors/page.tsx` - Find tutors page pricing display
+7. `app/tutors/[tutorId]/page.tsx` - Student view of tutor profiles
+8. `app/parent/tutors/[tutorId]/page.tsx` - Parent view of tutor profiles
 
 ## How to Enable Paid Sessions
 

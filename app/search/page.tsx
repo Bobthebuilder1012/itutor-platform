@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import { Profile } from '@/lib/types/database';
 import { getDisplayName } from '@/lib/utils/displayName';
+import { getAvatarColor } from '@/lib/utils/avatarColors';
 import Link from 'next/link';
 
 type ProfileWithRating = Profile & {
@@ -543,7 +544,7 @@ export default function SearchResultsPage() {
                           className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover ring-4 ring-gray-100 shadow-lg"
                         />
                       ) : (
-                        <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-itutor-green via-emerald-500 to-emerald-600 flex items-center justify-center text-white font-bold text-2xl sm:text-3xl shadow-lg ring-4 ring-gray-100">
+                        <div className={`w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br ${getAvatarColor(tutor.id)} flex items-center justify-center text-white font-bold text-2xl sm:text-3xl shadow-lg ring-4 ring-gray-100`}>
                           {getDisplayName(tutor).charAt(0)}
                         </div>
                       )}
@@ -636,21 +637,16 @@ export default function SearchResultsPage() {
                       {/* Price */}
                       <div className="flex justify-center sm:justify-start">
                         {tutor.subject_price !== null && tutor.subject_price !== undefined && (
-                          tutor.subject_price === 0 ? (
-                            <div className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-3 bg-gradient-to-r from-blue-400 to-purple-500 text-white font-extrabold rounded-full border-2 border-blue-600 shadow-lg hover:shadow-xl transition-all text-sm sm:text-base">
-                              <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="currentColor" viewBox="0 0 20 20">
-                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                              </svg>
-                              <span className="text-sm sm:text-lg">FREE SESSION</span>
-                            </div>
-                          ) : (
-                            <div className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-3 bg-gradient-to-r from-emerald-400 to-green-500 text-white font-extrabold rounded-full border-2 border-emerald-600 shadow-lg hover:shadow-xl transition-all text-sm sm:text-base">
-                              <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                              </svg>
-                              <span className="text-sm sm:text-lg">${tutor.subject_price.toFixed(2)}/hr</span>
-                            </div>
-                          )
+                          <div className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-3 bg-gradient-to-r from-emerald-400 to-green-500 text-white font-extrabold rounded-full border-2 border-emerald-600 shadow-lg hover:shadow-xl transition-all text-sm sm:text-base">
+                            <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <span className="text-sm sm:text-lg">
+                              {process.env.NEXT_PUBLIC_ENABLE_PAID_SESSIONS === 'true'
+                                ? `$${tutor.subject_price.toFixed(2)}/hr`
+                                : '$0.00/hr'}
+                            </span>
+                          </div>
                         )}
                       </div>
                     </div>
