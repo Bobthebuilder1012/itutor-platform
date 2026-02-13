@@ -84,7 +84,7 @@ export default function TutorCard({ tutor, showPrice = false }: TutorCardProps) 
               <span className="text-gray-500">({rating_count})</span>
             </div>
           ) : (
-            <div className="text-sm text-gray-500">New tutor</div>
+            <div className="text-sm text-gray-500">New iTutor</div>
           )}
         </div>
       </div>
