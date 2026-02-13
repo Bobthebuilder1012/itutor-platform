@@ -13,6 +13,7 @@ import EditSubjectModal from '@/components/tutor/EditSubjectModal';
 import EditProfileModal from '@/components/EditProfileModal';
 import SentOffersList from '@/components/offers/SentOffersList';
 import VideoProviderRequiredModal from '@/components/VideoProviderRequiredModal';
+import AvailabilityRequiredModal from '@/components/AvailabilityRequiredModal';
 import ShareProfileModal from '@/components/ShareProfileModal';
 import { useAvatarUpload } from '@/lib/hooks/useAvatarUpload';
 import { Session, TutorSubject, Subject, Rating } from '@/lib/types/database';
@@ -49,6 +50,7 @@ export default function TutorDashboard() {
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [selectedSubject, setSelectedSubject] = useState<TutorSubjectWithSubject | null>(null);
   const [hasVideoProvider, setHasVideoProvider] = useState<boolean | null>(null);
+  const [hasAvailability, setHasAvailability] = useState<boolean | null>(null);
   const { uploadAvatar, uploading } = useAvatarUpload(profile?.id || '');
   const [verifiedSubjects, setVerifiedSubjects] = useState<any[]>([]);
   const [csecSubjects, setCsecSubjects] = useState<any[]>([]);
@@ -150,7 +152,7 @@ export default function TutorDashboard() {
     try {
       // Fetch tutor_subjects and subjects separately to avoid FK join issues
       const now = new Date().toISOString();
-      const [sessionsRes, tutorSubjectsRes, allSubjectsRes, ratingsRes, videoProviderRes] = await Promise.all([
+      const [sessionsRes, tutorSubjectsRes, allSubjectsRes, ratingsRes, videoProviderRes, availabilityRes] = await Promise.all([
         supabase
           .from('sessions')
           .select('*, bookings(subject_id, status)')
@@ -174,7 +176,13 @@ export default function TutorDashboard() {
           .from('tutor_video_provider_connections')
           .select('id, connection_status')
           .eq('tutor_id', profile.id)
-          .single()
+          .single(),
+        supabase
+          .from('tutor_availability_rules')
+          .select('id')
+          .eq('tutor_id', profile.id)
+          .eq('is_active', true)
+          .limit(1)
       ]);
 
       console.log('Tutor subjects response:', tutorSubjectsRes);
@@ -271,6 +279,16 @@ export default function TutorDashboard() {
         setHasVideoProvider(true);
       } else {
         setHasVideoProvider(false);
+      }
+
+      // Check availability rules
+      if (availabilityRes.error && availabilityRes.error.code === 'PGRST116') {
+        // No availability rules found
+        setHasAvailability(false);
+      } else if (availabilityRes.data && availabilityRes.data.length > 0) {
+        setHasAvailability(true);
+      } else {
+        setHasAvailability(false);
       }
     } catch (error) {
       console.error('Error fetching tutor data:', error);
@@ -464,9 +482,14 @@ export default function TutorDashboard() {
           />
         )}
 
-        {/* Video Provider Required Modal */}
+        {/* Video Provider Required Modal - Priority 1 */}
         {!testMode && hasVideoProvider === false && (
           <VideoProviderRequiredModal isOpen={true} />
+        )}
+
+        {/* Availability Required Modal - Priority 2 (only show if video provider is connected) */}
+        {!testMode && hasVideoProvider === true && hasAvailability === false && (
+          <AvailabilityRequiredModal isOpen={true} />
         )}
 
         {/* Verified CXC Results Section */}
