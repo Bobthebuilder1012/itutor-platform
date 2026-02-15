@@ -139,22 +139,38 @@ export async function POST(request: NextRequest) {
     }
 
     const conversationId = await getOrCreateConversationIdAdmin(admin, user.id, session.student_id);
+    console.log('✅ Conversation ID:', conversationId);
 
-    const sessionStart = new Date(session.scheduled_start_at);
-    const sessionEnd = new Date(session.scheduled_end_at);
-    const message = `Session feedback (${sessionStart.toLocaleString()} – ${sessionEnd.toLocaleTimeString()}):\n\n${feedbackText}`;
+    // Format the message to look like a natural message from the tutor
+    const message = feedbackText;
 
-    const { error: messageError } = await admin.from('messages').insert({
+    const { data: insertedMessage, error: messageError } = await admin.from('messages').insert({
       conversation_id: conversationId,
       sender_id: user.id,
       content: message,
-    });
+    }).select('id, conversation_id, sender_id, content, created_at').single();
 
     if (messageError) {
+      console.error('❌ Message insert error:', messageError);
       return NextResponse.json({ error: messageError.message }, { status: 400 });
     }
 
-    return NextResponse.json({ ok: true });
+    console.log('✅ Message inserted:', insertedMessage);
+
+    // Verify the conversation was updated
+    const { data: conversation } = await admin
+      .from('conversations')
+      .select('last_message_at, last_message_preview')
+      .eq('id', conversationId)
+      .single();
+    
+    console.log('✅ Conversation updated:', conversation);
+
+    return NextResponse.json({ 
+      ok: true, 
+      messageId: insertedMessage.id,
+      conversationId: conversationId 
+    });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Internal server error' }, { status: 500 });
   }

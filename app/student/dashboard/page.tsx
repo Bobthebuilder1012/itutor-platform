@@ -92,6 +92,38 @@ export default function StudentDashboard() {
     fetchStudentData();
   }, [profile, loading, router, testMode]);
 
+  // Scroll to hash anchor on page load (e.g., #lesson-offers)
+  useEffect(() => {
+    // Only run when loading is complete and we have data
+    if (loadingData || !profile) return;
+
+    const hash = window.location.hash;
+    if (hash) {
+      const elementId = hash.replace('#', '');
+      
+      // Retry function to handle cases where element isn't ready yet
+      const scrollToElement = (attempt = 0) => {
+        const element = document.getElementById(elementId);
+        
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          // Add a highlight effect
+          element.classList.add('ring-4', 'ring-itutor-green', 'ring-opacity-50');
+          setTimeout(() => {
+            element.classList.remove('ring-4', 'ring-itutor-green', 'ring-opacity-50');
+          }, 2000);
+        } else if (attempt < 5) {
+          // Retry up to 5 times with increasing delays
+          setTimeout(() => scrollToElement(attempt + 1), 200 * (attempt + 1));
+        }
+      };
+
+      // Start scrolling after a brief delay to ensure rendering
+      const timeoutId = setTimeout(() => scrollToElement(), 300);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [loadingData, profile]); // Run after data is loaded and profile exists
+
   async function fetchStudentData() {
     if (!profile) return;
 

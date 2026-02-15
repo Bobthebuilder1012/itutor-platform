@@ -20,8 +20,9 @@ import { Booking, BookingMessage, BookingMessageWithSender } from '@/lib/types/b
 import { formatDateTime, formatTimeRange, getRelativeTime } from '@/lib/utils/calendar';
 import { getBookingStatusColor, getBookingStatusLabel } from '@/lib/types/booking';
 import SessionJoinButton from '@/components/sessions/SessionJoinButton';
-import MarkNoShowButton from '@/components/sessions/MarkNoShowButton';
+import MarkNoShowButtonEnhanced from '@/components/sessions/MarkNoShowButtonEnhanced';
 import { Session } from '@/lib/types/sessions';
+import { isPaidClassesEnabled } from '@/lib/featureFlags/paidClasses';
 
 export default function TutorBookingThreadPage() {
   const { profile, loading: profileLoading } = useProfile();
@@ -403,6 +404,7 @@ export default function TutorBookingThreadPage() {
   const hasSessionStarted = displayStartTime ? new Date(displayStartTime) <= new Date() : false;
   const canRespond = booking.status === 'PENDING' || booking.status === 'COUNTER_PROPOSED';
   const canCancel = booking.status === 'CONFIRMED' && !hasSessionStarted;
+  const paidClassesEnabled = isPaidClassesEnabled();
 
   return (
     <DashboardLayout role="tutor" userName={getDisplayName(profile)}>
@@ -479,8 +481,12 @@ export default function TutorBookingThreadPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <div>
-                <div className="font-medium">${booking.price_ttd} TTD</div>
-                <div className="text-gray-500 text-xs">Payment</div>
+                <div className="font-medium">
+                  {paidClassesEnabled ? `$${booking.price_ttd} TTD` : 'Free'}
+                </div>
+                <div className="text-gray-500 text-xs">
+                  {paidClassesEnabled ? 'Payment' : 'No payment required'}
+                </div>
               </div>
             </div>
           </div>
@@ -537,8 +543,9 @@ export default function TutorBookingThreadPage() {
         {session && booking.status === 'CONFIRMED' && (
           <div className="mb-6 space-y-4">
             <SessionJoinButton session={session} userRole="tutor" />
-            <MarkNoShowButton 
-              session={session} 
+            <MarkNoShowButtonEnhanced 
+              session={session}
+              userRole="tutor"
               onSuccess={() => {
                 loadBookingData();
               }}

@@ -2,7 +2,7 @@
 
 import { FormEvent, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { supabase } from '@/lib/supabase/client';
+import { supabase, setRememberMePreference, createSupabaseClient } from '@/lib/supabase/client';
 
 // Helper function to detect network errors
 function isNetworkError(error: unknown): boolean {
@@ -35,6 +35,7 @@ export default function LoginPage() {
   const [resendError, setResendError] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
 
   // Check for email sent parameter, confirmation, and error messages
   useEffect(() => {
@@ -141,7 +142,13 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
+      // Store the "Keep me signed in" preference FIRST
+      setRememberMePreference(rememberMe);
+      
+      // Now create client with the correct storage based on preference
+      const supabaseClient = createSupabaseClient(rememberMe);
+
+      const { data: authData, error: signInError } = await supabaseClient.auth.signInWithPassword({
         email,
         password,
       });
@@ -173,7 +180,7 @@ export default function LoginPage() {
         return;
       }
 
-      const { data: profile, error: profileError } = await supabase
+      const { data: profile, error: profileError } = await supabaseClient
         .from('profiles')
         .select('role, school, form_level, subjects_of_study, billing_mode, is_reviewer')
         .eq('id', authData.user.id)
@@ -183,7 +190,7 @@ export default function LoginPage() {
 
       if (profileError || !profileData) {
         await fetch('/api/profile/ensure', { method: 'POST' }).catch(() => {});
-        const { data: ensuredProfile, error: ensuredError } = await supabase
+        const { data: ensuredProfile, error: ensuredError } = await supabaseClient
           .from('profiles')
           .select('role, school, form_level, subjects_of_study, billing_mode, is_reviewer')
           .eq('id', authData.user.id)
@@ -201,7 +208,7 @@ export default function LoginPage() {
       // If profile exists but has no role, redirect to signup to complete registration
       if (!profileData.role) {
         setError('Your account setup is incomplete. Please complete your registration.');
-        await supabase.auth.signOut();
+        await supabaseClient.auth.signOut();
         setTimeout(() => {
           router.push('/signup');
         }, 2000);
@@ -241,7 +248,7 @@ export default function LoginPage() {
           const hasBasicInfo = profileData.school && profileData.form_level;
           
           // Check for subjects in user_subjects table
-          const { data: userSubjects } = await supabase
+          const { data: userSubjects } = await supabaseClient
             .from('user_subjects')
             .select('subject_id')
             .eq('user_id', authData.user.id)
@@ -453,6 +460,20 @@ export default function LoginPage() {
                 )}
               </button>
             </div>
+          </div>
+
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="rememberMe"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-700 bg-gray-900 text-itutor-green focus:ring-2 focus:ring-itutor-green focus:ring-offset-0 cursor-pointer"
+              disabled={loading}
+            />
+            <label htmlFor="rememberMe" className="ml-2 block text-sm text-gray-300 cursor-pointer select-none">
+              Keep me signed in
+            </label>
           </div>
 
           <button

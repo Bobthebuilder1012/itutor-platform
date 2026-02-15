@@ -5,6 +5,14 @@
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || '';
 
+// Debug: Log VAPID key status on module load
+if (typeof window !== 'undefined') {
+  console.log('🔑 VAPID Key loaded:', VAPID_PUBLIC_KEY ? '✅ Present' : '❌ Missing');
+  if (!VAPID_PUBLIC_KEY) {
+    console.error('VAPID public key not found in environment variables. Check NEXT_PUBLIC_VAPID_PUBLIC_KEY in .env.local');
+  }
+}
+
 /**
  * Convert VAPID public key to Uint8Array for subscription
  */
