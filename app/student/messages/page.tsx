@@ -9,6 +9,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { getDisplayName } from '@/lib/utils/displayName';
 import type { ConversationWithParticipant } from '@/lib/types/notifications';
 import { getRelativeTime } from '@/lib/utils/calendar';
+import { getAvatarColor } from '@/lib/utils/avatarColors';
 
 export default function StudentMessagesPage() {
   const { profile, loading: profileLoading } = useProfile();
@@ -191,7 +192,7 @@ export default function StudentMessagesPage() {
                   <div className="flex items-center gap-4">
                     {/* Avatar */}
                     <div className="relative flex-shrink-0">
-                      <div className="w-14 h-14 rounded-full bg-gradient-to-br from-itutor-green to-emerald-600 flex items-center justify-center text-white font-bold text-xl shadow-md">
+                      <div className={`w-14 h-14 rounded-full bg-gradient-to-br ${getAvatarColor(otherUser?.id || '')} flex items-center justify-center text-white font-bold text-xl shadow-md`}>
                         {otherUser?.avatar_url ? (
                           <img src={otherUser.avatar_url} alt={getDisplayName(otherUser)} className="w-full h-full rounded-full object-cover" />
                         ) : (

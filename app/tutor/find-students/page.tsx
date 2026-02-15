@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
 import SubjectMultiSelect from '@/components/SubjectMultiSelect';
 import { getDisplayName } from '@/lib/utils/displayName';
+import { getAvatarColor } from '@/lib/utils/avatarColors';
 
 type Student = {
   id: string;
@@ -267,7 +268,7 @@ export default function FindStudentsPage() {
         </div>
 
         {/* Search and Filters */}
-        <div className="bg-gradient-to-br from-gray-800 to-gray-900 border border-gray-700 rounded-2xl p-6 mb-6">
+        <div className="bg-white border-2 border-gray-200 rounded-2xl p-6 mb-6 shadow-sm">
           {/* Search Bar */}
           <div className="mb-4">
             <div className="relative">
@@ -287,7 +288,7 @@ export default function FindStudentsPage() {
           {/* Filters */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-white mb-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Filter by Subject Interests
               </label>
               <SubjectMultiSelect
@@ -298,7 +299,7 @@ export default function FindStudentsPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-white mb-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 School
               </label>
               <select
@@ -314,7 +315,7 @@ export default function FindStudentsPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-white mb-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Form Level
               </label>
               <select
@@ -343,7 +344,7 @@ export default function FindStudentsPage() {
                 setSelectedFormLevel('');
                 setSelectedSchool('');
               }}
-              className="mt-4 text-sm text-itutor-green hover:text-emerald-400 font-medium transition-colors"
+              className="mt-4 text-sm text-gray-600 hover:text-itutor-green font-medium transition-colors"
             >
               Clear all filters
             </button>
@@ -364,13 +365,13 @@ export default function FindStudentsPage() {
             <p className="text-gray-600 mt-4">Loading students...</p>
           </div>
         ) : filteredStudents.length === 0 ? (
-          <div className="text-center py-12 bg-gradient-to-br from-gray-800 to-gray-900 border border-gray-700 rounded-2xl">
-            <div className="bg-gray-800 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
-              <svg className="h-8 w-8 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="text-center py-12 bg-white border-2 border-gray-200 rounded-2xl shadow-sm">
+            <div className="bg-gray-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+              <svg className="h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </div>
-            <p className="text-gray-600 mb-2">No students found</p>
+            <p className="text-gray-700 mb-2 font-medium">No students found</p>
             <p className="text-sm text-gray-500">Try adjusting your filters</p>
           </div>
         ) : (
@@ -384,7 +385,7 @@ export default function FindStudentsPage() {
               return (
                 <div
                   key={student.id}
-                  className="bg-gradient-to-br from-blue-50 to-purple-50 border-2 border-blue-200 rounded-2xl p-6 hover:shadow-xl hover:border-blue-400 transition-all duration-300 hover:scale-105"
+                  className="bg-white border-2 border-gray-200 rounded-2xl p-6 hover:shadow-xl hover:border-itutor-green transition-all duration-300"
                 >
                   {/* Matched Badge */}
                   {matchesTutorSubjects && (
@@ -397,7 +398,7 @@ export default function FindStudentsPage() {
 
                   {/* Student Info */}
                   <div className="flex items-start gap-4 mb-4">
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-xl flex-shrink-0">
+                    <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${getAvatarColor(student.id)} flex items-center justify-center text-white font-bold text-xl flex-shrink-0`}>
                       {student.avatar_url ? (
                         <img src={student.avatar_url} alt={getDisplayName(student)} className="w-full h-full rounded-full object-cover" />
                       ) : (
@@ -440,13 +441,13 @@ export default function FindStudentsPage() {
                       {student.subjectDetails.slice(0, 4).map(subject => (
                         <span
                           key={subject.id}
-                          className="text-xs px-2 py-1 rounded bg-white border border-gray-300 text-gray-700"
+                          className="text-xs px-2 py-1 rounded bg-gray-50 border border-gray-300 text-gray-700"
                         >
                           {subject.name}
                         </span>
                       ))}
                       {student.subjectDetails.length > 4 && (
-                        <span className="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300">
+                        <span className="text-xs px-2 py-1 rounded bg-gray-100 border border-gray-300 text-gray-700 font-medium">
                           +{student.subjectDetails.length - 4} more
                         </span>
                       )}

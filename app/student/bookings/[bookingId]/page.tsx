@@ -394,7 +394,7 @@ export default function BookingThreadPage() {
                           )}
                         </div>
                         <p className="text-xs text-gray-500 mt-1 px-2">
-                          {msg.sender_name} • {new Date(msg.created_at).toLocaleTimeString()}
+                          {msg.sender_name} • {new Date(msg.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
                         </p>
                       </div>
                     </div>
@@ -413,7 +413,7 @@ export default function BookingThreadPage() {
                         <p>{msg.body}</p>
                       </div>
                       <p className="text-xs text-gray-500 mt-1 px-2">
-                        {msg.sender_name} • {new Date(msg.created_at).toLocaleTimeString()}
+                        {msg.sender_name} • {new Date(msg.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
                       </p>
                     </div>
                   </div>

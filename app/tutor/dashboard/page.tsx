@@ -51,6 +51,7 @@ export default function TutorDashboard() {
   const [selectedSubject, setSelectedSubject] = useState<TutorSubjectWithSubject | null>(null);
   const [hasVideoProvider, setHasVideoProvider] = useState<boolean | null>(null);
   const [hasAvailability, setHasAvailability] = useState<boolean | null>(null);
+  const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
   const { uploadAvatar, uploading } = useAvatarUpload(profile?.id || '');
   const [verifiedSubjects, setVerifiedSubjects] = useState<any[]>([]);
   const [csecSubjects, setCsecSubjects] = useState<any[]>([]);
@@ -285,10 +286,13 @@ export default function TutorDashboard() {
       if (availabilityRes.error && availabilityRes.error.code === 'PGRST116') {
         // No availability rules found
         setHasAvailability(false);
+        setShowAvailabilityModal(true);
       } else if (availabilityRes.data && availabilityRes.data.length > 0) {
         setHasAvailability(true);
+        setShowAvailabilityModal(false);
       } else {
         setHasAvailability(false);
+        setShowAvailabilityModal(true);
       }
     } catch (error) {
       console.error('Error fetching tutor data:', error);
@@ -488,8 +492,11 @@ export default function TutorDashboard() {
         )}
 
         {/* Availability Required Modal - Priority 2 (only show if video provider is connected) */}
-        {!testMode && hasVideoProvider === true && hasAvailability === false && (
-          <AvailabilityRequiredModal isOpen={true} />
+        {!testMode && hasVideoProvider === true && hasAvailability === false && showAvailabilityModal && (
+          <AvailabilityRequiredModal 
+            isOpen={true} 
+            onClose={() => setShowAvailabilityModal(false)}
+          />
         )}
 
         {/* Verified CXC Results Section */}

@@ -231,7 +231,7 @@ export default function StudentDashboard() {
             <UpcomingSessionsCard
               sessions={upcomingSessions}
               loading={loadingData}
-              onViewSession={(sessionId) => router.push(`/student/sessions`)}
+              onViewSession={(sessionId) => router.push('/student/sessions')}
             />
 
             {/* Offers Received */}
