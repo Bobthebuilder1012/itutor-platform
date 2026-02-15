@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import type { FeaturedTutor } from '@/lib/services/landingTutorsService';
+import { getAvatarColor } from '@/lib/utils/avatarColors';
 
 interface TutorCardProps {
   tutor: FeaturedTutor;
@@ -45,7 +46,7 @@ export default function TutorCard({ tutor, showPrice = false }: TutorCardProps) 
               className="w-16 h-16 rounded-full object-cover"
             />
           ) : (
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-itutor-green to-emerald-500 flex items-center justify-center text-white font-bold text-xl">
+            <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${getAvatarColor(id)} flex items-center justify-center text-white font-bold text-xl`}>
               {initials}
             </div>
           )}
@@ -83,19 +84,19 @@ export default function TutorCard({ tutor, showPrice = false }: TutorCardProps) 
               <span className="text-gray-500">({rating_count})</span>
             </div>
           ) : (
-            <div className="text-sm text-gray-500">New tutor</div>
+            <div className="text-sm text-gray-500">New iTutor</div>
           )}
         </div>
       </div>
 
-      {/* Price - show $0 if paid classes disabled */}
+      {/* Price - show $0.00 if paid sessions disabled */}
       <div className="mb-4">
         <div className="text-2xl font-bold text-itutor-green">
-          {showPrice && priceRange.min > 0
+          {process.env.NEXT_PUBLIC_ENABLE_PAID_SESSIONS === 'true' && showPrice && priceRange.min > 0
             ? priceRange.min === priceRange.max
               ? `$${priceRange.min}`
               : `$${priceRange.min}-$${priceRange.max}`
-            : '$0'}
+            : '$0.00'}
           <span className="text-sm font-normal text-gray-600">/hr TTD</span>
         </div>
       </div>

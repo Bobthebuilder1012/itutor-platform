@@ -296,14 +296,29 @@ export default function VideoSetupPage() {
               </div>
               <div className="flex-1">
                 <h3 className="text-lg font-bold text-green-900 mb-2">✓ Video-Ready</h3>
-                <p className="text-green-800">
+                <p className="text-green-800 mb-3">
                   You're all set! You can now accept bookings and host sessions via {connection.provider.replace('_', ' ')}.
                 </p>
                 {connection.provider_account_email && (
-                  <p className="text-sm text-green-700 mt-2">
+                  <p className="text-sm text-green-700 mb-3">
                     Connected as: <span className="font-semibold">{connection.provider_account_email}</span>
                   </p>
                 )}
+                <div className="bg-green-100 border border-green-200 rounded-lg p-3">
+                  <p className="text-sm font-semibold text-green-900 mb-1">
+                    📅 Next Step: Set Your Availability
+                  </p>
+                  <p className="text-sm text-green-800">
+                    Don't forget to{' '}
+                    <Link 
+                      href="/tutor/availability" 
+                      className="font-bold underline hover:text-green-900 transition"
+                    >
+                      configure your availability settings
+                    </Link>
+                    {' '}so students know when you're free to teach!
+                  </p>
+                </div>
               </div>
             </div>
           </div>
