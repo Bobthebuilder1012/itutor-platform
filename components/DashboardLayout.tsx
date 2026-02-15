@@ -85,8 +85,15 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.push('/login');
+    // Clear all Supabase storage
+    localStorage.clear();
+    sessionStorage.clear();
+    
+    // Sign out from Supabase
+    await supabase.auth.signOut({ scope: 'local' });
+    
+    // Force router push
+    window.location.href = '/login';
   };
 
   const getDashboardLink = () => {

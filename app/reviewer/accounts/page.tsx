@@ -66,13 +66,25 @@ export default function AccountsPage() {
       if (schoolFilter !== 'all') params.append('school', schoolFilter);
       if (subjectFilter !== 'all') params.append('subject', subjectFilter);
 
+      console.log('Fetching accounts with params:', params.toString());
       const response = await fetch(`/api/admin/accounts?${params.toString()}`);
+      
+      console.log('Response status:', response.status);
+      console.log('Response ok:', response.ok);
+      
       if (response.ok) {
         const data = await response.json();
-        setAccounts(data.accounts);
+        console.log('Accounts data received:', data);
+        console.log('Number of accounts:', data.accounts?.length || 0);
+        setAccounts(data.accounts || []);
+      } else {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('API Error:', errorData);
+        alert(`Failed to load accounts: ${errorData.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Error fetching accounts:', error);
+      alert(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setLoading(false);
     }

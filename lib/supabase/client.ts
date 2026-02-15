@@ -1,5 +1,4 @@
 import { createBrowserClient } from '@supabase/ssr';
-import { createClient } from '@supabase/supabase-js';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 const REMEMBER_ME_KEY = 'itutor_remember_me';
@@ -48,19 +47,8 @@ export function createSupabaseClient(persistSession: boolean = false): SupabaseC
     }
   }
 
-  // Use the standard createClient with localStorage/sessionStorage
-  const storage = persistSession
-    ? (typeof window !== 'undefined' ? window.localStorage : undefined)
-    : (typeof window !== 'undefined' ? window.sessionStorage : undefined);
-
-  return createClient(supabaseUrl, supabaseAnonKey, {
-    auth: {
-      storage,
-      autoRefreshToken: true,
-      persistSession: true,
-      detectSessionInUrl: true,
-    },
-  });
+  // Use createBrowserClient for proper SSR cookie support
+  return createBrowserClient(supabaseUrl, supabaseAnonKey);
 }
 
 // Cache the client based on current storage preference

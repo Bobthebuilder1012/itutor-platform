@@ -15,20 +15,29 @@ export async function requireAdmin() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            );
+          } catch {
+            // Server component can't set cookies
+          }
         },
       },
     }
   );
 
-  // Check if user is authenticated
+  // Check if user is authenticated - use getUser() instead of getSession()
   const {
-    data: { session },
-    error: sessionError,
-  } = await supabase.auth.getSession();
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
 
-  if (sessionError || !session) {
+  if (userError || !user) {
     return {
       error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
       user: null,
@@ -40,29 +49,33 @@ export async function requireAdmin() {
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('id, role, is_reviewer, full_name, email')
-    .eq('id', session.user.id)
+    .eq('id', user.id)
     .single();
 
   if (profileError || !profile) {
+    console.error('Profile not found for user:', user.id, profileError);
     return {
       error: NextResponse.json({ error: 'Profile not found' }, { status: 404 }),
-      user: session.user,
+      user,
       profile: null,
     };
   }
 
   // Check admin privileges: is_reviewer = true OR role = 'admin'
   if (!profile.is_reviewer && profile.role !== 'admin') {
+    console.error('User lacks admin privileges:', profile);
     return {
       error: NextResponse.json({ error: 'Forbidden: Admin access required' }, { status: 403 }),
-      user: session.user,
+      user,
       profile,
     };
   }
 
+  console.log('Admin authentication successful:', profile.email);
+
   return {
     error: null,
-    user: session.user,
+    user,
     profile,
   };
 }
@@ -74,8 +87,17 @@ export async function isAdmin(userId: string): Promise<boolean> {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            );
+          } catch {
+            // Server component can't set cookies
+          }
         },
       },
     }

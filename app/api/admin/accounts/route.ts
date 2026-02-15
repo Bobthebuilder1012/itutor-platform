@@ -4,27 +4,68 @@
 // Admin can view all accounts across all roles
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/middleware/adminAuth';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireAdmin();
-    if (auth.error) return auth.error;
-
     const cookieStore = cookies();
+    const allCookies = cookieStore.getAll();
+    
+    console.log('📋 All cookies:', allCookies.map(c => c.name).join(', '));
+    console.log('🔍 Supabase cookies:', allCookies.filter(c => c.name.includes('supabase')).map(c => `${c.name}: ${c.value.substring(0, 20)}...`));
+    
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
         cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value;
+          getAll() {
+            return cookieStore.getAll();
+          },
+          setAll(cookiesToSet) {
+            try {
+              cookiesToSet.forEach(({ name, value, options }) =>
+                cookieStore.set(name, value, options)
+              );
+            } catch {
+              // Can't set cookies in API routes
+            }
           },
         },
       }
     );
+
+    // Check authentication
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    
+    console.log('🔐 Auth result:', { user: user?.email || 'none', error: authError?.message });
+    
+    if (authError || !user) {
+      console.error('❌ Auth failed:', authError?.message);
+      return NextResponse.json({ error: 'Unauthorized', details: authError?.message }, { status: 401 });
+    }
+
+    // Check admin privileges
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('is_reviewer, role')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError || !profile) {
+      console.error('Profile not found:', profileError?.message);
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    if (!profile.is_reviewer && profile.role !== 'admin') {
+      console.error('User lacks admin privileges');
+      return NextResponse.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
+    }
+
+    console.log('✅ Admin authenticated:', user.email);
     
     const { searchParams } = new URL(request.url);
     
