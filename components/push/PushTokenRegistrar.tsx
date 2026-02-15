@@ -22,7 +22,10 @@ export default function PushTokenRegistrar() {
     if (!canUseWebPush()) return;
 
     const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY;
-    if (!vapidKey) return;
+    if (!vapidKey) {
+      console.log('📱 Firebase VAPID key not configured - Firebase push disabled (using Web Push API instead)');
+      return;
+    }
 
     const run = async () => {
       try {
@@ -37,7 +40,7 @@ export default function PushTokenRegistrar() {
         
         const firebaseClient = await loadModule('@/lib/firebase/client').catch(() => null);
         if (!firebaseClient) {
-          console.warn('Firebase client not available');
+          console.log('📱 Firebase client not available - using Web Push API instead');
           return;
         }
         
@@ -46,7 +49,7 @@ export default function PushTokenRegistrar() {
 
         const firebaseMessaging = await loadModule('firebase/messaging').catch(() => null);
         if (!firebaseMessaging) {
-          console.warn('Firebase messaging not available');
+          console.log('📱 Firebase messaging not available - using Web Push API instead');
           return;
         }
 
@@ -79,7 +82,7 @@ export default function PushTokenRegistrar() {
         window.localStorage.setItem(TOKEN_STORAGE_KEY, fcmToken);
       } catch (error) {
         // Fail silently (permission denied, unsupported, Firebase not configured, etc.)
-        console.debug('Push notification registration skipped:', error);
+        console.debug('📱 Firebase push registration skipped:', error);
       }
     };
 

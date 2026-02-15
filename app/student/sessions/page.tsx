@@ -34,7 +34,6 @@ export default function StudentSessionsPage() {
 
   async function loadSessions() {
     try {
-      // Only show upcoming, non-cancelled sessions
       const now = new Date().toISOString();
       
       const { data, error } = await supabase
@@ -45,9 +44,7 @@ export default function StudentSessionsPage() {
           booking:bookings!fk_sessions_booking(*)
         `)
         .eq('student_id', profile?.id)
-        .gte('scheduled_start_at', now) // Only upcoming sessions
-        .in('status', ['SCHEDULED', 'JOIN_OPEN']) // Only active statuses
-        .order('scheduled_start_at', { ascending: false });
+        .order('scheduled_start_at', { ascending: true }); // Show all sessions, earliest first
 
       if (error) {
         console.error('Error loading sessions:', error);
@@ -56,20 +53,30 @@ export default function StudentSessionsPage() {
           .from('sessions')
           .select('*')
           .eq('student_id', profile?.id)
-          .gte('scheduled_start_at', now)
-          .in('status', ['SCHEDULED', 'JOIN_OPEN'])
-          .order('scheduled_start_at', { ascending: false });
+          .order('scheduled_start_at', { ascending: true });
         
         if (simpleError) throw simpleError;
+        console.log('Loaded sessions (simple):', simpleSessions);
         setSessions(simpleSessions || []);
       } else {
         console.log('Sessions loaded:', data);
-        // Filter out any sessions with cancelled bookings
-        const activeSessions = (data || []).filter(session => 
-          session.booking?.status !== 'CANCELLED' && 
-          session.booking?.status !== 'DECLINED'
-        );
-        setSessions(activeSessions);
+        console.log('Session statuses:', data?.map(s => ({ id: s.id, status: s.status, booking_status: s.booking?.status })));
+        
+        // Show upcoming and recent sessions (within last 7 days)
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        
+        const relevantSessions = (data || []).filter(session => {
+          const sessionDate = new Date(session.scheduled_start_at);
+          const isRecent = sessionDate >= sevenDaysAgo;
+          const notCancelled = session.status !== 'CANCELLED' && 
+                              session.booking?.status !== 'CANCELLED' && 
+                              session.booking?.status !== 'DECLINED';
+          return isRecent && notCancelled;
+        });
+        
+        console.log('Filtered to relevant sessions:', relevantSessions.length);
+        setSessions(relevantSessions);
       }
     } catch (error) {
       console.error('Error loading sessions:', error);
@@ -198,7 +205,7 @@ export default function StudentSessionsPage() {
           </div>
         )}
 
-        {/* Upcoming Sessions */}
+        {/* Sessions List */}
         {sessions.length === 0 ? (
           <div className="text-center py-12 sm:py-16">
             <svg className="w-16 h-16 sm:w-20 sm:h-20 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -214,8 +221,20 @@ export default function StudentSessionsPage() {
             </button>
           </div>
         ) : (
-          <div className="space-y-3 sm:space-y-4">
-            {sessions.map((session) => {
+          <>
+            {/* Separate Upcoming and Past Sessions */}
+            {(() => {
+              const now = new Date();
+              const upcomingSessions = sessions.filter(s => new Date(s.scheduled_start_at) >= now);
+              const pastSessions = sessions.filter(s => new Date(s.scheduled_start_at) < now);
+              
+              return (
+                <>
+                  {/* Upcoming Sessions */}
+                  {upcomingSessions.length > 0 && (
+                    <div className="space-y-3">
+                      <h2 className="text-xl font-bold text-gray-900">Upcoming Sessions</h2>
+                      {upcomingSessions.map((session) => {
               const sessionDate = new Date(session.scheduled_start_at);
               const now = new Date();
               const isPast = sessionDate < now;
@@ -258,24 +277,79 @@ export default function StudentSessionsPage() {
                 }
               }
               
-              return (
-                <div key={session.id} className="bg-white border-2 border-gray-200 rounded-lg p-4 hover:border-itutor-green transition-colors">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-base sm:text-lg font-semibold text-gray-900 truncate">Session</h3>
-                      <p className="text-sm text-gray-600 mt-1">with {session.tutor?.full_name || 'Tutor'}</p>
-                      <p className="text-xs sm:text-sm text-gray-500 mt-2">
-                        {sessionDate.toLocaleString()}
-                      </p>
+                        return (
+                          <div key={session.id} className="bg-white border-2 border-gray-200 rounded-lg p-4 hover:border-itutor-green transition-colors">
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex-1 min-w-0">
+                                <h3 className="text-base sm:text-lg font-semibold text-gray-900 truncate">Session</h3>
+                                <p className="text-sm text-gray-600 mt-1">with {session.tutor?.full_name || 'Tutor'}</p>
+                                <p className="text-xs sm:text-sm text-gray-500 mt-2">
+                                  {sessionDate.toLocaleString()}
+                                </p>
+                              </div>
+                              <span className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ${statusColor}`}>
+                                {displayStatus}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ${statusColor}`}>
-                      {displayStatus}
-                    </span>
-                  </div>
-                </div>
+                  )}
+
+                  {/* Past Sessions (last 7 days) */}
+                  {pastSessions.length > 0 && (
+                    <div className="space-y-3 mt-8">
+                      <h2 className="text-xl font-bold text-gray-900">Recent Sessions</h2>
+                      <p className="text-sm text-gray-600">Sessions from the last 7 days</p>
+                      {pastSessions.map((session) => {
+                        const sessionDate = new Date(session.scheduled_start_at);
+                        const now = new Date();
+                        const isPast = sessionDate < now;
+                        
+                        const bookingStatus = session.booking?.status?.toUpperCase();
+                        const sessionStatus = session.status?.toUpperCase();
+                        
+                        let displayStatus = 'Unknown';
+                        let statusColor = 'bg-gray-100 text-gray-800';
+                        
+                        if (bookingStatus === 'CANCELLED' || sessionStatus === 'CANCELLED') {
+                          displayStatus = 'Cancelled';
+                          statusColor = 'bg-red-100 text-red-800';
+                        } else if (sessionStatus === 'COMPLETED' || sessionStatus === 'COMPLETED_ASSUMED') {
+                          displayStatus = 'Completed';
+                          statusColor = 'bg-green-100 text-green-800';
+                        } else if (sessionStatus === 'NO_SHOW_STUDENT') {
+                          displayStatus = 'No Show';
+                          statusColor = 'bg-orange-100 text-orange-800';
+                        } else {
+                          displayStatus = 'Past';
+                          statusColor = 'bg-gray-100 text-gray-600';
+                        }
+                        
+                        return (
+                          <div key={session.id} className="bg-white border-2 border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors opacity-75">
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex-1 min-w-0">
+                                <h3 className="text-base sm:text-lg font-semibold text-gray-900 truncate">Session</h3>
+                                <p className="text-sm text-gray-600 mt-1">with {session.tutor?.full_name || 'Tutor'}</p>
+                                <p className="text-xs sm:text-sm text-gray-500 mt-2">
+                                  {sessionDate.toLocaleString()}
+                                </p>
+                              </div>
+                              <span className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ${statusColor}`}>
+                                {displayStatus}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
               );
-            })}
-          </div>
+            })()}
+          </>
         )}
       </div>
     </DashboardLayout>

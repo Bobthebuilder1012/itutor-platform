@@ -107,17 +107,15 @@ export default function NotificationBell({ userId }: NotificationBellProps) {
             const element = document.getElementById(hash);
             if (element) {
               element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              // Add highlight effect
+              element.classList.add('ring-4', 'ring-itutor-green', 'ring-opacity-50');
+              setTimeout(() => {
+                element.classList.remove('ring-4', 'ring-itutor-green', 'ring-opacity-50');
+              }, 2000);
             }
           } else {
-            // Navigate to page with hash
+            // Navigate to page with hash - the destination page will handle scrolling
             router.push(notification.link);
-            // Wait for navigation, then scroll
-            setTimeout(() => {
-              const element = document.getElementById(hash);
-              if (element) {
-                element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              }
-            }, 100);
           }
         } else {
           // Regular navigation without hash

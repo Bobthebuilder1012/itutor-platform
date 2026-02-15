@@ -36,7 +36,7 @@ export default function OffersCard({ studentId }: OffersCardProps) {
 
   if (loading) {
     return (
-      <div className="bg-white border-2 border-gray-200 rounded-2xl p-8 shadow-md">
+      <div id="lesson-offers" className="bg-white border-2 border-gray-200 rounded-2xl p-8 shadow-md scroll-mt-6">
         <h2 className="text-2xl font-bold text-gray-900 mb-4">Offers Received</h2>
         <p className="text-gray-600">Loading offers...</p>
       </div>
@@ -45,7 +45,7 @@ export default function OffersCard({ studentId }: OffersCardProps) {
 
   if (!hasOffers) {
     return (
-      <div className="bg-white border-2 border-gray-200 rounded-2xl p-8 shadow-md">
+      <div id="lesson-offers" className="bg-white border-2 border-gray-200 rounded-2xl p-8 shadow-md scroll-mt-6">
         <h2 className="text-2xl font-bold text-gray-900 mb-6">Offers Received</h2>
         <div className="text-center py-8">
           <div className="bg-gray-100 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-4">
