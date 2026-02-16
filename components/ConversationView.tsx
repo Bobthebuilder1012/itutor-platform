@@ -78,10 +78,18 @@ export default function ConversationView({
   async function loadMessages() {
     setLoading(true);
     try {
+      console.log('🔄 Loading messages for conversation:', conversationId);
       const data = await getMessages(conversationId, currentUserId);
+      console.log('📨 Loaded messages:', data.length);
       setMessages(data);
+      
+      if (data.length === 0) {
+        console.warn('⚠️ No messages found for this conversation');
+        console.log('Conversation ID:', conversationId);
+        console.log('Current User ID:', currentUserId);
+      }
     } catch (error) {
-      console.error('Error loading messages:', error);
+      console.error('❌ Error loading messages:', error);
     } finally {
       setLoading(false);
     }
@@ -153,10 +161,21 @@ export default function ConversationView({
                 getDisplayName(otherUser).charAt(0).toUpperCase()
               )}
             </div>
-            <div>
+            <div className="flex-1">
               <h2 className="text-lg font-bold text-itutor-white">{getDisplayName(otherUser)}</h2>
               <p className="text-xs text-gray-500 capitalize">{otherUser.role}</p>
             </div>
+            
+            {/* Refresh Button */}
+            <button
+              onClick={() => loadMessages()}
+              className="text-gray-400 hover:text-itutor-green transition-colors p-2 hover:bg-gray-700 rounded-lg"
+              title="Refresh messages"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
           </>
         )}
       </div>

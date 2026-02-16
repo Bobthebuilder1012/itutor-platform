@@ -201,24 +201,61 @@ export async function getMessages(
   conversationId: string,
   currentUserId: string
 ): Promise<MessageWithSender[]> {
-  const { data, error } = await supabase
+  console.log('🔍 getMessages called:', { conversationId, currentUserId });
+  
+  // Fetch messages without join to avoid constraint violations
+  const { data: messages, error: messagesError } = await supabase
     .from('messages')
-    .select(`
-      *,
-      sender:profiles!messages_sender_id_fkey(id, username, display_name, full_name, avatar_url)
-    `)
+    .select('*')
     .eq('conversation_id', conversationId)
     .order('created_at', { ascending: true });
 
-  if (error) {
-    console.error('Error fetching messages:', error);
-    throw error;
+  if (messagesError) {
+    console.error('❌ Error fetching messages:', messagesError);
+    throw messagesError;
   }
 
-  return data.map((msg: any) => ({
+  console.log('✅ Messages fetched:', messages?.length || 0, 'messages');
+
+  if (!messages || messages.length === 0) {
+    return [];
+  }
+
+  // Get unique sender IDs
+  const senderIds = [...new Set(messages.map(m => m.sender_id))];
+  
+  // Fetch sender profiles separately
+  const { data: profiles, error: profilesError } = await supabase
+    .from('profiles')
+    .select('id, username, display_name, full_name, avatar_url')
+    .in('id', senderIds);
+
+  if (profilesError) {
+    console.error('⚠️ Error fetching sender profiles:', profilesError);
+    // Continue without profiles
+  }
+
+  // Create a map of profiles
+  const profileMap = new Map(
+    (profiles || []).map(p => [p.id, p])
+  );
+
+  // Enrich messages with sender info
+  const enrichedMessages = messages.map((msg: any) => ({
     ...msg,
+    sender: profileMap.get(msg.sender_id) || {
+      id: msg.sender_id,
+      username: 'Unknown',
+      display_name: null,
+      full_name: null,
+      avatar_url: null
+    },
     is_own_message: msg.sender_id === currentUserId
   })) as MessageWithSender[];
+
+  console.log('📨 First message:', enrichedMessages[0]);
+
+  return enrichedMessages;
 }
 
 /**
