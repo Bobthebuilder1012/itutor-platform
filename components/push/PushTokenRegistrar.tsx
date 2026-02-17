@@ -12,6 +12,24 @@ function canUseWebPush() {
   );
 }
 
+function getFirebaseConfig() {
+  if (typeof window === 'undefined') return null;
+  
+  const config = {
+    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+    messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  };
+  
+  // Check if all required fields are present
+  const missing = Object.entries(config).filter(([, v]) => !v).map(([k]) => k);
+  if (missing.length > 0) return null;
+  
+  return config;
+}
+
 export default function PushTokenRegistrar() {
   const ranRef = useRef(false);
 
@@ -22,47 +40,79 @@ export default function PushTokenRegistrar() {
     if (!canUseWebPush()) return;
 
     const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY;
-    if (!vapidKey) {
-      console.log('📱 Firebase VAPID key not configured - Firebase push disabled (using Web Push API instead)');
+    const firebaseConfig = getFirebaseConfig();
+    
+    if (!vapidKey || !firebaseConfig) {
+      console.debug('📱 Firebase not fully configured - using Web Push API fallback');
+      console.debug('   Missing:', !vapidKey ? 'VAPID key' : 'Firebase config');
+      console.debug('   iOS notifications will NOT work without Firebase');
       return;
     }
 
     const run = async () => {
       try {
-        const permission = await Notification.requestPermission();
-        if (permission !== 'granted') return;
+        // Don't auto-request permission - let EnableNotificationsPrompt handle that
+        if (Notification.permission !== 'granted') return;
 
-        // Register (or re-use) service worker required for background push.
-        const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+        // Register service worker
+        const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+          scope: '/'
+        });
+        
+        console.log('📱 Firebase service worker registered');
 
-        // Use Function constructor to bypass webpack static analysis
+        // Send Firebase config to service worker
+        if (swReg.active) {
+          swReg.active.postMessage({
+            type: 'FIREBASE_CONFIG',
+            config: firebaseConfig
+          });
+        }
+
+        await navigator.serviceWorker.ready;
+
+        // Dynamically load Firebase modules
         const loadModule = new Function('path', 'return import(path)');
         
-        const firebaseClient = await loadModule('@/lib/firebase/client').catch(() => null);
+        const firebaseClient = await loadModule('@/lib/firebase/client').catch((err) => {
+          console.debug('📱 Firebase client load failed:', err);
+          return null;
+        });
+        
         if (!firebaseClient) {
-          console.log('📱 Firebase client not available - using Web Push API instead');
+          console.debug('📱 Firebase client not available - ensure firebase package is installed');
           return;
         }
         
         const messaging = await firebaseClient.getFirebaseMessaging();
-        if (!messaging) return;
-
-        const firebaseMessaging = await loadModule('firebase/messaging').catch(() => null);
-        if (!firebaseMessaging) {
-          console.log('📱 Firebase messaging not available - using Web Push API instead');
+        if (!messaging) {
+          console.debug('📱 Firebase messaging not initialized');
           return;
         }
 
+        const firebaseMessaging = await loadModule('firebase/messaging').catch(() => null);
+        if (!firebaseMessaging) {
+          console.debug('📱 Firebase messaging module not available');
+          return;
+        }
+
+        // Get FCM token
         const fcmToken = await firebaseMessaging.getToken(messaging, {
           vapidKey,
           serviceWorkerRegistration: swReg,
         });
 
-        if (!fcmToken) return;
+        if (!fcmToken) {
+          console.debug('📱 Failed to get FCM token');
+          return;
+        }
 
+        console.log('✅ FCM token obtained (iOS + Android + Desktop notifications enabled)');
+
+        // Check if token already registered
         const prev = window.localStorage.getItem(TOKEN_STORAGE_KEY);
         if (prev === fcmToken) {
-          // Touch last_used_at server-side (best-effort).
+          // Token unchanged, just touch last_used_at
           fetch('/api/push-tokens/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -71,18 +121,33 @@ export default function PushTokenRegistrar() {
           return;
         }
 
+        // Register new token
         const res = await fetch('/api/push-tokens/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: fcmToken, platform: 'web' }),
         });
 
-        if (!res.ok) return;
+        if (!res.ok) {
+          console.error('📱 Failed to register FCM token with backend');
+          return;
+        }
 
+        // Save token to localStorage
         window.localStorage.setItem(TOKEN_STORAGE_KEY, fcmToken);
-      } catch (error) {
-        // Fail silently (permission denied, unsupported, Firebase not configured, etc.)
-        console.debug('📱 Firebase push registration skipped:', error);
+        console.log('✅ Push notifications registered successfully');
+        
+      } catch (error: any) {
+        // Provide helpful error messages
+        if (error.code === 'messaging/permission-blocked') {
+          console.debug('📱 Notification permission blocked by user');
+        } else if (error.code === 'messaging/failed-service-worker-registration') {
+          console.error('📱 Service worker registration failed - check HTTPS and service worker file');
+        } else if (error.code === 'messaging/unsupported-browser') {
+          console.debug('📱 Push notifications not supported in this browser');
+        } else {
+          console.debug('📱 Firebase push registration skipped:', error.code || error.message);
+        }
       }
     };
 
