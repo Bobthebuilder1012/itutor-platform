@@ -140,14 +140,6 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
     }
   }
 
-  function handleCheckStatus() {
-    setChecking(true);
-    setTimeout(() => {
-      checkCurrentStatus();
-      setChecking(false);
-    }, 500);
-  }
-
   function handleRemindLater() {
     // Just close, will show again next session if not set up
     setShow(false);
@@ -331,52 +323,69 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
                 4
               </div>
               <div className="flex-1">
-                <p className="text-white font-semibold text-sm mb-2">Go to your Home Screen and tap the iTutor icon</p>
-                <p className="text-blue-200 text-xs">⚠️ Important: Open from Home Screen, not Safari!</p>
+                <p className="text-white font-semibold text-sm mb-2">
+                  <strong>CLOSE Safari</strong>, go to your Home Screen, and tap the iTutor icon
+                </p>
+                <p className="text-yellow-200 text-xs font-medium bg-yellow-900/30 rounded px-2 py-1 mt-2">
+                  ⚠️ Critical: You must CLOSE this browser and open from the Home Screen icon. This prompt will automatically disappear once you do!
+                </p>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Check Status Button */}
-        <div className="mb-4">
-          <button
-            onClick={handleCheckStatus}
-            disabled={checking}
-            className="w-full px-4 py-3 bg-white/20 hover:bg-white/30 text-white rounded-lg font-semibold transition-all backdrop-blur-sm border border-white/30 disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            {checking ? (
-              <>
-                <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        {/* Clear Next Steps */}
+        <div className="mb-4 bg-gradient-to-r from-green-900/40 to-blue-900/40 rounded-xl p-5 border-2 border-itutor-green/50">
+          <div className="flex items-start gap-3">
+            <div className="flex-shrink-0 mt-1">
+              <div className="w-10 h-10 bg-itutor-green rounded-full flex items-center justify-center">
+                <svg className="w-6 h-6 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                 </svg>
-                Checking...
-              </>
-            ) : (
-              <>
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                I've Added It - Check My Status
-              </>
-            )}
-          </button>
+              </div>
+            </div>
+            <div className="flex-1">
+              <p className="text-white font-bold text-base mb-2">What to do now:</p>
+              <ol className="space-y-2 text-sm text-green-100">
+                <li className="flex items-start gap-2">
+                  <span className="text-itutor-green font-bold mt-0.5">1.</span>
+                  <span>Follow steps 1-4 above to add iTutor to your Home Screen</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-itutor-green font-bold mt-0.5">2.</span>
+                  <span><strong>Close Safari completely</strong> (swipe up to close the app)</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-itutor-green font-bold mt-0.5">3.</span>
+                  <span>Open iTutor from the <strong>Home Screen icon</strong></span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-itutor-green font-bold mt-0.5">✓</span>
+                  <span className="font-semibold">This prompt will automatically disappear and you'll continue to notifications!</span>
+                </li>
+              </ol>
+            </div>
+          </div>
         </div>
 
         {/* Action Buttons */}
         <div className="flex gap-2">
           <button
             onClick={handleRemindLater}
-            className="flex-1 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg font-medium transition-all backdrop-blur-sm border border-white/20 text-sm"
+            className="flex-1 px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded-lg font-medium transition-all backdrop-blur-sm border border-white/20 text-sm"
           >
-            Maybe Later
+            I'll Do This Later
           </button>
         </div>
 
         {/* iOS Version Notice */}
-        <p className="text-blue-200 text-xs text-center mt-3 opacity-75">
-          Requires iOS 16.4 or later • Free feature
+        <p className="text-blue-200 text-xs text-center mt-3 opacity-90">
+          Requires iOS 16.4 or later • Free feature • No app store needed
+        </p>
+        
+        {/* Bottom help text */}
+        <p className="text-yellow-200 text-xs text-center mt-2 font-medium">
+          💡 Tip: You cannot complete setup while in Safari. Follow the steps, then open from Home Screen!
         </p>
       </>
     );
