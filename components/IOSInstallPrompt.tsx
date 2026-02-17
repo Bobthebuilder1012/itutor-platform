@@ -17,16 +17,19 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
   const [currentStep, setCurrentStep] = useState<SetupStep>('detect');
   const [checking, setChecking] = useState(false);
   const [isSafari, setIsSafari] = useState(true);
-  // #region agent log
-  const [debugInfo, setDebugInfo] = useState<any[]>([]);
   
+  // #region agent log - Simple logging without state
   const logDebug = (location: string, message: string, data: any) => {
     try {
       const entry = { location, message, data, time: new Date().toISOString() };
-      console.log('[DEBUG]', entry);
-      setDebugInfo(prev => [...prev.slice(-20), entry]); // Keep last 20 entries
+      console.log('[iOS-DEBUG]', entry);
+      // Store in localStorage for inspection
+      const logs = JSON.parse(localStorage.getItem('ios-debug-logs') || '[]');
+      logs.push(entry);
+      if (logs.length > 50) logs.shift(); // Keep last 50
+      localStorage.setItem('ios-debug-logs', JSON.stringify(logs));
     } catch (error) {
-      console.error('[DEBUG ERROR in logDebug]', error);
+      console.error('[DEBUG ERROR]', error);
     }
   };
   // #endregion
@@ -263,33 +266,33 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
     });
   }
 
-  // #region agent log
-  try {
-    if (typeof window !== 'undefined') {
-      logDebug('render', 'Render check', {show,currentStep,isSafari});
-    }
-  } catch (e) {
-    console.error('[DEBUG ERROR]', e);
-  }
-  
-  // Debug Panel - always render
-  const debugPanel = (
-    <div style={{position:'fixed',top:0,left:0,right:0,background:'black',color:'lime',padding:'10px',fontSize:'10px',maxHeight:'200px',overflow:'auto',zIndex:9999,fontFamily:'monospace'}}>
-      <div style={{fontWeight:'bold',marginBottom:'5px'}}>DEBUG INFO (H1:Prompt Show | H2:Safari | H3:Detection | H4:State | H5:Timing)</div>
-      {debugInfo.length === 0 ? (
-        <div>Waiting for debug info...</div>
-      ) : (
-        debugInfo.map((info, i) => (
-          <div key={i} style={{borderBottom:'1px solid #333',padding:'3px 0'}}>
-            <span style={{color:'cyan'}}>[{info.location}]</span> {info.message}: {JSON.stringify(info.data)}
-          </div>
-        ))
-      )}
-    </div>
-  );
+  // #region agent log - Show debug button when ?debug=1 in URL
+  const showDebugPanel = typeof window !== 'undefined' && window.location.search.includes('debug=1');
+  const debugLogs = showDebugPanel ? JSON.parse(localStorage.getItem('ios-debug-logs') || '[]') : [];
   // #endregion
   
-  if (!show) return debugPanel;
+  if (!show) {
+    // #region agent log
+    if (showDebugPanel) {
+      return (
+        <div style={{position:'fixed',top:0,left:0,right:0,background:'black',color:'lime',padding:'10px',fontSize:'10px',maxHeight:'300px',overflow:'auto',zIndex:9999,fontFamily:'monospace'}}>
+          <div style={{fontWeight:'bold',marginBottom:'5px'}}>iOS PROMPT DEBUG (Add ?debug=1 to URL)</div>
+          <button onClick={() => {localStorage.removeItem('ios-debug-logs');window.location.reload()}} style={{background:'red',color:'white',padding:'5px',marginBottom:'10px'}}>Clear Logs</button>
+          {debugLogs.length === 0 ? (
+            <div>No logs yet. Component may not have mounted.</div>
+          ) : (
+            debugLogs.map((info: any, i: number) => (
+              <div key={i} style={{borderBottom:'1px solid #333',padding:'3px 0',fontSize:'9px'}}>
+                <span style={{color:'cyan'}}>[{info.location}]</span> {info.message}: {JSON.stringify(info.data).substring(0,200)}
+              </div>
+            ))
+          )}
+        </div>
+      );
+    }
+    // #endregion
+    return null;
+  }
 
 
   // Render different content based on current step
@@ -527,10 +530,6 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
 
   return (
     <>
-      {/* #region agent log */}
-      {debugPanel}
-      {/* #endregion */}
-      
       {/* Backdrop overlay to block background interaction */}
       <div 
         className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
@@ -546,6 +545,20 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
           </div>
         </div>
       </div>
+      
+      {/* #region agent log - Debug panel when ?debug=1 */}
+      {showDebugPanel && (
+        <div style={{position:'fixed',bottom:0,left:0,right:0,background:'rgba(0,0,0,0.95)',color:'lime',padding:'10px',fontSize:'9px',maxHeight:'150px',overflow:'auto',zIndex:10000,fontFamily:'monospace',borderTop:'2px solid lime'}}>
+          <button onClick={() => {localStorage.removeItem('ios-debug-logs');window.location.reload()}} style={{background:'red',color:'white',padding:'3px 8px',marginBottom:'5px',fontSize:'10px'}}>Clear</button>
+          <div style={{fontWeight:'bold',marginBottom:'5px'}}>DEBUG: show={String(show)} step={currentStep} safari={String(isSafari)}</div>
+          {debugLogs.slice(-10).map((info: any, i: number) => (
+            <div key={i} style={{borderBottom:'1px solid #444',padding:'2px 0'}}>
+              <span style={{color:'yellow'}}>{info.location}</span>: {info.message}
+            </div>
+          ))}
+        </div>
+      )}
+      {/* #endregion */}
     </>
   );
 }
