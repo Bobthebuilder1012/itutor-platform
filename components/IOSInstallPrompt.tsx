@@ -21,9 +21,13 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
   const [debugInfo, setDebugInfo] = useState<any[]>([]);
   
   const logDebug = (location: string, message: string, data: any) => {
-    const entry = { location, message, data, time: new Date().toISOString() };
-    console.log('[DEBUG]', entry);
-    setDebugInfo(prev => [...prev.slice(-20), entry]); // Keep last 20 entries
+    try {
+      const entry = { location, message, data, time: new Date().toISOString() };
+      console.log('[DEBUG]', entry);
+      setDebugInfo(prev => [...prev.slice(-20), entry]); // Keep last 20 entries
+    } catch (error) {
+      console.error('[DEBUG ERROR in logDebug]', error);
+    }
   };
   // #endregion
 
@@ -260,25 +264,32 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
   }
 
   // #region agent log
-  if (typeof window !== 'undefined') {
-    logDebug('render', 'Render check', {show,currentStep,isSafari});
+  try {
+    if (typeof window !== 'undefined') {
+      logDebug('render', 'Render check', {show,currentStep,isSafari});
+    }
+  } catch (e) {
+    console.error('[DEBUG ERROR]', e);
   }
-  // #endregion
   
-  // #region agent log - Debug Panel
-  const debugPanel = debugInfo.length > 0 && (
+  // Debug Panel - always render
+  const debugPanel = (
     <div style={{position:'fixed',top:0,left:0,right:0,background:'black',color:'lime',padding:'10px',fontSize:'10px',maxHeight:'200px',overflow:'auto',zIndex:9999,fontFamily:'monospace'}}>
       <div style={{fontWeight:'bold',marginBottom:'5px'}}>DEBUG INFO (H1:Prompt Show | H2:Safari | H3:Detection | H4:State | H5:Timing)</div>
-      {debugInfo.map((info, i) => (
-        <div key={i} style={{borderBottom:'1px solid #333',padding:'3px 0'}}>
-          <span style={{color:'cyan'}}>[{info.location}]</span> {info.message}: {JSON.stringify(info.data)}
-        </div>
-      ))}
+      {debugInfo.length === 0 ? (
+        <div>Waiting for debug info...</div>
+      ) : (
+        debugInfo.map((info, i) => (
+          <div key={i} style={{borderBottom:'1px solid #333',padding:'3px 0'}}>
+            <span style={{color:'cyan'}}>[{info.location}]</span> {info.message}: {JSON.stringify(info.data)}
+          </div>
+        ))
+      )}
     </div>
   );
   // #endregion
   
-  if (!show) return <>{debugPanel}</>;
+  if (!show) return debugPanel;
 
 
   // Render different content based on current step
