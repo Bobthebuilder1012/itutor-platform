@@ -19,7 +19,7 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
   const [isSafari, setIsSafari] = useState(true);
 
   useEffect(() => {
-    // Add animation styles
+    // Add animation styles and scrollbar styling
     const style = document.createElement('style');
     style.id = 'ios-install-prompt-styles';
     style.textContent = `
@@ -42,6 +42,26 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
       }
       .animate-pulse-slow {
         animation: pulse-slow 2s ease-in-out infinite;
+      }
+      /* Smooth scrolling for iOS prompt */
+      .ios-prompt-scroll {
+        -webkit-overflow-scrolling: touch;
+        scroll-behavior: smooth;
+      }
+      /* Custom scrollbar for better visibility */
+      .ios-prompt-scroll::-webkit-scrollbar {
+        width: 8px;
+      }
+      .ios-prompt-scroll::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 4px;
+      }
+      .ios-prompt-scroll::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.3);
+        border-radius: 4px;
+      }
+      .ios-prompt-scroll::-webkit-scrollbar-thumb:hover {
+        background: rgba(255, 255, 255, 0.5);
       }
     `;
     
@@ -401,9 +421,11 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
       />
       
       {/* Prompt content */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 p-4 pb-6 animate-slide-up">
-        <div className="max-w-2xl mx-auto bg-gradient-to-br from-blue-600 to-purple-600 rounded-2xl shadow-2xl p-6 border border-blue-400/30">
-          {renderStepContent()}
+      <div className="fixed bottom-0 left-0 right-0 z-50 p-4 pb-6 animate-slide-up max-h-[90vh] flex flex-col">
+        <div className="max-w-2xl mx-auto bg-gradient-to-br from-blue-600 to-purple-600 rounded-2xl shadow-2xl border border-blue-400/30 overflow-hidden flex flex-col max-h-full">
+          <div className="overflow-y-auto ios-prompt-scroll p-6">
+            {renderStepContent()}
+          </div>
         </div>
       </div>
     </>
