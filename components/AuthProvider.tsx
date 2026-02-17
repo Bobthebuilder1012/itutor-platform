@@ -34,24 +34,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               .single();
 
             if (profile) {
+              // Keep loading state active during redirect to prevent flash
               if (profile.role === 'admin') {
                 router.push('/admin/dashboard');
+                return; // Don't set loading to false - let the redirect happen
               } else if (profile.is_reviewer) {
                 router.push('/reviewer/dashboard');
+                return;
               } else if (profile.role === 'tutor') {
                 router.push('/tutor/dashboard');
+                return;
               } else if (profile.role === 'student') {
                 router.push('/student/dashboard');
+                return;
               } else if (profile.role === 'parent') {
                 router.push('/parent/dashboard');
+                return;
               }
             }
           }
           // Otherwise, user is already on an authenticated page, let them stay
         }
+        
+        // Only set loading to false if we didn't redirect
+        setLoading(false);
       } catch (error) {
         console.error('Error checking session:', error);
-      } finally {
         setLoading(false);
       }
     };
@@ -72,9 +80,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [pathname, router]);
 
-  // Show nothing while checking session (prevents flash of landing page)
+  // Show loading spinner while checking session (prevents flash of landing page)
   if (loading) {
-    return null;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-itutor-green"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
   }
 
   return <>{children}</>;
