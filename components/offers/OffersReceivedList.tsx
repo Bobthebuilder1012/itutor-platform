@@ -37,6 +37,29 @@ export default function OffersReceivedList({ studentId }: OffersReceivedListProp
         return;
       }
 
+      // Check for expired offers and update them
+      const now = new Date();
+      const offersToExpire = offersData.filter(offer => {
+        const startTime = new Date(offer.proposed_start_at);
+        return (offer.status === 'pending' || offer.status === 'countered') && startTime < now;
+      });
+
+      // Mark expired offers in database
+      if (offersToExpire.length > 0) {
+        const expiredIds = offersToExpire.map(o => o.id);
+        await supabase
+          .from('lesson_offers')
+          .update({ status: 'expired' })
+          .in('id', expiredIds);
+        
+        // Update local data to reflect expiration
+        offersData.forEach(offer => {
+          if (expiredIds.includes(offer.id)) {
+            offer.status = 'expired';
+          }
+        });
+      }
+
       // Get unique tutor and subject IDs
       const tutorIds = [...new Set(offersData.map(o => o.tutor_id))];
       const subjectIds = [...new Set(offersData.map(o => o.subject_id))];
@@ -185,6 +208,7 @@ export default function OffersReceivedList({ studentId }: OffersReceivedListProp
 
   const pendingOffers = offers.filter(o => o.status === 'pending');
   const counteredOffers = offers.filter(o => o.status === 'countered');
+  const expiredOffers = offers.filter(o => o.status === 'expired');
 
   if (offers.length === 0) {
     return null; // Don't show section if no offers
@@ -195,11 +219,11 @@ export default function OffersReceivedList({ studentId }: OffersReceivedListProp
       <div id="lesson-offers" className="bg-white border-2 border-purple-200 rounded-2xl p-6 shadow-lg mb-6 scroll-mt-6">
         <h2 className="text-2xl font-bold text-gray-900 mb-4">Offers Received</h2>
         
-        {pendingOffers.length === 0 && counteredOffers.length === 0 ? (
+        {pendingOffers.length === 0 && counteredOffers.length === 0 && expiredOffers.length === 0 ? (
           <p className="text-gray-600">No pending offers</p>
         ) : (
           <div className="space-y-4">
-            {[...pendingOffers, ...counteredOffers].map((offer: any) => (
+            {[...pendingOffers, ...counteredOffers, ...expiredOffers].map((offer: any) => (
               <div
                 key={offer.id}
                 className="bg-gradient-to-br from-purple-50 to-blue-50 border-2 border-purple-200 rounded-xl p-4 hover:border-purple-400 transition-all"
@@ -226,9 +250,12 @@ export default function OffersReceivedList({ studentId }: OffersReceivedListProp
                         offer.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                         offer.status === 'countered' ? 'bg-blue-100 text-blue-800' :
                         offer.status === 'accepted' ? 'bg-green-100 text-green-800' :
+                        offer.status === 'expired' ? 'bg-gray-200 text-gray-700' :
                         'bg-red-100 text-red-800'
                       }`}>
-                        {offer.status === 'countered' ? 'Counter Sent' : offer.status.charAt(0).toUpperCase() + offer.status.slice(1)}
+                        {offer.status === 'countered' ? 'Counter Sent' : 
+                         offer.status === 'expired' ? 'Expired' :
+                         offer.status.charAt(0).toUpperCase() + offer.status.slice(1)}
                       </span>
                     </div>
 
@@ -284,6 +311,11 @@ export default function OffersReceivedList({ studentId }: OffersReceivedListProp
                           {actionLoading === offer.id ? 'Declining...' : 'Decline'}
                         </button>
                       </div>
+                    )}
+
+                    {/* Expired Status */}
+                    {offer.status === 'expired' && (
+                      <p className="text-xs text-gray-500 mt-2">This offer has expired.</p>
                     )}
                   </div>
                 </div>

@@ -43,7 +43,31 @@ export default function SentOffersList({ tutorId }: SentOffersListProps) {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setOffers(data || []);
+      
+      // Check for expired offers and update them
+      const now = new Date();
+      const offersToExpire = (data || []).filter(offer => {
+        const startTime = new Date(offer.proposed_start_at);
+        return (offer.status === 'pending' || offer.status === 'countered') && startTime < now;
+      });
+
+      // Mark expired offers in database
+      if (offersToExpire.length > 0) {
+        const expiredIds = offersToExpire.map(o => o.id);
+        await supabase
+          .from('lesson_offers')
+          .update({ status: 'expired' })
+          .in('id', expiredIds);
+        
+        // Update local state to reflect expiration
+        const updatedData = (data || []).map(offer => ({
+          ...offer,
+          status: expiredIds.includes(offer.id) ? 'expired' : offer.status
+        }));
+        setOffers(updatedData);
+      } else {
+        setOffers(data || []);
+      }
     } catch (err) {
       console.error('Error fetching sent offers:', err);
     } finally {
@@ -172,6 +196,7 @@ export default function SentOffersList({ tutorId }: SentOffersListProps) {
 
   const pendingOffers = offers.filter(o => o.status === 'pending');
   const counteredOffers = offers.filter(o => o.status === 'countered');
+  const expiredOffers = offers.filter(o => o.status === 'expired');
 
   if (offers.length === 0) {
     return null; // Don't show section if no offers
@@ -181,11 +206,11 @@ export default function SentOffersList({ tutorId }: SentOffersListProps) {
     <div className="bg-white border-2 border-blue-200 rounded-2xl p-6 shadow-lg mb-6">
       <h2 className="text-2xl font-bold text-gray-900 mb-4">Sent Offers</h2>
       
-      {pendingOffers.length === 0 && counteredOffers.length === 0 ? (
+      {pendingOffers.length === 0 && counteredOffers.length === 0 && expiredOffers.length === 0 ? (
         <p className="text-gray-600">No pending offers</p>
       ) : (
         <div className="space-y-4">
-          {[...pendingOffers, ...counteredOffers].map((offer: any) => (
+          {[...pendingOffers, ...counteredOffers, ...expiredOffers].map((offer: any) => (
             <div
               key={offer.id}
               className="bg-gradient-to-br from-blue-50 to-purple-50 border-2 border-blue-200 rounded-xl p-4 hover:border-blue-400 transition-all"
@@ -212,9 +237,12 @@ export default function SentOffersList({ tutorId }: SentOffersListProps) {
                       offer.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                       offer.status === 'countered' ? 'bg-blue-100 text-blue-800' :
                       offer.status === 'accepted' ? 'bg-green-100 text-green-800' :
+                      offer.status === 'expired' ? 'bg-gray-200 text-gray-700' :
                       'bg-red-100 text-red-800'
                     }`}>
-                      {offer.status === 'countered' ? 'Counter Received' : offer.status.charAt(0).toUpperCase() + offer.status.slice(1)}
+                      {offer.status === 'countered' ? 'Counter Received' : 
+                       offer.status === 'expired' ? 'Expired' :
+                       offer.status.charAt(0).toUpperCase() + offer.status.slice(1)}
                     </span>
                   </div>
 
@@ -244,28 +272,37 @@ export default function SentOffersList({ tutorId }: SentOffersListProps) {
                       )}
 
                       {/* Counter Actions */}
-                      <div className="flex gap-2 mt-3">
-                        <button
-                          onClick={() => handleAcceptCounter(offer.id)}
-                          disabled={actionLoading === offer.id}
-                          className="px-4 py-2 bg-itutor-green hover:bg-emerald-600 text-black font-semibold rounded-lg transition disabled:opacity-50 text-sm"
-                        >
-                          {actionLoading === offer.id ? 'Accepting...' : 'Accept Counter'}
-                        </button>
-                        <button
-                          onClick={() => handleDeclineCounter(offer.id)}
-                          disabled={actionLoading === offer.id}
-                          className="px-4 py-2 bg-white hover:bg-gray-50 text-red-600 border border-red-300 rounded-lg font-medium transition disabled:opacity-50 text-sm"
-                        >
-                          {actionLoading === offer.id ? 'Declining...' : 'Decline'}
-                        </button>
-                      </div>
+                      {offer.status !== 'expired' ? (
+                        <div className="flex gap-2 mt-3">
+                          <button
+                            onClick={() => handleAcceptCounter(offer.id)}
+                            disabled={actionLoading === offer.id}
+                            className="px-4 py-2 bg-itutor-green hover:bg-emerald-600 text-black font-semibold rounded-lg transition disabled:opacity-50 text-sm"
+                          >
+                            {actionLoading === offer.id ? 'Accepting...' : 'Accept Counter'}
+                          </button>
+                          <button
+                            onClick={() => handleDeclineCounter(offer.id)}
+                            disabled={actionLoading === offer.id}
+                            className="px-4 py-2 bg-white hover:bg-gray-50 text-red-600 border border-red-300 rounded-lg font-medium transition disabled:opacity-50 text-sm"
+                          >
+                            {actionLoading === offer.id ? 'Declining...' : 'Decline'}
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-gray-500 mt-2">This offer has expired.</p>
+                      )}
                     </div>
                   )}
 
                   {/* Waiting Status */}
                   {offer.status === 'pending' && (
                     <p className="text-xs text-gray-500 mt-2">Waiting for student response...</p>
+                  )}
+
+                  {/* Expired Status */}
+                  {offer.status === 'expired' && !offer.counter_proposed_start_at && (
+                    <p className="text-xs text-gray-500 mt-2">This offer has expired.</p>
                   )}
                 </div>
               </div>
