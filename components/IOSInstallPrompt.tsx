@@ -17,8 +17,20 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
   const [currentStep, setCurrentStep] = useState<SetupStep>('detect');
   const [checking, setChecking] = useState(false);
   const [isSafari, setIsSafari] = useState(true);
+  // #region agent log
+  const [debugInfo, setDebugInfo] = useState<any[]>([]);
+  
+  const logDebug = (location: string, message: string, data: any) => {
+    const entry = { location, message, data, time: new Date().toISOString() };
+    console.log('[DEBUG]', entry);
+    setDebugInfo(prev => [...prev.slice(-20), entry]); // Keep last 20 entries
+  };
+  // #endregion
 
   useEffect(() => {
+    // #region agent log
+    logDebug('useEffect:mount', 'Component mounted', {});
+    // #endregion
     // Add animation styles and scrollbar styling
     const style = document.createElement('style');
     style.id = 'ios-install-prompt-styles';
@@ -72,6 +84,9 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
     checkShouldShow();
 
     // Check status periodically (every 3 seconds)
+    // #region agent log
+    logDebug('useEffect:interval', 'Interval setup', {});
+    // #endregion
     const interval = setInterval(() => {
       checkCurrentStatus();
     }, 3000);
@@ -86,24 +101,42 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
   }, []);
 
   function checkShouldShow() {
+    // #region agent log
+    logDebug('checkShouldShow:start', 'Function called', {windowUndefined:typeof window==='undefined'});
+    // #endregion
     if (typeof window === 'undefined') return;
 
     // Detect if user is on iOS
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    if (!isIOS) return;
+    // #region agent log
+    logDebug('checkShouldShow:ios', 'iOS detection', {isIOS,userAgent:navigator.userAgent});
+    // #endregion
+    if (!isIOS) {
+      logDebug('checkShouldShow:not-ios', 'Early return: not iOS', {});
+      return;
+    }
 
     // Detect if using Safari
     const userAgent = navigator.userAgent;
     const isSafariBrowser = /Safari/.test(userAgent) && !/CriOS|FxiOS|OPiOS|mercury|EdgiOS/.test(userAgent);
     setIsSafari(isSafariBrowser);
+    // #region agent log
+    logDebug('checkShouldShow:safari', 'Safari detection', {isSafariBrowser,userAgent,safariTest:/Safari/.test(userAgent),chromeTest:/CriOS|FxiOS|OPiOS|mercury|EdgiOS/.test(userAgent)});
+    // #endregion
 
     // Check actual setup status
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches 
       || (window.navigator as any).standalone;
     const hasNotifications = 'Notification' in window && Notification.permission === 'granted';
+    // #region agent log
+    logDebug('checkShouldShow:status', 'Setup status check', {isStandalone,hasNotifications,notificationPermission:typeof Notification!=='undefined'?Notification.permission:'undefined',displayMode:window.matchMedia('(display-mode: standalone)').matches,standaloneNav:(window.navigator as any).standalone});
+    // #endregion
 
     // If everything is set up, never show
     if (isStandalone && hasNotifications) {
+      // #region agent log
+      logDebug('checkShouldShow:complete', 'Early return: setup complete', {});
+      // #endregion
       return;
     }
 
@@ -113,9 +146,15 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
       const dismissedTime = parseInt(dismissedTimestamp, 10);
       const twentyFourHours = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
       const timeSinceDismissed = Date.now() - dismissedTime;
+      // #region agent log
+      logDebug('checkShouldShow:dismissed', 'Dismissal check', {dismissedTimestamp,timeSinceDismissed,twentyFourHours,withinPeriod:timeSinceDismissed<twentyFourHours});
+      // #endregion
       
       if (timeSinceDismissed < twentyFourHours) {
         // Still within the 24-hour dismissal period
+        // #region agent log
+        logDebug('checkShouldShow:dismissed-return', 'Early return: within dismissal period', {});
+        // #endregion
         return;
       }
     }
@@ -127,19 +166,31 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
       setCurrentStep('enable-notifications');
     }
 
+    // #region agent log
+    logDebug('checkShouldShow:show', 'Setting show=true', {stepSet:!isStandalone?'add-to-home':'enable-notifications'});
+    // #endregion
     setShow(true);
   }
 
   function checkCurrentStatus() {
+    // #region agent log
+    logDebug('checkCurrentStatus:start', 'Function called', {windowUndefined:typeof window==='undefined',show});
+    // #endregion
     if (typeof window === 'undefined' || !show) return;
 
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches 
       || (window.navigator as any).standalone;
     const hasNotifications = 'Notification' in window && Notification.permission === 'granted';
+    // #region agent log
+    logDebug('checkCurrentStatus:status', 'Status detected in interval', {isStandalone,hasNotifications,notificationPermission:typeof Notification!=='undefined'?Notification.permission:'undefined'});
+    // #endregion
 
     // Auto-advance to next step based on actual status
     if (isStandalone && hasNotifications) {
       // Fully complete! Clear dismissal timestamp
+      // #region agent log
+      logDebug('checkCurrentStatus:complete', 'Setup complete detected', {});
+      // #endregion
       localStorage.removeItem('ios-prompt-dismissed');
       setCurrentStep('complete');
       setTimeout(() => {
@@ -147,9 +198,15 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
       }, 3000);
     } else if (isStandalone && !hasNotifications) {
       // In PWA mode but notifications not enabled
+      // #region agent log
+      logDebug('checkCurrentStatus:pwa', 'PWA mode detected, advancing to enable-notifications', {});
+      // #endregion
       setCurrentStep('enable-notifications');
     } else if (!isStandalone) {
       // Not in PWA mode yet
+      // #region agent log
+      logDebug('checkCurrentStatus:not-pwa', 'Not in PWA mode, staying at add-to-home', {});
+      // #endregion
       setCurrentStep('add-to-home');
     }
   }
@@ -202,7 +259,27 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
     });
   }
 
-  if (!show) return null;
+  // #region agent log
+  if (typeof window !== 'undefined') {
+    logDebug('render', 'Render check', {show,currentStep,isSafari});
+  }
+  // #endregion
+  
+  // #region agent log - Debug Panel
+  const debugPanel = debugInfo.length > 0 && (
+    <div style={{position:'fixed',top:0,left:0,right:0,background:'black',color:'lime',padding:'10px',fontSize:'10px',maxHeight:'200px',overflow:'auto',zIndex:9999,fontFamily:'monospace'}}>
+      <div style={{fontWeight:'bold',marginBottom:'5px'}}>DEBUG INFO (H1:Prompt Show | H2:Safari | H3:Detection | H4:State | H5:Timing)</div>
+      {debugInfo.map((info, i) => (
+        <div key={i} style={{borderBottom:'1px solid #333',padding:'3px 0'}}>
+          <span style={{color:'cyan'}}>[{info.location}]</span> {info.message}: {JSON.stringify(info.data)}
+        </div>
+      ))}
+    </div>
+  );
+  // #endregion
+  
+  if (!show) return <>{debugPanel}</>;
+
 
   // Render different content based on current step
   const renderStepContent = () => {
@@ -439,6 +516,10 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
 
   return (
     <>
+      {/* #region agent log */}
+      {debugPanel}
+      {/* #endregion */}
+      
       {/* Backdrop overlay to block background interaction */}
       <div 
         className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
