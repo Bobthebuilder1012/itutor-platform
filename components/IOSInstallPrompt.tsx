@@ -14,7 +14,39 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
   const [show, setShow] = useState(false);
 
   useEffect(() => {
+    // Add animation styles
+    const style = document.createElement('style');
+    style.id = 'ios-install-prompt-styles';
+    style.textContent = `
+      @keyframes slide-up {
+        from {
+          transform: translateY(100%);
+          opacity: 0;
+        }
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+      .animate-slide-up {
+        animation: slide-up 0.3s ease-out;
+      }
+    `;
+    
+    // Only add if not already added
+    if (!document.getElementById('ios-install-prompt-styles')) {
+      document.head.appendChild(style);
+    }
+    
     checkShouldShow();
+
+    // Cleanup
+    return () => {
+      const existingStyle = document.getElementById('ios-install-prompt-styles');
+      if (existingStyle) {
+        existingStyle.remove();
+      }
+    };
   }, []);
 
   function checkShouldShow() {
@@ -166,25 +198,4 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
       </div>
     </div>
   );
-}
-
-// Add animation
-const style = document.createElement('style');
-style.textContent = `
-  @keyframes slide-up {
-    from {
-      transform: translateY(100%);
-      opacity: 0;
-    }
-    to {
-      transform: translateY(0);
-      opacity: 1;
-    }
-  }
-  .animate-slide-up {
-    animation: slide-up 0.3s ease-out;
-  }
-`;
-if (typeof document !== 'undefined') {
-  document.head.appendChild(style);
 }
