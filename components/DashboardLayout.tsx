@@ -11,6 +11,7 @@ import MessagesIcon from '@/components/MessagesIcon';
 import CalendarIcon from '@/components/CalendarIcon';
 import Footer from '@/components/landing/Footer';
 import EnableNotificationsPrompt from '@/components/EnableNotificationsPrompt';
+import IOSInstallPrompt from '@/components/IOSInstallPrompt';
 import { initializePushNotifications } from '@/lib/services/browserPushService';
 import dynamic from 'next/dynamic';
 
@@ -394,6 +395,9 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         {effectiveUserId && (
           <EnableNotificationsPrompt userId={effectiveUserId} />
         )}
+
+        {/* iOS Install Prompt for PWA notifications */}
+        <IOSInstallPrompt />
         
         <div className="bg-white rounded-lg sm:rounded-xl lg:rounded-2xl shadow-lg sm:shadow-xl p-3 sm:p-4 lg:p-6">
           {children}
