@@ -107,6 +107,19 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
       return;
     }
 
+    // Check if user dismissed recently (within last 24 hours)
+    const dismissedTimestamp = localStorage.getItem('ios-prompt-dismissed');
+    if (dismissedTimestamp) {
+      const dismissedTime = parseInt(dismissedTimestamp, 10);
+      const twentyFourHours = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+      const timeSinceDismissed = Date.now() - dismissedTime;
+      
+      if (timeSinceDismissed < twentyFourHours) {
+        // Still within the 24-hour dismissal period
+        return;
+      }
+    }
+
     // Determine what step they're on
     if (!isStandalone) {
       setCurrentStep('add-to-home');
@@ -126,7 +139,8 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
 
     // Auto-advance to next step based on actual status
     if (isStandalone && hasNotifications) {
-      // Fully complete!
+      // Fully complete! Clear dismissal timestamp
+      localStorage.removeItem('ios-prompt-dismissed');
       setCurrentStep('complete');
       setTimeout(() => {
         setShow(false);
@@ -145,6 +159,8 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
     try {
       const permission = await Notification.requestPermission();
       if (permission === 'granted') {
+        // Clear dismissal timestamp since setup is complete
+        localStorage.removeItem('ios-prompt-dismissed');
         setCurrentStep('complete');
         setTimeout(() => {
           setShow(false);
@@ -161,8 +177,12 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
   }
 
   function handleRemindLater() {
-    // Just close, will show again next session if not set up
+    // Store dismissal timestamp to prevent showing again for 24 hours
+    localStorage.setItem('ios-prompt-dismissed', Date.now().toString());
     setShow(false);
+    if (onDismiss) {
+      onDismiss();
+    }
   }
 
   function handleCopyUrl() {
