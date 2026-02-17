@@ -28,6 +28,25 @@ const hasNotifications = Notification.permission === 'granted';
 
 ### Setup Steps
 
+#### Safari Browser Detection (Pre-Step)
+**What the user sees if not using Safari:**
+- ⚠️ Orange warning banner at the top
+- "Safari Required" message explaining iOS notifications only work in Safari
+- "Copy Link & Open in Safari" button
+- Instructions to paste the link after copying
+
+**What happens:**
+- Detects if user is using Chrome, Firefox, Edge, or other non-Safari browsers on iOS
+- Provides one-click button to copy current URL to clipboard
+- Shows alert confirming link was copied with instructions
+- User can then open Safari and paste the link to continue setup
+
+**Browser Detection Logic:**
+```typescript
+const isSafariBrowser = /Safari/.test(userAgent) && 
+  !/CriOS|FxiOS|OPiOS|mercury|EdgiOS/.test(userAgent);
+```
+
 #### Step 1: Add to Home Screen
 **What the user sees:**
 - Numbered, visual instructions with icons
@@ -67,12 +86,16 @@ const hasNotifications = Notification.permission === 'granted';
 - Prompt never appears again
 - Notifications never get enabled
 - No way to track actual completion
+- Background was still clickable during prompt
+- No Safari browser detection
 
 ### ✅ New Behavior (Good)
 - User must **actually complete setup** for prompt to disappear permanently
 - If user clicks "Maybe Later", prompt reappears next session
 - Detects if user added to Home Screen but didn't enable notifications
 - Continues from where they left off
+- **Modal backdrop blocks background interaction**
+- **Detects non-Safari browsers and provides "Copy Link & Open in Safari" button**
 
 ---
 
@@ -172,6 +195,13 @@ async function handleEnableNotifications() {
 - Mobile-optimized layout
 - Large touch targets for buttons
 - Clear visual hierarchy
+
+### Modal Backdrop
+- **Semi-transparent black overlay** (60% opacity) covers entire screen
+- **Blocks all background interaction** - users can't accidentally click away
+- **Blur effect** for better focus on the prompt
+- **Clicking backdrop closes prompt** - same as "Maybe Later" button
+- Ensures users focus on notification setup without distractions
 
 ---
 
