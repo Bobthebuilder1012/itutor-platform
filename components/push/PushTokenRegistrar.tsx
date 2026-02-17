@@ -74,7 +74,7 @@ export default function PushTokenRegistrar() {
         // Dynamically load Firebase modules
         const loadModule = new Function('path', 'return import(path)');
         
-        const firebaseClient = await loadModule('@/lib/firebase/client').catch((err) => {
+        const firebaseClient = await loadModule('@/lib/firebase/client').catch((err: any) => {
           console.debug('📱 Firebase client load failed:', err);
           return null;
         });
