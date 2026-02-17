@@ -353,6 +353,16 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
               {checking ? 'Checking...' : 'Enable Notifications'}
             </button>
           </div>
+
+          {/* Continue button */}
+          <div className="flex gap-2 mt-4">
+            <button
+              onClick={handleRemindLater}
+              className="flex-1 px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded-lg font-medium transition-all backdrop-blur-sm border border-white/20 text-sm"
+            >
+              Remind Me Later
+            </button>
+          </div>
         </>
       );
     }
@@ -413,7 +423,7 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
                 onClick={handleRemindLater}
                 className="px-5 py-4 bg-white/20 hover:bg-white/30 text-white font-semibold rounded-lg transition-all text-base"
               >
-                Skip
+                Remind Me Later
               </button>
             </div>
             <p className="text-white text-xs text-center mt-3 font-medium">
@@ -510,7 +520,7 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
               onClick={handleRemindLater}
               className="flex-1 px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded-lg font-medium transition-all backdrop-blur-sm border border-white/20 text-sm"
             >
-              Continue Without Notifications
+              Remind Me Later
             </button>
           </div>
         )}
