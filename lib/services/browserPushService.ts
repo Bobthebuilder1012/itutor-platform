@@ -71,19 +71,36 @@ export async function requestNotificationPermission(): Promise<boolean> {
  */
 export async function subscribeToPushNotifications(userId: string): Promise<PushSubscription | null> {
   if (!isPushNotificationSupported()) {
-    console.warn('Push notifications not supported');
+    console.debug('Push notifications not supported in this browser');
     return null;
   }
 
   if (!VAPID_PUBLIC_KEY) {
-    console.error('VAPID public key not configured');
+    console.debug('VAPID public key not configured - web push disabled');
     return null;
   }
 
   try {
-    // Register service worker
-    const registration = await navigator.serviceWorker.register('/sw.js');
+    // Check if service worker is already registered
+    let registration = await navigator.serviceWorker.getRegistration('/sw.js');
+    
+    if (!registration) {
+      // Register service worker if not already registered
+      registration = await navigator.serviceWorker.register('/sw.js', {
+        scope: '/'
+      });
+      console.log('📱 Service worker registered successfully');
+    }
+
+    // Wait for service worker to be ready
     await navigator.serviceWorker.ready;
+
+    // Check if already subscribed
+    const existingSubscription = await registration.pushManager.getSubscription();
+    if (existingSubscription) {
+      console.log('✅ Already subscribed to push notifications');
+      return existingSubscription;
+    }
 
     // Subscribe to push notifications
     const subscription = await registration.pushManager.subscribe({
@@ -92,7 +109,7 @@ export async function subscribeToPushNotifications(userId: string): Promise<Push
     });
 
     // Save subscription to database
-    await fetch('/api/push-notifications/subscribe', {
+    const response = await fetch('/api/push-notifications/subscribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -102,10 +119,24 @@ export async function subscribeToPushNotifications(userId: string): Promise<Push
       })
     });
 
+    if (!response.ok) {
+      console.error('Failed to save push subscription to database');
+      // Still return subscription even if DB save fails
+    }
+
     console.log('✅ Subscribed to push notifications');
     return subscription;
-  } catch (error) {
-    console.error('Error subscribing to push notifications:', error);
+  } catch (error: any) {
+    // Provide more helpful error messages
+    if (error.name === 'AbortError') {
+      console.debug('⚠️ Push subscription aborted - this is normal if notifications are blocked or unavailable');
+    } else if (error.name === 'NotAllowedError') {
+      console.debug('⚠️ Notification permission denied by user');
+    } else if (error.name === 'InvalidStateError') {
+      console.debug('⚠️ Service worker in invalid state - try refreshing the page');
+    } else {
+      console.error('❌ Error subscribing to push notifications:', error.name, error.message);
+    }
     return null;
   }
 }
@@ -161,13 +192,20 @@ export async function isPushSubscribed(): Promise<boolean> {
  * Call this on app load
  */
 export async function initializePushNotifications(userId: string): Promise<void> {
+  // Silent initialization - don't show errors to user
   if (!isPushNotificationSupported()) return;
+  if (!VAPID_PUBLIC_KEY) return; // Fail silently if not configured
 
-  // Check if already subscribed
-  const isSubscribed = await isPushSubscribed();
-  
-  if (!isSubscribed && hasNotificationPermission()) {
-    // Auto-subscribe if permission already granted
-    await subscribeToPushNotifications(userId);
+  try {
+    // Check if already subscribed
+    const isSubscribed = await isPushSubscribed();
+    
+    if (!isSubscribed && hasNotificationPermission()) {
+      // Auto-subscribe if permission already granted
+      await subscribeToPushNotifications(userId);
+    }
+  } catch (error) {
+    // Fail silently - push notifications are optional
+    console.debug('Push notification initialization skipped:', error);
   }
 }

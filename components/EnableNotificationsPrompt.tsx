@@ -28,11 +28,16 @@ export default function EnableNotificationsPrompt({ userId, onDismiss }: EnableN
     const dismissed = localStorage.getItem('notifications-prompt-dismissed');
     
     // Show if no permission and not dismissed
-    if (!hasPermission && !dismissed) {
+    if (!hasPermission && !dismissed && Notification.permission !== 'denied') {
       setShow(true);
     } else if (hasPermission) {
-      // Auto-subscribe if permission already granted
-      await subscribeToPushNotifications(userId);
+      // Auto-subscribe if permission already granted (silently)
+      try {
+        await subscribeToPushNotifications(userId);
+      } catch (error) {
+        // Fail silently - user doesn't need to see errors for optional feature
+        console.debug('Auto-subscribe skipped:', error);
+      }
     }
   }
 
