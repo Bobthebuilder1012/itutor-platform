@@ -244,29 +244,29 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
       <>
         {/* Safari Required Warning */}
         {!isSafari && (
-          <div className="mb-4 bg-orange-500/20 border-2 border-orange-400 rounded-xl p-4 backdrop-blur-sm">
+          <div className="mb-4 bg-red-500/30 border-3 border-red-400 rounded-xl p-5 backdrop-blur-sm">
             <div className="flex items-start gap-3">
               <div className="flex-shrink-0">
-                <svg className="w-6 h-6 text-orange-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-8 h-8 text-red-300 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
               </div>
               <div className="flex-1">
-                <h4 className="text-orange-200 font-bold text-sm mb-2">⚠️ Safari Required</h4>
-                <p className="text-orange-100 text-sm mb-3 leading-relaxed">
-                  iOS notifications only work in Safari. You're currently using a different browser.
+                <h4 className="text-white font-bold text-lg mb-3">🚫 You Must Use Safari</h4>
+                <p className="text-red-100 text-base mb-4 leading-relaxed font-semibold">
+                  Please open this website in Safari browser to enable notifications. Other browsers do not support this feature on iOS.
                 </p>
                 <button
                   onClick={handleCopyUrl}
-                  className="w-full px-4 py-2 bg-orange-400 hover:bg-orange-500 text-black font-semibold rounded-lg transition-all shadow-lg text-sm flex items-center justify-center gap-2"
+                  className="w-full px-5 py-4 bg-red-400 hover:bg-red-500 text-white font-bold rounded-lg transition-all shadow-lg text-base flex items-center justify-center gap-2"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                   </svg>
                   Copy Link & Open in Safari
                 </button>
-                <p className="text-orange-200 text-xs mt-2 text-center">
-                  After copying, open Safari and paste the link
+                <p className="text-red-100 text-sm mt-3 text-center font-medium">
+                  👉 After copying, open Safari and paste this link to continue
                 </p>
               </div>
             </div>
@@ -350,40 +350,6 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
                   ⚠️ Critical: You must CLOSE this browser and open from the Home Screen icon. This prompt will automatically disappear once you do!
                 </p>
               </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Clear Next Steps */}
-        <div className="mb-4 bg-gradient-to-r from-green-900/40 to-blue-900/40 rounded-xl p-5 border-2 border-itutor-green/50">
-          <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 mt-1">
-              <div className="w-10 h-10 bg-itutor-green rounded-full flex items-center justify-center">
-                <svg className="w-6 h-6 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                </svg>
-              </div>
-            </div>
-            <div className="flex-1">
-              <p className="text-white font-bold text-base mb-2">What to do now:</p>
-              <ol className="space-y-2 text-sm text-green-100">
-                <li className="flex items-start gap-2">
-                  <span className="text-itutor-green font-bold mt-0.5">1.</span>
-                  <span>Follow steps 1-4 above to add iTutor to your Home Screen</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-itutor-green font-bold mt-0.5">2.</span>
-                  <span><strong>Close Safari completely</strong> (swipe up to close the app)</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-itutor-green font-bold mt-0.5">3.</span>
-                  <span>Open iTutor from the <strong>Home Screen icon</strong></span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-itutor-green font-bold mt-0.5">✓</span>
-                  <span className="font-semibold">This prompt will automatically disappear and you'll continue to notifications!</span>
-                </li>
-              </ol>
             </div>
           </div>
         </div>
