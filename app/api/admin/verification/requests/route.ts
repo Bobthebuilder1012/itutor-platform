@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     }
   );
   const searchParams = request.nextUrl.searchParams;
-  const status = searchParams.get('status') || 'SUBMITTED';
+  const status = searchParams.get('status') || 'READY_FOR_REVIEW';
 
   try {
     let query = supabase

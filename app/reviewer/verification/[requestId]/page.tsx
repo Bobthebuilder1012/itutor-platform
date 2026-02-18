@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -63,6 +63,7 @@ export default function VerificationDetailPage({ params }: { params: { requestId
   const [rejectReason, setRejectReason] = useState('');
   const [subjectSearchQuery, setSubjectSearchQuery] = useState('');
   const [subjectDropdownOpen, setSubjectDropdownOpen] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (profileLoading) return;
@@ -135,6 +136,29 @@ export default function VerificationDetailPage({ params }: { params: { requestId
       setProcessing(false);
     }
   }
+
+  const handleRemoveSubject = useCallback(
+    async (verifiedSubjectId: string) => {
+      if (!confirm('Remove this verified subject from the list?')) return;
+      setRemovingId(verifiedSubjectId);
+      try {
+        const res = await fetch(
+          `/api/admin/verification/requests/${params.requestId}/verified-subjects/${verifiedSubjectId}`,
+          { method: 'DELETE' }
+        );
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || 'Failed to remove');
+        }
+        setVerifiedSubjects((prev) => prev.filter((s) => s.id !== verifiedSubjectId));
+      } catch (err: any) {
+        alert(err.message || 'Failed to remove subject');
+      } finally {
+        setRemovingId(null);
+      }
+    },
+    [params.requestId]
+  );
 
   async function handleApprove() {
     if (verifiedSubjects.length === 0) {
@@ -472,7 +496,7 @@ export default function VerificationDetailPage({ params }: { params: { requestId
                   <div className="space-y-2">
                     {verifiedSubjects.map((subject) => (
                       <div key={subject.id} className="border border-gray-200 rounded-lg p-3">
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between gap-3">
                           <div>
                             <p className="font-semibold text-gray-900">{subject.subjects.name}</p>
                             <p className="text-sm text-gray-600">
@@ -481,6 +505,17 @@ export default function VerificationDetailPage({ params }: { params: { requestId
                               {subject.session && ` • ${subject.session}`}
                             </p>
                           </div>
+                          {request.status !== 'APPROVED' && request.status !== 'REJECTED' && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveSubject(subject.id)}
+                              disabled={removingId === subject.id}
+                              className="shrink-0 text-red-600 hover:text-red-800 hover:bg-red-50 px-2 py-1 rounded text-sm font-medium transition-colors disabled:opacity-50"
+                              title="Remove this verified subject"
+                            >
+                              {removingId === subject.id ? 'Removing...' : 'Remove'}
+                            </button>
+                          )}
                         </div>
                       </div>
                     ))}

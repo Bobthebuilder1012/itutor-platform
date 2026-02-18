@@ -7,6 +7,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
+import { sendEmail } from '@/lib/services/emailService';
+import { verificationCongratulationsEmail } from '@/lib/email-templates/tutor';
 
 export async function POST(
   request: NextRequest,
@@ -168,6 +170,28 @@ export async function POST(
 
     if (notificationError) {
       console.error('Error creating notification:', notificationError);
+    }
+
+    // Send congratulations email when approved
+    if (decision === 'APPROVE') {
+      const { data: tutorProfile } = await serviceSupabase
+        .from('profiles')
+        .select('email, full_name')
+        .eq('id', verificationRequest.tutor_id)
+        .single();
+
+      if (tutorProfile?.email) {
+        const firstName = tutorProfile.full_name?.split(' ')[0] || 'there';
+        const template = verificationCongratulationsEmail(firstName);
+        const result = await sendEmail({
+          to: tutorProfile.email,
+          subject: template.subject,
+          html: template.html,
+        });
+        if (!result.success) {
+          console.error('Failed to send verification congratulations email:', result.error);
+        }
+      }
     }
 
     // Log event

@@ -25,7 +25,7 @@ export default function VerificationQueuePage() {
   const router = useRouter();
   const [requests, setRequests] = useState<VerificationRequest[]>([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState('SUBMITTED');
+  const [statusFilter, setStatusFilter] = useState('READY_FOR_REVIEW');
 
   useEffect(() => {
     if (profileLoading) return;
@@ -79,17 +79,21 @@ export default function VerificationQueuePage() {
 
         {/* Status Filter */}
         <div className="mb-6 flex gap-2">
-          {['SUBMITTED', 'READY_FOR_REVIEW', 'APPROVED', 'REJECTED'].map((status) => (
+          {[
+            { value: 'READY_FOR_REVIEW', label: 'Ready for Review' },
+            { value: 'APPROVED', label: 'Approved' },
+            { value: 'REJECTED', label: 'Rejected' },
+          ].map(({ value, label }) => (
             <button
-              key={status}
-              onClick={() => setStatusFilter(status)}
+              key={value}
+              onClick={() => setStatusFilter(value)}
               className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                statusFilter === status
+                statusFilter === value
                   ? 'bg-itutor-green text-white'
                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
               }`}
             >
-              {status.replace('_', ' ')}
+              {label}
             </button>
           ))}
         </div>

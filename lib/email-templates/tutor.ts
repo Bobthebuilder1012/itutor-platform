@@ -1,5 +1,22 @@
 import { EmailTemplateProps, EmailTemplate } from './types';
 
+const logoUrl = `${process.env.NEXT_PUBLIC_SITE_URL || 'https://myitutor.com'}/assets/logo/itutor-logo-dark.png`;
+const logoImg = `<img src="${logoUrl}" alt="iTutor" class="logo" style="height: 60px; width: auto; display: block; margin: 0 auto;" />`;
+const footerBlock = `
+            <div class="social-links">
+              <a href="https://www.facebook.com/share/1E91o2u1yM/" style="display: inline-block; margin: 0 8px;">
+                <img src="https://img.icons8.com/ios-filled/50/6b7280/facebook-new.png" alt="Facebook" style="width: 28px; height: 28px; filter: grayscale(100%);" />
+              </a>
+              <a href="https://www.instagram.com/myitutor?igsh=MXgyNjdrMTR1ampyag%3D%3D&utm_source=qr" style="display: inline-block; margin: 0 8px;">
+                <img src="https://img.icons8.com/ios-filled/50/6b7280/instagram-new.png" alt="Instagram" style="width: 28px; height: 28px; filter: grayscale(100%);" />
+              </a>
+              <a href="https://www.linkedin.com/company/myitutor/" style="display: inline-block; margin: 0 8px;">
+                <img src="https://img.icons8.com/ios-filled/50/6b7280/linkedin.png" alt="LinkedIn" style="width: 28px; height: 28px; filter: grayscale(100%);" />
+              </a>
+            </div>
+            <p style="margin-top: 15px; color: #6b7280;">Trinidad & Tobago</p>
+            <p style="margin-top: 10px; color: #9ca3af; font-size: 13px;">© iTutor. Nora Digital, Ltd.</p>`;
+
 const baseStyles = `
   <style>
     body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f9fafb; }
@@ -33,7 +50,7 @@ export function welcomeEmail({ firstName, ctaUrl }: EmailTemplateProps): EmailTe
       <body>
         <div class="container">
           <div class="header">
-            <img src="${process.env.NEXT_PUBLIC_SITE_URL || 'https://myitutor.com'}/assets/logo/itutor-logo-dark.png" alt="iTutor" class="logo" />
+            ${logoImg}
           </div>
           <div class="content">
             <h1 class="title">Welcome to iTutor, ${firstName}!</h1>
@@ -59,20 +76,47 @@ export function welcomeEmail({ firstName, ctaUrl }: EmailTemplateProps): EmailTe
               Questions? Contact us at <a href="mailto:hello@myitutor.com" style="color: #199358; text-decoration: none;">hello@myitutor.com</a>. We're here to help you succeed!
             </p>
           </div>
-          <div class="footer">
-            <div class="social-links">
-              <a href="https://www.facebook.com/share/1E91o2u1yM/" style="display: inline-block; margin: 0 8px;">
-                <img src="https://img.icons8.com/ios-filled/50/6b7280/facebook-new.png" alt="Facebook" style="width: 28px; height: 28px; filter: grayscale(100%);" />
-              </a>
-              <a href="https://www.instagram.com/myitutor?igsh=MXgyNjdrMTR1ampyag%3D%3D&utm_source=qr" style="display: inline-block; margin: 0 8px;">
-                <img src="https://img.icons8.com/ios-filled/50/6b7280/instagram-new.png" alt="Instagram" style="width: 28px; height: 28px; filter: grayscale(100%);" />
-              </a>
-              <a href="https://www.linkedin.com/company/myitutor/" style="display: inline-block; margin: 0 8px;">
-                <img src="https://img.icons8.com/ios-filled/50/6b7280/linkedin.png" alt="LinkedIn" style="width: 28px; height: 28px; filter: grayscale(100%);" />
-              </a>
-            </div>
-            <p style="margin-top: 15px; color: #6b7280;">Trinidad & Tobago</p>
-            <p style="margin-top: 10px; color: #9ca3af; font-size: 13px;">© iTutor. Nora Digital, Ltd.</p>
+          <div class="footer">${footerBlock}
+          </div>
+        </div>
+      </body>
+      </html>
+    `
+  };
+}
+
+export function verificationCongratulationsEmail(firstName: string): EmailTemplate {
+  return {
+    subject: "Congratulations – You're now a verified iTutor!",
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        ${baseStyles}
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            ${logoImg}
+          </div>
+          <div class="content">
+            <h1 class="title">Congratulations, ${firstName}!</h1>
+            <p class="text">
+              Your verification has been approved. You are now a verified iTutor.
+            </p>
+            <p class="text">
+              Your verified badge will appear on your profile, helping students and parents trust your qualifications.
+            </p>
+            <p class="text">
+              Thank you for being part of iTutor.
+            </p>
+            <p class="text">
+              Best,<br>The iTutor Team
+            </p>
+          </div>
+          <div class="footer">${footerBlock}
           </div>
         </div>
       </body>

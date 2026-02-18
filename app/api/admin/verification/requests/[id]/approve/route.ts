@@ -7,6 +7,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/middleware/adminAuth';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { sendEmail } from '@/lib/services/emailService';
+import { verificationCongratulationsEmail } from '@/lib/email-templates/tutor';
 
 export async function POST(
   request: NextRequest,
@@ -99,6 +101,26 @@ export async function POST(
         message: 'Your verification has been approved! You are now a verified tutor.',
         data: { request_id: requestId }
       });
+
+    // Send congratulations email to tutor
+    const { data: tutorProfile } = await supabase
+      .from('profiles')
+      .select('email, full_name')
+      .eq('id', verificationRequest.tutor_id)
+      .single();
+
+    if (tutorProfile?.email) {
+      const firstName = tutorProfile.full_name?.split(' ')[0] || 'there';
+      const template = verificationCongratulationsEmail(firstName);
+      const result = await sendEmail({
+        to: tutorProfile.email,
+        subject: template.subject,
+        html: template.html,
+      });
+      if (!result.success) {
+        console.error('Failed to send verification congratulations email:', result.error);
+      }
+    }
 
     return NextResponse.json({
       message: 'Verification request approved successfully',

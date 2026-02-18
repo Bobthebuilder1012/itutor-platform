@@ -53,24 +53,26 @@ export async function GET(
       return NextResponse.json({ error: 'Request not found' }, { status: 404 });
     }
 
-    // Generate signed URL for document
+    // Generate signed URL for document (try both buckets: tutor flow uses verification_uploads, upload page uses tutor-verifications)
     let documentUrl = null;
     if (requestData.file_path) {
-      try {
-        console.log('Generating signed URL for file_path:', requestData.file_path);
-        const { data: signedUrl, error: urlError } = await supabase.storage
-          .from('tutor-verifications')
-          .createSignedUrl(requestData.file_path, 3600); // 1 hour expiry
+      const bucketsToTry = ['tutor-verifications', 'verification_uploads'] as const;
+      for (const bucket of bucketsToTry) {
+        try {
+          const { data: signedUrl, error: urlError } = await supabase.storage
+            .from(bucket)
+            .createSignedUrl(requestData.file_path, 3600);
 
-        if (!urlError && signedUrl) {
-          documentUrl = signedUrl.signedUrl;
-          console.log('✅ Signed URL generated successfully');
-        } else {
-          console.error('❌ Error generating signed URL:', urlError);
-          console.error('URL Error details:', JSON.stringify(urlError, null, 2));
+          if (!urlError && signedUrl?.signedUrl) {
+            documentUrl = signedUrl.signedUrl;
+            break;
+          }
+        } catch {
+          continue;
         }
-      } catch (e) {
-        console.error('❌ Exception generating signed URL:', e);
+      }
+      if (!documentUrl) {
+        console.warn('⚠️ Could not generate signed URL for file_path in any bucket:', requestData.file_path);
       }
     } else {
       console.warn('⚠️ No file_path in request data');
