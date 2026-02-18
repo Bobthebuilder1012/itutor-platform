@@ -483,11 +483,11 @@ export default function FindTutorsPage() {
                   key={tutor.id}
                   className="bg-white border-2 border-gray-200 rounded-2xl p-6 hover:shadow-xl hover:border-itutor-green transition-all duration-300 hover:scale-105"
                 >
-                  {/* Recommended Badge - Only for verified tutors */}
+                  {/* Verified Badge - Only for verified tutors */}
                   {matchesStudentSubjects && tutor.tutor_verification_status === 'VERIFIED' && (
                     <div className="mb-3">
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gradient-to-r from-itutor-green to-emerald-600 text-white">
-                        ⭐ Recommended
+                        ✓ Verified
                       </span>
                     </div>
                   )}

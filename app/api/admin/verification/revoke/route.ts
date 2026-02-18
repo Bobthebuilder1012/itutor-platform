@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/middleware/adminAuth';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { getServiceClient } from '@/lib/supabase/server';
 
 export async function POST(request: NextRequest) {
   try {
@@ -54,11 +55,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Tutor is not verified' }, { status: 400 });
     }
 
-    // Update tutor profile to remove verified status
-    const { error: updateProfileError } = await supabase
+    const serviceSupabase = getServiceClient();
+
+    // Update tutor profile to remove verified status (service role so it always succeeds)
+    const { error: updateProfileError } = await serviceSupabase
       .from('profiles')
       .update({
-        tutor_verification_status: null,
+        tutor_verification_status: 'REJECTED',
         tutor_verified_at: null
       })
       .eq('id', tutor_id);
@@ -69,20 +72,18 @@ export async function POST(request: NextRequest) {
     }
 
     // Hide all verified subjects (set is_public to false)
-    // Only if the table exists (migrations have been run)
     try {
-      await supabase
+      await serviceSupabase
         .from('tutor_verified_subjects')
         .update({ is_public: false })
         .eq('tutor_id', tutor_id);
     } catch (e) {
-      // Table doesn't exist yet - that's okay
-      console.log('tutor_verified_subjects table not found (expected if migrations not run)');
+      console.log('tutor_verified_subjects update skipped:', e);
     }
 
     // Create notification for tutor
     try {
-      await supabase
+      await serviceSupabase
         .from('notifications')
         .insert({
           user_id: tutor_id,

@@ -1,11 +1,8 @@
 'use client';
 
-'use client';
-
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useProfile } from '@/lib/hooks/useProfile';
-import { supabase } from '@/lib/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
 import { getDisplayName } from '@/lib/utils/displayName';
 import VerifiedBadge from '@/components/VerifiedBadge';
@@ -50,74 +47,16 @@ export default function VerifiedTutorsPage() {
     try {
       setLoading(true);
 
-      // Fetch verified tutors
-      const { data: tutorData, error: tutorError } = await supabase
-        .from('profiles')
-        .select('id, full_name, display_name, username, email, avatar_url, school, country, tutor_verified_at')
-        .eq('role', 'tutor')
-        .eq('tutor_verification_status', 'VERIFIED')
-        .order('tutor_verified_at', { ascending: false });
-
-      if (tutorError) throw tutorError;
-
-      // Fetch subject counts
-      const { data: subjectCounts, error: subjectError } = await supabase
-        .from('tutor_subjects')
-        .select('tutor_id');
-
-      if (subjectError) throw subjectError;
-
-      const subjectCountMap = new Map<string, number>();
-      (subjectCounts || []).forEach(item => {
-        subjectCountMap.set(item.tutor_id, (subjectCountMap.get(item.tutor_id) || 0) + 1);
-      });
-
-      // Fetch booking counts
-      const { data: bookingCounts, error: bookingError } = await supabase
-        .from('bookings')
-        .select('tutor_id')
-        .in('status', ['CONFIRMED', 'COMPLETED']);
-
-      if (bookingError) throw bookingError;
-
-      const bookingCountMap = new Map<string, number>();
-      (bookingCounts || []).forEach(item => {
-        bookingCountMap.set(item.tutor_id, (bookingCountMap.get(item.tutor_id) || 0) + 1);
-      });
-
-      // Fetch ratings
-      const { data: ratings, error: ratingsError } = await supabase
-        .from('ratings')
-        .select('tutor_id, stars');
-
-      if (ratingsError) throw ratingsError;
-
-      const ratingsMap = new Map<string, number[]>();
-      (ratings || []).forEach(item => {
-        if (!ratingsMap.has(item.tutor_id)) {
-          ratingsMap.set(item.tutor_id, []);
-        }
-        ratingsMap.get(item.tutor_id)!.push(item.stars);
-      });
-
-      const enrichedTutors: VerifiedTutor[] = (tutorData || []).map(tutor => {
-        const tutorRatings = ratingsMap.get(tutor.id) || [];
-        const avgRating = tutorRatings.length > 0
-          ? tutorRatings.reduce((sum, r) => sum + r, 0) / tutorRatings.length
-          : null;
-
-        return {
-          ...tutor,
-          subject_count: subjectCountMap.get(tutor.id) || 0,
-          total_bookings: bookingCountMap.get(tutor.id) || 0,
-          average_rating: avgRating,
-        };
-      });
-
-      setTutors(enrichedTutors);
+      const res = await fetch('/api/admin/verification/verified-tutors');
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to load verified tutors');
+      }
+      const data = await res.json();
+      setTutors(data.tutors || []);
     } catch (error) {
       console.error('Error fetching verified tutors:', error);
-      alert('Failed to load verified tutors');
+      alert(error instanceof Error ? error.message : 'Failed to load verified tutors');
     } finally {
       setLoading(false);
     }

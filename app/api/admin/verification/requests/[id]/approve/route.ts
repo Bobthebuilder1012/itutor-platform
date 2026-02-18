@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/middleware/adminAuth';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { getServiceClient } from '@/lib/supabase/server';
 import { sendEmail } from '@/lib/services/emailService';
 import { verificationCongratulationsEmail } from '@/lib/email-templates/tutor';
 
@@ -78,8 +79,9 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to approve request' }, { status: 500 });
     }
 
-    // Update tutor profile verification status
-    const { error: updateProfileError } = await supabase
+    // Update tutor profile verification status (service role so it always succeeds regardless of RLS)
+    const serviceSupabase = getServiceClient();
+    const { error: updateProfileError } = await serviceSupabase
       .from('profiles')
       .update({
         tutor_verification_status: 'VERIFIED',
@@ -103,7 +105,7 @@ export async function POST(
       });
 
     // Send congratulations email to tutor
-    const { data: tutorProfile } = await supabase
+    const { data: tutorProfile } = await serviceSupabase
       .from('profiles')
       .select('email, full_name')
       .eq('id', verificationRequest.tutor_id)
