@@ -110,9 +110,6 @@ export function verificationCongratulationsEmail(firstName: string): EmailTempla
               Your verified badge will appear on your profile, helping students and parents trust your qualifications.
             </p>
             <p class="text">
-              Thank you for being part of iTutor.
-            </p>
-            <p class="text">
               Best,<br>The iTutor Team
             </p>
           </div>

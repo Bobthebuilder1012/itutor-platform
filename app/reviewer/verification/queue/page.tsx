@@ -26,6 +26,7 @@ export default function VerificationQueuePage() {
   const [requests, setRequests] = useState<VerificationRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('READY_FOR_REVIEW');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (profileLoading) return;
@@ -56,6 +57,23 @@ export default function VerificationQueuePage() {
       alert('Failed to load verification requests. Check console for details.');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleDeleteRequest(requestId: string) {
+    if (!confirm('Permanently delete this verification request? This cannot be undone.')) return;
+    setDeletingId(requestId);
+    try {
+      const res = await fetch(`/api/admin/verification/requests/${requestId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to delete');
+      }
+      setRequests((prev) => prev.filter((r) => r.id !== requestId));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete request');
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -172,12 +190,23 @@ export default function VerificationQueuePage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button
-                        onClick={() => router.push(`/reviewer/verification/${request.id}`)}
-                        className="text-itutor-green hover:text-emerald-700 font-semibold"
-                      >
-                        Review →
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => router.push(`/reviewer/verification/${request.id}`)}
+                          className="text-itutor-green hover:text-emerald-700 font-semibold"
+                        >
+                          Review →
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteRequest(request.id)}
+                          disabled={deletingId === request.id}
+                          className="text-red-600 hover:text-red-800 hover:bg-red-50 px-2 py-1 rounded font-medium disabled:opacity-50"
+                          title="Delete this request (e.g. duplicate)"
+                        >
+                          {deletingId === request.id ? 'Deleting...' : 'Delete'}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

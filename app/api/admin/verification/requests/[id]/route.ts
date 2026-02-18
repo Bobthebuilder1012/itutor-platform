@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/middleware/adminAuth';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { getServiceClient } from '@/lib/supabase/server';
 
 export async function GET(
   request: NextRequest,
@@ -106,6 +107,46 @@ export async function GET(
     });
   } catch (error) {
     console.error('Exception fetching verification request:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+// =====================================================
+// DELETE VERIFICATION REQUEST (ADMIN)
+// =====================================================
+// Permanently removes a verification request (e.g. duplicate submissions). Does not change tutor profile status.
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const auth = await requireAdmin();
+  if (auth.error) return auth.error;
+
+  const requestId = params.id;
+  const serviceSupabase = getServiceClient();
+
+  try {
+    const { error: deleteError } = await serviceSupabase
+      .from('tutor_verification_requests')
+      .delete()
+      .eq('id', requestId);
+
+    if (deleteError) {
+      console.error('Error deleting verification request:', deleteError);
+      return NextResponse.json(
+        { error: 'Failed to delete verification request' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      message: 'Verification request deleted',
+      request_id: requestId,
+      success: true,
+    });
+  } catch (error) {
+    console.error('Exception deleting verification request:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
