@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { ensureSchoolCommunityAndMembershipWithClient } from '@/lib/server/ensureSchoolCommunity';
 
 export async function POST(request: NextRequest) {
   // Debug: Log all environment variables related to Supabase
@@ -162,6 +163,10 @@ export async function POST(request: NextRequest) {
 
         await supabaseAdmin.from('user_subjects').insert(userSubjects);
       }
+    }
+
+    if (institutionId) {
+      await ensureSchoolCommunityAndMembershipWithClient(supabaseAdmin, authData.user.id);
     }
 
     return NextResponse.json({ 

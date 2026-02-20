@@ -216,12 +216,15 @@ export default function TutorSignupPage() {
 
       // Send welcome email immediately and enqueue follow-up sequence
       try {
-        // Send welcome email right away
-        await fetch('/api/send-welcome-email', {
+        const welcomeRes = await fetch('/api/send-welcome-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: authData.user.id })
         });
+        if (!welcomeRes.ok) {
+          const err = await welcomeRes.json().catch(() => ({}));
+          console.warn('Welcome email request failed:', welcomeRes.status, err);
+        }
 
         // Enqueue follow-up emails (starting at stage 1, day 1)
         const nextSendAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // +1 day

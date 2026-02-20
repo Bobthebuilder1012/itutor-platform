@@ -150,6 +150,7 @@ export default function ParentDashboard() {
           bio={profile?.bio}
           avatarUrl={profile?.avatar_url}
           onAvatarClick={() => setAvatarModalOpen(true)}
+          userId={profile?.id}
         />
 
         {/* Avatar Upload Modal */}

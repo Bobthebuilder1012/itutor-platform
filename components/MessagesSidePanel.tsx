@@ -9,6 +9,8 @@ import type { ConversationWithParticipant, MessageWithSender } from '@/lib/types
 import { getDisplayName } from '@/lib/utils/displayName';
 import { getRelativeTime, formatTime } from '@/lib/utils/calendar';
 import { getAvatarColor } from '@/lib/utils/avatarColors';
+import { uploadMessageAttachment } from '@/lib/utils/messageAttachments';
+import MessageInputBar from '@/components/MessageInputBar';
 
 interface MessagesSidePanelProps {
   isOpen: boolean;
@@ -23,6 +25,7 @@ export default function MessagesSidePanel({ isOpen, onClose, userId, role }: Mes
   const [selectedConversation, setSelectedConversation] = useState<ConversationWithParticipant | null>(null);
   const [messages, setMessages] = useState<MessageWithSender[]>([]);
   const [newMessage, setNewMessage] = useState('');
+  const [attachmentDraft, setAttachmentDraft] = useState<{ file?: File; voiceBlob?: Blob } | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [panelWidth, setPanelWidth] = useState<'normal' | 'wide' | 'full'>('normal');
@@ -93,18 +96,64 @@ export default function MessagesSidePanel({ isOpen, onClose, userId, role }: Mes
     }
   }
 
-  async function handleSendMessage(e: React.FormEvent) {
-    e.preventDefault();
-    if (!newMessage.trim() || sending || !selectedConversation) return;
+  async function handleSendMessage() {
+    const hasText = newMessage.trim();
+    const hasFile = attachmentDraft?.file;
+    const hasVoice = attachmentDraft?.voiceBlob;
+    if ((!hasText && !hasFile && !hasVoice) || sending || !selectedConversation) return;
 
     setSending(true);
     try {
-      await sendMessage(selectedConversation.id, userId, newMessage.trim());
+      let attachmentUrl: string | null = null;
+      let attachmentType: 'image' | 'file' | 'voice' | null = null;
+      let attachmentName: string | null = null;
+
+      if (hasFile) {
+        const f = attachmentDraft!.file!;
+        const isImage = f.type.startsWith('image/');
+        const { url, name } = await uploadMessageAttachment(userId, f, isImage ? 'image' : 'file', f.name);
+        attachmentUrl = url;
+        attachmentType = isImage ? 'image' : 'file';
+        attachmentName = name;
+      } else if (hasVoice) {
+        const { url, name } = await uploadMessageAttachment(userId, attachmentDraft!.voiceBlob!, 'voice');
+        attachmentUrl = url;
+        attachmentType = 'voice';
+        attachmentName = name;
+      }
+
+      await sendMessage(selectedConversation.id, userId, newMessage.trim() || '', {
+        attachmentUrl: attachmentUrl || undefined,
+        attachmentType: attachmentType || undefined,
+        attachmentName: attachmentName || undefined,
+      });
       setNewMessage('');
-      await loadConversations(); // Refresh conversation list
+      setAttachmentDraft(null);
+      await loadConversations();
     } catch (error) {
       console.error('Error sending message:', error);
       alert('Failed to send message');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function sendWithVoiceBlob(blob: Blob) {
+    if (sending || !selectedConversation) return;
+    setSending(true);
+    try {
+      const { url, name } = await uploadMessageAttachment(userId, blob, 'voice');
+      await sendMessage(selectedConversation.id, userId, '', {
+        attachmentUrl: url,
+        attachmentType: 'voice',
+        attachmentName: name,
+      });
+      setNewMessage('');
+      setAttachmentDraft(null);
+      await loadConversations();
+    } catch (error) {
+      console.error('Error sending voice message', error);
+      alert('Failed to send voice note');
     } finally {
       setSending(false);
     }
@@ -320,32 +369,27 @@ export default function MessagesSidePanel({ isOpen, onClose, userId, role }: Mes
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Input */}
-            <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-700 bg-gray-800/50">
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  placeholder="Type a message..."
-                  disabled={sending}
-                  className="flex-1 px-4 py-2 bg-gray-900 border border-gray-700 text-itutor-white rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-500 disabled:opacity-50"
-                />
-                <button
-                  type="submit"
-                  disabled={sending || !newMessage.trim()}
-                  className="p-2 bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-white rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {sending ? (
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                  ) : (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                    </svg>
-                  )}
-                </button>
-              </div>
-            </form>
+            <div className="p-4 border-t border-gray-700 bg-gray-800/50">
+              <MessageInputBar
+                value={newMessage}
+                onChange={setNewMessage}
+                onSubmit={handleSendMessage}
+                placeholder="Type a message..."
+                disabled={false}
+                sending={sending}
+                onFileSelect={(file) => setAttachmentDraft((d) => ({ ...d, file, voiceBlob: undefined }))}
+                onVoiceRecord={(blob) => setAttachmentDraft((d) => ({ ...d, voiceBlob: blob, file: undefined }))}
+                onVoiceRecordAndSend={sendWithVoiceBlob}
+                attachmentPreview={
+                  attachmentDraft?.file
+                    ? { name: attachmentDraft.file.name, type: attachmentDraft.file.type.startsWith('image/') ? 'image' : 'file' }
+                    : attachmentDraft?.voiceBlob
+                      ? { name: 'Voice note', type: 'voice' }
+                      : null
+                }
+                onClearAttachment={() => setAttachmentDraft(null)}
+              />
+            </div>
           </>
         )}
       </div>

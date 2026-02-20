@@ -29,6 +29,8 @@ export interface Notification {
 
 // ==================== CONVERSATION & MESSAGE TYPES ====================
 
+export type ConversationStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED' | null;
+
 export interface Conversation {
   id: string;
   participant_1_id: string;
@@ -36,6 +38,8 @@ export interface Conversation {
   created_at: string;
   last_message_at?: string;
   last_message_preview?: string;
+  status?: ConversationStatus;
+  initiated_by_id?: string | null;
 }
 
 export interface ConversationWithParticipant extends Conversation {
@@ -43,11 +47,16 @@ export interface ConversationWithParticipant extends Conversation {
   unread_count: number;
 }
 
+export type MessageAttachmentType = 'image' | 'file' | 'voice';
+
 export interface Message {
   id: string;
   conversation_id: string;
   sender_id: string;
   content: string;
+  attachment_url?: string | null;
+  attachment_type?: MessageAttachmentType | null;
+  attachment_name?: string | null;
   is_read: boolean;
   created_at: string;
 }

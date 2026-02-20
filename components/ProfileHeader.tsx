@@ -1,6 +1,7 @@
 'use client';
 
 import VerifiedBadge from '@/components/VerifiedBadge';
+import { getAvatarColor } from '@/lib/utils/avatarColors';
 
 type ProfileHeaderProps = {
   fullName: string;
@@ -14,6 +15,7 @@ type ProfileHeaderProps = {
   avatarUrl?: string | null;
   onAvatarClick?: () => void;
   isVerified?: boolean;
+  userId?: string; // Add userId for dynamic avatar colors
 };
 
 export default function ProfileHeader({
@@ -28,6 +30,7 @@ export default function ProfileHeader({
   avatarUrl,
   onAvatarClick,
   isVerified = false,
+  userId,
 }: ProfileHeaderProps) {
   const getInitials = (name: string) => {
     const parts = name.trim().split(' ');
@@ -82,7 +85,10 @@ export default function ProfileHeader({
                 className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover"
               />
             ) : (
-              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xl sm:text-2xl font-bold">
+              <div 
+                className="w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center text-white text-xl sm:text-2xl font-bold"
+                style={{ background: getAvatarColor(userId || fullName) }}
+              >
                 {getInitials(fullName)}
               </div>
             )}

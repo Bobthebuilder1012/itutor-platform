@@ -4,7 +4,8 @@ import type {
   Message, 
   Conversation,
   MessageWithSender,
-  ConversationWithParticipant
+  ConversationWithParticipant,
+  ConversationStatus
 } from '@/lib/types/notifications';
 
 // ==================== NOTIFICATIONS ====================
@@ -147,6 +148,108 @@ export async function getOrCreateConversation(
   return newConv.id;
 }
 
+export interface ConversationWithStatus extends Conversation {
+  status: ConversationStatus;
+  initiated_by_id: string | null;
+  participant_1_role?: string | null;
+  participant_2_role?: string | null;
+}
+
+/**
+ * Get a single conversation with status and participant roles (for request UI)
+ */
+export async function getConversationWithStatus(
+  conversationId: string
+): Promise<ConversationWithStatus | null> {
+  const { data, error } = await supabase
+    .from('conversations')
+    .select(`
+      *,
+      participant_1:profiles!conversations_participant_1_id_fkey(id, role),
+      participant_2:profiles!conversations_participant_2_id_fkey(id, role)
+    `)
+    .eq('id', conversationId)
+    .single();
+
+  if (error || !data) return null;
+  const c = data as any;
+  return {
+    ...c,
+    participant_1_role: c.participant_1?.role ?? null,
+    participant_2_role: c.participant_2?.role ?? null,
+  } as ConversationWithStatus;
+}
+
+/**
+ * Accept a message request (receiver only). Sets conversation status to ACCEPTED.
+ */
+export async function acceptConversationRequest(
+  conversationId: string,
+  userId: string
+): Promise<void> {
+  const conv = await getConversationWithStatus(conversationId);
+  if (!conv) throw new Error('Conversation not found');
+  if (conv.status !== 'PENDING') throw new Error('No pending request');
+  const receiverId = conv.initiated_by_id === conv.participant_1_id ? conv.participant_2_id : conv.participant_1_id;
+  if (receiverId !== userId) throw new Error('Only the recipient can accept');
+  const { error } = await supabase
+    .from('conversations')
+    .update({ status: 'ACCEPTED' })
+    .eq('id', conversationId);
+  if (error) throw error;
+}
+
+/**
+ * Decline a message request (receiver only). Sets conversation status to DECLINED.
+ */
+export async function declineConversationRequest(
+  conversationId: string,
+  userId: string
+): Promise<void> {
+  const conv = await getConversationWithStatus(conversationId);
+  if (!conv) throw new Error('Conversation not found');
+  if (conv.status !== 'PENDING') throw new Error('No pending request');
+  const receiverId = conv.initiated_by_id === conv.participant_1_id ? conv.participant_2_id : conv.participant_1_id;
+  if (receiverId !== userId) throw new Error('Only the recipient can decline');
+  const { error } = await supabase
+    .from('conversations')
+    .update({ status: 'DECLINED' })
+    .eq('id', conversationId);
+  if (error) throw error;
+}
+
+/**
+ * Check if the current user can send a message in this conversation (student-student request flow).
+ */
+export async function canSendMessageInConversation(
+  conversationId: string,
+  senderId: string
+): Promise<{ allowed: boolean; reason?: string }> {
+  const conv = await getConversationWithStatus(conversationId);
+  if (!conv) return { allowed: false, reason: 'Conversation not found' };
+  const status = conv.status ?? null;
+  if (status === 'DECLINED') return { allowed: false, reason: 'This request was declined.' };
+  if (status === 'ACCEPTED' || status === null) return { allowed: true };
+  if (status !== 'PENDING') return { allowed: true };
+  const isStudentStudent =
+    (conv.participant_1_role ?? '').toLowerCase() === 'student' &&
+    (conv.participant_2_role ?? '').toLowerCase() === 'student';
+  if (!isStudentStudent) return { allowed: true };
+  const { count } = await supabase
+    .from('messages')
+    .select('*', { count: 'exact', head: true })
+    .eq('conversation_id', conversationId);
+  const messageCount = count ?? 0;
+  if (messageCount === 0) {
+    return { allowed: true };
+  }
+  const initiatedBy = conv.initiated_by_id;
+  if (initiatedBy === senderId) {
+    return { allowed: false, reason: 'Waiting for them to accept your message request.' };
+  }
+  return { allowed: false, reason: 'Accept the message request to continue chatting.' };
+}
+
 /**
  * Get all conversations for a user with participant details
  */
@@ -258,20 +361,41 @@ export async function getMessages(
   return enrichedMessages;
 }
 
+export type SendMessageOptions = {
+  attachmentUrl?: string | null;
+  attachmentType?: 'image' | 'file' | 'voice' | null;
+  attachmentName?: string | null;
+};
+
 /**
- * Send a message
+ * Send a message. For student-student, first message becomes a request (conversation set to PENDING).
  */
 export async function sendMessage(
   conversationId: string,
   senderId: string,
-  content: string
+  content: string,
+  options?: SendMessageOptions
 ): Promise<Message> {
+  const canSend = await canSendMessageInConversation(conversationId, senderId);
+  if (!canSend.allowed) {
+    throw new Error(canSend.reason ?? 'You cannot send a message in this conversation.');
+  }
+
+  const text = content.trim();
+  const hasAttachment = options?.attachmentUrl?.trim();
+  if (!text && !hasAttachment) {
+    throw new Error('Message must have text or an attachment.');
+  }
+
   const { data, error } = await supabase
     .from('messages')
     .insert({
       conversation_id: conversationId,
       sender_id: senderId,
-      content: content.trim()
+      content: text || null,
+      attachment_url: options?.attachmentUrl ?? null,
+      attachment_type: options?.attachmentType ?? null,
+      attachment_name: options?.attachmentName ?? null,
     })
     .select()
     .single();
@@ -281,13 +405,33 @@ export async function sendMessage(
     throw error;
   }
 
-  // Update conversation last_message_at
+  const preview = (text || (hasAttachment ? (options?.attachmentType === 'voice' ? '🎤 Voice note' : '📎 Attachment') : '')).substring(0, 100);
+  const now = new Date().toISOString();
+
+  const { count } = await supabase
+    .from('messages')
+    .select('*', { count: 'exact', head: true })
+    .eq('conversation_id', conversationId);
+  const messageCount = count ?? 0;
+
+  const conv = await getConversationWithStatus(conversationId);
+  const isStudentStudent =
+    conv &&
+    (conv.participant_1_role ?? '').toLowerCase() === 'student' &&
+    (conv.participant_2_role ?? '').toLowerCase() === 'student';
+
+  const updates: Record<string, unknown> = {
+    last_message_at: now,
+    last_message_preview: preview,
+  };
+  if (messageCount === 1 && isStudentStudent && conv && (conv.status ?? null) === null) {
+    updates.status = 'PENDING';
+    updates.initiated_by_id = senderId;
+  }
+
   await supabase
     .from('conversations')
-    .update({ 
-      last_message_at: new Date().toISOString(),
-      last_message_preview: content.trim().substring(0, 100)
-    })
+    .update(updates)
     .eq('id', conversationId);
 
   return data as Message;

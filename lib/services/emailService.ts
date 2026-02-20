@@ -29,6 +29,10 @@ export async function sendEmail({
   html,
   from = process.env.RESEND_FROM_EMAIL || 'iTutor <hello@myitutor.com>',
 }: SendEmailParams): Promise<EmailResult> {
+  if (!process.env.RESEND_API_KEY) {
+    console.error('Email not sent: RESEND_API_KEY is not configured');
+    return { success: false, error: 'RESEND_API_KEY not configured' };
+  }
   try {
     const { data, error } = await resend.emails.send({
       from,
