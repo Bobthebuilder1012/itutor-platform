@@ -303,7 +303,7 @@ export default function ConversationView({
               <div className={`flex items-end gap-2 max-w-[70%] ${message.is_own_message ? 'flex-row-reverse' : ''}`}>
                 {/* Avatar */}
                 {!message.is_own_message && (
-                  <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${getAvatarColor(message.sender.id)} flex items-center justify-center text-white font-bold text-xs flex-shrink-0`}>
+                  <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${getAvatarColor(message.sender.id || 'unknown')} flex items-center justify-center text-white font-bold text-xs flex-shrink-0`}>
                     {message.sender.avatar_url ? (
                       <img src={message.sender.avatar_url} alt={getDisplayName(message.sender)} className="w-full h-full rounded-full object-cover" />
                     ) : (
