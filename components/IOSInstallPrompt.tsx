@@ -202,7 +202,7 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
       setCurrentStep('complete');
       setTimeout(() => {
         setShow(false);
-      }, 3000);
+      }, 1500);
     } else if (isStandalone && !hasNotifications) {
       // In PWA mode but notifications not enabled
       // #region agent log
@@ -226,9 +226,10 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
         // Clear dismissal timestamp since setup is complete
         localStorage.removeItem('ios-prompt-dismissed');
         setCurrentStep('complete');
+        // Hide immediately - user can now use the site
         setTimeout(() => {
           setShow(false);
-        }, 3000);
+        }, 1500);
       } else {
         alert('Please allow notifications in your browser settings to receive updates.');
       }
@@ -238,6 +239,12 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
     } finally {
       setChecking(false);
     }
+  }
+
+  function handleCompleteAndDismiss() {
+    // User manually dismisses the success screen
+    localStorage.removeItem('ios-prompt-dismissed');
+    setShow(false);
   }
 
   function handleRemindLater() {
@@ -306,7 +313,13 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
             </svg>
           </div>
           <h3 className="text-white font-bold text-xl mb-2">All Set! 🎉</h3>
-          <p className="text-blue-100 text-sm">You'll now receive notifications for sessions, bookings, and messages.</p>
+          <p className="text-blue-100 text-sm mb-4">You'll now receive notifications for sessions, bookings, and messages.</p>
+          <button
+            onClick={handleCompleteAndDismiss}
+            className="px-6 py-2 bg-white hover:bg-gray-100 text-blue-600 rounded-lg font-semibold transition-all shadow-lg"
+          >
+            Got it!
+          </button>
         </div>
       );
     }
