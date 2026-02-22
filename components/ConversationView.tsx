@@ -6,13 +6,18 @@ import {
   getMessages,
   sendMessage,
   markMessagesAsRead,
-  subscribeToMessages
+  subscribeToMessages,
+  getConversationWithStatus,
+  acceptConversationRequest,
+  declineConversationRequest,
 } from '@/lib/services/notificationService';
 import type { MessageWithSender } from '@/lib/types/notifications';
 import { getDisplayName } from '@/lib/utils/displayName';
 import { formatTime } from '@/lib/utils/calendar';
 import { supabase } from '@/lib/supabase/client';
 import { getAvatarColor } from '@/lib/utils/avatarColors';
+import { uploadMessageAttachment } from '@/lib/utils/messageAttachments';
+import MessageInputBar from '@/components/MessageInputBar';
 
 interface ConversationViewProps {
   conversationId: string;
@@ -31,10 +36,27 @@ export default function ConversationView({
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [otherUser, setOtherUser] = useState<any>(null);
+  const [conversationStatus, setConversationStatus] = useState<Awaited<ReturnType<typeof getConversationWithStatus>>>(null);
+  const [acceptDeclineLoading, setAcceptDeclineLoading] = useState(false);
+  const [attachmentDraft, setAttachmentDraft] = useState<{ file?: File; voiceBlob?: Blob } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
+  const isStudentStudentPending =
+    conversationStatus?.status === 'PENDING' &&
+    (conversationStatus.participant_1_role ?? '').toLowerCase() === 'student' &&
+    (conversationStatus.participant_2_role ?? '').toLowerCase() === 'student';
+  const amInitiator = conversationStatus?.initiated_by_id === currentUserId;
+  const amReceiver = isStudentStudentPending && !amInitiator;
+  const canChat =
+    conversationStatus == null ||
+    conversationStatus.status === 'ACCEPTED' ||
+    conversationStatus.status === null;
+  const showRequestReceiverUI = isStudentStudentPending && amReceiver;
+  const showRequestInitiatorUI = isStudentStudentPending && amInitiator;
+
   useEffect(() => {
+    loadConversationStatus();
     loadMessages();
     loadOtherUser();
 
@@ -69,6 +91,15 @@ export default function ConversationView({
       subscription.unsubscribe();
     };
   }, [conversationId, currentUserId]);
+
+  async function loadConversationStatus() {
+    try {
+      const conv = await getConversationWithStatus(conversationId);
+      setConversationStatus(conv);
+    } catch (e) {
+      console.error('Error loading conversation status:', e);
+    }
+  }
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -114,20 +145,89 @@ export default function ConversationView({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }
 
-  async function handleSendMessage(e: React.FormEvent) {
-    e.preventDefault();
-    
-    if (!newMessage.trim() || sending) return;
-
+  async function handleSendMessage() {
+    const hasText = newMessage.trim();
+    const hasFile = attachmentDraft?.file;
+    const hasVoice = attachmentDraft?.voiceBlob;
+    if ((!hasText && !hasFile && !hasVoice) || sending) return;
     setSending(true);
     try {
-      await sendMessage(conversationId, currentUserId, newMessage.trim());
+      let attachmentUrl: string | null = null;
+      let attachmentType: 'image' | 'file' | 'voice' | null = null;
+      let attachmentName: string | null = null;
+
+      if (hasFile) {
+        const f = attachmentDraft!.file!;
+        const isImage = f.type.startsWith('image/');
+        const { url, name } = await uploadMessageAttachment(currentUserId, f, isImage ? 'image' : 'file', f.name);
+        attachmentUrl = url;
+        attachmentType = isImage ? 'image' : 'file';
+        attachmentName = name;
+      } else if (hasVoice) {
+        const { url, name } = await uploadMessageAttachment(currentUserId, attachmentDraft!.voiceBlob!, 'voice');
+        attachmentUrl = url;
+        attachmentType = 'voice';
+        attachmentName = name;
+      }
+
+      await sendMessage(conversationId, currentUserId, newMessage.trim() || '', {
+        attachmentUrl: attachmentUrl || undefined,
+        attachmentType: attachmentType || undefined,
+        attachmentName: attachmentName || undefined,
+      });
       setNewMessage('');
-    } catch (error) {
+      setAttachmentDraft(null);
+      await loadConversationStatus();
+    } catch (error: any) {
       console.error('Error sending message:', error);
-      alert('Failed to send message. Please try again.');
+      alert(error?.message ?? 'Failed to send message. Please try again.');
     } finally {
       setSending(false);
+    }
+  }
+
+  async function sendWithVoiceBlob(blob: Blob) {
+    if (sending) return;
+    setSending(true);
+    try {
+      const { url, name } = await uploadMessageAttachment(currentUserId, blob, 'voice');
+      await sendMessage(conversationId, currentUserId, '', {
+        attachmentUrl: url,
+        attachmentType: 'voice',
+        attachmentName: name,
+      });
+      setNewMessage('');
+      setAttachmentDraft(null);
+      await loadConversationStatus();
+    } catch (error: any) {
+      console.error('Error sending voice message:', error);
+      alert(error?.message ?? 'Failed to send voice note.');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function handleAcceptRequest() {
+    setAcceptDeclineLoading(true);
+    try {
+      await acceptConversationRequest(conversationId, currentUserId);
+      await loadConversationStatus();
+    } catch (err: any) {
+      alert(err?.message ?? 'Could not accept request.');
+    } finally {
+      setAcceptDeclineLoading(false);
+    }
+  }
+
+  async function handleDeclineRequest() {
+    setAcceptDeclineLoading(true);
+    try {
+      await declineConversationRequest(conversationId, currentUserId);
+      await loadConversationStatus();
+    } catch (err: any) {
+      alert(err?.message ?? 'Could not decline request.');
+    } finally {
+      setAcceptDeclineLoading(false);
     }
   }
 
@@ -140,12 +240,12 @@ export default function ConversationView({
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-12rem)] bg-gradient-to-br from-gray-800 to-gray-900 border border-gray-700 rounded-2xl overflow-hidden">
+    <div className="flex flex-col h-[calc(100vh-12rem)] bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
       {/* Header */}
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-700 bg-gray-800/50">
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-200 bg-gray-50">
         <button
           onClick={() => router.back()}
-          className="text-gray-400 hover:text-itutor-white transition-colors"
+          className="text-gray-600 hover:text-gray-900 transition-colors"
         >
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -162,14 +262,14 @@ export default function ConversationView({
               )}
             </div>
             <div className="flex-1">
-              <h2 className="text-lg font-bold text-itutor-white">{getDisplayName(otherUser)}</h2>
+              <h2 className="text-lg font-bold text-gray-900">{getDisplayName(otherUser)}</h2>
               <p className="text-xs text-gray-500 capitalize">{otherUser.role}</p>
             </div>
             
             {/* Refresh Button */}
             <button
               onClick={() => loadMessages()}
-              className="text-gray-400 hover:text-itutor-green transition-colors p-2 hover:bg-gray-700 rounded-lg"
+              className="text-gray-500 hover:text-itutor-green transition-colors p-2 hover:bg-gray-200 rounded-lg"
               title="Refresh messages"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -183,15 +283,15 @@ export default function ConversationView({
       {/* Messages */}
       <div
         ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto p-6 space-y-4"
+        className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50/50"
         style={{ scrollBehavior: 'smooth' }}
       >
         {messages.length === 0 ? (
-          <div className="text-center py-12 text-gray-400">
-            <svg className="w-16 h-16 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="text-center py-12 text-gray-500">
+            <svg className="w-16 h-16 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
             </svg>
-            <p>No messages yet</p>
+            <p className="text-gray-700">No messages yet</p>
             <p className="text-sm text-gray-500 mt-2">Send a message to start the conversation!</p>
           </div>
         ) : (
@@ -203,7 +303,7 @@ export default function ConversationView({
               <div className={`flex items-end gap-2 max-w-[70%] ${message.is_own_message ? 'flex-row-reverse' : ''}`}>
                 {/* Avatar */}
                 {!message.is_own_message && (
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
+                  <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${getAvatarColor(message.sender.id || 'unknown')} flex items-center justify-center text-white font-bold text-xs flex-shrink-0`}>
                     {message.sender.avatar_url ? (
                       <img src={message.sender.avatar_url} alt={getDisplayName(message.sender)} className="w-full h-full rounded-full object-cover" />
                     ) : (
@@ -219,7 +319,7 @@ export default function ConversationView({
                       px-4 py-2 rounded-2xl
                       ${message.is_own_message
                         ? 'bg-gradient-to-r from-itutor-green to-emerald-600 text-white rounded-br-none'
-                        : 'bg-gray-700 text-itutor-white rounded-bl-none'
+                        : 'bg-white border border-gray-200 text-gray-900 rounded-bl-none shadow-sm'
                       }
                     `}
                   >
@@ -238,35 +338,68 @@ export default function ConversationView({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
-      <form onSubmit={handleSendMessage} className="border-t border-gray-700 p-4 bg-gray-800/50">
-        <div className="flex items-center gap-3">
-          <input
-            type="text"
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            placeholder="Type a message..."
-            disabled={sending}
-            className="flex-1 px-4 py-3 bg-gray-900 border border-gray-700 text-itutor-white rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-500 disabled:opacity-50"
-          />
-          <button
-            type="submit"
-            disabled={!newMessage.trim() || sending}
-            className="px-6 py-3 bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-white rounded-lg font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-          >
-            {sending ? (
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-            ) : (
-              <>
-                <span>Send</span>
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                </svg>
-              </>
-            )}
-          </button>
+      {/* Message request: receiver can accept or decline */}
+      {showRequestReceiverUI && (
+        <div className="border-t border-gray-200 p-4 bg-amber-50">
+          <p className="text-sm text-gray-700 mb-3">Accept this message request to start chatting.</p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleAcceptRequest}
+              disabled={acceptDeclineLoading}
+              className="px-4 py-2 rounded-lg bg-itutor-green text-white font-medium text-sm hover:opacity-90 disabled:opacity-50"
+            >
+              {acceptDeclineLoading ? '…' : 'Accept'}
+            </button>
+            <button
+              type="button"
+              onClick={handleDeclineRequest}
+              disabled={acceptDeclineLoading}
+              className="px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 font-medium text-sm hover:bg-gray-50 disabled:opacity-50"
+            >
+              Decline
+            </button>
+          </div>
         </div>
-      </form>
+      )}
+
+      {/* Message request: initiator waiting */}
+      {showRequestInitiatorUI && (
+        <div className="border-t border-gray-200 p-4 bg-gray-50">
+          <p className="text-sm text-gray-600">
+            Waiting for {otherUser ? getDisplayName(otherUser) : 'them'} to accept your message request.
+          </p>
+        </div>
+      )}
+
+      {/* Declined request */}
+      {conversationStatus?.status === 'DECLINED' && (
+        <div className="border-t border-gray-200 p-4 bg-gray-50">
+          <p className="text-sm text-gray-600">This message request was declined.</p>
+        </div>
+      )}
+
+      {canChat && (
+        <MessageInputBar
+          value={newMessage}
+          onChange={setNewMessage}
+          onSubmit={handleSendMessage}
+          placeholder="Type a message..."
+          disabled={false}
+          sending={sending}
+          onFileSelect={(file) => setAttachmentDraft((d) => ({ ...d, file, voiceBlob: undefined }))}
+          onVoiceRecord={(blob) => setAttachmentDraft((d) => ({ ...d, voiceBlob: blob, file: undefined }))}
+          onVoiceRecordAndSend={sendWithVoiceBlob}
+          attachmentPreview={
+            attachmentDraft?.file
+              ? { name: attachmentDraft.file.name, type: attachmentDraft.file.type.startsWith('image/') ? 'image' : 'file' }
+              : attachmentDraft?.voiceBlob
+                ? { name: 'Voice note', type: 'voice' }
+                : null
+          }
+          onClearAttachment={() => setAttachmentDraft(null)}
+        />
+      )}
     </div>
   );
 }
