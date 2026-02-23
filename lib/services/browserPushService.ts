@@ -3,11 +3,20 @@
 // =====================================================
 // Handles web push notifications for desktop browsers
 
+// Debug environment variable access
+if (typeof window !== 'undefined') {
+  console.log('[browserPushService] Checking env vars...');
+  console.log('[browserPushService] process.env keys:', Object.keys(process.env).filter(k => k.includes('VAPID')));
+  console.log('[browserPushService] Direct access:', process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY);
+  console.log('[browserPushService] All NEXT_PUBLIC vars:', Object.keys(process.env).filter(k => k.startsWith('NEXT_PUBLIC')));
+}
+
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || '';
 
 // Debug: Log VAPID key status on module load
 if (typeof window !== 'undefined') {
   console.log('🔑 VAPID Key loaded:', VAPID_PUBLIC_KEY ? '✅ Present' : '❌ Missing');
+  console.log('🔑 VAPID Key value (first 10 chars):', VAPID_PUBLIC_KEY ? VAPID_PUBLIC_KEY.substring(0, 10) + '...' : 'EMPTY');
   if (!VAPID_PUBLIC_KEY) {
     console.error('VAPID public key not found in environment variables. Check NEXT_PUBLIC_VAPID_PUBLIC_KEY in .env.local');
   }
