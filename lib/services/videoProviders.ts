@@ -133,25 +133,34 @@ class GoogleMeetAdapter implements VideoProviderAdapter {
   }
 
   private async createMeetingWithRetry(session: Session, isRetry: boolean): Promise<MeetingInfo> {
+    console.log(`🔵 [GoogleMeet] Creating meeting for session ${session.id} (retry: ${isRetry})`);
+    
     // Get tutor's connection
     const supabase = getServiceClient();
+    console.log(`🔍 [GoogleMeet] Looking up connection for tutor ${session.tutor_id}`);
+    
     const { data: connection, error } = await supabase
       .from('tutor_video_provider_connections')
       .select('*')
       .eq('tutor_id', session.tutor_id)
+      .eq('provider', 'google_meet')
       .single();
 
     if (error || !connection) {
-      throw new Error('No Google Meet connection found');
+      console.error('❌ [GoogleMeet] No connection found:', error);
+      throw new Error('No Google Meet connection found. Please connect Google Meet in Settings.');
     }
 
+    console.log('✅ [GoogleMeet] Connection found, expires:', connection.token_expires_at);
     let accessToken = decrypt(connection.access_token_encrypted);
     
     // Calculate end time
     const startDate = new Date(session.scheduled_start_at);
     const endDate = new Date(startDate.getTime() + session.duration_minutes * 60000);
+    console.log(`📅 [GoogleMeet] Meeting time: ${startDate.toISOString()} to ${endDate.toISOString()}`);
 
     // Create Google Calendar event with Meet
+    console.log('📡 [GoogleMeet] Calling Google Calendar API...');
     const response = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1', {
       method: 'POST',
       headers: {
@@ -172,9 +181,11 @@ class GoogleMeetAdapter implements VideoProviderAdapter {
       })
     });
 
+    console.log('📥 [GoogleMeet] API response status:', response.status);
+
     // Handle token expiration
     if (!response.ok && (response.status === 401 || response.status === 403) && !isRetry) {
-      console.log('🔄 Google token expired, refreshing...');
+      console.log('🔄 [GoogleMeet] Token expired (status: ${response.status}), refreshing...');
       const refreshToken = decrypt(connection.refresh_token_encrypted);
       await refreshGoogleToken(session.tutor_id, refreshToken);
       // Retry once with new token
@@ -182,16 +193,25 @@ class GoogleMeetAdapter implements VideoProviderAdapter {
     }
 
     if (!response.ok) {
-      const error = await response.text();
-      console.error('❌ Failed to create Google Meet:', error);
-      throw new Error('Failed to create Google Meet meeting');
+      const errorText = await response.text();
+      console.error('❌ [GoogleMeet] API error:', errorText);
+      throw new Error(`Google Meet API error (${response.status}): ${errorText}`);
     }
 
     const event = await response.json();
+    console.log('✅ [GoogleMeet] Event created:', event.id);
+    
+    const joinUrl = event.hangoutLink || event.conferenceData?.entryPoints?.[0]?.uri || '';
+    if (!joinUrl) {
+      console.error('⚠️  [GoogleMeet] No join URL in response:', JSON.stringify(event, null, 2));
+      throw new Error('Google Meet link not found in calendar event');
+    }
+    
+    console.log('✅ [GoogleMeet] Join URL:', joinUrl);
     
     return {
       meeting_external_id: event.id,
-      join_url: event.hangoutLink || event.conferenceData?.entryPoints?.[0]?.uri || '',
+      join_url: joinUrl,
       meeting_created_at: new Date().toISOString()
     };
   }
@@ -218,20 +238,31 @@ class ZoomAdapter implements VideoProviderAdapter {
   }
 
   private async createMeetingWithRetry(session: Session, isRetry: boolean): Promise<MeetingInfo> {
+    console.log(`🔵 [Zoom] Creating meeting for session ${session.id} (retry: ${isRetry})`);
+    
     // Get tutor's connection
     const supabase = getServiceClient();
+    console.log(`🔍 [Zoom] Looking up connection for tutor ${session.tutor_id}`);
+    
     const { data: connection, error } = await supabase
       .from('tutor_video_provider_connections')
       .select('*')
       .eq('tutor_id', session.tutor_id)
+      .eq('provider', 'zoom')
       .single();
 
     if (error || !connection) {
-      throw new Error('No Zoom connection found');
+      console.error('❌ [Zoom] No connection found:', error);
+      throw new Error('No Zoom connection found. Please connect Zoom in Settings.');
     }
 
+    console.log('✅ [Zoom] Connection found, expires:', connection.token_expires_at);
     let accessToken = decrypt(connection.access_token_encrypted);
 
+    const startTime = new Date(session.scheduled_start_at).toISOString();
+    console.log(`📅 [Zoom] Meeting start: ${startTime}, duration: ${session.duration_minutes} mins`);
+
+    console.log('📡 [Zoom] Calling Zoom API...');
     const response = await fetch('https://api.zoom.us/v2/users/me/meetings', {
       method: 'POST',
       headers: {
@@ -241,7 +272,7 @@ class ZoomAdapter implements VideoProviderAdapter {
       body: JSON.stringify({
         topic: `iTutor Session`,
         type: 2, // Scheduled meeting
-        start_time: new Date(session.scheduled_start_at).toISOString(),
+        start_time: startTime,
         duration: session.duration_minutes,
         settings: {
           join_before_host: true,
@@ -251,9 +282,11 @@ class ZoomAdapter implements VideoProviderAdapter {
       })
     });
 
+    console.log('📥 [Zoom] API response status:', response.status);
+
     // Handle token expiration
     if (!response.ok && response.status === 401 && !isRetry) {
-      console.log('🔄 Zoom token expired, refreshing...');
+      console.log('🔄 [Zoom] Token expired (status: ${response.status}), refreshing...');
       const refreshToken = decrypt(connection.refresh_token_encrypted);
       await refreshZoomToken(session.tutor_id, refreshToken);
       // Retry once with new token
@@ -261,12 +294,20 @@ class ZoomAdapter implements VideoProviderAdapter {
     }
 
     if (!response.ok) {
-      const error = await response.text();
-      console.error('❌ Failed to create Zoom meeting:', error);
-      throw new Error('Failed to create Zoom meeting');
+      const errorText = await response.text();
+      console.error('❌ [Zoom] API error:', errorText);
+      throw new Error(`Zoom API error (${response.status}): ${errorText}`);
     }
 
     const meeting = await response.json();
+    console.log('✅ [Zoom] Meeting created:', meeting.id);
+    
+    if (!meeting.join_url) {
+      console.error('⚠️  [Zoom] No join URL in response:', JSON.stringify(meeting, null, 2));
+      throw new Error('Zoom join URL not found in API response');
+    }
+    
+    console.log('✅ [Zoom] Join URL:', meeting.join_url);
     
     return {
       meeting_external_id: meeting.id.toString(),

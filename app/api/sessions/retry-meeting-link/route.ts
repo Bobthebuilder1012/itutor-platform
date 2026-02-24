@@ -119,9 +119,12 @@ async function refreshZoomToken(tutorId: string, refreshToken: string) {
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('🔧 [RETRY-MEETING-LINK] API called');
     const { sessionId } = await request.json();
+    console.log('📋 [RETRY-MEETING-LINK] Session ID:', sessionId);
 
     if (!sessionId) {
+      console.error('❌ [RETRY-MEETING-LINK] No session ID provided');
       return NextResponse.json(
         { error: 'Session ID is required' },
         { status: 400 }
@@ -131,6 +134,7 @@ export async function POST(request: NextRequest) {
     const supabase = getServiceClient();
 
     // 1. Load session
+    console.log('📥 [RETRY-MEETING-LINK] Loading session from database...');
     const { data: session, error: sessionError } = await supabase
       .from('sessions')
       .select('*')
@@ -138,14 +142,24 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (sessionError || !session) {
+      console.error('❌ [RETRY-MEETING-LINK] Session not found:', sessionError);
       return NextResponse.json(
         { error: 'Session not found' },
         { status: 404 }
       );
     }
 
+    console.log('✅ [RETRY-MEETING-LINK] Session loaded:', {
+      id: session.id,
+      tutorId: session.tutor_id,
+      provider: session.provider,
+      status: session.status,
+      hasJoinUrl: !!session.join_url
+    });
+
     // 2. Check if already has meeting link
     if (session.join_url) {
+      console.log('ℹ️  [RETRY-MEETING-LINK] Session already has meeting link');
       return NextResponse.json({
         success: true,
         message: 'Session already has a meeting link',
@@ -155,6 +169,7 @@ export async function POST(request: NextRequest) {
 
     // 3. Check session status
     if (!['SCHEDULED', 'JOIN_OPEN'].includes(session.status)) {
+      console.error('❌ [RETRY-MEETING-LINK] Invalid session status:', session.status);
       return NextResponse.json(
         { error: 'Can only create meeting links for scheduled sessions' },
         { status: 400 }
@@ -162,11 +177,12 @@ export async function POST(request: NextRequest) {
     }
 
     // 4. Automatically refresh tokens if needed
-    console.log(`🔄 Auto-refreshing tokens for tutor ${session.tutor_id}...`);
+    console.log(`🔄 [RETRY-MEETING-LINK] Checking/refreshing tokens for tutor ${session.tutor_id}, provider: ${session.provider}...`);
     try {
       await refreshTokensIfNeeded(session.tutor_id, session.provider);
+      console.log('✅ [RETRY-MEETING-LINK] Token check/refresh completed');
     } catch (tokenError: any) {
-      console.error('❌ Token refresh failed:', tokenError);
+      console.error('❌ [RETRY-MEETING-LINK] Token refresh failed:', tokenError);
       return NextResponse.json(
         { 
           error: 'Video provider authentication expired',
@@ -178,12 +194,17 @@ export async function POST(request: NextRequest) {
     }
 
     // 5. Attempt to create meeting
-    console.log(`🔄 Retrying meeting creation for session ${sessionId}...`);
+    console.log(`🔄 [RETRY-MEETING-LINK] Creating ${session.provider} meeting for session ${sessionId}...`);
     
     try {
       const meetingInfo = await createMeeting(session as Session);
+      console.log('✅ [RETRY-MEETING-LINK] Meeting created successfully:', {
+        meetingId: meetingInfo.meeting_external_id,
+        hasJoinUrl: !!meetingInfo.join_url
+      });
       
       // 6. Update session with meeting info
+      console.log('💾 [RETRY-MEETING-LINK] Updating session with meeting info...');
       const { data: updatedSession, error: updateError } = await supabase
         .from('sessions')
         .update({
@@ -196,14 +217,15 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (updateError) {
-        console.error('❌ Failed to update session:', updateError);
+        console.error('❌ [RETRY-MEETING-LINK] Failed to update session:', updateError);
         return NextResponse.json(
           { error: 'Failed to update session with meeting link' },
           { status: 500 }
         );
       }
 
-      console.log('✅ Meeting link created successfully');
+      console.log('✅ [RETRY-MEETING-LINK] Session updated successfully');
+      console.log('🎉 [RETRY-MEETING-LINK] Complete! Join URL:', meetingInfo.join_url);
       
       return NextResponse.json({
         success: true,
@@ -212,13 +234,14 @@ export async function POST(request: NextRequest) {
       });
 
     } catch (meetingError: any) {
-      console.error('❌ Failed to create meeting:', meetingError);
+      console.error('❌ [RETRY-MEETING-LINK] Failed to create meeting:', meetingError);
+      console.error('❌ [RETRY-MEETING-LINK] Error stack:', meetingError.stack);
       
       return NextResponse.json(
         { 
           error: 'Failed to create meeting link',
-          details: meetingError.message,
-          action: 'Please check that the tutor has a valid video provider connection'
+          details: meetingError.message || 'Unknown error occurred',
+          action: 'Check that your video provider is properly connected in Settings'
         },
         { status: 500 }
       );

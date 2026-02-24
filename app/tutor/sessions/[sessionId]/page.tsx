@@ -83,6 +83,8 @@ export default function TutorSessionDetailPage() {
     if (!session) return;
     
     setRetryingMeetingLink(true);
+    console.log('🔄 Retrying meeting link creation for session:', session.id);
+    
     try {
       const response = await fetch('/api/sessions/retry-meeting-link', {
         method: 'POST',
@@ -90,17 +92,28 @@ export default function TutorSessionDetailPage() {
         body: JSON.stringify({ sessionId: session.id })
       });
 
+      console.log('📡 Retry API response status:', response.status);
       const data = await response.json();
+      console.log('📦 Retry API response data:', data);
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to create meeting link');
+        const errorMsg = data.details || data.error || 'Failed to create meeting link';
+        console.error('❌ Retry failed:', errorMsg);
+        
+        if (data.action === 'disconnect_reconnect') {
+          alert(`⚠️ ${errorMsg}\n\nPlease go to Settings → Video Provider and:\n1. Click "Disconnect"\n2. Click "Connect Google Meet/Zoom" again`);
+        } else {
+          alert(`❌ Failed to create meeting link:\n\n${errorMsg}\n\nPlease check:\n• Your video provider is connected in Settings\n• Your account has calendar permissions`);
+        }
+        return;
       }
 
-      alert('Meeting link created successfully!');
+      console.log('✅ Meeting link created successfully');
+      alert('✅ Meeting link created successfully!');
       await loadSessionData(); // Reload session data
     } catch (error: any) {
-      console.error('Error retrying meeting link:', error);
-      alert(`Failed to create meeting link: ${error.message}`);
+      console.error('❌ Error retrying meeting link:', error);
+      alert(`❌ Network error:\n\n${error.message}\n\nPlease check your internet connection and try again.`);
     } finally {
       setRetryingMeetingLink(false);
     }
