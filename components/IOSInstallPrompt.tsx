@@ -247,6 +247,16 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
     setShow(false);
   }
 
+  function handleCompleted() {
+    // User indicates they've completed setup - never show again
+    localStorage.setItem('ios-prompt-completed-permanently', 'true');
+    localStorage.removeItem('ios-prompt-dismissed');
+    setShow(false);
+    if (onDismiss) {
+      onDismiss();
+    }
+  }
+
   function handleRemindLater() {
     // Store dismissal timestamp to prevent showing again for 24 hours
     localStorage.setItem('ios-prompt-dismissed', Date.now().toString());
@@ -367,11 +377,17 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
             </button>
           </div>
 
-          {/* Continue button */}
-          <div className="flex gap-2 mt-4">
+          {/* Action buttons */}
+          <div className="flex flex-col gap-2 mt-4">
+            <button
+              onClick={handleCompleted}
+              className="w-full px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-all shadow-lg text-sm"
+            >
+              ✓ Completed Setup
+            </button>
             <button
               onClick={handleRemindLater}
-              className="flex-1 px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded-lg font-medium transition-all backdrop-blur-sm border border-white/20 text-sm"
+              className="w-full px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded-lg font-medium transition-all backdrop-blur-sm border border-white/20 text-sm"
             >
               Remind Me Later
             </button>
@@ -422,10 +438,10 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
               </ol>
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2">
               <button
                 onClick={handleCopyUrl}
-                className="flex-1 px-5 py-4 bg-red-400 hover:bg-red-500 text-white font-bold rounded-lg transition-all shadow-lg text-base flex items-center justify-center gap-2"
+                className="w-full px-5 py-4 bg-red-400 hover:bg-red-500 text-white font-bold rounded-lg transition-all shadow-lg text-base flex items-center justify-center gap-2"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -433,8 +449,14 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
                 Copy Link
               </button>
               <button
+                onClick={handleCompleted}
+                className="w-full px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-all shadow-lg text-sm"
+              >
+                ✓ Completed Setup
+              </button>
+              <button
                 onClick={handleRemindLater}
-                className="px-5 py-4 bg-white/20 hover:bg-white/30 text-white font-semibold rounded-lg transition-all text-base"
+                className="w-full px-4 py-3 bg-white/20 hover:bg-white/30 text-white font-semibold rounded-lg transition-all text-sm"
               >
                 Remind Me Later
               </button>
@@ -528,10 +550,16 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
 
         {/* Action Buttons */}
         {isSafari && (
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={handleCompleted}
+              className="w-full px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-all shadow-lg text-sm"
+            >
+              ✓ Completed Setup
+            </button>
             <button
               onClick={handleRemindLater}
-              className="flex-1 px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded-lg font-medium transition-all backdrop-blur-sm border border-white/20 text-sm"
+              className="w-full px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded-lg font-medium transition-all backdrop-blur-sm border border-white/20 text-sm"
             >
               Remind Me Later
             </button>
