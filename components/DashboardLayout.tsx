@@ -120,6 +120,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         return [
           { href: '/student/find-tutors', label: 'Find iTutors' },
           { href: '/communities', label: 'Communities' },
+          { href: '/groups', label: 'Groups' },
           { href: '/student/curriculum', label: 'Curriculum' },
           { href: '/student/bookings', label: 'My Bookings' },
           { href: '/student/sessions', label: 'Sessions' },
@@ -130,6 +131,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/tutor/find-students', label: 'Find Students' },
           { href: '/tutor/bookings', label: 'Booking Requests' },
           { href: '/communities', label: 'Communities' },
+          { href: '/groups', label: 'Groups' },
           { href: '/tutor/curriculum', label: 'Curriculum' },
           { href: '/tutor/sessions', label: 'Sessions' },
         ];

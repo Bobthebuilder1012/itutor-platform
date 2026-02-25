@@ -40,6 +40,7 @@ export interface Conversation {
   last_message_preview?: string;
   status?: ConversationStatus;
   initiated_by_id?: string | null;
+  group_context_id?: string | null;
 }
 
 export interface ConversationWithParticipant extends Conversation {
