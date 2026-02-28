@@ -26,7 +26,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
     let query = service
       .from('group_members')
-      .select('id, group_id, user_id, status, joined_at, profile:profiles(id, full_name, avatar_url)')
+      .select('id, group_id, user_id, status, joined_at, profile:profiles(id, full_name, avatar_url, role)')
       .eq('group_id', groupId)
       .order('joined_at', { ascending: true });
 

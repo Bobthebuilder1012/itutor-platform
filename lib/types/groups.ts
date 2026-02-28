@@ -78,6 +78,10 @@ export interface GroupOccurrence {
   status: OccurrenceStatus;
   cancelled_at: string | null;
   cancellation_note: string | null;
+  meeting_provider?: string | null;
+  meeting_external_id?: string | null;
+  meeting_join_url?: string | null;
+  meeting_created_at?: string | null;
 }
 
 export interface GroupMessage {

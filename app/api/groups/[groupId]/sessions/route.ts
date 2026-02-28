@@ -15,12 +15,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
     }
 
     const service = getServiceClient();
+    const now = new Date().toISOString();
+
     const { data: sessions, error } = await service
       .from('group_sessions')
       .select(`
         id, group_id, title, recurrence_type, recurrence_days,
         start_time, duration_minutes, starts_on, ends_on, created_at,
-        group_session_occurrences(
+        occurrences:group_session_occurrences(
           id, group_session_id, scheduled_start_at, scheduled_end_at,
           status, cancelled_at, cancellation_note
         )
@@ -28,9 +30,25 @@ export async function GET(_req: NextRequest, { params }: Params) {
       .eq('group_id', groupId)
       .order('starts_on', { ascending: true });
 
+    // Post-process: sort occurrences and keep only next 20 upcoming + last 2 past per session
+    // (DB-level filtering on nested tables isn't supported in Supabase JS client,
+    //  but we trim here before sending to the client to keep the payload small)
+    const trimmed = (sessions ?? []).map((s: any) => {
+      const occs: any[] = s.occurrences ?? [];
+      const upcoming = occs
+        .filter((o) => o.status === 'upcoming' && o.scheduled_end_at >= now)
+        .sort((a: any, b: any) => a.scheduled_start_at.localeCompare(b.scheduled_start_at))
+        .slice(0, 20);
+      const past = occs
+        .filter((o) => o.status === 'upcoming' && o.scheduled_end_at < now)
+        .sort((a: any, b: any) => b.scheduled_start_at.localeCompare(a.scheduled_start_at))
+        .slice(0, 2);
+      return { ...s, occurrences: [...past, ...upcoming] };
+    });
+
     if (error) throw error;
 
-    return NextResponse.json({ sessions: sessions ?? [] });
+    return NextResponse.json({ sessions: trimmed });
   } catch (err) {
     console.error('[GET /api/groups/[groupId]/sessions]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -99,15 +117,19 @@ export async function POST(request: NextRequest, { params }: Params) {
       .eq('status', 'approved');
 
     if (members && members.length > 0) {
-      await service.from('notifications').insert(
-        members.map((m: any) => ({
-          user_id: m.user_id,
-          type: 'group_session_added',
-          title: 'New group session scheduled',
-          message: `A new session "${body.title}" has been added to your group.`,
-          link: `/groups`,
-        }))
-      ).catch(() => {});
+      try {
+        await service.from('notifications').insert(
+          members.map((m: any) => ({
+            user_id: m.user_id,
+            type: 'group_session_added',
+            title: 'New group session scheduled',
+            message: `A new session "${body.title}" has been added to your group.`,
+            link: `/groups`,
+          }))
+        );
+      } catch {
+        // Notifications are non-critical. Session creation should still succeed.
+      }
     }
 
     return NextResponse.json({ session }, { status: 201 });
@@ -144,7 +166,7 @@ function generateOccurrences(session: any) {
     return occurrences;
   }
 
-  const maxOccurrences = 200;
+  const maxOccurrences = 400;
   const current = new Date(startsOn);
   current.setHours(startHour, startMin, 0, 0);
 
@@ -174,7 +196,9 @@ function generateOccurrences(session: any) {
       break;
     }
 
-    if (!endsOn && occurrences.length >= 52) break;
+    // Cap: ~1 year for daily, ~2 years for weekly (when no end date set)
+    const cap = session.recurrence_type === 'daily' ? 365 : 104;
+    if (!endsOn && occurrences.length >= cap) break;
   }
 
   return occurrences;

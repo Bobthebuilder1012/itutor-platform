@@ -10,8 +10,9 @@ import SessionRow from './SessionRow';
 import MemberList from './MemberList';
 import CreateSessionModal from './CreateSessionModal';
 import GroupMessageBoard from '../messages/GroupMessageBoard';
+import AnnouncementBoard from '../announcements/AnnouncementBoard';
 
-type Tab = 'sessions' | 'members' | 'messages';
+type Tab = 'announcements' | 'sessions' | 'members' | 'messages';
 
 interface TutorGroupViewProps {
   group: GroupWithTutor;
@@ -20,7 +21,7 @@ interface TutorGroupViewProps {
 }
 
 export default function TutorGroupView({ group, currentUserId, onGroupUpdated }: TutorGroupViewProps) {
-  const [tab, setTab] = useState<Tab>('sessions');
+  const [tab, setTab] = useState<Tab>('announcements');
   const [sessions, setSessions] = useState<GroupSessionWithOccurrences[]>([]);
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
@@ -83,15 +84,16 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
   };
 
   const TABS: { id: Tab; label: string; badge?: number }[] = [
+    { id: 'announcements', label: 'Announcements' },
     { id: 'sessions', label: 'Sessions' },
     { id: 'members', label: 'Members', badge: pendingCount > 0 ? pendingCount : undefined },
-    { id: 'messages', label: 'Messages' },
+    { id: 'messages', label: 'Group Chat' },
   ];
 
   return (
-    <div className="space-y-4">
-      {/* Section 1: Group Header + Controls */}
-      <div className="flex items-start justify-between gap-3">
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Section 1: Group Header + Controls — fixed */}
+      <div className="flex-shrink-0 flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           {editing ? (
             <div className="flex gap-2 items-center">
@@ -132,8 +134,8 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
         </button>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-gray-200">
+      {/* Tabs — fixed */}
+      <div className="flex-shrink-0 flex border-b border-gray-200 mt-4">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -153,6 +155,14 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
           </button>
         ))}
       </div>
+
+      {/* Tab content — scrollable */}
+      <div className="flex-1 overflow-y-auto pt-4">
+
+      {/* Tab: Announcements */}
+      {tab === 'announcements' && (
+        <AnnouncementBoard groupId={group.id} isTutor={true} />
+      )}
 
       {/* Tab: Sessions */}
       {tab === 'sessions' && (
@@ -200,10 +210,12 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
 
       {/* Tab: Messages */}
       {tab === 'messages' && (
-        <div className="h-[480px] flex flex-col">
+        <div className="h-full flex flex-col">
           <GroupMessageBoard groupId={group.id} isTutor={true} currentUserId={currentUserId} />
         </div>
       )}
+
+      </div>{/* end scrollable tab content */}
 
       {showCreateSession && (
         <CreateSessionModal

@@ -75,32 +75,38 @@ export default function GroupDetailPanel({
   };
 
   return (
-    <div className="relative h-full overflow-y-auto">
-      {/* Mobile back button */}
+    <div className="flex flex-col h-[calc(100vh-140px)] min-h-[500px]">
+      {/* Back button — fixed, never scrolls */}
       {onClose && (
-        <button
-          onClick={onClose}
-          className="lg:hidden flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-4 transition-colors"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-          Back to groups
-        </button>
+        <div className="flex-shrink-0 mb-4">
+          <button
+            onClick={onClose}
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:border-gray-300 shadow-sm transition-all"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Back to groups
+          </button>
+        </div>
       )}
 
-      {/* Route to correct view */}
-      {isTutorOwner ? (
-        <TutorGroupView
-          group={group}
-          currentUserId={currentUserId}
-          onGroupUpdated={handleGroupUpdated}
-        />
-      ) : isApprovedMember ? (
-        <GroupMemberView group={group} currentUserId={currentUserId} />
-      ) : (
-        <GroupPreview group={group} onJoinRequested={fetchGroup} />
-      )}
+      {/* Scrollable content area */}
+      <div className="flex-1 overflow-hidden">
+        {isTutorOwner ? (
+          <TutorGroupView
+            group={group}
+            currentUserId={currentUserId}
+            onGroupUpdated={handleGroupUpdated}
+          />
+        ) : isApprovedMember ? (
+          <GroupMemberView group={group} currentUserId={currentUserId} />
+        ) : (
+          <div className="h-full overflow-y-auto">
+            <GroupPreview group={group} onJoinRequested={fetchGroup} />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

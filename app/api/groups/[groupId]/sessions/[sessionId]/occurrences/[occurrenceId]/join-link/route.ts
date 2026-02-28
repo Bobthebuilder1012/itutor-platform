@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { ensureTutorConnected, createMeeting } from '@/lib/services/videoProviders';
 
-type Params = { params: Promise<{ groupId: string; sessionId: string; occurrenceId: string }> };
+type Params = {
+  params: Promise<{ groupId: string; sessionId: string; occurrenceId: string }>;
+};
 
-// POST /api/groups/[groupId]/sessions/[sessionId]/occurrences/[occurrenceId]
-// Backward-compatible join endpoint (same behavior as /join-link).
+// POST /api/groups/[groupId]/sessions/[sessionId]/occurrences/[occurrenceId]/join-link
+// Creates a meeting using the tutor's configured provider (Zoom/Google Meet) and returns a join URL.
 export async function POST(_req: NextRequest, { params }: Params) {
   try {
     const { groupId, sessionId, occurrenceId } = await params;
@@ -26,6 +28,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Group not found' }, { status: 404 });
     }
 
+    // Access: tutor or approved member
     const isTutor = group.tutor_id === user.id;
     if (!isTutor) {
       const { data: membership } = await service
@@ -39,7 +42,25 @@ export async function POST(_req: NextRequest, { params }: Params) {
       }
     }
 
-    let { data: occurrence } = await service
+    // Session-level cache first: if this session already has a provider link, reuse it.
+    const { data: requestedSessionCache } = await service
+      .from('group_sessions')
+      .select('id, meeting_provider, meeting_external_id, meeting_join_url, duration_minutes')
+      .eq('id', sessionId)
+      .eq('group_id', groupId)
+      .maybeSingle();
+    if (requestedSessionCache?.meeting_join_url) {
+      return NextResponse.json({
+        provider: requestedSessionCache.meeting_provider ?? null,
+        join_url: requestedSessionCache.meeting_join_url,
+        meeting_external_id: requestedSessionCache.meeting_external_id ?? null,
+        cached: true,
+        cache_level: 'session',
+      });
+    }
+
+    // Resolve occurrence first (by ID only) to avoid false negatives from stale/mismatched sessionId in URL.
+    let { data: occurrence, error: occError } = await service
       .from('group_session_occurrences')
       .select(`
         id, group_session_id, scheduled_start_at, scheduled_end_at, status,
@@ -48,8 +69,10 @@ export async function POST(_req: NextRequest, { params }: Params) {
       .eq('id', occurrenceId)
       .single();
 
-    if (!occurrence) {
-      // Fallback 1: latest occurrence for requested session
+    // Fallback: if this exact occurrence id no longer exists, use the next upcoming occurrence
+    // for the URL session. This handles stale client data after session edits/regeneration.
+    if (occError || !occurrence) {
+      // Fallback 1: look up latest occurrence for requested session
       const { data: fallbackOccurrence } = await service
         .from('group_session_occurrences')
         .select(`
@@ -64,7 +87,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
       if (fallbackOccurrence) {
         occurrence = fallbackOccurrence;
       } else {
-        // Fallback 2: stale sessionId; search all occurrences in group
+        // Fallback 2: stale sessionId; search all occurrences within this group
         const { data: groupSessions } = await service
           .from('group_sessions')
           .select('id')
@@ -72,14 +95,24 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
         const groupSessionIds = (groupSessions ?? []).map((s: any) => s.id);
         if (groupSessionIds.length === 0) {
+          // Last-resort fallback: generate a meeting from session context even when occurrence IDs are stale.
           const { data: directSession } = await service
             .from('group_sessions')
-            .select('id, group_id, duration_minutes')
+            .select('id, group_id, duration_minutes, meeting_provider, meeting_external_id, meeting_join_url')
             .eq('id', sessionId)
             .eq('group_id', groupId)
             .single();
 
           const durationMinutes = directSession?.duration_minutes ?? 60;
+          if (directSession?.meeting_join_url) {
+            return NextResponse.json({
+              provider: directSession.meeting_provider ?? null,
+              join_url: directSession.meeting_join_url,
+              meeting_external_id: directSession.meeting_external_id ?? null,
+              cached: true,
+              cache_level: 'session',
+            });
+          }
           const { provider } = await ensureTutorConnected(group.tutor_id);
           const syntheticStart = new Date();
           const syntheticEnd = new Date(syntheticStart.getTime() + durationMinutes * 60 * 1000);
@@ -110,6 +143,25 @@ export async function POST(_req: NextRequest, { params }: Params) {
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           } as any);
+
+          const { error: sessionCacheError } = await service
+            .from('group_sessions')
+            .update({
+              meeting_provider: provider,
+              meeting_external_id: meeting.meeting_external_id,
+              meeting_join_url: meeting.join_url,
+              meeting_created_at: meeting.meeting_created_at,
+            })
+            .eq('id', directSession?.id ?? sessionId)
+            .eq('group_id', groupId);
+
+          if (sessionCacheError) {
+            console.error('[join-link] failed to cache session fallback meeting link', sessionCacheError);
+            return NextResponse.json(
+              { error: 'Session meeting cache is not configured. Please run migration 090_group_session_meeting_cache.sql.' },
+              { status: 500 }
+            );
+          }
 
           return NextResponse.json({
             provider,
@@ -131,14 +183,24 @@ export async function POST(_req: NextRequest, { params }: Params) {
           .maybeSingle();
 
         if (!groupFallbackOccurrence) {
+          // Last-resort fallback: generate a meeting from session context even when occurrence IDs are stale.
           const { data: directSession } = await service
             .from('group_sessions')
-            .select('id, group_id, duration_minutes')
+            .select('id, group_id, duration_minutes, meeting_provider, meeting_external_id, meeting_join_url')
             .eq('id', sessionId)
             .eq('group_id', groupId)
             .single();
 
           const durationMinutes = directSession?.duration_minutes ?? 60;
+          if (directSession?.meeting_join_url) {
+            return NextResponse.json({
+              provider: directSession.meeting_provider ?? null,
+              join_url: directSession.meeting_join_url,
+              meeting_external_id: directSession.meeting_external_id ?? null,
+              cached: true,
+              cache_level: 'session',
+            });
+          }
           const { provider } = await ensureTutorConnected(group.tutor_id);
           const syntheticStart = new Date();
           const syntheticEnd = new Date(syntheticStart.getTime() + durationMinutes * 60 * 1000);
@@ -170,6 +232,25 @@ export async function POST(_req: NextRequest, { params }: Params) {
             updated_at: new Date().toISOString(),
           } as any);
 
+          const { error: sessionCacheError } = await service
+            .from('group_sessions')
+            .update({
+              meeting_provider: provider,
+              meeting_external_id: meeting.meeting_external_id,
+              meeting_join_url: meeting.join_url,
+              meeting_created_at: meeting.meeting_created_at,
+            })
+            .eq('id', directSession?.id ?? sessionId)
+            .eq('group_id', groupId);
+
+          if (sessionCacheError) {
+            console.error('[join-link] failed to cache session fallback meeting link', sessionCacheError);
+            return NextResponse.json(
+              { error: 'Session meeting cache is not configured. Please run migration 090_group_session_meeting_cache.sql.' },
+              { status: 500 }
+            );
+          }
+
           return NextResponse.json({
             provider,
             join_url: meeting.join_url,
@@ -177,24 +258,31 @@ export async function POST(_req: NextRequest, { params }: Params) {
             cached: false,
           });
         }
+
         occurrence = groupFallbackOccurrence;
       }
     }
 
-    const { data: session } = await service
+    // Validate parent session belongs to this group and derive duration from actual parent session.
+    const { data: session, error: sessionError } = await service
       .from('group_sessions')
-      .select('id, group_id, duration_minutes')
+      .select('id, group_id, duration_minutes, meeting_provider, meeting_external_id, meeting_join_url')
       .eq('id', occurrence.group_session_id)
       .eq('group_id', groupId)
       .single();
-    if (!session) {
+    if (sessionError || !session) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
 
+    // Optional consistency check: if URL sessionId doesn't match actual parent, continue with canonical parent.
+    if (sessionId !== occurrence.group_session_id) {
+      // Continue with canonical parent session from occurrence.
+    }
     if (occurrence.status !== 'upcoming') {
       return NextResponse.json({ error: 'Occurrence is not joinable' }, { status: 400 });
     }
 
+    // Reuse any cached link for the whole session to keep tutor/student on one room.
     const { data: sessionCachedOccurrence } = await service
       .from('group_session_occurrences')
       .select('meeting_provider, meeting_external_id, meeting_join_url')
@@ -212,6 +300,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
       });
     }
 
+    // Reuse existing cached link for this occurrence so everyone joins the same room.
     if (occurrence.meeting_join_url) {
       return NextResponse.json({
         provider: occurrence.meeting_provider ?? null,
@@ -221,6 +310,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
       });
     }
 
+    // Enforce join window: 15 min before start until 30 min after end
     const now = Date.now();
     const startMs = new Date(occurrence.scheduled_start_at).getTime();
     const endMs = new Date(occurrence.scheduled_end_at).getTime();
@@ -231,7 +321,10 @@ export async function POST(_req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Session has ended' }, { status: 400 });
     }
 
+    // Use tutor's configured provider
     const { provider } = await ensureTutorConnected(group.tutor_id);
+
+    // Create provider-native meeting on demand
     const meeting = await createMeeting({
       id: `group-occ-${occurrence.id}`,
       booking_id: `group-${groupId}`,
@@ -260,6 +353,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
       updated_at: new Date().toISOString(),
     } as any);
 
+    // Cache the link on the occurrence so tutor + all students receive the same URL.
     const { error: cacheError } = await service
       .from('group_session_occurrences')
       .update({
@@ -271,9 +365,28 @@ export async function POST(_req: NextRequest, { params }: Params) {
       .eq('id', occurrence.id);
 
     if (cacheError) {
-      console.error('[occurrence join] cache update failed', cacheError);
+      console.error('[join-link] cache update failed', cacheError);
       return NextResponse.json(
         { error: 'Meeting link cache missing. Run migration 089_group_occurrence_meeting_cache.sql.' },
+        { status: 500 }
+      );
+    }
+
+    // Also cache at session level to guarantee single link in stale-ID fallbacks.
+    const { error: sessionCacheError } = await service
+      .from('group_sessions')
+      .update({
+        meeting_provider: provider,
+        meeting_external_id: meeting.meeting_external_id,
+        meeting_join_url: meeting.join_url,
+        meeting_created_at: meeting.meeting_created_at,
+      })
+      .eq('id', session.id)
+      .eq('group_id', groupId);
+    if (sessionCacheError) {
+      console.error('[join-link] failed to cache session-level meeting link', sessionCacheError);
+      return NextResponse.json(
+        { error: 'Session meeting cache is not configured. Please run migration 090_group_session_meeting_cache.sql.' },
         { status: 500 }
       );
     }
@@ -285,46 +398,8 @@ export async function POST(_req: NextRequest, { params }: Params) {
       cached: false,
     });
   } catch (err) {
-    console.error('[POST occurrence join]', err);
+    console.error('[POST /api/groups/.../join-link]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
-// DELETE /api/groups/[groupId]/sessions/[sessionId]/occurrences/[occurrenceId] — cancel one occurrence
-export async function DELETE(_req: NextRequest, { params }: Params) {
-  try {
-    const { groupId, sessionId, occurrenceId } = await params;
-    const supabase = await getServerClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const service = getServiceClient();
-    const { data: group } = await service
-      .from('groups')
-      .select('tutor_id')
-      .eq('id', groupId)
-      .single();
-
-    if (!group || group.tutor_id !== user.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    const { error } = await service
-      .from('group_session_occurrences')
-      .update({
-        status: 'cancelled',
-        cancelled_at: new Date().toISOString(),
-      })
-      .eq('id', occurrenceId)
-      .eq('group_session_id', sessionId);
-
-    if (error) throw error;
-
-    return NextResponse.json({ success: true });
-  } catch (err) {
-    console.error('[DELETE occurrence]', err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
-}

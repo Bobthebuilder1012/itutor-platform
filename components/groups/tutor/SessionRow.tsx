@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { GroupSessionWithOccurrences } from '@/lib/types/groups';
+import type { GroupSessionWithOccurrences, GroupOccurrence } from '@/lib/types/groups';
 import StatusBadge from '../shared/StatusBadge';
 
 interface SessionRowProps {
@@ -13,6 +13,19 @@ interface SessionRowProps {
 const DAY_LABELS: Record<number, string> = {
   0: 'Sun', 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat',
 };
+
+type OccurrenceStatus = 'too_early' | 'live' | 'ended';
+
+function getOccurrenceStatus(occ: GroupOccurrence): OccurrenceStatus {
+  const start = new Date(occ.scheduled_start_at).getTime();
+  const end = new Date(occ.scheduled_end_at).getTime();
+  const now = Date.now();
+  const joinWindowMs = 15 * 60 * 1000; // open 15 min early
+
+  if (now < start - joinWindowMs) return 'too_early';
+  if (now > end + 30 * 60 * 1000) return 'ended'; // 30 min grace after end
+  return 'live';
+}
 
 function isOutdated(session: GroupSessionWithOccurrences): boolean {
   const occs = session.occurrences ?? [];
@@ -38,6 +51,7 @@ function formatTime(time: string) {
 
 export default function SessionRow({ session, groupId, onRefresh }: SessionRowProps) {
   const [deleting, setDeleting] = useState(false);
+  const [joiningOccurrenceId, setJoiningOccurrenceId] = useState<string | null>(null);
   const next = getNextOccurrence(session);
   const outdated = isOutdated(session);
 
@@ -65,6 +79,25 @@ export default function SessionRow({ session, groupId, onRefresh }: SessionRowPr
     onRefresh();
   };
 
+  const handleJoinOccurrence = async (occurrenceId: string) => {
+    setJoiningOccurrenceId(occurrenceId);
+    try {
+      const res = await fetch(
+        `/api/groups/${groupId}/sessions/${session.id}/occurrences/${occurrenceId}/join-link`,
+        { method: 'POST' }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.join_url) {
+        throw new Error(data?.error || 'Could not generate meeting link');
+      }
+      window.open(data.join_url, '_blank', 'noopener,noreferrer');
+    } catch (err: any) {
+      alert(err?.message || 'Could not open meeting link. Please try again.');
+    } finally {
+      setJoiningOccurrenceId(null);
+    }
+  };
+
   return (
     <div className="border border-gray-100 rounded-xl p-4">
       <div className="flex items-start justify-between gap-3">
@@ -87,24 +120,45 @@ export default function SessionRow({ session, groupId, onRefresh }: SessionRowPr
         </button>
       </div>
 
-      {/* Upcoming occurrences */}
+      {/* Upcoming occurrences with join buttons */}
       {(session.occurrences ?? []).filter((o) => o.status === 'upcoming').slice(0, 3).map((occ) => {
         const isPast = new Date(occ.scheduled_start_at) < new Date();
+        const occStatus = getOccurrenceStatus(occ);
+
         return (
-          <div key={occ.id} className="mt-2 flex items-center justify-between text-xs">
-            <span className={`flex items-center gap-1.5 ${isPast ? 'text-gray-400' : 'text-gray-600'}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${isPast ? 'bg-gray-300' : 'bg-emerald-400'}`} />
+          <div key={occ.id} className="mt-2.5 flex items-center justify-between gap-2">
+            <span className={`flex items-center gap-1.5 text-xs ${isPast ? 'text-gray-400' : 'text-gray-600'}`}>
+              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isPast ? 'bg-gray-300' : occStatus === 'live' ? 'bg-green-500 animate-pulse' : 'bg-emerald-400'}`} />
               {new Date(occ.scheduled_start_at).toLocaleString(undefined, {
                 weekday: 'short', month: 'short', day: 'numeric',
                 hour: 'numeric', minute: '2-digit',
               })}
+              {occStatus === 'live' && (
+                <span className="ml-1 text-[10px] font-bold text-green-600 uppercase tracking-wide">● Live</span>
+              )}
             </span>
-            <button
-              onClick={() => handleCancelOccurrence(occ.id)}
-              className="text-gray-300 hover:text-red-400 transition-colors ml-2"
-            >
-              ×
-            </button>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {occStatus === 'live' ? (
+                <button
+                  onClick={() => handleJoinOccurrence(occ.id)}
+                  disabled={joiningOccurrenceId === occ.id}
+                  className="inline-flex items-center gap-1 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold px-3 py-1 rounded-lg transition-colors"
+                >
+                  {joiningOccurrenceId === occ.id ? 'Opening…' : 'Join Session'}
+                </button>
+              ) : occStatus === 'ended' ? (
+                <span className="text-[11px] text-gray-400 italic">Session ended</span>
+              ) : (
+                <span className="text-[11px] text-gray-400 italic">Opens 15 min before</span>
+              )}
+              <button
+                onClick={() => handleCancelOccurrence(occ.id)}
+                className="text-gray-300 hover:text-red-400 transition-colors"
+                title="Cancel this occurrence"
+              >
+                ×
+              </button>
+            </div>
           </div>
         );
       })}
