@@ -170,7 +170,7 @@ export default function GroupsPageClient({
 
         {showCreateGroup && (
           <CreateGroupModal
-            onCreated={(id) => { setShowCreateGroup(false); fetchMyGroups(); fetchDiscover(); setSelectedGroupId(id); }}
+            onCreated={(id) => { setShowCreateGroup(false); void fetchAll(); setSelectedGroupId(id); }}
             onClose={() => setShowCreateGroup(false)}
           />
         )}

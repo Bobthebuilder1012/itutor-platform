@@ -49,15 +49,19 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       .eq('status', 'approved');
 
     if (members && members.length > 0) {
-      await service.from('notifications').insert(
-        members.map((m: any) => ({
-          user_id: m.user_id,
-          type: 'group_session_updated',
-          title: 'Group session updated',
-          message: `A session schedule has been updated in your group.`,
-          link: `/groups`,
-        }))
-      ).catch(() => {});
+      try {
+        await service.from('notifications').insert(
+          members.map((m: any) => ({
+            user_id: m.user_id,
+            type: 'group_session_updated',
+            title: 'Group session updated',
+            message: `A session schedule has been updated in your group.`,
+            link: `/groups`,
+          }))
+        );
+      } catch {
+        // Do not fail session update if notification insert fails.
+      }
     }
 
     return NextResponse.json({ session });

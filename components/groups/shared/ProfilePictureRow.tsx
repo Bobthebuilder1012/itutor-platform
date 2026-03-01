@@ -2,8 +2,8 @@
 
 interface ProfilePreview {
   id: string;
-  full_name: string | null;
-  avatar_url: string | null;
+  full_name?: string | null;
+  avatar_url?: string | null;
 }
 
 interface ProfilePictureRowProps {

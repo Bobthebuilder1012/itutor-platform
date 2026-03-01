@@ -128,7 +128,7 @@ export async function ensureSubjectCommunitiesForSchool(
     for (const form_level of FORM_LEVELS) {
       const { error } = await supabase.from(SUBJECT_COMMUNITIES).upsert(
         { school_id: institutionId, subject_name, form_level, member_count: 0 },
-        { onConflict: 'school_id,subject_name,form_level', doNothing: true }
+        { onConflict: 'school_id,subject_name,form_level', ignoreDuplicates: true }
       );
       if (!error) created++;
     }
@@ -316,5 +316,5 @@ export async function pinSessionToCommunity(
   });
   if (pinError) return { ok: false, error: pinError.message };
   const { error: msgError } = await postSystemMessage(supabase, communityId, 'A community session has been scheduled.');
-  return msgError ? { ok: false, error: msgError.message } : { ok: true };
+  return msgError ? { ok: false, error: msgError } : { ok: true };
 }

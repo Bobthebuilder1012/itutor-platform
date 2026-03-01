@@ -41,17 +41,21 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
     if (error) throw error;
 
-    // Notify student of approval/denial
-    await service.from('notifications').insert({
-      user_id: userId,
-      type: status === 'approved' ? 'group_request_approved' : 'group_request_denied',
-      title: status === 'approved' ? 'Group request approved' : 'Group request declined',
-      message:
-        status === 'approved'
-          ? `Your request to join "${group.name}" has been approved.`
-          : `Your request to join "${group.name}" was not approved.`,
-      link: `/groups`,
-    }).catch(() => {});
+    // Notify student of approval/denial (non-critical)
+    try {
+      await service.from('notifications').insert({
+        user_id: userId,
+        type: status === 'approved' ? 'group_request_approved' : 'group_request_denied',
+        title: status === 'approved' ? 'Group request approved' : 'Group request declined',
+        message:
+          status === 'approved'
+            ? `Your request to join "${group.name}" has been approved.`
+            : `Your request to join "${group.name}" was not approved.`,
+        link: `/groups`,
+      });
+    } catch {
+      // Do not fail membership update if notification insert fails.
+    }
 
     return NextResponse.json({ member });
   } catch (err) {

@@ -92,16 +92,18 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
     if (error) throw error;
 
-    // Notify tutor of new join request
-    await service.from('notifications').insert({
-      user_id: group.tutor_id,
-      type: 'group_join_request',
-      title: 'New group join request',
-      message: 'A student has requested to join your group.',
-      link: `/groups`,
-    }).catch(() => {
+    // Notify tutor of new join request (non-critical)
+    try {
+      await service.from('notifications').insert({
+        user_id: group.tutor_id,
+        type: 'group_join_request',
+        title: 'New group join request',
+        message: 'A student has requested to join your group.',
+        link: `/groups`,
+      });
+    } catch {
       // Non-critical: notifications table may use a different name
-    });
+    }
 
     return NextResponse.json({ member }, { status: 201 });
   } catch (err) {

@@ -72,15 +72,19 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
     if (error) throw error;
 
-    // Notify tutor of new private message request
-    await service.from('notifications').insert({
-      user_id: group.tutor_id,
-      type: 'new_message',
-      title: 'New private message',
-      message: 'A group member has sent you a private message.',
-      link: `/tutor/messages/${conversation.id}`,
-      related_conversation_id: conversation.id,
-    }).catch(() => {});
+    // Notify tutor of new private message request (non-critical)
+    try {
+      await service.from('notifications').insert({
+        user_id: group.tutor_id,
+        type: 'new_message',
+        title: 'New private message',
+        message: 'A group member has sent you a private message.',
+        link: `/tutor/messages/${conversation.id}`,
+        related_conversation_id: conversation.id,
+      });
+    } catch {
+      // Do not fail conversation creation if notification insert fails.
+    }
 
     return NextResponse.json({ conversationId: conversation.id }, { status: 201 });
   } catch (err) {

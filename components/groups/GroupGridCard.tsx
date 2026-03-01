@@ -88,7 +88,11 @@ export default function GroupGridCard({ group, onClick }: GroupGridCardProps) {
       <div className="flex items-center justify-between pt-2 border-t border-gray-100">
         {group.member_count > 0 ? (
           <ProfilePictureRow
-            profiles={group.member_previews}
+            profiles={group.member_previews.map((p) => ({
+              id: p.id,
+              full_name: p.full_name ?? null,
+              avatar_url: p.avatar_url ?? null,
+            }))}
             totalCount={group.member_count}
             size="sm"
           />

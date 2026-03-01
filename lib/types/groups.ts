@@ -104,6 +104,7 @@ export interface GroupMessage {
 export interface CreateGroupInput {
   name: string;
   description?: string;
+  subjects?: string[];
   subject?: string;
 }
 

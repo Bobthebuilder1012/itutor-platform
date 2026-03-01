@@ -59,7 +59,11 @@ export default function GroupCard({ group, selected, onClick }: GroupCardProps) 
       {group.member_count > 0 && (
         <div className="mt-2">
           <ProfilePictureRow
-            profiles={group.member_previews}
+            profiles={group.member_previews.map((p) => ({
+              id: p.id,
+              full_name: p.full_name ?? null,
+              avatar_url: p.avatar_url ?? null,
+            }))}
             totalCount={group.member_count}
             size="sm"
           />
