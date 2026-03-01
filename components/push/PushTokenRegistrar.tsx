@@ -6,6 +6,7 @@ const TOKEN_STORAGE_KEY = 'itutor_push_token_web_v1';
 
 function canUseWebPush() {
   return (
+    process.env.NODE_ENV === 'production' &&
     typeof window !== 'undefined' &&
     'Notification' in window &&
     'serviceWorker' in navigator
@@ -34,6 +35,15 @@ export default function PushTokenRegistrar() {
   const ranRef = useRef(false);
 
   useEffect(() => {
+    // In development, remove stale service workers to avoid cached/chunk mismatch issues.
+    if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker
+        .getRegistrations()
+        .then((regs) => Promise.all(regs.map((r) => r.unregister())))
+        .catch(() => {});
+      return;
+    }
+
     if (ranRef.current) return;
     ranRef.current = true;
 
