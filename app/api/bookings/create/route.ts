@@ -12,6 +12,7 @@ type Body = {
   requestedEndAt: string;
   studentNotes?: string;
   durationMinutes?: number;
+  communityId?: string | null;
 };
 
 function getAuthedSupabase() {
@@ -63,6 +64,7 @@ export async function POST(request: NextRequest) {
       p_requested_end_at: body.requestedEndAt,
       p_student_notes: body.studentNotes || null,
       p_duration_minutes: durationMinutes,
+      p_community_id: body.communityId ?? null,
     });
 
     if (error) {

@@ -4,7 +4,6 @@ import {
   getSchoolCommunityHeader,
   getMySubjectCommunities,
   getJoinableSubjectCommunities,
-  ensureSubjectCommunitiesForSchool,
 } from '@/lib/subject-communities';
 import DashboardLayout from '@/components/DashboardLayout';
 import SchoolCommunityHeader from '@/components/subject-communities/SchoolCommunityHeader';
@@ -21,31 +20,46 @@ export default async function CommunitiesPage() {
 
     const profileRes = await supabase
       .from('profiles')
-      .select('role, display_name, full_name, username, institution_id')
+      .select('role, display_name, full_name, username, institution_id, form_level')
       .eq('id', user.id)
       .single();
     const profile = profileRes.data;
     const role = (profile?.role as 'student' | 'tutor' | 'parent' | 'reviewer' | 'admin') ?? 'student';
     const userName = profile?.display_name || profile?.full_name || profile?.username || 'User';
     const institutionId = profile?.institution_id ?? null;
+    const hasFormLevel = !!(profile?.form_level && String(profile.form_level).trim());
 
-    const admin = getServiceClient();
+    let schoolHeader: Awaited<ReturnType<typeof getSchoolCommunityHeader>> = null;
+    let myCommunities: Awaited<ReturnType<typeof getMySubjectCommunities>> = [];
+    let joinableCommunities: Awaited<ReturnType<typeof getJoinableSubjectCommunities>> = [];
+    let dataLoadFailed = false;
 
-    // Ensure subject communities exist for user's school
-    if (institutionId) {
-      await ensureSubjectCommunitiesForSchool(admin, institutionId);
+    try {
+      const admin = getServiceClient();
+      // Load visible data first so page renders fast; ensure runs in background via client
+      const [header, my, joinable] = await Promise.all([
+        getSchoolCommunityHeader(admin, institutionId),
+        getMySubjectCommunities(admin, user.id),
+        getJoinableSubjectCommunities(admin, user.id),
+      ]);
+      schoolHeader = header;
+      myCommunities = my;
+      joinableCommunities = joinable;
+    } catch (dataError) {
+      dataLoadFailed = true;
+      console.error('[CommunitiesPage] data load failed:', dataError);
     }
-
-    const [schoolHeader, myCommunities, joinableCommunities] = await Promise.all([
-      getSchoolCommunityHeader(admin, institutionId),
-      getMySubjectCommunities(admin, user.id),
-      getJoinableSubjectCommunities(admin, user.id),
-    ]);
 
     return (
       <DashboardLayout role={role} userName={userName}>
         <div className="mx-auto w-full max-w-[900px] px-4 py-6 sm:px-6">
           <h1 className="text-xl font-semibold text-gray-900 mb-6">Communities</h1>
+
+          {dataLoadFailed && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800 text-sm mb-6">
+              Communities data could not be loaded. Ensure the database migration (088_subject_communities_spec.sql) has been run and <code className="bg-amber-100 px-1">SUPABASE_SERVICE_ROLE_KEY</code> is set in .env.local.
+            </div>
+          )}
 
           <div className="space-y-6">
             {/* Section A: School Community Header - always at top */}
@@ -68,6 +82,7 @@ export default async function CommunitiesPage() {
             <CommunitiesPageClient
               initialJoinable={joinableCommunities}
               hasSchool={!!institutionId}
+              hasFormLevel={hasFormLevel}
               role={role}
             />
           </div>

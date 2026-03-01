@@ -3,8 +3,11 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { createBrowserClient } from '@supabase/ssr';
-import type { SubjectCommunityWithSchool } from '@/lib/types/subject-communities';
-import type { SubjectCommunityMessageWithSender } from '@/lib/types/subject-communities';
+import type {
+  SubjectCommunityWithSchool,
+  SubjectCommunityMessageWithSender,
+  SubjectCommunityPinnedSession,
+} from '@/lib/types/subject-communities';
 
 interface Member {
   id: string;
@@ -18,6 +21,7 @@ interface SubjectCommunityChatProps {
   communityTitle: string;
   initialMembers: Member[];
   initialMessages: SubjectCommunityMessageWithSender[];
+  initialPinnedSessions?: SubjectCommunityPinnedSession[];
   currentUserId: string;
 }
 
@@ -32,18 +36,25 @@ function senderName(msg: SubjectCommunityMessageWithSender): string {
   return 'A member';
 }
 
+function formatSessionDate(iso: string) {
+  const d = new Date(iso);
+  return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 export default function SubjectCommunityChat({
   community,
   communityId,
   communityTitle,
   initialMembers,
   initialMessages,
+  initialPinnedSessions = [],
   currentUserId,
 }: SubjectCommunityChatProps) {
   const [messages, setMessages] = useState(initialMessages);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
+  const [pinnedSessions] = useState(initialPinnedSessions);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -234,7 +245,41 @@ export default function SubjectCommunityChat({
           </div>
           <div className="flex-shrink-0 p-4 border-t border-gray-200">
             <h3 className="text-sm font-semibold text-gray-700 mb-2">Pinned sessions</h3>
-            <p className="text-xs text-gray-500">No pinned sessions yet.</p>
+            {pinnedSessions.length === 0 ? (
+              <p className="text-xs text-gray-500">No pinned sessions yet.</p>
+            ) : (
+              <ul className="space-y-3">
+                {pinnedSessions.map((pin) => {
+                  const s = pin.session;
+                  const tutorName = s?.tutor?.full_name || s?.tutor?.username || 'Tutor';
+                  const start = s?.scheduled_start_at ? new Date(s.scheduled_start_at) : null;
+                  const joinUrl = s?.join_url;
+                  return (
+                    <li key={pin.id} className="rounded-lg border border-gray-200 bg-white p-3 text-sm">
+                      <p className="font-medium text-gray-900">Community session</p>
+                      <p className="text-xs text-gray-600 mt-0.5">{tutorName}</p>
+                      {start && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          {formatSessionDate(start.toISOString())} · {formatTime(start.toISOString())}
+                        </p>
+                      )}
+                      {joinUrl ? (
+                        <a
+                          href={joinUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-2 inline-block rounded-lg bg-itutor-green px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
+                        >
+                          Join
+                        </a>
+                      ) : (
+                        <span className="mt-2 inline-block text-xs text-gray-400">Link not ready</span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
         </aside>
       </div>

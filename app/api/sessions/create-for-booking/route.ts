@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getServiceClient } from '@/lib/supabase/server';
+import { pinSessionToCommunity } from '@/lib/subject-communities';
 import { createSessionForBooking } from '@/lib/services/sessionService';
 
 export async function POST(request: NextRequest) {
@@ -19,6 +21,14 @@ export async function POST(request: NextRequest) {
     const session = await createSessionForBooking(booking_id);
     
     console.log('✅ Session created successfully:', session.id);
+
+    // Phase 5: if this is a community session, pin it and post system message
+    const communityId = (session as { community_id?: string }).community_id;
+    if (communityId && session.scheduled_end_at) {
+      const admin = getServiceClient();
+      await pinSessionToCommunity(admin, communityId, session.id, session.scheduled_end_at);
+    }
+
     return NextResponse.json({ session }, { status: 200 });
   } catch (error) {
     console.error('❌ Error creating session:', error);

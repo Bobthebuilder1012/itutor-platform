@@ -6,6 +6,7 @@ import {
   getSubjectCommunityMembership,
   getSubjectCommunityMembers,
   getSubjectCommunityMessages,
+  getPinnedSessionsForCommunity,
 } from '@/lib/subject-communities';
 import DashboardLayout from '@/components/DashboardLayout';
 import SubjectCommunityChat from '@/components/subject-communities/SubjectCommunityChat';
@@ -53,21 +54,12 @@ export default async function SubjectCommunityPage({ params }: PageProps) {
       );
     }
 
-    if (!membership) {
-      return (
-        <DashboardLayout role={role} userName={userName}>
-          <div className="px-4 py-6 sm:px-0 max-w-4xl mx-auto text-center">
-            <h1 className="text-xl font-semibold text-gray-900 mb-2">Join first</h1>
-            <p className="text-gray-600 mb-4">You need to join this community to view the chat.</p>
-            <Link href="/communities" className="text-itutor-green hover:underline">Back to communities</Link>
-          </div>
-        </DashboardLayout>
-      );
-    }
+    if (!membership) redirect('/communities');
 
-    const [members, initialMessages] = await Promise.all([
+    const [members, initialMessages, pinnedSessions] = await Promise.all([
       getSubjectCommunityMembers(admin, communityId),
       getSubjectCommunityMessages(admin, communityId, { limit: 50 }),
+      getPinnedSessionsForCommunity(admin, communityId).catch(() => []),
     ]);
 
     return (
@@ -78,6 +70,7 @@ export default async function SubjectCommunityPage({ params }: PageProps) {
           communityTitle={communityDisplayName(community)}
           initialMembers={members}
           initialMessages={initialMessages}
+          initialPinnedSessions={pinnedSessions}
           currentUserId={user.id}
         />
       </DashboardLayout>

@@ -87,7 +87,8 @@ export async function createBookingRequest(
   requestedStartAt: string,
   requestedEndAt: string,
   studentNotes?: string,
-  durationMinutes: number = 60
+  durationMinutes: number = 60,
+  communityId?: string | null
 ): Promise<{ success: boolean; booking_id: string }> {
   const response = await fetch('/api/bookings/create', {
     method: 'POST',
@@ -100,6 +101,7 @@ export async function createBookingRequest(
       requestedEndAt,
       studentNotes,
       durationMinutes,
+      communityId: communityId ?? null,
     }),
   });
 

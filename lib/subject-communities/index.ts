@@ -5,11 +5,15 @@ import type {
   SubjectCommunityMembership,
   SubjectCommunityMessage,
   SubjectCommunityMessageWithSender,
+  SubjectCommunityPinnedSession,
 } from '@/lib/types/subject-communities';
 
 const SUBJECT_COMMUNITIES = 'subject_communities';
 const SUBJECT_MEMBERSHIPS = 'subject_community_memberships';
 const SUBJECT_MESSAGES = 'subject_community_messages';
+
+/** Form levels students can select at sign up (must match onboarding) */
+export const FORM_LEVELS = ['Form 1', 'Form 2', 'Form 3', 'Form 4', 'Form 5', 'Lower 6', 'Upper 6'] as const;
 
 /** Get school info + student count for School Community Header (no membership table) */
 export async function getSchoolCommunityHeader(
@@ -65,15 +69,21 @@ export async function getMySubjectCommunities(
   })) as SubjectCommunityWithSchool[];
 }
 
-/** Get joinable subject communities for user's school (for Join section) */
+/** Get joinable subject communities for user's school and form level (for Join section) */
 export async function getJoinableSubjectCommunities(
   supabase: SupabaseClient,
   userId: string,
   searchQuery?: string
 ): Promise<SubjectCommunityWithSchool[]> {
-  const { data: profile } = await supabase.from('profiles').select('institution_id').eq('id', userId).single();
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('institution_id, form_level')
+    .eq('id', userId)
+    .single();
   const institutionId = profile?.institution_id;
+  const formLevel = profile?.form_level?.trim() || null;
   if (!institutionId) return [];
+  if (!formLevel) return [];
 
   const { data: joinedIds } = await supabase
     .from(SUBJECT_MEMBERSHIPS)
@@ -85,8 +95,8 @@ export async function getJoinableSubjectCommunities(
     .from(SUBJECT_COMMUNITIES)
     .select('*')
     .eq('school_id', institutionId)
-    .order('subject_name')
-    .order('form_level');
+    .eq('form_level', formLevel)
+    .order('subject_name');
 
   if (searchQuery?.trim()) {
     const term = searchQuery.trim();
@@ -104,26 +114,24 @@ export async function getJoinableSubjectCommunities(
   })) as SubjectCommunityWithSchool[];
 }
 
-/** Ensure subject communities exist for an institution (create from subjects table) */
+/** Ensure pre-made subject communities exist for an institution: every subject × every form level */
 export async function ensureSubjectCommunitiesForSchool(
   supabase: SupabaseClient,
   institutionId: string
 ): Promise<{ created: number }> {
-  const { data: subjects } = await supabase.from('subjects').select('name, level').limit(200);
+  const { data: subjects } = await supabase.from('subjects').select('name').limit(200);
   if (!subjects?.length) return { created: 0 };
 
-  const combos = new Map<string, { subject_name: string; form_level: string }>();
-  for (const s of subjects) {
-    const level = s.level || 'Form 4-5';
-    combos.set(`${s.name}|${level}`, { subject_name: s.name, form_level: level });
-  }
+  const subjectNames = [...new Set(subjects.map((s) => s.name))];
   let created = 0;
-  for (const { subject_name, form_level } of combos.values()) {
-    const { error } = await supabase.from(SUBJECT_COMMUNITIES).upsert(
-      { school_id: institutionId, subject_name, form_level, member_count: 0 },
-      { onConflict: 'school_id,subject_name,form_level', doNothing: true }
-    );
-    if (!error) created++;
+  for (const subject_name of subjectNames) {
+    for (const form_level of FORM_LEVELS) {
+      const { error } = await supabase.from(SUBJECT_COMMUNITIES).upsert(
+        { school_id: institutionId, subject_name, form_level, member_count: 0 },
+        { onConflict: 'school_id,subject_name,form_level', doNothing: true }
+      );
+      if (!error) created++;
+    }
   }
   return { created };
 }
@@ -244,4 +252,69 @@ export async function postSystemMessage(
     message_type: 'system',
   });
   return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+const PINNED_SESSIONS = 'subject_community_pinned_sessions';
+
+/** Get pinned sessions for a community (not expired). Only members can see. */
+export async function getPinnedSessionsForCommunity(
+  supabase: SupabaseClient,
+  communityId: string
+): Promise<SubjectCommunityPinnedSession[]> {
+  const { data: pinned } = await supabase
+    .from(PINNED_SESSIONS)
+    .select('id, community_id, session_id, created_at, expires_at')
+    .eq('community_id', communityId)
+    .gt('expires_at', new Date().toISOString())
+    .order('expires_at', { ascending: true });
+  if (!pinned?.length) return [];
+
+  const sessionIds = pinned.map((p) => p.session_id);
+  const { data: sessions } = await supabase
+    .from('sessions')
+    .select('id, scheduled_start_at, scheduled_end_at, join_url, tutor_id')
+    .in('id', sessionIds);
+  if (!sessions?.length) return pinned as SubjectCommunityPinnedSession[];
+
+  const tutorIds = [...new Set(sessions.map((s) => s.tutor_id))];
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, full_name, username')
+    .in('id', tutorIds);
+  const tutorMap = new Map((profiles ?? []).map((p) => [p.id, p]));
+
+  const sessionMap = new Map(sessions.map((s) => [s.id, { ...s, tutor: tutorMap.get(s.tutor_id) ?? null }]));
+  return pinned.map((p) => ({
+    ...p,
+    session: sessionMap.get(p.session_id)
+      ? {
+          id: sessionMap.get(p.session_id)!.id,
+          scheduled_start_at: sessionMap.get(p.session_id)!.scheduled_start_at,
+          scheduled_end_at: sessionMap.get(p.session_id)!.scheduled_end_at,
+          join_url: sessionMap.get(p.session_id)!.join_url,
+          tutor_id: sessionMap.get(p.session_id)!.tutor_id,
+          tutor: sessionMap.get(p.session_id)!.tutor
+            ? { full_name: sessionMap.get(p.session_id)!.tutor!.full_name, username: sessionMap.get(p.session_id)!.tutor!.username }
+            : undefined,
+        }
+      : undefined,
+  })) as SubjectCommunityPinnedSession[];
+}
+
+/** Pin a session to a community and post system message (Phase 5: teacher accepts community session). */
+export async function pinSessionToCommunity(
+  supabase: SupabaseClient,
+  communityId: string,
+  sessionId: string,
+  sessionEndAt: string
+): Promise<{ ok: boolean; error?: string }> {
+  const expiresAt = new Date(new Date(sessionEndAt).getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days after session end
+  const { error: pinError } = await supabase.from(PINNED_SESSIONS).insert({
+    community_id: communityId,
+    session_id: sessionId,
+    expires_at: expiresAt.toISOString(),
+  });
+  if (pinError) return { ok: false, error: pinError.message };
+  const { error: msgError } = await postSystemMessage(supabase, communityId, 'A community session has been scheduled.');
+  return msgError ? { ok: false, error: msgError.message } : { ok: true };
 }

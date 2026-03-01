@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { createBookingRequest, getSessionTypes } from '@/lib/services/bookingService';
 import { SessionType } from '@/lib/types/booking';
 import { formatDateTime, getDurationMinutes, formatDuration } from '@/lib/utils/calendar';
+import type { SubjectCommunityWithSchool } from '@/lib/types/subject-communities';
 
 interface BookingRequestModalProps {
   isOpen: boolean;
@@ -37,6 +38,17 @@ export default function BookingRequestModal({
   const [error, setError] = useState('');
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [durationError, setDurationError] = useState('');
+  const [sessionType, setSessionType] = useState<'individual' | 'community'>('individual');
+  const [communityId, setCommunityId] = useState<string>('');
+  const [myCommunities, setMyCommunities] = useState<SubjectCommunityWithSchool[]>([]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch('/api/subject-communities/my')
+      .then((r) => r.json())
+      .then((data) => (data.ok && Array.isArray(data.communities) ? setMyCommunities(data.communities) : []))
+      .catch(() => {});
+  }, [isOpen]);
 
   // Calculate price based on duration
   const calculatedPrice = useMemo(() => {
@@ -73,7 +85,7 @@ export default function BookingRequestModal({
     try {
       // First, get or create a session type for this tutor-subject combination
       const sessionTypes = await getSessionTypes(tutorId);
-      let sessionType = sessionTypes.find(st => st.subject_id === subjectId);
+      const selectedSessionType = sessionTypes.find(st => st.subject_id === subjectId);
       
       // Calculate end time based on start time + duration
       const endAt = new Date(new Date(selectedStartAt).getTime() + durationMinutes * 60000).toISOString();
@@ -82,11 +94,12 @@ export default function BookingRequestModal({
         studentId,
         tutorId,
         subjectId,
-        sessionType?.id || '', // Will be handled by a modified backend function
+        selectedSessionType?.id || '',
         selectedStartAt,
         endAt,
         studentNotes || undefined,
-        durationMinutes
+        durationMinutes,
+        sessionType === 'community' && communityId ? communityId : null
       );
 
       onSuccess(result.booking_id);
@@ -167,6 +180,54 @@ export default function BookingRequestModal({
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-3">
+          {/* Session type: Individual vs Community (spec Phase 4) */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Session type</label>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="sessionType"
+                  checked={sessionType === 'individual'}
+                  onChange={() => { setSessionType('individual'); setCommunityId(''); }}
+                  className="text-itutor-green focus:ring-itutor-green"
+                />
+                <span className="text-sm text-gray-900">Individual session</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="sessionType"
+                  checked={sessionType === 'community'}
+                  onChange={() => setSessionType('community')}
+                  className="text-itutor-green focus:ring-itutor-green"
+                />
+                <span className="text-sm text-gray-900">Community session</span>
+              </label>
+            </div>
+            {sessionType === 'community' && (
+              <div className="mt-2">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Community</label>
+                <select
+                  value={communityId}
+                  onChange={(e) => setCommunityId(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border-2 border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green text-sm"
+                  required={sessionType === 'community'}
+                >
+                  <option value="">Select a community</option>
+                  {myCommunities.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.form_level} {c.subject_name} ({c.member_count} members)
+                    </option>
+                  ))}
+                </select>
+                {myCommunities.length === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">Join a community from the Communities page first.</p>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Duration Input */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
