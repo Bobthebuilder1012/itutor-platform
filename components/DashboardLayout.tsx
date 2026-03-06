@@ -13,6 +13,7 @@ import Footer from '@/components/landing/Footer';
 import EnableNotificationsPrompt from '@/components/EnableNotificationsPrompt';
 import IOSInstallPrompt from '@/components/IOSInstallPrompt';
 import { initializePushNotifications } from '@/lib/services/browserPushService';
+import { isCommunitiesArchived } from '@/lib/featureFlags/communitiesArchived';
 import dynamic from 'next/dynamic';
 
 const PushTokenRegistrar = dynamic(() => import('@/components/push/PushTokenRegistrar'), {
@@ -115,9 +116,12 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
   };
 
   const getNavLinks = () => {
+    const hideCommunities = isCommunitiesArchived();
+    const filterCommunities = (links: { href: string; label: string }[]) =>
+      hideCommunities ? links.filter((l) => l.href !== '/communities') : links;
     switch (role) {
       case 'student':
-        return [
+        return filterCommunities([
           { href: '/student/find-tutors', label: 'Find iTutors' },
           { href: '/communities', label: 'Communities' },
           { href: '/groups', label: 'Groups' },
@@ -125,23 +129,23 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/student/bookings', label: 'My Bookings' },
           { href: '/student/sessions', label: 'Sessions' },
           { href: '/student/ratings', label: 'My Reviews' },
-        ];
+        ]);
       case 'tutor':
-        return [
+        return filterCommunities([
           { href: '/tutor/find-students', label: 'Find Students' },
           { href: '/tutor/bookings', label: 'Booking Requests' },
           { href: '/communities', label: 'Communities' },
           { href: '/groups', label: 'Groups' },
           { href: '/tutor/curriculum', label: 'Curriculum' },
           { href: '/tutor/sessions', label: 'Sessions' },
-        ];
+        ]);
       case 'parent':
-        return [
+        return filterCommunities([
           { href: '/parent/add-child', label: 'Add Child' },
           { href: '/communities', label: 'Communities' },
           { href: '/parent/approve-bookings', label: 'Booking Requests' },
           { href: '/parent/sessions', label: 'Sessions' },
-        ];
+        ]);
       case 'reviewer':
         return [
           { href: '/reviewer/verification/queue', label: 'Verification Queue' },

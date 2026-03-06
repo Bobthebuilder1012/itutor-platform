@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useProfile } from '@/lib/hooks/useProfile';
+import { isCommunitiesArchived } from '@/lib/featureFlags/communitiesArchived';
 import DashboardLayout from '@/components/DashboardLayout';
 import ReportModal from '@/components/communities/ReportModal';
 import ModeratorMenu from '@/components/communities/ModeratorMenu';
@@ -25,6 +26,10 @@ export default function QuestionDetailPage() {
   const [reportTarget, setReportTarget] = useState<{ type: 'question' | 'answer'; id: string } | null>(null);
 
   useEffect(() => {
+    if (isCommunitiesArchived()) {
+      router.replace('/communities');
+      return;
+    }
     if (!profileLoading && !profile) {
       router.push('/login');
     } else if (profile) {

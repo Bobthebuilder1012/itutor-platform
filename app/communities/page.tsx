@@ -1,10 +1,13 @@
 import { redirect } from 'next/navigation';
+import Link from 'next/link';
+
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import {
   getSchoolCommunityHeader,
   getMySubjectCommunities,
   getJoinableSubjectCommunities,
 } from '@/lib/subject-communities';
+import { isCommunitiesArchived } from '@/lib/featureFlags/communitiesArchived';
 import DashboardLayout from '@/components/DashboardLayout';
 import SchoolCommunityHeader from '@/components/subject-communities/SchoolCommunityHeader';
 import MyCommunitiesSection from '@/components/subject-communities/MyCommunitiesSection';
@@ -13,22 +16,38 @@ import CommunitiesPageClient from '@/components/subject-communities/CommunitiesP
 export const dynamic = 'force-dynamic';
 
 export default async function CommunitiesPage() {
+  const supabase = await getServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const profileRes = await supabase
+    .from('profiles')
+    .select('role, display_name, full_name, username, institution_id, form_level')
+    .eq('id', user.id)
+    .single();
+  const profile = profileRes.data;
+  const role = (profile?.role as 'student' | 'tutor' | 'parent' | 'reviewer' | 'admin') ?? 'student';
+  const userName = profile?.display_name || profile?.full_name || profile?.username || 'User';
+
+  if (isCommunitiesArchived()) {
+    const dashboardHref = role === 'student' ? '/student/dashboard' : role === 'tutor' ? '/tutor/dashboard' : '/parent/dashboard';
+    return (
+      <DashboardLayout role={role} userName={userName}>
+        <div className="px-4 py-6 sm:px-0 max-w-2xl mx-auto text-center">
+          <h1 className="text-xl font-semibold text-gray-900 mb-2">Communities</h1>
+          <p className="text-gray-600 mb-4">Communities are archived for our 3.0 launch and are not shown on the main site right now.</p>
+          <Link href={dashboardHref} className="text-itutor-green hover:underline font-medium">
+            Back to dashboard
+          </Link>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  const institutionId = profile?.institution_id ?? null;
+  const hasFormLevel = !!(profile?.form_level && String(profile.form_level).trim());
+
   try {
-    const supabase = await getServerClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) redirect('/login');
-
-    const profileRes = await supabase
-      .from('profiles')
-      .select('role, display_name, full_name, username, institution_id, form_level')
-      .eq('id', user.id)
-      .single();
-    const profile = profileRes.data;
-    const role = (profile?.role as 'student' | 'tutor' | 'parent' | 'reviewer' | 'admin') ?? 'student';
-    const userName = profile?.display_name || profile?.full_name || profile?.username || 'User';
-    const institutionId = profile?.institution_id ?? null;
-    const hasFormLevel = !!(profile?.form_level && String(profile.form_level).trim());
-
     let schoolHeader: Awaited<ReturnType<typeof getSchoolCommunityHeader>> = null;
     let myCommunities: Awaited<ReturnType<typeof getMySubjectCommunities>> = [];
     let joinableCommunities: Awaited<ReturnType<typeof getJoinableSubjectCommunities>> = [];
@@ -36,7 +55,6 @@ export default async function CommunitiesPage() {
 
     try {
       const admin = getServiceClient();
-      // Load visible data first so page renders fast; ensure runs in background via client
       const [header, my, joinable] = await Promise.all([
         getSchoolCommunityHeader(admin, institutionId),
         getMySubjectCommunities(admin, user.id),
@@ -62,7 +80,6 @@ export default async function CommunitiesPage() {
           )}
 
           <div className="space-y-6">
-            {/* Section A: School Community Header - always at top */}
             {schoolHeader && (
               <div className="flex justify-center">
                 <div className="w-full max-w-[900px]">
@@ -75,10 +92,8 @@ export default async function CommunitiesPage() {
               </div>
             )}
 
-            {/* Section B: My Communities - only if user has ≥1 membership */}
             <MyCommunitiesSection communities={myCommunities} />
 
-            {/* Section C: Join a Community */}
             <CommunitiesPageClient
               initialJoinable={joinableCommunities}
               hasSchool={!!institutionId}
