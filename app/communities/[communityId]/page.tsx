@@ -6,6 +6,7 @@ import {
   getMyMembershipWithClient,
   getCommunityMembersWithClient,
 } from '@/lib/communities';
+import { isCommunitiesArchived } from '@/lib/featureFlags/communitiesArchived';
 import { syncSchoolCommunityMembers } from '@/lib/server/ensureSchoolCommunity';
 import DashboardLayout from '@/components/DashboardLayout';
 import CommunityViewLayout from '@/components/communities/CommunityViewLayout';
@@ -18,6 +19,8 @@ interface PageProps {
 export const dynamic = 'force-dynamic';
 
 export default async function CommunityDetailPage({ params }: PageProps) {
+  if (isCommunitiesArchived()) redirect('/communities');
+
   try {
     const { communityId } = await params;
     const supabase = await getServerClient();
