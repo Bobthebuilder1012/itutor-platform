@@ -27,8 +27,6 @@ export default function VideoSetupPage() {
   const [connection, setConnection] = useState<Connection | null>(null);
   const [loading, setLoading] = useState(true);
   const [switching, setSwitching] = useState(false);
-  const [futureSessions, setFutureSessions] = useState<number>(0);
-  const [checkingSessions, setCheckingSessions] = useState(true);
 
   useEffect(() => {
     if (profileLoading) return;
@@ -39,7 +37,6 @@ export default function VideoSetupPage() {
     }
 
     loadConnection();
-    checkFutureSessions();
     
     // Check for OAuth callback results
     const params = new URLSearchParams(window.location.search);
@@ -95,54 +92,12 @@ export default function VideoSetupPage() {
     }
   }
 
-  async function checkFutureSessions() {
-    if (!profile) return;
-
-    setCheckingSessions(true);
-    try {
-      // Fetch sessions with booking status to filter out cancelled bookings
-      const { data, error } = await supabase
-        .from('sessions')
-        .select('id, bookings!fk_sessions_booking(status)')
-        .eq('tutor_id', profile.id)
-        .in('status', ['SCHEDULED', 'JOIN_OPEN'])
-        .gte('scheduled_start_at', new Date().toISOString());
-
-      if (error) {
-        console.error('Error checking sessions:', error);
-      } else {
-        // Filter out sessions with cancelled or declined bookings
-        const activeSessions = (data || []).filter((session: any) => 
-          session.bookings?.status !== 'CANCELLED' && 
-          session.bookings?.status !== 'DECLINED'
-        );
-        setFutureSessions(activeSessions.length);
-      }
-    } catch (error) {
-      console.error('Error checking sessions:', error);
-    } finally {
-      setCheckingSessions(false);
-    }
-  }
-
   async function handleConnect(provider: VideoProvider) {
     if (!profile) return;
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/96e0dc54-0d29-41a7-8439-97ee7ad5934e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/tutor/video-setup/page.tsx:123',message:'Connect button clicked',data:{provider,tutorId:profile.id,hasExistingConnection:!!connection,futureSessions},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,B,C,D'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/96e0dc54-0d29-41a7-8439-97ee7ad5934e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/tutor/video-setup/page.tsx:123',message:'Connect button clicked',data:{provider,tutorId:profile.id,hasExistingConnection:!!connection},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,B,C,D'})}).catch(()=>{});
     // #endregion
-    // Check if tutor has future sessions
-    if (connection && futureSessions > 0) {
-      alert(
-        `⚠️ Cannot Switch Video Provider\n\n` +
-        `You have ${futureSessions} upcoming session${futureSessions > 1 ? 's' : ''} scheduled.\n\n` +
-        `To switch from ${connection.provider.replace('_', ' ')} to ${provider.replace('_', ' ')}, you must either:\n\n` +
-        `• Wait for all sessions to complete\n` +
-        `• Cancel your upcoming sessions\n\n` +
-        `This prevents issues with meeting links for your students.`
-      );
-      return;
-    }
-    
+
     if (connection) {
       if (!confirm(`Switch from ${connection.provider.replace('_', ' ')} to ${provider.replace('_', ' ')}? Your existing connection will be replaced.`)) {
         return;
@@ -166,19 +121,6 @@ export default function VideoSetupPage() {
 
   async function handleDisconnect() {
     if (!connection) return;
-
-    // Check for upcoming sessions
-    if (futureSessions > 0) {
-      alert(
-        `⚠️ Cannot Disconnect Video Provider\n\n` +
-        `You have ${futureSessions} upcoming session${futureSessions > 1 ? 's' : ''} scheduled.\n\n` +
-        `To disconnect your video provider, you must first:\n\n` +
-        `• Wait for all sessions to complete, or\n` +
-        `• Cancel your upcoming sessions\n\n` +
-        `This prevents issues with meeting links for your students.`
-      );
-      return;
-    }
 
     if (!confirm(
       '⚠️ WARNING: Disconnect Video Provider?\n\n' +
@@ -324,37 +266,6 @@ export default function VideoSetupPage() {
           </div>
         )}
 
-        {/* Warning: Cannot switch with active sessions */}
-        {connection && futureSessions > 0 && (
-          <div className="mb-6 p-6 bg-yellow-50 border-2 border-yellow-300 rounded-2xl">
-            <div className="flex items-start gap-4">
-              <div className="p-3 bg-yellow-500 rounded-full flex-shrink-0">
-                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-              </div>
-              <div className="flex-1">
-                <h3 className="text-lg font-bold text-yellow-900 mb-2">
-                  ⚠️ Provider Switching Disabled
-                </h3>
-                <p className="text-yellow-800 mb-3">
-                  You have <strong>{futureSessions} upcoming session{futureSessions > 1 ? 's' : ''}</strong> scheduled with your current provider ({connection.provider.replace('_', ' ')}).
-                </p>
-                <p className="text-sm text-yellow-700 mb-3">
-                  To prevent issues with meeting links for your students, you cannot switch video providers while you have scheduled sessions.
-                </p>
-                <div className="bg-yellow-100 border border-yellow-200 rounded-lg p-3">
-                  <p className="text-sm font-semibold text-yellow-900 mb-2">To switch providers:</p>
-                  <ul className="text-sm text-yellow-800 space-y-1 ml-4">
-                    <li>• Wait for your sessions to complete, or</li>
-                    <li>• Cancel your upcoming sessions from the <Link href="/tutor/sessions" className="underline font-semibold hover:text-yellow-900">Sessions page</Link></li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Provider Options */}
         <div className="grid md:grid-cols-2 gap-6">
           {/* Google Meet Card */}
@@ -393,19 +304,17 @@ export default function VideoSetupPage() {
                 </div>
                 <button
                   onClick={() => handleConnect('zoom')}
-                  disabled={switching || futureSessions > 0}
-                  title={futureSessions > 0 ? `Cannot switch while you have ${futureSessions} upcoming session${futureSessions > 1 ? 's' : ''}` : ''}
+                  disabled={switching}
                   className="w-full px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {futureSessions > 0 ? '🔒 Switch to Zoom (Disabled)' : 'Switch to Zoom'}
+                  Switch to Zoom
                 </button>
                 <button
                   onClick={handleDisconnect}
-                  disabled={loading || switching || futureSessions > 0}
-                  title={futureSessions > 0 ? `Cannot disconnect while you have ${futureSessions} upcoming session${futureSessions > 1 ? 's' : ''}` : ''}
+                  disabled={loading || switching}
                   className="w-full px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {loading ? 'Disconnecting...' : futureSessions > 0 ? '🔒 Disconnect (Disabled)' : 'Disconnect'}
+                  {loading ? 'Disconnecting...' : 'Disconnect'}
                 </button>
               </div>
             ) : (
@@ -453,19 +362,17 @@ export default function VideoSetupPage() {
                 </div>
                 <button
                   onClick={() => handleConnect('google_meet')}
-                  disabled={switching || futureSessions > 0}
-                  title={futureSessions > 0 ? `Cannot switch while you have ${futureSessions} upcoming session${futureSessions > 1 ? 's' : ''}` : ''}
+                  disabled={switching}
                   className="w-full px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {futureSessions > 0 ? '🔒 Switch to Google Meet (Disabled)' : 'Switch to Google Meet'}
+                  Switch to Google Meet
                 </button>
                 <button
                   onClick={handleDisconnect}
-                  disabled={loading || switching || futureSessions > 0}
-                  title={futureSessions > 0 ? `Cannot disconnect while you have ${futureSessions} upcoming session${futureSessions > 1 ? 's' : ''}` : ''}
+                  disabled={loading || switching}
                   className="w-full px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {loading ? 'Disconnecting...' : futureSessions > 0 ? '🔒 Disconnect (Disabled)' : 'Disconnect'}
+                  {loading ? 'Disconnecting...' : 'Disconnect'}
                 </button>
               </div>
             ) : (
@@ -503,7 +410,7 @@ export default function VideoSetupPage() {
             </li>
             <li className="flex items-start gap-2">
               <span className="text-blue-600 font-bold mt-0.5">4.</span>
-              <span>You can switch or disconnect providers, but only when you have no upcoming sessions</span>
+              <span>You can switch or disconnect providers at any time from this page</span>
             </li>
           </ul>
         </div>

@@ -156,10 +156,9 @@ export async function POST(_req: NextRequest, { params }: Params) {
             .eq('group_id', groupId);
 
           if (sessionCacheError) {
-            console.error('[join-link] failed to cache session fallback meeting link', sessionCacheError);
-            return NextResponse.json(
-              { error: 'Session meeting cache is not configured. Please run migration 090_group_session_meeting_cache.sql.' },
-              { status: 500 }
+            console.warn(
+              '[join-link] session fallback cache unavailable; returning generated link without session cache',
+              sessionCacheError
             );
           }
 
@@ -244,10 +243,9 @@ export async function POST(_req: NextRequest, { params }: Params) {
             .eq('group_id', groupId);
 
           if (sessionCacheError) {
-            console.error('[join-link] failed to cache session fallback meeting link', sessionCacheError);
-            return NextResponse.json(
-              { error: 'Session meeting cache is not configured. Please run migration 090_group_session_meeting_cache.sql.' },
-              { status: 500 }
+            console.warn(
+              '[join-link] session fallback cache unavailable; returning generated link without session cache',
+              sessionCacheError
             );
           }
 
@@ -365,10 +363,9 @@ export async function POST(_req: NextRequest, { params }: Params) {
       .eq('id', occurrence.id);
 
     if (cacheError) {
-      console.error('[join-link] cache update failed', cacheError);
-      return NextResponse.json(
-        { error: 'Meeting link cache missing. Run migration 089_group_occurrence_meeting_cache.sql.' },
-        { status: 500 }
+      console.warn(
+        '[join-link] occurrence cache unavailable; returning generated link without occurrence cache',
+        cacheError
       );
     }
 
@@ -384,10 +381,9 @@ export async function POST(_req: NextRequest, { params }: Params) {
       .eq('id', session.id)
       .eq('group_id', groupId);
     if (sessionCacheError) {
-      console.error('[join-link] failed to cache session-level meeting link', sessionCacheError);
-      return NextResponse.json(
-        { error: 'Session meeting cache is not configured. Please run migration 090_group_session_meeting_cache.sql.' },
-        { status: 500 }
+      console.warn(
+        '[join-link] session-level cache unavailable; returning generated link without session cache',
+        sessionCacheError
       );
     }
 

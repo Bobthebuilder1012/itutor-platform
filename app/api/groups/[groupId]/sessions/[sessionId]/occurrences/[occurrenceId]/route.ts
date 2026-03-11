@@ -271,10 +271,9 @@ export async function POST(_req: NextRequest, { params }: Params) {
       .eq('id', occurrence.id);
 
     if (cacheError) {
-      console.error('[occurrence join] cache update failed', cacheError);
-      return NextResponse.json(
-        { error: 'Meeting link cache missing. Run migration 089_group_occurrence_meeting_cache.sql.' },
-        { status: 500 }
+      console.warn(
+        '[occurrence join] occurrence cache unavailable; returning generated link without cache',
+        cacheError
       );
     }
 
