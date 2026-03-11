@@ -1,15 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { cookies } from 'next/headers';
+import { getServiceClient } from '@/lib/supabase/server';
 import { ensureTutorConnected, createMeeting } from '@/lib/services/videoProviders';
 
 type Params = { params: Promise<{ groupId: string; sessionId: string; occurrenceId: string }> };
+
+function getAuthedSupabase() {
+  const cookieStore = cookies();
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value;
+        },
+        set(name: string, value: string, options: CookieOptions) {
+          cookieStore.set({ name, value, ...options });
+        },
+        remove(name: string, options: CookieOptions) {
+          cookieStore.delete({ name, ...options });
+        },
+      },
+    }
+  );
+}
 
 // POST /api/groups/[groupId]/sessions/[sessionId]/occurrences/[occurrenceId]
 // Backward-compatible join endpoint (same behavior as /join-link).
 export async function POST(_req: NextRequest, { params }: Params) {
   try {
     const { groupId, sessionId, occurrenceId } = await params;
-    const supabase = await getServerClient();
+    const supabase = getAuthedSupabase();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -293,7 +316,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
 export async function DELETE(_req: NextRequest, { params }: Params) {
   try {
     const { groupId, sessionId, occurrenceId } = await params;
-    const supabase = await getServerClient();
+    const supabase = getAuthedSupabase();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
