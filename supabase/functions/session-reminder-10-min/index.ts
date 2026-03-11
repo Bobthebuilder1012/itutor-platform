@@ -19,6 +19,23 @@ type PushTokenRow = {
 
 const MAX_SEND_CONCURRENCY = 20;
 
+function isWebPushSubscriptionToken(token: string): boolean {
+  try {
+    const parsed = JSON.parse(token);
+    return Boolean(
+      parsed &&
+      typeof parsed === 'object' &&
+      typeof parsed.endpoint === 'string' &&
+      parsed.endpoint.length > 0 &&
+      parsed.keys &&
+      typeof parsed.keys.p256dh === 'string' &&
+      typeof parsed.keys.auth === 'string'
+    );
+  } catch {
+    return false;
+  }
+}
+
 function env(name: string): string {
   const v = Deno.env.get(name);
   if (!v) throw new Error(`Missing env: ${name}`);
@@ -189,18 +206,6 @@ Deno.serve(async () => {
     // Get FCM access token for mobile notifications
     const { accessToken, projectId } = await getFcmAccessToken(FCM_SERVICE_ACCOUNT_JSON);
 
-    // Separate tokens by platform
-    const fcmTokens: PushTokenRow[] = [];
-    const webTokens: PushTokenRow[] = [];
-
-    for (const token of tokens) {
-      if (token.platform === 'web') {
-        webTokens.push(token);
-      } else {
-        fcmTokens.push(token);
-      }
-    }
-
     // Fanout: for each (user, session) that was newly logged, notify all tokens for that user.
     const sends: Array<{
       tokenRow: PushTokenRow;
@@ -232,9 +237,10 @@ Deno.serve(async () => {
                 ? '/tutor/sessions'
                 : undefined;
 
-            // Send via FCM for mobile or Web Push for desktop
-            if (tokenRow.platform === 'web') {
-              // Parse web push subscription
+            // Route by actual token format:
+            // - JSON subscription object => legacy Web Push
+            // - plain string token => FCM (web/android/ios)
+            if (isWebPushSubscriptionToken(tokenRow.token)) {
               const subscription = JSON.parse(tokenRow.token);
               await sendWebPush({
                 subscription,
@@ -249,7 +255,7 @@ Deno.serve(async () => {
                 vapidSubject: VAPID_SUBJECT
               });
             } else {
-              // Send via FCM for mobile (android/ios)
+              // Send via FCM for mobile and web FCM tokens
               await sendFcmMessage({
                 accessToken,
                 projectId,
