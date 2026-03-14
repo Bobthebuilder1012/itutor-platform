@@ -84,12 +84,12 @@ export default function GroupsPageClient({
 
   const handleGroupUpdated = () => { fetchAll(); };
 
-  // ─── TUTOR LAYOUT (unchanged two-column panel) ───────────────────────────
+  // ─── TUTOR LAYOUT: one full-width block (My Groups | Content | Members) ───
   if (isTutor) {
     return (
-      <div>
+      <div className="flex flex-col h-[calc(100vh-140px)] min-h-[500px] p-4 lg:p-6">
         {!selectedGroupId && (
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center justify-between pb-3 flex-shrink-0">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Groups</h1>
               <p className="text-sm text-gray-500 mt-0.5">Browse, manage, or join group sessions</p>
@@ -103,12 +103,23 @@ export default function GroupsPageClient({
           </div>
         )}
 
-        <div className="flex h-[calc(100vh-220px)] min-h-[500px]">
-          <div className={`${showMobileDetail ? 'hidden' : 'flex'} lg:flex flex-col w-full lg:w-[380px] lg:flex-shrink-0 border border-gray-200 rounded-xl overflow-hidden`}>
-            <div className="flex-1 overflow-y-auto">
-              {/* My Groups */}
+        <div className="flex flex-1 min-h-0 border border-gray-200 rounded-xl overflow-hidden bg-white">
+          <div className={`${showMobileDetail ? 'hidden' : 'flex'} lg:flex flex-col flex-shrink-0 w-full lg:min-w-[320px] lg:max-w-[400px] border-r border-gray-200 overflow-y-auto scrollbar-hide`}>
+            <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide">
+              {/* My Groups — Back button in this section, title aligns with center */}
               <div className="border-b border-gray-200">
-                <div className="px-4 pt-4 pb-2 flex items-center justify-between">
+                <div className="px-4 pt-4 pb-2 flex items-center gap-3 flex-wrap">
+                  {selectedGroupId && (
+                    <button
+                      onClick={() => { setShowMobileDetail(false); setSelectedGroupId(null); }}
+                      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:border-gray-300 shadow-sm transition-all"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                      Back to groups
+                    </button>
+                  )}
                   <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">My Groups</h2>
                   {myGroups.length > 0 && <span className="text-xs text-gray-400">{myGroups.length}</span>}
                 </div>
@@ -147,19 +158,18 @@ export default function GroupsPageClient({
             </div>
           </div>
 
-          <div className={`${showMobileDetail ? 'flex' : 'hidden'} lg:flex flex-1 flex-col ml-0 lg:ml-6 min-w-0`}>
+          <div className={`${showMobileDetail ? 'flex' : 'hidden'} lg:flex flex-1 flex-col min-w-0 min-h-0`}>
             {selectedGroupId ? (
-              <div className="border border-gray-200 rounded-xl p-5 h-full overflow-y-auto">
+              <div className="flex-1 min-h-0 pt-4 px-5 pb-5 overflow-hidden flex flex-col">
                 <GroupDetailPanel
                   groupId={selectedGroupId}
                   currentUserId={currentUserId}
                   userRole={userRole}
                   onGroupUpdated={handleGroupUpdated}
-                  onClose={() => { setShowMobileDetail(false); setSelectedGroupId(null); }}
                 />
               </div>
             ) : (
-              <div className="hidden lg:flex flex-1 flex-col items-center justify-center border border-dashed border-gray-200 rounded-xl text-center p-12">
+              <div className="hidden lg:flex flex-1 flex-col items-center justify-center border-l border-dashed border-gray-200 text-center p-12">
                 <div className="text-5xl mb-4">👈</div>
                 <p className="text-gray-500 font-medium">Select a group to manage it</p>
                 <p className="text-sm text-gray-400 mt-1">Create a group or click one to manage it.</p>
@@ -180,7 +190,7 @@ export default function GroupsPageClient({
 
   // ─── STUDENT LAYOUT (sidebar + grid) ─────────────────────────────────────
   return (
-    <div>
+    <div className="p-4 lg:p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Groups</h1>

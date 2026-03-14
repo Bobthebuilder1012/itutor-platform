@@ -743,10 +743,10 @@ export default function TutorDashboard() {
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold text-gray-900">Upcoming Sessions</h2>
             <Link 
-              href="/tutor/sessions"
+              href="/tutor/dashboard"
               className="text-sm text-itutor-green hover:text-emerald-600 font-medium flex items-center gap-1 transition-colors"
             >
-              View all →
+              View dashboard →
             </Link>
           </div>
           {loadingData ? (
@@ -837,19 +837,6 @@ export default function TutorDashboard() {
                 <h3 className="text-xl font-bold text-gray-900 group-hover:text-purple-600 transition-colors">Availability</h3>
               </div>
               <p className="text-gray-600 group-hover:text-gray-700 transition-colors">Set your available hours</p>
-            </div>
-          </Link>
-          <Link href="/tutor/sessions">
-            <div className="bg-white border-2 border-blue-200 shadow-lg rounded-2xl p-6 hover:shadow-blue-300/50 hover:scale-105 hover:-translate-y-1 transition-all duration-300 cursor-pointer group">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="bg-blue-500 rounded-xl p-3 group-hover:scale-110 transition-transform">
-                  <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors">Sessions</h3>
-              </div>
-              <p className="text-gray-600 group-hover:text-gray-700 transition-colors">View and manage sessions</p>
             </div>
           </Link>
           <Link href="/tutor/curriculum">

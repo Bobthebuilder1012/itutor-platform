@@ -11,8 +11,9 @@ import MemberList from './MemberList';
 import CreateSessionModal from './CreateSessionModal';
 import GroupMessageBoard from '../messages/GroupMessageBoard';
 import AnnouncementBoard from '../announcements/AnnouncementBoard';
+import GroupStreamPage from '../stream/GroupStreamPage';
 
-type Tab = 'announcements' | 'sessions' | 'members' | 'messages';
+type Tab = 'stream' | 'announcements' | 'sessions' | 'messages';
 
 interface TutorGroupViewProps {
   group: GroupWithTutor;
@@ -21,7 +22,7 @@ interface TutorGroupViewProps {
 }
 
 export default function TutorGroupView({ group, currentUserId, onGroupUpdated }: TutorGroupViewProps) {
-  const [tab, setTab] = useState<Tab>('announcements');
+  const [tab, setTab] = useState<Tab>('stream');
   const [sessions, setSessions] = useState<GroupSessionWithOccurrences[]>([]);
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
@@ -30,8 +31,6 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
   const [archiving, setArchiving] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(group.name);
-
-  const pendingCount = members.filter((m) => m.status === 'pending').length;
 
   const fetchSessions = useCallback(async () => {
     setSessionsLoading(true);
@@ -84,14 +83,16 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
   };
 
   const TABS: { id: Tab; label: string; badge?: number }[] = [
+    { id: 'stream', label: 'Stream' },
     { id: 'announcements', label: 'Announcements' },
     { id: 'sessions', label: 'Sessions' },
-    { id: 'members', label: 'Members', badge: pendingCount > 0 ? pendingCount : undefined },
     { id: 'messages', label: 'Group Chat' },
   ];
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex h-full overflow-hidden">
+      {/* Main: title, tabs, content — scrollable middle */}
+      <div className="flex-1 min-w-0 flex flex-col overflow-hidden pr-6">
       {/* Section 1: Group Header + Controls — fixed */}
       <div className="flex-shrink-0 flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
@@ -156,8 +157,19 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
         ))}
       </div>
 
-      {/* Tab content — scrollable */}
-      <div className="flex-1 overflow-y-auto pt-4">
+      {/* Tab content — scrollable middle */}
+      <div className="flex-1 min-h-0 overflow-y-auto pt-4">
+
+      {/* Tab: Stream */}
+      {tab === 'stream' && (
+        <GroupStreamPage
+          groupId={group.id}
+          currentUserId={currentUserId}
+          isTutor={true}
+          authorName={group.tutor?.full_name ?? undefined}
+          authorAvatarUrl={group.tutor?.avatar_url ?? undefined}
+        />
+      )}
 
       {/* Tab: Announcements */}
       {tab === 'announcements' && (
@@ -195,19 +207,6 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
         </div>
       )}
 
-      {/* Tab: Members */}
-      {tab === 'members' && (
-        <div>
-          {membersLoading ? (
-            <div className="py-8 flex justify-center">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-600" />
-            </div>
-          ) : (
-            <MemberList groupId={group.id} members={members} onRefresh={fetchMembers} />
-          )}
-        </div>
-      )}
-
       {/* Tab: Messages */}
       {tab === 'messages' && (
         <div className="h-full flex flex-col">
@@ -216,6 +215,22 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
       )}
 
       </div>{/* end scrollable tab content */}
+
+      </div>{/* end main */}
+
+      {/* Members panel — separated from middle */}
+      <aside className="flex-shrink-0 w-72 border-l-2 border-gray-200 bg-gray-50/60 flex flex-col overflow-hidden">
+        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-4 pt-4 pb-2">Members</h3>
+        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide px-4 pb-4">
+          {membersLoading ? (
+            <div className="py-8 flex justify-center">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-600" />
+            </div>
+          ) : (
+            <MemberList groupId={group.id} members={members} onRefresh={fetchMembers} />
+          )}
+        </div>
+      </aside>
 
       {showCreateSession && (
         <CreateSessionModal

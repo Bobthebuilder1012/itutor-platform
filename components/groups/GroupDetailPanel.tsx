@@ -11,7 +11,6 @@ interface GroupDetailPanelProps {
   currentUserId: string;
   userRole: 'student' | 'tutor' | 'parent';
   onGroupUpdated: () => void;
-  onClose?: () => void;
 }
 
 export default function GroupDetailPanel({
@@ -19,7 +18,6 @@ export default function GroupDetailPanel({
   currentUserId,
   userRole,
   onGroupUpdated,
-  onClose,
 }: GroupDetailPanelProps) {
   const [group, setGroup] = useState<GroupWithTutor | null>(null);
   const [loading, setLoading] = useState(true);
@@ -75,24 +73,8 @@ export default function GroupDetailPanel({
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-140px)] min-h-[500px]">
-      {/* Back button — fixed, never scrolls */}
-      {onClose && (
-        <div className="flex-shrink-0 mb-4">
-          <button
-            onClick={onClose}
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:border-gray-300 shadow-sm transition-all"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            Back to groups
-          </button>
-        </div>
-      )}
-
-      {/* Scrollable content area */}
-      <div className="flex-1 overflow-hidden">
+    <div className="flex flex-col flex-1 min-h-0">
+      <div className="flex-1 min-h-0 overflow-hidden">
         {isTutorOwner ? (
           <TutorGroupView
             group={group}

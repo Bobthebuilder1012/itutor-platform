@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import Link from 'next/link';
 import { ReactNode, useEffect, useState } from 'react';
@@ -29,6 +29,8 @@ interface DashboardLayoutProps {
 
 export default function DashboardLayout({ children, role, userName }: DashboardLayoutProps) {
   const router = useRouter();
+  const pathname = usePathname();
+  const isGroupsPage = pathname === '/groups';
   const { profile } = useProfile();
   const { isSuspended, loading: suspensionLoading } = useSuspensionCheck();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -70,8 +72,8 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
 
   const handleCalendarNav = () => {
     if (role === 'tutor') router.push('/tutor/calendar');
-    else if (role === 'student') router.push('/student/sessions');
-    else if (role === 'parent') router.push('/parent/sessions');
+    else if (role === 'student') router.push('/student/dashboard');
+    else if (role === 'parent') router.push('/parent/dashboard');
   };
 
   const handleMessagesNav = () => {
@@ -127,7 +129,6 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/groups', label: 'Groups' },
           { href: '/student/curriculum', label: 'Curriculum' },
           { href: '/student/bookings', label: 'My Bookings' },
-          { href: '/student/sessions', label: 'Sessions' },
           { href: '/student/ratings', label: 'My Reviews' },
         ]);
       case 'tutor':
@@ -137,14 +138,12 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/communities', label: 'Communities' },
           { href: '/groups', label: 'Groups' },
           { href: '/tutor/curriculum', label: 'Curriculum' },
-          { href: '/tutor/sessions', label: 'Sessions' },
         ]);
       case 'parent':
         return filterCommunities([
           { href: '/parent/add-child', label: 'Add Child' },
           { href: '/communities', label: 'Communities' },
           { href: '/parent/approve-bookings', label: 'Booking Requests' },
-          { href: '/parent/sessions', label: 'Sessions' },
         ]);
       case 'reviewer':
         return [
@@ -396,7 +395,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
 
       </nav>
       
-      <main className="flex-1 w-full py-4 px-2 sm:py-6 sm:px-4 lg:py-8 lg:px-6 lg:max-w-7xl lg:mx-auto">
+      <main className={`flex-1 w-full py-4 px-2 sm:py-6 sm:px-4 lg:py-8 lg:px-6 ${isGroupsPage ? '' : 'lg:max-w-7xl lg:mx-auto'}`}>
         {/* Browser Push Notification Prompt */}
         {effectiveUserId && (
           <EnableNotificationsPrompt userId={effectiveUserId} />
@@ -405,7 +404,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         {/* iOS Install Prompt for PWA notifications */}
         <IOSInstallPrompt />
         
-        <div className="bg-white rounded-lg sm:rounded-xl lg:rounded-2xl shadow-lg sm:shadow-xl p-3 sm:p-4 lg:p-6">
+        <div className={`bg-white rounded-lg sm:rounded-xl lg:rounded-2xl shadow-lg sm:shadow-xl ${isGroupsPage ? 'p-0 overflow-hidden' : 'p-3 sm:p-4 lg:p-6'}`}>
           {children}
         </div>
       </main>

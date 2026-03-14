@@ -114,7 +114,7 @@ export default function UpcomingSessionsCard({
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold text-gray-900">Your next session</h2>
         <Link 
-          href="/student/sessions"
+          href="/student/dashboard"
           className="text-sm text-itutor-green hover:text-emerald-600 font-medium flex items-center gap-1 transition-colors"
         >
           View all →

@@ -104,7 +104,7 @@ export default function RescheduleSessionModal({
           type: 'session_rescheduled',
           title: 'Session Rescheduled',
           message: `A parent has rescheduled ${studentName}'s ${subjectName} session to ${formattedDate} (${duration} minutes).${reasonText}`,
-          link: `/tutor/sessions`,
+          link: `/tutor/dashboard`,
           created_at: new Date().toISOString()
         });
 
@@ -121,7 +121,7 @@ export default function RescheduleSessionModal({
           type: 'session_rescheduled',
           title: 'Session Rescheduled',
           message: `Your ${subjectName} session with ${tutorName} has been rescheduled to ${formattedDate} (${duration} minutes).${reasonText}`,
-          link: `/student/sessions`,
+          link: `/student/dashboard`,
           created_at: new Date().toISOString()
         });
 

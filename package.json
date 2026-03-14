@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "communities:check": "npx ts-node scripts/check-subject-communities-migration.ts",
-    "communities:migrate": "npx ts-node scripts/run-migration-088.ts"
+    "communities:migrate": "npx ts-node scripts/run-migration-088.ts",
+    "stream:migrate": "npx ts-node scripts/run-migration-092.ts"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
@@ -36,6 +37,7 @@
     "eslint-config-next": "14.0.4",
     "pg": "^8.19.0",
     "postcss": "^8",
+    "supabase": "^2.77.0",
     "tailwindcss": "^3.3.0",
     "typescript": "^5"
   }

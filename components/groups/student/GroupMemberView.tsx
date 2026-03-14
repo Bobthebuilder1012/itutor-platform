@@ -6,8 +6,9 @@ import type { GroupWithTutor, GroupSessionWithOccurrences, GroupOccurrence, Grou
 import GroupMessageBoard from '../messages/GroupMessageBoard';
 import StatusBadge from '../shared/StatusBadge';
 import AnnouncementBoard from '../announcements/AnnouncementBoard';
+import GroupStreamPage from '../stream/GroupStreamPage';
 
-type Tab = 'announcements' | 'sessions' | 'messages';
+type Tab = 'stream' | 'announcements' | 'sessions' | 'messages';
 
 interface GroupMemberViewProps {
   group: GroupWithTutor;
@@ -45,7 +46,7 @@ function getInitials(name: string) {
 
 export default function GroupMemberView({ group, currentUserId }: GroupMemberViewProps) {
   const router = useRouter();
-  const [tab, setTab] = useState<Tab>('announcements');
+  const [tab, setTab] = useState<Tab>('stream');
   const [sessions, setSessions] = useState<GroupSessionWithOccurrences[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
@@ -116,6 +117,7 @@ export default function GroupMemberView({ group, currentUserId }: GroupMemberVie
   };
 
   const TABS: { id: Tab; label: string }[] = [
+    { id: 'stream', label: 'Stream' },
     { id: 'announcements', label: 'Announcements' },
     { id: 'sessions', label: 'Sessions' },
     { id: 'messages', label: 'Messages' },
@@ -173,6 +175,15 @@ export default function GroupMemberView({ group, currentUserId }: GroupMemberVie
 
         {/* Tab content — scrollable */}
         <div className="flex-1 overflow-y-auto pt-4">
+
+        {/* Tab: Stream */}
+        {tab === 'stream' && (
+          <GroupStreamPage
+            groupId={group.id}
+            currentUserId={currentUserId}
+            isTutor={false}
+          />
+        )}
 
         {/* Tab: Announcements */}
         {tab === 'announcements' && (

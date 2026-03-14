@@ -69,7 +69,7 @@ export default function GroupMessageBoard({
       )}
 
       {/* Message thread */}
-      <div className="flex-1 overflow-y-auto min-h-0 space-y-1 mb-4">
+      <div className="flex-1 overflow-y-auto scrollbar-hide min-h-0 space-y-1 mb-4">
         {messages.length === 0 ? (
           <div className="py-12 text-center text-gray-400 text-sm">
             <div className="text-3xl mb-2">💬</div>
