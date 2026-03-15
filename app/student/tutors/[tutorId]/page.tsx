@@ -10,6 +10,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { getDisplayName } from '@/lib/utils/displayName';
 import TutorCalendarWidget from '@/components/booking/TutorCalendarWidget';
 import BookingRequestModal from '@/components/booking/BookingRequestModal';
+import SuggestTimeModal from '@/components/booking/SuggestTimeModal';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import VerifiedSubjectsButton from '@/components/tutor/VerifiedSubjectsButton';
 import VerifiedSubjectsModal from '@/components/tutor/VerifiedSubjectsModal';
@@ -50,6 +51,7 @@ export default function TutorProfilePage() {
   const [loading, setLoading] = useState(true);
   const [selectedSubject, setSelectedSubject] = useState<TutorProfile['subjects'][0] | null>(null);
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
+  const [suggestTimeModalOpen, setSuggestTimeModalOpen] = useState(false);
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<{ start: string; end: string } | null>(null);
   const [verifiedSubjectsModalOpen, setVerifiedSubjectsModalOpen] = useState(false);
   const [verifiedSubjects, setVerifiedSubjects] = useState<any[]>([]);
@@ -541,6 +543,15 @@ export default function TutorProfilePage() {
                     tutorId={tutorId}
                     onSlotSelect={handleSlotSelect}
                   />
+                  <div className="mt-4 flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => setSuggestTimeModalOpen(true)}
+                      className="rounded-xl border-2 border-itutor-green bg-white px-4 py-2 text-sm font-semibold text-itutor-green transition hover:bg-green-50"
+                    >
+                      Suggest a time outside availability
+                    </button>
+                  </div>
                 </>
               )}
             </div>
@@ -630,6 +641,20 @@ export default function TutorProfilePage() {
           selectedStartAt={selectedTimeSlot.start}
           selectedEndAt={selectedTimeSlot.end}
           onSuccess={handleBookingSuccess}
+        />
+      )}
+
+      {selectedSubject && (
+        <SuggestTimeModal
+          isOpen={suggestTimeModalOpen}
+          onClose={() => setSuggestTimeModalOpen(false)}
+          onSuccess={() => router.push('/student/bookings')}
+          tutorId={tutorId}
+          tutorName={getDisplayName(tutor)}
+          studentId={profile!.id}
+          subjectId={selectedSubject.id}
+          subjectName={selectedSubject.name}
+          pricePerHour={selectedSubject.price_per_hour_ttd}
         />
       )}
 
