@@ -405,6 +405,12 @@ export default function TutorBookingThreadPage() {
   const canRespond = booking.status === 'PENDING' || booking.status === 'COUNTER_PROPOSED';
   const canCancel = booking.status === 'CONFIRMED' && !hasSessionStarted;
   const paidClassesEnabled = isPaidClassesEnabled();
+  const hasOutsideAvailabilityDisclaimer =
+    (booking.student_notes ?? '').toLowerCase().includes('outside') &&
+    (booking.student_notes ?? '').toLowerCase().includes('availability');
+  const cleanedStudentNotes = (booking.student_notes ?? '')
+    .replace(/"?\s*suggested outside listed availability\s*"?/i, '')
+    .trim();
 
   return (
     <DashboardLayout role="tutor" userName={getDisplayName(profile)}>
@@ -422,6 +428,13 @@ export default function TutorBookingThreadPage() {
 
         {/* Booking Header */}
         <div className="bg-gradient-to-br from-blue-50 to-purple-50 border border-blue-200 rounded-2xl p-6 mb-6 shadow-sm">
+          {hasOutsideAvailabilityDisclaimer && (
+            <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2">
+              <p className="text-xs font-bold uppercase tracking-wide text-amber-800">
+                Suggested outside of availability
+              </p>
+            </div>
+          )}
           <div className="flex items-start justify-between mb-4">
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-2">
@@ -491,10 +504,14 @@ export default function TutorBookingThreadPage() {
             </div>
           </div>
 
-          {booking.student_notes && (
+          {(hasOutsideAvailabilityDisclaimer || cleanedStudentNotes) && (
             <div className="mt-4 pt-4 border-t border-blue-200">
               <p className="text-sm text-gray-600 mb-1">Student's notes:</p>
-              <p className="text-gray-900">"{booking.student_notes}"</p>
+              {cleanedStudentNotes ? (
+                <p className="text-gray-900">{cleanedStudentNotes}</p>
+              ) : (
+                <p className="text-gray-500 text-sm">No additional notes.</p>
+              )}
             </div>
           )}
 
