@@ -3,6 +3,24 @@ import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 
 type Params = { params: Promise<{ groupId: string }> };
 
+function extractProfileName(profile: unknown): string {
+  if (Array.isArray(profile)) {
+    const first = profile[0];
+    if (first && typeof first === 'object' && 'full_name' in first) {
+      const fullName = (first as { full_name?: unknown }).full_name;
+      if (typeof fullName === 'string' && fullName.trim().length > 0) return fullName;
+    }
+    return 'Student';
+  }
+
+  if (profile && typeof profile === 'object' && 'full_name' in profile) {
+    const fullName = (profile as { full_name?: unknown }).full_name;
+    if (typeof fullName === 'string' && fullName.trim().length > 0) return fullName;
+  }
+
+  return 'Student';
+}
+
 export async function GET(_req: NextRequest, { params }: Params) {
   try {
     const { groupId } = await params;
@@ -55,7 +73,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     for (const m of approvedMembers) {
       byStudent.set(m.user_id, {
         student_id: m.user_id,
-        student_name: m.profile?.full_name ?? 'Student',
+        student_name: extractProfileName(m.profile),
         attended: 0,
         missed: 0,
         late: 0,
