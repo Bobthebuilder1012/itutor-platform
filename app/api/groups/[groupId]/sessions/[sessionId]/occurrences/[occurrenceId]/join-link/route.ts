@@ -18,6 +18,24 @@ export async function POST(_req: NextRequest, { params }: Params) {
     }
 
     const service = getServiceClient();
+    const markAttendance = async (occId: string) => {
+      if (isTutor) return;
+      try {
+        await service.from('group_attendance_records').upsert(
+          {
+            session_id: occId,
+            student_id: user.id,
+            status: 'PRESENT',
+            marked_at: new Date().toISOString(),
+            marked_by_id: group.tutor_id,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'session_id,student_id' }
+        );
+      } catch {
+        // Non-critical in environments without attendance table.
+      }
+    };
 
     const { data: group, error: groupError } = await service
       .from('groups')
@@ -290,6 +308,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
       .limit(1)
       .maybeSingle();
     if (sessionCachedOccurrence?.meeting_join_url) {
+      await markAttendance(occurrence.id);
       return NextResponse.json({
         provider: sessionCachedOccurrence.meeting_provider ?? null,
         join_url: sessionCachedOccurrence.meeting_join_url,
@@ -300,6 +319,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
     // Reuse existing cached link for this occurrence so everyone joins the same room.
     if (occurrence.meeting_join_url) {
+      await markAttendance(occurrence.id);
       return NextResponse.json({
         provider: occurrence.meeting_provider ?? null,
         join_url: occurrence.meeting_join_url,

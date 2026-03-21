@@ -12,7 +12,6 @@ import AddSubjectModal from '@/components/tutor/AddSubjectModal';
 import EditSubjectModal from '@/components/tutor/EditSubjectModal';
 import EditProfileModal from '@/components/EditProfileModal';
 import SentOffersList from '@/components/offers/SentOffersList';
-import VideoProviderRequiredModal from '@/components/VideoProviderRequiredModal';
 import AvailabilityRequiredModal from '@/components/AvailabilityRequiredModal';
 import ShareProfileModal from '@/components/ShareProfileModal';
 import { useAvatarUpload } from '@/lib/hooks/useAvatarUpload';
@@ -328,37 +327,6 @@ export default function TutorDashboard() {
 
   return (
     <DashboardLayout role="tutor" userName={displayName}>
-      {/* Video Provider Warning */}
-      {!testMode && hasVideoProvider === false && (
-        <div className="px-4 sm:px-6 lg:px-8 pt-4">
-          <div className="bg-red-50 border-2 border-red-300 rounded-2xl p-6">
-            <div className="flex items-start gap-4">
-              <div className="p-3 bg-red-500 rounded-full flex-shrink-0">
-                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-              </div>
-              <div className="flex-1">
-                <h3 className="text-lg font-bold text-red-900 mb-2">⚠️ Video Provider Not Connected</h3>
-                <p className="text-red-800 mb-4">
-                  You cannot accept new bookings until you connect Google Meet or Zoom. Students need a way to join your sessions!
-                </p>
-                <Link
-                  href="/tutor/video-setup"
-                  className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white rounded-lg font-bold transition shadow-lg hover:shadow-xl"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
-                  Connect Video Provider Now
-                </Link>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-
       <div className="px-4 py-3 sm:px-0">
         {/* Test Mode Banner */}
         {testMode && (
@@ -487,12 +455,7 @@ export default function TutorDashboard() {
           />
         )}
 
-        {/* Video Provider Required Modal - Priority 1 */}
-        {!testMode && hasVideoProvider === false && (
-          <VideoProviderRequiredModal isOpen={true} />
-        )}
-
-        {/* Availability Required Modal - Priority 2 (only show if video provider is connected) */}
+        {/* Availability Required Modal */}
         {!testMode && hasVideoProvider === true && hasAvailability === false && showAvailabilityModal && (
           <AvailabilityRequiredModal 
             isOpen={true} 

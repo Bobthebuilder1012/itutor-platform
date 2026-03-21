@@ -4,6 +4,7 @@ import { FormEvent, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import CountrySelect from '@/components/CountrySelect';
+import SocialLoginButton from '@/components/SocialLoginButton';
 
 // Helper function to detect network errors
 function isNetworkError(error: unknown): boolean {
@@ -272,6 +273,22 @@ export default function TutorSignupPage() {
           />
           <h1 className="text-3xl sm:text-4xl font-bold text-itutor-white mb-2">Become an iTutor</h1>
           <p className="text-itutor-muted">Create your tutor account to start teaching.</p>
+        </div>
+
+        <div className="mb-6 space-y-3">
+          <SocialLoginButton
+            provider="google"
+            mode="signup"
+            redirectTo="/auth/callback?next=/signup/complete-role"
+          />
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-700" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase tracking-wide">
+              <span className="bg-black px-2 text-gray-400">Continue with email</span>
+            </div>
+          </div>
         </div>
 
         <form onSubmit={handleSignup} className="space-y-5">

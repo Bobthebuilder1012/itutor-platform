@@ -8,8 +8,6 @@ import type {
   TutorPublicCalendar,
   TutorAvailabilitySummary,
   GetTutorCalendarParams,
-  CreateBookingRequestParams,
-  TutorConfirmBookingParams,
   TutorDeclineBookingParams,
   TutorCounterOfferParams,
   StudentAcceptCounterParams,
@@ -118,13 +116,48 @@ export async function createBookingRequest(
  */
 export async function tutorConfirmBooking(
   bookingId: string
-): Promise<{ success: boolean; status: string }> {
-  const { data, error } = await supabase.rpc('tutor_confirm_booking', {
-    p_booking_id: bookingId
-  } as TutorConfirmBookingParams);
+): Promise<{ success: boolean; status: string; alreadyConfirmed?: boolean; sessionCreationWarning?: string | null }> {
+  const response = await fetch('/api/bookings/tutor-confirm', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ bookingId }),
+  });
 
-  if (error) throw error;
-  return data;
+  const result = await response.json();
+  if (!response.ok) {
+    const error = new Error(result?.error || 'Failed to confirm booking') as Error & {
+      code?: string;
+      health?: unknown;
+    };
+    error.code = result?.code;
+    error.health = result?.health;
+    throw error;
+  }
+
+  return result as { success: boolean; status: string; alreadyConfirmed?: boolean; sessionCreationWarning?: string | null };
+}
+
+export async function tutorHealthCheckBeforeConfirm(
+  bookingId: string
+): Promise<{ success: boolean; requiresExplicitConfirmation: boolean }> {
+  const response = await fetch('/api/bookings/tutor-confirm', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ bookingId, healthCheckOnly: true }),
+  });
+
+  const result = await response.json();
+  if (!response.ok) {
+    const error = new Error(result?.error || 'Video-provider health check failed') as Error & {
+      code?: string;
+      health?: unknown;
+    };
+    error.code = result?.code;
+    error.health = result?.health;
+    throw error;
+  }
+
+  return result as { success: boolean; requiresExplicitConfirmation: boolean };
 }
 
 /**

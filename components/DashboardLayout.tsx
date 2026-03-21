@@ -30,7 +30,7 @@ interface DashboardLayoutProps {
 export default function DashboardLayout({ children, role, userName }: DashboardLayoutProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const isGroupsPage = pathname === '/groups';
+  const isGroupsPage = pathname === '/groups' || pathname.startsWith('/groups/');
   const { profile } = useProfile();
   const { isSuspended, loading: suspensionLoading } = useSuspensionCheck();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -395,7 +395,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
 
       </nav>
       
-      <main className={`flex-1 w-full py-4 px-2 sm:py-6 sm:px-4 lg:py-8 lg:px-6 ${isGroupsPage ? '' : 'lg:max-w-7xl lg:mx-auto'}`}>
+      <main className={`flex-1 w-full py-4 px-2 sm:py-6 sm:px-4 lg:py-8 lg:px-6 ${isGroupsPage ? 'flex min-h-[calc(100vh-64px)] py-2 sm:py-3 lg:py-4' : 'lg:max-w-7xl lg:mx-auto'}`}>
         {/* Browser Push Notification Prompt */}
         {effectiveUserId && (
           <EnableNotificationsPrompt userId={effectiveUserId} />
@@ -404,7 +404,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         {/* iOS Install Prompt for PWA notifications */}
         <IOSInstallPrompt />
         
-        <div className={`bg-white rounded-lg sm:rounded-xl lg:rounded-2xl shadow-lg sm:shadow-xl ${isGroupsPage ? 'p-0 overflow-hidden' : 'p-3 sm:p-4 lg:p-6'}`}>
+        <div className={`bg-white rounded-lg sm:rounded-xl lg:rounded-2xl shadow-lg sm:shadow-xl ${isGroupsPage ? 'p-0 overflow-hidden flex-1 min-h-0' : 'p-3 sm:p-4 lg:p-6'}`}>
           {children}
         </div>
       </main>

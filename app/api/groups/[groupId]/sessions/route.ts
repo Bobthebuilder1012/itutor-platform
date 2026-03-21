@@ -121,10 +121,11 @@ export async function POST(request: NextRequest, { params }: Params) {
         await service.from('notifications').insert(
           members.map((m: any) => ({
             user_id: m.user_id,
-            type: 'group_session_added',
-            title: 'New group session scheduled',
-            message: `A new session "${body.title}" has been added to your group.`,
+            type: 'SESSION_REMINDER',
+            title: 'Group session scheduled',
+            message: `A new session "${body.title}" has been added to your group schedule.`,
             link: `/groups`,
+            group_id: groupId,
           }))
         );
       } catch {

@@ -23,8 +23,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // User has valid session - check which page they're on
           const publicPages = ['/login', '/signup', '/forgot-password', '/reset-password'];
           const isPublicAuthPage = publicPages.includes(pathname) || pathname.startsWith('/verify-');
+          const isResetPasswordPage = pathname === '/reset-password';
           
-          // If user is on home page or public auth pages, redirect to dashboard
+          // Keep users on reset-password so they can complete recovery flow.
+          // Supabase sets a temporary session for recovery links, which should not trigger a dashboard redirect.
+          if (isResetPasswordPage) {
+            setLoading(false);
+            return;
+          }
+
+          // If user is on home page or other public auth pages, redirect to dashboard
           if (pathname === '/' || isPublicAuthPage) {
             // Get user role and redirect to appropriate dashboard
             const { data: profile } = await supabase

@@ -148,10 +148,11 @@ export async function POST(request: NextRequest, { params }: Params) {
         await service.from('notifications').insert(
           Array.from(notifyUsers).map((uid) => ({
             user_id: uid,
-            type: 'group_new_message',
+            type: 'new_message',
             title: 'New message in group',
             message: `New message in "${group?.name ?? 'your group'}"`,
             link: `/groups`,
+            group_id: groupId,
           }))
         );
       } catch {

@@ -3,6 +3,7 @@
 import { FormEvent, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase, setRememberMePreference, createSupabaseClient } from '@/lib/supabase/client';
+import SocialLoginButton from '@/components/SocialLoginButton';
 
 // Helper function to detect network errors
 function isNetworkError(error: unknown): boolean {
@@ -299,6 +300,18 @@ export default function LoginPage() {
           </div>
           <h1 className="text-4xl font-bold text-itutor-white mb-2 tracking-tight">Welcome back</h1>
           <p className="text-gray-400">Sign in to your iTutor account</p>
+        </div>
+
+        <div className="mb-5 space-y-3">
+          <SocialLoginButton provider="google" mode="login" />
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-700" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase tracking-wide">
+              <span className="bg-black px-2 text-gray-400">or continue with email</span>
+            </div>
+          </div>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-5">

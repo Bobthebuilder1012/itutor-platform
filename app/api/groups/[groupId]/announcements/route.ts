@@ -91,8 +91,11 @@ export async function POST(
         const { data: authorProfile } = await service.from('profiles').select('full_name').eq('id', user.id).single();
         const notifications = members.map((m: any) => ({
           user_id: m.user_id,
-          type: 'group_announcement',
+          type: 'NEW_ANNOUNCEMENT',
+          title: 'New group announcement',
           message: `${authorProfile?.full_name ?? 'Tutor'} posted an announcement in your group.`,
+          link: `/groups`,
+          group_id: groupId,
         }));
         await service.from('notifications').insert(notifications);
       } catch {

@@ -45,13 +45,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     try {
       await service.from('notifications').insert({
         user_id: userId,
-        type: status === 'approved' ? 'group_request_approved' : 'group_request_denied',
+        type: status === 'approved' ? 'ENROLLMENT_CONFIRMED' : 'booking_declined',
         title: status === 'approved' ? 'Group request approved' : 'Group request declined',
         message:
           status === 'approved'
             ? `Your request to join "${group.name}" has been approved.`
             : `Your request to join "${group.name}" was not approved.`,
         link: `/groups`,
+        group_id: groupId,
       });
     } catch {
       // Do not fail membership update if notification insert fails.

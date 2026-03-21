@@ -31,7 +31,7 @@ export default function GroupDetailPage() {
 
   return (
     <DashboardLayout role={role} userName={displayName}>
-      <div>
+      <div className="h-full min-h-0 flex flex-col">
         <GroupDetailPanel
           groupId={groupId}
           currentUserId={profile.id}

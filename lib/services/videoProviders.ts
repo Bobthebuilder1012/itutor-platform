@@ -123,6 +123,14 @@ export interface VideoProviderAdapter {
   handleCallback(code: string, tutorId: string): Promise<TutorVideoConnection>;
 }
 
+export type VideoProviderHealthCheckResult = {
+  ok: boolean;
+  provider: VideoProvider | null;
+  reason: string;
+  reconnectUrl: string | null;
+  refreshed: boolean;
+};
+
 // =====================================================
 // REAL API IMPLEMENTATIONS
 // =====================================================
@@ -417,6 +425,158 @@ export async function canTutorAcceptBookings(tutorId: string): Promise<boolean> 
     return status === 'connected';
   } catch {
     return false;
+  }
+}
+
+function getReconnectUrl(provider: VideoProvider | null): string {
+  if (provider === 'google_meet') return '/api/auth/google/connect';
+  if (provider === 'zoom') return '/api/auth/zoom/connect';
+  return '/tutor/video-setup';
+}
+
+async function markConnectionNeedsReauth(
+  tutorId: string,
+  provider: VideoProvider,
+  reason: string
+) {
+  const supabase = getServiceClient();
+  const { error } = await supabase
+    .from('tutor_video_provider_connections')
+    .update({
+      is_active: false,
+      connection_status: 'needs_reauth',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('tutor_id', tutorId)
+    .eq('provider', provider);
+
+  if (error) {
+    console.error('⚠️ Failed to mark connection as needs_reauth:', {
+      tutorId,
+      provider,
+      reason,
+      error,
+    });
+  }
+}
+
+/**
+ * Validate tutor video-provider health right before confirming a booking.
+ * Attempts token refresh when expired/near-expiry; otherwise returns reconnect requirement.
+ */
+export async function healthCheckTutorVideoProvider(
+  tutorId: string
+): Promise<VideoProviderHealthCheckResult> {
+  const supabase = getServiceClient();
+  console.log('🩺 [video-health] Starting provider health check', { tutorId });
+
+  const { data: connection, error } = await supabase
+    .from('tutor_video_provider_connections')
+    .select('*')
+    .eq('tutor_id', tutorId)
+    .eq('is_active', true)
+    .single();
+
+  if (error || !connection) {
+    console.log('🩺 [video-health] No active provider connection found', { tutorId, error });
+    return {
+      ok: false,
+      provider: null,
+      reason: 'No active video provider connection found.',
+      reconnectUrl: getReconnectUrl(null),
+      refreshed: false,
+    };
+  }
+
+  const provider = connection.provider as VideoProvider;
+  if (connection.connection_status !== 'connected') {
+    console.log('🩺 [video-health] Connection is not connected', {
+      tutorId,
+      provider,
+      status: connection.connection_status,
+    });
+    return {
+      ok: false,
+      provider,
+      reason: `Connection status is ${connection.connection_status}.`,
+      reconnectUrl: getReconnectUrl(provider),
+      refreshed: false,
+    };
+  }
+
+  const expiresAt = connection.token_expires_at ? new Date(connection.token_expires_at) : null;
+  if (!expiresAt || Number.isNaN(expiresAt.getTime())) {
+    console.log('🩺 [video-health] Missing/invalid token expiry metadata', { tutorId, provider });
+    await markConnectionNeedsReauth(tutorId, provider, 'missing_or_invalid_expiry');
+    return {
+      ok: false,
+      provider,
+      reason: 'Token expiry metadata is missing or invalid.',
+      reconnectUrl: getReconnectUrl(provider),
+      refreshed: false,
+    };
+  }
+
+  const refreshThresholdMs = 5 * 60 * 1000;
+  const shouldRefresh = expiresAt.getTime() <= Date.now() + refreshThresholdMs;
+
+  if (!shouldRefresh) {
+    console.log('🩺 [video-health] Token is valid', {
+      tutorId,
+      provider,
+      expiresAt: expiresAt.toISOString(),
+    });
+    return {
+      ok: true,
+      provider,
+      reason: 'Token is valid.',
+      reconnectUrl: null,
+      refreshed: false,
+    };
+  }
+
+  console.log('🩺 [video-health] Token expired/near expiry; attempting refresh', {
+    tutorId,
+    provider,
+    expiresAt: expiresAt.toISOString(),
+  });
+
+  try {
+    if (!connection.refresh_token_encrypted) {
+      throw new Error('Missing refresh token');
+    }
+
+    const decryptedRefreshToken = decrypt(connection.refresh_token_encrypted);
+    if (provider === 'google_meet') {
+      await refreshGoogleToken(tutorId, decryptedRefreshToken);
+    } else if (provider === 'zoom') {
+      await refreshZoomToken(tutorId, decryptedRefreshToken);
+    } else {
+      throw new Error(`Unsupported provider: ${provider}`);
+    }
+
+    console.log('🩺 [video-health] Token refresh succeeded', { tutorId, provider });
+    return {
+      ok: true,
+      provider,
+      reason: 'Token refreshed successfully.',
+      reconnectUrl: null,
+      refreshed: true,
+    };
+  } catch (refreshError) {
+    console.error('🩺 [video-health] Token refresh failed; reconnect required', {
+      tutorId,
+      provider,
+      refreshError,
+    });
+    await markConnectionNeedsReauth(tutorId, provider, 'refresh_failed');
+    return {
+      ok: false,
+      provider,
+      reason: 'Token refresh failed. Reconnection required.',
+      reconnectUrl: getReconnectUrl(provider),
+      refreshed: false,
+    };
   }
 }
 

@@ -65,26 +65,28 @@ export default function MemberList({ groupId, members, onRefresh }: MemberListPr
           </h4>
           <div className="space-y-2">
             {pending.map((m) => (
-              <div key={m.id} className="flex items-center gap-3 bg-amber-50 border border-amber-100 rounded-xl p-3">
-                <MemberAvatar member={m} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-800 truncate">
-                    {m.profile?.full_name ?? 'Unknown'}
-                  </p>
-                  <p className="text-xs text-gray-400">Requested to join</p>
+              <div key={m.id} className="bg-amber-50 border border-amber-100 rounded-xl p-3 space-y-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <MemberAvatar member={m} />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate">
+                      {m.profile?.full_name ?? 'Unknown'}
+                    </p>
+                    <p className="text-xs text-gray-400">Requested to join</p>
+                  </div>
                 </div>
-                <div className="flex gap-2 flex-shrink-0">
+                <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={() => handleDecide(m.user_id, 'approved')}
                     disabled={actionLoading === m.user_id}
-                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors"
+                    className="w-full px-2 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-semibold rounded-lg transition-colors"
                   >
                     Approve
                   </button>
                   <button
                     onClick={() => handleDecide(m.user_id, 'denied')}
                     disabled={actionLoading === m.user_id}
-                    className="px-3 py-1.5 bg-white hover:bg-red-50 border border-gray-200 hover:border-red-300 text-gray-600 hover:text-red-600 disabled:opacity-50 text-xs font-medium rounded-lg transition-colors"
+                    className="w-full px-2 py-2 bg-white hover:bg-red-50 border border-gray-200 hover:border-red-300 text-gray-600 hover:text-red-600 disabled:opacity-50 text-xs font-semibold rounded-lg transition-colors"
                   >
                     Deny
                   </button>

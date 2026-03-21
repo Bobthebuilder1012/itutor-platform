@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 
 type Params = { params: Promise<{ groupId: string }> };
+function isSchemaMismatch(error: any): boolean {
+  const code = String(error?.code ?? '');
+  const msg = String(error?.message ?? '').toLowerCase();
+  return code === '42703' || code === '42P01' || code === 'PGRST205' || msg.includes('does not exist');
+}
 
 // GET /api/groups/[groupId]/members — list members (tutor sees all, members see approved)
 export async function GET(_req: NextRequest, { params }: Params) {
@@ -72,6 +77,28 @@ export async function POST(_req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Tutor cannot join their own group' }, { status: 400 });
     }
 
+    // Require at least one configured session before students can request access.
+    const { count: sessionCount, error: sessionsError } = await service
+      .from('group_sessions')
+      .select('id', { count: 'exact', head: true })
+      .eq('group_id', groupId);
+
+    if (sessionsError && !isSchemaMismatch(sessionsError)) {
+      throw sessionsError;
+    }
+    if (sessionsError && isSchemaMismatch(sessionsError)) {
+      return NextResponse.json(
+        { error: 'This group is not accepting requests yet. Tutor must add at least one session first.' },
+        { status: 400 }
+      );
+    }
+    if ((sessionCount ?? 0) < 1) {
+      return NextResponse.json(
+        { error: 'This group is not accepting requests yet. Tutor must add at least one session first.' },
+        { status: 400 }
+      );
+    }
+
     // Check for existing membership
     const { data: existing } = await service
       .from('group_members')
@@ -96,10 +123,11 @@ export async function POST(_req: NextRequest, { params }: Params) {
     try {
       await service.from('notifications').insert({
         user_id: group.tutor_id,
-        type: 'group_join_request',
+        type: 'booking_request',
         title: 'New group join request',
         message: 'A student has requested to join your group.',
         link: `/groups`,
+        group_id: groupId,
       });
     } catch {
       // Non-critical: notifications table may use a different name
