@@ -18,24 +18,6 @@ export async function POST(_req: NextRequest, { params }: Params) {
     }
 
     const service = getServiceClient();
-    const markAttendance = async (occId: string) => {
-      if (isTutor) return;
-      try {
-        await service.from('group_attendance_records').upsert(
-          {
-            session_id: occId,
-            student_id: user.id,
-            status: 'PRESENT',
-            marked_at: new Date().toISOString(),
-            marked_by_id: group.tutor_id,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'session_id,student_id' }
-        );
-      } catch {
-        // Non-critical in environments without attendance table.
-      }
-    };
 
     const { data: group, error: groupError } = await service
       .from('groups')
@@ -48,6 +30,25 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
     // Access: tutor or approved member
     const isTutor = group.tutor_id === user.id;
+    const tutorId = group.tutor_id;
+    const markAttendance = async (occId: string) => {
+      if (isTutor) return;
+      try {
+        await service.from('group_attendance_records').upsert(
+          {
+            session_id: occId,
+            student_id: user.id,
+            status: 'PRESENT',
+            marked_at: new Date().toISOString(),
+            marked_by_id: tutorId,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'session_id,student_id' }
+        );
+      } catch {
+        // Non-critical in environments without attendance table.
+      }
+    };
     if (!isTutor) {
       const { data: membership } = await service
         .from('group_members')

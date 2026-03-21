@@ -37,7 +37,6 @@ export default function GroupDetailPage() {
           currentUserId={profile.id}
           userRole={role}
           onGroupUpdated={() => {}}
-          onClose={() => router.push('/groups')}
         />
       </div>
     </DashboardLayout>
