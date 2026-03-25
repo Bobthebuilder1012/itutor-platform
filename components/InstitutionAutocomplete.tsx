@@ -10,6 +10,9 @@ type InstitutionAutocompleteProps = {
   disabled?: boolean;
   placeholder?: string;
   required?: boolean;
+  hideDefaultHint?: boolean;
+  /** When true, typing a prefix of "none" shows a "None" row to skip listing a school. */
+  allowNoneOption?: boolean;
 };
 
 export default function InstitutionAutocomplete({
@@ -19,19 +22,41 @@ export default function InstitutionAutocomplete({
   disabled = false,
   placeholder = 'Type to search institutions...',
   required = false,
+  hideDefaultHint = false,
+  allowNoneOption = false,
 }: InstitutionAutocompleteProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [noneExplicit, setNoneExplicit] = useState(false);
   const { results, loading, error } = useInstitutionsSearch(searchQuery, filters);
 
+  const showNoneRow =
+    allowNoneOption &&
+    searchQuery.trim().length > 0 &&
+    'none'.startsWith(searchQuery.trim().toLowerCase());
+
   const handleSelect = (institution: Institution) => {
+    setNoneExplicit(false);
     onChange(institution);
     setSearchQuery('');
     setIsDropdownOpen(false);
   };
 
-  const handleClear = () => {
+  const handleSelectNone = () => {
+    setNoneExplicit(true);
     onChange(null);
+    setSearchQuery('');
+    setIsDropdownOpen(false);
+  };
+
+  const handleClear = () => {
+    setNoneExplicit(false);
+    onChange(null);
+    setSearchQuery('');
+  };
+
+  const handleClearNone = () => {
+    setNoneExplicit(false);
     setSearchQuery('');
   };
 
@@ -51,9 +76,32 @@ export default function InstitutionAutocomplete({
       : 'bg-green-100 text-green-700';
   };
 
+  const showSearchInput = !selectedInstitution && !(allowNoneOption && noneExplicit);
+
   return (
     <div className="space-y-3">
       {/* Selected Institution Display */}
+      {allowNoneOption && noneExplicit && !selectedInstitution && (
+        <div className="flex items-center gap-2 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+          <div className="flex-1">
+            <p className="text-sm font-medium text-gray-900">None</p>
+            <p className="text-xs text-gray-600 mt-0.5">No school or institution listed</p>
+          </div>
+          {!disabled && (
+            <button
+              type="button"
+              onClick={handleClearNone}
+              className="p-2 hover:bg-gray-100 rounded-full transition"
+              aria-label="Clear selection"
+            >
+              <svg className="h-5 w-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+      )}
+
       {selectedInstitution && (
         <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
           <div className="flex-1">
@@ -85,7 +133,7 @@ export default function InstitutionAutocomplete({
       )}
 
       {/* Search Input (shown when no selection or while searching) */}
-      {!selectedInstitution && (
+      {showSearchInput && (
         <div className="relative">
           <input
             type="text"
@@ -98,7 +146,7 @@ export default function InstitutionAutocomplete({
             }}
             placeholder={placeholder}
             disabled={disabled}
-            required={required && !selectedInstitution}
+            required={required && !selectedInstitution && !(allowNoneOption && noneExplicit)}
             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none transition"
           />
 
@@ -109,40 +157,56 @@ export default function InstitutionAutocomplete({
             </div>
           )}
 
-          {/* Dropdown Results */}
-          {isDropdownOpen && !loading && results.length > 0 && !disabled && (
+          {/* Dropdown: None + API results */}
+          {isDropdownOpen && !disabled && (showNoneRow || (!loading && results.length > 0)) && (
             <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-80 overflow-y-auto">
-              {results.map((institution) => (
+              {showNoneRow && (
                 <button
-                  key={institution.id}
                   type="button"
-                  onClick={() => handleSelect(institution)}
-                  className="w-full text-left px-4 py-3 hover:bg-blue-50 transition border-b border-gray-100 last:border-0"
+                  onClick={handleSelectNone}
+                  className="w-full text-left px-4 py-3 hover:bg-slate-50 transition border-b border-gray-100"
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">
-                        {institution.name}
-                      </p>
-                      <div className="flex flex-wrap gap-1.5 mt-1.5">
-                        <span className={`text-xs px-2 py-0.5 rounded ${getLevelBadgeColor(institution.institution_level)}`}>
-                          {institution.institution_level === 'secondary' ? 'Secondary' : institution.institution_level === 'tertiary' ? 'Tertiary' : institution.institution_level || '—'}
-                        </span>
-                        {institution.island && (
-                          <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600">
-                            {institution.island}
+                  <p className="text-sm font-medium text-gray-900">None</p>
+                  <p className="text-xs text-gray-600 mt-0.5">No school or institution listed</p>
+                </button>
+              )}
+              {!loading &&
+                results.map((institution) => (
+                  <button
+                    key={institution.id}
+                    type="button"
+                    onClick={() => handleSelect(institution)}
+                    className="w-full text-left px-4 py-3 hover:bg-blue-50 transition border-b border-gray-100 last:border-0"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">
+                          {institution.name}
+                        </p>
+                        <div className="flex flex-wrap gap-1.5 mt-1.5">
+                          <span className={`text-xs px-2 py-0.5 rounded ${getLevelBadgeColor(institution.institution_level)}`}>
+                            {institution.institution_level === 'secondary' ? 'Secondary' : institution.institution_level === 'tertiary' ? 'Tertiary' : institution.institution_level || '—'}
                           </span>
-                        )}
+                          {institution.island && (
+                            <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600">
+                              {institution.island}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </button>
-              ))}
+                  </button>
+                ))}
             </div>
           )}
 
           {/* No results message */}
-          {isDropdownOpen && !loading && results.length === 0 && searchQuery.trim() && !disabled && (
+          {isDropdownOpen &&
+            !loading &&
+            results.length === 0 &&
+            !showNoneRow &&
+            searchQuery.trim() &&
+            !disabled && (
             <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-4">
               <p className="text-sm text-gray-500 text-center">
                 No institutions found matching &quot;{searchQuery}&quot;
@@ -158,7 +222,7 @@ export default function InstitutionAutocomplete({
           )}
 
           {/* Hint text */}
-          {!searchQuery && !loading && (
+          {!hideDefaultHint && !searchQuery && !loading && (
             <p className="text-xs text-gray-500 mt-1.5">
               Start typing to search (e.g., &quot;Queen&quot;, &quot;UWI&quot;, &quot;Presentation&quot;)
             </p>

@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase/client';
 import SubjectMultiSelect from '@/components/SubjectMultiSelect';
 import InstitutionAutocomplete from '@/components/InstitutionAutocomplete';
@@ -10,6 +11,7 @@ import { PAID_CLASSES_DISABLED_MESSAGE } from '@/lib/featureFlags/paidClasses';
 import { ensureSchoolCommunityAndMembership } from '@/lib/actions/community';
 
 const TEACHING_LEVELS = [
+  'SEA',
   'Form 1',
   'Form 2',
   'Form 3',
@@ -19,11 +21,85 @@ const TEACHING_LEVELS = [
   'CAPE Unit 2',
 ];
 
+const SEA_SUBJECT_OPTIONS = [
+  { label: 'SEA Maths', shortLabel: 'Maths' },
+  { label: 'SEA English', shortLabel: 'English' },
+  { label: 'SEA Creative Writing', shortLabel: 'Creative Writing' },
+] as const;
+
+const SEA_SUBJECT_LABELS = new Set(SEA_SUBJECT_OPTIONS.map((o) => o.label));
+
+/** DB `name` for each chip label (migration 095 uses these names + labels). */
+const SEA_NAME_BY_UI_LABEL: Record<string, string> = {
+  'SEA Maths': 'SEA Mathematics',
+  'SEA English': 'SEA English',
+  'SEA Creative Writing': 'SEA Creative Writing',
+};
+
+async function resolveSubjectRowsForOnboarding(client: SupabaseClient, labels: string[]) {
+  const unique = [...new Set(labels.filter(Boolean))];
+  if (unique.length === 0) {
+    return { rows: [] as { id: string }[], error: 'No subjects selected.' };
+  }
+
+  const { data: primary, error: e1 } = await client
+    .from('subjects')
+    .select('id, label, name')
+    .in('label', unique);
+
+  if (e1) {
+    return { rows: [], error: e1.message };
+  }
+
+  const pool = [...(primary ?? [])];
+  const missing = unique.filter((l) => !pool.some((r) => r.label != null && r.label === l));
+
+  if (missing.length > 0) {
+    const namesToTry = [...new Set(missing.map((l) => SEA_NAME_BY_UI_LABEL[l] ?? l))];
+    const { data: byName, error: e2 } = await client.from('subjects').select('id, label, name').in('name', namesToTry);
+    if (e2) {
+      return { rows: [], error: e2.message };
+    }
+    for (const r of byName ?? []) {
+      if (!pool.some((p) => p.id === r.id)) {
+        pool.push(r);
+      }
+    }
+  }
+
+  const idsOrdered: { id: string }[] = [];
+  for (const l of unique) {
+    const row =
+      pool.find((r) => r.label === l) ??
+      pool.find((r) => r.name === (SEA_NAME_BY_UI_LABEL[l] ?? '')) ??
+      pool.find((r) => r.name === l);
+    if (!row) {
+      const seaHint = unique.every((x) => SEA_SUBJECT_LABELS.has(x))
+        ? ' Your project may be missing SEA rows in the database. In Supabase SQL editor, run migration 095_sea_subjects.sql (or ask your admin).'
+        : '';
+      return { rows: [], error: `Could not find subject “${l}”.${seaHint}` };
+    }
+    idsOrdered.push({ id: row.id });
+  }
+
+  const deduped: { id: string }[] = [];
+  const seen = new Set<string>();
+  for (const r of idsOrdered) {
+    if (!seen.has(r.id)) {
+      seen.add(r.id);
+      deduped.push(r);
+    }
+  }
+
+  return { rows: deduped, error: null as string | null };
+}
+
 export default function TutorOnboardingPage() {
   const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
   const [selectedInstitution, setSelectedInstitution] = useState<Institution | null>(null);
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
+  const [selectedSeaSubjects, setSelectedSeaSubjects] = useState<string[]>([]);
   const [selectedLevels, setSelectedLevels] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -59,6 +135,26 @@ export default function TutorOnboardingPage() {
     checkAuth();
   }, [router]);
 
+  useEffect(() => {
+    if (!selectedLevels.includes('SEA')) {
+      setSelectedSeaSubjects([]);
+    }
+  }, [selectedLevels]);
+
+  const hasNonSeaLevel = selectedLevels.some((l) => l !== 'SEA');
+
+  useEffect(() => {
+    if (!hasNonSeaLevel) {
+      setSelectedSubjects((prev) => prev.filter((s) => SEA_SUBJECT_LABELS.has(s)));
+    }
+  }, [hasNonSeaLevel]);
+
+  const toggleSeaSubject = (label: string) => {
+    setSelectedSeaSubjects((prev) =>
+      prev.includes(label) ? prev.filter((s) => s !== label) : [...prev, label]
+    );
+  };
+
   const toggleLevel = (level: string) => {
     if (selectedLevels.includes(level)) {
       setSelectedLevels(selectedLevels.filter((l) => l !== level));
@@ -71,31 +167,40 @@ export default function TutorOnboardingPage() {
     e.preventDefault();
     setError('');
 
-    if (!selectedInstitution) {
-      setError('Please select your school or institution.');
-      return;
-    }
-
-    if (selectedSubjects.length === 0) {
-      setError('Please select at least one subject you can teach.');
-      return;
-    }
+    const hasSea = selectedLevels.includes('SEA');
+    const hasNonSea = selectedLevels.some((l) => l !== 'SEA');
 
     if (selectedLevels.length === 0) {
       setError('Please select at least one teaching level.');
       return;
     }
 
+    if (hasNonSea && selectedSubjects.length === 0) {
+      setError('Please add at least one subject for CSEC/CAPE levels (search above), or remove those levels.');
+      return;
+    }
+
+    const seaCoveredByChips = selectedSeaSubjects.length > 0;
+    const seaCoveredBySearch = selectedSubjects.some((s) => SEA_SUBJECT_LABELS.has(s));
+    if (hasSea && !seaCoveredByChips && !seaCoveredBySearch) {
+      setError(
+        hasNonSea
+          ? 'Please select at least one SEA subject using the Maths / English / Creative Writing buttons above, or add a SEA subject in the subject search.'
+          : 'Please select at least one SEA subject (Maths, English, or Creative Writing).'
+      );
+      return;
+    }
+
     setSubmitting(true);
 
     try {
-      // Update profile with institution
       const { error: updateError } = await supabase
         .from('profiles')
-        .update({
-          school: selectedInstitution.name,
-          institution_id: selectedInstitution.id,
-        })
+        .update(
+          selectedInstitution
+            ? { school: selectedInstitution.name, institution_id: selectedInstitution.id }
+            : { school: null, institution_id: null }
+        )
         .eq('id', userId);
 
       if (updateError) {
@@ -105,15 +210,32 @@ export default function TutorOnboardingPage() {
         return;
       }
 
-      // Get subject IDs from labels
-      const { data: subjects, error: fetchError } = await supabase
-        .from('subjects')
-        .select('id, label')
-        .in('label', selectedSubjects);
+      const allLabels = [...new Set([...selectedSubjects, ...selectedSeaSubjects])];
 
-      if (fetchError || !subjects || subjects.length === 0) {
-        console.error('Subjects fetch error:', fetchError);
-        setError('Error finding selected subjects. Please try again.');
+      const needsSeaRows = allLabels.some((l) => SEA_SUBJECT_LABELS.has(l));
+      if (needsSeaRows) {
+        const ensureRes = await fetch('/api/tutor/ensure-sea-subjects', { method: 'POST' });
+        const ensureJson = (await ensureRes.json().catch(() => null)) as {
+          ok?: boolean;
+          hint?: string;
+          error?: string;
+        } | null;
+        if (!ensureJson?.ok) {
+          setError(
+            ensureJson?.hint ||
+              ensureJson?.error ||
+              'SEA subjects are not available yet. Run migration 095_sea_subjects.sql in the Supabase SQL editor, or set SUPABASE_SERVICE_ROLE_KEY so the app can seed SEA rows.'
+          );
+          setSubmitting(false);
+          return;
+        }
+      }
+
+      const { rows: subjectRows, error: resolveError } = await resolveSubjectRowsForOnboarding(supabase, allLabels);
+
+      if (resolveError || subjectRows.length === 0) {
+        console.error('Subjects resolve error:', resolveError, 'labels:', allLabels);
+        setError(resolveError || 'Could not load your selected subjects. Please try again.');
         setSubmitting(false);
         return;
       }
@@ -140,7 +262,7 @@ export default function TutorOnboardingPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          subjects: subjects.map((subject) => ({
+          subjects: subjectRows.map((subject) => ({
             subject_id: subject.id,
             // Always save a valid positive price to satisfy DB constraints.
             // During launch, payments can still be forced free elsewhere via feature flag.
@@ -222,7 +344,7 @@ export default function TutorOnboardingPage() {
             Set up your tutor profile
           </h1>
           <p className="text-gray-700 text-lg">
-            Add your subjects and teaching levels so students can find you.
+            Add your subjects and teaching levels—including SEA if you teach primary exit—so students can find you.
           </p>
         </div>
 
@@ -235,11 +357,9 @@ export default function TutorOnboardingPage() {
 
           {/* School/Institution */}
           <div className="bg-gradient-to-br from-emerald-50/50 to-teal-50/50 p-6 rounded-xl border border-emerald-100/50">
-            <label className="block text-sm font-semibold text-gray-800 mb-2">
-              School or Institution <span className="text-red-500">*</span>
-            </label>
+            <label className="block text-sm font-semibold text-gray-800 mb-2">School (optional)</label>
             <p className="text-sm text-gray-600 mb-3">
-              Search for your school, college, or university
+              Search for your school, college, or university. Type &quot;none&quot; to skip if you prefer not to list one.
             </p>
             <InstitutionAutocomplete
               selectedInstitution={selectedInstitution}
@@ -247,40 +367,28 @@ export default function TutorOnboardingPage() {
               filters={{ country_code: 'TT' }}
               disabled={submitting}
               placeholder="Type to search (e.g. QRC, UWI, Presentation, COSTAATT)..."
-              required
-            />
-          </div>
-
-          {/* Subjects */}
-          <div className="bg-gradient-to-br from-blue-50/50 to-cyan-50/50 p-6 rounded-xl border border-blue-100/50">
-            <label className="block text-sm font-semibold text-gray-800 mb-3">
-              Subjects You Can Teach <span className="text-red-500">*</span>
-            </label>
-            <p className="text-sm text-gray-600 mb-3">Type to search and select subjects you're qualified to teach</p>
-            <SubjectMultiSelect
-              selectedSubjects={selectedSubjects}
-              onChange={setSelectedSubjects}
-              disabled={submitting}
-              placeholder="Type subject name (e.g. CSEC Math, CAPE Physics)..."
+              required={false}
+              allowNoneOption
+              hideDefaultHint
             />
           </div>
 
           {/* Teaching Levels */}
-          <div className="bg-gradient-to-br from-teal-50/50 to-emerald-50/50 p-6 rounded-xl border border-teal-100/50">
+          <div className="bg-gradient-to-br from-teal-50/50 to-emerald-50/50 p-5 sm:p-6 rounded-xl border border-teal-100/50">
             <label className="block text-sm font-semibold text-gray-800 mb-3">
               Teaching Levels <span className="text-red-500">*</span>
             </label>
-            <p className="text-sm text-gray-600 mb-3">Select all levels you can teach</p>
-            <div className="flex flex-wrap gap-3">
+            <p className="text-sm text-gray-600 mb-3">Select all levels you can teach, including SEA if applicable</p>
+            <div className="flex flex-wrap gap-2 sm:gap-3">
               {TEACHING_LEVELS.map((level) => (
                 <button
                   key={level}
                   type="button"
                   onClick={() => toggleLevel(level)}
-                  className={`px-5 py-2.5 rounded-xl border-2 text-sm font-semibold transition-all duration-200 shadow-sm ${
+                  className={`min-h-[44px] px-4 sm:px-5 py-2.5 rounded-xl border-2 text-sm font-semibold transition-all duration-200 shadow-sm touch-manipulation ${
                     selectedLevels.includes(level)
-                      ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white border-emerald-500 shadow-emerald-500/30 transform scale-105'
-                      : 'bg-white text-gray-700 border-gray-300 hover:border-emerald-400 hover:shadow-md'
+                      ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white border-emerald-500 shadow-emerald-500/30 sm:scale-105'
+                      : 'bg-white text-gray-700 border-gray-300 hover:border-emerald-400 hover:shadow-md active:scale-[0.98]'
                   }`}
                   disabled={submitting}
                 >
@@ -294,6 +402,63 @@ export default function TutorOnboardingPage() {
               </p>
             )}
           </div>
+
+          {/* SEA subjects (when SEA level selected) */}
+          {selectedLevels.includes('SEA') && (
+            <div className="bg-gradient-to-br from-amber-50/80 to-orange-50/50 p-5 sm:p-6 rounded-xl border border-amber-200/60">
+              <label className="block text-sm font-semibold text-gray-900 mb-1">
+                SEA subjects <span className="text-red-500">*</span>
+              </label>
+              <p className="text-sm text-gray-600 mb-4">
+                {hasNonSeaLevel
+                  ? 'Tap the subjects you teach, or add the same SEA subjects using the CSEC / CAPE subject search below—they both count.'
+                  : 'Tap the subjects you teach.'}
+              </p>
+              <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:gap-3">
+                {SEA_SUBJECT_OPTIONS.map(({ label, shortLabel }) => {
+                  const on = selectedSeaSubjects.includes(label);
+                  return (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => toggleSeaSubject(label)}
+                      disabled={submitting}
+                      className={`min-h-[44px] flex-1 min-w-[140px] sm:min-w-[160px] px-4 py-3 rounded-xl border-2 text-sm font-semibold transition-all duration-200 touch-manipulation ${
+                        on
+                          ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white border-amber-500 shadow-md'
+                          : 'bg-white text-gray-800 border-amber-200 hover:border-amber-400 active:scale-[0.98]'
+                      }`}
+                    >
+                      {shortLabel}
+                    </button>
+                  );
+                })}
+              </div>
+              {selectedSeaSubjects.length > 0 && (
+                <p className="text-sm text-amber-800 font-medium mt-3">
+                  {selectedSeaSubjects.length} SEA subject{selectedSeaSubjects.length !== 1 ? 's' : ''} selected
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* CSEC / CAPE subjects — hidden when only SEA is selected as a level */}
+          {hasNonSeaLevel && (
+            <div className="bg-gradient-to-br from-blue-50/50 to-cyan-50/50 p-5 sm:p-6 rounded-xl border border-blue-100/50">
+              <label className="block text-sm font-semibold text-gray-800 mb-3">
+                Subjects you can teach (CSEC / CAPE) <span className="text-red-500">*</span>
+              </label>
+              <p className="text-sm text-gray-600 mb-3">
+                Search and add subjects for the secondary / CAPE levels you selected above.
+              </p>
+              <SubjectMultiSelect
+                selectedSubjects={selectedSubjects}
+                onChange={setSelectedSubjects}
+                disabled={submitting}
+                placeholder="Type subject name (e.g. CSEC Math, CAPE Physics)..."
+              />
+            </div>
+          )}
 
           <button
             type="submit"

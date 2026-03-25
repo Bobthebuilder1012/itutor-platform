@@ -25,7 +25,8 @@ export async function GET(request: NextRequest) {
     }
   );
   const searchParams = request.nextUrl.searchParams;
-  const status = searchParams.get('status') || 'READY_FOR_REVIEW';
+  const statusParam = searchParams.get('status') || 'READY_FOR_REVIEW';
+  const statusAll = statusParam.toLowerCase() === 'all';
 
   try {
     let query = supabase
@@ -38,7 +39,7 @@ export async function GET(request: NextRequest) {
         reviewed_at,
         file_type,
         original_filename,
-        tutor:tutor_id (
+        tutor:profiles!tutor_verification_requests_tutor_id_fkey (
           id,
           full_name,
           email
@@ -46,9 +47,8 @@ export async function GET(request: NextRequest) {
       `)
       .order('created_at', { ascending: false });
 
-    // Filter by status if provided
-    if (status) {
-      query = query.eq('status', status);
+    if (!statusAll) {
+      query = query.eq('status', statusParam);
     }
 
     const { data, error } = await query;
@@ -62,7 +62,9 @@ export async function GET(request: NextRequest) {
       }, { status: 500 });
     }
 
-    console.log(`Fetched ${data?.length || 0} verification requests with status: ${status}`);
+    console.log(
+      `Fetched ${data?.length || 0} verification requests with status: ${statusAll ? 'all' : statusParam}`
+    );
     return NextResponse.json({ requests: data || [] });
   } catch (error) {
     console.error('Exception fetching verification requests:', error);

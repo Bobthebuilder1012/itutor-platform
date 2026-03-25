@@ -62,10 +62,11 @@ export default function SubjectMultiSelect({
       console.log('🔍 Searching subjects for:', searchQuery);
       console.log('🔑 Supabase client initialized:', !!supabase);
       
+      const safe = searchQuery.trim().replace(/%/g, '').replace(/,/g, '');
       const { data, error, count } = await supabase
         .from('subjects')
         .select('id, name, curriculum, level, label', { count: 'exact' })
-        .ilike('name', `%${searchQuery}%`)
+        .or(`name.ilike.%${safe}%,label.ilike.%${safe}%`)
         .order('name', { ascending: true })
         .limit(15);
 

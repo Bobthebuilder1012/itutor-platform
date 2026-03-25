@@ -156,7 +156,7 @@ export async function GET(request: NextRequest) {
 
     // Check if profile is complete based on role
     if (role === 'student') {
-      const hasBasicInfo = (profile.school || profile.institution_id) && profile.form_level;
+      const hasBasicInfo = Boolean(profile.form_level);
       const hasSubjects = profile.subjects_of_study && profile.subjects_of_study.length > 0;
 
       if (!hasBasicInfo || !hasSubjects) {
@@ -170,9 +170,13 @@ export async function GET(request: NextRequest) {
       console.log('➡️ Redirecting to parent dashboard');
       return NextResponse.redirect(new URL('/parent/dashboard', request.url));
     } else if (role === 'tutor') {
-      // Check if tutor has completed onboarding
-      if (!profile.institution_id) {
-        console.log('➡️ Tutor profile incomplete, redirecting to onboarding');
+      const { count: tutorSubjectCount, error: tutorSubjectsError } = await supabase
+        .from('tutor_subjects')
+        .select('id', { count: 'exact', head: true })
+        .eq('tutor_id', userId);
+
+      if (tutorSubjectsError || !tutorSubjectCount) {
+        console.log('➡️ Tutor profile incomplete (no subjects), redirecting to onboarding');
         return NextResponse.redirect(new URL('/onboarding/tutor', request.url));
       }
       console.log('➡️ Redirecting to tutor dashboard');

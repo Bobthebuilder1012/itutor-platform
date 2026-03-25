@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
+import DegreeVerifiedBadge from '@/components/DegreeVerifiedBadge';
 import { getDisplayName } from '@/lib/utils/displayName';
 import { getAvatarColor } from '@/lib/utils/avatarColors';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -54,6 +55,7 @@ export default function ProfilePage() {
   const [ratings, setRatings] = useState<RatingWithStudent[]>([]);
   const [averageRating, setAverageRating] = useState<number | null>(null);
   const [messageRequestLoading, setMessageRequestLoading] = useState(false);
+  const [degreeVerified, setDegreeVerified] = useState(false);
 
   useEffect(() => {
     if (!currentLoading && !currentUser) {
@@ -148,6 +150,24 @@ export default function ProfilePage() {
     };
   }, [userId, currentUser?.role]);
 
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    setDegreeVerified(false);
+    (async () => {
+      try {
+        const res = await fetch(`/api/degrees/${userId}/verified`, { cache: 'no-store' });
+        const json = await res.json();
+        if (!cancelled) setDegreeVerified(json?.verified === true);
+      } catch {
+        if (!cancelled) setDegreeVerified(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
   if (currentLoading || !currentUser) {
     return (
       <div className="flex items-center justify-center min-h-[200px]">
@@ -231,7 +251,10 @@ export default function ProfilePage() {
               )}
             </div>
             <div className="text-center sm:text-left flex-1 min-w-0">
-              <h1 className="text-xl font-semibold text-gray-900 truncate">{name}</h1>
+              <div className="flex flex-col items-center sm:items-start gap-2 min-w-0">
+                <h1 className="text-xl font-semibold text-gray-900 truncate w-full">{name}</h1>
+                {degreeVerified && <DegreeVerifiedBadge className="flex-shrink-0" />}
+              </div>
               <p className="text-sm text-gray-500 mt-0.5">{roleLabel}</p>
               {schoolName && (
                 <p className="text-sm text-gray-600 mt-1 flex items-center gap-1.5 justify-center sm:justify-start">

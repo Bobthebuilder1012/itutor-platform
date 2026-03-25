@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
@@ -431,6 +432,14 @@ export default function TutorSettingsPage() {
               <p className="text-sm text-gray-600">Update your personal details and contact information</p>
             </div>
           </div>
+
+          <p className="text-sm text-gray-700 mb-4 rounded-lg border border-blue-200 bg-white/70 px-4 py-3">
+            <Link href="/degree-verification" className="font-medium text-itutor-green hover:underline">
+              Degree verification
+            </Link>
+            {' '}
+            — submit your qualification for admin review and show a verified badge on your public profile.
+          </p>
           
           <div className="space-y-4">
             <div>

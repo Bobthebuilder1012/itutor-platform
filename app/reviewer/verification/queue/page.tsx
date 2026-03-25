@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -15,9 +16,9 @@ type VerificationRequest = {
   original_filename: string;
   tutor: {
     id: string;
-    full_name: string;
-    email: string;
-  };
+    full_name: string | null;
+    email: string | null;
+  } | null;
 };
 
 export default function VerificationQueuePage() {
@@ -41,7 +42,9 @@ export default function VerificationQueuePage() {
     setLoading(true);
     try {
       console.log('Fetching verification requests with status:', statusFilter);
-      const res = await fetch(`/api/admin/verification/requests?status=${statusFilter}`);
+      const res = await fetch(
+        `/api/admin/verification/requests?status=${encodeURIComponent(statusFilter)}`
+      );
       const data = await res.json();
       console.log('Received verification requests:', data);
       
@@ -91,21 +94,32 @@ export default function VerificationQueuePage() {
     <DashboardLayout role={profile.role === 'admin' ? 'admin' : 'reviewer'} userName={displayName}>
       <div className="max-w-6xl mx-auto">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Verification Queue</h1>
-        <p className="text-gray-600 mb-8">
-          Review and approve tutor verification requests
+        <p className="text-gray-600 mb-2">
+          Tutor certificate and credential uploads (separate from degree verification below).
+        </p>
+        <p className="text-sm text-gray-600 mb-6">
+          Degree submissions (diploma PDFs from users) are reviewed on{' '}
+          <Link href="/admin/degrees" className="text-itutor-green font-medium hover:underline">
+            Degree verifications
+          </Link>
+          .
         </p>
 
         {/* Status Filter */}
-        <div className="mb-6 flex gap-2">
+        <div className="mb-6 flex flex-wrap gap-2">
           {[
+            { value: 'all', label: 'All' },
+            { value: 'SUBMITTED', label: 'Submitted' },
+            { value: 'PROCESSING', label: 'Processing' },
             { value: 'READY_FOR_REVIEW', label: 'Ready for Review' },
             { value: 'APPROVED', label: 'Approved' },
             { value: 'REJECTED', label: 'Rejected' },
           ].map(({ value, label }) => (
             <button
               key={value}
+              type="button"
               onClick={() => setStatusFilter(value)}
-              className={`px-4 py-2 rounded-lg font-medium transition-all ${
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                 statusFilter === value
                   ? 'bg-itutor-green text-white'
                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
@@ -129,7 +143,8 @@ export default function VerificationQueuePage() {
             </svg>
             <h2 className="text-xl font-semibold text-gray-900 mb-2">No Requests Found</h2>
             <p className="text-gray-600">
-              No verification requests with status: {statusFilter}
+              No verification requests
+              {statusFilter.toLowerCase() !== 'all' ? ` with status: ${statusFilter}` : ''}.
             </p>
           </div>
         ) : (
@@ -159,8 +174,14 @@ export default function VerificationQueuePage() {
                   <tr key={request.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div>
-                        <div className="text-sm font-medium text-gray-900">{request.tutor.full_name}</div>
-                        <div className="text-sm text-gray-500">{request.tutor.email}</div>
+                        <div className="text-sm font-medium text-gray-900">
+                          {request.tutor?.full_name?.trim() || '—'}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          {request.tutor?.email?.trim() || (
+                            <span className="text-gray-400 italic">No email on profile</span>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">

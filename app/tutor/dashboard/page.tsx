@@ -85,17 +85,9 @@ export default function TutorDashboard() {
     // Check if onboarding is complete by verifying school and subjects exist
     async function checkOnboardingComplete() {
       if (!profile) return;
-      
-      console.log('Checking onboarding status for tutor:', profile.id);
-      console.log('Profile school:', profile.school);
-      
-      if (!profile.school) {
-        console.log('No school found, redirecting to onboarding');
-        router.push('/onboarding/tutor');
-        return;
-      }
 
-      // Check if tutor has any subjects
+      console.log('Checking onboarding status for tutor:', profile.id);
+
       const { data: subjects, error: subjectsError } = await supabase
         .from('tutor_subjects')
         .select('id')
