@@ -359,7 +359,6 @@ export default function TutorDashboard() {
           avatarUrl={profile?.avatar_url}
           onAvatarClick={() => setAvatarModalOpen(true)}
           isVerified={profile?.tutor_verification_status === 'VERIFIED'}
-          userId={profile?.id}
         />
 
         {/* Quick Action Buttons */}
