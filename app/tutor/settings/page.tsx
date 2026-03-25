@@ -434,11 +434,11 @@ export default function TutorSettingsPage() {
           </div>
 
           <p className="text-sm text-gray-700 mb-4 rounded-lg border border-blue-200 bg-white/70 px-4 py-3">
-            <Link href="/degree-verification" className="font-medium text-itutor-green hover:underline">
-              Degree verification
+            <Link href="/verification" className="font-medium text-itutor-green hover:underline">
+              Verification
             </Link>
             {' '}
-            — submit your qualification for admin review and show a verified badge on your public profile.
+            — submit degree credentials or tutor certificates for review (badges when approved).
           </p>
           
           <div className="space-y-4">

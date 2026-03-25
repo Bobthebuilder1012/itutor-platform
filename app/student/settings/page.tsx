@@ -443,11 +443,11 @@ export default function StudentSettingsPage() {
           </div>
 
           <p className="text-sm text-gray-700 mb-4 rounded-lg border border-blue-200 bg-white/70 px-4 py-3">
-            <Link href="/degree-verification" className="font-medium text-itutor-green hover:underline">
-              Degree verification
+            <Link href="/verification" className="font-medium text-itutor-green hover:underline">
+              Verification
             </Link>
             {' '}
-            — optional: verify a degree to display a badge on your profile after admin review.
+            — optional: verify credentials to display badges on your profile after admin review.
           </p>
 
           <div className="space-y-4 mt-6">

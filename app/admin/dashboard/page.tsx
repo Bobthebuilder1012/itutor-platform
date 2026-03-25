@@ -511,8 +511,8 @@ export default function AdminDashboardPage() {
                 </svg>
               </div>
               <div>
-                <h3 className="font-bold text-gray-900 text-lg">Verification Queue</h3>
-                <p className="text-sm text-gray-600">Review tutor verifications</p>
+                <h3 className="font-bold text-gray-900 text-lg">Verification queue</h3>
+                <p className="text-sm text-gray-600">Tutor certificates and degree submissions</p>
               </div>
             </Link>
 
@@ -558,26 +558,6 @@ export default function AdminDashboardPage() {
               <div>
                 <h3 className="font-bold text-gray-900 text-lg">Email Management</h3>
                 <p className="text-sm text-gray-600">Send emails & templates</p>
-              </div>
-            </Link>
-
-            <Link
-              href="/admin/degrees"
-              className="flex items-center gap-4 p-6 border-2 border-gray-200 rounded-xl hover:border-violet-500 hover:bg-violet-50 transition-all group hover:shadow-lg"
-            >
-              <div className="bg-violet-100 rounded-lg p-4 group-hover:bg-violet-200 transition-colors">
-                <svg className="w-8 h-8 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 14l9-5-9-5-9 5 9 5z M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z"
-                  />
-                </svg>
-              </div>
-              <div>
-                <h3 className="font-bold text-gray-900 text-lg">Degree verifications</h3>
-                <p className="text-sm text-gray-600">Review user degree submissions</p>
               </div>
             </Link>
 

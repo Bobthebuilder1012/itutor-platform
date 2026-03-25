@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
@@ -31,6 +32,27 @@ export default function TutorVerificationPage() {
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
   const [showSupportForm, setShowSupportForm] = useState(false);
+  const [examFocus, setExamFocus] = useState<'csec' | 'cape' | null>(null);
+
+  useEffect(() => {
+    const applyHash = () => {
+      const h = typeof window !== 'undefined' ? window.location.hash.slice(1).toLowerCase() : '';
+      if (h === 'csec' || h === 'cape') {
+        setExamFocus(h);
+        window.setTimeout(() => {
+          document.getElementById('tutor-verification-upload')?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start',
+          });
+        }, 150);
+      } else {
+        setExamFocus(null);
+      }
+    };
+    applyHash();
+    window.addEventListener('hashchange', applyHash);
+    return () => window.removeEventListener('hashchange', applyHash);
+  }, []);
 
   useEffect(() => {
     if (loading) return;
@@ -140,8 +162,14 @@ export default function TutorVerificationPage() {
       <div className="px-4 py-6 sm:px-0 max-w-4xl mx-auto">
         <div className="flex justify-between items-start mb-6">
           <div>
+            <Link
+              href="/verification"
+              className="text-sm text-itutor-green hover:text-emerald-700 font-medium mb-3 inline-block"
+            >
+              ← Verification
+            </Link>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">iTutor Verification</h1>
-            <p className="text-gray-600">Upload your teaching credentials for verification</p>
+            <p className="text-gray-600">Upload your teaching credentials for verification (CSEC, CAPE, or other)</p>
           </div>
           <button
             onClick={() => setShowSupportForm(true)}
@@ -264,10 +292,29 @@ export default function TutorVerificationPage() {
 
         {/* Upload Section */}
         {(verificationStatus.status !== 'VERIFIED' && verificationStatus.status !== 'PENDING') && (
-          <div className="bg-white border-2 border-gray-200 rounded-2xl shadow-lg p-6 mb-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-2">Upload Verification Document</h2>
+          <div
+            id="tutor-verification-upload"
+            className="scroll-mt-24 bg-white border-2 border-gray-200 rounded-2xl shadow-lg p-6 mb-6"
+          >
+            {examFocus === 'csec' && (
+              <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                <strong>CSEC:</strong> Upload a clear scan or PDF of your CSEC certificate or official results slip. One
+                document per submission; you can submit again for additional qualifications if needed.
+              </div>
+            )}
+            {examFocus === 'cape' && (
+              <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                <strong>CAPE:</strong> Upload a clear scan or PDF of your CAPE certificate or official results slip. One
+                document per submission; you can submit again for additional qualifications if needed.
+              </div>
+            )}
+            <h2 className="text-xl font-bold text-gray-900 mb-2">Upload verification document</h2>
             <p className="text-gray-600 mb-4">
-              Upload your CSEC, CAPE, or university degree certificate (PDF, JPG, PNG)
+              CSEC, CAPE, or other teaching qualification (PDF, JPG, PNG). Choose the matching option from{' '}
+              <Link href="/verification" className="text-itutor-green font-medium hover:underline">
+                Verification
+              </Link>{' '}
+              if you want CSEC- or CAPE-specific guidance above.
             </p>
 
             <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 hover:border-itutor-green transition-colors">
