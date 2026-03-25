@@ -14,10 +14,8 @@ export default function SessionJoinButton({ session, userRole, onRetrySuccess }:
   const [retrying, setRetrying] = useState(false);
   const [needsReconnect, setNeedsReconnect] = useState(false);
   const router = useRouter();
-  const now = new Date();
-  const scheduledStart = new Date(session.scheduled_start_at);
-  const scheduledEnd = new Date(scheduledStart.getTime() + session.duration_minutes * 60000);
-  const hasSessionEnded = now > scheduledEnd;
+  const terminalStatuses = new Set(['COMPLETED_ASSUMED', 'NO_SHOW_STUDENT', 'EARLY_END_SHORT', 'CANCELLED']);
+  const hasSessionEnded = terminalStatuses.has(session.status);
 
   async function handleRetryMeetingLink() {
     setRetrying(true);

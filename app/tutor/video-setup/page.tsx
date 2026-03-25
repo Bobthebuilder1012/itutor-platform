@@ -17,6 +17,7 @@ type Connection = {
   connection_status: 'connected' | 'needs_reauth' | 'disconnected';
   provider_account_email: string | null;
   provider_account_name: string | null;
+  token_expires_at?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -27,6 +28,7 @@ export default function VideoSetupPage() {
   const [connection, setConnection] = useState<Connection | null>(null);
   const [loading, setLoading] = useState(true);
   const [switching, setSwitching] = useState(false);
+  const [expiredProvider, setExpiredProvider] = useState<VideoProvider | null>(null);
 
   useEffect(() => {
     if (profileLoading) return;
@@ -48,11 +50,11 @@ export default function VideoSetupPage() {
     if (success === 'true') {
       if (migratedCount) {
         const count = parseInt(migratedCount);
-        alert(`✅ Successfully connected video provider!\n\n🔄 ${count} future session${count > 1 ? 's were' : ' was'} automatically updated with new meeting links.`);
+          alert(`✅ Successfully connected!\n\n🔄 ${count} future session${count > 1 ? 's were' : ' was'} automatically updated with new meeting links.`);
       } else if (migrationWarning === 'true') {
-        alert('✅ Successfully connected video provider!\n\n⚠️ Some future sessions may need to be manually updated. Please check your sessions page.');
+          alert('✅ Successfully connected!\n\n⚠️ Some future sessions may need to be manually updated. Please check your sessions page.');
       } else {
-        alert('Successfully connected video provider!');
+          alert('Successfully connected!');
       }
       // Remove query params
       window.history.replaceState({}, '', '/tutor/video-setup');
@@ -83,7 +85,22 @@ export default function VideoSetupPage() {
       if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
         console.error('Error loading connection:', error);
       } else if (data) {
-        setConnection(data as Connection);
+        const now = new Date();
+        const expiresAt = data.token_expires_at ? new Date(data.token_expires_at) : null;
+        const isExpired = !!expiresAt && !Number.isNaN(expiresAt.getTime()) && expiresAt <= now;
+        const isUsable = Boolean(data.is_active) && data.connection_status === 'connected' && !isExpired;
+
+        if (isUsable) {
+          setConnection(data as Connection);
+          setExpiredProvider(null);
+        } else {
+          // Treat expired/stale connection as not connected so tutors are prompted to reconnect.
+          setConnection(null);
+          setExpiredProvider(isExpired ? (data.provider as VideoProvider) : null);
+        }
+      } else {
+        setConnection(null);
+        setExpiredProvider(null);
       }
     } catch (error) {
       console.error('Error loading connection:', error);
@@ -123,12 +140,12 @@ export default function VideoSetupPage() {
     if (!connection) return;
 
     if (!confirm(
-      '⚠️ WARNING: Disconnect Video Provider?\n\n' +
+      '⚠️ Disconnect Zoom or Google Meet?\n\n' +
       'If you disconnect:\n\n' +
       '• You will NOT be visible to students searching for tutors\n' +
       '• You CANNOT accept any booking requests\n' +
       '• You CANNOT send lesson offers\n\n' +
-      'You must reconnect a video provider to resume tutoring.\n\n' +
+      'You must connect Zoom or Google Meet again to resume tutoring.\n\n' +
       'Are you absolutely sure you want to disconnect?'
     )) {
       return;
@@ -171,9 +188,9 @@ export default function VideoSetupPage() {
       <div className="px-4 py-6 sm:px-0 max-w-4xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Video Provider Setup</h1>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Connect Zoom or Google Meet</h1>
           <p className="text-gray-600">
-            Connect Google Meet or Zoom to host your tutoring sessions
+            Choose one to host sessions and generate meeting links
           </p>
         </div>
 
@@ -189,18 +206,17 @@ export default function VideoSetupPage() {
               <div className="flex-1">
                 <h3 className="text-lg font-bold text-red-900 mb-2">⚠️ Account Not Active</h3>
                 <p className="text-red-800 mb-3 font-semibold">
-                  Your tutor profile is currently hidden from students because you don't have a video provider connected.
+                  Connect Zoom or Google Meet to continue tutoring.
                 </p>
-                <div className="bg-red-100 border border-red-200 rounded-lg p-3 mb-3">
-                  <p className="text-sm font-semibold text-red-900 mb-1">Currently you CANNOT:</p>
-                  <ul className="text-sm text-red-800 space-y-1">
-                    <li>• Appear in student search results</li>
-                    <li>• Accept booking requests</li>
-                    <li>• Send lesson offers to students</li>
-                  </ul>
-                </div>
+                {expiredProvider && (
+                  <div className="bg-amber-100 border border-amber-300 rounded-lg p-3 mb-3">
+                    <p className="text-sm font-semibold text-amber-900">
+                      Your {expiredProvider.replace('_', ' ')} authorization expired. Connect {expiredProvider === 'google_meet' ? 'Google Meet' : 'Zoom'} again below.
+                    </p>
+                  </div>
+                )}
                 <p className="text-sm text-red-700 font-semibold">
-                  👉 Connect Google Meet or Zoom below to activate your tutor account.
+                  👉 Connect Google Meet or Zoom below.
                 </p>
               </div>
             </div>
@@ -216,14 +232,14 @@ export default function VideoSetupPage() {
               <div className="flex-1">
                 <h3 className="text-lg font-bold text-yellow-900 mb-2">Connection Needs Refresh</h3>
                 <p className="text-yellow-800 mb-3">
-                  Your {connection.provider.replace('_', ' ')} connection needs to be re-authorized.
+                  Your {connection.provider === 'google_meet' ? 'Google Meet' : 'Zoom'} authorization expired. Connect it again to continue.
                 </p>
                 <button
                   onClick={() => handleConnect(connection.provider)}
                   disabled={switching}
                   className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg font-semibold transition disabled:opacity-50"
                 >
-                  {switching ? 'Reconnecting...' : 'Reconnect Now'}
+                  {switching ? 'Connecting...' : `Connect ${connection.provider === 'google_meet' ? 'Google Meet' : 'Zoom'} Again`}
                 </button>
               </div>
             </div>
@@ -387,97 +403,6 @@ export default function VideoSetupPage() {
           </div>
         </div>
 
-        {/* Info Section */}
-        <div className="mt-8 bg-blue-50 border-2 border-blue-200 rounded-2xl p-6">
-          <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
-            <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            How it works
-          </h3>
-          <ul className="space-y-2 text-sm text-gray-700">
-            <li className="flex items-start gap-2">
-              <span className="text-blue-600 font-bold mt-0.5">1.</span>
-              <span>Connect your preferred video provider (Google Meet or Zoom)</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="text-blue-600 font-bold mt-0.5">2.</span>
-              <span>When a booking is confirmed, we automatically create a meeting link</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="text-blue-600 font-bold mt-0.5">3.</span>
-              <span>You and your student will see a "Join Session" button 5 minutes before the session starts</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="text-blue-600 font-bold mt-0.5">4.</span>
-              <span>You can switch or disconnect providers at any time from this page</span>
-            </li>
-          </ul>
-        </div>
-
-        {/* Important Requirements Section */}
-        <div className="mt-4 bg-amber-50 border-2 border-amber-200 rounded-2xl p-6">
-          <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
-            <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-            ⚠️ Important: Video Provider is Required
-          </h3>
-          <div className="space-y-2 text-sm text-gray-800">
-            <p className="font-semibold">Without a connected video provider:</p>
-            <ul className="space-y-1.5 ml-4">
-              <li className="flex items-start gap-2">
-                <span className="text-amber-600 font-bold mt-0.5">❌</span>
-                <span><strong>You will NOT appear</strong> in student search results</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-amber-600 font-bold mt-0.5">❌</span>
-                <span><strong>You CANNOT accept</strong> any booking requests</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-amber-600 font-bold mt-0.5">❌</span>
-                <span><strong>You CANNOT send</strong> lesson offers to students</span>
-              </li>
-            </ul>
-            <p className="mt-3 font-semibold text-amber-800">
-              A video provider connection is required to ensure all sessions have working meeting links for your students.
-            </p>
-          </div>
-        </div>
-
-        {/* Troubleshooting Section */}
-        <div className="mt-6 p-4 bg-purple-50 border-2 border-purple-300 rounded-xl">
-          <h3 className="font-bold text-gray-900 mb-2 flex items-center gap-2">
-            <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            Troubleshooting: Meeting Link Not Generating?
-          </h3>
-          <div className="space-y-2 text-sm text-gray-800">
-            <p>If you see "Meeting link is being generated..." for a long time:</p>
-            <ol className="space-y-1.5 ml-4 list-decimal">
-              <li><strong>Click "Retry Now"</strong> button on the session page</li>
-              <li>If that doesn't work, <strong>disconnect and reconnect your video provider:</strong>
-                <ul className="ml-4 mt-1 space-y-1">
-                  <li>• Click "Disconnect" button above</li>
-                  <li>• Click "Connect Google Meet" or "Connect Zoom"</li>
-                  <li>• Complete the authorization</li>
-                  <li>• Go back to your session and click "Retry Now"</li>
-                </ul>
-              </li>
-            </ol>
-            <p className="mt-2 text-purple-800 font-medium">
-              💡 This usually happens when your authorization token expires. Reconnecting refreshes it.
-            </p>
-          </div>
-        </div>
-
-        {/* OAuth Info */}
-        <div className="mt-6 p-4 bg-blue-50 border border-blue-300 rounded-xl">
-          <p className="text-sm text-blue-800">
-            <span className="font-bold">🔐 Secure Connection:</span> When you click "Connect", you'll be redirected to Google or Zoom to securely authorize iTutor. Your credentials are never stored by us - only the authorization tokens needed to create meeting links.
-          </p>
-        </div>
       </div>
     </DashboardLayout>
   );

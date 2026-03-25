@@ -8,6 +8,7 @@ import {
   getBookingMessages, 
   addBookingMessage,
   tutorConfirmBooking,
+  tutorHealthCheckBeforeConfirm,
   tutorDeclineBooking,
   tutorCounterOffer,
   subscribeToBooking,
@@ -40,6 +41,17 @@ export default function TutorBookingThreadPage() {
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [reconnectPrompt, setReconnectPrompt] = useState<{
+    open: boolean;
+    reason: string;
+    checking: boolean;
+    error: string;
+  }>({
+    open: false,
+    reason: '',
+    checking: false,
+    error: '',
+  });
   
   // Counter offer state
   const [showCounterOffer, setShowCounterOffer] = useState(false);
@@ -132,7 +144,7 @@ export default function TutorBookingThreadPage() {
           .single();
         if (!sessionError && sessionData) {
           setSession(sessionData as Session);
-          if (!sessionData.join_url && !sessionData.meeting_external_id && !meetingRetryAttempted.current) {
+          if ((!sessionData.join_url || !sessionData.meeting_external_id) && !meetingRetryAttempted.current) {
             meetingRetryAttempted.current = true;
             try {
               await fetch('/api/sessions/create-for-booking', {
@@ -238,56 +250,94 @@ export default function TutorBookingThreadPage() {
 
     setActionLoading(true);
     try {
-      // Check if tutor has a video provider connected
-      if (!profile?.id) {
-        alert('Profile not loaded. Please refresh the page.');
-        setActionLoading(false);
-        return;
-      }
-
-      const { data: videoProvider, error: vpError } = await supabase
-        .from('tutor_video_provider_connections')
-        .select('id')
-        .eq('tutor_id', profile.id)
-        .limit(1)
-        .single();
-
-      if (vpError || !videoProvider) {
-        alert('❌ You must connect Google Meet or Zoom before accepting booking requests.\n\nPlease go to Settings > Video Provider to connect your video account.');
-        setActionLoading(false);
-        return;
-      }
-
-      await tutorConfirmBooking(bookingId);
-      
-      // Automatically create session for confirmed booking
-      try {
-        const response = await fetch('/api/sessions/create-for-booking', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ booking_id: bookingId })
-        });
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error('Failed to create session:', errorText);
-          alert('⚠️ Booking confirmed, but session creation failed:\n' + errorText + '\n\nPlease ensure your video provider (Google Meet/Zoom) is connected in Settings.');
-        } else {
-          const result = await response.json();
-          console.log('Session created:', result);
-          alert('✅ Booking confirmed! Session created successfully.');
-        }
-      } catch (sessionError) {
-        console.error('Error creating session:', sessionError);
-        alert('⚠️ Booking confirmed, but session creation failed. Please check your video provider connection.');
+      const result = await tutorConfirmBooking(bookingId);
+      if (result.alreadyConfirmed) {
+        alert('Booking was already confirmed. Session sync was retried.');
+      } else if (result.sessionCreationWarning) {
+        alert('✅ Booking confirmed, but session setup needs a retry. You can refresh and retry link generation.');
+      } else {
+        alert('✅ Booking confirmed successfully.');
       }
       await loadBookingData();
     } catch (error: any) {
       console.error('Error confirming booking:', error);
-      alert(error.message || 'Failed to confirm booking. The time slot may no longer be available.');
+      if (error?.code === 'VIDEO_PROVIDER_RECONNECT_REQUIRED') {
+        const health = error?.health as any;
+        setReconnectPrompt({
+          open: true,
+          reason: String(health?.reason || 'Authorization expired or invalid.'),
+          checking: false,
+          error: '',
+        });
+      } else if (error?.code === 'BOOKING_NO_LONGER_PENDING' || error?.code === 'BOOKING_CONFIRM_FAILED') {
+        alert(error.message || 'Booking can no longer be confirmed.');
+        await loadBookingData();
+      } else {
+        alert(error.message || 'Failed to confirm booking. The time slot may no longer be available.');
+      }
     } finally {
       setActionLoading(false);
     }
+  }
+
+  async function handleReconnectRecheck() {
+    setReconnectPrompt((prev) => ({ ...prev, checking: true, error: '' }));
+    try {
+      await tutorHealthCheckBeforeConfirm(bookingId);
+      const result = await tutorConfirmBooking(bookingId);
+      setReconnectPrompt((prev) => ({ ...prev, open: false, checking: false, error: '' }));
+      if (result.sessionCreationWarning) {
+        alert('✅ Booking confirmed, but session setup needs a retry. You can refresh and retry link generation.');
+      }
+      await loadBookingData();
+    } catch (error: any) {
+      console.error('Reconnect recheck failed:', error);
+      if (error?.code === 'BOOKING_NO_LONGER_PENDING') {
+        setReconnectPrompt((prev) => ({
+          ...prev,
+          checking: false,
+          error: 'This booking is no longer pending, so it cannot be confirmed.',
+        }));
+      } else {
+        setReconnectPrompt((prev) => ({
+          ...prev,
+          checking: false,
+          error: error?.message || 'Connection still invalid. Please reconnect and try again.',
+        }));
+      }
+    }
+  }
+
+  function openCenteredPopup(url: string, name: string, width: number, height: number): Window | null {
+    if (typeof window === 'undefined') return null;
+    const left = Math.max(0, Math.floor(window.screenX + (window.outerWidth - width) / 2));
+    const top = Math.max(0, Math.floor(window.screenY + (window.outerHeight - height) / 2));
+    return window.open(
+      url,
+      name,
+      `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
+    );
+  }
+
+  function handleConnectNow() {
+    if (reconnectPrompt.checking) return;
+    setReconnectPrompt((prev) => ({ ...prev, checking: true, error: '' }));
+
+    const popup = openCenteredPopup('/tutor/video-setup', 'video-provider-setup', 920, 760);
+    if (!popup) {
+      setReconnectPrompt((prev) => ({
+        ...prev,
+        checking: false,
+        error: 'Popup was blocked. Please allow popups and click Connect now again.',
+      }));
+      return;
+    }
+
+    const popupWatcher = window.setInterval(() => {
+      if (!popup.closed) return;
+      window.clearInterval(popupWatcher);
+      void handleReconnectRecheck();
+    }, 700);
   }
 
   async function handleDeclineBooking() {
@@ -525,7 +575,7 @@ export default function TutorBookingThreadPage() {
                     disabled={actionLoading}
                     className="flex-1 min-w-[150px] bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-white py-3 px-4 rounded-lg font-semibold transition disabled:opacity-50"
                   >
-                    ✓ Confirm Booking
+                    ✓ Accept Booking Request
                   </button>
                   <button
                     onClick={handleOpenCounterOffer}
@@ -567,6 +617,43 @@ export default function TutorBookingThreadPage() {
                 loadBookingData();
               }}
             />
+          </div>
+        )}
+
+        {reconnectPrompt.open && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+            onClick={() => setReconnectPrompt((prev) => ({ ...prev, open: false, checking: false }))}
+          >
+            <div
+              className="w-full max-w-lg rounded-2xl border border-amber-300 bg-white p-6 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="mb-2 text-xl font-bold text-gray-900">Connect Zoom or Google Meet</h3>
+              <p className="mb-3 text-sm text-gray-700">
+                To accept this booking, you need to connect or reconnect your Google Meet or Zoom account.
+              </p>
+              <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                {reconnectPrompt.reason}
+              </p>
+              <p className="mb-4 text-xs text-gray-600">
+                After you finish connecting in the pop-up, we will confirm this booking automatically.
+              </p>
+              {reconnectPrompt.error && (
+                <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {reconnectPrompt.error}
+                </p>
+              )}
+              <div className="flex">
+                <button
+                  onClick={handleConnectNow}
+                  disabled={reconnectPrompt.checking}
+                  className="rounded-lg bg-itutor-green px-5 py-2.5 font-semibold text-white transition hover:bg-emerald-600 disabled:opacity-60"
+                >
+                  {reconnectPrompt.checking ? 'Waiting for connection...' : 'Connect now'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

@@ -12,7 +12,6 @@ import AddSubjectModal from '@/components/tutor/AddSubjectModal';
 import EditSubjectModal from '@/components/tutor/EditSubjectModal';
 import EditProfileModal from '@/components/EditProfileModal';
 import SentOffersList from '@/components/offers/SentOffersList';
-import VideoProviderRequiredModal from '@/components/VideoProviderRequiredModal';
 import AvailabilityRequiredModal from '@/components/AvailabilityRequiredModal';
 import ShareProfileModal from '@/components/ShareProfileModal';
 import { useAvatarUpload } from '@/lib/hooks/useAvatarUpload';
@@ -328,37 +327,6 @@ export default function TutorDashboard() {
 
   return (
     <DashboardLayout role="tutor" userName={displayName}>
-      {/* Video Provider Warning */}
-      {!testMode && hasVideoProvider === false && (
-        <div className="px-4 sm:px-6 lg:px-8 pt-4">
-          <div className="bg-red-50 border-2 border-red-300 rounded-2xl p-6">
-            <div className="flex items-start gap-4">
-              <div className="p-3 bg-red-500 rounded-full flex-shrink-0">
-                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-              </div>
-              <div className="flex-1">
-                <h3 className="text-lg font-bold text-red-900 mb-2">⚠️ Video Provider Not Connected</h3>
-                <p className="text-red-800 mb-4">
-                  You cannot accept new bookings until you connect Google Meet or Zoom. Students need a way to join your sessions!
-                </p>
-                <Link
-                  href="/tutor/video-setup"
-                  className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white rounded-lg font-bold transition shadow-lg hover:shadow-xl"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
-                  Connect Video Provider Now
-                </Link>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-
       <div className="px-4 py-3 sm:px-0">
         {/* Test Mode Banner */}
         {testMode && (
@@ -391,6 +359,7 @@ export default function TutorDashboard() {
           avatarUrl={profile?.avatar_url}
           onAvatarClick={() => setAvatarModalOpen(true)}
           isVerified={profile?.tutor_verification_status === 'VERIFIED'}
+          userId={profile?.id}
         />
 
         {/* Quick Action Buttons */}
@@ -486,12 +455,7 @@ export default function TutorDashboard() {
           />
         )}
 
-        {/* Video Provider Required Modal - Priority 1 */}
-        {!testMode && hasVideoProvider === false && (
-          <VideoProviderRequiredModal isOpen={true} />
-        )}
-
-        {/* Availability Required Modal - Priority 2 (only show if video provider is connected) */}
+        {/* Availability Required Modal */}
         {!testMode && hasVideoProvider === true && hasAvailability === false && showAvailabilityModal && (
           <AvailabilityRequiredModal 
             isOpen={true} 
@@ -742,10 +706,10 @@ export default function TutorDashboard() {
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold text-gray-900">Upcoming Sessions</h2>
             <Link 
-              href="/tutor/sessions"
+              href="/tutor/dashboard"
               className="text-sm text-itutor-green hover:text-emerald-600 font-medium flex items-center gap-1 transition-colors"
             >
-              View all →
+              View dashboard →
             </Link>
           </div>
           {loadingData ? (
@@ -836,19 +800,6 @@ export default function TutorDashboard() {
                 <h3 className="text-xl font-bold text-gray-900 group-hover:text-purple-600 transition-colors">Availability</h3>
               </div>
               <p className="text-gray-600 group-hover:text-gray-700 transition-colors">Set your available hours</p>
-            </div>
-          </Link>
-          <Link href="/tutor/sessions">
-            <div className="bg-white border-2 border-blue-200 shadow-lg rounded-2xl p-6 hover:shadow-blue-300/50 hover:scale-105 hover:-translate-y-1 transition-all duration-300 cursor-pointer group">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="bg-blue-500 rounded-xl p-3 group-hover:scale-110 transition-transform">
-                  <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors">Sessions</h3>
-              </div>
-              <p className="text-gray-600 group-hover:text-gray-700 transition-colors">View and manage sessions</p>
             </div>
           </Link>
           <Link href="/tutor/curriculum">
