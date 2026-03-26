@@ -150,6 +150,7 @@ export default function ParentDashboard() {
           bio={profile?.bio}
           avatarUrl={profile?.avatar_url}
           onAvatarClick={() => setAvatarModalOpen(true)}
+          userId={profile?.id}
         />
 
         {/* Avatar Upload Modal */}
@@ -490,14 +491,14 @@ export default function ParentDashboard() {
                             View Dashboard
                           </Link>
                           <Link
-                            href={`/parent/child/${child.id}/sessions`}
+                            href={`/parent/child/${child.id}`}
                             className="text-center bg-white hover:bg-gray-50 border-2 px-3 py-2.5 rounded-lg text-sm font-medium hover:scale-105 transition-all duration-200"
                             style={{ 
                               borderColor: childColor,
                               color: childColor
                             }}
                           >
-                            Sessions
+                            View profile
                           </Link>
                         </div>
                       </div>

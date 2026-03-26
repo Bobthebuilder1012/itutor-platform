@@ -2,6 +2,7 @@
 // SERVER-SIDE SUPABASE CLIENT
 // =====================================================
 // Use service role key for backend operations that bypass RLS
+// Use getServerClient() for RLS as the logged-in user (API routes, server components)
 
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
@@ -27,10 +28,10 @@ export function getServiceClient() {
 
 /**
  * Get a Supabase client with the current user's session (respects RLS)
- * Use in API routes/server contexts where auth cookies are available.
+ * Use in server components and API routes when you need auth context
  */
-export function getServerClient() {
-  const cookieStore = cookies();
+export async function getServerClient() {
+  const cookieStore = await cookies();
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -43,16 +44,3 @@ export function getServerClient() {
     }
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-

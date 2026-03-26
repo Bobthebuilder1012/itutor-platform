@@ -18,15 +18,15 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
   const [checking, setChecking] = useState(false);
   const [isSafari, setIsSafari] = useState(true);
   
-  // #region agent log - Simple logging without state
+  // #region agent log - Only when ?debug=1 in URL (no console spam in normal use)
   const logDebug = (location: string, message: string, data: any) => {
+    if (typeof window === 'undefined' || !window.location.search.includes('debug=1')) return;
     try {
       const entry = { location, message, data, time: new Date().toISOString() };
       console.log('[iOS-DEBUG]', entry);
-      // Store in localStorage for inspection
       const logs = JSON.parse(localStorage.getItem('ios-debug-logs') || '[]');
       logs.push(entry);
-      if (logs.length > 50) logs.shift(); // Keep last 50
+      if (logs.length > 50) logs.shift();
       localStorage.setItem('ios-debug-logs', JSON.stringify(logs));
     } catch (error) {
       console.error('[DEBUG ERROR]', error);

@@ -7,7 +7,10 @@ import { supabase } from '@/lib/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
 import CountrySelect from '@/components/CountrySelect';
 import SubjectMultiSelect from '@/components/SubjectMultiSelect';
+import InstitutionAutocomplete from '@/components/InstitutionAutocomplete';
+import type { Institution } from '@/lib/hooks/useInstitutionsSearch';
 import { getDisplayName } from '@/lib/utils/displayName';
+import { ensureSchoolCommunityAndMembership } from '@/lib/actions/community';
 
 type SettingsSection = 'profile' | 'security' | 'payment';
 
@@ -21,6 +24,7 @@ export default function StudentSettingsPage() {
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [school, setSchool] = useState('');
+  const [selectedInstitution, setSelectedInstitution] = useState<Institution | null>(null);
   const [country, setCountry] = useState('');
   const [bio, setBio] = useState('');
   const [subjects, setSubjects] = useState<string[]>([]);
@@ -90,7 +94,8 @@ export default function StudentSettingsPage() {
         username: username.trim(),
         display_name: displayName && displayName.trim() !== '' ? displayName.trim() : null,
         email,
-        school: school || null,
+        institution_id: selectedInstitution?.id ?? null,
+        school: (selectedInstitution?.name ?? school?.trim()) || null,
         country,
         bio: bio && bio.trim() !== '' ? bio.trim() : null,
         subjects_of_study: subjects.length > 0 ? subjects : null,
@@ -110,6 +115,8 @@ export default function StudentSettingsPage() {
         setSaving(false);
         return;
       }
+
+      await ensureSchoolCommunityAndMembership(profile!.id);
 
       setMessage('Profile updated successfully!');
       
@@ -158,12 +165,12 @@ export default function StudentSettingsPage() {
         return;
       }
 
-      // Update profile email
       const updates = {
         username: username.trim(),
         display_name: displayName && displayName.trim() !== '' ? displayName.trim() : null,
         email: pendingEmail,
-        school: school || null,
+        institution_id: selectedInstitution?.id ?? null,
+        school: (selectedInstitution?.name ?? school?.trim()) || null,
         country,
         bio: bio && bio.trim() !== '' ? bio.trim() : null,
         subjects_of_study: subjects.length > 0 ? subjects : null,
@@ -183,6 +190,8 @@ export default function StudentSettingsPage() {
         setSaving(false);
         return;
       }
+
+      await ensureSchoolCommunityAndMembership(profile!.id);
 
       setShowEmailPasswordPrompt(false);
       setEmailChangePassword('');
@@ -479,11 +488,10 @@ export default function StudentSettingsPage() {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 School/Institution
               </label>
-              <input
-                type="text"
-                value={school}
-                onChange={(e) => setSchool(e.target.value)}
-                className="w-full px-4 py-3 bg-white border-2 border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-400"
+              <InstitutionAutocomplete
+                selectedInstitution={selectedInstitution}
+                onChange={setSelectedInstitution}
+                placeholder="Type to search your school..."
               />
             </div>
 

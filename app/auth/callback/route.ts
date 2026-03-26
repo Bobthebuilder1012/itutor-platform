@@ -60,20 +60,12 @@ export async function GET(request: NextRequest) {
 
   const userId = session.user.id;
   const userEmail = session.user.email;
+  const oauthProvider = session.user.app_metadata?.provider as string | undefined;
   console.log('✅ Session established for user:', userId, 'email:', userEmail);
 
-  // Detect if this is an email confirmation by checking if email was just confirmed
-  const emailJustConfirmed = session.user.email_confirmed_at && 
-    new Date(session.user.email_confirmed_at).getTime() > Date.now() - 60000; // Within last 60 seconds
-  
-  console.log('📧 Email confirmation status:', {
-    confirmed_at: session.user.email_confirmed_at,
-    justConfirmed: emailJustConfirmed,
-    type: type
-  });
-
-  // For email confirmations, redirect directly to onboarding based on role
-  if (emailJustConfirmed || type === 'signup' || type === 'email') {
+  // Only treat explicit email verification callbacks as email-confirmation flows.
+  const isEmailConfirmationFlow = type === 'signup' || type === 'email';
+  if (isEmailConfirmationFlow) {
     console.log('✅ Email confirmation detected - redirecting to onboarding');
     const userRole = session.user.user_metadata?.role || 'student';
     
@@ -99,12 +91,13 @@ export async function GET(request: NextRequest) {
   if (profileError && profileError.code === 'PGRST116') {
     console.log('📝 Creating new profile for OAuth user');
     // PGRST116 = no rows returned
+    const metadataRole = session.user.user_metadata?.role ?? null;
     const newProfile = {
       id: userId,
       email: session.user.email!,
       full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || 'User',
       avatar_url: session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture || null,
-      role: 'student', // Default role for OAuth
+      role: metadataRole, // OAuth users pick role later if not provided
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -118,8 +111,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL('/login?error=profile_creation_failed', request.url));
     }
 
+    if (!metadataRole && oauthProvider === 'google') {
+      console.log('✅ Profile created, redirecting to Google role selection');
+      return NextResponse.redirect(new URL('/?auth=complete-role&source=google', request.url));
+    }
+
     console.log('✅ Profile created, redirecting to onboarding');
-    // Redirect to onboarding for new OAuth users
     return NextResponse.redirect(new URL('/onboarding/student', request.url));
   }
 
@@ -135,6 +132,10 @@ export async function GET(request: NextRequest) {
 
     // If role is null, profile is incomplete - need to complete signup
     if (!role) {
+      if (oauthProvider === 'google') {
+        console.log('➡️ Redirecting to Google role selection');
+        return NextResponse.redirect(new URL('/?auth=complete-role&source=google', request.url));
+      }
       console.log('⚠️ No role set, checking user metadata');
       // Try to determine role from user metadata
       const metadataRole = session.user.user_metadata?.role;

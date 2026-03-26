@@ -5,6 +5,9 @@ import { supabase } from '@/lib/supabase/client';
 import { Profile } from '@/lib/types/database';
 import CountrySelect from '@/components/CountrySelect';
 import SubjectMultiSelect from '@/components/SubjectMultiSelect';
+import InstitutionAutocomplete from '@/components/InstitutionAutocomplete';
+import type { Institution } from '@/lib/hooks/useInstitutionsSearch';
+import { ensureSchoolCommunityAndMembership } from '@/lib/actions/community';
 
 type EditProfileModalProps = {
   isOpen: boolean;
@@ -21,6 +24,7 @@ export default function EditProfileModal({
 }: EditProfileModalProps) {
   const [displayName, setDisplayName] = useState(profile.display_name || profile.full_name || '');
   const [school, setSchool] = useState(profile.school || '');
+  const [selectedInstitution, setSelectedInstitution] = useState<Institution | null>(null);
   const [country, setCountry] = useState(profile.country || '');
   const [subjects, setSubjects] = useState<string[]>(profile.subjects_of_study || []);
   const [biography, setBiography] = useState(profile.bio || '');
@@ -35,6 +39,19 @@ export default function EditProfileModal({
       setSubjects(profile.subjects_of_study || []);
       setBiography(profile.bio || '');
       setError(null);
+
+      if (profile.institution_id) {
+        supabase
+          .from('institutions')
+          .select('id, name, normalized_name, country_code, island, institution_level, institution_type, denomination, is_active')
+          .eq('id', profile.institution_id)
+          .single()
+          .then(({ data }) => {
+            if (data) setSelectedInstitution(data as Institution);
+          });
+      } else {
+        setSelectedInstitution(null);
+      }
     }
   }, [isOpen, profile]);
 
@@ -52,7 +69,8 @@ export default function EditProfileModal({
         .from('profiles')
         .update({
           display_name: displayName.trim(),
-          school: school.trim() || null,
+          institution_id: selectedInstitution?.id ?? null,
+          school: (selectedInstitution?.name ?? school.trim()) || null,
           country: country || null,
           subjects_of_study: subjects.length > 0 ? subjects : null,
           bio: biography.trim() || null
@@ -60,6 +78,8 @@ export default function EditProfileModal({
         .eq('id', profile.id);
 
       if (updateError) throw updateError;
+
+      await ensureSchoolCommunityAndMembership(profile.id);
 
       onSuccess();
       onClose();
@@ -124,13 +144,10 @@ export default function EditProfileModal({
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 School
               </label>
-              <input
-                type="text"
-                value={school}
-                onChange={(e) => setSchool(e.target.value)}
-                placeholder="Your school or institution"
-                maxLength={200}
-                className="w-full px-4 py-3 bg-white border-2 border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-400"
+              <InstitutionAutocomplete
+                selectedInstitution={selectedInstitution}
+                onChange={setSelectedInstitution}
+                placeholder="Type to search your school..."
               />
             </div>
 

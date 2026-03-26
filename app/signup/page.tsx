@@ -4,6 +4,7 @@ import { FormEvent, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import CountrySelect from '@/components/CountrySelect';
+import SocialLoginButton from '@/components/SocialLoginButton';
 
 type UserRole = 'student' | 'parent' | 'tutor';
 
@@ -262,12 +263,15 @@ export default function SignupPage() {
 
       // Send welcome email immediately and enqueue follow-up sequence
       try {
-        // Send welcome email right away
-        await fetch('/api/send-welcome-email', {
+        const welcomeRes = await fetch('/api/send-welcome-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: authData.user.id })
         });
+        if (!welcomeRes.ok) {
+          const err = await welcomeRes.json().catch(() => ({}));
+          console.warn('Welcome email request failed:', welcomeRes.status, err);
+        }
 
         // Enqueue follow-up emails (starting at stage 1, day 1)
         const nextSendAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // +1 day
@@ -329,6 +333,22 @@ export default function SignupPage() {
           >
             or sign up as a tutor instead →
           </a>
+        </div>
+
+        <div className="mb-4 sm:mb-6 space-y-3">
+          <SocialLoginButton
+            provider="google"
+            mode="signup"
+            redirectTo="/auth/callback?next=/signup/complete-role"
+          />
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-700" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase tracking-wide">
+              <span className="bg-black px-2 text-gray-400">Continue with email</span>
+            </div>
+          </div>
         </div>
 
         <form onSubmit={handleSignup} className="space-y-3 sm:space-y-4 md:space-y-5">

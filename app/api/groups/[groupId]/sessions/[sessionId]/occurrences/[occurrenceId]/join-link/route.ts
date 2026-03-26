@@ -1,33 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient, type CookieOptions } from '@supabase/ssr';
-import { cookies } from 'next/headers';
-import { getServiceClient } from '@/lib/supabase/server';
+import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { ensureTutorConnected, createMeeting } from '@/lib/services/videoProviders';
 
 type Params = {
   params: Promise<{ groupId: string; sessionId: string; occurrenceId: string }>;
 };
-
-function getAuthedSupabase() {
-  const cookieStore = cookies();
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
-        },
-        set(name: string, value: string, options: CookieOptions) {
-          cookieStore.set({ name, value, ...options });
-        },
-        remove(name: string, options: CookieOptions) {
-          cookieStore.delete({ name, ...options });
-        },
-      },
-    }
-  );
-}
 
 // POST /api/groups/[groupId]/sessions/[sessionId]/occurrences/[occurrenceId]/join-link
 // Creates a meeting using the tutor's configured provider (Zoom/Google Meet) and returns a join URL.
@@ -36,7 +13,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(_req: NextRequest, { params }: Params) {
   try {
     const { groupId, sessionId, occurrenceId } = await params;
-    const supabase = getAuthedSupabase();
+    const supabase = await getServerClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -55,6 +32,25 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
     // Access: tutor or approved member
     const isTutor = group.tutor_id === user.id;
+    const tutorId = group.tutor_id;
+    const markAttendance = async (occId: string) => {
+      if (isTutor) return;
+      try {
+        await service.from('group_attendance_records').upsert(
+          {
+            session_id: occId,
+            student_id: user.id,
+            status: 'PRESENT',
+            marked_at: new Date().toISOString(),
+            marked_by_id: tutorId,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'session_id,student_id' }
+        );
+      } catch {
+        // Non-critical in environments without attendance table.
+      }
+    };
     if (!isTutor) {
       const { data: membership } = await service
         .from('group_members')
@@ -315,6 +311,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
       .limit(1)
       .maybeSingle();
     if (sessionCachedOccurrence?.meeting_join_url) {
+      await markAttendance(occurrence.id);
       return NextResponse.json({
         provider: sessionCachedOccurrence.meeting_provider ?? null,
         join_url: sessionCachedOccurrence.meeting_join_url,
@@ -325,6 +322,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
     // Reuse existing cached link for this occurrence so everyone joins the same room.
     if (occurrence.meeting_join_url) {
+      await markAttendance(occurrence.id);
       return NextResponse.json({
         provider: occurrence.meeting_provider ?? null,
         join_url: occurrence.meeting_join_url,

@@ -7,6 +7,7 @@ import SubjectMultiSelect from '@/components/SubjectMultiSelect';
 import InstitutionAutocomplete from '@/components/InstitutionAutocomplete';
 import { setUserSubjects } from '@/lib/supabase/userSubjects';
 import { Institution } from '@/lib/hooks/useInstitutionsSearch';
+import { ensureSchoolCommunityAndMembership } from '@/lib/actions/community';
 
 const FORM_LEVELS = ['Form 1', 'Form 2', 'Form 3', 'Form 4', 'Form 5', 'Lower 6', 'Upper 6'];
 
@@ -97,6 +98,14 @@ export default function StudentOnboardingPage() {
       if (subjectsError) {
         console.error('Subjects junction table error:', subjectsError);
         setError('Error saving subjects. Please try again.');
+        setSubmitting(false);
+        return;
+      }
+
+      const ensure = await ensureSchoolCommunityAndMembership(userId!);
+      if (!ensure.success) {
+        console.error('Ensure school community:', ensure.error);
+        setError(ensure.error ?? 'Could not join school community. You can try again from the Community page.');
         setSubmitting(false);
         return;
       }

@@ -1,6 +1,8 @@
 'use client';
 
 import Link from 'next/link';
+import { useState } from 'react';
+import AuthModal from '@/components/auth/AuthModal';
 
 interface PublicPageHeaderProps {
   profile?: {
@@ -10,6 +12,9 @@ interface PublicPageHeaderProps {
 }
 
 export default function PublicPageHeader({ profile = null, loading = false }: PublicPageHeaderProps) {
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+
   const getDashboardUrl = () => {
     if (!profile) return '/';
     switch (profile.role) {
@@ -51,23 +56,32 @@ export default function PublicPageHeader({ profile = null, loading = false }: Pu
               </Link>
             ) : (
               <>
-                <Link
-                  href="/signup"
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode('signup');
+                    setAuthOpen(true);
+                  }}
                   className="px-4 py-2 text-sm sm:text-base font-semibold text-itutor-white hover:text-itutor-green transition-colors whitespace-nowrap"
                 >
                   Sign Up
-                </Link>
-                <Link
-                  href="/login"
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode('login');
+                    setAuthOpen(true);
+                  }}
                   className="px-4 py-2 text-sm sm:text-base font-semibold text-itutor-white border-2 border-itutor-white/20 rounded-lg hover:border-itutor-green hover:text-itutor-green transition-colors whitespace-nowrap"
                 >
                   Log In
-                </Link>
+                </button>
               </>
             )}
           </div>
         </div>
       </div>
+      <AuthModal isOpen={authOpen} mode={authMode} onClose={() => setAuthOpen(false)} />
     </header>
   );
 }

@@ -49,6 +49,13 @@ export default function NotificationBell({ userId }: NotificationBellProps) {
     };
   }, [userId]);
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadUnreadCount();
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, [userId]);
+
   // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {

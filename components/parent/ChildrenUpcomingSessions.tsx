@@ -137,7 +137,7 @@ export default function ChildrenUpcomingSessions({ childIds }: { childIds: strin
               </div>
             </div>
             <Link
-              href={`/parent/child/${session.student_id}/sessions`}
+              href={`/parent/child/${session.student_id}`}
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium transition"
             >
               View

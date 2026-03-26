@@ -7,6 +7,7 @@ import SubjectMultiSelect from '@/components/SubjectMultiSelect';
 import InstitutionAutocomplete from '@/components/InstitutionAutocomplete';
 import { Institution } from '@/lib/hooks/useInstitutionsSearch';
 import { PAID_CLASSES_DISABLED_MESSAGE } from '@/lib/featureFlags/paidClasses';
+import { ensureSchoolCommunityAndMembership } from '@/lib/actions/community';
 
 const TEACHING_LEVELS = [
   'Form 1',
@@ -172,6 +173,14 @@ export default function TutorOnboardingPage() {
       if (verifyError || !savedSubjects || savedSubjects.length === 0) {
         console.error('Verification failed:', verifyError);
         setError('Subjects were not saved correctly. Please try again.');
+        setSubmitting(false);
+        return;
+      }
+
+      const ensure = await ensureSchoolCommunityAndMembership(userId!);
+      if (!ensure.success) {
+        console.error('Ensure school community:', ensure.error);
+        setError(ensure.error ?? 'Could not join school community. You can try again from the Community page.');
         setSubmitting(false);
         return;
       }

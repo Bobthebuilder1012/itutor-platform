@@ -109,7 +109,8 @@ export async function createSessionForBooking(bookingId: string): Promise<Sessio
       charge_amount_ttd: chargeAmount,
       payout_amount_ttd: payoutAmount,
       platform_fee_ttd: platformFee,
-      status: 'SCHEDULED'
+      status: 'SCHEDULED',
+      ...(booking.community_id && { community_id: booking.community_id }),
     })
     .select()
     .single();

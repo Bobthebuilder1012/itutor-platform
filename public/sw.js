@@ -61,7 +61,7 @@ self.addEventListener('notificationclick', (event) => {
   if (data?.deep_link) {
     url = data.deep_link;
   } else if (data?.session_id) {
-    url = '/student/sessions';
+    url = '/student/dashboard';
   } else if (data?.url) {
     url = data.url;
   }

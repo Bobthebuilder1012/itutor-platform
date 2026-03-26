@@ -232,9 +232,9 @@ Deno.serve(async () => {
             const session = sessionById.get(sessionId);
             const deepLink =
               session && userId === session.student_id
-                ? '/student/sessions'
+                ? '/student/dashboard'
                 : session && userId === session.tutor_id
-                ? '/tutor/sessions'
+                ? '/tutor/dashboard'
                 : undefined;
 
             // Route by actual token format:

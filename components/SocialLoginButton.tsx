@@ -71,7 +71,7 @@ export default function SocialLoginButton({
   const [error, setError] = useState('');
 
   const config = providerConfig[provider];
-  const actionText = mode === 'login' ? 'Continue' : 'Sign up';
+  const actionText = 'Continue';
 
   const handleSocialLogin = async () => {
     try {
@@ -79,7 +79,9 @@ export default function SocialLoginButton({
       setError('');
 
       // Build redirect URL
-      const redirectUrl = redirectTo || window.location.origin + '/auth/callback';
+      const redirectUrl = redirectTo
+        ? (redirectTo.startsWith('http') ? redirectTo : `${window.location.origin}${redirectTo}`)
+        : `${window.location.origin}/auth/callback`;
 
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: provider,

@@ -1,8 +1,27 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import AuthModal from '@/components/auth/AuthModal';
+import CompleteRoleModal from '@/components/auth/CompleteRoleModal';
 
 export default function Header() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  const [completeRoleOpen, setCompleteRoleOpen] = useState(false);
+
+  useEffect(() => {
+    setCompleteRoleOpen(searchParams.get('auth') === 'complete-role');
+  }, [searchParams]);
+
+  const handleCloseCompleteRole = () => {
+    setCompleteRoleOpen(false);
+    router.replace('/');
+  };
+
   return (
     <header className="absolute top-0 left-0 right-0 z-50 bg-itutor-black">
       <nav className="w-full mx-auto px-2 sm:px-4 lg:px-6">
@@ -18,21 +37,31 @@ export default function Header() {
 
           {/* Auth Buttons - Right side */}
           <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0 mr-2">
-            <Link
-              href="/signup"
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode('signup');
+                setAuthOpen(true);
+              }}
               className="px-3 sm:px-6 py-2 sm:py-2.5 text-sm sm:text-base font-bold text-itutor-white hover:text-itutor-green transition-all duration-300 whitespace-nowrap hover:scale-105"
             >
               Sign Up
-            </Link>
-            <Link
-              href="/login"
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode('login');
+                setAuthOpen(true);
+              }}
               className="px-3 sm:px-6 py-2 sm:py-2.5 text-sm sm:text-base font-bold text-itutor-black bg-itutor-green rounded-lg hover:bg-emerald-400 transition-all duration-300 whitespace-nowrap shadow-lg shadow-itutor-green/30 hover:shadow-xl hover:scale-105"
             >
               Log In
-            </Link>
+            </button>
           </div>
         </div>
       </nav>
+      <AuthModal isOpen={authOpen} mode={authMode} onClose={() => setAuthOpen(false)} />
+      <CompleteRoleModal isOpen={completeRoleOpen} onClose={handleCloseCompleteRole} />
     </header>
   );
 }

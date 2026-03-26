@@ -139,10 +139,10 @@ export default function ChildProfile() {
           <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>
           <div className="flex flex-col sm:flex-row gap-3">
             <Link
-              href={`/parent/child/${childId}/sessions`}
+              href={`/parent/child/${childId}`}
               className="inline-flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium"
             >
-              View Sessions
+              View profile
             </Link>
             <Link
               href={`/parent/child/${childId}/ratings`}

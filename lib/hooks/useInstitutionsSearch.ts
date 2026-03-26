@@ -1,15 +1,14 @@
-import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/lib/supabase/client';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 export type Institution = {
   id: string;
   name: string;
-  normalized_name: string;
+  normalized_name?: string;
   country_code: string;
-  island: 'Trinidad' | 'Tobago';
-  institution_level: 'secondary' | 'tertiary';
+  island?: 'Trinidad' | 'Tobago';
+  institution_level: string;
   institution_type: string;
-  denomination: string | null;
+  denomination?: string | null;
   is_active: boolean;
 };
 
@@ -22,73 +21,54 @@ export type InstitutionSearchFilters = {
 
 export function useInstitutionsSearch(
   query: string,
-  filters: InstitutionSearchFilters = {},
+  _filters: InstitutionSearchFilters = {},
   debounceMs: number = 300
 ) {
   const [results, setResults] = useState<Institution[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
-  const searchInstitutions = useCallback(
-    async (searchQuery: string) => {
-      if (!searchQuery.trim()) {
+  const searchInstitutions = useCallback(async (searchQuery: string) => {
+    if (!searchQuery.trim()) {
+      setResults([]);
+      setLoading(false);
+      return;
+    }
+
+    if (abortRef.current) abortRef.current.abort();
+    abortRef.current = new AbortController();
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const params = new URLSearchParams({ q: searchQuery.trim() });
+      const res = await fetch(`/api/institutions/search?${params}`, {
+        signal: abortRef.current.signal
+      });
+      const json = await res.json();
+
+      if (!res.ok) {
+        setError(json.error || 'Failed to search institutions');
         setResults([]);
-        setLoading(false);
         return;
       }
 
-      setLoading(true);
-      setError(null);
-
-      try {
-        // Build the query
-        let supabaseQuery = supabase
-          .from('institutions')
-          .select('*')
-          .eq('is_active', true);
-
-        // Apply filters
-        if (filters.institution_level) {
-          supabaseQuery = supabaseQuery.eq('institution_level', filters.institution_level);
-        }
-        if (filters.island) {
-          supabaseQuery = supabaseQuery.eq('island', filters.island);
-        }
-        if (filters.institution_type) {
-          supabaseQuery = supabaseQuery.eq('institution_type', filters.institution_type);
-        }
-        if (filters.country_code) {
-          supabaseQuery = supabaseQuery.eq('country_code', filters.country_code);
-        }
-
-        // Search by name (case-insensitive)
-        const normalizedQuery = searchQuery.toLowerCase();
-        supabaseQuery = supabaseQuery.or(
-          `name.ilike.%${searchQuery}%,normalized_name.ilike.%${normalizedQuery}%`
-        );
-
-        // Order and limit
-        const { data, error: fetchError } = await supabaseQuery
-          .order('name', { ascending: true })
-          .limit(20);
-
-        if (fetchError) {
-          console.error('Error searching institutions:', fetchError);
-          setError('Failed to search institutions');
-          setResults([]);
-        } else {
-          setResults(data || []);
-        }
-      } catch (err) {
-        console.error('Unexpected error searching institutions:', err);
-        setError('An unexpected error occurred');
-        setResults([]);
-      } finally {
+      setResults(Array.isArray(json.institutions) ? json.institutions : []);
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
         setLoading(false);
+        return;
       }
-    },
-    [filters]
-  );
+      console.error('Error searching institutions:', err);
+      setError('Failed to load schools. Please try again.');
+      setResults([]);
+    } finally {
+      setLoading(false);
+      abortRef.current = null;
+    }
+  }, []);
 
   // Debounced search effect
   useEffect(() => {
@@ -105,6 +85,7 @@ export function useInstitutionsSearch(
 
     return () => {
       clearTimeout(timeoutId);
+      abortRef.current?.abort();
     };
   }, [query, searchInstitutions, debounceMs]);
 

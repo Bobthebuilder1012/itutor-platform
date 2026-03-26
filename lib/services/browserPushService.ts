@@ -44,7 +44,9 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
  * Check if browser supports push notifications
  */
 export function isPushNotificationSupported(): boolean {
-  return typeof window !== 'undefined' && 
+  const devOptIn = process.env.NEXT_PUBLIC_ENABLE_PUSH_IN_DEV === 'true';
+  return (process.env.NODE_ENV === 'production' || devOptIn) &&
+         typeof window !== 'undefined' && 
          'serviceWorker' in navigator && 
          'PushManager' in window;
 }

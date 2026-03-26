@@ -1,143 +1,72 @@
 'use client';
 
 import Link from 'next/link';
-import { Community } from '@/lib/types/community';
+import Image from 'next/image';
+import type { CommunityV2WithInstitution } from '@/lib/types/communities';
+import CommunityListMenu from './CommunityListMenu';
 
 interface CommunityCardProps {
-  community: Community;
-  isMember?: boolean;
-  onJoin?: () => void;
+  community: CommunityV2WithInstitution;
+  membership?: { muted: boolean; muted_until: string | null };
   onLeave?: () => void;
-  isLoading?: boolean;
+  onMuteChange?: () => void;
 }
 
 export default function CommunityCard({
   community,
-  isMember = false,
-  onJoin,
+  membership,
   onLeave,
-  isLoading = false,
+  onMuteChange,
 }: CommunityCardProps) {
-  const getTypeLabel = () => {
-    switch (community.type) {
-      case 'school':
-        return 'School Community';
-      case 'school_form':
-        return 'Form Community';
-      case 'subject_qa':
-        return 'Subject Q&A';
-      default:
-        return '';
-    }
-  };
-
-  const getAudienceLabel = () => {
-    switch (community.audience) {
-      case 'students':
-        return 'Students';
-      case 'itutors':
-        return 'iTutors';
-      case 'mixed':
-        return 'Students & iTutors';
-      default:
-        return '';
-    }
-  };
+  const muted = membership?.muted ?? false;
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 hover:border-itutor-green/30 transition-all p-6 h-full flex flex-col">
-      {/* Header */}
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex-1">
-          <Link
-            href={`/communities/${community.id}`}
-            className="text-lg font-semibold text-gray-900 hover:text-itutor-green transition-colors"
-          >
-            {community.name}
-          </Link>
-          <div className="flex items-center gap-2 mt-1">
-            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
-              {getTypeLabel()}
+    <div className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm hover:border-gray-300 transition-colors">
+      <Link href={`/communities/${community.id}`} className="flex flex-1 min-w-0 items-center gap-3">
+        <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-full bg-gray-100">
+          {community.avatar_url ? (
+            <Image
+              src={community.avatar_url}
+              alt=""
+              fill
+              className="object-cover"
+              sizes="48px"
+            />
+          ) : (
+            <span className="flex h-full w-full items-center justify-center text-lg font-semibold text-gray-500">
+              {community.name.charAt(0).toUpperCase()}
             </span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
-              {getAudienceLabel()}
-            </span>
-          </div>
-        </div>
-        {community.image_url && (
-          <img
-            src={community.image_url}
-            alt={community.name}
-            className="w-12 h-12 rounded-lg object-cover ml-3"
-          />
-        )}
-      </div>
-
-      {/* Description */}
-      {community.description && (
-        <p className="text-sm text-gray-600 mb-4 line-clamp-2 flex-1">
-          {community.description}
-        </p>
-      )}
-
-      {/* Tags */}
-      <div className="flex items-center gap-2 mb-4 text-xs text-gray-500">
-        {community.level_tag && (
-          <span className="px-2 py-1 rounded bg-gray-100">{community.level_tag}</span>
-        )}
-        {community.subject?.name && (
-          <span className="px-2 py-1 rounded bg-gray-100">{community.subject.name}</span>
-        )}
-        {community.form_level && (
-          <span className="px-2 py-1 rounded bg-gray-100">{community.form_level}</span>
-        )}
-      </div>
-
-      {/* Footer */}
-      <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-        <div className="text-sm text-gray-500">
-          {community.member_count !== undefined && (
-            <span>
-              {community.member_count} {community.member_count === 1 ? 'member' : 'members'}
+          )}
+          {muted && (
+            <span
+              className="absolute bottom-0 right-0 rounded-full bg-gray-600 p-0.5"
+              title="Muted"
+              aria-label="Muted"
+            >
+              <svg className="h-3 w-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                <path
+                  fillRule="evenodd"
+                  d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.617.076L4.235 12H1a1 1 0 01-1-1V9a1 1 0 011-1h3.235l4.148-3.924zM14.657 5.343a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414z"
+                  clipRule="evenodd"
+                />
+              </svg>
             </span>
           )}
         </div>
-
-        {/* Action Button */}
-        {community.is_auto ? (
-          <span className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600">
-            Auto-assigned
-          </span>
-        ) : isMember ? (
-          <button
-            onClick={onLeave}
-            disabled={isLoading}
-            className="text-xs px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors disabled:opacity-50"
-          >
-            {isLoading ? 'Leaving...' : 'Leave'}
-          </button>
-        ) : (
-          <button
-            onClick={onJoin}
-            disabled={isLoading}
-            className="text-xs px-3 py-1.5 rounded-lg bg-itutor-green text-white hover:bg-emerald-600 transition-colors disabled:opacity-50"
-          >
-            {isLoading ? 'Joining...' : 'Join'}
-          </button>
-        )}
-      </div>
+        <div className="min-w-0 flex-1">
+          <p className="font-medium text-gray-900 truncate">{community.name}</p>
+          {community.description && (
+            <p className="text-sm text-gray-500 truncate">{community.description}</p>
+          )}
+        </div>
+      </Link>
+      <CommunityListMenu
+        communityId={community.id}
+        communityName={community.name}
+        muted={muted}
+        onLeave={onLeave}
+        onMuteChange={onMuteChange}
+      />
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-

@@ -57,7 +57,7 @@ self.addEventListener('notificationclick', (event) => {
   } else if (data?.url) {
     url = data.url;
   } else if (data?.session_id) {
-    url = '/student/sessions';
+    url = '/student/dashboard';
   }
   
   event.waitUntil(

@@ -12,6 +12,7 @@ type Body = {
   requestedEndAt: string;
   studentNotes?: string;
   durationMinutes?: number;
+  communityId?: string | null;
 };
 
 function getAuthedSupabase() {
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    const { data, error } = await supabase.rpc('create_booking_request', {
+    const baseArgs = {
       p_student_id: user.id,
       p_tutor_id: body.tutorId,
       p_subject_id: body.subjectId,
@@ -65,10 +66,52 @@ export async function POST(request: NextRequest) {
       p_requested_end_at: body.requestedEndAt,
       p_student_notes: body.studentNotes || null,
       p_duration_minutes: durationMinutes,
-    });
+      p_community_id: body.communityId ?? null,
+    };
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+    // Backward-compatibility for environments where RPC arg list is older.
+    // Try newest signature first, then progressively remove optional params.
+    const rpcArgAttempts: Array<Record<string, unknown>> = [
+      baseArgs,
+      { ...baseArgs, p_community_id: undefined },
+      { ...baseArgs, p_community_id: undefined, p_duration_minutes: undefined },
+      {
+        p_student_id: user.id,
+        p_tutor_id: body.tutorId,
+        p_subject_id: body.subjectId,
+        p_requested_start_at: body.requestedStartAt,
+        p_requested_end_at: body.requestedEndAt,
+        p_student_notes: body.studentNotes || null,
+      },
+    ];
+
+    let data: any = null;
+    let finalError: any = null;
+
+    for (const attemptArgs of rpcArgAttempts) {
+      const cleanedArgs = Object.fromEntries(
+        Object.entries(attemptArgs).filter(([, value]) => value !== undefined)
+      );
+
+      const result = await supabase.rpc('create_booking_request', cleanedArgs);
+      if (!result.error) {
+        data = result.data;
+        finalError = null;
+        break;
+      }
+
+      finalError = result.error;
+      const isSignatureMismatch =
+        result.error.code === 'PGRST202' ||
+        /Could not find the function/i.test(result.error.message ?? '');
+
+      if (!isSignatureMismatch) {
+        break;
+      }
+    }
+
+    if (finalError) {
+      return NextResponse.json({ error: finalError.message }, { status: 400 });
     }
 
     // Temporary launch behavior: force ALL bookings to be free when paid classes are disabled.

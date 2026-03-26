@@ -58,13 +58,15 @@ export default function InstitutionAutocomplete({
         <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
           <div className="flex-1">
             <p className="text-sm font-medium text-gray-900">{selectedInstitution.name}</p>
-            <div className="flex gap-2 mt-1">
+            <div className="flex gap-2 mt-1 flex-wrap">
               <span className={`text-xs px-2 py-0.5 rounded ${getLevelBadgeColor(selectedInstitution.institution_level)}`}>
-                {selectedInstitution.institution_level === 'secondary' ? 'Secondary' : 'Tertiary'}
+                {selectedInstitution.institution_level === 'secondary' ? 'Secondary' : selectedInstitution.institution_level === 'tertiary' ? 'Tertiary' : selectedInstitution.institution_level || '—'}
               </span>
-              <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600">
-                {selectedInstitution.island}
-              </span>
+              {selectedInstitution.island && (
+                <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600">
+                  {selectedInstitution.island}
+                </span>
+              )}
             </div>
           </div>
           {!disabled && (
@@ -124,11 +126,13 @@ export default function InstitutionAutocomplete({
                       </p>
                       <div className="flex flex-wrap gap-1.5 mt-1.5">
                         <span className={`text-xs px-2 py-0.5 rounded ${getLevelBadgeColor(institution.institution_level)}`}>
-                          {institution.institution_level === 'secondary' ? 'Secondary' : 'Tertiary'}
+                          {institution.institution_level === 'secondary' ? 'Secondary' : institution.institution_level === 'tertiary' ? 'Tertiary' : institution.institution_level || '—'}
                         </span>
-                        <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600">
-                          {institution.island}
-                        </span>
+                        {institution.island && (
+                          <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600">
+                            {institution.island}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
