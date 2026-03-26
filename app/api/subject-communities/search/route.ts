@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { getJoinableSubjectCommunities } from '@/lib/subject-communities';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request) {
   try {
     const authSupabase = await getServerClient();

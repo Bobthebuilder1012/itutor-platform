@@ -5,6 +5,8 @@ import type { CreateGroupSessionInput, DayOfWeek } from '@/lib/types/groups';
 type Params = { params: Promise<{ groupId: string }> };
 
 // GET /api/groups/[groupId]/sessions — list sessions with occurrences
+export const dynamic = 'force-dynamic';
+
 export async function GET(_req: NextRequest, { params }: Params) {
   try {
     const { groupId } = await params;

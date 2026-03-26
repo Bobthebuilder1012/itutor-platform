@@ -17,6 +17,8 @@ function isSchemaMismatch(error: any) {
 }
 
 // GET /api/groups — list all non-archived groups with tutor info and member previews
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = await getServerClient();

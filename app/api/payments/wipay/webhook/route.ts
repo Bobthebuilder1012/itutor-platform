@@ -7,6 +7,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { WiPayClient, WiPayWebhookPayload } from '@/lib/payments/wipayClient';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   try {
     const payload: WiPayWebhookPayload = await request.json();

@@ -3,6 +3,8 @@ import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 
 type Params = { params: Promise<{ replyId: string }> };
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const supabase = await getServerClient();

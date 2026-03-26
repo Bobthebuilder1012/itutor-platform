@@ -3,6 +3,8 @@ import { getServiceClient } from '@/lib/supabase/server';
 import { pinSessionToCommunity } from '@/lib/subject-communities';
 import { createSessionForBooking } from '@/lib/services/sessionService';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   try {
     const { booking_id } = await request.json();

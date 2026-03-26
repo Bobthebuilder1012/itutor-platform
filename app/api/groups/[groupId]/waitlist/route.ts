@@ -5,6 +5,8 @@ import { getServiceClient } from '@/lib/supabase/server';
 
 type Params = { params: Promise<{ groupId: string }> };
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(_req: NextRequest, { params }: Params) {
   try {
     const user = await authenticateUser();

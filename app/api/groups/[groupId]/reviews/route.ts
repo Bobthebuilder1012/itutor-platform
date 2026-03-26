@@ -19,6 +19,8 @@ const querySchema = z.object({
   sortBy: z.enum(['recent', 'rating']).default('recent'),
 });
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const user = await authenticateUser();

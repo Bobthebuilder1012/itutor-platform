@@ -4,7 +4,7 @@ import { cookies } from 'next/headers';
 import { requireAdmin } from '@/lib/middleware/adminAuth';
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
@@ -62,6 +62,15 @@ export async function POST(request: NextRequest) {
         html: personalizedContent,
       };
     });
+
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: 'Email service is not configured' },
+        { status: 503 }
+      );
+    }
+    const resend = new Resend(apiKey);
 
     // Send batch emails using Resend batch API
     // Resend batch API handles rate limiting automatically

@@ -10,6 +10,8 @@ import { cookies } from 'next/headers';
 import { sendEmail } from '@/lib/services/emailService';
 import { verificationCongratulationsEmail } from '@/lib/email-templates/tutor';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }

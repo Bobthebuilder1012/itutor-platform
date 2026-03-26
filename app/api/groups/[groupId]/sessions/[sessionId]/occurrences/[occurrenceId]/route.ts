@@ -6,6 +6,8 @@ type Params = { params: Promise<{ groupId: string; sessionId: string; occurrence
 
 // POST /api/groups/[groupId]/sessions/[sessionId]/occurrences/[occurrenceId]
 // Backward-compatible join endpoint (same behavior as /join-link).
+export const dynamic = 'force-dynamic';
+
 export async function POST(_req: NextRequest, { params }: Params) {
   try {
     const { groupId, sessionId, occurrenceId } = await params;

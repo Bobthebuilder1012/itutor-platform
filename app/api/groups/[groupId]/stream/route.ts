@@ -23,6 +23,8 @@ async function ensureGroupAccess(groupId: string, userId: string) {
 }
 
 // GET /api/groups/[groupId]/stream — list stream posts with replies (paginated)
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: NextRequest, { params }: Params) {
   try {
     const supabase = await getServerClient();

@@ -65,6 +65,8 @@ async function getOrCreateConversationIdAdmin(
   return created.id;
 }
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = getAuthedSupabase();

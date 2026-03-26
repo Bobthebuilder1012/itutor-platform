@@ -3,6 +3,8 @@ import { authenticateUser, requireTutor } from '@/lib/api/groupAuth';
 import { fail, ok } from '@/lib/api/http';
 import { getServiceClient } from '@/lib/supabase/server';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(_req: NextRequest) {
   try {
     const user = await authenticateUser();

@@ -6,6 +6,8 @@ type Params = { params: Promise<{ groupId: string }> };
 // POST /api/groups/[groupId]/private-message
 // Creates or retrieves a 1:1 conversation between the student and the group tutor,
 // tagged with group_context_id so both parties know it originated from this group.
+export const dynamic = 'force-dynamic';
+
 export async function POST(_req: NextRequest, { params }: Params) {
   try {
     const { groupId } = await params;

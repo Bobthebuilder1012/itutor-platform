@@ -206,7 +206,7 @@ export default function CompleteRoleModal({ isOpen, onClose }: CompleteRoleModal
 
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold text-itutor-white mb-2">Continue as</h1>
-            <p className="text-gray-400">Choose your role to finish Google sign-in</p>
+            <p className="text-gray-400">Choose your role to finish signing up</p>
           </div>
 
           {!ready ? (

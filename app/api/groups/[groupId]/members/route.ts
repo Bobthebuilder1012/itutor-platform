@@ -9,6 +9,8 @@ function isSchemaMismatch(error: any): boolean {
 }
 
 // GET /api/groups/[groupId]/members — list members (tutor sees all, members see approved)
+export const dynamic = 'force-dynamic';
+
 export async function GET(_req: NextRequest, { params }: Params) {
   try {
     const { groupId } = await params;

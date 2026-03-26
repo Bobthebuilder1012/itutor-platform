@@ -5,6 +5,8 @@ import type { PatchGroupMessageInput } from '@/lib/types/groups';
 type Params = { params: Promise<{ groupId: string; messageId: string }> };
 
 // PATCH /api/groups/[groupId]/messages/[messageId] — pin or lock (tutor only)
+export const dynamic = 'force-dynamic';
+
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
     const { groupId, messageId } = await params;

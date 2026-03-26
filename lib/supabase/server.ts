@@ -4,8 +4,8 @@
 // Use service role key for backend operations that bypass RLS
 // Use getServerClient() for RLS as the logged-in user (API routes, server components)
 
-import { createClient } from '@supabase/supabase-js';
 import { createServerClient } from '@supabase/ssr';
+import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 
 /**
@@ -44,16 +44,3 @@ export async function getServerClient() {
     }
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-

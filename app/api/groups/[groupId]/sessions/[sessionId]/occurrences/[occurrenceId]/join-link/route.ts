@@ -8,6 +8,8 @@ type Params = {
 
 // POST /api/groups/[groupId]/sessions/[sessionId]/occurrences/[occurrenceId]/join-link
 // Creates a meeting using the tutor's configured provider (Zoom/Google Meet) and returns a join URL.
+export const dynamic = 'force-dynamic';
+
 export async function POST(_req: NextRequest, { params }: Params) {
   try {
     const { groupId, sessionId, occurrenceId } = await params;

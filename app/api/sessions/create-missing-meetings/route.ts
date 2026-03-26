@@ -3,6 +3,8 @@ import { getServiceClient } from '@/lib/supabase/server';
 import { createMeeting } from '@/lib/services/videoProviders';
 import type { Session } from '@/lib/types/sessions';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   try {
     console.log('🔧 Creating meetings for sessions without links...');

@@ -4,6 +4,8 @@ import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 type Params = { params: Promise<{ groupId: string }> };
 
 // POST /api/groups/[groupId]/archive — archive a group (tutor only)
+export const dynamic = 'force-dynamic';
+
 export async function POST(_req: NextRequest, { params }: Params) {
   try {
     const { groupId } = await params;

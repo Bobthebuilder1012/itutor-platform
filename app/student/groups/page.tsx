@@ -1,6 +1,12 @@
+import { redirect } from 'next/navigation';
 import StudentTutorsBrowseClient from '@/app/(student)/tutors/StudentTutorsBrowseClient';
+import { isGroupsFeatureEnabled } from '@/lib/featureFlags/groupsFeature';
 
 export default function StudentGroupsPage() {
+  if (!isGroupsFeatureEnabled()) {
+    redirect('/student/dashboard');
+  }
+
   return (
     <main className="mx-auto max-w-7xl p-4 md:p-8">
       <h1 className="text-2xl font-bold text-gray-900">Discover Group Sessions</h1>

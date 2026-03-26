@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useProfile } from '@/lib/hooks/useProfile';
 import DashboardLayout from '@/components/DashboardLayout';
 import GroupsPageClient from './GroupsPageClient';
+import { isGroupsFeatureEnabled } from '@/lib/featureFlags/groupsFeature';
 
 export default function GroupsPage() {
   const { profile, loading } = useProfile();
@@ -12,6 +13,13 @@ export default function GroupsPage() {
 
   useEffect(() => {
     if (loading) return;
+    if (!isGroupsFeatureEnabled()) {
+      if (profile?.role === 'student') router.replace('/student/dashboard');
+      else if (profile?.role === 'tutor') router.replace('/tutor/dashboard');
+      else if (profile?.role === 'parent') router.replace('/parent/dashboard');
+      else router.replace('/login');
+      return;
+    }
     if (!profile) {
       router.push('/login');
     }

@@ -21,6 +21,8 @@ function extractProfileName(profile: unknown): string {
   return 'Student';
 }
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(_req: NextRequest, { params }: Params) {
   try {
     const { groupId } = await params;

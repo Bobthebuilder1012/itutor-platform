@@ -28,6 +28,8 @@ async function isApprovedMemberOrTutor(
 }
 
 // GET /api/groups/[groupId]/messages — fetch group message board
+export const dynamic = 'force-dynamic';
+
 export async function GET(_req: NextRequest, { params }: Params) {
   try {
     const { groupId } = await params;

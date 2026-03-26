@@ -11,6 +11,8 @@ const patchSchema = z.object({
   comment: z.string().min(1),
 });
 
+export const dynamic = 'force-dynamic';
+
 export async function PATCH(req: NextRequest, { params }: Params) {
   try {
     const user = await authenticateUser();

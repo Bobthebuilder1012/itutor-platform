@@ -5,6 +5,8 @@ import { getServiceClient } from '@/lib/supabase/server';
 
 type Params = { params: Promise<{ notificationId: string }> };
 
+export const dynamic = 'force-dynamic';
+
 export async function PATCH(_req: NextRequest, { params }: Params) {
   try {
     const user = await authenticateUser();

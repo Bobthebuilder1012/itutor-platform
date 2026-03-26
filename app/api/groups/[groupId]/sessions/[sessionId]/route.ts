@@ -4,6 +4,8 @@ import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 type Params = { params: Promise<{ groupId: string; sessionId: string }> };
 
 // PATCH /api/groups/[groupId]/sessions/[sessionId] — edit a session title/time
+export const dynamic = 'force-dynamic';
+
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
     const { groupId, sessionId } = await params;

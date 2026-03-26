@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getEmailForStage, getCtaUrl } from '@/lib/email-templates';
 import { UserType, EmailStage } from '@/lib/email-templates/types';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;

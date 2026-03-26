@@ -4,6 +4,8 @@ import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 type Params = { params: Promise<{ groupId: string; userId: string }> };
 
 // PATCH /api/groups/[groupId]/members/[userId] — approve or deny a join request (tutor only)
+export const dynamic = 'force-dynamic';
+
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
     const { groupId, userId } = await params;

@@ -3,6 +3,8 @@ import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { getMySubjectCommunities } from '@/lib/subject-communities';
 
 /** GET: list communities the current user has joined (for booking dropdown etc.) */
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     const supabase = await getServerClient();

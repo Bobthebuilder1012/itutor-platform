@@ -11,6 +11,8 @@ const schema = z.object({
   platform: z.enum(['ZOOM', 'GOOGLE_MEET', 'INTERNAL']).optional(),
 });
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const user = await authenticateUser();

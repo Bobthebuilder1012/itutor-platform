@@ -4,6 +4,8 @@ import { getServiceClient } from '@/lib/supabase/server';
 
 type Params = { params: Promise<{ tutorId: string }> };
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(_req: NextRequest, { params }: Params) {
   try {
     const { tutorId } = await params;

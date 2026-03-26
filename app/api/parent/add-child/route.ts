@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { ensureSchoolCommunityAndMembershipWithClient } from '@/lib/server/ensureSchoolCommunity';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   // Debug: Log all environment variables related to Supabase
   console.log('Environment check:');

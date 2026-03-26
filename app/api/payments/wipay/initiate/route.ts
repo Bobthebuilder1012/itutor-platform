@@ -10,6 +10,8 @@ import { WiPayClient } from '@/lib/payments/wipayClient';
 import { isPaidClassesEnabled } from '@/lib/featureFlags/paidClasses';
 import { paidClassesForbiddenResponse } from '@/lib/featureFlags/http';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   try {
     if (!isPaidClassesEnabled()) {

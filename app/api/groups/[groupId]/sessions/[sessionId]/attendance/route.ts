@@ -17,6 +17,8 @@ const schema = z.object({
   ),
 });
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const user = await authenticateUser();

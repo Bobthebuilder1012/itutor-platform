@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { ensureSchoolCommunityAndMembershipWithClient } from '@/lib/server/ensureSchoolCommunity';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   return NextResponse.json(
     { error: 'Method not allowed. Use POST to ensure membership.' },

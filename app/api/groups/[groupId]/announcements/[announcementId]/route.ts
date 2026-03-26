@@ -3,6 +3,8 @@ import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 
 // PATCH /api/groups/[groupId]/announcements/[announcementId]
 // Tutor can edit body, toggle pin
+export const dynamic = 'force-dynamic';
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: { groupId: string; announcementId: string } }

@@ -4,6 +4,8 @@ import type { CreateStreamPostInput, StreamPostType } from '@/lib/types/groupStr
 
 type Params = { params: Promise<{ groupId: string }> };
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const supabase = await getServerClient();

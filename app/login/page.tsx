@@ -206,13 +206,8 @@ export default function LoginPage() {
         profileData = ensuredProfile;
       }
 
-      // If profile exists but has no role, redirect to signup to complete registration
       if (!profileData.role) {
-        setError('Your account setup is incomplete. Please complete your registration.');
-        await supabaseClient.auth.signOut();
-        setTimeout(() => {
-          router.push('/signup');
-        }, 2000);
+        router.push('/signup/complete-role');
         return;
       }
 
