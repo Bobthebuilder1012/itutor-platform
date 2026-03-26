@@ -34,6 +34,8 @@ async function findAvailableUsername(admin: ReturnType<typeof getServiceClient>,
   return `${base}_${String(Date.now()).slice(-6)}`;
 }
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(_request: NextRequest) {
   try {
     const supabase = getAuthedSupabase();

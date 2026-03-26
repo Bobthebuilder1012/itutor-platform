@@ -5,7 +5,14 @@
 
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+let resendClient: Resend | null = null;
+
+function getResend(): Resend | null {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) return null;
+  if (!resendClient) resendClient = new Resend(key);
+  return resendClient;
+}
 
 export interface SendEmailParams {
   to: string;
@@ -30,6 +37,13 @@ export async function sendEmail({
   from = process.env.RESEND_FROM_EMAIL || 'iTutor <hello@myitutor.com>',
 }: SendEmailParams): Promise<EmailResult> {
   try {
+    const resend = getResend();
+    if (!resend) {
+      return {
+        success: false,
+        error: 'Email service is not configured',
+      };
+    }
     const { data, error } = await resend.emails.send({
       from,
       to,

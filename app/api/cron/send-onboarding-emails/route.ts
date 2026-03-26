@@ -14,6 +14,8 @@ function verifyCronSecret(request: NextRequest): boolean {
   return authHeader === `Bearer ${process.env.CRON_SECRET}`;
 }
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   console.log('=== Onboarding Email Cron Job Started ===');
 

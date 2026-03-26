@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { processScheduledCharges } from '@/lib/services/sessionService';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   try {
     // Verify cron secret to prevent unauthorized calls

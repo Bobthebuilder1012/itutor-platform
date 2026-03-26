@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 // This API route sends verification emails directly via Resend API
 // Use this if Supabase SMTP is too slow
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   try {
     const { email, code } = await request.json();

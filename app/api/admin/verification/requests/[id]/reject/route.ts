@@ -8,6 +8,8 @@ import { requireAdmin } from '@/lib/middleware/adminAuth';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }

@@ -7,6 +7,8 @@ import { cookies } from 'next/headers';
  * Manual trigger for session migration when a tutor switches video providers
  * This can be used if automatic migration fails or needs to be re-run
  */
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   try {
     const cookieStore = cookies();

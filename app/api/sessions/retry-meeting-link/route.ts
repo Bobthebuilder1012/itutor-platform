@@ -117,6 +117,8 @@ async function refreshZoomToken(tutorId: string, refreshToken: string) {
   console.log('✅ Zoom token refreshed');
 }
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   try {
     console.log('🔧 [RETRY-MEETING-LINK] API called');

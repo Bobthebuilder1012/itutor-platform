@@ -12,6 +12,8 @@ import { cookies } from 'next/headers';
 const ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   const auth = await requireTutor();
   if (auth.error) return auth.error;

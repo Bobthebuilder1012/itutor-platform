@@ -7,6 +7,8 @@ import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/middleware/adminAuth';
 import { getServiceClient } from '@/lib/supabase/server';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   const auth = await requireAdmin();
   if (auth.error) return auth.error;
