@@ -25,6 +25,7 @@ function isNetworkError(error: unknown): boolean {
 
 export default function SignupForm({ onSwitchMode, onSuccess, redirectTo }: SignupFormProps) {
   const router = useRouter();
+  const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -47,6 +48,16 @@ export default function SignupForm({ onSwitchMode, onSuccess, redirectTo }: Sign
       return;
     }
 
+    const trimmedName = fullName.trim();
+    if (!trimmedName) {
+      setError('Please enter your name.');
+      return;
+    }
+    if (trimmedName.length > 120) {
+      setError('Name must be 120 characters or less.');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -55,7 +66,7 @@ export default function SignupForm({ onSwitchMode, onSuccess, redirectTo }: Sign
         password,
         options: {
           data: {
-            role: 'student',
+            full_name: trimmedName,
           },
         },
       });
@@ -94,28 +105,16 @@ export default function SignupForm({ onSwitchMode, onSuccess, redirectTo }: Sign
         return;
       }
 
-      await fetch('/api/profile/ensure', { method: 'POST' }).catch(() => {});
-
-      const { error: upsertError } = await supabase
-        .from('profiles')
-        .upsert(
-          {
-            id: authData.user.id,
-            email: authData.user.email,
-            role: 'student',
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'id' }
-        );
-
-      if (upsertError) {
-        setError(`Error creating profile: ${upsertError.message}`);
+      const ensureRes = await fetch('/api/profile/ensure', { method: 'POST' });
+      const ensureJson = (await ensureRes.json().catch(() => ({}))) as { error?: string };
+      if (!ensureRes.ok) {
+        setError(ensureJson.error || 'Error creating profile.');
         setLoading(false);
         return;
       }
 
       onSuccess?.();
-      router.push(redirectTo || '/onboarding/student');
+      router.push(redirectTo || '/signup/complete-role');
     } catch (err) {
       if (isNetworkError(err)) setError('Connect to the Internet');
       else setError('An unexpected error occurred. Please try again.');
@@ -147,6 +146,24 @@ export default function SignupForm({ onSwitchMode, onSuccess, redirectTo }: Sign
       )}
 
       <form onSubmit={handleSignup} className="space-y-3">
+        <div>
+          <label htmlFor="auth-signup-full-name" className="block text-sm font-medium text-gray-700 mb-1">
+            Name
+          </label>
+          <input
+            id="auth-signup-full-name"
+            type="text"
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            placeholder="John Doe"
+            disabled={loading}
+            required
+            autoComplete="name"
+            maxLength={120}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2.5 focus:ring-2 focus:ring-itutor-green focus:border-itutor-green outline-none"
+          />
+        </div>
+
         <div>
           <label htmlFor="auth-signup-email" className="block text-sm font-medium text-gray-700 mb-1">
             Email

@@ -52,7 +52,7 @@ export async function POST(_request: NextRequest) {
 
     const meta = (user.user_metadata || {}) as Record<string, any>;
     const email = user.email || '';
-    const role = (meta.role as string | undefined) || 'student';
+    const role = (meta.role as string | undefined) ?? null;
     const fullName =
       (meta.full_name as string | undefined) ||
       (meta.display_name as string | undefined) ||

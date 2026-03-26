@@ -67,15 +67,18 @@ export async function GET(request: NextRequest) {
   const isEmailConfirmationFlow = type === 'signup' || type === 'email';
   if (isEmailConfirmationFlow) {
     console.log('✅ Email confirmation detected - redirecting to onboarding');
-    const userRole = session.user.user_metadata?.role || 'student';
-    
+    const userRole = session.user.user_metadata?.role as string | undefined;
+
     if (userRole === 'tutor') {
       return NextResponse.redirect(new URL('/onboarding/tutor', request.url));
-    } else if (userRole === 'parent') {
+    }
+    if (userRole === 'parent') {
       return NextResponse.redirect(new URL('/parent/dashboard', request.url));
-    } else {
+    }
+    if (userRole === 'student') {
       return NextResponse.redirect(new URL('/onboarding/student', request.url));
     }
+    return NextResponse.redirect(new URL('/signup/complete-role', request.url));
   }
 
   // Check if profile exists
@@ -144,14 +147,17 @@ export async function GET(request: NextRequest) {
       if (metadataRole === 'tutor') {
         console.log('➡️ Redirecting to tutor onboarding');
         return NextResponse.redirect(new URL('/onboarding/tutor', request.url));
-      } else if (metadataRole === 'parent') {
+      }
+      if (metadataRole === 'parent') {
         console.log('➡️ Redirecting to parent dashboard');
         return NextResponse.redirect(new URL('/parent/dashboard', request.url));
-      } else {
-        // Default to student onboarding
-        console.log('➡️ Redirecting to student onboarding (default)');
+      }
+      if (metadataRole === 'student') {
+        console.log('➡️ Redirecting to student onboarding');
         return NextResponse.redirect(new URL('/onboarding/student', request.url));
       }
+      console.log('➡️ Redirecting to role selection');
+      return NextResponse.redirect(new URL('/signup/complete-role', request.url));
     }
 
     // Check if profile is complete based on role

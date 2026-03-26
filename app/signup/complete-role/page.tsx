@@ -7,7 +7,7 @@ export default function CompleteGoogleRolePage() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace('/?auth=complete-role&source=google');
+    router.replace('/?auth=complete-role');
   }, [router]);
 
   return null;

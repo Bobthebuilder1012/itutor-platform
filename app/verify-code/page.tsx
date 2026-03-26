@@ -62,20 +62,19 @@ export default function VerifyCodePage() {
       if (data.session) {
         setSuccess(true);
         
-        // Get role from user metadata (set during signup)
-        const userRole = data.session.user.user_metadata?.role || 'student';
-        
-        console.log('✅ Email verified! User role:', userRole);
-        
-        // Redirect to appropriate onboarding based on role
+        const userRole = data.session.user.user_metadata?.role as string | undefined;
+
+        console.log('✅ Email verified! User role:', userRole ?? '(none)');
+
         setTimeout(() => {
           if (userRole === 'tutor') {
             router.push('/onboarding/tutor');
           } else if (userRole === 'parent') {
             router.push('/onboarding/parent');
-          } else {
-            // Student role - always go to onboarding to complete profile
+          } else if (userRole === 'student') {
             router.push('/onboarding/student');
+          } else {
+            router.push('/signup/complete-role');
           }
         }, 1500);
       } else {
