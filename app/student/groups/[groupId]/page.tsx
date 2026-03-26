@@ -1,5 +1,7 @@
+import { redirect } from 'next/navigation';
 import GroupDetailClient from '@/app/(student)/tutors/[tutorId]/GroupDetailClient';
 import { getServiceClient } from '@/lib/supabase/server';
+import { isGroupsFeatureEnabled } from '@/lib/featureFlags/groupsFeature';
 
 async function getGroup(groupId: string) {
   const service = getServiceClient();
@@ -66,6 +68,10 @@ export default async function StudentGroupDetailPage({
 }: {
   params: Promise<{ groupId: string }>;
 }) {
+  if (!isGroupsFeatureEnabled()) {
+    redirect('/student/dashboard');
+  }
+
   const { groupId } = await params;
   const group = await getGroup(groupId);
 

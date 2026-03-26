@@ -1,8 +1,9 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import NotificationsList from '@/components/student/NotificationsList';
+import { isGroupsFeatureEnabled } from '@/lib/featureFlags/groupsFeature';
 
 type Enrollment = {
   id: string;
@@ -26,8 +27,13 @@ async function getUnreadCount(): Promise<number> {
 }
 
 export default function StudentDashboardTabs() {
+  const groupsOn = isGroupsFeatureEnabled();
   const [tab, setTab] = useState<'upcoming' | 'groups' | 'notifications'>('upcoming');
   const enrollmentsQuery = useQuery({ queryKey: ['student-enrollments'], queryFn: getEnrollments });
+
+  useEffect(() => {
+    if (!groupsOn && tab === 'groups') setTab('upcoming');
+  }, [groupsOn, tab]);
   const unreadQuery = useQuery({
     queryKey: ['student-unread-count'],
     queryFn: getUnreadCount,
@@ -67,13 +73,15 @@ export default function StudentDashboardTabs() {
         >
           Upcoming Sessions
         </button>
-        <button
-          type="button"
-          onClick={() => setTab('groups')}
-          className={`rounded-lg px-3 py-2 text-sm ${tab === 'groups' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
-        >
-          My Groups
-        </button>
+        {groupsOn && (
+          <button
+            type="button"
+            onClick={() => setTab('groups')}
+            className={`rounded-lg px-3 py-2 text-sm ${tab === 'groups' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+          >
+            My Groups
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setTab('notifications')}
@@ -98,7 +106,7 @@ export default function StudentDashboardTabs() {
         </div>
       )}
 
-      {tab === 'groups' && (
+      {groupsOn && tab === 'groups' && (
         <div className="space-y-2">
           {groups.length === 0 ? (
             <p className="text-sm text-gray-600">You are not enrolled in any groups yet.</p>

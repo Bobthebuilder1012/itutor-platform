@@ -14,6 +14,7 @@ import EnableNotificationsPrompt from '@/components/EnableNotificationsPrompt';
 import IOSInstallPrompt from '@/components/IOSInstallPrompt';
 import { initializePushNotifications } from '@/lib/services/browserPushService';
 import { isCommunitiesArchived } from '@/lib/featureFlags/communitiesArchived';
+import { isGroupsFeatureEnabled } from '@/lib/featureFlags/groupsFeature';
 import dynamic from 'next/dynamic';
 
 const PushTokenRegistrar = dynamic(() => import('@/components/push/PushTokenRegistrar'), {
@@ -119,11 +120,18 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
 
   const getNavLinks = () => {
     const hideCommunities = isCommunitiesArchived();
-    const filterCommunities = (links: { href: string; label: string }[]) =>
-      hideCommunities ? links.filter((l) => l.href !== '/communities') : links;
+    const hideGroups = !isGroupsFeatureEnabled();
+    const filterNav = (links: { href: string; label: string }[]) => {
+      let out = links;
+      if (hideCommunities) out = out.filter((l) => l.href !== '/communities');
+      if (hideGroups) {
+        out = out.filter((l) => l.href !== '/groups');
+      }
+      return out;
+    };
     switch (role) {
       case 'student':
-        return filterCommunities([
+        return filterNav([
           { href: '/student/find-tutors', label: 'Find iTutors' },
           { href: '/communities', label: 'Communities' },
           { href: '/groups', label: 'Groups' },
@@ -132,7 +140,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/student/ratings', label: 'My Reviews' },
         ]);
       case 'tutor':
-        return filterCommunities([
+        return filterNav([
           { href: '/tutor/find-students', label: 'Find Students' },
           { href: '/tutor/bookings', label: 'Booking Requests' },
           { href: '/communities', label: 'Communities' },
@@ -140,7 +148,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/tutor/curriculum', label: 'Curriculum' },
         ]);
       case 'parent':
-        return filterCommunities([
+        return filterNav([
           { href: '/parent/add-child', label: 'Add Child' },
           { href: '/communities', label: 'Communities' },
           { href: '/parent/approve-bookings', label: 'Booking Requests' },
