@@ -27,7 +27,7 @@ const SEA_SUBJECT_OPTIONS = [
   { label: 'SEA Creative Writing', shortLabel: 'Creative Writing' },
 ] as const;
 
-const SEA_SUBJECT_LABELS = new Set(SEA_SUBJECT_OPTIONS.map((o) => o.label));
+const SEA_SUBJECT_LABELS: Set<string> = new Set(SEA_SUBJECT_OPTIONS.map((o) => o.label));
 
 /** DB `name` for each chip label (migration 095 uses these names + labels). */
 const SEA_NAME_BY_UI_LABEL: Record<string, string> = {
