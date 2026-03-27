@@ -50,6 +50,30 @@ export default function AdminEmailsPage() {
   const [previewTemplate, setPreviewTemplate] = useState<EmailTemplate | null>(null);
   const [previewName, setPreviewName] = useState('Alex');
 
+  const ensureUtf8Meta = (html: string) => {
+    if (/<meta[^>]+charset=/i.test(html)) return html;
+    if (/<head[^>]*>/i.test(html)) {
+      return html.replace(/<head([^>]*)>/i, '<head$1><meta charset="utf-8" />');
+    }
+    return `<!DOCTYPE html><html><head><meta charset="utf-8" /></head><body>${html}</body></html>`;
+  };
+
+  const centerITutorLogo = (html: string) => {
+    const appendLogoStyles = (tag: string) => {
+      if (/style=/i.test(tag)) {
+        return tag.replace(/style=(['"])(.*?)\1/i, (_match, quote: string, style: string) => {
+          const normalizedStyle = style.trim().replace(/;?\s*$/, ';');
+          return `style=${quote}${normalizedStyle} display:block; margin:0 auto; width:auto;${quote}`;
+        });
+      }
+      return tag.replace(/<img/i, '<img style="display:block; margin:0 auto; width:auto;"');
+    };
+
+    return html.replace(/<img\b[^>]*itutor-logo-dark\.png[^>]*>/gi, appendLogoStyles);
+  };
+
+  const normalizeEmailHtml = (html: string) => centerITutorLogo(ensureUtf8Meta(html));
+
   const fetchUsers = useCallback(async () => {
     setLoading(true);
     try {
@@ -150,6 +174,8 @@ export default function AdminEmailsPage() {
       return;
     }
 
+    const normalizedTemplateContent = normalizeEmailHtml(templateContent);
+
     setLoading(true);
     try {
       const response = await fetch('/api/admin/email-templates', {
@@ -159,7 +185,7 @@ export default function AdminEmailsPage() {
           id: editingTemplate?.id,
           name: templateName,
           subject: templateSubject,
-          html_content: templateContent,
+          html_content: normalizedTemplateContent,
           user_type: templateUserType,
           stage: templateStage
         })
@@ -229,7 +255,9 @@ export default function AdminEmailsPage() {
 
   const getPreviewHtml = (html: string, subject: string) => {
     // Replace {{firstName}} placeholder with preview name
-    const personalizedHtml = html.replace(/\{\{firstName\}\}/g, previewName);
+    const personalizedHtml = normalizeEmailHtml(
+      html.replace(/\{\{firstName\}\}/g, previewName)
+    );
     const personalizedSubject = subject.replace(/\{\{firstName\}\}/g, previewName);
     
     return { html: personalizedHtml, subject: personalizedSubject };
@@ -347,7 +375,7 @@ export default function AdminEmailsPage() {
                   placeholder="Enter HTML content or load a template..."
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Use HTML for formatting. {'{{firstName}}'} will be replaced with each recipient's name.
+                  Edit the real email body here. {'{{firstName}}'} will be replaced with each recipient's name, and emojis are supported.
                 </p>
               </div>
 
@@ -572,6 +600,9 @@ export default function AdminEmailsPage() {
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg font-mono text-sm"
                         placeholder="HTML content..."
                       />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Edit the actual template HTML here. The iTutor logo will be centered automatically when you preview or save, and emojis are supported.
+                      </p>
                     </div>
 
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">

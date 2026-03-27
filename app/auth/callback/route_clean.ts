@@ -1,6 +1,7 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
+import { isEmailManagementOnlyAdmin } from '@/lib/auth/adminAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -85,6 +86,10 @@ export async function GET(request: NextRequest) {
     // Profile exists - determine where to redirect
     if (profile) {
       const role = profile.role;
+
+      if (isEmailManagementOnlyAdmin(profile.email)) {
+        return NextResponse.redirect(new URL('/admin/emails', request.url));
+      }
 
       // Check if profile is complete
       if (role === 'student') {

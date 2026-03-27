@@ -4,6 +4,10 @@ import { FormEvent, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase, setRememberMePreference, createSupabaseClient } from '@/lib/supabase/client';
 import SocialLoginButton from '@/components/SocialLoginButton';
+import {
+  getAdminHomePath,
+  isEmailManagementOnlyAdmin,
+} from '@/lib/auth/adminAccess';
 
 // Helper function to detect network errors
 function isNetworkError(error: unknown): boolean {
@@ -214,6 +218,11 @@ export default function LoginPage() {
       // Check for redirect parameter
       const redirectUrl = searchParams.get('redirect');
       
+      if (isEmailManagementOnlyAdmin(profileData.email)) {
+        router.push('/admin/emails');
+        return;
+      }
+
       // If there's a redirect URL, go there instead of dashboard
       if (redirectUrl) {
         router.push(decodeURIComponent(redirectUrl));
@@ -222,7 +231,7 @@ export default function LoginPage() {
 
       // Check if user is an admin first
       if (profileData.role === 'admin') {
-        router.push('/admin/dashboard');
+        router.push(getAdminHomePath(profileData.email));
         return;
       }
 
