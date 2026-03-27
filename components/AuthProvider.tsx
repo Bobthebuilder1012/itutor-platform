@@ -37,7 +37,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // Get user role and redirect to appropriate dashboard
             const { data: profile } = await supabase
               .from('profiles')
-              .select('role, is_reviewer')
+              .select('*')
               .eq('id', session.user.id)
               .single();
 

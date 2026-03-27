@@ -1,6 +1,7 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
+import { bootstrapProfileIfMissing } from '@/lib/server/bootstrapProfileIfMissing';
 
 export const dynamic = 'force-dynamic';
 
@@ -93,24 +94,10 @@ export async function GET(request: NextRequest) {
   // If profile doesn't exist, create it (OAuth users)
   if (profileError && profileError.code === 'PGRST116') {
     console.log('📝 Creating new profile for OAuth user');
-    // PGRST116 = no rows returned
     const metadataRole = session.user.user_metadata?.role ?? null;
-    const newProfile = {
-      id: userId,
-      email: session.user.email!,
-      full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || 'User',
-      avatar_url: session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture || null,
-      role: metadataRole, // OAuth users pick role later if not provided
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-
-    const { error: insertError } = await supabase
-      .from('profiles')
-      .insert([newProfile]);
-
-    if (insertError) {
-      console.error('❌ Error creating profile:', insertError);
+    const { error: bootstrapErr } = await bootstrapProfileIfMissing(session.user);
+    if (bootstrapErr) {
+      console.error('❌ Error creating profile:', bootstrapErr.message);
       return NextResponse.redirect(new URL('/login?error=profile_creation_failed', request.url));
     }
 

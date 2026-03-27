@@ -183,7 +183,7 @@ export default function LoginPage() {
 
       const { data: profile, error: profileError } = await supabaseClient
         .from('profiles')
-        .select('role, school, form_level, subjects_of_study, billing_mode, is_reviewer')
+        .select('*')
         .eq('id', authData.user.id)
         .maybeSingle();
 
@@ -193,7 +193,7 @@ export default function LoginPage() {
         await fetch('/api/profile/ensure', { method: 'POST' }).catch(() => {});
         const { data: ensuredProfile, error: ensuredError } = await supabaseClient
           .from('profiles')
-          .select('role, school, form_level, subjects_of_study, billing_mode, is_reviewer')
+          .select('*')
           .eq('id', authData.user.id)
           .maybeSingle();
 

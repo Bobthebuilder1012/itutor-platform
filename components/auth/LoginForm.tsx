@@ -51,7 +51,7 @@ export default function LoginForm({ onSwitchMode, onSuccess, redirectTo }: Login
       const userId = data.user.id;
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('role, is_reviewer')
+        .select('*')
         .eq('id', userId)
         .maybeSingle();
 
@@ -60,7 +60,7 @@ export default function LoginForm({ onSwitchMode, onSuccess, redirectTo }: Login
         await fetch('/api/profile/ensure', { method: 'POST' }).catch(() => {});
         const { data: ensuredProfile } = await supabase
           .from('profiles')
-          .select('role, is_reviewer')
+          .select('*')
           .eq('id', userId)
           .maybeSingle();
         resolvedProfile = ensuredProfile;
