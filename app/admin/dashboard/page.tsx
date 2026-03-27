@@ -511,8 +511,8 @@ export default function AdminDashboardPage() {
                 </svg>
               </div>
               <div>
-                <h3 className="font-bold text-gray-900 text-lg">Verification Queue</h3>
-                <p className="text-sm text-gray-600">Review tutor verifications</p>
+                <h3 className="font-bold text-gray-900 text-lg">Verification queue</h3>
+                <p className="text-sm text-gray-600">Tutor certificates and degree submissions</p>
               </div>
             </Link>
 

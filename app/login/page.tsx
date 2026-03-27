@@ -241,7 +241,7 @@ export default function LoginPage() {
           }
           
           // For regular students, check if profile is complete
-          const hasBasicInfo = profileData.school && profileData.form_level;
+          const hasBasicInfo = Boolean(profileData.form_level);
           
           // Check for subjects in user_subjects table
           const { data: userSubjects } = await supabaseClient

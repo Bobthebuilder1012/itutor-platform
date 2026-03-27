@@ -77,11 +77,9 @@ export default function StudentDashboard() {
     // Skip onboarding check for child accounts created by parents
     if (profile.billing_mode !== 'parent_required') {
       // Check if onboarding is complete for regular students
-      const isProfileComplete = 
-        profile.school && 
-        profile.form_level && 
-        profile.subjects_of_study && 
-        profile.subjects_of_study.length > 0;
+      const isProfileComplete =
+        Boolean(profile.form_level) &&
+        Boolean(profile.subjects_of_study && profile.subjects_of_study.length > 0);
 
       if (!isProfileComplete) {
         router.push('/onboarding/student');

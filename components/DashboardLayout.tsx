@@ -138,6 +138,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/student/curriculum', label: 'Curriculum' },
           { href: '/student/bookings', label: 'My Bookings' },
           { href: '/student/ratings', label: 'My Reviews' },
+          { href: '/verification', label: 'Verification' },
         ]);
       case 'tutor':
         return filterNav([
@@ -146,6 +147,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/communities', label: 'Communities' },
           { href: '/groups', label: 'Groups' },
           { href: '/tutor/curriculum', label: 'Curriculum' },
+          { href: '/verification', label: 'Verification' },
         ]);
       case 'parent':
         return filterNav([

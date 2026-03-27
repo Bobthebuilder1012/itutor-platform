@@ -88,8 +88,7 @@ export async function GET(request: NextRequest) {
 
       // Check if profile is complete
       if (role === 'student') {
-        // For students, check both old 'school' field and new 'institution_id'
-        const hasBasicInfo = (profile.school || profile.institution_id) && profile.form_level;
+        const hasBasicInfo = Boolean(profile.form_level);
         const hasSubjects = profile.subjects_of_study && profile.subjects_of_study.length > 0;
 
         if (!hasBasicInfo || !hasSubjects) {
