@@ -6,7 +6,8 @@ function isPublicAssetPath(pathname: string) {
     pathname.startsWith('/assets/') ||
     pathname.startsWith('/favicon') ||
     pathname === '/robots.txt' ||
-    pathname === '/sitemap.xml'
+    pathname === '/sitemap.xml' ||
+    pathname === '/manifest.json'
   );
 }
 

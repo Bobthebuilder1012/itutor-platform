@@ -39,7 +39,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               .from('profiles')
               .select('*')
               .eq('id', session.user.id)
-              .single();
+              .maybeSingle();
 
             if (profile) {
               // Keep loading state active during redirect to prevent flash
