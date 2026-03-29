@@ -151,7 +151,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL('/signup/complete-role', request.url));
     }
 
-    if (isEmailManagementOnlyAdmin(profile.email)) {
+    if (isEmailManagementOnlyAdmin(userEmail)) {
       console.log('➡️ Redirecting email-only account to admin emails');
       return NextResponse.redirect(new URL('/admin/emails', request.url));
     }
@@ -184,7 +184,7 @@ export async function GET(request: NextRequest) {
       console.log('➡️ Redirecting to tutor dashboard');
       return NextResponse.redirect(new URL('/tutor/dashboard', request.url));
     } else if (role === 'admin') {
-      const adminPath = getAdminHomePath(profile.email);
+      const adminPath = getAdminHomePath(userEmail);
       console.log('➡️ Redirecting to admin area:', adminPath);
       return NextResponse.redirect(new URL(adminPath, request.url));
     }
