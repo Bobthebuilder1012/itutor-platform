@@ -15,6 +15,10 @@ import IOSInstallPrompt from '@/components/IOSInstallPrompt';
 import { initializePushNotifications } from '@/lib/services/browserPushService';
 import { isCommunitiesArchived } from '@/lib/featureFlags/communitiesArchived';
 import { isGroupsFeatureEnabled } from '@/lib/featureFlags/groupsFeature';
+import {
+  getAdminHomePath,
+  isEmailManagementOnlyAdmin,
+} from '@/lib/auth/adminAccess';
 import dynamic from 'next/dynamic';
 
 const PushTokenRegistrar = dynamic(() => import('@/components/push/PushTokenRegistrar'), {
@@ -37,9 +41,12 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileIconMenuOpen, setMobileIconMenuOpen] = useState(false);
   const [authUserId, setAuthUserId] = useState<string | null>(null);
+  const [authEmail, setAuthEmail] = useState<string | null>(null);
 
   const effectiveUserId = profile?.id || authUserId;
-  const showIcons = role !== 'reviewer';
+  const effectiveEmail = authEmail || profile?.email || null;
+  const emailOnlyAdmin = isEmailManagementOnlyAdmin(effectiveEmail);
+  const showIcons = role !== 'reviewer' && !emailOnlyAdmin;
   const displayName =
     profile?.username ||
     userName ||
@@ -54,10 +61,12 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
       .then(({ data }) => {
         if (!mounted) return;
         setAuthUserId(data.user?.id || null);
+        setAuthEmail(data.user?.email || null);
       })
       .catch(() => {
         if (!mounted) return;
         setAuthUserId(null);
+        setAuthEmail(null);
       });
     return () => {
       mounted = false;
@@ -70,6 +79,12 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
       initializePushNotifications(effectiveUserId);
     }
   }, [effectiveUserId]);
+
+  useEffect(() => {
+    if (emailOnlyAdmin && pathname !== '/admin/emails') {
+      router.replace('/admin/emails');
+    }
+  }, [emailOnlyAdmin, pathname, router]);
 
   const handleCalendarNav = () => {
     if (role === 'tutor') router.push('/tutor/calendar');
@@ -112,9 +127,9 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
       case 'reviewer':
         return '/reviewer/dashboard';
       case 'admin':
-        return '/admin/dashboard';
+        return getAdminHomePath(effectiveEmail);
       default:
-        return '/';
+        return emailOnlyAdmin ? '/admin/emails' : '/';
     }
   };
 
@@ -163,15 +178,17 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/reviewer/payments', label: 'Payments & Revenue' },
         ];
       case 'admin':
-        return [
-          { href: '/reviewer/verification/queue', label: 'Verification Queue' },
-          { href: '/reviewer/verified-tutors', label: 'Verified iTutors' },
-          { href: '/reviewer/accounts', label: 'Account Management' },
-          { href: '/reviewer/payments', label: 'Payments & Revenue' },
-          { href: '/admin/emails', label: 'Email Management' },
-        ];
+        return emailOnlyAdmin
+          ? [{ href: '/admin/emails', label: 'Email Management' }]
+          : [
+              { href: '/reviewer/verification/queue', label: 'Verification Queue' },
+              { href: '/reviewer/verified-tutors', label: 'Verified iTutors' },
+              { href: '/reviewer/accounts', label: 'Account Management' },
+              { href: '/reviewer/payments', label: 'Payments & Revenue' },
+              { href: '/admin/emails', label: 'Email Management' },
+            ];
       default:
-        return [];
+        return emailOnlyAdmin ? [{ href: '/admin/emails', label: 'Email Management' }] : [];
     }
   };
 
