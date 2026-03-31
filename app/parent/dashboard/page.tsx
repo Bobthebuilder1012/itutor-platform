@@ -117,6 +117,12 @@ export default function ParentDashboard() {
 
     try {
       const response = await fetch('/api/parent/dashboard');
+      const contentType = response.headers.get('content-type') || '';
+
+      if (!contentType.includes('application/json')) {
+        throw new Error('Parent dashboard returned an unexpected response');
+      }
+
       const result = await response.json();
 
       if (!response.ok) {
