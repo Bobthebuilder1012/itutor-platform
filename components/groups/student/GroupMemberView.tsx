@@ -7,6 +7,7 @@ import GroupMessageBoard from '../messages/GroupMessageBoard';
 import StatusBadge from '../shared/StatusBadge';
 import AnnouncementBoard from '../announcements/AnnouncementBoard';
 import GroupStreamPage from '../stream/GroupStreamPage';
+import UserAvatar from '@/components/UserAvatar';
 
 type Tab = 'stream' | 'announcements' | 'sessions' | 'messages';
 
@@ -38,10 +39,6 @@ function formatOccurrence(iso: string) {
     weekday: 'short', month: 'short', day: 'numeric',
     hour: 'numeric', minute: '2-digit',
   });
-}
-
-function getInitials(name: string) {
-  return name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
 }
 
 export default function GroupMemberView({ group, currentUserId }: GroupMemberViewProps) {
@@ -134,13 +131,7 @@ export default function GroupMemberView({ group, currentUserId }: GroupMemberVie
           <div>
             <h2 className="text-xl font-bold text-gray-900">{group.name}</h2>
             <div className="mt-1 flex items-center gap-2">
-              {group.tutor?.avatar_url ? (
-                <img src={group.tutor.avatar_url} alt={tutorName} className="w-6 h-6 rounded-full object-cover" />
-              ) : (
-                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-white text-[10px] font-semibold">
-                  {tutorName.charAt(0)}
-                </div>
-              )}
+              <UserAvatar avatarUrl={group.tutor?.avatar_url} name={tutorName} size={24} />
               <span className="text-sm text-gray-600">{tutorName}</span>
             </div>
           </div>
@@ -382,13 +373,7 @@ export default function GroupMemberView({ group, currentUserId }: GroupMemberVie
               <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Head Tutor</p>
             </div>
             <div className="flex items-center gap-2 px-3 pb-2.5">
-              {group.tutor?.avatar_url ? (
-                <img src={group.tutor.avatar_url} alt={tutorName} className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
-              ) : (
-                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
-                  {tutorName.charAt(0)}
-                </div>
-              )}
+              <UserAvatar avatarUrl={group.tutor?.avatar_url} name={tutorName} size={28} className="flex-shrink-0" />
               <div className="min-w-0">
                 <p className="text-xs font-medium text-gray-800 truncate">
                   {tutorName}
@@ -413,13 +398,7 @@ export default function GroupMemberView({ group, currentUserId }: GroupMemberVie
                     const isMe = m.user_id === currentUserId;
                     return (
                       <div key={m.id} className="flex items-center gap-2 px-3 py-2">
-                        {avatar ? (
-                          <img src={avatar} alt={name} className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
-                        ) : (
-                          <div className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-[10px] font-bold flex-shrink-0">
-                            {getInitials(name)}
-                          </div>
-                        )}
+                        <UserAvatar avatarUrl={avatar} name={name} size={28} className="flex-shrink-0" />
                         <p className="text-xs font-medium text-gray-800 truncate min-w-0">
                           {name}{isMe && <span className="ml-1 text-gray-400">(you)</span>}
                         </p>
@@ -451,13 +430,7 @@ export default function GroupMemberView({ group, currentUserId }: GroupMemberVie
                     const isMe = m.user_id === currentUserId;
                     return (
                       <div key={m.id} className="flex items-center gap-2 px-3 py-2">
-                        {avatar ? (
-                          <img src={avatar} alt={name} className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
-                        ) : (
-                          <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold flex-shrink-0">
-                            {getInitials(name)}
-                          </div>
-                        )}
+                        <UserAvatar avatarUrl={avatar} name={name} size={28} className="flex-shrink-0" />
                         <p className="text-xs font-medium text-gray-800 truncate min-w-0">
                           {name}{isMe && <span className="ml-1 text-gray-400">(you)</span>}
                         </p>

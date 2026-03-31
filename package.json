@@ -10,10 +10,12 @@
     "communities:check": "npx ts-node scripts/check-subject-communities-migration.ts",
     "communities:migrate": "npx ts-node scripts/run-migration-088.ts",
     "stream:migrate": "npx ts-node scripts/run-migration-092.ts",
+    "migrate:097": "node scripts/run-migration-097.js",
     "seed:groups": "npx ts-node prisma/seeds/groupSessions.seed.ts"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
+    "@react-email/components": "^1.0.10",
     "@supabase/auth-helpers-nextjs": "^0.15.0",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.89.0",

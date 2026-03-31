@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase/client';
 import { LessonOffer } from '@/lib/types/lessonOffers';
 import { getDisplayName } from '@/lib/utils/displayName';
 import CounterOfferModal from './CounterOfferModal';
+import UserAvatar from '@/components/UserAvatar';
 
 type OffersReceivedListProps = {
   studentId: string;
@@ -230,17 +231,7 @@ export default function OffersReceivedList({ studentId }: OffersReceivedListProp
               >
                 <div className="flex items-start gap-4">
                   {/* Tutor Avatar */}
-                  {offer.tutor?.avatar_url ? (
-                    <img
-                      src={offer.tutor.avatar_url}
-                      alt={getDisplayName(offer.tutor)}
-                      className="w-12 h-12 rounded-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-itutor-green to-emerald-600 flex items-center justify-center text-white font-bold text-lg">
-                      {getDisplayName(offer.tutor).charAt(0)}
-                    </div>
-                  )}
+                  <UserAvatar avatarUrl={offer.tutor?.avatar_url} name={getDisplayName(offer.tutor)} size={48} />
 
                   <div className="flex-1">
                     {/* Tutor Info */}

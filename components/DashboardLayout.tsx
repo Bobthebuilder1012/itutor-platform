@@ -3,23 +3,23 @@
 import { useRouter, usePathname } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import Link from 'next/link';
+import Image from 'next/image';
 import { ReactNode, useEffect, useState } from 'react';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { useSuspensionCheck } from '@/lib/hooks/useSuspensionCheck';
 import NotificationBell from '@/components/NotificationBell';
 import MessagesIcon from '@/components/MessagesIcon';
 import CalendarIcon from '@/components/CalendarIcon';
-import Footer from '@/components/landing/Footer';
 import EnableNotificationsPrompt from '@/components/EnableNotificationsPrompt';
 import IOSInstallPrompt from '@/components/IOSInstallPrompt';
 import { initializePushNotifications } from '@/lib/services/browserPushService';
 import { isCommunitiesArchived } from '@/lib/featureFlags/communitiesArchived';
 import { isGroupsFeatureEnabled } from '@/lib/featureFlags/groupsFeature';
+import { getAdminHomePath, isEmailManagementOnlyAdmin } from '@/lib/auth/adminAccess';
 import dynamic from 'next/dynamic';
+import UniversalSearchBar from '@/components/UniversalSearchBar';
 
-const PushTokenRegistrar = dynamic(() => import('@/components/push/PushTokenRegistrar'), {
-  ssr: false,
-});
+const PushTokenRegistrar = dynamic(() => import('@/components/push/PushTokenRegistrar'), { ssr: false });
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -27,399 +27,334 @@ interface DashboardLayoutProps {
   userName: string;
 }
 
+type NavItem = {
+  href: string;
+  label: string;
+  badge?: string;
+  icon: ReactNode;
+};
+
+type NavSection = {
+  label: string;
+  items: NavItem[];
+};
+
+/* ── Icon helpers ── */
+const I = ({ children }: { children: ReactNode }) => (
+  <span className="w-[18px] h-[18px] flex-shrink-0 flex items-center justify-center">{children}</span>
+);
+
+const icons = {
+  dashboard: <I><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-[18px] h-[18px]"><rect x="3" y="3" width="7" height="7" rx="1.5" strokeWidth="1.8"/><rect x="14" y="3" width="7" height="7" rx="1.5" strokeWidth="1.8"/><rect x="3" y="14" width="7" height="7" rx="1.5" strokeWidth="1.8"/><rect x="14" y="14" width="7" height="7" rx="1.5" strokeWidth="1.8"/></svg></I>,
+  search: <I><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-[18px] h-[18px]"><circle cx="11" cy="11" r="8" strokeWidth="1.8"/><path d="m21 21-4.35-4.35" strokeWidth="1.8" strokeLinecap="round"/></svg></I>,
+  groups: <I><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-[18px] h-[18px]"><path d="M17 20h4v-2a3 3 0 0 0-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H3v-2a3 3 0 0 1 5.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 0 1 9.288 0M15 7a3 3 0 1 1-6 0 3 3 0 0 1 6 0zm6 3a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM7 10a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg></I>,
+  book: <I><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-[18px] h-[18px]"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5z" strokeWidth="1.8"/><path d="M8 7h8M8 11h5" strokeWidth="1.8" strokeLinecap="round"/></svg></I>,
+  calendar: <I><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-[18px] h-[18px]"><rect x="3" y="4" width="18" height="18" rx="2" strokeWidth="1.8"/><path d="M16 2v4M8 2v4M3 10h18" strokeWidth="1.8" strokeLinecap="round"/></svg></I>,
+  star: <I><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-[18px] h-[18px]"><path d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5z" strokeWidth="1.8"/></svg></I>,
+  shield: <I><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-[18px] h-[18px]"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0 1 12 2.944a11.955 11.955 0 0 1-8.618 3.04A12.02 12.02 0 0 0 3 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" strokeWidth="1.8"/></svg></I>,
+  userPlus: <I><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-[18px] h-[18px]"><path d="M16 11c1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 3-1.34 3-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5z" strokeWidth="1.4"/><path d="M21 13v3m0 0v3m0-3h3m-3 0h-3" strokeWidth="1.8" strokeLinecap="round"/></svg></I>,
+  creditCard: <I><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-[18px] h-[18px]"><rect x="1" y="4" width="22" height="16" rx="2" strokeWidth="1.8"/><path d="M1 10h22" strokeWidth="1.8"/></svg></I>,
+  users: <I><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-[18px] h-[18px]"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" strokeWidth="1.8"/><circle cx="9" cy="7" r="4" strokeWidth="1.8"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" strokeWidth="1.8"/></svg></I>,
+  mail: <I><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-[18px] h-[18px]"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" strokeWidth="1.8"/><polyline points="22,6 12,13 2,6" strokeWidth="1.8"/></svg></I>,
+  queue: <I><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-[18px] h-[18px]"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2m-6 9l2 2 4-4" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg></I>,
+};
 
 export default function DashboardLayout({ children, role, userName }: DashboardLayoutProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const isGroupsPage = pathname === '/groups' || pathname.startsWith('/groups/');
   const { profile } = useProfile();
   const { isSuspended, loading: suspensionLoading } = useSuspensionCheck();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [mobileIconMenuOpen, setMobileIconMenuOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const [authUserId, setAuthUserId] = useState<string | null>(null);
+  const [authEmail, setAuthEmail] = useState<string | null>(null);
 
   const effectiveUserId = profile?.id || authUserId;
-  const showIcons = role !== 'reviewer';
+  const effectiveEmail = authEmail || profile?.email || null;
+  const emailOnlyAdmin = isEmailManagementOnlyAdmin(effectiveEmail);
+  const showGroups = isGroupsFeatureEnabled();
+  const hideCommunities = isCommunitiesArchived();
+  const showIcons = role !== 'reviewer' && !emailOnlyAdmin;
+
   const displayName =
-    profile?.username ||
-    userName ||
     profile?.display_name ||
-    profile?.full_name ||
+    profile?.full_name?.split(' ')[0] ||
+    userName ||
     'User';
+  const initials = displayName.slice(0, 2).toUpperCase();
+  const roleLabel = role.charAt(0).toUpperCase() + role.slice(1);
+
+  /* Persist collapse */
+  useEffect(() => {
+    const saved = localStorage.getItem('sidebar-collapsed');
+    if (saved === 'true') setCollapsed(true);
+  }, []);
+
+  const toggleCollapsed = () => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem('sidebar-collapsed', String(next));
+      return next;
+    });
+  };
 
   useEffect(() => {
     let mounted = true;
-    supabase.auth
-      .getUser()
-      .then(({ data }) => {
-        if (!mounted) return;
-        setAuthUserId(data.user?.id || null);
-      })
-      .catch(() => {
-        if (!mounted) return;
-        setAuthUserId(null);
-      });
-    return () => {
-      mounted = false;
-    };
+    supabase.auth.getUser().then(({ data }) => {
+      if (!mounted) return;
+      setAuthUserId(data.user?.id || null);
+      setAuthEmail(data.user?.email || null);
+    }).catch(() => {
+      if (!mounted) return;
+      setAuthUserId(null); setAuthEmail(null);
+    });
+    return () => { mounted = false; };
   }, []);
 
-  // Initialize browser push notifications
   useEffect(() => {
-    if (effectiveUserId) {
-      initializePushNotifications(effectiveUserId);
-    }
+    if (effectiveUserId) initializePushNotifications(effectiveUserId);
   }, [effectiveUserId]);
 
-  const handleCalendarNav = () => {
-    if (role === 'tutor') router.push('/tutor/calendar');
-    else if (role === 'student') router.push('/student/dashboard');
-    else if (role === 'parent') router.push('/parent/dashboard');
-  };
-
-  const handleMessagesNav = () => {
-    if (role === 'student') router.push('/student/messages');
-    else if (role === 'tutor') router.push('/tutor/messages');
-    else if (role === 'parent') router.push('/parent/messages');
-  };
-
-  const handleNotificationsNav = () => {
-    if (role === 'student') router.push('/student/notifications');
-    else if (role === 'tutor') router.push('/tutor/notifications');
-    else if (role === 'parent') router.push('/parent/notifications');
-  };
+  useEffect(() => {
+    if (emailOnlyAdmin && pathname !== '/admin/emails') router.replace('/admin/emails');
+  }, [emailOnlyAdmin, pathname, router]);
 
   const handleLogout = async () => {
-    // Clear all Supabase storage
-    localStorage.clear();
-    sessionStorage.clear();
-    
-    // Sign out from Supabase
+    localStorage.clear(); sessionStorage.clear();
     await supabase.auth.signOut({ scope: 'local' });
-    
-    // Force router push
     window.location.href = '/login';
   };
 
   const getDashboardLink = () => {
     switch (role) {
-      case 'student':
-        return '/student/dashboard';
-      case 'tutor':
-        return '/tutor/dashboard';
-      case 'parent':
-        return '/parent/dashboard';
-      case 'reviewer':
-        return '/reviewer/dashboard';
-      case 'admin':
-        return '/admin/dashboard';
-      default:
-        return '/';
+      case 'student': return '/student/dashboard';
+      case 'tutor': return '/tutor/dashboard';
+      case 'parent': return '/parent/dashboard';
+      case 'reviewer': return '/reviewer/dashboard';
+      case 'admin': return getAdminHomePath(effectiveEmail);
+      default: return '/';
     }
   };
 
-  const getNavLinks = () => {
-    const hideCommunities = isCommunitiesArchived();
-    const hideGroups = !isGroupsFeatureEnabled();
-    const filterNav = (links: { href: string; label: string }[]) => {
-      let out = links;
-      if (hideCommunities) out = out.filter((l) => l.href !== '/communities');
-      if (hideGroups) {
-        out = out.filter((l) => l.href !== '/groups');
-      }
-      return out;
-    };
+  const getNavSections = (): NavSection[] => {
+    if (emailOnlyAdmin) return [{ label: 'Admin', items: [{ href: '/admin/emails', label: 'Email Management', icon: icons.mail }] }];
+
     switch (role) {
-      case 'student':
-        return filterNav([
-          { href: '/student/find-tutors', label: 'Find iTutors' },
-          { href: '/communities', label: 'Communities' },
-          { href: '/groups', label: 'Groups' },
-          { href: '/student/curriculum', label: 'Curriculum' },
-          { href: '/student/bookings', label: 'My Bookings' },
-          { href: '/student/ratings', label: 'My Reviews' },
-          { href: '/verification', label: 'Verification' },
-        ]);
-      case 'tutor':
-        return filterNav([
-          { href: '/tutor/find-students', label: 'Find Students' },
-          { href: '/tutor/bookings', label: 'Booking Requests' },
-          { href: '/communities', label: 'Communities' },
-          { href: '/groups', label: 'Groups' },
-          { href: '/tutor/curriculum', label: 'Curriculum' },
-          { href: '/verification', label: 'Verification' },
-        ]);
-      case 'parent':
-        return filterNav([
-          { href: '/parent/add-child', label: 'Add Child' },
-          { href: '/communities', label: 'Communities' },
-          { href: '/parent/approve-bookings', label: 'Booking Requests' },
-        ]);
-      case 'reviewer':
-        return [
-          { href: '/reviewer/verification/queue', label: 'Verification Queue' },
-          { href: '/reviewer/verified-tutors', label: 'Verified iTutors' },
-          { href: '/reviewer/accounts', label: 'Account Management' },
-          { href: '/reviewer/payments', label: 'Payments & Revenue' },
-        ];
-      case 'admin':
-        return [
-          { href: '/reviewer/verification/queue', label: 'Verification Queue' },
-          { href: '/reviewer/verified-tutors', label: 'Verified iTutors' },
-          { href: '/reviewer/accounts', label: 'Account Management' },
-          { href: '/reviewer/payments', label: 'Payments & Revenue' },
-          { href: '/admin/emails', label: 'Email Management' },
-        ];
-      default:
-        return [];
+      case 'student': return [
+        { label: 'Menu', items: [
+          { href: '/student/dashboard', label: 'Dashboard', icon: icons.dashboard },
+          { href: '/student/find-tutors', label: 'Find iTutors', icon: icons.search },
+          ...(showGroups ? [{ href: '/groups', label: 'Groups', icon: icons.groups }] : []),
+          { href: '/student/curriculum', label: 'Curriculum', icon: icons.book },
+        ]},
+        { label: 'Learning', items: [
+          { href: '/student/bookings', label: 'My Bookings', icon: icons.calendar },
+          { href: '/student/ratings', label: 'My Reviews', icon: icons.star },
+          { href: '/verification', label: 'Verification', badge: '!', icon: icons.shield },
+        ]},
+      ];
+      case 'tutor': return [
+        { label: 'Menu', items: [
+          { href: '/tutor/dashboard', label: 'Dashboard', icon: icons.dashboard },
+          { href: '/tutor/find-students', label: 'Find Students', icon: icons.search },
+          { href: '/tutor/bookings', label: 'Booking Requests', icon: icons.calendar },
+          ...(showGroups ? [{ href: '/groups', label: 'Groups', icon: icons.groups }] : []),
+        ]},
+        { label: 'Settings', items: [
+          { href: '/tutor/curriculum', label: 'Curriculum', icon: icons.book },
+          { href: '/verification', label: 'Verification', badge: '!', icon: icons.shield },
+        ]},
+      ];
+      case 'parent': return [
+        { label: 'Menu', items: [
+          { href: '/parent/dashboard', label: 'Dashboard', icon: icons.dashboard },
+          { href: '/parent/add-child', label: 'Add Child', icon: icons.userPlus },
+          { href: '/parent/approve-bookings', label: 'Booking Requests', icon: icons.calendar },
+        ]},
+      ];
+      case 'reviewer': return [
+        { label: 'Review', items: [
+          { href: '/reviewer/dashboard', label: 'Dashboard', icon: icons.dashboard },
+          { href: '/reviewer/verification/queue', label: 'Verification Queue', icon: icons.queue },
+          { href: '/reviewer/verified-tutors', label: 'Verified iTutors', icon: icons.shield },
+          { href: '/reviewer/accounts', label: 'Account Management', icon: icons.users },
+          { href: '/reviewer/payments', label: 'Payments & Revenue', icon: icons.creditCard },
+        ]},
+      ];
+      case 'admin': return [
+        { label: 'Admin', items: [
+          { href: '/reviewer/verification/queue', label: 'Verification Queue', icon: icons.queue },
+          { href: '/reviewer/verified-tutors', label: 'Verified iTutors', icon: icons.shield },
+          { href: '/reviewer/accounts', label: 'Account Management', icon: icons.users },
+          { href: '/reviewer/payments', label: 'Payments & Revenue', icon: icons.creditCard },
+          { href: '/admin/emails', label: 'Email Management', icon: icons.mail },
+        ]},
+      ];
+      default: return [];
     }
   };
 
-  // Show loading state while checking suspension
+  const navSections = getNavSections();
+  const isGroupsPage = pathname === '/groups' || pathname.startsWith('/groups/');
+
   if (suspensionLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
-        </div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-itutor-green" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 flex flex-col">
+    <div className="min-h-screen bg-gray-50 flex">
       <PushTokenRegistrar />
-      
-      {/* Mobile Side Drawer Overlay */}
-      {mobileMenuOpen && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 z-50 sm:hidden"
-          onClick={() => setMobileMenuOpen(false)}
-        />
+
+      {/* Mobile overlay */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 bg-black/60 z-[99] lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
-      
-      {/* Mobile Side Drawer */}
-      <div className={`fixed top-0 left-0 h-full w-72 bg-gray-900 z-50 transform transition-transform duration-300 ease-in-out sm:hidden ${
-        mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
-      }`}>
-        <div className="flex flex-col h-full">
-          {/* Drawer Header */}
-          <div className="flex items-center justify-between p-4 border-b border-gray-700">
-            <img
-              src="/assets/logo/itutor-logo-dark.png"
-              alt="iTutor"
-              className="h-8 w-auto"
-            />
-            <button
-              onClick={() => setMobileMenuOpen(false)}
-              className="p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-800"
-            >
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-          
-          {/* Drawer Navigation Links */}
-          <div className="flex-1 overflow-y-auto py-4">
-            {getNavLinks().map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center px-4 py-3 text-gray-300 hover:bg-gray-800 hover:text-itutor-green transition-colors border-l-4 border-transparent hover:border-itutor-green"
-              >
-                <span className="text-sm font-medium">{link.label}</span>
+
+      {/* ── SIDEBAR ── */}
+      <aside className={`fixed top-0 left-0 bottom-0 ${collapsed ? 'w-[64px]' : 'w-[240px]'} bg-black border-r border-white/10 z-[100] flex flex-col transition-all duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
+
+        {/* Logo */}
+        <div className={`h-16 flex items-center border-b border-white/10 flex-shrink-0 ${collapsed ? 'justify-center px-3' : 'px-5 justify-between'}`}>
+          {collapsed ? (
+            <Link href={getDashboardLink()} onClick={() => setSidebarOpen(false)} title="Go to dashboard" className="flex items-center justify-center hover:opacity-80 transition-opacity">
+              <Image src="/assets/logo/itutor-mark.png" alt="iTutor" width={36} height={36} className="w-9 h-9 object-contain" />
+            </Link>
+          ) : (
+            <>
+              <Link href={getDashboardLink()} onClick={() => setSidebarOpen(false)}>
+                <Image src="/assets/logo/itutor-logo-dark.png" alt="iTutor" width={110} height={36} className="h-8 w-auto" />
               </Link>
-            ))}
-          </div>
-          
-          {/* Drawer Footer */}
-          <div className="border-t border-gray-700 p-4">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-r from-itutor-green to-emerald-600 flex items-center justify-center text-black font-bold">
-                {displayName.charAt(0).toUpperCase()}
-              </div>
-              <span className="text-sm text-gray-300 truncate">{displayName}</span>
-            </div>
-            <button
-              onClick={handleLogout}
-              className="w-full bg-gradient-to-r from-gray-800 to-gray-700 hover:from-gray-700 hover:to-gray-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 border border-gray-600 hover:border-itutor-green"
-            >
-              Logout
-            </button>
-          </div>
-        </div>
-      </div>
-      
-      <nav className="bg-black shadow-lg border-b border-gray-900 sticky top-0 z-40">
-        <div className="max-w-full mx-auto px-4 lg:px-6 xl:px-8">
-          <div className="flex items-center justify-between h-16">
-            {/* Left: Hamburger + Logo + Navigation */}
-            <div className="flex items-center gap-3 flex-1 min-w-0 overflow-hidden">
-              {/* Hamburger Menu (Small Mobile Only) */}
-              <button
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="sm:hidden p-2 rounded-md text-gray-400 hover:text-itutor-green hover:bg-gray-800 focus:outline-none transition-colors flex-shrink-0"
-                aria-label="Open menu"
-              >
-                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              <button onClick={toggleCollapsed} className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-500 hover:text-white hover:bg-white/10 transition-colors" title="Collapse sidebar">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path d="M15 18l-6-6 6-6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </button>
-              
-              {/* Logo */}
-              <Link href={getDashboardLink()} className="flex-shrink-0 flex items-center group">
-                <img
-                  src="/assets/logo/itutor-logo-dark.png"
-                  alt="iTutor"
-                  className="h-9 w-auto group-hover:scale-105 transition-transform duration-300"
-                />
-              </Link>
+            </>
+          )}
+        </div>
 
-              {/* Navigation Links (Always Visible on sm+ screens) */}
-              <div className="sm:flex ml-3 md:ml-4 lg:ml-6 space-x-0.5 md:space-x-1 lg:space-x-2 overflow-x-auto flex-1" style={{display: window.innerWidth < 640 ? 'none' : 'flex'}}>
-                {getNavLinks().map((link) => (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    className="border-transparent text-gray-300 hover:text-itutor-green hover:border-itutor-green inline-flex items-center px-1.5 md:px-2 lg:px-3 py-2 border-b-2 text-[10px] md:text-xs lg:text-sm font-medium transition-colors duration-200 whitespace-nowrap"
-                  >
-                    {link.label}
-                  </Link>
-                ))}
-              </div>
-            </div>
-
-            {/* Right: Icons + Username + Logout */}
-            <div className="flex items-center gap-2 lg:gap-3">
-              {/* Action Icons */}
-              <div className="flex items-center gap-1 lg:gap-2">
-                {profile?.id && role !== 'reviewer' && role !== 'admin' && <CalendarIcon userId={profile.id} role={role} />}
-                {profile?.id && role !== 'reviewer' && role !== 'admin' && <MessagesIcon userId={profile.id} role={role} />}
-                {profile?.id && <NotificationBell userId={profile.id} />}
-                {/* Settings Gear Icon */}
-                <Link
-                  href={`/${role}/settings`}
-                  className="p-2 rounded-md text-gray-400 hover:text-itutor-green hover:bg-gray-800 focus:outline-none transition-colors"
-                  aria-label="Settings"
-                >
-                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                </Link>
-              </div>
-
-              {/* Mobile backup: Consolidated Icon Menu (kept as fallback but hidden since icons always show) */}
-              {profile?.id && false && (
-                <div className="relative sm:hidden">
-                  <button
-                    onClick={() => setMobileIconMenuOpen(!mobileIconMenuOpen)}
-                    className="p-2 rounded-md text-gray-400 hover:text-itutor-green hover:bg-gray-800 focus:outline-none transition-colors relative"
-                    aria-label="Open notifications menu"
-                  >
-                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                    </svg>
-                  </button>
-
-                  {/* Mobile Icon Dropdown */}
-                  {mobileIconMenuOpen && (
-                    <>
-                      <div 
-                        className="fixed inset-0 z-40" 
-                        onClick={() => setMobileIconMenuOpen(false)}
-                      />
-                      <div className="absolute right-0 mt-2 w-56 bg-gray-900 rounded-lg shadow-lg border border-gray-700 py-2 z-50">
-                        {role !== 'reviewer' && role !== 'admin' && (
-                          <>
-                            <Link
-                              href={`/${role}/calendar`}
-                              onClick={() => setMobileIconMenuOpen(false)}
-                              className="flex items-center gap-3 px-4 py-3 text-gray-300 hover:bg-gray-800 hover:text-itutor-green transition-colors"
-                            >
-                              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                              </svg>
-                              <span>Calendar</span>
-                            </Link>
-                            <Link
-                              href={`/${role}/messages`}
-                              onClick={() => setMobileIconMenuOpen(false)}
-                              className="flex items-center gap-3 px-4 py-3 text-gray-300 hover:bg-gray-800 hover:text-itutor-green transition-colors"
-                            >
-                              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                              </svg>
-                              <span>Messages</span>
-                            </Link>
-                          </>
-                        )}
-                        <Link
-                          href={`/${role}/notifications`}
-                          onClick={() => setMobileIconMenuOpen(false)}
-                          className="flex items-center gap-3 px-4 py-3 text-gray-300 hover:bg-gray-800 hover:text-itutor-green transition-colors"
-                        >
-                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                          </svg>
-                          <span>Notifications</span>
-                        </Link>
-                        <Link
-                          href={`/${role}/settings`}
-                          onClick={() => setMobileIconMenuOpen(false)}
-                          className="flex items-center gap-3 px-4 py-3 text-gray-300 hover:bg-gray-800 hover:text-itutor-green transition-colors"
-                        >
-                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                          </svg>
-                          <span>Settings</span>
-                        </Link>
-                      </div>
-                    </>
-                  )}
-                </div>
+        {/* Nav */}
+        <nav className="flex-1 overflow-y-auto py-4 px-2">
+          {navSections.map((section) => (
+            <div key={section.label}>
+              {!collapsed && (
+                <p className="text-[10px] font-semibold uppercase tracking-[1.2px] text-gray-500 px-3 mb-2 mt-4 first:mt-0">
+                  {section.label}
+                </p>
               )}
+              {section.items.map((item) => {
+                const isActive = pathname === item.href || (item.href !== getDashboardLink() && pathname.startsWith(item.href));
+                const hasBadge = Boolean(item.badge);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setSidebarOpen(false)}
+                    title={collapsed ? item.label : undefined}
+                    className={`relative flex items-center rounded-xl transition-all duration-150 ${collapsed ? 'justify-center w-10 h-10 mx-auto my-[3px]' : 'gap-3 px-3 py-[10px] mb-0.5'} ${isActive ? 'bg-itutor-green/10 text-itutor-green' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}
+                  >
+                    {item.icon}
+                    {collapsed && hasBadge && <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-itutor-green" />}
+                    {!collapsed && (
+                      <>
+                        <span className="text-[13.5px] font-medium">{item.label}</span>
+                        {hasBadge && (
+                          <span className="ml-auto w-[18px] h-[18px] rounded-full bg-itutor-green text-black text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                            {item.badge}
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
+        </nav>
 
-              {/* Divider */}
-              <div className="hidden sm:block h-6 w-px bg-gray-700"></div>
-
-              {/* Username and Logout */}
-              <div className="flex items-center gap-2 lg:gap-3">
-                <span className="hidden md:block text-sm font-medium text-gray-300 truncate max-w-[80px] lg:max-w-[120px]">{displayName}</span>
-                
-                {/* Logout Button */}
-                <button
-                  onClick={handleLogout}
-                  className="bg-gradient-to-r from-gray-800 to-gray-700 hover:from-gray-700 hover:to-gray-600 text-white px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-xs md:text-sm font-medium transition-all duration-200 border border-gray-600 hover:border-itutor-green whitespace-nowrap shadow-sm hover:shadow-md"
-                >
-                  Logout
-                </button>
+        {/* User footer */}
+        <div className="border-t border-white/10 p-2">
+          {collapsed ? (
+            <button onClick={handleLogout} title={`${displayName} — logout`} className="w-full flex justify-center py-2">
+              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-itutor-green to-emerald-600 flex items-center justify-center text-black font-bold text-[12px]">{initials}</div>
+            </button>
+          ) : (
+            <button onClick={handleLogout} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-white/5 transition-colors group text-left">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-itutor-green to-emerald-600 flex items-center justify-center text-black font-bold text-[12px] flex-shrink-0">{initials}</div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-semibold text-white truncate">{displayName}</p>
+                <p className={`text-[11px] font-semibold ${role === 'tutor' ? 'text-itutor-green' : 'text-gray-500'}`}>
+                  {role === 'tutor' ? '✦ ' : ''}{roleLabel}
+                </p>
               </div>
+              <svg className="w-3.5 h-3.5 text-gray-600 group-hover:text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M9 18l6-6-6-6" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </button>
+          )}
+        </div>
+      </aside>
+
+      {/* ── MAIN ── */}
+      <div className={`flex-1 ${collapsed ? 'lg:ml-[64px]' : 'lg:ml-[240px]'} flex flex-col min-h-screen transition-all duration-300`}>
+
+        {/* Topbar */}
+        <header className="h-16 sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-100 flex items-center gap-3 px-4 lg:px-7">
+          {/* Mobile hamburger */}
+          <button className="lg:hidden w-9 h-9 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-600 flex-shrink-0" onClick={() => setSidebarOpen(true)} aria-label="Open menu">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path d="M4 6h16M4 12h16M4 18h16" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </button>
+
+          {/* Search bar — student & parent only */}
+          {(role === 'student' || role === 'parent') && (
+            <div className="flex-1 max-w-xl mx-2 lg:mx-4">
+              <UniversalSearchBar
+                userRole={role}
+                onResultClick={(profile) => {
+                  router.push(`/tutors/${profile.id}`);
+                }}
+              />
+            </div>
+          )}
+
+          {/* Right actions */}
+          <div className="ml-auto flex items-center gap-1.5 flex-shrink-0">
+            {showIcons && effectiveUserId && (
+              <>
+                <CalendarIcon userId={effectiveUserId} role={role} variant="light" />
+                <MessagesIcon userId={effectiveUserId} role={role} variant="light" />
+              </>
+            )}
+            {effectiveUserId && <NotificationBell userId={effectiveUserId} />}
+            <Link
+              href={`/${role}/settings`}
+              className="w-9 h-9 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-500 hover:border-itutor-green hover:text-itutor-green transition-colors"
+              aria-label="Settings"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" strokeWidth="1.8"/>
+                <circle cx="12" cy="12" r="3" strokeWidth="1.8"/>
+              </svg>
+            </Link>
+            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-itutor-green to-emerald-600 flex items-center justify-center text-black font-bold text-[12px] cursor-pointer select-none">
+              {initials}
             </div>
           </div>
-        </div>
+        </header>
 
-      </nav>
-      
-      <main className={`flex-1 w-full py-4 px-2 sm:py-6 sm:px-4 lg:py-8 lg:px-6 ${isGroupsPage ? 'flex min-h-[calc(100vh-64px)] py-2 sm:py-3 lg:py-4' : 'lg:max-w-7xl lg:mx-auto'}`}>
-        {/* Browser Push Notification Prompt */}
-        {effectiveUserId && (
-          <EnableNotificationsPrompt userId={effectiveUserId} />
-        )}
-
-        {/* iOS Install Prompt for PWA notifications */}
-        <IOSInstallPrompt />
-        
-        <div className={`bg-white rounded-lg sm:rounded-xl lg:rounded-2xl shadow-lg sm:shadow-xl ${isGroupsPage ? 'p-0 overflow-hidden flex-1 min-h-0' : 'p-3 sm:p-4 lg:p-6'}`}>
+        {/* Content */}
+        <main className={`flex-1 ${isGroupsPage ? 'flex flex-col min-h-0' : 'p-5 lg:p-8'}`}>
+          {effectiveUserId && <EnableNotificationsPrompt userId={effectiveUserId} />}
+          <IOSInstallPrompt />
           {children}
-        </div>
-      </main>
-
-      <Footer role={role} />
+        </main>
+      </div>
     </div>
   );
 }

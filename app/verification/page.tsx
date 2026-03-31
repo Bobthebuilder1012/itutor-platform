@@ -7,14 +7,6 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { getDisplayName } from '@/lib/utils/displayName';
 
-function homeForRole(role: string | undefined) {
-  if (role === 'tutor') return '/tutor/dashboard';
-  if (role === 'parent') return '/parent/dashboard';
-  if (role === 'admin') return '/admin/dashboard';
-  if (role === 'reviewer') return '/reviewer/dashboard';
-  return '/student/dashboard';
-}
-
 function layoutRole(role: string | undefined): 'student' | 'tutor' | 'parent' | 'reviewer' | 'admin' {
   if (role === 'tutor' || role === 'parent' || role === 'admin' || role === 'reviewer') return role;
   return 'student';
@@ -38,17 +30,11 @@ export default function VerificationHubPage() {
   }
 
   const isTutor = profile.role === 'tutor';
+  const verificationHref = (anchor: string) => isTutor ? `/tutor/verification${anchor}` : `/verification/degree`;
 
   return (
     <DashboardLayout role={layoutRole(profile.role)} userName={getDisplayName(profile)}>
       <div className="max-w-2xl mx-auto px-4 py-8">
-        <Link
-          href={homeForRole(profile.role)}
-          className="text-sm text-itutor-green hover:text-emerald-700 mb-6 inline-block font-medium"
-        >
-          ← Back to dashboard
-        </Link>
-
         <h1 className="text-2xl font-bold text-gray-900">Verification</h1>
         <p className="text-gray-600 text-sm mt-1 mb-8">
           Choose what you want to submit for review. Each type is reviewed separately.
@@ -67,47 +53,42 @@ export default function VerificationHubPage() {
               <span className="mt-3 inline-block text-sm font-medium text-itutor-green">Open →</span>
             </Link>
           </li>
-
-          {isTutor && (
-            <>
-              <li>
-                <Link
-                  href="/tutor/verification#csec"
-                  className="block rounded-xl border-2 border-gray-200 bg-white p-5 shadow-sm transition-colors hover:border-itutor-green hover:bg-gray-50/80"
-                >
-                  <h2 className="text-lg font-semibold text-gray-900">CSEC verification</h2>
-                  <p className="text-sm text-gray-600 mt-1">
-                    Upload your CSEC certificate or official results for subject verification.
-                  </p>
-                  <span className="mt-3 inline-block text-sm font-medium text-itutor-green">Open →</span>
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/tutor/verification#cape"
-                  className="block rounded-xl border-2 border-gray-200 bg-white p-5 shadow-sm transition-colors hover:border-itutor-green hover:bg-gray-50/80"
-                >
-                  <h2 className="text-lg font-semibold text-gray-900">CAPE verification</h2>
-                  <p className="text-sm text-gray-600 mt-1">
-                    Upload your CAPE certificate or official results for subject verification.
-                  </p>
-                  <span className="mt-3 inline-block text-sm font-medium text-itutor-green">Open →</span>
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/tutor/verification"
-                  className="block rounded-xl border-2 border-gray-100 bg-gray-50/80 p-4 shadow-sm transition-colors hover:border-itutor-green hover:bg-white"
-                >
-                  <h2 className="text-base font-semibold text-gray-800">Other teaching certificates</h2>
-                  <p className="text-sm text-gray-600 mt-1">
-                    Other qualifications (e.g. degree slip for teaching) use the same upload flow.
-                  </p>
-                  <span className="mt-2 inline-block text-sm font-medium text-itutor-green">Open →</span>
-                </Link>
-              </li>
-            </>
-          )}
+          <li>
+            <Link
+              href={verificationHref('#csec')}
+              className="block rounded-xl border-2 border-gray-200 bg-white p-5 shadow-sm transition-colors hover:border-itutor-green hover:bg-gray-50/80"
+            >
+              <h2 className="text-lg font-semibold text-gray-900">CSEC verification</h2>
+              <p className="text-sm text-gray-600 mt-1">
+                Upload your CSEC certificate or official results for subject verification.
+              </p>
+              <span className="mt-3 inline-block text-sm font-medium text-itutor-green">Open →</span>
+            </Link>
+          </li>
+          <li>
+            <Link
+              href={verificationHref('#cape')}
+              className="block rounded-xl border-2 border-gray-200 bg-white p-5 shadow-sm transition-colors hover:border-itutor-green hover:bg-gray-50/80"
+            >
+              <h2 className="text-lg font-semibold text-gray-900">CAPE verification</h2>
+              <p className="text-sm text-gray-600 mt-1">
+                Upload your CAPE certificate or official results for subject verification.
+              </p>
+              <span className="mt-3 inline-block text-sm font-medium text-itutor-green">Open →</span>
+            </Link>
+          </li>
+          <li>
+            <Link
+              href={verificationHref('')}
+              className="block rounded-xl border-2 border-gray-100 bg-gray-50/80 p-4 shadow-sm transition-colors hover:border-itutor-green hover:bg-white"
+            >
+              <h2 className="text-base font-semibold text-gray-800">Other teaching certificates</h2>
+              <p className="text-sm text-gray-600 mt-1">
+                Other qualifications (e.g. degree slip for teaching) use the same upload flow.
+              </p>
+              <span className="mt-2 inline-block text-sm font-medium text-itutor-green">Open →</span>
+            </Link>
+          </li>
         </ul>
       </div>
     </DashboardLayout>

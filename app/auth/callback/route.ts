@@ -2,6 +2,10 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import { bootstrapProfileIfMissing } from '@/lib/server/bootstrapProfileIfMissing';
+import {
+  getAdminHomePath,
+  isEmailManagementOnlyAdmin,
+} from '@/lib/auth/adminAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -147,6 +151,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL('/signup/complete-role', request.url));
     }
 
+    if (isEmailManagementOnlyAdmin(userEmail)) {
+      console.log('➡️ Redirecting email-only account to admin emails');
+      return NextResponse.redirect(new URL('/admin/emails', request.url));
+    }
+
     // Check if profile is complete based on role
     if (role === 'student') {
       const hasBasicInfo = Boolean(profile.form_level);
@@ -175,8 +184,9 @@ export async function GET(request: NextRequest) {
       console.log('➡️ Redirecting to tutor dashboard');
       return NextResponse.redirect(new URL('/tutor/dashboard', request.url));
     } else if (role === 'admin') {
-      console.log('➡️ Redirecting to admin dashboard');
-      return NextResponse.redirect(new URL('/admin/dashboard', request.url));
+      const adminPath = getAdminHomePath(userEmail);
+      console.log('➡️ Redirecting to admin area:', adminPath);
+      return NextResponse.redirect(new URL(adminPath, request.url));
     }
 
     // If role exists but didn't match any case above, send to login with error

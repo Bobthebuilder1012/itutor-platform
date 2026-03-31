@@ -2,6 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
+import {
+  htmlToPlainTextForEditor,
+  plainTextToEmailHtml,
+} from '@/lib/email/plainTextEmailHtml';
 
 interface User {
   id: string;
@@ -49,6 +53,33 @@ export default function AdminEmailsPage() {
   // Preview
   const [previewTemplate, setPreviewTemplate] = useState<EmailTemplate | null>(null);
   const [previewName, setPreviewName] = useState('Alex');
+
+  const ensureUtf8Meta = (html: string) => {
+    if (/<meta[^>]+charset=/i.test(html)) return html;
+    if (/<head[^>]*>/i.test(html)) {
+      return html.replace(/<head([^>]*)>/i, '<head$1><meta charset="utf-8" />');
+    }
+    return `<!DOCTYPE html><html><head><meta charset="utf-8" /></head><body>${html}</body></html>`;
+  };
+
+  const centerITutorLogo = (html: string) => {
+    const appendLogoStyles = (tag: string) => {
+      if (/style=/i.test(tag)) {
+        return tag.replace(/style=(['"])(.*?)\1/i, (_match, quote: string, style: string) => {
+          const normalizedStyle = style.trim().replace(/;?\s*$/, ';');
+          return `style=${quote}${normalizedStyle} display:block; margin:0 auto; width:auto;${quote}`;
+        });
+      }
+      return tag.replace(/<img/i, '<img style="display:block; margin:0 auto; width:auto;"');
+    };
+
+    return html.replace(/<img\b[^>]*itutor-logo-dark\.png[^>]*>/gi, appendLogoStyles);
+  };
+
+  const normalizeEmailHtml = (html: string) => centerITutorLogo(ensureUtf8Meta(html));
+
+  const emailHtmlFromPlain = (plain: string) =>
+    normalizeEmailHtml(plainTextToEmailHtml(plain.trim()));
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -111,7 +142,7 @@ export default function AdminEmailsPage() {
   };
 
   const sendEmail = async () => {
-    if (!emailSubject || !emailContent || selectedUsers.length === 0) {
+    if (!emailSubject || !emailContent.trim() || selectedUsers.length === 0) {
       alert('Please fill in subject, content, and select at least one recipient');
       return;
     }
@@ -124,7 +155,7 @@ export default function AdminEmailsPage() {
         body: JSON.stringify({
           userIds: selectedUsers,
           subject: emailSubject,
-          htmlContent: emailContent
+          htmlContent: emailHtmlFromPlain(emailContent),
         })
       });
 
@@ -145,10 +176,12 @@ export default function AdminEmailsPage() {
   };
 
   const saveTemplate = async () => {
-    if (!templateName || !templateSubject || !templateContent) {
+    if (!templateName || !templateSubject || !templateContent.trim()) {
       alert('Please fill in all template fields');
       return;
     }
+
+    const normalizedTemplateContent = emailHtmlFromPlain(templateContent);
 
     setLoading(true);
     try {
@@ -159,7 +192,7 @@ export default function AdminEmailsPage() {
           id: editingTemplate?.id,
           name: templateName,
           subject: templateSubject,
-          html_content: templateContent,
+          html_content: normalizedTemplateContent,
           user_type: templateUserType,
           stage: templateStage
         })
@@ -187,16 +220,15 @@ export default function AdminEmailsPage() {
     setEditingTemplate(template);
     setTemplateName(template.name);
     setTemplateSubject(template.subject);
-    setTemplateContent(template.html_content);
+    setTemplateContent(htmlToPlainTextForEditor(template.html_content));
     setTemplateUserType(template.user_type);
     setTemplateStage(template.stage);
   };
 
   const useTemplateForEmail = (template: EmailTemplate) => {
-    // Replace {{firstName}} with actual placeholder text for editing
     const subjectWithPlaceholder = template.subject;
-    const contentWithPlaceholder = template.html_content;
-    
+    const contentWithPlaceholder = htmlToPlainTextForEditor(template.html_content);
+
     setEmailSubject(subjectWithPlaceholder);
     setEmailContent(contentWithPlaceholder);
     setActiveTab('send');
@@ -229,7 +261,9 @@ export default function AdminEmailsPage() {
 
   const getPreviewHtml = (html: string, subject: string) => {
     // Replace {{firstName}} placeholder with preview name
-    const personalizedHtml = html.replace(/\{\{firstName\}\}/g, previewName);
+    const personalizedHtml = normalizeEmailHtml(
+      html.replace(/\{\{firstName\}\}/g, previewName)
+    );
     const personalizedSubject = subject.replace(/\{\{firstName\}\}/g, previewName);
     
     return { html: personalizedHtml, subject: personalizedSubject };
@@ -330,7 +364,7 @@ export default function AdminEmailsPage() {
               <div className="mb-4">
                 <div className="flex justify-between items-center mb-2">
                   <label className="block text-sm font-medium text-gray-700">
-                    Email Content (HTML)
+                    Message (plain text)
                   </label>
                   <button
                     onClick={() => setActiveTab('templates')}
@@ -343,11 +377,11 @@ export default function AdminEmailsPage() {
                   value={emailContent}
                   onChange={(e) => setEmailContent(e.target.value)}
                   rows={12}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-transparent font-mono text-sm"
-                  placeholder="Enter HTML content or load a template..."
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-transparent text-sm"
+                  placeholder="Write your message. Blank lines start new paragraphs."
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Use HTML for formatting. {'{{firstName}}'} will be replaced with each recipient's name.
+                  No HTML needed — we format the email for you. Use {'{{firstName}}'} for each recipient&apos;s name. Blank line = new paragraph; single line break stays in the same paragraph.
                 </p>
               </div>
 
@@ -388,14 +422,21 @@ export default function AdminEmailsPage() {
                         <strong>From:</strong> iTutor &lt;hello@myitutor.com&gt;
                       </p>
                       <p className="text-sm text-gray-600 mt-1">
-                        <strong>Subject:</strong> {getPreviewHtml(emailContent, emailSubject || '(No subject)').subject}
+                        <strong>Subject:</strong>{' '}
+                        {getPreviewHtml(
+                          emailHtmlFromPlain(emailContent),
+                          emailSubject || '(No subject)'
+                        ).subject}
                       </p>
                     </div>
-                    <div 
+                    <div
                       className="mt-6"
-                      dangerouslySetInnerHTML={{ 
-                        __html: getPreviewHtml(emailContent, emailSubject || '').html 
-                      }} 
+                      dangerouslySetInnerHTML={{
+                        __html: getPreviewHtml(
+                          emailHtmlFromPlain(emailContent),
+                          emailSubject || ''
+                        ).html,
+                      }}
                     />
                   </div>
                 </div>
@@ -563,15 +604,18 @@ export default function AdminEmailsPage() {
 
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
-                        HTML Content
+                        Message (plain text)
                       </label>
                       <textarea
                         value={templateContent}
                         onChange={(e) => setTemplateContent(e.target.value)}
-                        rows={8}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg font-mono text-sm"
-                        placeholder="HTML content..."
+                        rows={12}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm"
+                        placeholder="Write the email body. Blank lines start new paragraphs."
                       />
+                      <p className="text-xs text-gray-500 mt-1">
+                        You don&apos;t need HTML — we add branding and layout when you save. Use {'{{firstName}}'} to personalize. Emojis are fine. Existing templates open here as plain text for editing.
+                      </p>
                     </div>
 
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">

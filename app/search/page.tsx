@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import { Profile } from '@/lib/types/database';
 import { getDisplayName } from '@/lib/utils/displayName';
-import { getAvatarColor } from '@/lib/utils/avatarColors';
 import Link from 'next/link';
 
 type ProfileWithRating = Profile & {
@@ -18,6 +17,20 @@ type ProfileWithRating = Profile & {
     student_name: string;
   } | null;
 };
+
+const TUTORS_PER_PAGE = 10;
+
+const glassPanel =
+  'rounded-3xl border border-white/55 bg-gradient-to-br from-white/65 via-white/40 to-white/[0.22] shadow-[0_8px_32px_rgba(5,46,22,0.06),inset_0_1px_0_rgba(255,255,255,0.75),inset_0_-12px_24px_rgba(255,255,255,0.12)] ring-1 ring-inset ring-white/40 backdrop-blur-2xl backdrop-saturate-150';
+
+const glassPanelHover =
+  'transition-all duration-300 hover:border-white/75 hover:from-white/78 hover:via-white/52 hover:to-white/30 hover:shadow-[0_16px_48px_rgba(25,147,88,0.12),inset_0_1px_0_rgba(255,255,255,0.9)] hover:ring-white/55';
+
+const glassInput =
+  'rounded-lg border border-white/50 bg-white/35 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] backdrop-blur-md backdrop-saturate-150 ring-1 ring-inset ring-white/35 focus:border-itutor-green/50 focus:outline-none focus:ring-1 focus:ring-itutor-green/40';
+
+const glassIconSm =
+  'inline-flex shrink-0 items-center justify-center rounded-lg border border-white/55 bg-gradient-to-br from-white/55 via-white/30 to-white/[0.18] p-1 shadow-[0_4px_16px_rgba(5,46,22,0.04),inset_0_1px_0_rgba(255,255,255,0.7)] backdrop-blur-md ring-1 ring-inset ring-white/40';
 
 export default function SearchResultsPage() {
   const router = useRouter();
@@ -35,12 +48,29 @@ export default function SearchResultsPage() {
     maxPrice: 0
   });
   const [availableSchools, setAvailableSchools] = useState<string[]>([]);
+  const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    setPage(1);
+  }, [filters, subject, mode]);
+
+  useEffect(() => {
+    const max = Math.max(1, Math.ceil(results.length / TUTORS_PER_PAGE));
+    setPage((p) => Math.min(p, max));
+  }, [results.length]);
 
   useEffect(() => {
     fetchSchools();
     if (subject && mode === 'subject') performSearch();
     else fetchAllTutors();
   }, [subject, mode, filters]);
+
+  const totalPages = Math.max(1, Math.ceil(results.length / TUTORS_PER_PAGE));
+  const currentPage = Math.min(page, totalPages);
+  const paginatedResults = results.slice(
+    (currentPage - 1) * TUTORS_PER_PAGE,
+    currentPage * TUTORS_PER_PAGE
+  );
 
   async function fetchSchools() {
     try {
@@ -345,9 +375,21 @@ export default function SearchResultsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-green-50/30 to-blue-50/30">
+    <div className="relative min-h-screen overflow-x-hidden bg-zinc-100">
+      <div
+        className="pointer-events-none absolute inset-0 z-0 bg-zinc-100"
+        aria-hidden
+        style={{
+          backgroundImage: `
+            linear-gradient(180deg, rgba(255,255,255,0.88) 0%, rgba(250,250,250,0.95) 50%, rgba(255,255,255,0.9) 100%),
+            linear-gradient(90deg, rgba(148,163,184,0.12) 1px, transparent 1px),
+            linear-gradient(rgba(148,163,184,0.12) 1px, transparent 1px)
+          `,
+          backgroundSize: '100% 100%, 32px 32px, 32px 32px',
+        }}
+      />
       {/* Header */}
-      <header className="bg-gray-900 border-b border-gray-800 sticky top-0 z-40 shadow-lg">
+      <header className="sticky top-0 z-40 border-b border-black bg-black shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <Link href="/" className="flex-shrink-0">
@@ -375,138 +417,161 @@ export default function SearchResultsPage() {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Back Button */}
         <button
+          type="button"
           onClick={() => router.back()}
-          className="mb-6 text-itutor-green hover:text-emerald-600 flex items-center gap-2 transition-all font-semibold hover:gap-3 hover:scale-105"
+          className={`mb-6 inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-itutor-green ${glassPanel} ${glassPanelHover} hover:gap-3`}
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-          </svg>
+          <span className={glassIconSm}>
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+          </span>
           Back
         </button>
 
         {/* Header Section */}
-        <div className="mb-8 bg-gradient-to-r from-white via-green-50 to-white rounded-2xl p-4 sm:p-8 shadow-lg border-2 border-green-100">
+        <div className={`mb-8 p-4 sm:p-8 ${glassPanel} ${glassPanelHover}`}>
           <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-extrabold bg-gradient-to-r from-gray-900 via-itutor-green to-emerald-600 bg-clip-text text-transparent mb-3 break-words">
             {isBrowseAll ? 'Browse iTutors' : `iTutors teaching ${subject}`}
           </h1>
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-gray-700">
-            <div className="flex items-center gap-2 bg-white px-3 sm:px-4 py-2 rounded-full shadow-sm border border-gray-200 text-sm sm:text-base">
-              <svg className="w-4 h-4 sm:w-5 sm:h-5 text-itutor-green flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <div
+              className={`flex items-center gap-2 rounded-full px-3 py-2 text-sm sm:text-base sm:px-4 ${glassPanel} ring-white/50`}
+            >
+              <span className={glassIconSm}>
+                <svg className="h-4 w-4 text-itutor-green sm:h-5 sm:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+              </span>
               <span className="font-bold text-gray-900 whitespace-nowrap">
-                {loading ? 'Searching...' : `${results.length} ${results.length === 1 ? 'iTutor' : 'iTutors'} found`}
+                {loading
+                  ? 'Searching...'
+                  : isBrowseAll && results.length > 0
+                    ? '100+ iTutors found'
+                    : `${results.length} ${results.length === 1 ? 'iTutor' : 'iTutors'} found`}
               </span>
             </div>
             {!loading && results.length > 0 && (
-              <div className="flex items-center gap-2 bg-itutor-green/10 px-3 sm:px-4 py-2 rounded-full border border-itutor-green/30">
-                <svg className="w-3 h-3 sm:w-4 sm:h-4 text-itutor-green flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                </svg>
-                <span className="text-xs sm:text-sm font-semibold text-itutor-green whitespace-nowrap">Verified iTutors shown first</span>
+              <div
+                className={`flex items-center gap-2 rounded-full border border-emerald-300/35 bg-gradient-to-br from-white/70 via-emerald-50/40 to-white/[0.22] px-3 py-2 shadow-[0_8px_24px_rgba(25,147,88,0.08),inset_0_1px_0_rgba(255,255,255,0.8)] backdrop-blur-xl backdrop-saturate-150 ring-1 ring-inset ring-white/45 sm:px-4`}
+              >
+                <span className={glassIconSm}>
+                  <svg className="h-3 w-3 text-itutor-green sm:h-4 sm:w-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                </span>
+                <span className="text-xs font-semibold text-emerald-900 sm:text-sm whitespace-nowrap">Verified iTutors shown first</span>
               </div>
             )}
           </div>
         </div>
 
         {/* Filters */}
-        <div className="bg-gradient-to-br from-white to-gray-50 rounded-2xl shadow-xl p-8 mb-8 border-2 border-gray-100 hover:shadow-2xl transition-shadow">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 bg-gradient-to-br from-itutor-green to-emerald-600 rounded-lg shadow-md">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className={`mb-8 p-4 sm:p-5 ${glassPanel} ${glassPanelHover}`}>
+          <div className="mb-3 flex items-center gap-2">
+            <span className={`${glassIconSm} rounded-xl p-2`}>
+              <svg className="h-4 w-4 text-itutor-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
               </svg>
-            </div>
-            <h2 className="text-2xl font-bold text-gray-900">Filters</h2>
+            </span>
+            <h2 className="text-lg font-bold text-gray-900 sm:text-xl">Filters</h2>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Rating Filter */}
-            <div>
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
-                <svg className="w-4 h-4 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                </svg>
-                Minimum Rating
+          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end lg:flex-nowrap lg:gap-3">
+            {/* Rating */}
+            <div className="min-w-0 flex-1 sm:min-w-[8.5rem] lg:min-w-0">
+              <label className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-600">
+                <span className={`${glassIconSm} !p-1`}>
+                  <svg className="h-3 w-3 shrink-0 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                  </svg>
+                </span>
+                Rating
               </label>
               <select
                 value={filters.minRating}
                 onChange={(e) => setFilters({ ...filters, minRating: Number(e.target.value) })}
-                className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green transition-all shadow-sm hover:shadow-md font-medium text-gray-700"
+                className={`h-9 w-full min-w-0 px-2 py-1 text-sm font-medium text-gray-800 ${glassInput}`}
               >
-                <option value="0">⭐ Any Rating</option>
-                <option value="3">⭐⭐⭐ 3+ Stars</option>
-                <option value="4">⭐⭐⭐⭐ 4+ Stars</option>
-                <option value="4.5">⭐⭐⭐⭐ 4.5+ Stars</option>
-                <option value="5">⭐⭐⭐⭐⭐ 5 Stars Only</option>
+                <option value="0">Any</option>
+                <option value="3">3+ stars</option>
+                <option value="4">4+ stars</option>
+                <option value="4.5">4.5+ stars</option>
+                <option value="5">5 stars</option>
               </select>
             </div>
-
-            {/* Price Filter */}
-            <div>
-              <label className="block text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
-                <span className="text-lg">💰</span>
-                Maximum Price
+            {/* Price */}
+            <div className="min-w-0 flex-1 sm:min-w-[8.5rem] lg:min-w-0">
+              <label className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-600">
+                <span className={`${glassIconSm} !p-1 text-xs leading-none`} aria-hidden>
+                  💰
+                </span>
+                Max price
               </label>
               <select
                 value={filters.maxPrice}
                 onChange={(e) => setFilters({ ...filters, maxPrice: Number(e.target.value) })}
-                className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green transition-all shadow-sm hover:shadow-md font-medium text-gray-700"
+                className={`h-9 w-full min-w-0 px-2 py-1 text-sm font-medium text-gray-800 ${glassInput}`}
               >
-                <option value="0">💵 Any Price</option>
-                <option value="50">💵 Up to $50/hr</option>
-                <option value="100">💵 Up to $100/hr</option>
-                <option value="150">💵 Up to $150/hr</option>
-                <option value="200">💵 Up to $200/hr</option>
-                <option value="300">💵 Up to $300/hr</option>
+                <option value="0">Any</option>
+                <option value="50">≤ $50/hr</option>
+                <option value="100">≤ $100/hr</option>
+                <option value="150">≤ $150/hr</option>
+                <option value="200">≤ $200/hr</option>
+                <option value="300">≤ $300/hr</option>
               </select>
             </div>
-
-            {/* School Filter */}
-            <div>
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
-                <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                </svg>
+            {/* School */}
+            <div className="min-w-0 flex-[1.15] sm:min-w-[10rem] lg:min-w-0 lg:flex-1">
+              <label className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-600">
+                <span className={`${glassIconSm} !p-1`}>
+                  <svg className="h-3 w-3 shrink-0 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  </svg>
+                </span>
                 School
               </label>
               <select
                 value={filters.school}
                 onChange={(e) => setFilters({ ...filters, school: e.target.value })}
-                className="w-full px-4 py-3 bg-white border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green transition-all shadow-sm hover:shadow-md font-medium text-gray-700"
+                className={`h-9 w-full min-w-0 px-2 py-1 text-sm font-medium text-gray-800 ${glassInput}`}
               >
-                <option value="all">🏫 All Schools</option>
-                {availableSchools.map(school => (
-                  <option key={school} value={school}>{school}</option>
+                <option value="all">All schools</option>
+                {availableSchools.map((school) => (
+                  <option key={school} value={school}>
+                    {school}
+                  </option>
                 ))}
               </select>
             </div>
-
-            {/* Verified Only */}
-            <div>
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
-                <svg className="w-4 h-4 text-itutor-green" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                </svg>
-                Verification Status
-              </label>
-              <label className="flex items-center gap-3 px-4 py-3 bg-white border-2 border-gray-300 rounded-xl cursor-pointer hover:border-itutor-green hover:bg-green-50 transition-all shadow-sm hover:shadow-md">
+            {/* Verified */}
+            <div className="flex min-w-0 flex-1 flex-col justify-end sm:min-w-[11rem] lg:shrink-0 lg:grow-0">
+              <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-600">
+                <span className={`${glassIconSm} !p-1`}>
+                  <svg className="h-3 w-3 shrink-0 text-itutor-green" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                </span>
+                Verified
+              </div>
+              <label className={`flex h-9 cursor-pointer items-center gap-2 px-2.5 transition-colors hover:border-itutor-green/45 ${glassInput}`}>
                 <input
                   type="checkbox"
                   checked={filters.verifiedOnly}
                   onChange={(e) => setFilters({ ...filters, verifiedOnly: e.target.checked })}
-                  className="w-5 h-5 text-itutor-green rounded focus:ring-itutor-green focus:ring-2"
+                  className="h-3.5 w-3.5 shrink-0 rounded border-gray-300 text-itutor-green focus:ring-itutor-green"
                 />
-                <span className="text-gray-900 font-semibold">✓ Verified iTutors Only</span>
+                <span className="truncate text-xs font-semibold text-gray-800">Verified only</span>
               </label>
             </div>
           </div>
 
           <button
+            type="button"
             onClick={() => setFilters({ minRating: 0, school: 'all', verifiedOnly: false, maxPrice: 0 })}
-            className="mt-6 px-4 py-2 text-sm text-gray-600 hover:text-itutor-green transition-all font-semibold hover:bg-gray-100 rounded-lg"
+            className="mt-3 text-xs font-semibold text-gray-600 transition-colors hover:text-itutor-green"
           >
             ✕ Clear all filters
           </button>
@@ -527,29 +592,23 @@ export default function SearchResultsPage() {
           </div>
         ) : (
           <div className="space-y-6">
-            {results.map((tutor) => (
+            {paginatedResults.map((tutor) => (
               <Link
                 key={tutor.id}
                 href={`/tutors/${tutor.id}`}
-                className="group block bg-gradient-to-br from-white via-white to-gray-50/30 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 border-2 border-gray-100 hover:border-itutor-green hover:scale-[1.02] transform"
+                className={`group block ${glassPanel} ${glassPanelHover} hover:scale-[1.01]`}
               >
                 <div className="p-4 sm:p-6 md:p-8">
                   <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6">
                     {/* Avatar */}
                     <div className="relative flex-shrink-0 mx-auto sm:mx-0">
-                      {tutor.avatar_url ? (
-                        <img
-                          src={tutor.avatar_url}
-                          alt={getDisplayName(tutor)}
-                          className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover ring-4 ring-gray-100 shadow-lg"
-                        />
-                      ) : (
-                        <div className={`w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br ${getAvatarColor(tutor.id)} flex items-center justify-center text-white font-bold text-2xl sm:text-3xl shadow-lg ring-4 ring-gray-100`}>
-                          {getDisplayName(tutor).charAt(0)}
-                        </div>
-                      )}
+                      <img
+                        src={tutor.avatar_url || '/default-avatar.png'}
+                        alt={getDisplayName(tutor)}
+                        className="h-20 w-20 rounded-full object-cover sm:h-24 sm:w-24"
+                      />
                       {tutor.tutor_verification_status === 'VERIFIED' && (
-                        <div className="absolute -bottom-2 -right-2 bg-gradient-to-br from-itutor-green to-emerald-600 rounded-full p-2 border-4 border-white shadow-lg animate-pulse">
+                        <div className="absolute -bottom-2 -right-2 rounded-full border border-white/50 bg-gradient-to-br from-itutor-green/90 to-emerald-700/85 p-2 shadow-[0_6px_20px_rgba(25,147,88,0.35),inset_0_1px_0_rgba(255,255,255,0.35)] backdrop-blur-md ring-2 ring-white/70">
                           <svg className="w-4 h-4 sm:w-5 sm:h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                           </svg>
@@ -559,37 +618,27 @@ export default function SearchResultsPage() {
 
                     {/* Info */}
                     <div className="flex-1 min-w-0 w-full">
-                      {/* Name and Verified Badge */}
-                      <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 sm:gap-3 mb-3">
+                      {/* Name and Rating */}
+                      <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 mb-4">
                         <h3 className="font-extrabold text-xl sm:text-2xl md:text-3xl text-gray-900 truncate max-w-full">{getDisplayName(tutor)}</h3>
-                        {tutor.tutor_verification_status === 'VERIFIED' && (
-                          <span className="inline-flex items-center gap-1.5 px-3 sm:px-4 py-1 sm:py-1.5 bg-gradient-to-r from-itutor-green to-emerald-600 text-white text-xs sm:text-sm font-bold rounded-full shadow-lg animate-pulse flex-shrink-0">
-                            <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                            </svg>
-                            VERIFIED
+                        <div className="flex items-center gap-2 bg-gradient-to-r from-yellow-50 to-orange-50 px-3 sm:px-4 py-2 rounded-full border-2 border-yellow-200 shadow-sm flex-shrink-0">
+                          <div className="flex gap-0.5">
+                            {[1, 2, 3, 4, 5].map(star => (
+                              <svg
+                                key={star}
+                                className={`w-4 h-4 sm:w-5 sm:h-5 ${star <= Math.round(tutor.average_rating || 0) ? 'text-yellow-400 drop-shadow-sm' : 'text-gray-300'}`}
+                                fill="currentColor"
+                                viewBox="0 0 20 20"
+                              >
+                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                              </svg>
+                            ))}
+                          </div>
+                          <span className="text-lg sm:text-xl font-extrabold text-gray-900">{(tutor.average_rating || 0).toFixed(1)}</span>
+                          <span className="text-xs sm:text-sm font-semibold text-gray-600 whitespace-nowrap">
+                            ({tutor.total_reviews || 0})
                           </span>
-                        )}
-                      </div>
-
-                      {/* Rating - Mobile optimized */}
-                      <div className="flex items-center gap-2 mb-4 bg-gradient-to-r from-yellow-50 to-orange-50 px-3 sm:px-4 py-2 rounded-full border-2 border-yellow-200 w-fit mx-auto sm:mx-0 shadow-sm">
-                        <div className="flex gap-0.5">
-                          {[1, 2, 3, 4, 5].map(star => (
-                            <svg
-                              key={star}
-                              className={`w-4 h-4 sm:w-5 sm:h-5 ${star <= Math.round(tutor.average_rating || 0) ? 'text-yellow-400 drop-shadow-sm' : 'text-gray-300'}`}
-                              fill="currentColor"
-                              viewBox="0 0 20 20"
-                            >
-                              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                            </svg>
-                          ))}
                         </div>
-                        <span className="text-lg sm:text-xl font-extrabold text-gray-900">{(tutor.average_rating || 0).toFixed(1)}</span>
-                        <span className="text-xs sm:text-sm font-semibold text-gray-600 whitespace-nowrap">
-                          ({tutor.total_reviews || 0})
-                        </span>
                       </div>
 
                       {/* Bio */}
@@ -634,21 +683,6 @@ export default function SearchResultsPage() {
                         )}
                       </div>
 
-                      {/* Price */}
-                      <div className="flex justify-center sm:justify-start">
-                        {tutor.subject_price !== null && tutor.subject_price !== undefined && (
-                          <div className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-3 bg-gradient-to-r from-emerald-400 to-green-500 text-white font-extrabold rounded-full border-2 border-emerald-600 shadow-lg hover:shadow-xl transition-all text-sm sm:text-base">
-                            <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <span className="text-sm sm:text-lg">
-                              {process.env.NEXT_PUBLIC_ENABLE_PAID_SESSIONS === 'true'
-                                ? `$${tutor.subject_price.toFixed(2)}/hr`
-                                : '$0.00/hr'}
-                            </span>
-                          </div>
-                        )}
-                      </div>
                     </div>
 
                     {/* Arrow - Hidden on mobile, shown on desktop */}
@@ -661,6 +695,48 @@ export default function SearchResultsPage() {
                 </div>
               </Link>
             ))}
+
+            <nav
+              className="flex flex-col items-center gap-3 border-t border-emerald-200/30 pt-8 sm:flex-row sm:justify-center sm:gap-4"
+              aria-label="Tutor results pages"
+            >
+              <button
+                type="button"
+                disabled={currentPage <= 1}
+                onClick={() => {
+                  setPage((p) => Math.max(1, p - 1));
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/55 bg-gradient-to-br from-white/65 via-white/40 to-white/[0.22] text-itutor-green shadow-[0_8px_32px_rgba(5,46,22,0.06),inset_0_1px_0_rgba(255,255,255,0.75),inset_0_-12px_24px_rgba(255,255,255,0.12)] ring-1 ring-inset ring-white/40 backdrop-blur-2xl backdrop-saturate-150 transition-all duration-300 hover:scale-[1.05] hover:border-white/75 hover:from-white/78 hover:via-white/52 hover:to-white/30 hover:shadow-[0_16px_48px_rgba(25,147,88,0.14),inset_0_1px_0_rgba(255,255,255,0.9)] hover:ring-white/55 disabled:pointer-events-none disabled:opacity-40 disabled:hover:scale-100"
+                aria-label="Previous page"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <p className="inline-flex flex-col items-center gap-0.5 rounded-2xl border border-white/55 bg-gradient-to-br from-white/65 via-white/40 to-white/[0.22] px-5 py-3 text-center shadow-[0_8px_32px_rgba(5,46,22,0.06),inset_0_1px_0_rgba(255,255,255,0.75),inset_0_-12px_24px_rgba(255,255,255,0.12)] ring-1 ring-inset ring-white/40 backdrop-blur-2xl backdrop-saturate-150 sm:flex-row sm:gap-2 sm:py-2.5">
+                <span className="text-sm font-bold tabular-nums text-gray-900">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <span className="text-xs font-medium tabular-nums text-gray-600 sm:text-sm">
+                  {results.length} {results.length === 1 ? 'iTutor' : 'iTutors'}
+                </span>
+              </p>
+              <button
+                type="button"
+                disabled={currentPage >= totalPages}
+                onClick={() => {
+                  setPage((p) => Math.min(totalPages, p + 1));
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/55 bg-gradient-to-br from-white/65 via-white/40 to-white/[0.22] text-itutor-green shadow-[0_8px_32px_rgba(5,46,22,0.06),inset_0_1px_0_rgba(255,255,255,0.75),inset_0_-12px_24px_rgba(255,255,255,0.12)] ring-1 ring-inset ring-white/40 backdrop-blur-2xl backdrop-saturate-150 transition-all duration-300 hover:scale-[1.05] hover:border-white/75 hover:from-white/78 hover:via-white/52 hover:to-white/30 hover:shadow-[0_16px_48px_rgba(25,147,88,0.14),inset_0_1px_0_rgba(255,255,255,0.9)] hover:ring-white/55 disabled:pointer-events-none disabled:opacity-40 disabled:hover:scale-100"
+                aria-label="Next page"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </nav>
           </div>
         )}
       </div>

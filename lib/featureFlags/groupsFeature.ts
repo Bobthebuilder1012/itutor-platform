@@ -1,8 +1,10 @@
 /**
- * Groups / marketplace UI is gated until explicitly enabled.
- * Production: omit the var or set false — nav and routes stay hidden.
- * Staging/dev: set NEXT_PUBLIC_GROUPS_ENABLED=true in Vercel / .env.local
+ * Groups / marketplace UI: production stays off unless NEXT_PUBLIC_GROUPS_ENABLED=true.
+ * Local next dev: on when the var is unset so nav matches the shipped routes.
  */
 export function isGroupsFeatureEnabled(): boolean {
-  return (process.env.NEXT_PUBLIC_GROUPS_ENABLED || '').toLowerCase() === 'true';
+  const v = (process.env.NEXT_PUBLIC_GROUPS_ENABLED || '').toLowerCase().trim();
+  if (v === 'true') return true;
+  if (v === 'false') return false;
+  return process.env.NODE_ENV === 'development';
 }

@@ -9,41 +9,31 @@ type NextStepCardProps = {
   onAddSubjects: () => void;
 };
 
-export default function NextStepCard({ 
-  upcomingSessions, 
-  subjects, 
-  onFindTutor, 
-  onAddSubjects 
-}: NextStepCardProps) {
+const cardBase = 'bg-white border border-gray-100 rounded-2xl p-5 sm:p-6 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200';
+const iconPill = 'w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-itutor-green/10 text-itutor-green';
+const btnPrimary = 'inline-flex items-center gap-2 px-5 py-2.5 bg-itutor-green hover:bg-emerald-600 text-black font-semibold rounded-xl transition-all text-sm';
+const btnOutline = 'inline-flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-200 hover:border-itutor-green hover:text-itutor-green text-gray-600 font-medium rounded-xl transition-all text-sm';
+
+export default function NextStepCard({ upcomingSessions, subjects, onFindTutor, onAddSubjects }: NextStepCardProps) {
   const hasUpcomingSessions = upcomingSessions.length > 0;
   const hasSubjects = subjects && subjects.length > 0;
   const topSubject = subjects && subjects.length > 0 ? subjects[0] : null;
 
   if (hasUpcomingSessions) {
     return (
-      <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-2xl p-4 sm:p-6 md:p-8 shadow-md hover:shadow-lg transition-shadow">
-        <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4">
-          <div className="bg-green-500 rounded-full p-3 flex-shrink-0">
-            <svg className="h-6 w-6 sm:h-8 sm:w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+      <div className={cardBase}>
+        <div className="flex items-start gap-4">
+          <div className={iconPill}>
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
-          <div className="flex-1 text-center sm:text-left">
-            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">You're all set ✅</h2>
-            <p className="text-sm sm:text-base text-gray-700 mb-4">Your next session is coming up</p>
-            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-              <button
-                onClick={onFindTutor}
-                className="w-full sm:w-auto px-4 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-black rounded-lg font-semibold shadow-md hover:shadow-lg transition-all text-sm sm:text-base"
-              >
-                View session
-              </button>
-              <button
-                onClick={onFindTutor}
-                className="w-full sm:w-auto px-4 sm:px-6 py-2 sm:py-3 bg-white hover:bg-gray-50 text-gray-700 border-2 border-gray-200 rounded-lg font-medium transition-all text-sm sm:text-base"
-              >
-                Find another iTutor
-              </button>
+          <div className="flex-1">
+            <h2 className="text-lg font-bold text-gray-900 mb-1">You're all set ✅</h2>
+            <p className="text-sm text-gray-500 mb-4">Your next session is coming up.</p>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={onFindTutor} className={btnPrimary}>View session</button>
+              <button onClick={onFindTutor} className={btnOutline}>Find another iTutor</button>
             </div>
           </div>
         </div>
@@ -53,22 +43,17 @@ export default function NextStepCard({
 
   if (!hasSubjects) {
     return (
-      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-2xl p-4 sm:p-6 md:p-8 shadow-md hover:shadow-lg transition-shadow">
-        <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4">
-          <div className="bg-blue-500 rounded-full p-3 flex-shrink-0">
-            <svg className="h-6 w-6 sm:h-8 sm:w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+      <div className={cardBase}>
+        <div className="flex items-start gap-4">
+          <div className={iconPill}>
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
             </svg>
           </div>
-          <div className="flex-1 text-center sm:text-left">
-            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">Your next step</h2>
-            <p className="text-sm sm:text-base text-gray-700 mb-4">Add subjects to get personalised iTutor matches</p>
-            <button
-              onClick={onAddSubjects}
-              className="w-full sm:w-auto px-4 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-black rounded-lg font-semibold shadow-md hover:shadow-lg transition-all text-sm sm:text-base"
-            >
-              Add Subjects
-            </button>
+          <div className="flex-1">
+            <h2 className="text-lg font-bold text-gray-900 mb-1">Your next step</h2>
+            <p className="text-sm text-gray-500 mb-4">Add subjects to get personalised iTutor matches.</p>
+            <button onClick={onAddSubjects} className={btnPrimary}>Add Subjects</button>
           </div>
         </div>
       </div>
@@ -76,35 +61,29 @@ export default function NextStepCard({
   }
 
   return (
-    <div className="bg-gradient-to-br from-purple-50 to-pink-50 border-2 border-purple-200 rounded-2xl p-4 sm:p-6 md:p-8 shadow-md hover:shadow-lg transition-shadow">
-      <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4">
-        <div className="bg-purple-500 rounded-full p-3 flex-shrink-0">
-          <svg className="h-6 w-6 sm:h-8 sm:w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+    <div className={`${cardBase} border-l-4 border-l-itutor-green`}>
+      <div className="flex items-start gap-4">
+        <div className={iconPill}>
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M13 10V3L4 14h7v7l9-11h-7z" />
           </svg>
         </div>
-        <div className="flex-1 text-center sm:text-left">
-          <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">Your next step</h2>
-          <p className="text-sm sm:text-base text-gray-700 mb-4">
-            Find an iTutor for <span className="font-semibold text-purple-700">{topSubject}</span>
-          </p>
-          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-            <button
-              onClick={onFindTutor}
-              className="w-full sm:w-auto px-4 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-black rounded-lg font-semibold shadow-md hover:shadow-lg transition-all text-sm sm:text-base"
-            >
+        <div className="flex-1">
+          <p className="text-xs font-semibold uppercase tracking-widest text-itutor-green mb-1">Your next step</p>
+          <h2 className="text-xl font-bold text-gray-900 mb-1">{topSubject}</h2>
+          <p className="text-sm text-gray-500 mb-4">You haven't found a tutor for this subject yet. Connect with a verified iTutor and start making progress today.</p>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={onFindTutor} className={btnPrimary}>
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <circle cx="11" cy="11" r="8" strokeWidth={2} />
+                <path d="m21 21-4.35-4.35" strokeWidth={2} strokeLinecap="round" />
+              </svg>
               Find an iTutor
             </button>
-            <button
-              onClick={onAddSubjects}
-              className="w-full sm:w-auto px-4 sm:px-6 py-2 sm:py-3 bg-white hover:bg-gray-50 text-gray-700 border-2 border-gray-200 rounded-lg font-medium transition-all text-sm sm:text-base"
-            >
-              Edit my subjects
-            </button>
+            <button onClick={onAddSubjects} className={btnOutline}>Edit my subjects</button>
           </div>
         </div>
       </div>
     </div>
   );
 }
-

@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import type { StreamPostWithAuthor, StreamReplyWithAuthor } from '@/lib/types/groupStream';
-import { timeAgo, getInitials } from './timeAgo';
+import UserAvatar from '@/components/UserAvatar';
+import { timeAgo } from './timeAgo';
 import StreamAttachmentList from './StreamAttachmentList';
 import ReplyThread from './ReplyThread';
 
@@ -56,17 +57,12 @@ export default function StreamPostCard({
       }`}
     >
       <div className="flex gap-3">
-        {post.author?.avatar_url ? (
-          <img
-            src={post.author.avatar_url}
-            alt={post.author.full_name}
-            className="w-9 h-9 rounded-full object-cover flex-shrink-0"
-          />
-        ) : (
-          <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm font-bold flex-shrink-0">
-            {getInitials(post.author?.full_name ?? '?')}
-          </div>
-        )}
+        <UserAvatar
+          avatarUrl={post.author?.avatar_url}
+          name={post.author?.full_name}
+          size={36}
+          className="flex-shrink-0"
+        />
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2 flex-wrap">

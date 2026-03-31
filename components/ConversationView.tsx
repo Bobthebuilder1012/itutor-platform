@@ -18,6 +18,7 @@ import { supabase } from '@/lib/supabase/client';
 import { getAvatarColor } from '@/lib/utils/avatarColors';
 import { uploadMessageAttachment } from '@/lib/utils/messageAttachments';
 import MessageInputBar from '@/components/MessageInputBar';
+import UserAvatar from '@/components/UserAvatar';
 
 interface ConversationViewProps {
   conversationId: string;
@@ -254,13 +255,7 @@ export default function ConversationView({
 
         {otherUser && (
           <>
-            <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${getAvatarColor(otherUser.id)} flex items-center justify-center text-white font-bold`}>
-              {otherUser.avatar_url ? (
-                <img src={otherUser.avatar_url} alt={getDisplayName(otherUser)} className="w-full h-full rounded-full object-cover" />
-              ) : (
-                getDisplayName(otherUser).charAt(0).toUpperCase()
-              )}
-            </div>
+            <UserAvatar avatarUrl={otherUser.avatar_url} name={getDisplayName(otherUser)} size={40} />
             <div className="flex-1">
               <h2 className="text-lg font-bold text-gray-900">{getDisplayName(otherUser)}</h2>
               <p className="text-xs text-gray-500 capitalize">{otherUser.role}</p>
@@ -303,13 +298,7 @@ export default function ConversationView({
               <div className={`flex items-end gap-2 max-w-[70%] ${message.is_own_message ? 'flex-row-reverse' : ''}`}>
                 {/* Avatar */}
                 {!message.is_own_message && (
-                  <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${getAvatarColor(message.sender.id || 'unknown')} flex items-center justify-center text-white font-bold text-xs flex-shrink-0`}>
-                    {message.sender.avatar_url ? (
-                      <img src={message.sender.avatar_url} alt={getDisplayName(message.sender)} className="w-full h-full rounded-full object-cover" />
-                    ) : (
-                      getDisplayName(message.sender).charAt(0).toUpperCase()
-                    )}
-                  </div>
+                  <UserAvatar avatarUrl={message.sender.avatar_url} name={getDisplayName(message.sender)} size={32} />
                 )}
 
                 {/* Message Bubble */}

@@ -4,6 +4,9 @@
 
 export type BookingStatus = 
   | 'PENDING'
+  | 'PENDING_PARENT_APPROVAL'
+  | 'PARENT_APPROVED'
+  | 'PARENT_REJECTED'
   | 'COUNTER_PROPOSED'
   | 'CONFIRMED'
   | 'DECLINED'
@@ -272,6 +275,12 @@ export function getBookingStatusColor(status: BookingStatus): string {
   switch (status) {
     case 'PENDING':
       return 'text-yellow-400 bg-yellow-400/10 border-yellow-400/30';
+    case 'PENDING_PARENT_APPROVAL':
+      return 'text-amber-400 bg-amber-400/10 border-amber-400/30';
+    case 'PARENT_APPROVED':
+      return 'text-teal-400 bg-teal-400/10 border-teal-400/30';
+    case 'PARENT_REJECTED':
+      return 'text-rose-400 bg-rose-400/10 border-rose-400/30';
     case 'COUNTER_PROPOSED':
       return 'text-blue-400 bg-blue-400/10 border-blue-400/30';
     case 'CONFIRMED':
@@ -293,6 +302,12 @@ export function getBookingStatusLabel(status: BookingStatus): string {
   switch (status) {
     case 'PENDING':
       return 'Pending';
+    case 'PENDING_PARENT_APPROVAL':
+      return 'Needs Parent Approval';
+    case 'PARENT_APPROVED':
+      return 'Awaiting Payment';
+    case 'PARENT_REJECTED':
+      return 'Parent Rejected';
     case 'COUNTER_PROPOSED':
       return 'Counter Offer';
     case 'CONFIRMED':

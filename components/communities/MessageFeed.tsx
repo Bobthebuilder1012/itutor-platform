@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Image from 'next/image';
 import { ChevronDownIcon, FaceSmileIcon } from '@heroicons/react/24/outline';
 import { supabase } from '@/lib/supabase/client';
 import { getDisplayName } from '@/lib/utils/displayName';
@@ -9,6 +8,7 @@ import { formatMessageTime } from '@/lib/utils/communityTimestamp';
 import type { CommunityMessageV2WithAuthor } from '@/lib/types/communities';
 import MessageComposer from './MessageComposer';
 import ThreadReplies from './ThreadReplies';
+import UserAvatar from '@/components/UserAvatar';
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😭', '🙏'];
 
@@ -159,15 +159,7 @@ export default function MessageFeed({
         const isLastMessage = index === filtered.length - 1;
         return (
         <div key={msg.id} className="group flex gap-3 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
-          <div className="flex-shrink-0 h-10 w-10 rounded-full overflow-hidden bg-gray-100">
-            {msg.author?.avatar_url ? (
-              <Image src={msg.author.avatar_url} alt="" width={40} height={40} className="h-10 w-10 object-cover" />
-            ) : (
-              <span className="flex h-full w-full items-center justify-center text-sm font-medium text-gray-500">
-                {displayName(msg.author).charAt(0)}
-              </span>
-            )}
-          </div>
+          <UserAvatar avatarUrl={msg.author?.avatar_url} name={displayName(msg.author)} size={40} />
           <div className="flex-1 min-w-0 relative">
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-2 flex-wrap min-w-0">
