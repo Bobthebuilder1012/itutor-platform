@@ -13,6 +13,8 @@ import { isEmailManagementOnlyAdmin } from '@/lib/auth/adminAccess';
 
 export const dynamic = 'force-dynamic';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   const results: {
     success: { requestId: string | number; tutorId: string }[];
