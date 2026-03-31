@@ -6,7 +6,7 @@ import SuccessCTABanner from '@/components/landing/SuccessCTABanner';
 export default function Hero() {
   return (
     <section className="relative flex min-h-[calc(100dvh-80px)] flex-col overflow-hidden bg-transparent">
-      <div className="container relative z-10 mx-auto flex w-full flex-1 flex-col items-center justify-end px-4 pb-4 sm:px-6 sm:pb-6 lg:px-8 2xl:pb-10 3xl:pb-14">
+      <div className="container relative z-10 mx-auto flex w-full flex-1 flex-col items-center justify-center px-4 pt-24 pb-4 sm:px-6 sm:pt-28 sm:pb-6 lg:px-8 lg:pt-32 2xl:pb-10 2xl:pt-40 3xl:pb-14 3xl:pt-48">
         <div className="mx-auto w-full max-w-4xl text-center 2xl:max-w-6xl 3xl:max-w-[1400px]">
           {/* Main Heading */}
           <div className="-mx-4 mb-3 flex justify-center overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:overflow-visible sm:px-0 [&::-webkit-scrollbar]:hidden 2xl:mb-5 3xl:mb-7">
