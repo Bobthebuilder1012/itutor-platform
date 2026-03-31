@@ -17,6 +17,7 @@ import { isCommunitiesArchived } from '@/lib/featureFlags/communitiesArchived';
 import { isGroupsFeatureEnabled } from '@/lib/featureFlags/groupsFeature';
 import { getAdminHomePath, isEmailManagementOnlyAdmin } from '@/lib/auth/adminAccess';
 import dynamic from 'next/dynamic';
+import UniversalSearchBar from '@/components/UniversalSearchBar';
 
 const PushTokenRegistrar = dynamic(() => import('@/components/push/PushTokenRegistrar'), { ssr: false });
 
@@ -219,9 +220,9 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         {/* Logo */}
         <div className={`h-16 flex items-center border-b border-white/10 flex-shrink-0 ${collapsed ? 'justify-center px-3' : 'px-5 justify-between'}`}>
           {collapsed ? (
-            <button onClick={toggleCollapsed} title="Expand sidebar" className="flex items-center justify-center hover:opacity-80 transition-opacity">
+            <Link href={getDashboardLink()} onClick={() => setSidebarOpen(false)} title="Go to dashboard" className="flex items-center justify-center hover:opacity-80 transition-opacity">
               <Image src="/assets/logo/itutor-mark.png" alt="iTutor" width={36} height={36} className="w-9 h-9 object-contain" />
-            </button>
+            </Link>
           ) : (
             <>
               <Link href={getDashboardLink()} onClick={() => setSidebarOpen(false)}>
@@ -309,6 +310,18 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
               <path d="M4 6h16M4 12h16M4 18h16" strokeWidth="2" strokeLinecap="round" />
             </svg>
           </button>
+
+          {/* Search bar — student & parent only */}
+          {(role === 'student' || role === 'parent') && (
+            <div className="flex-1 max-w-xl mx-2 lg:mx-4">
+              <UniversalSearchBar
+                userRole={role}
+                onResultClick={(profile) => {
+                  router.push(`/tutors/${profile.id}`);
+                }}
+              />
+            </div>
+          )}
 
           {/* Right actions */}
           <div className="ml-auto flex items-center gap-1.5 flex-shrink-0">
