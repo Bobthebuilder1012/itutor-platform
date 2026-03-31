@@ -303,7 +303,7 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
                     <span className="text-xs text-gray-500">
                       {uploadingImage === 'cover'
                         ? 'Uploading...'
-                        : 'Recommended: 1280 x 720 px (16:9). Drag image in frame to reposition. PNG, JPG, WEBP up to 10MB'}
+                        : 'Recommended: 1920 x 1080 px (16:9). Drag image in frame to reposition. PNG, JPG, WEBP up to 10MB'}
                     </span>
                   </div>
                   <input
@@ -373,7 +373,7 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
                     <span className="text-xs text-gray-500">
                       {uploadingImage === 'header'
                         ? 'Uploading...'
-                        : 'Recommended: 1280 x 720 px (16:9). Drag image in frame to reposition. PNG, JPG, WEBP up to 10MB'}
+                        : 'Recommended: 1920 x 1080 px (16:9). Drag image in frame to reposition. PNG, JPG, WEBP up to 10MB'}
                     </span>
                   </div>
                   <input

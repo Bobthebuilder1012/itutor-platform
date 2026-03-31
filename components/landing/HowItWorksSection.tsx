@@ -31,7 +31,7 @@ export default function HowItWorksSection() {
   ];
 
   return (
-    <section className="relative overflow-hidden bg-transparent py-20 sm:py-28">
+    <section className="relative overflow-hidden bg-transparent py-20 sm:py-28 2xl:py-40 3xl:py-52">
       <div
         className="pointer-events-none absolute inset-0 bg-white/10"
         aria-hidden
@@ -60,48 +60,48 @@ export default function HowItWorksSection() {
         ></div>
       </div>
 
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 2xl:px-12 3xl:px-16 relative z-10">
         {/* Section Header */}
-        <div className="mb-16 text-center">
-          <h2 className="mb-6 text-4xl font-bold text-gray-900 sm:text-5xl lg:text-6xl">
+        <div className="mb-16 text-center 2xl:mb-24 3xl:mb-32">
+          <h2 className="mb-6 text-4xl font-bold text-gray-900 sm:text-5xl lg:text-6xl 2xl:mb-8 2xl:text-7xl 3xl:mb-10 3xl:text-8xl">
             How It{' '}
             <span className="text-itutor-green">
               Works
             </span>
           </h2>
-          <p className="mx-auto max-w-2xl text-xl text-gray-600">
+          <p className="mx-auto max-w-2xl text-xl text-gray-600 2xl:max-w-4xl 2xl:text-2xl 3xl:max-w-5xl 3xl:text-3xl">
             Get started in minutes. Success in 4 simple steps.
           </p>
         </div>
 
         {/* Steps Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 max-w-7xl mx-auto">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 max-w-7xl mx-auto 2xl:gap-10 2xl:max-w-[1600px] 3xl:gap-14 3xl:max-w-[1900px]">
           {steps.map((step, index) => (
             <div
               key={index}
               className="relative group"
             >
-              {/* Connector Line (hidden on mobile, shown on desktop between cards) */}
+              {/* Connector Line */}
               {index < steps.length - 1 && (
-                <div className="absolute top-20 -right-4 hidden h-0.5 w-8 bg-gradient-to-r from-itutor-green/40 to-transparent lg:block"></div>
+                <div className="absolute top-20 -right-4 hidden h-0.5 w-8 bg-gradient-to-r from-itutor-green/40 to-transparent lg:block 2xl:-right-5 2xl:w-10 3xl:-right-7 3xl:w-14"></div>
               )}
 
-              <div className="h-full rounded-3xl border border-white/60 bg-gradient-to-br from-white/70 via-white/40 to-white/20 p-6 shadow-[0_8px_32px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.8),inset_0_-8px_16px_rgba(255,255,255,0.1)] ring-1 ring-inset ring-white/50 backdrop-blur-2xl backdrop-saturate-150 transition-all duration-300 hover:scale-[1.03] hover:border-white/80 hover:from-white/80 hover:via-white/55 hover:to-white/30 hover:shadow-[0_16px_48px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.95)]">
+              <div className="h-full rounded-3xl border border-white/60 bg-gradient-to-br from-white/70 via-white/40 to-white/20 p-6 shadow-[0_8px_32px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.8),inset_0_-8px_16px_rgba(255,255,255,0.1)] ring-1 ring-inset ring-white/50 backdrop-blur-2xl backdrop-saturate-150 transition-all duration-300 hover:scale-[1.03] hover:border-white/80 hover:from-white/80 hover:via-white/55 hover:to-white/30 hover:shadow-[0_16px_48px_rgba(0,0,0,0.12),inset_0_1px_0_rgba(255,255,255,0.95)] 2xl:p-9 3xl:p-12">
                 {/* Step Number */}
-                <div className={`inline-block px-4 py-1 rounded-full bg-gradient-to-r ${step.color} text-white font-bold text-sm mb-4`}>
+                <div className={`inline-block px-4 py-1 rounded-full bg-gradient-to-r ${step.color} text-white font-bold text-sm mb-4 2xl:px-5 2xl:py-1.5 2xl:text-base 2xl:mb-5 3xl:px-7 3xl:py-2 3xl:text-lg 3xl:mb-7`}>
                   {step.number}
                 </div>
 
                 {/* Icon */}
-                <div className="text-6xl mb-4 group-hover:scale-110 transition-transform duration-300">
+                <div className="text-6xl mb-4 group-hover:scale-110 transition-transform duration-300 2xl:text-7xl 2xl:mb-5 3xl:text-8xl 3xl:mb-7">
                   {step.icon}
                 </div>
 
                 {/* Content */}
-                <h3 className="mb-3 text-2xl font-bold text-gray-900 transition-colors group-hover:text-itutor-green">
+                <h3 className="mb-3 text-2xl font-bold text-gray-900 transition-colors group-hover:text-itutor-green 2xl:mb-4 2xl:text-3xl 3xl:mb-5 3xl:text-4xl">
                   {step.title}
                 </h3>
-                <p className="leading-relaxed text-gray-600">{step.description}</p>
+                <p className="leading-relaxed text-gray-600 2xl:text-lg 3xl:text-xl">{step.description}</p>
               </div>
             </div>
           ))}

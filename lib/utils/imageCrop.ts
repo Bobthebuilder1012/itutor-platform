@@ -14,7 +14,9 @@ export type Area = {
  */
 export async function getCroppedImg(
   imageSrc: string,
-  pixelCrop: Area
+  pixelCrop: Area,
+  outputWidth = 1920,
+  outputHeight = 1080
 ): Promise<Blob> {
   const image = await createImage(imageSrc);
   const canvas = document.createElement('canvas');
@@ -24,11 +26,9 @@ export async function getCroppedImg(
     throw new Error('Failed to get canvas context');
   }
 
-  // Set canvas size to the cropped area
-  canvas.width = pixelCrop.width;
-  canvas.height = pixelCrop.height;
+  canvas.width = outputWidth;
+  canvas.height = outputHeight;
 
-  // Draw the cropped image
   ctx.drawImage(
     image,
     pixelCrop.x,
@@ -37,8 +37,8 @@ export async function getCroppedImg(
     pixelCrop.height,
     0,
     0,
-    pixelCrop.width,
-    pixelCrop.height
+    outputWidth,
+    outputHeight
   );
 
   // Convert canvas to blob

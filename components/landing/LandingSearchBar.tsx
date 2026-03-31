@@ -123,10 +123,10 @@ export default function LandingSearchBar() {
             }
           }}
           placeholder={placeholder}
-          className="w-full rounded-2xl border-2 border-gray-300 bg-white py-4 pl-14 pr-6 text-base text-gray-900 placeholder-gray-500 transition-all focus:border-itutor-green focus:outline-none focus:ring-4 focus:ring-itutor-green/20 sm:py-5 sm:pl-16 sm:text-lg"
+          className="w-full rounded-2xl border-2 border-gray-300 bg-white py-4 pl-14 pr-6 text-base text-gray-900 placeholder-gray-500 transition-all focus:border-itutor-green focus:outline-none focus:ring-4 focus:ring-itutor-green/20 sm:py-5 sm:pl-16 sm:text-lg 2xl:rounded-3xl 2xl:py-6 2xl:pl-20 2xl:pr-8 2xl:text-2xl 3xl:py-8 3xl:pl-24 3xl:text-3xl"
         />
         <svg
-          className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400 sm:left-5 sm:h-6 sm:w-6"
+          className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400 sm:left-5 sm:h-6 sm:w-6 2xl:left-6 2xl:h-8 2xl:w-8 3xl:left-7 3xl:h-10 3xl:w-10"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
