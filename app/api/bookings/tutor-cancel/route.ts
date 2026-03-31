@@ -6,8 +6,6 @@ import { cancelSessionReminders } from '@/lib/reminders/scheduleReminders';
 
 export const dynamic = 'force-dynamic';
 
-export const dynamic = 'force-dynamic';
-
 export async function POST(request: NextRequest) {
   try {
     const { booking_id, reason } = await request.json();
