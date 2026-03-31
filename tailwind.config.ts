@@ -10,7 +10,7 @@ const config: Config = {
     extend: {
       colors: {
         'itutor-black': '#000000',
-        'itutor-green': '#199358',
+        'itutor-green': '#199356',
         'itutor-white': '#F4F4F4',
         'itutor-card': '#0F0F0F',
         'itutor-border': '#1C1C1C',
