@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { getServiceClient } from '@/lib/supabase/server';
+import { cancelSessionReminders } from '@/lib/reminders/scheduleReminders';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,13 +61,18 @@ export async function POST(request: NextRequest) {
     }
 
     // Also update the session status if one exists
-    await admin
+    const { data: sessionRows } = await admin
       .from('sessions')
       .update({
         status: 'CANCELLED',
         updated_at: new Date().toISOString()
       })
-      .eq('booking_id', booking_id);
+      .eq('booking_id', booking_id)
+      .select('id');
+
+    for (const session of sessionRows ?? []) {
+      await cancelSessionReminders(session.id);
+    }
 
     if (reason) {
       await admin.from('booking_messages').insert({

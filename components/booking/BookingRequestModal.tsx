@@ -17,7 +17,7 @@ interface BookingRequestModalProps {
   pricePerHour: number;
   selectedStartAt: string;
   selectedEndAt: string;
-  onSuccess: (bookingId: string) => void;
+  onSuccess: (result: { bookingId: string; requiresPayment?: boolean; status?: string }) => void;
 }
 
 export default function BookingRequestModal({
@@ -102,7 +102,11 @@ export default function BookingRequestModal({
         sessionType === 'community' && communityId ? communityId : null
       );
 
-      onSuccess(result.booking_id);
+      onSuccess({
+        bookingId: result.booking_id,
+        requiresPayment: result.requires_payment,
+        status: result.status,
+      });
       handleClose();
     } catch (error: any) {
       console.error('Error creating booking:', error);
