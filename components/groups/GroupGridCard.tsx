@@ -1,6 +1,7 @@
 'use client';
 
 import type { GroupWithTutor } from '@/lib/types/groups';
+import UserAvatar from '@/components/UserAvatar';
 import ProfilePictureRow from './shared/ProfilePictureRow';
 import StatusBadge from './shared/StatusBadge';
 
@@ -9,15 +10,6 @@ interface GroupGridCardProps {
   onClick: () => void;
   onAskToJoin?: () => void;
   joining?: boolean;
-}
-
-function getInitials(name: string) {
-  return name
-    .split(' ')
-    .map((w) => w[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
 }
 
 export default function GroupGridCard({ group, onClick, onAskToJoin, joining = false }: GroupGridCardProps) {
@@ -111,17 +103,7 @@ export default function GroupGridCard({ group, onClick, onAskToJoin, joining = f
         </h3>
 
         <div className="flex items-center gap-2">
-          {group.tutor?.avatar_url ? (
-            <img
-              src={group.tutor.avatar_url}
-              alt={tutorName}
-              className="w-8 h-8 rounded-full object-cover flex-shrink-0"
-            />
-          ) : (
-            <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs font-bold flex-shrink-0">
-              {getInitials(tutorName)}
-            </div>
-          )}
+          <UserAvatar avatarUrl={group.tutor?.avatar_url} name={tutorName} size={32} className="flex-shrink-0" />
           <span className="text-sm text-gray-700 truncate">{tutorName}</span>
         </div>
 

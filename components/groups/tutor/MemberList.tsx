@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { GroupMember } from '@/lib/types/groups';
+import UserAvatar from '@/components/UserAvatar';
 
 interface MemberListProps {
   groupId: string;
@@ -12,15 +13,12 @@ interface MemberListProps {
 function MemberAvatar({ member }: { member: GroupMember }) {
   const name = member.profile?.full_name ?? 'Member';
   return (
-    <div className="flex-shrink-0 w-9 h-9 rounded-full overflow-hidden">
-      {member.profile?.avatar_url ? (
-        <img src={member.profile.avatar_url} alt={name} className="w-full h-full object-cover" />
-      ) : (
-        <div className="w-full h-full bg-gradient-to-br from-violet-400 to-purple-500 flex items-center justify-center text-white text-sm font-semibold">
-          {name.charAt(0).toUpperCase()}
-        </div>
-      )}
-    </div>
+    <UserAvatar
+      avatarUrl={member.profile?.avatar_url}
+      name={name}
+      size={36}
+      className="flex-shrink-0"
+    />
   );
 }
 

@@ -6,7 +6,6 @@ import Link from 'next/link';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
-import ProfileHeader from '@/components/ProfileHeader';
 import AvatarUploadModal from '@/components/AvatarUploadModal';
 import AddSubjectModal from '@/components/tutor/AddSubjectModal';
 import EditSubjectModal from '@/components/tutor/EditSubjectModal';
@@ -18,8 +17,8 @@ import { useAvatarUpload } from '@/lib/hooks/useAvatarUpload';
 import { Session, TutorSubject, Subject, Rating } from '@/lib/types/database';
 import { Area } from '@/lib/utils/imageCrop';
 import { getDisplayName } from '@/lib/utils/displayName';
-import PaidClassesLockNotice from '@/components/tutor/PaidClassesLockNotice';
 import TutorReviewsModal from '@/components/tutor/TutorReviewsModal';
+import UserAvatar from '@/components/UserAvatar';
 
 type TutorSubjectWithSubject = TutorSubject & {
   subjects?: Subject;
@@ -52,62 +51,24 @@ export default function TutorDashboard() {
   const [hasAvailability, setHasAvailability] = useState<boolean | null>(null);
   const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
   const { uploadAvatar, uploading } = useAvatarUpload(profile?.id || '');
-  const [verifiedSubjects, setVerifiedSubjects] = useState<any[]>([]);
-  const [csecSubjects, setCsecSubjects] = useState<any[]>([]);
-  const [capeSubjects, setCapeSubjects] = useState<any[]>([]);
   const [paidClassesEnabled, setPaidClassesEnabled] = useState<boolean>(false);
 
   useEffect(() => {
-    if (testMode) {
-      setLoadingData(false);
-      return;
-    }
-
+    if (testMode) { setLoadingData(false); return; }
     if (loading) return;
-    
-    // Only redirect if loading is complete and there's definitely no profile
-    if (!loading && !profile) {
-      router.push('/login');
-      return;
-    }
+    if (!loading && !profile) { router.push('/login'); return; }
+    if (!loading && profile && profile.role !== 'tutor') { router.push('/login'); return; }
+    if (!profile || profile.role !== 'tutor') return;
 
-    // Only redirect if we have a profile but it's the wrong role
-    if (!loading && profile && profile.role !== 'tutor') {
-      router.push('/login');
-      return;
-    }
-
-    // Only proceed with onboarding check if we have a valid profile
-    if (!profile || profile.role !== 'tutor') {
-      return;
-    }
-
-    // Check if onboarding is complete by verifying school and subjects exist
     async function checkOnboardingComplete() {
       if (!profile) return;
-
-      console.log('Checking onboarding status for tutor:', profile.id);
-
-      const { data: subjects, error: subjectsError } = await supabase
-        .from('tutor_subjects')
-        .select('id')
-        .eq('tutor_id', profile.id)
-        .limit(1);
-
-      console.log('Tutor subjects check:', subjects, 'Error:', subjectsError);
-
-      if (!subjects || subjects.length === 0) {
-        console.log('No subjects found, redirecting to onboarding');
-        router.push('/onboarding/tutor');
-        return;
-      }
-
-      console.log('Onboarding complete, fetching tutor data');
+      const { data: subjects } = await supabase
+        .from('tutor_subjects').select('id').eq('tutor_id', profile.id).limit(1);
+      if (!subjects || subjects.length === 0) { router.push('/onboarding/tutor'); return; }
       fetchTutorData();
     }
 
     checkOnboardingComplete();
-    fetchVerifiedSubjects();
     fetchPaidClassesFlag();
   }, [profile, loading, router, testMode]);
 
@@ -116,720 +77,650 @@ export default function TutorDashboard() {
       const res = await fetch('/api/feature-flags', { cache: 'no-store' });
       const data = await res.json();
       setPaidClassesEnabled(Boolean(data?.paidClassesEnabled));
-    } catch {
-      setPaidClassesEnabled(false);
-    }
-  }
-
-  async function fetchVerifiedSubjects() {
-    if (!profile?.id) return;
-    
-    try {
-      const res = await fetch(`/api/public/tutors/${profile.id}/verified-subjects`);
-      const data = await res.json();
-      
-      if (data.is_verified) {
-        setVerifiedSubjects(data.subjects || []);
-        setCsecSubjects(data.grouped?.CSEC || []);
-        setCapeSubjects(data.grouped?.CAPE || []);
-      }
-    } catch (err) {
-      console.error('Error fetching verified subjects:', err);
-    }
+    } catch { setPaidClassesEnabled(false); }
   }
 
   async function fetchTutorData() {
     if (!profile) return;
-
     try {
-      // Fetch tutor_subjects and subjects separately to avoid FK join issues
       const now = new Date().toISOString();
-      const [sessionsRes, tutorSubjectsRes, allSubjectsRes, ratingsRes, videoProviderRes, availabilityRes] = await Promise.all([
-        supabase
-          .from('sessions')
-          .select('*, bookings(subject_id, status)')
-          .eq('tutor_id', profile.id)
-          .gte('scheduled_start_at', now)
-          .in('status', ['SCHEDULED', 'JOIN_OPEN'])
-          .order('scheduled_start_at', { ascending: true })
-          .limit(10),
-        supabase
-          .from('tutor_subjects')
-          .select('*')
-          .eq('tutor_id', profile.id),
-        supabase
-          .from('subjects')
-          .select('*'),
-        supabase
-          .from('ratings')
-          .select('*')
-          .eq('tutor_id', profile.id),
-        supabase
-          .from('tutor_video_provider_connections')
-          .select('id, connection_status')
-          .eq('tutor_id', profile.id)
-          .single(),
-        supabase
-          .from('tutor_availability_rules')
-          .select('id')
-          .eq('tutor_id', profile.id)
-          .eq('is_active', true)
-          .limit(1)
-      ]);
-
-      console.log('Tutor subjects response:', tutorSubjectsRes);
-      console.log('All subjects response:', allSubjectsRes);
-
-      if (tutorSubjectsRes.error) {
-        console.error('Tutor subjects error:', tutorSubjectsRes.error);
-      }
+      const [sessionsRes, tutorSubjectsRes, allSubjectsRes, ratingsRes, videoProviderRes, availabilityRes] =
+        await Promise.all([
+          supabase.from('sessions').select('*, bookings(subject_id, status)')
+            .eq('tutor_id', profile.id).gte('scheduled_start_at', now)
+            .in('status', ['SCHEDULED', 'JOIN_OPEN']).order('scheduled_start_at', { ascending: true }).limit(10),
+          supabase.from('tutor_subjects').select('*').eq('tutor_id', profile.id),
+          supabase.from('subjects').select('*'),
+          supabase.from('ratings').select('*').eq('tutor_id', profile.id),
+          supabase.from('tutor_video_provider_connections').select('id, connection_status').eq('tutor_id', profile.id).single(),
+          supabase.from('tutor_availability_rules').select('id').eq('tutor_id', profile.id).eq('is_active', true).limit(1),
+        ]);
 
       if (sessionsRes.data) {
-        // Filter out cancelled bookings first
-        const activeSessions = sessionsRes.data.filter((session: any) => 
-          session.bookings?.status !== 'CANCELLED' && 
-          session.bookings?.status !== 'DECLINED'
+        const activeSessions = sessionsRes.data.filter(
+          (s: any) => s.bookings?.status !== 'CANCELLED' && s.bookings?.status !== 'DECLINED'
         );
-
-        // Enrich sessions with student and subject names
         const enrichedSessions = await Promise.all(
           activeSessions.slice(0, 5).map(async (session: any) => {
             const subjectId = session.bookings?.subject_id;
-            
             const [studentRes, subjectRes] = await Promise.all([
               supabase.from('profiles').select('full_name, display_name').eq('id', session.student_id).single(),
-              subjectId 
+              subjectId
                 ? supabase.from('subjects').select('name, label, curriculum, level').eq('id', subjectId).single()
-                : Promise.resolve({ data: null, error: null })
+                : Promise.resolve({ data: null, error: null }),
             ]);
-
-            // Get subject name
-            const subjectName = subjectRes.data 
-              ? (subjectRes.data.label || subjectRes.data.name || 'Unknown Subject')
-              : 'Unknown Subject';
-
             return {
               ...session,
               student_name: studentRes.data ? getDisplayName(studentRes.data) : 'Unknown Student',
-              subject_name: subjectName
+              subject_name: subjectRes.data ? (subjectRes.data.label || subjectRes.data.name || 'Unknown Subject') : 'Unknown Subject',
             };
           })
         );
-        
         setSessions(enrichedSessions);
-        
-        // Fetch completed sessions count separately
-        const { count: completedCount } = await supabase
-          .from('sessions')
-          .select('*', { count: 'exact', head: true })
-          .eq('tutor_id', profile.id)
-          .eq('status', 'COMPLETED_ASSUMED');
-        setSessionsTaught(completedCount || 0);
+        const { count } = await supabase.from('sessions').select('*', { count: 'exact', head: true })
+          .eq('tutor_id', profile.id).eq('status', 'COMPLETED_ASSUMED');
+        setSessionsTaught(count || 0);
       }
-      
-      // Manually join tutor_subjects with subjects data
+
       if (tutorSubjectsRes.data && allSubjectsRes.data) {
-        const subjectsMap = new Map(allSubjectsRes.data.map(s => [s.id, s]));
-        const enrichedTutorSubjects = tutorSubjectsRes.data.map(ts => ({
-          ...ts,
-          subjects: subjectsMap.get(ts.subject_id)
-        }));
-        console.log('Enriched tutor subjects:', enrichedTutorSubjects);
-        setTutorSubjects(enrichedTutorSubjects);
+        const subjectsMap = new Map(allSubjectsRes.data.map((s: any) => [s.id, s]));
+        setTutorSubjects(tutorSubjectsRes.data.map((ts: any) => ({ ...ts, subjects: subjectsMap.get(ts.subject_id) })));
       }
-      
+
       if (ratingsRes.data) {
-        // Defensive: if legacy duplicates exist (same student rated multiple times),
-        // treat only the latest rating per student as the "current" review.
-        const sorted = [...ratingsRes.data].sort((a: any, b: any) => {
-          const ta = new Date(a.created_at || 0).getTime();
-          const tb = new Date(b.created_at || 0).getTime();
-          return tb - ta;
-        });
-
+        const sorted = [...ratingsRes.data].sort((a: any, b: any) =>
+          new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+        );
         const seenStudents = new Set<string>();
-        const uniqueLatest = sorted.filter((r: any) => {
-          const sid = r?.student_id;
-          if (!sid) return false;
-          if (seenStudents.has(sid)) return false;
-          seenStudents.add(sid);
-          return true;
+        const unique = sorted.filter((r: any) => {
+          if (!r?.student_id || seenStudents.has(r.student_id)) return false;
+          seenStudents.add(r.student_id); return true;
         });
-
-        setRatings(uniqueLatest);
-        if (uniqueLatest.length > 0) {
-          const avgStars = uniqueLatest.reduce((sum: number, r: any) => sum + Number(r.stars || 0), 0) / uniqueLatest.length;
-          setAverageRating(Math.round(avgStars * 10) / 10);
+        setRatings(unique);
+        if (unique.length > 0) {
+          setAverageRating(Math.round(unique.reduce((s: number, r: any) => s + Number(r.stars || 0), 0) / unique.length * 10) / 10);
         }
       }
 
-      // Check video provider connection
-      if (videoProviderRes.error && videoProviderRes.error.code === 'PGRST116') {
-        // No connection found
-        setHasVideoProvider(false);
-      } else if (videoProviderRes.data && videoProviderRes.data.connection_status === 'connected') {
-        setHasVideoProvider(true);
-      } else {
-        setHasVideoProvider(false);
-      }
-
-      // Check availability rules
-      if (availabilityRes.error && availabilityRes.error.code === 'PGRST116') {
-        // No availability rules found
-        setHasAvailability(false);
-        setShowAvailabilityModal(true);
-      } else if (availabilityRes.data && availabilityRes.data.length > 0) {
-        setHasAvailability(true);
-        setShowAvailabilityModal(false);
-      } else {
-        setHasAvailability(false);
-        setShowAvailabilityModal(true);
-      }
-    } catch (error) {
-      console.error('Error fetching tutor data:', error);
+      setHasVideoProvider(
+        !videoProviderRes.error && videoProviderRes.data?.connection_status === 'connected'
+      );
+      const noAvail = (availabilityRes.error?.code === 'PGRST116') || !availabilityRes.data?.length;
+      setHasAvailability(!noAvail);
+      setShowAvailabilityModal(noAvail);
+    } catch (err) {
+      console.error('Error fetching tutor data:', err);
     } finally {
       setLoadingData(false);
     }
   }
 
+  const handleAvatarUpload = async (imageSrc: string, croppedArea: Area) => {
+    if (!profile) return;
+    const result = await uploadAvatar(imageSrc, croppedArea);
+    if (result.success) window.location.reload();
+  };
+
   if (!testMode && (loading || !profile)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-itutor-green" />
       </div>
     );
   }
 
   const displayName = testMode ? 'Test Tutor' : (profile ? getDisplayName(profile) : 'Tutor');
-  const subjectsLine = testMode
-    ? 'CSEC Math · CAPE Physics'
-    : tutorSubjects.length > 0
-      ? tutorSubjects.map(ts => ts.subjects?.name).filter(Boolean).join(' · ')
-      : null;
+  const initials = displayName.slice(0, 2).toUpperCase();
+  const subjectsLine = tutorSubjects.map(ts => ts.subjects?.name).filter(Boolean).join(' · ') || null;
 
-  const handleAvatarUpload = async (imageSrc: string, croppedArea: Area) => {
-    if (!profile) return;
-    
-    const result = await uploadAvatar(imageSrc, croppedArea);
-    if (result.success) {
-      // Refresh the page to show new avatar
-      window.location.reload();
-    }
-  };
+  // Profile strength calculation
+  const strengthItems = [
+    { label: 'Profile created', done: true },
+    { label: 'Subjects added', done: tutorSubjects.length > 0 },
+    { label: 'Availability set', done: Boolean(hasAvailability) },
+    {
+      label: 'Verification complete',
+      done: profile?.tutor_verification_status === 'VERIFIED',
+      warn: profile?.tutor_verification_status !== 'VERIFIED',
+    },
+  ];
+  const strengthPct = Math.round((strengthItems.filter(i => i.done).length / strengthItems.length) * 100);
 
   return (
     <DashboardLayout role="tutor" userName={displayName}>
-      <div className="px-4 py-3 sm:px-0">
-        {/* Test Mode Banner */}
-        {testMode && (
-          <div className="bg-amber-50 border-l-4 border-amber-400 p-4 mb-6">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-amber-400" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                </svg>
+      <div className="max-w-7xl mx-auto space-y-5">
+
+        {/* ── PROFILE BANNER ── */}
+        <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
+          <div className="px-6 py-6">
+            {/* Avatar row */}
+            <div className="flex items-start gap-5 mb-5">
+              <div
+                className="relative w-[64px] h-[64px] rounded-2xl overflow-hidden flex-shrink-0 cursor-pointer shadow-sm"
+                onClick={() => !testMode && setAvatarModalOpen(true)}
+              >
+                <UserAvatar avatarUrl={profile?.avatar_url} name={displayName} size={64} rounded="2xl" />
               </div>
-              <div className="ml-3">
-                <p className="text-sm text-amber-700">
-                  <strong>Test Mode:</strong> You're viewing the dashboard UI only. Real data requires authentication.
-                </p>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <h1 className="text-xl font-bold text-gray-900 leading-tight">{displayName}</h1>
+                  <span className="px-2.5 py-0.5 bg-itutor-green/10 border border-itutor-green/30 text-itutor-green text-[11px] font-bold rounded-lg uppercase tracking-wide">
+                    Tutor
+                  </span>
+                  {profile?.tutor_verification_status === 'VERIFIED' && (
+                    <span className="px-2.5 py-0.5 bg-blue-50 border border-blue-200 text-blue-600 text-[11px] font-bold rounded-lg uppercase tracking-wide">
+                      Verified
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-4 mt-1.5 flex-wrap">
+                  {profile?.school && (
+                    <span className="text-[13px] text-gray-500 flex items-center gap-1.5">
+                      <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path d="M19 21V5a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v5m-4 0h4" strokeWidth="1.8" />
+                      </svg>
+                      {profile.school}
+                    </span>
+                  )}
+                  {subjectsLine && (
+                    <span className="text-[13px] text-gray-400 truncate max-w-[340px]">{subjectsLine}</span>
+                  )}
+                </div>
+              </div>
+              {/* Rating */}
+              <div className="hidden sm:flex flex-col items-end pb-1 flex-shrink-0">
+                <div className="flex items-center gap-1.5">
+                  <svg className="w-5 h-5 text-amber-400 fill-amber-400" viewBox="0 0 24 24">
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                  </svg>
+                  <span className="text-2xl font-bold text-amber-500">{averageRating > 0 ? averageRating.toFixed(1) : '0.0'}</span>
+                </div>
+                <button
+                  onClick={() => ratings.length > 0 && setReviewsModalOpen(true)}
+                  className="text-[12px] text-gray-400 hover:text-itutor-green transition-colors mt-0.5"
+                >
+                  {ratings.length} review{ratings.length !== 1 ? 's' : ''}
+                </button>
+              </div>
+            </div>
+
+            {/* Footer row */}
+            <div className="flex items-center gap-3 flex-wrap pt-4 border-t border-gray-100">
+              {/* Notice strip */}
+              {!paidClassesEnabled && (
+                <div className="flex-1 min-w-[220px] flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+                  <svg className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" strokeWidth="1.8" />
+                  </svg>
+                  <div>
+                    <p className="text-[12px] font-semibold text-amber-700">Paid classes launching soon</p>
+                    <p className="text-[11px] text-amber-600">During our initial launch period, tutors can host free classes only.</p>
+                  </div>
+                </div>
+              )}
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <button
+                  onClick={() => !testMode && setEditProfileModalOpen(true)}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-white border border-gray-200 hover:border-itutor-green hover:text-itutor-green text-gray-600 text-[13px] font-semibold rounded-xl transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" strokeWidth="2" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" strokeWidth="2" />
+                  </svg>
+                  Edit Profile
+                </button>
+                <button
+                  onClick={() => !testMode && setAddSubjectModalOpen(true)}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-white border border-gray-200 hover:border-itutor-green hover:text-itutor-green text-gray-600 text-[13px] font-semibold rounded-xl transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <line x1="12" y1="5" x2="12" y2="19" strokeWidth="2" />
+                    <line x1="5" y1="12" x2="19" y2="12" strokeWidth="2" />
+                  </svg>
+                  Add Subject
+                </button>
+                <button
+                  onClick={() => !testMode && setShareModalOpen(true)}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-itutor-green hover:bg-emerald-500 text-black text-[13px] font-semibold rounded-xl transition-colors shadow-sm"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" strokeWidth="2" />
+                    <polyline points="16 6 12 2 8 6" strokeWidth="2" />
+                    <line x1="12" y1="2" x2="12" y2="15" strokeWidth="2" />
+                  </svg>
+                  Share Profile
+                </button>
               </div>
             </div>
           </div>
-        )}
+        </div>
 
-        {/* Profile Header */}
-        <ProfileHeader
-          fullName={displayName}
-          role="tutor"
-          school={testMode ? 'University of the West Indies' : profile?.school}
-          country={testMode ? 'Trinidad & Tobago' : profile?.country}
-          subjectsLine={subjectsLine}
-          bio={profile?.bio}
-          ratingAverage={testMode ? 4.8 : averageRating}
-          ratingCount={testMode ? 35 : ratings.length}
-          avatarUrl={profile?.avatar_url}
-          onAvatarClick={() => setAvatarModalOpen(true)}
-          isVerified={profile?.tutor_verification_status === 'VERIFIED'}
-          userId={profile?.id}
-        />
-
-        {/* Quick Action Buttons */}
-        {!testMode && (
-          <div className="mb-6 flex flex-wrap gap-3">
-            {!paidClassesEnabled && (
-              <div className="w-full">
-                <PaidClassesLockNotice />
-              </div>
-            )}
-            <button
-              onClick={() => setEditProfileModalOpen(true)}
-              className="px-4 py-2 bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-black rounded-lg font-semibold transition flex items-center gap-2"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+        {/* ── STATS ROW ── */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* Sessions Taught */}
+          <div className="bg-white border border-gray-100 rounded-2xl p-5 flex items-center gap-4 shadow-sm">
+            <div className="w-12 h-12 rounded-xl bg-itutor-green/10 flex items-center justify-center flex-shrink-0">
+              <svg className="w-5 h-5 text-itutor-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 0 0 1.946-.806 3.42 3.42 0 0 1 4.438 0 3.42 3.42 0 0 0 1.946.806 3.42 3.42 0 0 1 3.138 3.138 3.42 3.42 0 0 0 .806 1.946 3.42 3.42 0 0 1 0 4.438 3.42 3.42 0 0 0-.806 1.946 3.42 3.42 0 0 1-3.138 3.138 3.42 3.42 0 0 0-1.946.806 3.42 3.42 0 0 1-4.438 0 3.42 3.42 0 0 0-1.946-.806 3.42 3.42 0 0 1-3.138-3.138 3.42 3.42 0 0 0-.806-1.946 3.42 3.42 0 0 1 0-4.438 3.42 3.42 0 0 0 .806-1.946 3.42 3.42 0 0 1 3.138-3.138z" strokeWidth="1.8" />
               </svg>
-              Edit Profile
-            </button>
-            <button
-              onClick={() => setAddSubjectModalOpen(true)}
-              className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-itutor-white border border-gray-700 rounded-lg font-medium transition flex items-center gap-2"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Add Subject
-            </button>
-            <button
-              onClick={() => setShareModalOpen(true)}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white border border-blue-500 rounded-lg font-medium transition flex items-center gap-2"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-              </svg>
-              Share Profile
-            </button>
+            </div>
+            <div>
+              <p className="text-3xl font-bold text-itutor-green">{loadingData ? '—' : sessionsTaught}</p>
+              <p className="text-[12px] text-gray-400 font-medium mt-0.5">Sessions Taught</p>
+            </div>
           </div>
-        )}
 
-        {/* Avatar Upload Modal */}
-        <AvatarUploadModal
-          isOpen={avatarModalOpen}
-          onClose={() => setAvatarModalOpen(false)}
-          onUpload={handleAvatarUpload}
-          uploading={uploading}
-        />
+          {/* Subjects Teaching */}
+          <div className="bg-white border border-gray-100 rounded-2xl p-5 flex items-center gap-4 shadow-sm">
+            <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0">
+              <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" strokeWidth="1.8" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-3xl font-bold text-blue-500">{loadingData ? '—' : tutorSubjects.length}</p>
+              <p className="text-[12px] text-gray-400 font-medium mt-0.5">Subjects Teaching</p>
+            </div>
+          </div>
 
-        {/* Add Subject Modal */}
-        <AddSubjectModal
-          isOpen={addSubjectModalOpen}
-          onClose={() => setAddSubjectModalOpen(false)}
-          tutorId={profile?.id || ''}
-          existingSubjectIds={tutorSubjects.map(ts => ts.subject_id)}
-          onSubjectAdded={() => {
-            setAddSubjectModalOpen(false);
-            fetchTutorData();
-          }}
-        />
+          {/* Total Reviews */}
+          <button
+            onClick={() => ratings.length > 0 && setReviewsModalOpen(true)}
+            className="bg-white border border-gray-100 rounded-2xl p-5 flex items-center gap-4 shadow-sm hover:border-amber-200 transition-colors text-left"
+          >
+            <div className="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center flex-shrink-0">
+              <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5z" strokeWidth="1.8" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-3xl font-bold text-amber-500">{loadingData ? '—' : ratings.length}</p>
+              <p className="text-[12px] text-gray-400 font-medium mt-0.5">Total Reviews</p>
+            </div>
+          </button>
+        </div>
 
-        {/* Edit Subject Modal */}
-        <EditSubjectModal
-          isOpen={editSubjectModalOpen}
-          onClose={() => setEditSubjectModalOpen(false)}
-          tutorSubject={selectedSubject}
-          onSubjectUpdated={() => {
-            setEditSubjectModalOpen(false);
-            fetchTutorData();
-          }}
-          onSubjectDeleted={() => {
-            setEditSubjectModalOpen(false);
-            fetchTutorData();
-          }}
-        />
+        {/* ── MAIN GRID ── */}
+        <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-5 items-start">
 
-        {/* Edit Profile Modal */}
-        {!testMode && profile && (
+          {/* LEFT COLUMN */}
+          <div className="space-y-5">
+
+            {/* Sent Offers */}
+            {!testMode && profile && <SentOffersList tutorId={profile.id} />}
+
+            {/* Subjects You Teach */}
+            <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-blue-50 flex items-center justify-center">
+                    <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" strokeWidth="1.8" />
+                    </svg>
+                  </div>
+                  <h2 className="text-[15px] font-bold text-gray-900">Subjects You Teach</h2>
+                </div>
+                <button
+                  onClick={() => !testMode && setAddSubjectModalOpen(true)}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-itutor-green text-black text-[12px] font-bold rounded-xl hover:bg-emerald-500 transition-colors"
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <line x1="12" y1="5" x2="12" y2="19" strokeWidth="2.5" />
+                    <line x1="5" y1="12" x2="19" y2="12" strokeWidth="2.5" />
+                  </svg>
+                  Add Subject
+                </button>
+              </div>
+
+              {loadingData ? (
+                <p className="text-sm text-gray-400">Loading subjects…</p>
+              ) : tutorSubjects.length > 0 ? (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
+                  {tutorSubjects.map((ts) => (
+                    <button
+                      key={ts.id}
+                      onClick={() => { setSelectedSubject(ts); setEditSubjectModalOpen(true); }}
+                      className="group relative bg-gray-50 border border-gray-100 hover:border-itutor-green rounded-xl p-3 text-left transition-all hover:shadow-sm overflow-hidden"
+                    >
+                      <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-itutor-green to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                      <div className="flex items-start justify-between gap-1 mb-2">
+                        <p className="text-[13px] font-bold text-gray-900 group-hover:text-itutor-green transition-colors leading-tight">
+                          {ts.subjects?.name || 'Unknown Subject'}
+                        </p>
+                        <svg className="w-3 h-3 text-gray-300 group-hover:text-itutor-green flex-shrink-0 mt-0.5 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path d="M9 18l6-6-6-6" strokeWidth="2.5" strokeLinecap="round" />
+                        </svg>
+                      </div>
+                      <div className="flex gap-1 mb-2 flex-wrap">
+                        {ts.subjects?.curriculum && (
+                          <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 bg-white border border-gray-200 rounded text-gray-500">
+                            {ts.subjects.curriculum}
+                          </span>
+                        )}
+                        {ts.subjects?.level && ts.subjects?.level !== ts.subjects?.curriculum && (
+                          <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 bg-white border border-gray-200 rounded text-gray-500">
+                            {ts.subjects.level}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[13px] font-bold text-itutor-green">
+                          TT${paidClassesEnabled ? ts.price_per_hour_ttd : 0}
+                        </span>
+                        {!paidClassesEnabled && (
+                          <span className="px-1 py-0.5 bg-itutor-green/10 text-itutor-green text-[9px] font-bold rounded">FREE</span>
+                        )}
+                        <span className="text-[10px] text-gray-400">/hr</span>
+                      </div>
+                    </button>
+                  ))}
+
+                  {/* Add new placeholder */}
+                  <button
+                    onClick={() => !testMode && setAddSubjectModalOpen(true)}
+                    className="border border-dashed border-itutor-green/30 hover:border-itutor-green hover:bg-itutor-green/5 rounded-xl p-3 flex flex-col items-center justify-center gap-1.5 min-h-[80px] transition-all group"
+                  >
+                    <svg className="w-4 h-4 text-gray-400 group-hover:text-itutor-green transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <line x1="12" y1="5" x2="12" y2="19" strokeWidth="2" />
+                      <line x1="5" y1="12" x2="19" y2="12" strokeWidth="2" />
+                    </svg>
+                    <span className="text-[12px] font-semibold text-gray-400 group-hover:text-itutor-green transition-colors">Add Subject</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="text-center py-10">
+                  <div className="w-14 h-14 bg-gray-50 border border-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                    <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" strokeWidth="1.8" />
+                    </svg>
+                  </div>
+                  <p className="text-[14px] font-semibold text-gray-700 mb-1">No subjects added yet</p>
+                  <p className="text-[12px] text-gray-400 mb-4">Add the subjects you teach to attract students.</p>
+                  <button
+                    onClick={() => !testMode && setAddSubjectModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-itutor-green text-black text-[13px] font-bold rounded-xl hover:bg-emerald-500 transition-colors"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <line x1="12" y1="5" x2="12" y2="19" strokeWidth="2.5" />
+                      <line x1="5" y1="12" x2="19" y2="12" strokeWidth="2.5" />
+                    </svg>
+                    Add Your First Subject
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Upcoming Sessions */}
+            <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-itutor-green/10 flex items-center justify-center">
+                    <svg className="w-4 h-4 text-itutor-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <rect x="3" y="4" width="18" height="18" rx="2" strokeWidth="1.8" />
+                      <path d="M16 2v4M8 2v4M3 10h18" strokeWidth="1.8" strokeLinecap="round" />
+                    </svg>
+                  </div>
+                  <h2 className="text-[15px] font-bold text-gray-900">Upcoming Sessions</h2>
+                </div>
+                <Link href="/tutor/bookings" className="text-[13px] text-blue-500 font-semibold hover:text-blue-600 transition-colors">
+                  View all →
+                </Link>
+              </div>
+
+              {loadingData ? (
+                <p className="text-sm text-gray-400">Loading sessions…</p>
+              ) : sessions.length > 0 ? (
+                <div className="space-y-3">
+                  {sessions.map((session) => {
+                    const status = session.status?.toUpperCase();
+                    let label = 'Upcoming';
+                    let labelClass = 'bg-blue-50 text-blue-600';
+                    if (status === 'JOIN_OPEN' || status === 'IN_PROGRESS') { label = 'In Progress'; labelClass = 'bg-purple-50 text-purple-600'; }
+                    else if (status === 'COMPLETED' || status === 'COMPLETED_ASSUMED') { label = 'Completed'; labelClass = 'bg-itutor-green/10 text-itutor-green'; }
+                    else if (status === 'CANCELLED') { label = 'Cancelled'; labelClass = 'bg-red-50 text-red-500'; }
+
+                    return (
+                      <div key={session.id} className="flex items-center gap-4 p-4 bg-gray-50 border border-gray-100 rounded-xl">
+                        <div className="w-10 h-10 rounded-xl bg-white border border-gray-100 flex items-center justify-center flex-shrink-0">
+                          <svg className="w-4.5 h-4.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <rect x="3" y="4" width="18" height="18" rx="2" strokeWidth="1.8" />
+                            <path d="M16 2v4M8 2v4M3 10h18" strokeWidth="1.8" strokeLinecap="round" />
+                          </svg>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <p className="text-[14px] font-semibold text-gray-900 truncate">{session.subject_name}</p>
+                            <span className={`flex-shrink-0 px-2 py-0.5 text-[10px] font-bold rounded-md ${labelClass}`}>{label}</span>
+                          </div>
+                          <p className="text-[12px] text-gray-400">
+                            with <span className="text-itutor-green font-semibold">{session.student_name}</span>
+                            {' · '}
+                            {new Date(session.scheduled_start_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                            {' · '}
+                            {new Date(session.scheduled_start_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center py-4 text-center">
+                  <div className="w-14 h-14 bg-gray-50 border border-gray-100 rounded-2xl flex items-center justify-center mb-3">
+                    <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <rect x="3" y="4" width="18" height="18" rx="2" strokeWidth="1.8" />
+                      <path d="M16 2v4M8 2v4M3 10h18" strokeWidth="1.8" strokeLinecap="round" />
+                    </svg>
+                  </div>
+                  <p className="text-[14px] font-semibold text-gray-700 mb-1">No sessions yet</p>
+                  <p className="text-[12px] text-gray-400">Once a student books with you, it&apos;ll appear here.</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* RIGHT COLUMN */}
+          <div className="space-y-5">
+
+            {/* Quick Actions */}
+            <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
+              <div className="flex items-center gap-2.5 mb-5">
+                <div className="w-8 h-8 rounded-xl bg-amber-50 flex items-center justify-center">
+                  <svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path d="M13 10V3L4 14h7v7l9-11h-7z" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
+                <h2 className="text-[15px] font-bold text-gray-900">Quick Actions</h2>
+              </div>
+
+              <div className="space-y-2.5">
+                {[
+                  {
+                    href: '/tutor/availability',
+                    icon: (
+                      <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="10" strokeWidth="1.8" />
+                        <path d="M12 6v6l4 2" strokeWidth="1.8" strokeLinecap="round" />
+                      </svg>
+                    ),
+                    iconBg: 'bg-purple-50 text-purple-500',
+                    title: 'Set Availability',
+                    desc: 'Set your available hours',
+                  },
+                  {
+                    href: '/tutor/curriculum',
+                    icon: (
+                      <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5z" strokeWidth="1.8" />
+                        <path d="M8 7h8M8 11h5" strokeWidth="1.8" strokeLinecap="round" />
+                      </svg>
+                    ),
+                    iconBg: 'bg-blue-50 text-blue-500',
+                    title: 'Curriculum',
+                    desc: 'Browse CSEC subjects',
+                  },
+                  {
+                    href: '/tutor/verification',
+                    icon: (
+                      <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0 1 12 2.944a11.955 11.955 0 0 1-8.618 3.04A12.02 12.02 0 0 0 3 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" strokeWidth="1.8" />
+                      </svg>
+                    ),
+                    iconBg: 'bg-orange-50 text-orange-500',
+                    title: 'Verification',
+                    desc: (
+                      <>
+                        Upload certificates{' '}
+                        {profile?.tutor_verification_status !== 'VERIFIED' && (
+                          <span className="text-orange-500 font-semibold">· Action needed</span>
+                        )}
+                      </>
+                    ),
+                    highlight: profile?.tutor_verification_status !== 'VERIFIED',
+                  },
+                ].map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`flex items-center gap-3.5 p-3.5 rounded-xl border transition-all hover:translate-x-0.5 ${
+                      item.highlight
+                        ? 'border-orange-100 hover:border-orange-200'
+                        : 'border-gray-100 hover:border-gray-200'
+                    } group`}
+                  >
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${item.iconBg}`}>
+                      {item.icon}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13.5px] font-semibold text-gray-900">{item.title}</p>
+                      <p className="text-[12px] text-gray-400">{item.desc}</p>
+                    </div>
+                    <svg className="w-4 h-4 text-gray-300 group-hover:text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path d="M9 18l6-6-6-6" strokeWidth="2" strokeLinecap="round" />
+                    </svg>
+                  </Link>
+                ))}
+              </div>
+            </div>
+
+            {/* Profile Strength */}
+            <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
+              <div className="flex items-center gap-2.5 mb-4">
+                <div className="w-8 h-8 rounded-xl bg-itutor-green/10 flex items-center justify-center">
+                  <svg className="w-4 h-4 text-itutor-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path d="M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0zM12 14a7 7 0 0 0-7 7h14a7 7 0 0 0-7-7z" strokeWidth="1.8" />
+                  </svg>
+                </div>
+                <h2 className="text-[15px] font-bold text-gray-900">Profile Strength</h2>
+              </div>
+
+              <div className="flex justify-between text-[12px] mb-2">
+                <span className="text-gray-400">
+                  {strengthPct < 50 ? 'Getting there…' : strengthPct < 100 ? 'Almost there!' : 'Complete!'}
+                </span>
+                <span className="text-itutor-green font-bold">{strengthPct}%</span>
+              </div>
+              <div className="h-2 bg-gray-100 rounded-full overflow-hidden mb-5">
+                <div
+                  className="h-full bg-gradient-to-r from-itutor-green to-emerald-400 rounded-full transition-all duration-700"
+                  style={{ width: `${strengthPct}%` }}
+                />
+              </div>
+
+              <div className="space-y-2.5">
+                {strengthItems.map((item) => (
+                  <div key={item.label} className="flex items-center gap-2.5 text-[12px]">
+                    <div
+                      className={`w-4.5 h-4.5 rounded-full flex items-center justify-center flex-shrink-0 ${
+                        item.done
+                          ? 'bg-itutor-green/10 border border-itutor-green/40'
+                          : item.warn
+                          ? 'bg-orange-50 border border-orange-300'
+                          : 'bg-gray-50 border border-gray-200'
+                      }`}
+                    >
+                      {item.done ? (
+                        <svg className="w-2.5 h-2.5 text-itutor-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path d="M5 13l4 4L19 7" strokeWidth="3" strokeLinecap="round" />
+                        </svg>
+                      ) : item.warn ? (
+                        <span className="text-[8px] font-bold text-orange-500">!</span>
+                      ) : null}
+                    </div>
+                    <span className={item.done ? 'text-gray-700' : 'text-gray-400'}>{item.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Getting Started */}
+            <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
+              <div className="flex items-center gap-2.5 mb-4">
+                <div className="w-8 h-8 rounded-xl bg-itutor-green/10 flex items-center justify-center">
+                  <svg className="w-4 h-4 text-itutor-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 1 1 7.072 0l-.548.547A3.374 3.374 0 0 0 14 18.469V19a2 2 0 1 1-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" strokeWidth="1.8" />
+                  </svg>
+                </div>
+                <h2 className="text-[15px] font-bold text-gray-900">Getting Started</h2>
+              </div>
+
+              <div className="space-y-0">
+                {[
+                  { n: 1, text: <><strong className="text-gray-900">Complete verification</strong> — Upload your certificates to build trust with students.</> },
+                  { n: 2, text: <><strong className="text-gray-900">Set your availability</strong> — Tell students when you&apos;re free to teach.</> },
+                  { n: 3, text: <><strong className="text-gray-900">Share your profile</strong> — Send your profile link to attract your first students.</> },
+                  { n: 4, text: <><strong className="text-gray-900">Earn reviews</strong> — Your first review will unlock the rating badge. 🌟</> },
+                ].map((tip, i, arr) => (
+                  <div key={tip.n} className={`flex gap-3 py-3 ${i < arr.length - 1 ? 'border-b border-gray-50' : ''}`}>
+                    <div className="w-6 h-6 rounded-lg bg-itutor-green/10 text-itutor-green text-[11px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                      {tip.n}
+                    </div>
+                    <p className="text-[13px] text-gray-500 leading-relaxed">{tip.text}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── MODALS ── */}
+      <AvatarUploadModal isOpen={avatarModalOpen} onClose={() => setAvatarModalOpen(false)} onUpload={handleAvatarUpload} uploading={uploading} />
+
+      {!testMode && profile && (
+        <>
+          <AddSubjectModal
+            isOpen={addSubjectModalOpen}
+            onClose={() => setAddSubjectModalOpen(false)}
+            tutorId={profile.id}
+            existingSubjectIds={tutorSubjects.map(ts => ts.subject_id)}
+            onSubjectAdded={() => { setAddSubjectModalOpen(false); fetchTutorData(); }}
+          />
+          <EditSubjectModal
+            isOpen={editSubjectModalOpen}
+            onClose={() => setEditSubjectModalOpen(false)}
+            tutorSubject={selectedSubject}
+            onSubjectUpdated={() => { setEditSubjectModalOpen(false); fetchTutorData(); }}
+            onSubjectDeleted={() => { setEditSubjectModalOpen(false); fetchTutorData(); }}
+          />
           <EditProfileModal
             isOpen={editProfileModalOpen}
             onClose={() => setEditProfileModalOpen(false)}
             profile={profile}
             onSuccess={() => window.location.reload()}
           />
-        )}
-
-        {/* Share Profile Modal */}
-        {!testMode && profile && (
           <ShareProfileModal
             isOpen={shareModalOpen}
             onClose={() => setShareModalOpen(false)}
             profileUrl={`${typeof window !== 'undefined' ? window.location.origin : ''}/tutors/${profile.id}`}
             profileName={getDisplayName(profile)}
           />
-        )}
-
-        {/* Availability Required Modal */}
-        {!testMode && hasVideoProvider === true && hasAvailability === false && showAvailabilityModal && (
-          <AvailabilityRequiredModal 
-            isOpen={true} 
-            onClose={() => setShowAvailabilityModal(false)}
-          />
-        )}
-
-        {/* Verified CXC Results Section */}
-        {!testMode && profile?.tutor_verification_status === 'VERIFIED' && verifiedSubjects.length > 0 && (
-          <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-300 shadow-xl rounded-2xl p-6 mb-6 hover:shadow-green-300/50 transition-all duration-300">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
-                  </svg>
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-900">Your Verified CXC Results</h2>
-                  <p className="text-sm text-gray-600">These are visible on your public profile</p>
-                </div>
-              </div>
-              <Link
-                href="/tutor/verification/manage-subjects"
-                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition flex items-center gap-2"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                Manage
-              </Link>
-            </div>
-            
-            <div className="space-y-6">
-              {/* CSEC Subjects */}
-              {csecSubjects.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <h3 className="text-lg font-bold text-gray-900">CSEC</h3>
-                    <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-1 rounded">
-                      {csecSubjects.length} {csecSubjects.length === 1 ? 'subject' : 'subjects'}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {csecSubjects.map((subject: any) => (
-                      <div key={subject.id} className="bg-white border-2 border-gray-200 rounded-lg p-4 hover:border-green-400 hover:shadow-md transition-all">
-                        <h4 className="font-semibold text-gray-900 mb-2">{subject.subjects.name}</h4>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="inline-flex items-center gap-1 text-sm font-bold text-green-700">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-                            </svg>
-                            Grade {subject.grade}
-                          </span>
-                          {subject.year && (
-                            <span className="text-xs text-gray-600 bg-gray-100 px-2 py-1 rounded">
-                              {subject.year}
-                            </span>
-                          )}
-                          {subject.session && (
-                            <span className="text-xs text-gray-600 bg-gray-100 px-2 py-1 rounded">
-                              {subject.session}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* CAPE Subjects */}
-              {capeSubjects.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <h3 className="text-lg font-bold text-gray-900">CAPE</h3>
-                    <span className="bg-purple-100 text-purple-800 text-xs font-semibold px-2 py-1 rounded">
-                      {capeSubjects.length} {capeSubjects.length === 1 ? 'subject' : 'subjects'}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {capeSubjects.map((subject: any) => (
-                      <div key={subject.id} className="bg-white border-2 border-gray-200 rounded-lg p-4 hover:border-green-400 hover:shadow-md transition-all">
-                        <h4 className="font-semibold text-gray-900 mb-2">{subject.subjects.name}</h4>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="inline-flex items-center gap-1 text-sm font-bold text-green-700">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-                            </svg>
-                            Grade {subject.grade}
-                          </span>
-                          {subject.year && (
-                            <span className="text-xs text-gray-600 bg-gray-100 px-2 py-1 rounded">
-                              {subject.year}
-                            </span>
-                          )}
-                          {subject.session && (
-                            <span className="text-xs text-gray-600 bg-gray-100 px-2 py-1 rounded">
-                              {subject.session}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="mt-4 pt-4 border-t border-green-200">
-              <p className="text-xs text-gray-600 text-center">
-                Results verified by iTutor. Students and parents can see these on your profile.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Teaching Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-          <div className="bg-white border-2 border-green-200 shadow-lg rounded-2xl p-6 hover:shadow-green-300/50 hover:scale-105 transition-all duration-300 group">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-green-600 mb-2 font-medium">Sessions Taught</p>
-                <p className="text-4xl font-bold text-green-600">
-                  {loadingData ? '...' : sessionsTaught}
-                </p>
-              </div>
-              <div className="bg-gradient-to-br from-itutor-green to-emerald-600 rounded-2xl p-4 shadow-lg group-hover:scale-110 transition-transform duration-300">
-                <svg className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white border-2 border-blue-200 shadow-lg rounded-2xl p-6 hover:shadow-blue-300/50 hover:scale-105 transition-all duration-300 group">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-blue-600 mb-2 font-medium">Subjects Teaching</p>
-                <p className="text-4xl font-bold text-blue-600">
-                  {loadingData ? '...' : tutorSubjects.length}
-                </p>
-              </div>
-              <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-4 shadow-lg group-hover:scale-110 transition-transform duration-300">
-                <svg className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              if (ratings.length > 0) setReviewsModalOpen(true);
-            }}
-            disabled={ratings.length === 0}
-            className={`bg-white border-2 border-purple-200 shadow-lg rounded-2xl p-6 transition-all duration-300 group text-left ${
-              ratings.length === 0
-                ? 'opacity-60 cursor-not-allowed'
-                : 'hover:shadow-purple-300/50 hover:scale-105'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-purple-600 mb-2 font-medium">Total Reviews</p>
-                <p className="text-4xl font-bold text-purple-600">
-                  {loadingData ? '...' : ratings.length}
-                </p>
-              </div>
-              <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl p-4 shadow-lg group-hover:scale-110 transition-transform duration-300">
-                <svg className="h-8 w-8 text-white" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                </svg>
-              </div>
-            </div>
-          </button>
-        </div>
-
-        {/* Sent Offers */}
-        {!testMode && profile && (
-          <SentOffersList tutorId={profile.id} />
-        )}
-
-        {/* Subjects Taught */}
-        <div className="bg-white border-2 border-indigo-200 shadow-xl rounded-2xl p-6 mb-6 hover:shadow-indigo-300/50 transition-all duration-300">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">Subjects You Teach</h2>
-            <button
-              onClick={() => setAddSubjectModalOpen(true)}
-              className="bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-white px-4 py-2 rounded-lg font-semibold shadow-lg hover:shadow-itutor-green/50 transition-all duration-300 hover:scale-105 flex items-center gap-2"
-            >
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Add Subject
-            </button>
-          </div>
-          {loadingData ? (
-            <p className="text-gray-600">Loading subjects...</p>
-          ) : tutorSubjects.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {tutorSubjects.map((ts) => (
-                <button
-                  key={ts.id}
-                  onClick={() => {
-                    setSelectedSubject(ts);
-                    setEditSubjectModalOpen(true);
-                  }}
-                  className="bg-gradient-to-br from-indigo-50 to-blue-50 border-2 border-indigo-200 rounded-xl p-5 hover:border-indigo-400 hover:shadow-lg transition-all duration-300 group text-left cursor-pointer"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <h3 className="font-bold text-gray-900 group-hover:text-itutor-green transition-colors">{ts.subjects?.name || 'Unknown Subject'}</h3>
-                      <p className="text-sm text-gray-600 mt-1">
-                        {ts.subjects?.curriculum} - {ts.subjects?.level}
-                      </p>
-                      <p className="text-xl font-bold bg-gradient-to-r from-itutor-green to-emerald-600 bg-clip-text text-transparent mt-3">
-                        TT${paidClassesEnabled ? ts.price_per_hour_ttd : 0}/hour
-                      </p>
-                    </div>
-                    <svg className="h-5 w-5 text-gray-500 group-hover:text-itutor-green transition-colors flex-shrink-0 ml-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8">
-              <p className="text-gray-600 mb-4">No subjects added yet</p>
-              <button
-                onClick={() => setAddSubjectModalOpen(true)}
-                className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-white rounded-lg font-semibold shadow-lg hover:shadow-itutor-green/50 transition-all duration-300 hover:scale-105"
-              >
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Add Your First Subject
-              </button>
-            </div>
+          {hasVideoProvider === true && hasAvailability === false && showAvailabilityModal && (
+            <AvailabilityRequiredModal isOpen={true} onClose={() => setShowAvailabilityModal(false)} />
           )}
-        </div>
-
-        {/* Upcoming Sessions */}
-        <div className="bg-white border-2 border-pink-200 shadow-xl rounded-2xl p-6 mb-6 hover:shadow-pink-300/50 transition-all duration-300">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">Upcoming Sessions</h2>
-            <Link 
-              href="/tutor/dashboard"
-              className="text-sm text-itutor-green hover:text-emerald-600 font-medium flex items-center gap-1 transition-colors"
-            >
-              View dashboard →
-            </Link>
-          </div>
-          {loadingData ? (
-            <p className="text-gray-600">Loading sessions...</p>
-          ) : sessions.length > 0 ? (
-            <div className="space-y-3">
-              {sessions.map((session) => {
-                const sessionDate = new Date(session.scheduled_start_at);
-                const now = new Date();
-                const isPast = sessionDate < now;
-                
-                const sessionStatus = session.status?.toUpperCase();
-                
-                let displayStatus = 'Upcoming';
-                let statusColor = 'bg-gradient-to-r from-blue-500 to-blue-600 text-white';
-                
-                if (sessionStatus === 'CANCELLED') {
-                  displayStatus = 'Cancelled';
-                  statusColor = 'bg-gradient-to-r from-red-500 to-red-600 text-white';
-                } else if (sessionStatus === 'COMPLETED' || sessionStatus === 'COMPLETED_ASSUMED') {
-                  displayStatus = 'Completed';
-                  statusColor = 'bg-gradient-to-r from-green-500 to-emerald-600 text-white';
-                } else if (sessionStatus === 'IN_PROGRESS' || sessionStatus === 'JOIN_OPEN') {
-                  displayStatus = 'In Progress';
-                  statusColor = 'bg-gradient-to-r from-purple-500 to-purple-600 text-white';
-                } else if (sessionStatus === 'NO_SHOW_STUDENT') {
-                  displayStatus = 'No Show';
-                  statusColor = 'bg-gradient-to-r from-orange-500 to-orange-600 text-white';
-                } else if (isPast && (sessionStatus === 'SCHEDULED' || sessionStatus === 'BOOKED')) {
-                  displayStatus = 'Past';
-                  statusColor = 'bg-gradient-to-r from-gray-500 to-gray-600 text-white';
-                }
-                
-                return (
-                  <div key={session.id} className="bg-gradient-to-br from-pink-50 to-purple-50 border-2 border-pink-200 rounded-xl p-4 hover:border-pink-400 hover:shadow-lg transition-all duration-200">
-                    <div className="flex justify-between items-start mb-3">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <h3 className="font-bold text-gray-900 text-lg">{session.subject_name}</h3>
-                          <span className={`px-3 py-1 text-xs font-semibold rounded-full shadow-lg ${statusColor}`}>
-                            {displayStatus}
-                          </span>
-                        </div>
-                        <p className="text-sm text-gray-700 font-medium mb-2">
-                          with <span className="text-itutor-green font-semibold">{session.student_name}</span>
-                        </p>
-                        <p className="font-semibold text-gray-900">
-                          {new Date(session.scheduled_start_at).toLocaleDateString('en-US', {
-                            weekday: 'short',
-                            month: 'short',
-                            day: 'numeric'
-                          })}
-                        </p>
-                        <p className="text-sm text-gray-600 mt-1">
-                          {new Date(session.scheduled_start_at).toLocaleTimeString('en-US', {
-                            hour: 'numeric',
-                            minute: '2-digit'
-                          })} • {session.duration_minutes} minutes
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <div className="bg-pink-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
-                <svg className="h-8 w-8 text-pink-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <p className="text-gray-600">No sessions yet</p>
-            </div>
-          )}
-        </div>
-
-        {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <Link href="/tutor/availability">
-            <div className="bg-white border-2 border-purple-200 shadow-lg rounded-2xl p-6 hover:shadow-purple-300/50 hover:scale-105 hover:-translate-y-1 transition-all duration-300 cursor-pointer group">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="bg-purple-500 rounded-xl p-3 group-hover:scale-110 transition-transform">
-                  <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 group-hover:text-purple-600 transition-colors">Availability</h3>
-              </div>
-              <p className="text-gray-600 group-hover:text-gray-700 transition-colors">Set your available hours</p>
-            </div>
-          </Link>
-          <Link href="/tutor/curriculum">
-            <div className="bg-white border-2 border-orange-200 shadow-lg rounded-2xl p-6 hover:shadow-orange-300/50 hover:scale-105 hover:-translate-y-1 transition-all duration-300 cursor-pointer group">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="bg-orange-500 rounded-xl p-3 group-hover:scale-110 transition-transform">
-                  <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                  </svg>
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 group-hover:text-orange-600 transition-colors">Curriculum</h3>
-              </div>
-              <p className="text-gray-600 group-hover:text-gray-700 transition-colors">Browse CSEC subjects</p>
-            </div>
-          </Link>
-          <Link href="/tutor/verification">
-            <div className="bg-white border-2 border-green-200 shadow-lg rounded-2xl p-6 hover:shadow-green-300/50 hover:scale-105 hover:-translate-y-1 transition-all duration-300 cursor-pointer group">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="bg-itutor-green rounded-xl p-3 group-hover:scale-110 transition-transform">
-                  <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                  </svg>
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 group-hover:text-green-600 transition-colors">Verification</h3>
-              </div>
-              <p className="text-gray-600 group-hover:text-gray-700 transition-colors">Upload certificates</p>
-            </div>
-          </Link>
-        </div>
-      </div>
-
-      {profile?.id ? (
-        <TutorReviewsModal
-          tutorId={profile.id}
-          isOpen={reviewsModalOpen}
-          onClose={() => setReviewsModalOpen(false)}
-        />
-      ) : null}
+          <TutorReviewsModal tutorId={profile.id} isOpen={reviewsModalOpen} onClose={() => setReviewsModalOpen(false)} />
+        </>
+      )}
     </DashboardLayout>
   );
 }

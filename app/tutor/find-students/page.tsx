@@ -8,6 +8,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import SubjectMultiSelect from '@/components/SubjectMultiSelect';
 import { getDisplayName } from '@/lib/utils/displayName';
 import { getAvatarColor } from '@/lib/utils/avatarColors';
+import UserAvatar from '@/components/UserAvatar';
 
 type Student = {
   id: string;
@@ -385,7 +386,7 @@ export default function FindStudentsPage() {
               return (
                 <div
                   key={student.id}
-                  className="bg-white border-2 border-gray-200 rounded-2xl p-6 hover:shadow-xl hover:border-itutor-green transition-all duration-300"
+                  className="bg-white border-2 border-gray-200 rounded-2xl p-6 hover:shadow-xl hover:border-itutor-green transition-all duration-300 flex flex-col"
                 >
                   {/* Matched Badge */}
                   {matchesTutorSubjects && (
@@ -398,13 +399,7 @@ export default function FindStudentsPage() {
 
                   {/* Student Info */}
                   <div className="flex items-start gap-4 mb-4">
-                    <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${getAvatarColor(student.id)} flex items-center justify-center text-white font-bold text-xl flex-shrink-0`}>
-                      {student.avatar_url ? (
-                        <img src={student.avatar_url} alt={getDisplayName(student)} className="w-full h-full rounded-full object-cover" />
-                      ) : (
-                        getDisplayName(student).charAt(0).toUpperCase()
-                      )}
-                    </div>
+                    <UserAvatar avatarUrl={student.avatar_url} name={getDisplayName(student)} size={64} />
                     <div className="flex-1 min-w-0">
                       <h3 className="text-lg font-bold text-gray-900 truncate">
                         {getDisplayName(student)}
@@ -435,7 +430,7 @@ export default function FindStudentsPage() {
                   )}
 
                   {/* Subjects */}
-                  <div className="mb-4">
+                  <div className="mb-4 flex-1">
                     <p className="text-xs text-gray-500 mb-2 font-medium">Studying:</p>
                     <div className="flex flex-wrap gap-1">
                       {student.subjectDetails.slice(0, 4).map(subject => (
@@ -455,12 +450,14 @@ export default function FindStudentsPage() {
                   </div>
 
                   {/* View Profile Button */}
-                  <button
-                    onClick={() => router.push(`/tutor/students/${student.id}`)}
-                    className="w-full bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-white py-2 px-4 rounded-lg font-semibold transition-all duration-300 shadow-lg hover:shadow-itutor-green/50"
-                  >
-                    View Profile
-                  </button>
+                  <div className="mt-auto pt-2">
+                    <button
+                      onClick={() => router.push(`/tutor/students/${student.id}`)}
+                      className="w-full bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-white py-2 px-4 rounded-lg font-semibold transition-all duration-300 shadow-lg hover:shadow-itutor-green/50"
+                    >
+                      View Profile
+                    </button>
+                  </div>
                 </div>
               );
             })}

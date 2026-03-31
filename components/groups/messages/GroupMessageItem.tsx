@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { GroupMessage } from '@/lib/types/groups';
+import UserAvatar from '@/components/UserAvatar';
 import GroupMessageComposer from './GroupMessageComposer';
 
 interface GroupMessageItemProps {
@@ -11,19 +12,6 @@ interface GroupMessageItemProps {
   currentUserId: string;
   onRefresh: () => void;
   isReply?: boolean;
-}
-
-const AVATAR_COLORS = [
-  'from-emerald-400 to-teal-500',
-  'from-violet-400 to-purple-500',
-  'from-sky-400 to-blue-500',
-  'from-rose-400 to-pink-500',
-];
-
-function getColor(id: string) {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) hash = id.charCodeAt(i) + ((hash << 5) - hash);
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
 function formatTime(iso: string) {
@@ -52,7 +40,6 @@ export default function GroupMessageItem({
 
   const isOwn = message.sender_id === currentUserId;
   const senderName = message.sender?.full_name ?? 'Member';
-  const initials = senderName.charAt(0).toUpperCase();
 
   const handlePin = async () => {
     setPinLoading(true);
@@ -87,19 +74,7 @@ export default function GroupMessageItem({
       <div className={`flex gap-3 ${message.is_pinned ? 'bg-emerald-50 rounded-lg p-3 -mx-3' : ''}`}>
         {/* Avatar */}
         <div className="flex-shrink-0">
-          {message.sender?.avatar_url ? (
-            <img
-              src={message.sender.avatar_url}
-              alt={senderName}
-              className="w-8 h-8 rounded-full object-cover"
-            />
-          ) : (
-            <div
-              className={`w-8 h-8 rounded-full bg-gradient-to-br ${getColor(message.sender_id)} flex items-center justify-center text-white text-xs font-semibold`}
-            >
-              {initials}
-            </div>
-          )}
+          <UserAvatar avatarUrl={message.sender?.avatar_url} name={senderName} size={32} />
         </div>
 
         <div className="flex-1 min-w-0">

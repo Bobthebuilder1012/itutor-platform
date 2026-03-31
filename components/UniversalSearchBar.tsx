@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import { Profile } from '@/lib/types/database';
 import { getDisplayName } from '@/lib/utils/displayName';
+import UserAvatar from '@/components/UserAvatar';
 
 type SearchBarProps = {
   userRole: 'student' | 'tutor' | 'parent';
@@ -40,8 +41,8 @@ export default function UniversalSearchBar({ userRole, onResultClick }: SearchBa
 
   // Role-based placeholders
   const placeholder = searchMode === 'tutor'
-    ? (targetRole === 'tutor' ? "Search iTutors by name or username" : "Search students by name or username")
-    : "Search by subject (e.g., Math, Biology, Chemistry)";
+    ? (targetRole === 'tutor' ? "Search iTutors by name or username..." : "Search students by name or username...")
+    : "Search by subject (e.g. Mathematics, Biology, Chemistry)...";
 
   // Fetch filter options on mount
   useEffect(() => {
@@ -258,62 +259,59 @@ export default function UniversalSearchBar({ userRole, onResultClick }: SearchBa
   };
 
   return (
-    <div className="relative w-full mb-6" data-search-container>
-      {/* Search Mode Toggle - Subtle version for students/parents */}
-      {targetRole === 'tutor' && (
-        <div className="flex gap-1 mb-2">
-          <button
-            onClick={() => {
-              setSearchMode('tutor');
-              setQuery('');
-              setResults([]);
-            }}
-            className={`px-3 py-1 text-xs font-medium rounded-full transition-all ${
-              searchMode === 'tutor'
-                ? 'bg-itutor-green/20 text-itutor-green border border-itutor-green/30'
-                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-            }`}
-          >
-            By Name
-          </button>
-          <button
-            onClick={() => {
-              setSearchMode('subject');
-              setQuery('');
-              setResults([]);
-            }}
-            className={`px-3 py-1 text-xs font-medium rounded-full transition-all ${
-              searchMode === 'subject'
-                ? 'bg-itutor-green/20 text-itutor-green border border-itutor-green/30'
-                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-            }`}
-          >
-            By Subject
-          </button>
-        </div>
-      )}
+    <div className="relative w-full" data-search-container>
+      <div className="flex items-center gap-3">
+        {/* Mode toggle pills */}
+        {targetRole === 'tutor' && (
+          <div className="flex-shrink-0 flex items-center gap-0.5 bg-gray-100 rounded-xl p-1">
+            {(['tutor', 'subject'] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => { setSearchMode(mode); setQuery(''); setResults([]); }}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                  searchMode === mode
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                {mode === 'tutor' ? 'By Name' : 'By Subject'}
+              </button>
+            ))}
+          </div>
+        )}
 
-      {/* Search Input */}
-      <div className="flex gap-3">
+        {/* Input */}
         <div className="flex-1 relative">
+          <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <circle cx="11" cy="11" r="8" strokeWidth={2} />
+            <path d="m21 21-4.35-4.35" strokeWidth={2} strokeLinecap="round" />
+          </svg>
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyPress={handleKeyPress}
             placeholder={placeholder}
-            className="w-full px-4 py-3 pl-11 bg-white border-2 border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-400"
+            className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-xl focus:bg-white focus:border-itutor-green focus:ring-2 focus:ring-itutor-green/10 focus:outline-none transition placeholder-gray-400"
           />
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
+          {loading && (
+            <div className="absolute right-3.5 top-1/2 -translate-y-1/2">
+              <div className="w-4 h-4 border-2 border-itutor-green border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
         </div>
+
+        {/* Filter toggle */}
         {targetRole === 'tutor' && searchMode === 'subject' && results.length > 0 && (
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className={`px-4 py-3 bg-itutor-green border-2 border-itutor-green text-white font-semibold rounded-lg hover:bg-emerald-600 transition flex items-center gap-2`}
+            className={`flex-shrink-0 flex items-center gap-1.5 px-3.5 py-2.5 text-sm font-semibold rounded-xl border transition-all ${
+              showFilters
+                ? 'bg-itutor-green/10 border-itutor-green/30 text-itutor-green'
+                : 'bg-gray-50 border-gray-200 text-gray-500 hover:border-itutor-green/30 hover:text-itutor-green'
+            }`}
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
             </svg>
             Filters
@@ -321,18 +319,16 @@ export default function UniversalSearchBar({ userRole, onResultClick }: SearchBa
         )}
       </div>
 
-      {/* Filter Panel - Only show for subject search with results */}
+      {/* Filter panel */}
       {targetRole === 'tutor' && searchMode === 'subject' && results.length > 0 && showFilters && (
-        <div className="mt-3 p-4 bg-white border-2 border-gray-300 rounded-lg shadow-lg">
-          <p className="text-xs text-gray-600 mb-3 font-semibold">Filter Results:</p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Rating Filter */}
+        <div className="mt-2 p-4 bg-white border border-gray-100 rounded-2xl shadow-sm">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Minimum Rating</label>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Min Rating</label>
               <select
                 value={filters.minRating}
                 onChange={(e) => setFilters({ ...filters, minRating: Number(e.target.value) })}
-                className="w-full px-3 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:outline-none text-sm"
+                className="w-full px-3 py-2 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl text-sm focus:border-itutor-green focus:ring-2 focus:ring-itutor-green/10 focus:outline-none"
               >
                 <option value="0">Any Rating</option>
                 <option value="4">4+ Stars</option>
@@ -340,14 +336,12 @@ export default function UniversalSearchBar({ userRole, onResultClick }: SearchBa
                 <option value="5">5 Stars</option>
               </select>
             </div>
-
-            {/* School Filter */}
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">School</label>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">School</label>
               <select
                 value={filters.school}
                 onChange={(e) => setFilters({ ...filters, school: e.target.value })}
-                className="w-full px-3 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:outline-none text-sm"
+                className="w-full px-3 py-2 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl text-sm focus:border-itutor-green focus:ring-2 focus:ring-itutor-green/10 focus:outline-none"
               >
                 <option value="any">All Schools</option>
                 {availableSchools.map((school) => (
@@ -355,164 +349,117 @@ export default function UniversalSearchBar({ userRole, onResultClick }: SearchBa
                 ))}
               </select>
             </div>
-
-            {/* Verified Only */}
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Verification</label>
-              <label className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg cursor-pointer hover:border-itutor-green transition">
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Verification</label>
+              <label className="flex items-center gap-2.5 px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl cursor-pointer hover:border-itutor-green transition-colors">
                 <input
                   type="checkbox"
                   checked={filters.verifiedOnly}
                   onChange={(e) => setFilters({ ...filters, verifiedOnly: e.target.checked })}
-                  className="w-4 h-4 text-itutor-green rounded focus:ring-itutor-green"
+                  className="w-4 h-4 accent-itutor-green rounded"
                 />
-                <span className="text-sm text-gray-900">Verified Only</span>
+                <span className="text-sm text-gray-700">Verified only</span>
               </label>
             </div>
           </div>
           <button
             onClick={() => setFilters({ minRating: 0, country: 'any', school: 'any', verifiedOnly: false })}
-            className="mt-3 text-sm text-gray-600 hover:text-itutor-green transition font-medium"
+            className="mt-3 text-xs text-gray-400 hover:text-itutor-green transition-colors font-medium"
           >
             Clear filters
           </button>
         </div>
       )}
 
-      {/* Results Dropdown */}
+      {/* Results dropdown */}
       {results.length > 0 && (
-        <div className="absolute z-50 w-full mt-2 bg-white border-2 border-gray-300 rounded-lg shadow-2xl max-h-[500px] overflow-y-auto">
-          {loading ? (
-            <div className="p-4 text-center">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-itutor-green mx-auto"></div>
-              <p className="text-gray-600 text-sm mt-2">Searching...</p>
-            </div>
-          ) : (
-            <>
-              {/* Results Count */}
-              <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
-                <p className="text-sm text-gray-900 font-semibold">
-                  {results.length} {results.length === 1 ? (targetRole === 'tutor' ? 'tutor' : 'student') : (targetRole === 'tutor' ? 'tutors' : 'students')} found
-                  {targetRole === 'tutor' && searchMode === 'subject' && (
-                    <span className="text-gray-600 font-normal"> • Verified iTutors shown first</span>
-                  )}
-                </p>
+        <div className="absolute z-50 w-full mt-2 bg-white border border-gray-100 rounded-2xl shadow-xl overflow-hidden max-h-[480px] overflow-y-auto">
+          {/* Header */}
+          <div className="px-4 py-2.5 border-b border-gray-50 bg-gray-50/80 flex items-center justify-between">
+            <p className="text-xs font-semibold text-gray-500">
+              {results.length} {targetRole === 'tutor' ? 'tutor' : 'student'}{results.length !== 1 ? 's' : ''} found
+              {targetRole === 'tutor' && searchMode === 'subject' && (
+                <span className="font-normal"> · verified first</span>
+              )}
+            </p>
+            {targetRole === 'tutor' && searchMode === 'subject' && (
+              <button
+                onClick={handleSubjectSearch}
+                className="text-xs font-semibold text-itutor-green hover:text-emerald-600 transition-colors"
+              >
+                View all →
+              </button>
+            )}
+          </div>
+
+          {/* Result rows */}
+          {results.slice(0, searchMode === 'subject' ? 5 : 10).map((profile) => (
+            <button
+              key={profile.id}
+              onClick={() => { onResultClick(profile); setQuery(''); setResults([]); }}
+              className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-b-0 text-left"
+            >
+              {/* Avatar */}
+              <div className="relative flex-shrink-0">
+                <UserAvatar avatarUrl={profile.avatar_url} name={getDisplayName(profile)} size={40} />
+                {profile.tutor_verification_status === 'VERIFIED' && (
+                  <div className="absolute -bottom-0.5 -right-0.5 bg-itutor-green rounded-full p-0.5">
+                    <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                )}
               </div>
 
-              {/* View All Results Button for Subject Search */}
-              {targetRole === 'tutor' && searchMode === 'subject' && (
-                <button
-                  onClick={handleSubjectSearch}
-                  className="w-full px-4 py-3 bg-itutor-green hover:bg-emerald-600 text-white font-bold transition border-b border-gray-200 flex items-center justify-center gap-2"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                  View All {results.length} Results for "{query}"
-                </button>
+              {/* Info */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <p className="text-sm font-semibold text-gray-900 truncate">{getDisplayName(profile)}</p>
+                  {profile.tutor_verification_status === 'VERIFIED' && (
+                    <span className="flex-shrink-0 px-1.5 py-0.5 bg-itutor-green/10 text-itutor-green text-[10px] font-bold rounded-md">
+                      VERIFIED
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-400 truncate">
+                  {[profile.school, profile.country].filter(Boolean).join(' · ') || 'No details'}
+                </p>
+                {profile.subjects_of_study && profile.subjects_of_study.length > 0 && (
+                  <div className="flex gap-1 mt-1.5 flex-wrap">
+                    {profile.subjects_of_study.slice(0, 2).map((s, i) => (
+                      <span key={i} className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-500 rounded-md">{s}</span>
+                    ))}
+                    {profile.subjects_of_study.length > 2 && (
+                      <span className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-400 rounded-md">+{profile.subjects_of_study.length - 2}</span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Rating */}
+              {targetRole === 'tutor' && (
+                <div className="flex-shrink-0 text-right">
+                  {profile.average_rating != null ? (
+                    <>
+                      <div className="flex items-center gap-0.5 justify-end">
+                        <svg className="w-3.5 h-3.5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                        </svg>
+                        <span className="text-sm font-bold text-gray-900">{profile.average_rating.toFixed(1)}</span>
+                      </div>
+                      <p className="text-[10px] text-gray-400">{profile.total_reviews || 0} reviews</p>
+                    </>
+                  ) : (
+                    <p className="text-xs text-gray-400 italic">New</p>
+                  )}
+                </div>
               )}
 
-              {/* Results List */}
-              {results.slice(0, searchMode === 'subject' ? 5 : 10).map((profile) => (
-                <button
-                  key={profile.id}
-                  onClick={() => {
-                    onResultClick(profile);
-                    setQuery('');
-                    setResults([]);
-                  }}
-                  className={`w-full px-4 py-4 flex items-center gap-3 hover:bg-green-50 transition border-b border-gray-200 last:border-b-0 text-left ${
-                    profile.tutor_verification_status === 'VERIFIED' ? 'bg-green-50/50' : ''
-                  }`}
-                >
-                  {/* Avatar */}
-                  <div className="relative">
-                    {profile.avatar_url ? (
-                      <img
-                        src={profile.avatar_url}
-                        alt={getDisplayName(profile)}
-                        className="w-14 h-14 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-14 h-14 rounded-full bg-gradient-to-br from-itutor-green to-emerald-600 flex items-center justify-center text-white font-bold text-lg">
-                        {getDisplayName(profile).charAt(0)}
-                      </div>
-                    )}
-                    {/* Verified Badge Overlay */}
-                    {profile.tutor_verification_status === 'VERIFIED' && (
-                      <div className="absolute -bottom-1 -right-1 bg-itutor-green rounded-full p-1">
-                        <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <p className="text-gray-900 font-bold text-base">{getDisplayName(profile)}</p>
-                      {profile.tutor_verification_status === 'VERIFIED' && (
-                        <span className="px-2 py-0.5 bg-itutor-green/20 border border-itutor-green text-itutor-green text-xs font-bold rounded">
-                          VERIFIED
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm text-gray-600 truncate">
-                      {profile.school || 'No school listed'} {profile.country && `• ${profile.country}`}
-                    </p>
-                    {profile.subjects_of_study && profile.subjects_of_study.length > 0 && (
-                      <div className="flex gap-1 mt-2 flex-wrap">
-                        {profile.subjects_of_study.slice(0, 3).map((subject, idx) => (
-                          <span key={idx} className="text-xs px-2 py-0.5 bg-itutor-green/20 text-itutor-green rounded">
-                            {subject}
-                          </span>
-                        ))}
-                        {profile.subjects_of_study.length > 3 && (
-                          <span className="text-xs px-2 py-0.5 bg-gray-200 text-gray-600 rounded">
-                            +{profile.subjects_of_study.length - 3}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* Rating Display */}
-                  {targetRole === 'tutor' && (
-                    <div className="flex flex-col items-end flex-shrink-0 min-w-[80px]">
-                      {profile.average_rating !== null && profile.average_rating !== undefined ? (
-                        <>
-                          <div className="flex items-center gap-1">
-                            <svg className="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
-                              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                            </svg>
-                            <span className="text-base font-bold text-gray-900">{profile.average_rating.toFixed(1)}</span>
-                          </div>
-                          <span className="text-xs text-gray-500">({profile.total_reviews || 0} reviews)</span>
-                        </>
-                      ) : (
-                        <div className="flex items-center gap-1">
-                          <svg className="w-5 h-5 text-gray-300" fill="currentColor" viewBox="0 0 20 20">
-                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                          </svg>
-                          <span className="text-xs text-gray-400 italic">New</span>
-                        </div>
-                      )}
-                      <svg className="w-5 h-5 text-itutor-green mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </div>
-                  )}
-                  
-                  {targetRole !== 'tutor' && (
-                    <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  )}
-                </button>
-              ))}
-            </>
-          )}
+              <svg className="w-4 h-4 text-gray-300 flex-shrink-0 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          ))}
         </div>
       )}
     </div>

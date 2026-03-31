@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Image from 'next/image';
 import { supabase } from '@/lib/supabase/client';
 import { getDisplayName } from '@/lib/utils/displayName';
 import { formatMessageTime } from '@/lib/utils/communityTimestamp';
 import type { CommunityMessageV2WithAuthor } from '@/lib/types/communities';
 import MessageComposer from './MessageComposer';
+import UserAvatar from '@/components/UserAvatar';
 
 interface ThreadRepliesProps {
   parentId: string;
@@ -47,15 +47,7 @@ export default function ThreadReplies({ parentId, communityId, canReply, onReply
         <>
           {replies.map((r) => (
             <div key={r.id} className="flex gap-2 py-2">
-              <div className="flex-shrink-0 h-8 w-8 rounded-full overflow-hidden bg-gray-100">
-                {r.author?.avatar_url ? (
-                  <Image src={r.author.avatar_url} alt="" width={32} height={32} className="h-8 w-8 object-cover" />
-                ) : (
-                  <span className="flex h-full w-full items-center justify-center text-xs font-medium text-gray-500">
-                    {displayName(r.author).charAt(0)}
-                  </span>
-                )}
-              </div>
+              <UserAvatar avatarUrl={r.author?.avatar_url} name={displayName(r.author)} size={32} />
               <div className="min-w-0 flex-1">
                 <span className="text-sm font-medium text-gray-700">{displayName(r.author)}</span>
                 <span className="text-xs text-gray-400 ml-2">{formatMessageTime(r.created_at)}</span>

@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Image from 'next/image';
 import { supabase } from '@/lib/supabase/client';
 import { getDisplayName } from '@/lib/utils/displayName';
 import { formatMessageTime } from '@/lib/utils/communityTimestamp';
 import type { CommunityMessageV2WithAuthor } from '@/lib/types/communities';
+import UserAvatar from '@/components/UserAvatar';
 
 interface PinnedSectionProps {
   communityId: string;
@@ -38,15 +38,12 @@ export default function PinnedSection({ communityId, className = '' }: PinnedSec
       <ul className="space-y-2">
         {pinned.map((msg) => (
           <li key={msg.id} className="flex gap-2 text-sm">
-            <div className="h-8 w-8 flex-shrink-0 rounded-full overflow-hidden bg-white">
-              {msg.author?.avatar_url ? (
-                <Image src={msg.author.avatar_url} alt="" width={32} height={32} className="h-8 w-8 object-cover" />
-              ) : (
-                <span className="flex h-full w-full items-center justify-center text-xs text-gray-500">
-                  {getDisplayName(msg.author as { full_name?: string; username?: string })?.charAt(0) ?? '?'}
-                </span>
-              )}
-            </div>
+            <UserAvatar
+              avatarUrl={msg.author?.avatar_url}
+              name={getDisplayName(msg.author as { full_name?: string; username?: string; display_name?: string })}
+              size={32}
+              className="bg-white"
+            />
             <div className="min-w-0 flex-1">
               <span className="font-medium text-gray-900">
                 {getDisplayName(msg.author as { full_name?: string; username?: string; display_name?: string })}

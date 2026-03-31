@@ -7,14 +7,6 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { getDisplayName } from '@/lib/utils/displayName';
 
-function homeForRole(role: string | undefined) {
-  if (role === 'tutor') return '/tutor/dashboard';
-  if (role === 'parent') return '/parent/dashboard';
-  if (role === 'admin') return '/admin/dashboard';
-  if (role === 'reviewer') return '/reviewer/dashboard';
-  return '/student/dashboard';
-}
-
 function layoutRole(role: string | undefined): 'student' | 'tutor' | 'parent' | 'reviewer' | 'admin' {
   if (role === 'tutor' || role === 'parent' || role === 'admin' || role === 'reviewer') return role;
   return 'student';
@@ -42,13 +34,6 @@ export default function VerificationHubPage() {
   return (
     <DashboardLayout role={layoutRole(profile.role)} userName={getDisplayName(profile)}>
       <div className="max-w-2xl mx-auto px-4 py-8">
-        <Link
-          href={homeForRole(profile.role)}
-          className="text-sm text-itutor-green hover:text-emerald-700 mb-6 inline-block font-medium"
-        >
-          ← Back to dashboard
-        </Link>
-
         <h1 className="text-2xl font-bold text-gray-900">Verification</h1>
         <p className="text-gray-600 text-sm mt-1 mb-8">
           Choose what you want to submit for review. Each type is reviewed separately.

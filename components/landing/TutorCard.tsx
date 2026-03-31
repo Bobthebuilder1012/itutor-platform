@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import type { FeaturedTutor } from '@/lib/services/landingTutorsService';
+import UserAvatar from '@/components/UserAvatar';
 interface TutorCardProps {
   tutor: FeaturedTutor;
   showPrice?: boolean;
@@ -31,12 +32,11 @@ export default function TutorCard({ tutor, showPrice = false, compact = false }:
       {/* Avatar and Name */}
       <div className={`flex shrink-0 items-start gap-3 ${compact ? 'mb-2 2xl:mb-3 2xl:gap-4' : 'mb-4 2xl:mb-5 2xl:gap-4'}`}>
         <div className="relative flex-shrink-0">
-          <Image
-            src={avatar_url || '/default-avatar.png'}
-            alt={full_name}
-            width={compact ? 48 : 64}
-            height={compact ? 48 : 64}
-            className={`rounded-full object-cover ${compact ? 'h-12 w-12 2xl:h-16 2xl:w-16 3xl:h-20 3xl:w-20' : 'h-16 w-16 2xl:h-20 2xl:w-20 3xl:h-24 3xl:w-24'}`}
+          <UserAvatar
+            avatarUrl={avatar_url}
+            name={full_name}
+            size={compact ? 48 : 64}
+            className={compact ? '2xl:!w-16 2xl:!h-16 3xl:!w-20 3xl:!h-20' : '2xl:!w-20 2xl:!h-20 3xl:!w-24 3xl:!h-24'}
           />
           {isVerified && (
             <div

@@ -9,6 +9,7 @@ import SubjectMultiSelect from '@/components/SubjectMultiSelect';
 import { getDisplayName } from '@/lib/utils/displayName';
 import { getAvatarColor } from '@/lib/utils/avatarColors';
 import VerifiedBadge from '@/components/VerifiedBadge';
+import UserAvatar from '@/components/UserAvatar';
 
 type Tutor = {
   id: string;
@@ -494,13 +495,7 @@ export default function FindTutorsPage() {
 
                   {/* Tutor Info */}
                   <div className="flex items-start gap-4 mb-4">
-                    <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${getAvatarColor(tutor.id)} flex items-center justify-center text-white font-bold text-xl flex-shrink-0`}>
-                      {tutor.avatar_url ? (
-                        <img src={tutor.avatar_url} alt={getDisplayName(tutor)} className="w-full h-full rounded-full object-cover" />
-                      ) : (
-                        getDisplayName(tutor).charAt(0).toUpperCase()
-                      )}
-                    </div>
+                    <UserAvatar avatarUrl={tutor.avatar_url} name={getDisplayName(tutor)} size={64} />
                     <div className="flex-1 min-w-0">
                       <h3 className="text-lg font-bold text-gray-900 truncate flex items-center gap-2">
                         {getDisplayName(tutor)}
