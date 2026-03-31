@@ -231,7 +231,7 @@ export default function GroupsPageClient({
                 <GroupGridCard
                   key={g.id}
                   group={g}
-                  onClick={() => router.push(`/groups/${g.id}`)}
+                  onClick={() => setSelectedGroupForModal(g.id)}
                 />
               ))}
             </div>
