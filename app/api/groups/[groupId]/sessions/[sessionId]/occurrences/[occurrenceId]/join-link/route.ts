@@ -416,7 +416,14 @@ export async function POST(_req: NextRequest, { params }: Params) {
       meeting_external_id: meeting.meeting_external_id,
       cached: false,
     });
-  } catch (err) {
+  } catch (err: any) {
+    const message = err?.message ?? '';
+    if (message.includes('No video provider connected') || message.includes('needs reauth')) {
+      return NextResponse.json(
+        { error: 'The tutor has not connected a video provider (Zoom or Google Meet). Please connect one in Settings before joining.' },
+        { status: 422 }
+      );
+    }
     console.error('[POST /api/groups/.../join-link]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

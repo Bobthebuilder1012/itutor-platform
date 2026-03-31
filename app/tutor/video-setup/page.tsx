@@ -60,11 +60,14 @@ export default function VideoSetupPage() {
       window.history.replaceState({}, '', '/tutor/video-setup');
       loadConnection();
     } else if (error) {
+      const detail = params.get('detail');
       const errorMessages: Record<string, string> = {
         'auth_failed': 'Authorization failed. Please try again.',
-        'connection_failed': 'Failed to save connection. Please try again.'
+        'connection_failed': 'Failed to save connection. Please try again.',
+        'server_config': 'Server configuration error. Please contact support.',
       };
-      alert(errorMessages[error] || 'An error occurred. Please try again.');
+      const msg = errorMessages[error] || 'An error occurred. Please try again.';
+      alert(detail ? `${msg}\n\nDetails: ${detail}` : msg);
       // Remove query params
       window.history.replaceState({}, '', '/tutor/video-setup');
       setSwitching(false);

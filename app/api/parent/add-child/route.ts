@@ -5,6 +5,8 @@ import { ParentAccessError, requireParentContext } from '@/lib/server/parentAcce
 
 export const dynamic = 'force-dynamic';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
