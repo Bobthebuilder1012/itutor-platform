@@ -87,11 +87,12 @@ export async function createBookingRequest(
   studentNotes?: string,
   durationMinutes: number = 60,
   communityId?: string | null
-): Promise<{ success: boolean; booking_id: string }> {
+): Promise<{ success: boolean; booking_id: string; status?: string; requires_payment?: boolean }> {
   const response = await fetch('/api/bookings/create', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
+      studentId,
       tutorId,
       subjectId,
       sessionTypeId,
@@ -108,7 +109,7 @@ export async function createBookingRequest(
     throw new Error(result?.error || 'Failed to create booking request');
   }
 
-  return result as { success: boolean; booking_id: string };
+  return result as { success: boolean; booking_id: string; status?: string; requires_payment?: boolean };
 }
 
 /**
@@ -219,13 +220,21 @@ export async function studentCancelBooking(
   bookingId: string,
   reason?: string
 ): Promise<{ success: boolean; status: string }> {
-  const { data, error } = await supabase.rpc('student_cancel_booking', {
-    p_booking_id: bookingId,
-    p_reason: reason || null
-  } as StudentCancelBookingParams);
+  const response = await fetch('/api/bookings/student-cancel', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      bookingId,
+      reason: reason || null,
+    }),
+  });
 
-  if (error) throw error;
-  return data;
+  const result = await response.json();
+  if (!response.ok) {
+    throw new Error(result?.error || 'Failed to cancel booking');
+  }
+
+  return result as { success: boolean; status: string };
 }
 
 /**

@@ -188,11 +188,19 @@ export default function TutorProfilePage() {
     setBookingModalOpen(true);
   };
 
-  const handleBookingSuccess = (bookingId: string) => {
-    alert('Booking request sent successfully! The tutor will respond soon.');
+  const handleBookingSuccess = (result: {
+    bookingId: string;
+    requiresPayment?: boolean;
+    status?: string;
+  }) => {
     setBookingModalOpen(false);
     setSelectedTimeSlot(null);
-    // Navigate to bookings page
+    if (result.requiresPayment) {
+      router.push(`/payments/checkout?bookingId=${result.bookingId}`);
+      return;
+    }
+
+    alert('Booking request sent successfully! The tutor will respond soon.');
     router.push('/student/bookings');
   };
 
