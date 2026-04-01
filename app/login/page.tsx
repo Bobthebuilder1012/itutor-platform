@@ -291,291 +291,199 @@ export default function LoginPage() {
     }
   };
 
+  const inputBase = "w-full bg-white border border-gray-200 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-400 text-sm py-3 px-4";
+  const inputWithIcon = "w-full bg-white border border-gray-200 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-400 text-sm py-3 pl-10 pr-4";
+
   return (
-    <div className="min-h-screen flex" style={{ backgroundColor: '#e8f5ee' }}>
-      {/* Floating decorative circles */}
+    <div className="min-h-screen flex" style={{ backgroundColor: '#dff0e8' }}>
+      {/* Decorative circles */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute w-32 h-32 rounded-full bg-itutor-green/20 -top-8 left-12" />
-        <div className="absolute w-20 h-20 rounded-full bg-itutor-green/15 top-1/3 left-4" />
-        <div className="absolute w-48 h-48 rounded-full bg-itutor-green/10 bottom-0 left-1/4" />
-        <div className="absolute w-16 h-16 rounded-full bg-itutor-green/20 top-16 left-1/3" />
-        <div className="absolute w-10 h-10 rounded-full bg-itutor-green/25 bottom-32 left-8" />
+        <div className="absolute w-40 h-40 rounded-full" style={{ background: 'rgba(74,222,128,0.25)', top: '-30px', left: '60px' }} />
+        <div className="absolute w-24 h-24 rounded-full" style={{ background: 'rgba(74,222,128,0.18)', top: '38%', left: '-20px' }} />
+        <div className="absolute w-56 h-56 rounded-full" style={{ background: 'rgba(74,222,128,0.12)', bottom: '-40px', left: '18%' }} />
+        <div className="absolute w-20 h-20 rounded-full" style={{ background: 'rgba(74,222,128,0.22)', top: '10%', left: '32%' }} />
+        <div className="absolute w-12 h-12 rounded-full" style={{ background: 'rgba(74,222,128,0.28)', bottom: '20%', left: '6%' }} />
+        <div className="absolute w-8 h-8 rounded-full" style={{ background: 'rgba(74,222,128,0.20)', top: '55%', left: '42%' }} />
       </div>
 
       {/* LEFT PANEL */}
-      <div className="hidden lg:flex flex-1 flex-col justify-center px-14 py-16 relative overflow-hidden">
-        {/* Headline */}
-        <div className="mb-10">
-          <h1 className="text-4xl font-extrabold text-gray-900 leading-tight mb-8">
-            #1 Tutoring platform<br />in the Caribbean!
-          </h1>
-          <ul className="space-y-4">
-            {['Verified iTutors', 'Caribbean Curriculum', 'Exam-focused help'].map((item) => (
-              <li key={item} className="flex items-center gap-3">
-                <span className="w-7 h-7 rounded-full bg-itutor-green flex items-center justify-center flex-shrink-0">
-                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                  </svg>
-                </span>
-                <span className="text-lg font-semibold text-gray-800">{item}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
+      <div className="hidden lg:flex flex-1 flex-col justify-center px-16 py-12 relative">
+        <h1 className="text-[2.6rem] font-extrabold text-gray-900 leading-[1.15] mb-8">
+          #1 Tutoring platform<br />in the Caribbean!
+        </h1>
+
+        <ul className="space-y-5 mb-12">
+          {['Verified iTutors', 'Caribbean Curriculum', 'Exam-focused help'].map((item) => (
+            <li key={item} className="flex items-center gap-3">
+              <span className="w-7 h-7 rounded-full bg-itutor-green flex items-center justify-center flex-shrink-0">
+                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                </svg>
+              </span>
+              <span className="text-[1.05rem] font-semibold text-gray-800">{item}</span>
+            </li>
+          ))}
+        </ul>
 
         {/* Illustration */}
-        <div className="relative w-full max-w-sm">
-          <svg viewBox="0 0 420 280" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full">
-            <rect x="40" y="200" width="340" height="14" rx="7" fill="#a7d7b8"/>
-            <rect x="100" y="160" width="200" height="12" rx="6" fill="#4ade80"/>
-            <rect x="110" y="80" width="180" height="85" rx="10" fill="#1a2e1f"/>
-            <rect x="118" y="88" width="164" height="69" rx="6" fill="#22c55e" opacity="0.15"/>
-            <rect x="128" y="98" width="80" height="8" rx="4" fill="#4ade80" opacity="0.7"/>
-            <rect x="128" y="112" width="60" height="6" rx="3" fill="#4ade80" opacity="0.4"/>
-            <rect x="128" y="124" width="70" height="6" rx="3" fill="#4ade80" opacity="0.4"/>
-            <rect x="215" y="93" width="52" height="36" rx="8" fill="white" opacity="0.9"/>
-            <path d="M221 129 l6 8 l4-8" fill="white" opacity="0.9"/>
-            <circle cx="225" cy="104" r="6" fill="#4ade80"/>
-            <rect x="236" y="100" width="25" height="4" rx="2" fill="#d1fae5"/>
-            <rect x="236" y="108" width="18" height="3" rx="1.5" fill="#d1fae5"/>
-            <circle cx="155" cy="145" r="20" fill="#fbbf24"/>
-            <rect x="135" y="165" width="40" height="40" rx="8" fill="#22c55e"/>
-            <circle cx="215" cy="148" r="18" fill="#f9a8d4"/>
-            <rect x="197" y="166" width="36" height="38" rx="8" fill="#fbbf24"/>
-            <path d="M135 140 q20-30 40 0" fill="#92400e"/>
-            <path d="M197 140 q18-25 36 0" fill="#7c3aed" opacity="0.6"/>
-            <rect x="230" y="185" width="60" height="18" rx="4" fill="white" opacity="0.8"/>
-            <line x1="240" y1="191" x2="282" y2="191" stroke="#4ade80" strokeWidth="1.5"/>
-            <line x1="240" y1="197" x2="270" y2="197" stroke="#4ade80" strokeWidth="1.5"/>
-            <rect x="80" y="175" width="6" height="28" rx="3" fill="#fbbf24" transform="rotate(-15 83 189)"/>
-            <rect x="70" y="178" width="6" height="28" rx="3" fill="#f87171" transform="rotate(-8 73 192)"/>
-            <rect x="330" y="130" width="6" height="72" rx="3" fill="#6b7280"/>
-            <ellipse cx="333" cy="128" rx="22" ry="12" fill="#4ade80" opacity="0.8"/>
-            <ellipse cx="333" cy="128" rx="14" ry="7" fill="#a7f3d0"/>
+        <div className="w-full max-w-[420px]">
+          <svg viewBox="0 0 480 320" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full drop-shadow-sm">
+            <rect x="20" y="232" width="440" height="16" rx="8" fill="#86c9a0" opacity="0.6"/>
+            <rect x="60" y="220" width="360" height="14" rx="7" fill="#a7d9bc"/>
+            <rect x="390" y="148" width="7" height="74" rx="3.5" fill="#9ca3af"/>
+            <rect x="370" y="144" width="28" height="7" rx="3.5" fill="#9ca3af" transform="rotate(-20 384 147)"/>
+            <ellipse cx="375" cy="130" rx="26" ry="13" fill="#4ade80" opacity="0.85"/>
+            <ellipse cx="375" cy="130" rx="16" ry="8" fill="#bbf7d0"/>
+            <ellipse cx="375" cy="158" rx="30" ry="10" fill="#4ade80" opacity="0.08"/>
+            <rect x="72" y="196" width="26" height="28" rx="4" fill="#34d399" opacity="0.5"/>
+            <rect x="77" y="178" width="5" height="22" rx="2.5" fill="#fbbf24" transform="rotate(-12 79 189)"/>
+            <rect x="85" y="176" width="5" height="22" rx="2.5" fill="#f87171" transform="rotate(6 87 187)"/>
+            <rect x="80" y="174" width="5" height="22" rx="2.5" fill="#60a5fa" transform="rotate(-3 82 185)"/>
+            <rect x="108" y="208" width="44" height="12" rx="3" fill="#6ee7b7"/>
+            <rect x="111" y="198" width="38" height="12" rx="3" fill="#34d399"/>
+            <rect x="114" y="188" width="32" height="12" rx="3" fill="#059669"/>
+            <rect x="158" y="192" width="220" height="30" rx="8" fill="#4ade80" opacity="0.9"/>
+            <rect x="168" y="196" width="200" height="22" rx="5" fill="#86efac" opacity="0.5"/>
+            <rect x="155" y="85" width="226" height="114" rx="12" fill="#1a2e1f"/>
+            <rect x="163" y="93" width="210" height="98" rx="7" fill="#0f2218"/>
+            <rect x="163" y="93" width="210" height="98" rx="7" fill="#22c55e" opacity="0.08"/>
+            <rect x="175" y="108" width="90" height="9" rx="4.5" fill="#4ade80" opacity="0.75"/>
+            <rect x="175" y="124" width="70" height="7" rx="3.5" fill="#4ade80" opacity="0.4"/>
+            <rect x="175" y="137" width="80" height="7" rx="3.5" fill="#4ade80" opacity="0.35"/>
+            <rect x="175" y="150" width="55" height="7" rx="3.5" fill="#4ade80" opacity="0.3"/>
+            <rect x="267" y="98" width="90" height="56" rx="10" fill="white" opacity="0.92"/>
+            <path d="M273 154 l8 12 l6-12" fill="white" opacity="0.92"/>
+            <circle cx="283" cy="116" r="9" fill="#4ade80"/>
+            <circle cx="283" cy="113" r="3.5" fill="white" opacity="0.9"/>
+            <path d="M277 122 q6-4 12 0" stroke="white" strokeWidth="1.2" fill="none" opacity="0.8"/>
+            <rect x="297" y="110" width="52" height="5" rx="2.5" fill="#d1fae5"/>
+            <rect x="297" y="120" width="40" height="4" rx="2" fill="#d1fae5" opacity="0.7"/>
+            <rect x="272" y="133" width="78" height="4" rx="2" fill="#d1fae5" opacity="0.5"/>
+            <rect x="272" y="141" width="60" height="4" rx="2" fill="#d1fae5" opacity="0.4"/>
+            <rect x="245" y="195" width="50" height="6" rx="3" fill="#16a34a" opacity="0.6"/>
+            <rect x="162" y="180" width="58" height="46" rx="10" fill="#16a34a"/>
+            <circle cx="191" cy="158" r="25" fill="#fde68a"/>
+            <path d="M166 152 q25-38 50 0" fill="#92400e"/>
+            <circle cx="183" cy="156" r="2.5" fill="#1f2937"/>
+            <circle cx="199" cy="156" r="2.5" fill="#1f2937"/>
+            <path d="M184 165 q7 6 14 0" stroke="#d97706" strokeWidth="1.8" fill="none" strokeLinecap="round"/>
+            <rect x="216" y="186" width="40" height="14" rx="7" fill="#fde68a" transform="rotate(-10 236 193)"/>
+            <rect x="268" y="180" width="56" height="46" rx="10" fill="#fbbf24"/>
+            <circle cx="296" cy="160" r="23" fill="#fecdd3"/>
+            <path d="M273 156 q23-34 46 0" fill="#7c3aed" opacity="0.55"/>
+            <path d="M319 158 q12-6 10 10" stroke="#7c3aed" strokeWidth="7" strokeLinecap="round" fill="none" opacity="0.5"/>
+            <circle cx="288" cy="158" r="2.3" fill="#1f2937"/>
+            <circle cx="304" cy="158" r="2.3" fill="#1f2937"/>
+            <path d="M289 167 q7 5 14 0" stroke="#be185d" strokeWidth="1.6" fill="none" strokeLinecap="round"/>
+            <rect x="232" y="185" width="38" height="13" rx="6.5" fill="#fecdd3" transform="rotate(8 251 191)"/>
+            <rect x="262" y="194" width="4" height="18" rx="2" fill="#fbbf24" transform="rotate(15 264 203)"/>
+            <rect x="295" y="200" width="80" height="22" rx="5" fill="white" opacity="0.9"/>
+            <line x1="308" y1="208" x2="366" y2="208" stroke="#4ade80" strokeWidth="1.5"/>
+            <line x1="308" y1="215" x2="352" y2="215" stroke="#4ade80" strokeWidth="1.5"/>
           </svg>
         </div>
       </div>
 
-      {/* RIGHT PANEL — floating card */}
-      <div className="w-full lg:w-[480px] flex items-center justify-center p-6 lg:p-10 relative z-10 overflow-y-auto">
-        <div className="bg-white rounded-3xl shadow-xl w-full max-w-sm px-8 py-9">
-        <div className="w-full">
-          {/* Logo at top of card */}
-          <div className="flex justify-center mb-4">
-            <img src="/assets/logo/itutor-logo-dark.png" alt="iTutor" className="h-7 w-auto" />
+      {/* RIGHT PANEL */}
+      <div className="w-full lg:w-auto lg:min-w-[460px] flex items-center justify-center px-6 py-10 relative z-10">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[400px] px-8 py-8">
+
+          {/* Logo */}
+          <div className="flex justify-center mb-3">
+            <img src="/assets/logo/itutor-logo-dark.png" alt="iTutor" className="h-8 w-auto" />
           </div>
 
           {/* Heading */}
-          <div className="mb-7 text-center">
+          <div className="text-center mb-5">
             <h2 className="text-2xl font-bold text-gray-900 mb-1">Welcome</h2>
             <p className="text-sm text-gray-500">Sign in to your iTutor account</p>
           </div>
 
+          {/* Status banners */}
+          {emailConfirmed && (
+            <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-4 relative">
+              <button onClick={() => setEmailConfirmed(false)} type="button" className="absolute top-2 right-2 text-green-500 hover:text-green-700">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
+              <p className="text-sm font-semibold">Email confirmed! You can now sign in.</p>
+            </div>
+          )}
 
-          <form onSubmit={handleLogin} className="space-y-5">
-            {/* Email Confirmed Success Banner */}
-            {emailConfirmed && (
-              <div className="bg-green-900/20 border-2 border-green-500/50 text-green-200 px-4 py-4 rounded-lg backdrop-blur-sm relative">
-                <button
-                  onClick={() => setEmailConfirmed(false)}
-                  className="absolute top-2 right-2 text-green-400 hover:text-green-300 transition-colors"
-                  type="button"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-                <div className="flex items-start gap-3">
-                  <div className="flex-shrink-0 mt-0.5">
-                    <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                  <div className="flex-1 pr-4">
-                    <p className="font-bold text-green-100 mb-2 text-lg">✅ Email Confirmed!</p>
-                    <p className="text-sm text-green-200 mb-2">
-                      Your email has been successfully verified. You can now log in to your iTutor account.
-                    </p>
-                    <p className="text-xs text-green-300">
-                      Enter your email and password below to continue.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
+          {showEmailSent && (
+            <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-4 relative">
+              <button onClick={() => setShowEmailSent(false)} type="button" className="absolute top-2 right-2 text-green-500 hover:text-green-700">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
+              <p className="text-sm font-semibold mb-1">Account created! Check your email to verify.</p>
+              {resendSuccess && <p className="text-xs text-green-600 mt-1">{resendSuccess}</p>}
+              {resendError && <p className="text-xs text-red-500 mt-1">{resendError}</p>}
+              <button type="button" onClick={handleResendEmail} disabled={resendCooldown > 0 || resendLoading}
+                className="mt-2 text-xs font-medium text-itutor-green hover:underline disabled:opacity-50">
+                {resendLoading ? 'Sending...' : resendCooldown > 0 ? `Resend (${resendCooldown}s)` : 'Resend verification email'}
+              </button>
+            </div>
+          )}
 
-            {/* Email Sent (Awaiting Confirmation) Banner */}
-            {showEmailSent && (
-              <div className="bg-green-900/20 border-2 border-green-500/50 text-green-200 px-4 py-4 rounded-lg backdrop-blur-sm space-y-3 relative">
-                <button
-                  onClick={() => setShowEmailSent(false)}
-                  className="absolute top-2 right-2 text-green-400 hover:text-green-300 transition-colors"
-                  type="button"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-                <div className="flex items-start gap-3">
-                  <div className="flex-shrink-0 mt-0.5">
-                    <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                  <div className="flex-1 pr-4">
-                    <p className="font-semibold text-green-100 mb-1">Account Created!</p>
-                    <p className="text-sm text-green-200 mb-3">
-                      Please check your email to verify your account. After verification, you can log in below.
-                    </p>
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-2.5 rounded-lg mb-4">
+              <p className="text-sm">{error}</p>
+            </div>
+          )}
 
-                    <div className="bg-green-950/30 border border-green-600/30 rounded-md p-3 mb-3">
-                      <p className="text-xs text-green-300 font-medium mb-1">Didn't receive the email?</p>
-                      <ul className="text-xs text-green-300/90 space-y-0.5 list-disc list-inside">
-                        <li>Check your spam or junk folder</li>
-                        <li>Make sure you entered the correct email</li>
-                        <li>Wait a few minutes for delivery</li>
-                      </ul>
-                    </div>
-
-                    {resendSuccess && (
-                      <div className="bg-green-800/30 border border-green-400/30 text-green-100 px-3 py-2 rounded-md text-sm mb-2">
-                        {resendSuccess}
-                      </div>
-                    )}
-
-                    {resendError && (
-                      <div className="bg-red-900/30 border border-red-400/30 text-red-200 px-3 py-2 rounded-md text-sm mb-2">
-                        {resendError}
-                      </div>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={handleResendEmail}
-                      disabled={resendCooldown > 0 || resendLoading}
-                      className="w-full bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {resendLoading ? (
-                        'Sending...'
-                      ) : resendCooldown > 0 ? (
-                        `Resend email (${resendCooldown}s)`
-                      ) : (
-                        'Resend verification email'
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {error && (
-              <div className="bg-red-900/20 border border-red-500/50 text-red-400 px-4 py-3 rounded-lg backdrop-blur-sm">
-                <p className="text-sm">{error}</p>
-              </div>
-            )}
-
-            <div>
-              <label htmlFor="email" className="block text-sm font-semibold text-gray-800 mb-1.5">
-                Email address
-              </label>
-              <input
-                type="email"
-                id="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 text-gray-900 rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none focus:bg-white transition placeholder-gray-400 text-sm"
-                placeholder="you@example.com"
-                required
-                disabled={loading}
-              />
+          <form onSubmit={handleLogin} className="space-y-3.5">
+            {/* Email */}
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+              </span>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                className={inputWithIcon} placeholder="you@example.com" required disabled={loading} />
             </div>
 
+            {/* Password */}
             <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label htmlFor="password" className="block text-sm font-semibold text-gray-800">
-                  Password
-                </label>
-                <a
-                  href="/forgot-password"
-                  className="text-sm text-itutor-green hover:text-emerald-400 font-medium transition-colors"
-                >
-                  Forgot password?
-                </a>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-sm font-medium text-gray-700">Password</label>
+                <a href="/forgot-password" className="text-sm text-itutor-green font-medium hover:underline">Forgot password?</a>
               </div>
               <div className="relative">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  id="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-3 pr-10 bg-gray-50 border-2 border-gray-200 text-gray-900 rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none focus:bg-white transition placeholder-gray-400 text-sm"
-                  placeholder="Enter your password"
-                  required
-                  disabled={loading}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-                  tabIndex={-1}
-                >
-                  {showPassword ? (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                    </svg>
-                  ) : (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
-                  )}
+                <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)}
+                  className={`${inputBase} pr-14`} placeholder="Enter your password" required disabled={loading} />
+                <button type="button" onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500 hover:text-gray-700 font-medium" tabIndex={-1}>
+                  {showPassword ? 'Hide' : 'Show'}
                 </button>
               </div>
             </div>
 
-            <div className="flex items-center">
-              <input
-                type="checkbox"
-                id="rememberMe"
-                checked={rememberMe}
-                onChange={(e) => setRememberMe(e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300 text-itutor-green focus:ring-2 focus:ring-itutor-green focus:ring-offset-0 cursor-pointer"
-                disabled={loading}
-              />
-              <label htmlFor="rememberMe" className="ml-2 block text-sm text-gray-600 cursor-pointer select-none">
-                Keep me signed in
-              </label>
+            {/* Remember me */}
+            <div className="flex items-center gap-2">
+              <input type="checkbox" id="rememberMe" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-itutor-green focus:ring-itutor-green cursor-pointer" disabled={loading} />
+              <label htmlFor="rememberMe" className="text-sm text-gray-600 cursor-pointer">Keep me signed in</label>
             </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-itutor-green hover:bg-emerald-600 text-white py-3 px-4 rounded-xl focus:ring-4 focus:ring-itutor-green/30 focus:outline-none transition-all font-bold text-base disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-itutor-green/20"
-            >
+            <button type="submit" disabled={loading}
+              className="w-full bg-itutor-green hover:bg-emerald-700 text-white py-3 rounded-lg font-bold text-base transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-1">
               {loading ? (
-                <span className="flex items-center justify-center">
-                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
                   </svg>
                   Signing in...
                 </span>
-              ) : (
-                'Sign in'
-              )}
+              ) : 'Sign in'}
             </button>
           </form>
 
-          <div className="mt-5 space-y-3 text-center">
-            <p className="text-sm text-gray-500">
+          <div className="mt-4 text-center space-y-3">
+            <p className="text-sm text-gray-600">
               Don&apos;t have an account?{' '}
-              <a href="/signup" className="text-itutor-green font-bold hover:underline">Sign up</a>
+              <a href="/signup" className="font-bold text-gray-900 hover:text-itutor-green transition-colors">Sign up</a>
             </p>
-
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-100" /></div>
-              <div className="relative flex justify-center"><span className="bg-white px-3 text-xs text-gray-400">or</span></div>
-            </div>
 
             <SocialLoginButton provider="google" mode="login" />
 
@@ -586,7 +494,6 @@ export default function LoginPage() {
               </p>
             )}
           </div>
-        </div>
         </div>
       </div>
     </div>
