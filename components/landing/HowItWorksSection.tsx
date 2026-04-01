@@ -63,13 +63,13 @@ export default function HowItWorksSection() {
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 2xl:px-12 3xl:px-16 relative z-10">
         {/* Section Header */}
         <div className="mb-16 text-center 2xl:mb-24 3xl:mb-32">
-          <h2 className="mb-6 text-4xl font-bold text-gray-900 sm:text-5xl lg:text-6xl 2xl:mb-8 2xl:text-7xl 3xl:mb-10 3xl:text-8xl">
+          <h2 className="mb-6 text-3xl font-bold text-gray-900 sm:text-5xl lg:text-6xl 2xl:mb-8 2xl:text-7xl 3xl:mb-10 3xl:text-8xl">
             How It{' '}
             <span className="text-itutor-green">
               Works
             </span>
           </h2>
-          <p className="mx-auto max-w-2xl text-xl text-gray-600 2xl:max-w-4xl 2xl:text-2xl 3xl:max-w-5xl 3xl:text-3xl">
+          <p className="mx-auto max-w-2xl text-base text-gray-600 sm:text-xl 2xl:max-w-4xl 2xl:text-2xl 3xl:max-w-5xl 3xl:text-3xl">
             Get started in minutes. Success in 4 simple steps.
           </p>
         </div>
