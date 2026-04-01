@@ -37,16 +37,12 @@ export default function Header() {
 
           {/* Auth Buttons - Right side */}
           <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0 mr-2">
-            <button
-              type="button"
-              onClick={() => {
-                setAuthMode('signup');
-                setAuthOpen(true);
-              }}
+            <Link
+              href="/signup"
               className="px-3 sm:px-6 py-2 sm:py-2.5 text-sm sm:text-base font-bold text-itutor-white hover:text-itutor-green transition-all duration-300 whitespace-nowrap hover:scale-105"
             >
               Sign Up
-            </button>
+            </Link>
             <button
               type="button"
               onClick={() => {
