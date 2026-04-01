@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
@@ -40,6 +40,8 @@ export default function FindStudentsPage() {
   const [selectedFormLevel, setSelectedFormLevel] = useState<string>('');
   const [selectedSchool, setSelectedSchool] = useState<string>('');
   const [availableSchools, setAvailableSchools] = useState<string[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const STUDENTS_PER_PAGE = 9;
 
   useEffect(() => {
     if (loading) return;
@@ -251,6 +253,15 @@ export default function FindStudentsPage() {
     return filtered;
   }, [students, searchQuery, selectedSubjects, selectedFormLevel, selectedSchool, profile]);
 
+  // Reset to page 1 whenever filters change
+  useEffect(() => { setCurrentPage(1); }, [searchQuery, selectedSubjects, selectedFormLevel, selectedSchool]);
+
+  const totalPages = Math.ceil(filteredStudents.length / STUDENTS_PER_PAGE);
+  const pagedStudents = filteredStudents.slice(
+    (currentPage - 1) * STUDENTS_PER_PAGE,
+    currentPage * STUDENTS_PER_PAGE
+  );
+
   if (loading || !profile) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -356,6 +367,7 @@ export default function FindStudentsPage() {
         <div className="mb-4">
           <p className="text-gray-600 text-sm">
             Showing {filteredStudents.length} {filteredStudents.length === 1 ? 'student' : 'students'}
+            {totalPages > 1 && ` — page ${currentPage} of ${totalPages}`}
           </p>
         </div>
 
@@ -377,7 +389,7 @@ export default function FindStudentsPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredStudents.map(student => {
+            {pagedStudents.map(student => {
               // Check if tutor teaches any of the student's subjects
               const matchesTutorSubjects = profile.subjects_of_study?.some(tutorSubject =>
                 student.subjectDetails.some(studentSubject => studentSubject.name === tutorSubject)
@@ -461,6 +473,49 @@ export default function FindStudentsPage() {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="mt-8 flex items-center justify-center gap-2">
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg border-2 border-gray-200 bg-white text-gray-700 font-medium text-sm transition-all hover:border-itutor-green hover:text-itutor-green disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-gray-200 disabled:hover:text-gray-700"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              Previous
+            </button>
+
+            <div className="flex items-center gap-1">
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                <button
+                  key={page}
+                  onClick={() => setCurrentPage(page)}
+                  className={`w-9 h-9 rounded-lg text-sm font-semibold transition-all ${
+                    page === currentPage
+                      ? 'bg-itutor-green text-white shadow-md'
+                      : 'border-2 border-gray-200 bg-white text-gray-600 hover:border-itutor-green hover:text-itutor-green'
+                  }`}
+                >
+                  {page}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg border-2 border-gray-200 bg-white text-gray-700 font-medium text-sm transition-all hover:border-itutor-green hover:text-itutor-green disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-gray-200 disabled:hover:text-gray-700"
+            >
+              Next
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
           </div>
         )}
       </div>
