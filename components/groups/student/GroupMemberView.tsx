@@ -8,6 +8,7 @@ import StatusBadge from '../shared/StatusBadge';
 import AnnouncementBoard from '../announcements/AnnouncementBoard';
 import GroupStreamPage from '../stream/GroupStreamPage';
 import UserAvatar from '@/components/UserAvatar';
+import WhatsAppJoinButton from './WhatsAppJoinButton';
 
 type Tab = 'stream' | 'announcements' | 'sessions' | 'messages';
 
@@ -443,6 +444,8 @@ export default function GroupMemberView({ group, currentUserId }: GroupMemberVie
 
           </div>
         )}
+
+        <WhatsAppJoinButton groupId={group.id} />
       </aside>
 
     </div>

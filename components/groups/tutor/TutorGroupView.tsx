@@ -1,13 +1,16 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Cropper from 'react-easy-crop';
 import type {
   GroupWithTutor,
   GroupMember,
   GroupSessionWithOccurrences,
 } from '@/lib/types/groups';
+import { supabase } from '@/lib/supabase/client';
 import { getDefaultThumbnail, deterministicDefault, isDefaultThumbnail } from '@/lib/defaultThumbnails';
+import { getCroppedImg, type Area } from '@/lib/utils/imageCrop';
 import SessionRow from './SessionRow';
 import MemberList from './MemberList';
 import CreateSessionModal from './CreateSessionModal';
@@ -56,6 +59,13 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
   const [manageSaving, setManageSaving] = useState(false);
   const [manageError, setManageError] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [draggingImage, setDraggingImage] = useState(false);
+  const coverInputRef = useRef<HTMLInputElement | null>(null);
+  const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
   const [manageForm, setManageForm] = useState({
     name: group.name ?? '',
     topic: (group as any).topic ?? '',
@@ -64,13 +74,13 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
     description: group.description ?? '',
     goals: ((group as any).goals ?? '') as string,
     cover_image: ((group as any).cover_image ?? '') as string,
-    header_image: ((group as any).header_image ?? '') as string,
     pricing_mode: ((group as any).pricing_mode ?? 'FREE') as 'FREE' | 'PER_SESSION' | 'PER_COURSE',
     price_per_session: (group as any).price_per_session ?? '',
     price_per_course: (group as any).price_per_course ?? '',
     session_length_minutes: (group as any).session_length_minutes ?? '',
     session_frequency: ((group as any).session_frequency ?? 'weekly') as string,
     availability_window: ((group as any).availability_window ?? '') as string,
+    whatsapp_link: ((group as any).whatsapp_link ?? '') as string,
   });
 
   const fetchSessions = useCallback(async () => {
@@ -120,13 +130,13 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
       description: group.description ?? '',
       goals: ((group as any).goals ?? '') as string,
       cover_image: ((group as any).cover_image ?? '') as string,
-      header_image: ((group as any).header_image ?? '') as string,
       pricing_mode: ((group as any).pricing_mode ?? 'FREE') as 'FREE' | 'PER_SESSION' | 'PER_COURSE',
       price_per_session: (group as any).price_per_session ?? '',
       price_per_course: (group as any).price_per_course ?? '',
       session_length_minutes: (group as any).session_length_minutes ?? '',
       session_frequency: ((group as any).session_frequency ?? 'weekly') as string,
       availability_window: ((group as any).availability_window ?? '') as string,
+      whatsapp_link: ((group as any).whatsapp_link ?? '') as string,
     });
     setManageError('');
   }, [group]);
@@ -155,7 +165,6 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
         description: manageForm.description.trim() || null,
         goals: manageForm.goals.trim() || null,
         cover_image: manageForm.cover_image.trim() || null,
-        header_image: manageForm.header_image.trim() || null,
         pricing_mode: manageForm.pricing_mode,
         price_per_session:
           manageForm.pricing_mode === 'PER_SESSION' && manageForm.price_per_session !== ''
@@ -169,6 +178,7 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
           manageForm.session_length_minutes === '' ? null : Number(manageForm.session_length_minutes),
         session_frequency: manageForm.session_frequency || null,
         availability_window: manageForm.availability_window.trim() || null,
+        whatsapp_link: manageForm.whatsapp_link.trim() || null,
       };
       const res = await fetch(`/api/groups/${group.id}`, {
         method: 'PATCH',
@@ -252,6 +262,82 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
     setLinkCopied(true);
     setTimeout(() => setLinkCopied(false), 2000);
   };
+
+  const uploadCoverImage = useCallback(async (file: Blob) => {
+    if (!file.type.startsWith('image/')) {
+      throw new Error('Please upload an image file');
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      throw new Error('Image must be 10MB or smaller');
+    }
+
+    setUploadingImage(true);
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData.user) {
+      setUploadingImage(false);
+      throw new Error('Please sign in again before uploading');
+    }
+
+    const safeExt =
+      file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg';
+    const fileName = `cover-${Date.now()}.${safeExt}`;
+    const path = `${userData.user.id}/groups/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage.from('avatars').upload(path, file, {
+      contentType: file.type,
+      upsert: true,
+    });
+
+    if (uploadError) {
+      setUploadingImage(false);
+      throw new Error(uploadError.message || 'Failed to upload image');
+    }
+
+    const { data: publicUrlData } = supabase.storage.from('avatars').getPublicUrl(path);
+    setManageForm((prev) => ({ ...prev, cover_image: `${publicUrlData.publicUrl}?t=${Date.now()}` }));
+    setUploadingImage(false);
+  }, []);
+
+  const onCropComplete = useCallback((_croppedArea: Area, nextCroppedAreaPixels: Area) => {
+    setCroppedAreaPixels(nextCroppedAreaPixels);
+  }, []);
+
+  const handleCoverSelection = useCallback(async (file: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setManageError('Please upload an image file');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setManageError('Image must be 10MB or smaller');
+      return;
+    }
+    setManageError('');
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCropImageSrc(reader.result as string);
+      setCrop({ x: 0, y: 0 });
+      setZoom(1);
+      setCroppedAreaPixels(null);
+    };
+    reader.onerror = () => setManageError('Failed to read image');
+    reader.readAsDataURL(file);
+  }, []);
+
+  const handleApplyCrop = useCallback(async () => {
+    if (!cropImageSrc || !croppedAreaPixels) return;
+    setManageError('');
+    try {
+      const croppedBlob = await getCroppedImg(cropImageSrc, croppedAreaPixels);
+      await uploadCoverImage(croppedBlob);
+      setCropImageSrc(null);
+      setCrop({ x: 0, y: 0 });
+      setZoom(1);
+      setCroppedAreaPixels(null);
+    } catch (err: any) {
+      setManageError(err?.message || 'Failed to upload image');
+    }
+  }, [cropImageSrc, croppedAreaPixels, uploadCoverImage]);
 
   const inputCls = 'w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500';
 
@@ -404,9 +490,90 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
                 </div>
                 <div className="rounded-lg border border-gray-100 bg-gray-50/70 p-3">
                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Branding</p>
-                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Group thumbnail URL</label><input type="text" value={manageForm.cover_image} onChange={(e) => setManageForm((p) => ({ ...p, cover_image: e.target.value }))} placeholder="https://..." className={inputCls} /></div>
-                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Header image URL</label><input type="text" value={manageForm.header_image} onChange={(e) => setManageForm((p) => ({ ...p, header_image: e.target.value }))} placeholder="https://..." className={inputCls} /></div>
+                  <div className="mt-3">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Group thumbnail</label>
+                    <div
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setDraggingImage(true);
+                      }}
+                      onDragLeave={(e) => {
+                        e.preventDefault();
+                        setDraggingImage(false);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setDraggingImage(false);
+                        const file = e.dataTransfer.files?.[0] ?? null;
+                        void handleCoverSelection(file);
+                      }}
+                      className={`rounded-xl border-2 border-dashed p-4 transition-colors ${
+                        draggingImage ? 'border-emerald-500 bg-emerald-50' : 'border-gray-300 bg-white'
+                      }`}
+                    >
+                      {manageForm.cover_image ? (
+                        <img
+                          src={manageForm.cover_image}
+                          alt="Group thumbnail preview"
+                          className="h-40 w-full rounded-lg border border-gray-200 object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-40 w-full items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-500">
+                          Drag and drop thumbnail image here
+                        </div>
+                      )}
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => coverInputRef.current?.click()}
+                          className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                        >
+                          Choose file
+                        </button>
+                        {manageForm.cover_image && (
+                          <button
+                            type="button"
+                            onClick={() => setManageForm((p) => ({ ...p, cover_image: '' }))}
+                            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                          >
+                            Remove
+                          </button>
+                        )}
+                        <span className="text-xs text-gray-500">
+                          {uploadingImage
+                            ? 'Uploading...'
+                            : 'Recommended: 1920 x 1080 px. PNG, JPG, WEBP up to 10MB. Drag inside crop to reposition.'}
+                        </span>
+                      </div>
+                      <input
+                        ref={coverInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] ?? null;
+                          void handleCoverSelection(file);
+                          e.currentTarget.value = '';
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-green-100 bg-green-50/50 p-3">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Community</p>
+                  <div className="mt-3">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">WhatsApp group invite link</label>
+                    <input
+                      type="url"
+                      value={manageForm.whatsapp_link}
+                      onChange={(e) => setManageForm((p) => ({ ...p, whatsapp_link: e.target.value }))}
+                      placeholder="https://chat.whatsapp.com/..."
+                      className={inputCls}
+                    />
+                    <p className="mt-1.5 text-[11px] text-gray-400">
+                      Paste your WhatsApp group invite link. Only approved members will see a "Join WhatsApp group" button — the link is never exposed in the page source.
+                      Tip: enable <strong>Approve new members</strong> in WhatsApp for an extra layer of control.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -632,6 +799,77 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
           onCreated={() => { setShowCreateSession(false); fetchSessions(); }}
           onClose={() => setShowCreateSession(false)}
         />
+      )}
+
+      {cropImageSrc && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+              <h3 className="text-base font-semibold text-gray-900">Reposition group thumbnail</h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setCropImageSrc(null);
+                  setCrop({ x: 0, y: 0 });
+                  setZoom(1);
+                  setCroppedAreaPixels(null);
+                }}
+                className="text-sm text-gray-500 hover:text-gray-700"
+              >
+                Close
+              </button>
+            </div>
+            <div className="space-y-4 p-5">
+              <div className="relative w-full overflow-hidden rounded-xl bg-gray-100" style={{ aspectRatio: '16 / 9' }}>
+                <Cropper
+                  image={cropImageSrc}
+                  crop={crop}
+                  zoom={zoom}
+                  aspect={16 / 9}
+                  showGrid={false}
+                  onCropChange={setCrop}
+                  onCropComplete={onCropComplete}
+                  onZoomChange={setZoom}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Zoom</label>
+                <input
+                  type="range"
+                  min={1}
+                  max={3}
+                  step={0.1}
+                  value={zoom}
+                  onChange={(e) => setZoom(Number(e.target.value))}
+                  className="w-full accent-emerald-600"
+                />
+              </div>
+              <p className="text-xs text-gray-500">Drag the image to move it inside the frame.</p>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCropImageSrc(null);
+                    setCrop({ x: 0, y: 0 });
+                    setZoom(1);
+                    setCroppedAreaPixels(null);
+                  }}
+                  className="flex-1 rounded-xl border border-gray-200 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleApplyCrop()}
+                  disabled={uploadingImage}
+                  className="flex-1 rounded-xl bg-emerald-600 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {uploadingImage ? 'Uploading...' : 'Apply image'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
