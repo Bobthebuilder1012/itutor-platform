@@ -106,38 +106,49 @@ export default function LandingSearchBar() {
     }
   };
 
-  const placeholder = 'Search by subject to find verified educators.';
+  const placeholder = 'Search by subject or tutor...';
 
   return (
     <div className="relative w-full" ref={dropdownRef}>
-      {/* Large Search Input */}
-      <div className="relative">
+      {/* Search Input — pill on mobile, rounded-2xl on sm+ */}
+      <div className="relative flex items-center rounded-full border border-gray-200 bg-white shadow-md transition-shadow focus-within:ring-2 focus-within:ring-itutor-green/25 sm:rounded-2xl sm:border-2 sm:border-gray-300 sm:shadow-none sm:focus-within:border-itutor-green sm:focus-within:ring-4 sm:focus-within:ring-itutor-green/20 2xl:rounded-3xl">
+        {/* Icon — inline on mobile, absolute on sm+ */}
+        <svg
+          className="ml-4 h-4 w-4 shrink-0 text-gray-400 sm:absolute sm:left-5 sm:ml-0 sm:h-6 sm:w-6 sm:top-1/2 sm:-translate-y-1/2 2xl:left-6 2xl:h-8 2xl:w-8 3xl:left-7 3xl:h-10 3xl:w-10"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyPress}
           onFocus={() => {
-            if (subjectSuggestions.length > 0) {
-              setShowDropdown(true);
-            }
+            if (subjectSuggestions.length > 0) setShowDropdown(true);
           }}
           placeholder={placeholder}
-          className="w-full rounded-2xl border-2 border-gray-300 bg-white py-4 pl-14 pr-6 text-base text-gray-900 placeholder-gray-500 transition-all focus:border-itutor-green focus:outline-none focus:ring-4 focus:ring-itutor-green/20 sm:py-5 sm:pl-16 sm:text-lg 2xl:rounded-3xl 2xl:py-6 2xl:pl-20 2xl:pr-8 2xl:text-2xl 3xl:py-8 3xl:pl-24 3xl:text-3xl"
+          className="flex-1 bg-transparent py-3 pl-3 pr-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none sm:py-5 sm:pl-16 sm:pr-6 sm:text-lg 2xl:rounded-3xl 2xl:py-6 2xl:pl-20 2xl:pr-8 2xl:text-2xl 3xl:py-8 3xl:pl-24 3xl:text-3xl"
         />
-        <svg
-          className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400 sm:left-5 sm:h-6 sm:w-6 2xl:left-6 2xl:h-8 2xl:w-8 3xl:left-7 3xl:h-10 3xl:w-10"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
+        {/* Search button — mobile only */}
+        <button
+          type="button"
+          onClick={() => {
+            if (subjectSuggestions.length > 0) {
+              handleSubjectSelect(subjectSuggestions[0]);
+            } else if (query.length >= 1) {
+              router.push(`/search?subject=${encodeURIComponent(query)}&mode=subject`);
+              setShowDropdown(false);
+            } else {
+              router.push('/search');
+            }
+          }}
+          className="m-1.5 rounded-full bg-itutor-green px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-emerald-500 sm:hidden"
         >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-          />
-        </svg>
+          Search
+        </button>
       </div>
 
       {/* Dropdown Results - Subject Suggestions Only */}
