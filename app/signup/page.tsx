@@ -312,112 +312,102 @@ export default function SignupPage() {
   };
 
   return (
-    <div
-      className="min-h-screen flex"
-      style={{ background: 'radial-gradient(ellipse 70% 60% at 15% 20%, rgba(34,197,94,0.22) 0%, transparent 65%), radial-gradient(ellipse 55% 50% at 85% 80%, rgba(34,197,94,0.14) 0%, transparent 65%), linear-gradient(160deg, #07180b 0%, #0e2a14 50%, #081510 100%)' }}
-    >
-      {/* Dot grid overlay */}
-      <div className="fixed inset-0 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, rgba(34,197,94,0.07) 1px, transparent 1px)', backgroundSize: '34px 34px' }} />
+    <div className="min-h-screen flex" style={{ backgroundColor: '#e8f5ee' }}>
+      {/* Floating decorative circles */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute w-32 h-32 rounded-full bg-itutor-green/20 -top-8 left-12" />
+        <div className="absolute w-20 h-20 rounded-full bg-itutor-green/15 top-1/3 left-4" />
+        <div className="absolute w-48 h-48 rounded-full bg-itutor-green/10 bottom-0 left-1/4" />
+        <div className="absolute w-16 h-16 rounded-full bg-itutor-green/20 top-16 left-1/3" />
+        <div className="absolute w-10 h-10 rounded-full bg-itutor-green/25 bottom-32 left-8" />
+      </div>
 
       {/* LEFT PANEL */}
-      <div className="hidden lg:flex flex-1 flex-col justify-between p-14 relative overflow-hidden">
-        {/* Decorative rings */}
-        <div className="absolute w-[540px] h-[540px] -top-40 -left-40 rounded-full border border-itutor-green/10 pointer-events-none" />
-        <div className="absolute w-[340px] h-[340px] -bottom-28 -right-12 rounded-full border border-itutor-green/[0.07] pointer-events-none" />
-
-        {/* Brand */}
-        <div className="relative z-10">
-          <img src="/assets/logo/itutor-logo-dark.png" alt="iTutor" className="h-8 w-auto" />
-        </div>
-
-        {/* Hero */}
-        <div className="relative z-10">
-          <div className="inline-flex items-center gap-2 bg-itutor-green/10 border border-itutor-green/25 rounded-full px-4 py-1.5 mb-5">
-            <span className="w-2 h-2 rounded-full bg-itutor-green animate-pulse" />
-            <span className="text-[11px] font-bold uppercase tracking-wider text-itutor-green">Caribbean&apos;s #1 Tutoring Platform</span>
-          </div>
-          <h1 className="text-[2.6rem] font-extrabold text-white leading-[1.08] tracking-tight mb-4">
-            Find your <span className="text-itutor-green">perfect tutor,</span><br />ace every subject.
+      <div className="hidden lg:flex flex-1 flex-col justify-center px-14 py-16 relative overflow-hidden">
+        {/* Headline */}
+        <div className="mb-10">
+          <h1 className="text-4xl font-extrabold text-gray-900 leading-tight mb-8">
+            #1 Tutoring platform<br />in the Caribbean!
           </h1>
-          <p className="text-white/50 text-[15px] leading-relaxed max-w-[340px]">
-            Get matched with top-rated verified iTutors. CSEC, CAPE &amp; beyond — all in one platform.
-          </p>
+          <ul className="space-y-4">
+            {['Verified iTutors', 'Caribbean Curriculum', 'Exam-focused help'].map((item) => (
+              <li key={item} className="flex items-center gap-3">
+                <span className="w-7 h-7 rounded-full bg-itutor-green flex items-center justify-center flex-shrink-0">
+                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                  </svg>
+                </span>
+                <span className="text-lg font-semibold text-gray-800">{item}</span>
+              </li>
+            ))}
+          </ul>
         </div>
 
-        {/* Feature cards */}
-        <div className="relative z-10 flex flex-col gap-3">
-          {[
-            { icon: 'person', color: 'from-itutor-green to-emerald-600', title: '1-on-1 Live Sessions', sub: 'Real-time tutoring, any time you need' },
-            { icon: 'chart', color: 'from-teal-400 to-teal-600', title: 'Track Your Progress', sub: 'Visual dashboards & session history' },
-            { icon: 'calendar', color: 'from-blue-400 to-blue-600', title: 'Flexible Scheduling', sub: 'Book sessions around your timetable' },
-          ].map((feat, i) => (
-            <div key={i} className="flex items-center gap-4 bg-white/[0.05] border border-white/[0.1] backdrop-blur-sm rounded-2xl px-5 py-4 w-fit min-w-[280px]" style={{ marginLeft: i === 1 ? '20px' : i === 2 ? '8px' : '0' }}>
-              <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${feat.color} flex items-center justify-center flex-shrink-0`}>
-                {feat.icon === 'person' && <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M6 20v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>}
-                {feat.icon === 'chart' && <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>}
-                {feat.icon === 'calendar' && <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>}
-              </div>
-              <div>
-                <p className="text-[13px] font-semibold text-white">{feat.title}</p>
-                <p className="text-[11px] text-white/40">{feat.sub}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Stats strip */}
-        <div className="relative z-10 flex gap-8">
-          {[
-            { val: '2,300+', lbl: 'Expert Tutors' },
-            { val: '80+', lbl: 'Subjects' },
-            { val: '4.9★', lbl: 'Avg. Rating' },
-            { val: '50K+', lbl: 'Students' },
-          ].map((s) => (
-            <div key={s.lbl}>
-              <p className="text-2xl font-extrabold text-itutor-green tracking-tight">{s.val}</p>
-              <p className="text-[11px] text-white/40 mt-0.5">{s.lbl}</p>
-            </div>
-          ))}
+        {/* Illustration */}
+        <div className="relative w-full max-w-sm">
+          <svg viewBox="0 0 420 280" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full">
+            {/* Desk */}
+            <rect x="40" y="200" width="340" height="14" rx="7" fill="#a7d7b8"/>
+            {/* Laptop base */}
+            <rect x="100" y="160" width="200" height="12" rx="6" fill="#4ade80"/>
+            {/* Laptop screen */}
+            <rect x="110" y="80" width="180" height="85" rx="10" fill="#1a2e1f"/>
+            <rect x="118" y="88" width="164" height="69" rx="6" fill="#22c55e" opacity="0.15"/>
+            {/* Screen content lines */}
+            <rect x="128" y="98" width="80" height="8" rx="4" fill="#4ade80" opacity="0.7"/>
+            <rect x="128" y="112" width="60" height="6" rx="3" fill="#4ade80" opacity="0.4"/>
+            <rect x="128" y="124" width="70" height="6" rx="3" fill="#4ade80" opacity="0.4"/>
+            {/* Chat bubble on screen */}
+            <rect x="215" y="93" width="52" height="36" rx="8" fill="white" opacity="0.9"/>
+            <path d="M221 129 l6 8 l4-8" fill="white" opacity="0.9"/>
+            {/* Person avatar in bubble */}
+            <circle cx="225" cy="104" r="6" fill="#4ade80"/>
+            <rect x="236" y="100" width="25" height="4" rx="2" fill="#d1fae5"/>
+            <rect x="236" y="108" width="18" height="3" rx="1.5" fill="#d1fae5"/>
+            {/* Student 1 (boy) */}
+            <circle cx="155" cy="145" r="20" fill="#fbbf24"/>
+            <rect x="135" y="165" width="40" height="40" rx="8" fill="#22c55e"/>
+            {/* Student 2 (girl) */}
+            <circle cx="215" cy="148" r="18" fill="#f9a8d4"/>
+            <rect x="197" y="166" width="36" height="38" rx="8" fill="#fbbf24"/>
+            {/* Hair */}
+            <path d="M135 140 q20-30 40 0" fill="#92400e"/>
+            <path d="M197 140 q18-25 36 0" fill="#7c3aed" opacity="0.6"/>
+            {/* Notebook */}
+            <rect x="230" y="185" width="60" height="18" rx="4" fill="white" opacity="0.8"/>
+            <line x1="240" y1="191" x2="282" y2="191" stroke="#4ade80" strokeWidth="1.5"/>
+            <line x1="240" y1="197" x2="270" y2="197" stroke="#4ade80" strokeWidth="1.5"/>
+            {/* Pencils */}
+            <rect x="80" y="175" width="6" height="28" rx="3" fill="#fbbf24" transform="rotate(-15 83 189)"/>
+            <rect x="70" y="178" width="6" height="28" rx="3" fill="#f87171" transform="rotate(-8 73 192)"/>
+            {/* Lamp */}
+            <rect x="330" y="130" width="6" height="72" rx="3" fill="#6b7280"/>
+            <ellipse cx="333" cy="128" rx="22" ry="12" fill="#4ade80" opacity="0.8"/>
+            <ellipse cx="333" cy="128" rx="14" ry="7" fill="#a7f3d0"/>
+          </svg>
         </div>
       </div>
 
       {/* RIGHT PANEL — floating card */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 lg:p-12 relative z-10 overflow-y-auto">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md px-8 py-10">
-        <div className="w-full max-w-sm mx-auto">
+      <div className="w-full lg:w-[480px] flex items-center justify-center p-6 lg:p-10 relative z-10 overflow-y-auto">
+        <div className="bg-white rounded-3xl shadow-xl w-full max-w-sm px-8 py-9">
+        <div className="w-full">
           {/* Logo at top of card */}
-          <div className="flex justify-center mb-6">
-            <img src="/assets/logo/itutor-logo-dark.png.png" alt="iTutor" className="h-8 w-auto" onError={(e) => { (e.target as HTMLImageElement).src = '/assets/logo/itutor-logo-dark.png'; }} />
+          <div className="flex justify-center mb-4">
+            <img src="/assets/logo/itutor-logo-dark.png" alt="iTutor" className="h-7 w-auto" />
           </div>
 
           {/* Heading */}
           <div className="mb-6 text-center">
-            <h2 className="text-2xl font-extrabold text-gray-900 tracking-tight mb-1">Create your account</h2>
-            <p className="text-sm text-gray-500">Start learning smarter today — it&apos;s free to join.</p>
+            <h2 className="text-2xl font-bold text-gray-900 mb-1">Welcome</h2>
+            <p className="text-sm text-gray-500">Sign up for your iTutor account</p>
           </div>
 
           {/* Tutor signup nudge */}
-          <p className="text-xs text-gray-500 mb-4 text-center">
+          <p className="text-xs text-gray-400 mb-4 text-center">
             Signing up to teach?{' '}
             <a href="/signup/tutor" className="text-itutor-green font-semibold hover:underline">Sign up as a tutor →</a>
           </p>
-
-          {/* Google button + divider */}
-          <div className="mb-5 space-y-3">
-            <SocialLoginButton
-              provider="google"
-              mode="signup"
-              redirectTo="/auth/callback?next=/signup/complete-role"
-            />
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-200" />
-              </div>
-              <div className="relative flex justify-center text-xs uppercase tracking-wide">
-                <span className="bg-white px-2 text-gray-400">Continue with email</span>
-              </div>
-            </div>
-          </div>
 
           <form onSubmit={handleSignup} className="space-y-4">
             {error && (
@@ -610,28 +600,29 @@ export default function SignupPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-gradient-to-r from-itutor-green to-emerald-500 text-white py-3 px-4 rounded-lg hover:shadow-lg hover:shadow-itutor-green/50 hover:scale-[1.02] focus:ring-4 focus:ring-itutor-green/30 focus:outline-none transition-all duration-300 font-bold text-base disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-itutor-green hover:bg-emerald-600 text-white py-3 px-4 rounded-xl focus:ring-4 focus:ring-itutor-green/30 focus:outline-none transition-all font-bold text-base disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-itutor-green/20"
             >
-              {loading ? 'Creating your account...' : 'Sign up'}
+              {loading ? 'Creating your account...' : 'Sign Up'}
             </button>
           </form>
 
-          <div className="mt-5 space-y-2">
-            <p className="text-xs text-gray-500 text-center">
-              Signing up for your child?{' '}
-              <a href="/signup/parent" className="text-itutor-green hover:text-emerald-500 font-medium transition-colors">
-                Sign up as a parent/guardian
-              </a>
-            </p>
-            <p className="text-xs text-gray-500 text-center">
+          <div className="mt-5 space-y-3 text-center">
+            <p className="text-sm text-gray-500">
               Already have an account?{' '}
-              <a href="/login" className="text-itutor-green hover:text-emerald-500 font-medium transition-colors">
-                Sign in
-              </a>
+              <a href="/login" className="text-itutor-green font-bold hover:underline">Log in</a>
             </p>
-            <a href="/" className="flex items-center justify-center gap-1 text-xs text-gray-400 hover:text-gray-600 pt-4 border-t border-gray-100 mt-4 transition">
-              ← Back to home
-            </a>
+
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-100" /></div>
+              <div className="relative flex justify-center"><span className="bg-white px-3 text-xs text-gray-400">or</span></div>
+            </div>
+
+            <SocialLoginButton provider="google" mode="signup" redirectTo="/auth/callback?next=/signup/complete-role" />
+
+            <p className="text-xs text-gray-400">
+              Signing up for your child?{' '}
+              <a href="/signup/parent" className="text-itutor-green font-medium hover:underline">Parent/guardian signup</a>
+            </p>
           </div>
         </div>
         </div>
