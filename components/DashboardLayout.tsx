@@ -220,9 +220,9 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         {/* Logo */}
         <div className={`h-16 flex items-center border-b border-white/10 flex-shrink-0 ${collapsed ? 'justify-center px-3' : 'px-5 justify-between'}`}>
           {collapsed ? (
-            <Link href={getDashboardLink()} onClick={() => setSidebarOpen(false)} title="Go to dashboard" className="flex items-center justify-center hover:opacity-80 transition-opacity">
+            <button onClick={toggleCollapsed} title="Expand sidebar" className="flex items-center justify-center hover:opacity-80 transition-opacity">
               <Image src="/assets/logo/itutor-mark.png" alt="iTutor" width={36} height={36} className="w-9 h-9 object-contain" />
-            </Link>
+            </button>
           ) : (
             <>
               <Link href={getDashboardLink()} onClick={() => setSidebarOpen(false)}>
