@@ -46,18 +46,24 @@ export async function GET(_req: NextRequest, { params }: Params) {
     let sessions: any[] | null = null;
     let attendance: any[] | null = null;
 
-    let membersResult = await service
+    const primaryMembersResult = await service
       .from('group_members')
       .select('user_id, joined_at, status, profile:profiles(full_name)')
       .eq('group_id', groupId);
-    if (membersResult.error && isSchemaMismatch(membersResult.error)) {
-      membersResult = await service
+
+    if (primaryMembersResult.error && isSchemaMismatch(primaryMembersResult.error)) {
+      const fallbackMembersResult = await service
         .from('group_members')
         .select('user_id, joined_at, status')
         .eq('group_id', groupId);
+      if (fallbackMembersResult.error && !isSchemaMismatch(fallbackMembersResult.error)) {
+        throw fallbackMembersResult.error;
+      }
+      members = (fallbackMembersResult.data ?? []) as any[];
+    } else {
+      if (primaryMembersResult.error) throw primaryMembersResult.error;
+      members = (primaryMembersResult.data ?? []) as any[];
     }
-    if (membersResult.error && !isSchemaMismatch(membersResult.error)) throw membersResult.error;
-    members = membersResult.data ?? [];
 
     let sessionsResult = await service
       .from('group_sessions')
