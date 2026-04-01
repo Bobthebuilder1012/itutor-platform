@@ -24,7 +24,7 @@ export default function SuccessCTABanner() {
           <div className="flex w-full min-w-0 flex-1 flex-row items-center justify-between gap-3 md:pr-6 lg:pr-10 2xl:pr-14">
             <div className="flex min-w-0 items-center gap-2 sm:gap-3 2xl:gap-4">
               <BookPencilIcon />
-              <p className="truncate text-sm font-bold leading-tight text-gray-900 sm:text-base md:text-lg 2xl:text-xl 3xl:text-2xl">
+              <p className="text-sm font-bold leading-tight text-gray-900 sm:text-base md:text-lg 2xl:text-xl 3xl:text-2xl">
                 Your Success Starts Here!
               </p>
             </div>
@@ -43,7 +43,7 @@ export default function SuccessCTABanner() {
           />
 
           <div className="flex w-full min-w-0 flex-1 flex-row items-center justify-between gap-3 md:pl-6 lg:pl-10 2xl:pl-14">
-            <p className="min-w-0 truncate text-sm font-medium leading-tight text-gray-700 sm:text-base md:text-lg 2xl:text-xl 3xl:text-2xl">
+            <p className="min-w-0 text-sm font-medium leading-tight text-gray-700 sm:text-base md:text-lg 2xl:text-xl 3xl:text-2xl">
               Love teaching? Become a verified iTutor.
             </p>
             <Link href="/signup/tutor" className={glassButton}>
