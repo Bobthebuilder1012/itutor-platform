@@ -47,11 +47,11 @@ export default function SignupPage() {
   useEffect(() => {
     const checkUsername = async () => {
       const trimmedUsername = username.trim();
-      
+
       // Reset states
       setUsernameError('');
       setUsernameAvailable(false);
-      
+
       if (!trimmedUsername) {
         return;
       }
@@ -74,7 +74,7 @@ export default function SignupPage() {
 
       // Check availability
       setUsernameChecking(true);
-      
+
       try {
         const { data: existingUser } = await supabase
           .from('profiles')
@@ -284,7 +284,7 @@ export default function SignupPage() {
             next_send_at: nextSendAt.toISOString(),
             last_sent_at: new Date().toISOString()
           });
-        
+
         if (queueError) {
           console.error('Failed to enqueue onboarding email:', queueError);
         }
@@ -312,259 +312,323 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-white px-3 py-4 sm:px-4 sm:py-8 relative overflow-hidden">
-      <div className="absolute inset-0 opacity-5">
-        <div className="absolute top-20 left-10 w-72 h-72 bg-itutor-green rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-20 right-10 w-72 h-72 bg-emerald-500 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
-      </div>
-      
-      <div className="bg-black border border-gray-700 rounded-2xl shadow-2xl p-4 sm:p-8 md:p-10 max-w-2xl w-full relative z-10 backdrop-blur-sm">
-        <div className="text-center mb-4 sm:mb-6 md:mb-8">
-          <img
-            src="/assets/logo/itutor-logo-dark.png"
-            alt="iTutor"
-            className="h-16 sm:h-24 md:h-32 w-auto mx-auto mb-3 sm:mb-4 md:mb-6 drop-shadow-2xl"
-          />
-          <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-itutor-white mb-1 sm:mb-2">Create your iTutor account</h1>
-          <p className="text-sm sm:text-base text-itutor-muted mb-3">Sign up as a student to get started.</p>
-          <a 
-            href="/signup/tutor" 
-            className="inline-block text-base sm:text-lg font-semibold text-itutor-green hover:text-emerald-400 transition-colors underline underline-offset-4 decoration-2 hover:scale-105 transform duration-200"
-          >
-            or sign up as a tutor instead →
-          </a>
+    <div className="min-h-screen flex">
+      {/* LEFT PANEL */}
+      <div
+        className="hidden lg:flex flex-1 flex-col justify-between p-12 relative overflow-hidden"
+        style={{ background: 'radial-gradient(ellipse 70% 60% at 15% 20%, rgba(34,197,94,0.22) 0%, transparent 65%), radial-gradient(ellipse 55% 50% at 85% 80%, rgba(34,197,94,0.14) 0%, transparent 65%), linear-gradient(160deg, #07180b 0%, #0e2a14 50%, #081510 100%)' }}
+      >
+        {/* Dot grid overlay */}
+        <div className="absolute inset-0 pointer-events-none opacity-100" style={{ backgroundImage: 'radial-gradient(circle, rgba(34,197,94,0.09) 1px, transparent 1px)', backgroundSize: '34px 34px' }} />
+        {/* Decorative rings */}
+        <div className="absolute w-[540px] h-[540px] -top-40 -left-40 rounded-full border border-itutor-green/10 pointer-events-none" />
+        <div className="absolute w-[340px] h-[340px] -bottom-28 -right-12 rounded-full border border-itutor-green/[0.07] pointer-events-none" />
+
+        {/* Brand */}
+        <div className="relative z-10">
+          <img src="/assets/logo/itutor-logo-dark.png" alt="iTutor" className="h-8 w-auto" />
         </div>
 
-        <div className="mb-4 sm:mb-6 space-y-3">
-          <SocialLoginButton
-            provider="google"
-            mode="signup"
-            redirectTo="/auth/callback?next=/signup/complete-role"
-          />
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-700" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase tracking-wide">
-              <span className="bg-black px-2 text-gray-400">Continue with email</span>
-            </div>
+        {/* Hero */}
+        <div className="relative z-10">
+          <div className="inline-flex items-center gap-2 bg-itutor-green/10 border border-itutor-green/25 rounded-full px-4 py-1.5 mb-5">
+            <span className="w-2 h-2 rounded-full bg-itutor-green animate-pulse" />
+            <span className="text-[11px] font-bold uppercase tracking-wider text-itutor-green">Caribbean&apos;s #1 Tutoring Platform</span>
           </div>
+          <h1 className="text-[2.6rem] font-extrabold text-white leading-[1.08] tracking-tight mb-4">
+            Find your <span className="text-itutor-green">perfect tutor,</span><br />ace every subject.
+          </h1>
+          <p className="text-white/50 text-[15px] leading-relaxed max-w-[340px]">
+            Get matched with top-rated verified iTutors. CSEC, CAPE &amp; beyond — all in one platform.
+          </p>
         </div>
 
-        <form onSubmit={handleSignup} className="space-y-3 sm:space-y-4 md:space-y-5">
-          {error && (
-            <div className="bg-red-900/20 border border-red-500/50 text-red-200 px-4 py-3 rounded-lg backdrop-blur-sm">
-              <p className="text-sm">{error}</p>
-            </div>
-          )}
-
-          <div>
-            <label htmlFor="fullName" className="block text-xs sm:text-sm font-medium text-itutor-white mb-1 sm:mb-2">
-              Full name
-            </label>
-            <input
-              type="text"
-              id="fullName"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              className="w-full px-3 py-2 sm:px-4 sm:py-3 text-sm sm:text-base bg-gray-900/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition-all duration-200 placeholder:text-gray-400 text-itutor-white backdrop-blur-sm hover:bg-gray-900/70"
-              placeholder="Jane Doe"
-              required
-              disabled={loading}
-            />
-          </div>
-
-          <div>
-            <label htmlFor="username" className="block text-xs sm:text-sm font-medium text-itutor-white mb-1 sm:mb-2">
-              Username
-            </label>
-            <div className="relative">
-              <input
-                type="text"
-                id="username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className={`w-full px-3 py-2 sm:px-4 sm:py-3 pr-9 sm:pr-10 text-sm sm:text-base bg-gray-900/50 border rounded-lg focus:ring-2 focus:outline-none transition-all duration-200 placeholder:text-gray-400 text-itutor-white backdrop-blur-sm hover:bg-gray-900/70 ${
-                  usernameError
-                    ? 'border-red-500 focus:ring-red-500 focus:border-red-500'
-                    : usernameAvailable
-                    ? 'border-green-500 focus:ring-itutor-green focus:border-itutor-green'
-                    : 'border-gray-600 focus:ring-itutor-green focus:border-itutor-green'
-                }`}
-                placeholder="janedoe123"
-                required
-                disabled={loading}
-                minLength={6}
-                maxLength={30}
-              />
-              <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                {usernameChecking ? (
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-itutor-green"></div>
-                ) : usernameError ? (
-                  <svg className="w-5 h-5 text-red-500" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                  </svg>
-                ) : usernameAvailable && username ? (
-                  <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                ) : null}
+        {/* Feature cards */}
+        <div className="relative z-10 flex flex-col gap-3">
+          {[
+            { icon: 'person', color: 'from-itutor-green to-emerald-600', title: '1-on-1 Live Sessions', sub: 'Real-time tutoring, any time you need' },
+            { icon: 'chart', color: 'from-teal-400 to-teal-600', title: 'Track Your Progress', sub: 'Visual dashboards & session history' },
+            { icon: 'calendar', color: 'from-blue-400 to-blue-600', title: 'Flexible Scheduling', sub: 'Book sessions around your timetable' },
+          ].map((feat, i) => (
+            <div key={i} className="flex items-center gap-4 bg-white/[0.04] border border-white/[0.08] backdrop-blur-sm rounded-2xl px-5 py-4 w-fit min-w-[280px]" style={{ marginLeft: i === 1 ? '20px' : i === 2 ? '8px' : '0' }}>
+              <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${feat.color} flex items-center justify-center flex-shrink-0`}>
+                {feat.icon === 'person' && <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M6 20v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>}
+                {feat.icon === 'chart' && <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>}
+                {feat.icon === 'calendar' && <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>}
+              </div>
+              <div>
+                <p className="text-[13px] font-semibold text-white">{feat.title}</p>
+                <p className="text-[11px] text-white/40">{feat.sub}</p>
               </div>
             </div>
-            {usernameError ? (
-              <p className="mt-1 text-xs text-red-400">{usernameError}</p>
-            ) : usernameAvailable && username ? (
-              <p className="mt-1 text-xs text-green-400">✓ Username is available</p>
-            ) : (
-              <p className="mt-1 text-xs text-gray-400">6-30 characters. Only letters, numbers, _ and -</p>
+          ))}
+        </div>
+
+        {/* Stats strip */}
+        <div className="relative z-10 flex gap-8">
+          {[
+            { val: '2,300+', lbl: 'Expert Tutors' },
+            { val: '80+', lbl: 'Subjects' },
+            { val: '4.9★', lbl: 'Avg. Rating' },
+            { val: '50K+', lbl: 'Students' },
+          ].map((s) => (
+            <div key={s.lbl}>
+              <p className="text-2xl font-extrabold text-itutor-green tracking-tight">{s.val}</p>
+              <p className="text-[11px] text-white/40 mt-0.5">{s.lbl}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* RIGHT PANEL */}
+      <div className="w-full lg:w-[480px] flex-shrink-0 bg-white flex flex-col justify-center relative overflow-y-auto px-8 py-10 lg:px-12 lg:py-14">
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-itutor-green via-emerald-300 to-itutor-green" />
+        <div className="w-full max-w-sm mx-auto">
+          {/* Heading */}
+          <div className="mb-6">
+            <h2 className="text-2xl font-extrabold text-gray-900 tracking-tight mb-1">Create your account</h2>
+            <p className="text-sm text-gray-500">Start learning smarter today — it&apos;s free to join.</p>
+          </div>
+
+          {/* Tutor signup nudge */}
+          <p className="text-xs text-gray-500 mb-4 text-center">
+            Signing up to teach?{' '}
+            <a href="/signup/tutor" className="text-itutor-green font-semibold hover:underline">Sign up as a tutor →</a>
+          </p>
+
+          {/* Google button + divider */}
+          <div className="mb-5 space-y-3">
+            <SocialLoginButton
+              provider="google"
+              mode="signup"
+              redirectTo="/auth/callback?next=/signup/complete-role"
+            />
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-200" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase tracking-wide">
+                <span className="bg-white px-2 text-gray-400">Continue with email</span>
+              </div>
+            </div>
+          </div>
+
+          <form onSubmit={handleSignup} className="space-y-4">
+            {error && (
+              <div className="bg-red-900/20 border border-red-500/50 text-red-400 px-4 py-3 rounded-lg">
+                <p className="text-sm">{error}</p>
+              </div>
             )}
-          </div>
 
-          <div>
-            <label htmlFor="email" className="block text-xs sm:text-sm font-medium text-itutor-white mb-1 sm:mb-2">
-              Email address
-            </label>
-            <input
-              type="email"
-              id="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-3 py-2 sm:px-4 sm:py-3 text-sm sm:text-base bg-gray-900/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition-all duration-200 placeholder:text-gray-400 text-itutor-white backdrop-blur-sm hover:bg-gray-900/70"
-              placeholder="you@example.com"
-              required
-              disabled={loading}
-            />
-          </div>
-
-          <div>
-            <label htmlFor="country" className="block text-xs sm:text-sm font-medium text-itutor-white mb-1 sm:mb-2">
-              Country
-            </label>
-            <CountrySelect
-              value={countryCode}
-              onChange={setCountryCode}
-              disabled={loading}
-            />
-          </div>
-
-          <div>
-            <label htmlFor="password" className="block text-xs sm:text-sm font-medium text-itutor-white mb-1 sm:mb-2">
-              Password
-            </label>
-            <div className="relative">
+            <div>
+              <label htmlFor="fullName" className="block text-sm font-semibold text-gray-800 mb-1.5">
+                Full name
+              </label>
               <input
-                type={showPassword ? "text" : "password"}
-                id="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-3 py-2 sm:px-4 sm:py-3 pr-9 sm:pr-10 text-sm sm:text-base bg-gray-900/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition-all duration-200 placeholder:text-gray-400 text-itutor-white backdrop-blur-sm hover:bg-gray-900/70"
-                placeholder="Enter a secure password"
+                type="text"
+                id="fullName"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 text-gray-900 rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none focus:bg-white transition placeholder-gray-400 text-sm"
+                placeholder="Jane Doe"
                 required
                 disabled={loading}
               />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300 transition-colors"
-                tabIndex={-1}
-              >
-                {showPassword ? (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                  </svg>
-                ) : (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                )}
-              </button>
             </div>
-          </div>
 
-          <div>
-            <label htmlFor="confirmPassword" className="block text-xs sm:text-sm font-medium text-itutor-white mb-1 sm:mb-2">
-              Confirm password
-            </label>
-            <div className="relative">
+            <div>
+              <label htmlFor="username" className="block text-sm font-semibold text-gray-800 mb-1.5">
+                Username
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  id="username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className={`w-full px-4 py-3 pr-10 bg-gray-50 text-gray-900 rounded-xl focus:ring-2 focus:outline-none focus:bg-white transition placeholder-gray-400 text-sm border-2 ${
+                    usernameError
+                      ? 'border-red-400 focus:ring-red-400 focus:border-red-400'
+                      : usernameAvailable
+                      ? 'border-itutor-green focus:ring-itutor-green focus:border-itutor-green'
+                      : 'border-gray-200 focus:ring-itutor-green focus:border-itutor-green'
+                  }`}
+                  placeholder="janedoe123"
+                  required
+                  disabled={loading}
+                  minLength={6}
+                  maxLength={30}
+                />
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  {usernameChecking ? (
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-itutor-green"></div>
+                  ) : usernameError ? (
+                    <svg className="w-5 h-5 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                    </svg>
+                  ) : usernameAvailable && username ? (
+                    <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                  ) : null}
+                </div>
+              </div>
+              {usernameError ? (
+                <p className="mt-1 text-xs text-red-400">{usernameError}</p>
+              ) : usernameAvailable && username ? (
+                <p className="mt-1 text-xs text-green-500">✓ Username is available</p>
+              ) : (
+                <p className="mt-1 text-xs text-gray-400">6-30 characters. Only letters, numbers, _ and -</p>
+              )}
+            </div>
+
+            <div>
+              <label htmlFor="email" className="block text-sm font-semibold text-gray-800 mb-1.5">
+                Email address
+              </label>
               <input
-                type={showConfirmPassword ? "text" : "password"}
-                id="confirmPassword"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full px-3 py-2 sm:px-4 sm:py-3 pr-9 sm:pr-10 text-sm sm:text-base bg-gray-900/50 border border-gray-600 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition-all duration-200 placeholder:text-gray-400 text-itutor-white backdrop-blur-sm hover:bg-gray-900/70"
-                placeholder="Re-enter your password"
+                type="email"
+                id="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 text-gray-900 rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none focus:bg-white transition placeholder-gray-400 text-sm"
+                placeholder="you@example.com"
                 required
                 disabled={loading}
               />
-              <button
-                type="button"
-                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300 transition-colors"
-                tabIndex={-1}
-              >
-                {showConfirmPassword ? (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                  </svg>
-                ) : (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                )}
-              </button>
             </div>
-          </div>
 
-          <div className="flex items-start gap-3">
-            <input
-              type="checkbox"
-              id="termsAccepted"
-              checked={termsAccepted}
-              onChange={(e) => setTermsAccepted(e.target.checked)}
-              className="w-5 h-5 mt-0.5 text-itutor-green rounded focus:ring-itutor-green bg-gray-900 border-gray-600"
-              required
+            <div>
+              <label htmlFor="country" className="block text-sm font-semibold text-gray-800 mb-1.5">
+                Country
+              </label>
+              <CountrySelect
+                value={countryCode}
+                onChange={setCountryCode}
+                disabled={loading}
+              />
+            </div>
+
+            <div>
+              <label htmlFor="password" className="block text-sm font-semibold text-gray-800 mb-1.5">
+                Password
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  id="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full px-4 py-3 pr-10 bg-gray-50 border-2 border-gray-200 text-gray-900 rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none focus:bg-white transition placeholder-gray-400 text-sm"
+                  placeholder="Enter a secure password"
+                  required
+                  disabled={loading}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                  tabIndex={-1}
+                >
+                  {showPassword ? (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="confirmPassword" className="block text-sm font-semibold text-gray-800 mb-1.5">
+                Confirm password
+              </label>
+              <div className="relative">
+                <input
+                  type={showConfirmPassword ? "text" : "password"}
+                  id="confirmPassword"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full px-4 py-3 pr-10 bg-gray-50 border-2 border-gray-200 text-gray-900 rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none focus:bg-white transition placeholder-gray-400 text-sm"
+                  placeholder="Re-enter your password"
+                  required
+                  disabled={loading}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                  tabIndex={-1}
+                >
+                  {showConfirmPassword ? (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                id="termsAccepted"
+                checked={termsAccepted}
+                onChange={(e) => setTermsAccepted(e.target.checked)}
+                className="w-4 h-4 mt-0.5 text-itutor-green rounded focus:ring-itutor-green border-gray-300"
+                required
+                disabled={loading}
+              />
+              <label htmlFor="termsAccepted" className="text-xs text-gray-500 leading-relaxed">
+                I agree to the{' '}
+                <a
+                  href="/terms/student"
+                  target="_blank"
+                  className="text-itutor-green hover:text-emerald-500 font-medium transition-colors underline"
+                >
+                  Terms & Conditions
+                </a>
+              </label>
+            </div>
+
+            <button
+              type="submit"
               disabled={loading}
-            />
-            <label htmlFor="termsAccepted" className="text-sm text-itutor-muted leading-relaxed">
-              I agree to the{' '}
-              <a 
-                href="/terms/student" 
-                target="_blank"
-                className="text-itutor-green hover:text-emerald-400 font-medium transition-colors underline"
-              >
-                Terms & Conditions
+              className="w-full bg-gradient-to-r from-itutor-green to-emerald-500 text-white py-3 px-4 rounded-lg hover:shadow-lg hover:shadow-itutor-green/50 hover:scale-[1.02] focus:ring-4 focus:ring-itutor-green/30 focus:outline-none transition-all duration-300 font-bold text-base disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Creating your account...' : 'Sign up'}
+            </button>
+          </form>
+
+          <div className="mt-5 space-y-2">
+            <p className="text-xs text-gray-500 text-center">
+              Signing up for your child?{' '}
+              <a href="/signup/parent" className="text-itutor-green hover:text-emerald-500 font-medium transition-colors">
+                Sign up as a parent/guardian
               </a>
-            </label>
+            </p>
+            <p className="text-xs text-gray-500 text-center">
+              Already have an account?{' '}
+              <a href="/login" className="text-itutor-green hover:text-emerald-500 font-medium transition-colors">
+                Sign in
+              </a>
+            </p>
+            <a href="/" className="flex items-center justify-center gap-1 text-xs text-gray-400 hover:text-gray-600 pt-4 border-t border-gray-100 mt-4 transition">
+              ← Back to home
+            </a>
           </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-gradient-to-r from-itutor-green to-emerald-500 text-itutor-black py-2.5 sm:py-3 px-4 rounded-lg hover:shadow-lg hover:shadow-itutor-green/50 hover:scale-[1.02] focus:ring-4 focus:ring-itutor-green/30 focus:outline-none transition-all duration-300 font-bold text-base sm:text-lg disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? 'Creating your account...' : 'Sign up'}
-          </button>
-        </form>
-
-        <div className="mt-4 sm:mt-6 text-center space-y-2 sm:space-y-3">
-          <p className="text-xs sm:text-sm text-itutor-muted">
-            Signing up for your child?{' '}
-            <a href="/signup/parent" className="text-itutor-green hover:text-emerald-400 font-medium transition-colors">
-              Sign up as a parent/guardian
-            </a>
-          </p>
-          <p className="text-xs sm:text-sm text-itutor-muted">
-            Already have an account?{' '}
-            <a href="/login" className="text-itutor-green hover:text-emerald-400 font-medium transition-colors">
-              Sign in
-            </a>
-          </p>
         </div>
       </div>
     </div>
   );
 }
-
-
