@@ -41,7 +41,21 @@ export async function GET(_req: NextRequest, { params }: Params) {
       query = query.eq('status', 'approved');
     }
 
-    const { data: members, error } = await query;
+    let { data: members, error } = await query;
+    if (error && isSchemaMismatch(error)) {
+      query = service
+        .from('group_members')
+        .select('id, group_id, user_id, status, joined_at, profile:profiles(id, full_name, avatar_url)')
+        .eq('group_id', groupId)
+        .order('joined_at', { ascending: true });
+      if (!isTutor) {
+        query = query.eq('status', 'approved');
+      }
+      ({ data: members, error } = await query);
+    }
+    if (error && isSchemaMismatch(error)) {
+      return NextResponse.json({ members: [] });
+    }
     if (error) throw error;
 
     return NextResponse.json({ members: members ?? [] });

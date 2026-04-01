@@ -84,7 +84,7 @@ export async function GET(request: NextRequest) {
           id, name, description, tutor_id, subject, pricing, created_at, ${withStatus ? 'status,' : ''}${legacySchema ? '' : 'difficulty, form_level, topic, session_length_minutes, session_frequency,'}
           ${
             legacySchema
-              ? ''
+              ? 'cover_image, header_image, whatsapp_link,'
               : `pricing_model, pricing_mode, price_per_session, price_per_course, price_monthly, recurrence_type, max_students, cover_image, ${includeHeaderImage ? 'header_image, ' : ''}availability_window,`
           }
           tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, rating_average, rating_count),
