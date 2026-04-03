@@ -150,7 +150,7 @@ export default function PostComposer({
           placeholder={
             isTutor
               ? 'Share an announcement, learning content, or start a discussion...'
-              : 'Share something with your group…'
+              : 'Share something with your class…'
           }
           rows={3}
           disabled={submitting}

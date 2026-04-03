@@ -49,18 +49,21 @@ const CalcIcon: React.FC = () => (
 
 const DnaIcon: React.FC = () => (
   <svg width="30" height="30" viewBox="0 0 24 24" fill="white" stroke="none">
-    <circle cx="6" cy="2" r="1.4" />
-    <circle cx="4" cy="6" r="2.6" />
-    <circle cx="8" cy="10" r="1.8" />
+    {/* Strand B — behind */}
+    <circle cx="6"  cy="2"  r="1.4" />
+    <circle cx="4"  cy="6"  r="2.6" />
+    <circle cx="8"  cy="10" r="1.8" />
     <circle cx="16" cy="14" r="1.8" />
     <circle cx="20" cy="18" r="2.6" />
     <circle cx="18" cy="22" r="1.4" />
-    <circle cx="18" cy="2" r="1.4" />
-    <circle cx="20" cy="6" r="2.6" />
+    {/* Strand A — in front */}
+    <circle cx="18" cy="2"  r="1.4" />
+    <circle cx="20" cy="6"  r="2.6" />
     <circle cx="16" cy="10" r="1.8" />
-    <circle cx="8" cy="14" r="1.8" />
-    <circle cx="4" cy="18" r="2.6" />
-    <circle cx="6" cy="22" r="1.4" />
+    <circle cx="8"  cy="14" r="1.8" />
+    <circle cx="4"  cy="18" r="2.6" />
+    <circle cx="6"  cy="22" r="1.4" />
+    {/* Center crossing */}
     <circle cx="12" cy="12" r="1.4" />
   </svg>
 );

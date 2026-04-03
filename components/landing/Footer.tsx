@@ -25,7 +25,7 @@ const offerNav = [
   },
   {
     title: 'Popular Topics',
-    summary: 'Communities, groups & study help',
+    summary: 'Communities, lessons & study help',
     href: '/communities',
   },
 ];

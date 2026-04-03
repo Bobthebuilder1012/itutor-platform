@@ -65,7 +65,7 @@ export default function AnnouncementBoard({ groupId, isTutor }: AnnouncementBoar
             <textarea
               value={body}
               onChange={(e) => setBody(e.target.value)}
-              placeholder="Share an update, schedule change, or important notice with your group…"
+              placeholder="Share an update, schedule change, or important notice with your class…"
               rows={3}
               disabled={submitting}
               className="w-full resize-none border border-emerald-200 bg-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
@@ -98,7 +98,7 @@ export default function AnnouncementBoard({ groupId, isTutor }: AnnouncementBoar
           <div className="text-4xl mb-3">📣</div>
           <p className="text-sm font-medium text-gray-600">No announcements yet</p>
           {isTutor ? (
-            <p className="text-xs text-gray-400 mt-1">Post your first announcement above to notify your group.</p>
+            <p className="text-xs text-gray-400 mt-1">Post your first announcement above to notify your lesson.</p>
           ) : (
             <p className="text-xs text-gray-400 mt-1">Your tutor hasn't posted any announcements yet.</p>
           )}

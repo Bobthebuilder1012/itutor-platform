@@ -118,7 +118,7 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
 
   const handleSubmit = async () => {
     if (!form.name.trim()) {
-      setError('Group name is required');
+      setError('Class name is required');
       return;
     }
     setSubmitting(true);
@@ -134,7 +134,7 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
         body: JSON.stringify(payload),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Failed to create group');
+      if (!res.ok) throw new Error(data.error ?? 'Failed to create class');
       onCreated(data.group.id);
     } catch (err: any) {
       setError(err.message);
@@ -149,7 +149,7 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
         <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-5 border-b border-gray-100 sticky top-0 bg-white rounded-t-2xl z-10">
           <div>
-            <h2 className="text-lg font-bold text-gray-900">Create Group Course</h2>
+            <h2 className="text-lg font-bold text-gray-900">Create a New Class</h2>
             <p className="text-xs text-gray-500 mt-0.5">Step {step} of 3</p>
           </div>
           <button
@@ -174,7 +174,7 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Group Title <span className="text-red-400">*</span>
+                  Class Title <span className="text-red-400">*</span>
                 </label>
                 <input
                   type="text"
@@ -185,7 +185,7 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">About group</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">About class</label>
                 <input
                   type="text"
                   value={form.topic ?? ''}
@@ -250,7 +250,7 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
           {step === 3 && (
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Group thumbnail</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Lesson thumbnail</label>
                 <div
                   onDragOver={(e) => {
                     e.preventDefault();
@@ -275,7 +275,7 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
                   {form.cover_image ? (
                     <img
                       src={form.cover_image}
-                      alt="Group thumbnail preview"
+                      alt="Lesson thumbnail preview"
                       className="h-36 w-full rounded-lg object-cover border border-gray-200"
                     />
                   ) : (
@@ -367,7 +367,7 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
                   disabled={submitting}
                   className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white py-2.5 rounded-xl text-sm font-semibold transition-colors"
                 >
-                  {submitting ? 'Creating…' : 'Create Group'}
+                  {submitting ? 'Creating…' : 'Create Class'}
                 </button>
               </>
             )}
@@ -381,7 +381,7 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
           <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
               <h3 className="text-base font-semibold text-gray-900">
-                Reposition {cropTarget === 'cover' ? 'group thumbnail' : 'header image'}
+                Reposition {cropTarget === 'cover' ? 'lesson thumbnail' : 'header image'}
               </h3>
               <button
                 type="button"

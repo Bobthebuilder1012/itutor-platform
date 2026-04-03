@@ -78,7 +78,7 @@ export default async function StudentGroupDetailPage({
   if (!group) {
     return (
       <main className="mx-auto max-w-4xl p-6">
-        <p className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-700">Group not found.</p>
+        <p className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-700">Lesson not found.</p>
       </main>
     );
   }
