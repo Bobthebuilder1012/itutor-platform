@@ -55,6 +55,8 @@ export default function FindTutorsPage() {
   const [selectedRating, setSelectedRating] = useState<string>('');
   const [selectedPrice, setSelectedPrice] = useState<string>('');
   const [selectedSchool, setSelectedSchool] = useState<string>('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const TUTORS_PER_PAGE = 9;
 
   useEffect(() => {
     if (loading) return;
@@ -327,6 +329,15 @@ export default function FindTutorsPage() {
     return filtered;
   }, [tutors, searchQuery, selectedSubjects, selectedRating, selectedPrice, selectedSchool, profile]);
 
+  // Reset to page 1 whenever filters change
+  useEffect(() => { setCurrentPage(1); }, [searchQuery, selectedSubjects, selectedRating, selectedPrice, selectedSchool]);
+
+  const totalPages = Math.ceil(filteredTutors.length / TUTORS_PER_PAGE);
+  const pagedTutors = filteredTutors.slice(
+    (currentPage - 1) * TUTORS_PER_PAGE,
+    currentPage * TUTORS_PER_PAGE
+  );
+
   if (loading || !profile) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -471,6 +482,7 @@ export default function FindTutorsPage() {
         <div className="mb-4 flex items-center justify-between">
           <p className="text-sm text-gray-500">
             Showing <span className="font-semibold text-gray-900">{filteredTutors.length}</span> {filteredTutors.length === 1 ? 'tutor' : 'tutors'}
+            {totalPages > 1 && <span> — page <span className="font-semibold text-gray-900">{currentPage}</span> of {totalPages}</span>}
           </p>
         </div>
 
@@ -492,7 +504,7 @@ export default function FindTutorsPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredTutors.map(tutor => {
+            {pagedTutors.map(tutor => {
               const matchesStudentSubjects = profile.subjects_of_study?.some(studentSubject =>
                 tutor.subjects.some(tutorSubject => tutorSubject.name === studentSubject)
               );
@@ -609,6 +621,49 @@ export default function FindTutorsPage() {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="mt-8 flex items-center justify-center gap-2">
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg border-2 border-gray-200 bg-white text-gray-700 font-medium text-sm transition-all hover:border-itutor-green hover:text-itutor-green disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-gray-200 disabled:hover:text-gray-700"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              Previous
+            </button>
+
+            <div className="flex items-center gap-1">
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                <button
+                  key={page}
+                  onClick={() => setCurrentPage(page)}
+                  className={`w-9 h-9 rounded-lg text-sm font-semibold transition-all ${
+                    page === currentPage
+                      ? 'bg-itutor-green text-white shadow-md'
+                      : 'border-2 border-gray-200 bg-white text-gray-600 hover:border-itutor-green hover:text-itutor-green'
+                  }`}
+                >
+                  {page}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg border-2 border-gray-200 bg-white text-gray-700 font-medium text-sm transition-all hover:border-itutor-green hover:text-itutor-green disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-gray-200 disabled:hover:text-gray-700"
+            >
+              Next
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
           </div>
         )}
       </div>

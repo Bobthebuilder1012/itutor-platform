@@ -31,18 +31,38 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
     const isTutor = group?.tutor_id === user.id;
 
-    let query = service
+    let members: any[] = [];
+
+    const primaryMembersQuery = service
       .from('group_members')
       .select('id, group_id, user_id, status, joined_at, profile:profiles(id, full_name, avatar_url, role)')
       .eq('group_id', groupId)
       .order('joined_at', { ascending: true });
 
-    if (!isTutor) {
-      query = query.eq('status', 'approved');
-    }
+    const { data: primaryMembers, error: primaryError } = await (
+      isTutor ? primaryMembersQuery : primaryMembersQuery.eq('status', 'approved')
+    );
 
-    const { data: members, error } = await query;
-    if (error) throw error;
+    if (primaryError && isSchemaMismatch(primaryError)) {
+      const fallbackMembersQuery = service
+        .from('group_members')
+        .select('id, group_id, user_id, status, joined_at, profile:profiles(id, full_name, avatar_url)')
+        .eq('group_id', groupId)
+        .order('joined_at', { ascending: true });
+
+      const { data: fallbackMembers, error: fallbackError } = await (
+        isTutor ? fallbackMembersQuery : fallbackMembersQuery.eq('status', 'approved')
+      );
+
+      if (fallbackError && isSchemaMismatch(fallbackError)) {
+        return NextResponse.json({ members: [] });
+      }
+      if (fallbackError) throw fallbackError;
+      members = (fallbackMembers ?? []) as any[];
+    } else {
+      if (primaryError) throw primaryError;
+      members = (primaryMembers ?? []) as any[];
+    }
 
     return NextResponse.json({ members: members ?? [] });
   } catch (err) {
