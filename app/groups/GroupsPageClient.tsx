@@ -36,6 +36,9 @@ export default function GroupsPageClient({
   const [priceFilter, setPriceFilter] = useState<'all' | 'free' | 'paid'>('all');
   const [quickFilter, setQuickFilter] = useState<TutorQuickFilter>('all');
 
+  const [archivedGroups, setArchivedGroups] = useState<GroupWithTutor[]>([]);
+  const [archivedLoading, setArchivedLoading] = useState(false);
+  const [restoringGroupId, setRestoringGroupId] = useState<string | null>(null);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [selectedGroupForModal, setSelectedGroupForModal] = useState<string | null>(null);
 
@@ -60,6 +63,34 @@ export default function GroupsPageClient({
       setPageLoading(false);
     }
   }, [splitGroups]);
+
+  const fetchArchived = useCallback(async () => {
+    if (!isTutor) return;
+    setArchivedLoading(true);
+    try {
+      const res = await fetch('/api/groups?archived=true');
+      if (res.ok) setArchivedGroups((await res.json()).groups ?? []);
+    } finally {
+      setArchivedLoading(false);
+    }
+  }, [isTutor]);
+
+  const handleRestore = async (groupId: string) => {
+    if (restoringGroupId) return;
+    setRestoringGroupId(groupId);
+    try {
+      const res = await fetch(`/api/groups/${groupId}/restore`, { method: 'POST' });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(payload?.error || 'Failed to restore class');
+      }
+      await Promise.all([fetchAll(), fetchArchived()]);
+    } catch (err: any) {
+      alert(err?.message || 'Failed to restore class');
+    } finally {
+      setRestoringGroupId(null);
+    }
+  };
 
   // Called when filters change — re-fetches discover section only
   const fetchDiscover = useCallback(async () => {
@@ -93,7 +124,7 @@ export default function GroupsPageClient({
     }
   }, [filters, currentUserId, isTutor, fetchAll, sortBy, sortDir]);
 
-  useEffect(() => { fetchAll(); }, [fetchAll]);
+  useEffect(() => { fetchAll(); fetchArchived(); }, [fetchAll, fetchArchived]);
   // Re-run discover when filters change (skip on initial empty filter)
   useEffect(() => {
     if ((filters.subjects?.length ?? 0) > 0 || !!filters.tutor_name) fetchDiscover();
@@ -108,7 +139,7 @@ export default function GroupsPageClient({
         const payload = await res.json().catch(() => ({}));
         throw new Error(payload?.error || 'Unable to send join request.');
       }
-      // Refresh lists so pending membership appears in "My Groups".
+      // Refresh lists so pending membership appears in "My Lessons".
       await fetchAll();
     } catch (err: any) {
       alert(err?.message || 'Unable to send join request.');
@@ -196,21 +227,21 @@ export default function GroupsPageClient({
       <div className="h-full min-h-0 overflow-y-auto px-6 py-8 lg:px-8 bg-[#f6f8fb]" style={{ maxWidth: 1200, margin: '0 auto' }}>
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-[28px] font-extrabold text-gray-900 tracking-tight">Group Marketplace</h1>
-            <p className="text-[15px] text-slate-500 mt-1">Create, manage, and discover group sessions</p>
+            <h1 className="text-[28px] font-extrabold text-gray-900 tracking-tight">Lesson Marketplace</h1>
+            <p className="text-[15px] text-slate-500 mt-1">Create, manage, and discover lesson sessions</p>
           </div>
           <button
             onClick={() => setShowCreateGroup(true)}
             className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-3 rounded-lg text-sm font-semibold transition-all shadow-[0_2px_8px_rgba(16,185,129,0.3)] hover:shadow-[0_4px_16px_rgba(16,185,129,0.4)] hover:-translate-y-px"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-            Create Group
+            Create a Class
           </button>
         </div>
 
         <section className="mb-10">
           <div className="mb-[18px] flex items-center justify-between">
-            <h2 className="text-lg font-bold text-gray-900">My Groups</h2>
+            <h2 className="text-lg font-bold text-gray-900">My Lessons</h2>
             {myGroups.length > 0 && (
               <span className="text-[13px] text-slate-500 bg-gray-100 px-3 py-1 rounded-full font-medium">
                 {myGroups.length} total
@@ -223,10 +254,10 @@ export default function GroupsPageClient({
             </div>
           ) : myGroups.length === 0 ? (
             <div className="rounded-xl border border-dashed border-gray-300 p-5 text-sm text-gray-500">
-              You haven't created any groups yet.
+              You haven't created any lessons yet.
             </div>
           ) : (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
               {myGroups.map((g) => (
                 <GroupGridCard
                   key={g.id}
@@ -240,7 +271,7 @@ export default function GroupsPageClient({
 
         <section>
           <div className="mb-[18px] flex items-center justify-between">
-            <h2 className="text-lg font-bold text-gray-900">Discover More Groups</h2>
+            <h2 className="text-lg font-bold text-gray-900">Discover More Lessons</h2>
           </div>
           <div className="mb-5">
             <div className="flex flex-col gap-4">
@@ -249,7 +280,7 @@ export default function GroupsPageClient({
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search groups by name, subject, or tutor..."
+                  placeholder="Search lessons by name, subject, or tutor..."
                   className="w-full rounded-lg border border-gray-200 bg-white px-3.5 py-2.5 text-[13px] text-gray-900 placeholder:text-slate-400 outline-none transition-all focus:border-emerald-500 focus:ring-[3px] focus:ring-emerald-100"
                 />
                 <select
@@ -316,10 +347,10 @@ export default function GroupsPageClient({
             </div>
           ) : tutorFilteredGroups.length === 0 ? (
             <div className="rounded-xl border border-dashed border-gray-300 p-5 text-sm text-gray-500">
-              No groups found. Try adjusting your filters.
+              No lessons found. Try adjusting your filters.
             </div>
           ) : (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
               {tutorFilteredGroups.map((g) => (
                 <GroupGridCard
                   key={g.id}
@@ -332,6 +363,42 @@ export default function GroupsPageClient({
             </div>
           )}
         </section>
+
+        {archivedGroups.length > 0 && (
+          <section className="mt-10">
+            <div className="mb-[18px] flex items-center justify-between">
+              <h2 className="text-lg font-bold text-gray-900">Archived Lessons</h2>
+              <span className="text-[13px] text-slate-500 bg-gray-100 px-3 py-1 rounded-full font-medium">
+                {archivedGroups.length} archived
+              </span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+              {archivedGroups.map((g) => (
+                <div key={g.id} className="relative opacity-70 hover:opacity-100 transition-opacity">
+                  <GroupGridCard group={g} onClick={() => {}} />
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-white/95 to-transparent pt-10 pb-3 px-4 rounded-b-xl flex items-end justify-between">
+                    <div>
+                      <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Archived</span>
+                      {g.archived_at && (
+                        <p className="text-[11px] text-slate-400">
+                          {new Date(g.archived_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => handleRestore(g.id)}
+                      disabled={restoringGroupId === g.id}
+                      className="inline-flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg text-[12px] font-semibold transition-all disabled:opacity-50"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" /></svg>
+                      {restoringGroupId === g.id ? 'Restoring…' : 'Restore'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {showCreateGroup && (
           <CreateGroupModal
@@ -347,7 +414,7 @@ export default function GroupsPageClient({
             >
               <div className="flex w-full min-h-0 flex-col">
                 <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white px-5 py-4">
-                  <h2 className="text-lg font-bold text-gray-900">Group details</h2>
+                  <h2 className="text-lg font-bold text-gray-900">Lesson details</h2>
                   <button onClick={() => setSelectedGroupForModal(null)} className="text-gray-400 hover:text-gray-600">Close</button>
                 </div>
                 <div className="flex-1 min-h-0">
@@ -373,7 +440,7 @@ export default function GroupsPageClient({
     <div className="h-full min-h-0 overflow-y-auto p-4 lg:p-6 bg-gray-50/60">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Discover Group Sessions</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Discover Lesson Sessions</h1>
           <p className="text-sm text-gray-500 mt-0.5">Find curated learning circles and join instantly</p>
         </div>
       </div>
@@ -382,7 +449,7 @@ export default function GroupsPageClient({
         {/* ── My Groups sidebar (compact) ── */}
         <aside className="flex flex-col w-52 flex-shrink-0 border border-gray-200 rounded-2xl overflow-hidden bg-white self-start">
           <div className="px-3 pt-3 pb-2 border-b border-gray-100">
-            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">My Groups</h2>
+            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">My Lessons</h2>
           </div>
           {pageLoading ? (
             <div className="flex justify-center py-6">
@@ -390,7 +457,7 @@ export default function GroupsPageClient({
             </div>
           ) : myGroups.length === 0 ? (
             <div className="px-3 py-5 text-center">
-              <p className="text-xs text-gray-400">You haven't joined any groups yet.</p>
+              <p className="text-xs text-gray-400">You haven't joined any lessons yet.</p>
             </div>
           ) : (
             <div className="flex flex-col divide-y divide-gray-100">
@@ -452,7 +519,7 @@ export default function GroupsPageClient({
           ) : discoverGroups.length === 0 ? (
             <div className="flex flex-col items-center py-20 text-center">
               <div className="text-4xl mb-3">👥</div>
-              <p className="text-sm font-medium text-gray-600">No groups found</p>
+              <p className="text-sm font-medium text-gray-600">No lessons found</p>
               <p className="text-xs text-gray-400 mt-1">Try adjusting your filters or check back later.</p>
             </div>
           ) : (
@@ -495,3 +562,4 @@ export default function GroupsPageClient({
     </div>
   );
 }
+

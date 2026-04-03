@@ -28,11 +28,11 @@ export default function GroupDetailPanel({
     setError('');
     try {
       const res = await fetch(`/api/groups/${groupId}`);
-      if (!res.ok) throw new Error('Group not found');
+      if (!res.ok) throw new Error('Class not found');
       const data = await res.json();
       setGroup(data.group);
     } catch {
-      setError('Could not load group details.');
+      setError('Could not load class details.');
     } finally {
       setLoading(false);
     }
@@ -54,7 +54,7 @@ export default function GroupDetailPanel({
     return (
       <div className="h-full flex items-center justify-center py-24 text-center">
         <div>
-          <p className="text-gray-400 text-sm">{error || 'Group not found.'}</p>
+          <p className="text-gray-400 text-sm">{error || 'Class not found.'}</p>
           <button onClick={fetchGroup} className="mt-3 text-xs text-emerald-600 hover:underline">
             Try again
           </button>

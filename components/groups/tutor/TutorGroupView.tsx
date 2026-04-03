@@ -119,7 +119,9 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
         setAnalytics(data?.data ?? null);
       }
     })();
-  }, [fetchSessions, fetchMembers]);
+    // Track tutor visit (resets auto-archive inactivity timer)
+    fetch(`/api/groups/${group.id}/visit`, { method: 'POST' }).catch(() => {});
+  }, [fetchSessions, fetchMembers, group.id]);
 
   useEffect(() => {
     setManageForm({
@@ -151,7 +153,7 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
 
   const handleManageSave = async () => {
     if (!manageForm.name.trim()) {
-      setManageError('Group name is required.');
+      setManageError('Class name is required.');
       return;
     }
     setManageSaving(true);
@@ -186,11 +188,11 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
         body: JSON.stringify(body),
       });
       const payload = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(payload?.error || 'Failed to update group settings');
+      if (!res.ok) throw new Error(payload?.error || 'Failed to update class settings');
       setManageOpen(false);
       onGroupUpdated();
     } catch (err: any) {
-      setManageError(err?.message || 'Failed to update group settings');
+      setManageError(err?.message || 'Failed to update class settings');
     } finally {
       setManageSaving(false);
     }
@@ -205,10 +207,10 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
     try {
       const res = await fetch(`/api/groups/${group.id}`, { method: 'DELETE' });
       const payload = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(payload?.error || 'Failed to delete group');
+      if (!res.ok) throw new Error(payload?.error || 'Failed to delete class');
       router.push('/groups');
     } catch (err: any) {
-      alert(err?.message || 'Failed to delete group');
+      alert(err?.message || 'Failed to delete class');
       setDeleting(false);
     }
   };
@@ -254,7 +256,7 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
     { id: 'stream', label: 'Stream' },
 
     { id: 'sessions', label: 'Sessions' },
-    { id: 'messages', label: 'Group Chat' },
+    { id: 'messages', label: 'Lesson Chat' },
   ];
 
   const copyInviteLink = () => {
@@ -396,7 +398,7 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[10px] text-[13px] font-semibold bg-emerald-500 text-white border border-emerald-500 shadow-[0_2px_8px_rgba(16,185,129,0.25)] hover:bg-emerald-600 transition-all"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
-                  {manageOpen ? 'Close' : 'Manage Group'}
+                  {manageOpen ? 'Close' : 'Manage Class'}
                 </button>
                 <button
                   onClick={handleArchive}
@@ -469,8 +471,8 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
                 <div className="rounded-lg border border-gray-100 bg-gray-50/70 p-3">
                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Basic info</p>
                   <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Group title</label><input type="text" value={manageForm.name} onChange={(e) => setManageForm((p) => ({ ...p, name: e.target.value }))} className={inputCls} /></div>
-                    <div><label className="block text-xs font-medium text-gray-600 mb-1">About group</label><input type="text" value={manageForm.topic} onChange={(e) => setManageForm((p) => ({ ...p, topic: e.target.value }))} className={inputCls} /></div>
+                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Class title</label><input type="text" value={manageForm.name} onChange={(e) => setManageForm((p) => ({ ...p, name: e.target.value }))} className={inputCls} /></div>
+                    <div><label className="block text-xs font-medium text-gray-600 mb-1">About class</label><input type="text" value={manageForm.topic} onChange={(e) => setManageForm((p) => ({ ...p, topic: e.target.value }))} className={inputCls} /></div>
                     <div><label className="block text-xs font-medium text-gray-600 mb-1">Subjects</label><input type="text" value={manageForm.subject} onChange={(e) => setManageForm((p) => ({ ...p, subject: e.target.value }))} placeholder="e.g. CSEC Math, CSEC Biology" className={inputCls} /></div>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">Form level</label>
@@ -491,7 +493,7 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
                 <div className="rounded-lg border border-gray-100 bg-gray-50/70 p-3">
                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Branding</p>
                   <div className="mt-3">
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Group thumbnail</label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Lesson thumbnail</label>
                     <div
                       onDragOver={(e) => {
                         e.preventDefault();
@@ -514,7 +516,7 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
                       {manageForm.cover_image ? (
                         <img
                           src={manageForm.cover_image}
-                          alt="Group thumbnail preview"
+                          alt="Lesson thumbnail preview"
                           className="h-40 w-full rounded-lg border border-gray-200 object-cover"
                         />
                       ) : (
@@ -766,7 +768,7 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
             <p className="text-[12px] font-bold uppercase tracking-wider text-slate-500 mb-3.5">Quick Actions</p>
             <div className="flex flex-col gap-1.5">
               {[
-                { label: 'Edit Group Details', action: () => setManageOpen(true), icon: <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />, icon2: <path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /> },
+                { label: 'Edit Class Details', action: () => setManageOpen(true), icon: <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />, icon2: <path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /> },
                 { label: 'Schedule Session', action: () => setShowCreateSession(true), icon: <><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></> },
                 { label: 'Invite Members', action: copyInviteLink, icon: <><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2" /><circle cx="8.5" cy="7" r="4" /><line x1="20" y1="8" x2="20" y2="14" /><line x1="23" y1="11" x2="17" y2="11" /></> },
               ].map((qa) => (
@@ -785,7 +787,7 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
                 className="flex items-center gap-2.5 py-2.5 px-3 rounded-[10px] text-[13px] font-medium text-red-500 hover:bg-gray-50 transition-colors text-left w-full disabled:opacity-40"
               >
                 <svg className="w-[18px] h-[18px] text-red-500 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /></svg>
-                Delete Group
+                Delete Class
               </button>
             </div>
           </div>
@@ -805,7 +807,7 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
           <div className="w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
-              <h3 className="text-base font-semibold text-gray-900">Reposition group thumbnail</h3>
+              <h3 className="text-base font-semibold text-gray-900">Reposition lesson thumbnail</h3>
               <button
                 type="button"
                 onClick={() => {

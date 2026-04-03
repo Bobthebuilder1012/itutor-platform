@@ -50,7 +50,7 @@ export default function GroupMessageBoard({
     <div className="flex flex-col h-full min-h-0 flex-1 pb-2 px-2">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-gray-700">Group Chat</h3>
+        <h3 className="text-sm font-semibold text-gray-700">Lesson Chat</h3>
         <button
           onClick={fetchMessages}
           className="text-xs text-gray-400 hover:text-emerald-600 transition-colors flex items-center gap-1"
