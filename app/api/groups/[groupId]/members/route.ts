@@ -31,7 +31,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
     const isTutor = group?.tutor_id === user.id;
 
-    let query = service
+    let query: any = service
       .from('group_members')
       .select('id, group_id, user_id, status, joined_at, profile:profiles(id, full_name, avatar_url, role)')
       .eq('group_id', groupId)
