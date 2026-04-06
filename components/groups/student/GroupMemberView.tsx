@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { GroupWithTutor, GroupSessionWithOccurrences, GroupOccurrence, GroupMember } from '@/lib/types/groups';
+import type { GroupWithTutor, GroupSessionWithOccurrences, GroupMember } from '@/lib/types/groups';
 import GroupMessageBoard from '../messages/GroupMessageBoard';
-import StatusBadge from '../shared/StatusBadge';
 import GroupStreamPage from '../stream/GroupStreamPage';
+import StudentSessionsTab from './StudentSessionsTab';
 import MemberList from '../tutor/MemberList';
 import WhatsAppJoinButton from './WhatsAppJoinButton';
 
@@ -16,30 +16,11 @@ interface GroupMemberViewProps {
   currentUserId: string;
 }
 
-type OccurrenceWindowStatus = 'too_early' | 'live' | 'ended';
-
-function getOccurrenceStatus(occ: GroupOccurrence): OccurrenceWindowStatus {
-  const start = new Date(occ.scheduled_start_at).getTime();
-  const end = new Date(occ.scheduled_end_at).getTime();
-  const now = Date.now();
-  if (now < start - 15 * 60 * 1000) return 'too_early';
-  if (now > end + 30 * 60 * 1000) return 'ended';
-  return 'live';
-}
-
-function isOutdated(session: GroupSessionWithOccurrences): boolean {
-  const upcoming = (session.occurrences ?? []).filter((o) => o.status === 'upcoming');
-  if (upcoming.length === 0) return false;
-  const latest = upcoming[upcoming.length - 1];
-  return new Date(latest.scheduled_start_at) < new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-}
-
 export default function GroupMemberView({ group, currentUserId }: GroupMemberViewProps) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>('stream');
   const [sessions, setSessions] = useState<GroupSessionWithOccurrences[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
-  const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [membersLoading, setMembersLoading] = useState(true);
   const [dmLoading, setDmLoading] = useState(false);
@@ -204,145 +185,13 @@ export default function GroupMemberView({ group, currentUserId }: GroupMemberVie
           )}
 
           {tab === 'sessions' && (
-            <div>
-              {sessionsLoading ? (
-                <div className="py-8 flex justify-center">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-600" />
-                </div>
-              ) : sessions.length === 0 ? (
-                <div className="py-8 text-center text-gray-400 text-sm">
-                  <div className="text-3xl mb-2">📅</div>
-                  No sessions scheduled yet.
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {sessions.map((s) => {
-                    const now = new Date();
-                    const allOccs = s.occurrences ?? [];
-                    const futureOccs = allOccs.filter((o) => new Date(o.scheduled_end_at) > now);
-                    const pastOccs = allOccs.filter((o) => new Date(o.scheduled_end_at) <= now);
-                    const outdated = isOutdated(s);
-                    const initialVisible = 1;
-                    const pageSize = 5;
-                    const visibleCount = visibleCounts[s.id] ?? initialVisible;
-                    const visibleOccs = futureOccs.slice(0, visibleCount);
-                    const hasMore = futureOccs.length > visibleCount;
-
-                    return (
-                      <div key={s.id} className="bg-white border border-[#e4e8ee] rounded-[14px] overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-                        <div className="px-5 py-3.5 flex items-start justify-between gap-2 border-b border-[#e4e8ee]">
-                          <div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <h4 className="text-[14px] font-bold">{s.title}</h4>
-                              {outdated && <StatusBadge variant="outdated" />}
-                            </div>
-                            <p className="text-[12px] text-[#6b7280] mt-0.5">
-                              {s.recurrence_type === 'none'
-                                ? 'One-time session'
-                                : s.recurrence_type === 'weekly'
-                                ? `Weekly · ${(s.recurrence_days ?? []).map((d) => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d]).join(', ')}`
-                                : 'Daily'}
-                              {' · '}{s.duration_minutes} min
-                            </p>
-                          </div>
-                        </div>
-
-                        {futureOccs.length > 0 ? (
-                          <div className="divide-y divide-[#e4e8ee]">
-                            {visibleOccs.map((occ) => {
-                              const windowStatus = getOccurrenceStatus(occ);
-                              const start = new Date(occ.scheduled_start_at);
-                              const end = new Date(occ.scheduled_end_at);
-                              return (
-                                <div key={occ.id} className={`px-5 py-3 flex items-center justify-between gap-4 ${windowStatus === 'live' ? 'bg-green-50' : ''}`}>
-                                  <div className="flex items-start gap-3 min-w-0">
-                                    <span className={`mt-1.5 w-2.5 h-2.5 rounded-full flex-shrink-0 ${windowStatus === 'live' ? 'bg-green-500 animate-pulse' : 'bg-emerald-400'}`} />
-                                    <div>
-                                      <p className="text-[13px] font-semibold">
-                                        {start.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-                                      </p>
-                                      <p className="text-[12px] text-[#6b7280] mt-0.5">
-                                        {start.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
-                                        {' – '}
-                                        {end.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
-                                      </p>
-                                      {windowStatus === 'live' ? (
-                                        <p className="text-[10px] font-bold text-green-600 mt-1 uppercase tracking-wide">● Session is live now</p>
-                                      ) : (
-                                        <p className="text-[10px] text-[#9ca3af] mt-1">Meeting link opens 15 min before start</p>
-                                      )}
-                                    </div>
-                                  </div>
-                                  {windowStatus === 'live' ? (
-                                    <button
-                                      onClick={() => handleJoinOccurrence(s.id, occ.id)}
-                                      disabled={joiningOccurrenceId === occ.id}
-                                      className="flex-shrink-0 inline-flex items-center gap-1.5 bg-[#0d9668] hover:bg-[#047857] text-white text-[12px] font-bold px-4 py-2 rounded-[10px] transition-colors shadow-sm"
-                                    >
-                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M15 10l4.553-2.069A1 1 0 0121 8.876v6.248a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" /></svg>
-                                      {joiningOccurrenceId === occ.id ? 'Opening…' : 'Join Now'}
-                                    </button>
-                                  ) : (
-                                    <span className="flex-shrink-0 inline-flex items-center gap-1.5 bg-[#f5f7fa] text-[#9ca3af] text-[12px] font-medium px-4 py-2 rounded-[10px]">
-                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-                                      Not yet open
-                                    </span>
-                                  )}
-                                </div>
-                              );
-                            })}
-                            {hasMore && (
-                              <div className="px-5 py-3 text-center">
-                                <button
-                                  onClick={() => setVisibleCounts((prev) => ({ ...prev, [s.id]: visibleCount + pageSize }))}
-                                  className="text-[12px] font-medium text-[#0d9668] hover:text-[#047857] transition-colors"
-                                >
-                                  Show {Math.min(pageSize, futureOccs.length - visibleCount)} more ↓
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        ) : pastOccs.length > 0 ? (
-                          <div>
-                            <div className="divide-y divide-[#e4e8ee]">
-                              {pastOccs.map((occ) => {
-                                const start = new Date(occ.scheduled_start_at);
-                                const end = new Date(occ.scheduled_end_at);
-                                return (
-                                  <div key={occ.id} className="px-5 py-3 flex items-center justify-between gap-4 opacity-60">
-                                    <div className="flex items-start gap-3 min-w-0">
-                                      <span className="mt-1.5 w-2.5 h-2.5 rounded-full bg-[#d1d5db] flex-shrink-0" />
-                                      <div>
-                                        <p className="text-[13px] font-semibold text-[#6b7280] line-through">
-                                          {start.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
-                                        </p>
-                                        <p className="text-[12px] text-[#9ca3af] mt-0.5">
-                                          {start.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
-                                          {' – '}
-                                          {end.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
-                                        </p>
-                                      </div>
-                                    </div>
-                                    <span className="flex-shrink-0 text-[11px] text-[#9ca3af] italic">Ended</span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                            <div className="px-5 py-3 bg-amber-50 border-t border-amber-100">
-                              <p className="text-[12px] text-amber-700 font-medium">No upcoming sessions — the tutor may add new dates soon.</p>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="px-5 py-5 text-center">
-                            <p className="text-[12px] text-[#9ca3af]">No sessions have been scheduled yet.</p>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+            <StudentSessionsTab
+              sessions={sessions}
+              loading={sessionsLoading}
+              groupId={group.id}
+              onJoin={handleJoinOccurrence}
+              joiningOccurrenceId={joiningOccurrenceId}
+            />
           )}
         </div>
       )}
