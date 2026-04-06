@@ -6,7 +6,7 @@ import type { GroupWithTutor, GroupSessionWithOccurrences, GroupOccurrence, Grou
 import GroupMessageBoard from '../messages/GroupMessageBoard';
 import StatusBadge from '../shared/StatusBadge';
 import GroupStreamPage from '../stream/GroupStreamPage';
-import UserAvatar from '@/components/UserAvatar';
+import MemberList from '../tutor/MemberList';
 import WhatsAppJoinButton from './WhatsAppJoinButton';
 
 type Tab = 'stream' | 'sessions' | 'messages';
@@ -32,10 +32,6 @@ function isOutdated(session: GroupSessionWithOccurrences): boolean {
   if (upcoming.length === 0) return false;
   const latest = upcoming[upcoming.length - 1];
   return new Date(latest.scheduled_start_at) < new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-}
-
-function getInitials(name: string) {
-  return name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
 }
 
 export default function GroupMemberView({ group, currentUserId }: GroupMemberViewProps) {
@@ -116,59 +112,26 @@ export default function GroupMemberView({ group, currentUserId }: GroupMemberVie
     { id: 'messages', label: 'Messages' },
   ];
 
-  const tutorMembers = approvedMembers.filter((m) => (m as any).profile?.role === 'tutor');
-  const studentMembers = approvedMembers.filter((m) => (m as any).profile?.role !== 'tutor');
-
   const membersSidebar = (
-    <div className="w-[260px] bg-white border-l border-[#e4e8ee] flex-shrink-0 flex flex-col overflow-hidden">
-      <div className="flex-1 overflow-y-auto">
-        {/* Head tutor */}
-        <div className="p-4 border-b border-[#e4e8ee]">
-          <p className="text-[10px] font-bold uppercase tracking-[.07em] text-[#6b7280] mb-2.5">Head Tutor</p>
-          <div className="flex items-center gap-2.5">
-            <UserAvatar avatarUrl={group.tutor?.avatar_url} name={tutorName} size={28} className="flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-[12px] font-semibold truncate">{tutorName}</p>
-              <p className="text-[10px] text-[#6b7280]">Head Tutor</p>
-            </div>
-            <span className="w-[7px] h-[7px] rounded-full bg-[#0d9668] shadow-[0_0_0_2px_#d1fae5] flex-shrink-0" />
-          </div>
+    <div className="w-[300px] bg-white border-l border-[#e4e8ee] flex-shrink-0 flex flex-col overflow-hidden">
+      <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-[11px] font-bold uppercase tracking-[.07em] text-[#6b7280]">Members</p>
+          <span className="bg-[#d1fae5] text-[#047857] px-2 py-0.5 rounded-[10px] text-[11px] font-bold">{approvedMembers.length + 1}</span>
         </div>
-
-        {/* Students */}
-        <div className="p-4">
-          <div className="flex items-center justify-between mb-2.5">
-            <p className="text-[10px] font-bold uppercase tracking-[.07em] text-[#6b7280]">Students</p>
-            <span className="bg-[#d1fae5] text-[#047857] px-[7px] py-px rounded-[10px] text-[10px] font-semibold">
-              {studentMembers.length}
-            </span>
-          </div>
-          {studentMembers.length === 0 ? (
-            <p className="text-[11px] text-[#9ca3af]">No other students yet.</p>
-          ) : (
-            <div className="space-y-1">
-              {studentMembers.map((m) => {
-                const profile = (m as any).profile;
-                const name: string = profile?.full_name ?? 'Student';
-                const avatar: string | null = profile?.avatar_url ?? null;
-                const isMe = m.user_id === currentUserId;
-                return (
-                  <div key={m.id} className="flex items-center gap-2.5 py-[5px]">
-                    <UserAvatar avatarUrl={avatar} name={name} size={28} className="flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[12px] font-semibold truncate">{name}</p>
-                      {isMe && <p className="text-[10px] text-[#6b7280]">You</p>}
-                    </div>
-                    <span className="w-[7px] h-[7px] rounded-full bg-[#d1d5db] flex-shrink-0" />
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+        {membersLoading ? (
+          <div className="py-6 flex justify-center"><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-emerald-600" /></div>
+        ) : (
+          <MemberList
+            groupId={group.id}
+            members={members}
+            currentUserId={currentUserId}
+            tutorId={group.tutor_id}
+            isTutor={false}
+            onRefresh={fetchMembers}
+          />
+        )}
       </div>
-
-      {/* Pinned: WhatsApp */}
       <div className="border-t border-[#e4e8ee] p-4 flex-shrink-0">
         <WhatsAppJoinButton groupId={group.id} />
       </div>
