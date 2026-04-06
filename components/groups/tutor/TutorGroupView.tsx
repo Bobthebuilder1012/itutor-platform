@@ -561,23 +561,6 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
                     </div>
                   </div>
                 </div>
-                <div className="rounded-lg border border-green-100 bg-green-50/50 p-3">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Community</p>
-                  <div className="mt-3">
-                    <label className="block text-xs font-medium text-gray-600 mb-1">WhatsApp group invite link</label>
-                    <input
-                      type="url"
-                      value={manageForm.whatsapp_link}
-                      onChange={(e) => setManageForm((p) => ({ ...p, whatsapp_link: e.target.value }))}
-                      placeholder="https://chat.whatsapp.com/..."
-                      className={inputCls}
-                    />
-                    <p className="mt-1.5 text-[11px] text-gray-400">
-                      Paste your WhatsApp group invite link. Only approved members will see a "Join WhatsApp group" button — the link is never exposed in the page source.
-                      Tip: enable <strong>Approve new members</strong> in WhatsApp for an extra layer of control.
-                    </p>
-                  </div>
-                </div>
               </div>
             )}
 
@@ -681,7 +664,24 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
             </div>
           )}
 
-          {tab === 'messages' && <GroupMessageBoard groupId={group.id} isTutor={true} currentUserId={currentUserId} />}
+          {tab === 'messages' && (
+            <GroupMessageBoard
+              groupId={group.id}
+              isTutor={true}
+              currentUserId={currentUserId}
+              whatsappLink={(group as any).whatsapp_link ?? ''}
+              memberCount={approvedMembers.length}
+              onWhatsAppSave={async (link) => {
+                const res = await fetch(`/api/groups/${group.id}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ whatsapp_link: link || null }),
+                });
+                if (!res.ok) throw new Error('Failed to save');
+                onGroupUpdated();
+              }}
+            />
+          )}
         </div>
 
         {/* RIGHT: Sidebar */}

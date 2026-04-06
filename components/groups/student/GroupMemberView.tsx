@@ -343,7 +343,7 @@ export default function GroupMemberView({ group, currentUserId }: GroupMemberVie
         {/* Tab: Messages */}
         {tab === 'messages' && (
           <div className="h-full flex flex-col">
-            <GroupMessageBoard groupId={group.id} isTutor={false} currentUserId={currentUserId} />
+            <GroupMessageBoard groupId={group.id} isTutor={false} currentUserId={currentUserId} memberCount={approvedMembers.length} />
           </div>
         )}
 
