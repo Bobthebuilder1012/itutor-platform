@@ -29,6 +29,8 @@ interface MemberListProps {
   members: GroupMember[];
   currentUserId: string;
   tutorId: string;
+  tutorName?: string;
+  tutorAvatarUrl?: string | null;
   isTutor: boolean;
   inviteUrl?: string;
   onRefresh: () => void;
@@ -41,6 +43,8 @@ export default function MemberList({
   members,
   currentUserId,
   tutorId,
+  tutorName,
+  tutorAvatarUrl,
   isTutor,
   inviteUrl,
   onRefresh,
@@ -198,6 +202,27 @@ export default function MemberList({
         </div>
       )}
 
+      {/* Head tutor (pinned) */}
+      {tutorName && (
+        <div className="flex items-center gap-2.5 py-[7px] px-2 rounded-[10px] hover:bg-[#f5f7fa] transition-colors mb-1">
+          <div className="relative flex-shrink-0">
+            {tutorAvatarUrl ? (
+              <UserAvatar avatarUrl={tutorAvatarUrl} name={tutorName} size={32} />
+            ) : (
+              <div className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white" style={{ background: avatarColor(tutorId) }}>
+                {getInitials(tutorName)}
+              </div>
+            )}
+            <span className="absolute -bottom-px -right-px w-[10px] h-[10px] rounded-full border-2 border-white bg-[#0d9668]" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[12.5px] font-semibold truncate">{tutorName}</p>
+            <p className="text-[10px] text-[#6b7280]">Head Tutor</p>
+          </div>
+          <span className="px-[7px] py-[2px] rounded text-[9px] font-semibold bg-[#d1fae5] text-[#047857] flex-shrink-0">Tutor</span>
+        </div>
+      )}
+
       {/* Search */}
       <div className="mb-2">
         <div className="relative">
@@ -272,6 +297,24 @@ export default function MemberList({
               </div>
             </div>
             <div className="flex-1 overflow-y-auto px-3 py-1.5">
+              {/* Head tutor in modal */}
+              {tutorName && (!modalSearch || tutorName.toLowerCase().includes(modalSearch.toLowerCase())) && (
+                <div className="flex items-center gap-2.5 py-[9px] px-2.5 rounded-[10px] hover:bg-[#f5f7fa] transition-colors">
+                  <div className="relative flex-shrink-0">
+                    {tutorAvatarUrl ? (
+                      <UserAvatar avatarUrl={tutorAvatarUrl} name={tutorName} size={34} />
+                    ) : (
+                      <div className="w-[34px] h-[34px] rounded-full flex items-center justify-center text-[12px] font-bold text-white" style={{ background: avatarColor(tutorId) }}>{getInitials(tutorName)}</div>
+                    )}
+                    <span className="absolute -bottom-px -right-px w-[10px] h-[10px] rounded-full border-2 border-white bg-[#0d9668]" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-semibold truncate">{tutorName}</p>
+                    <p className="text-[11px] text-[#6b7280]">Head Tutor</p>
+                  </div>
+                  <span className="px-[7px] py-[2px] rounded text-[9px] font-semibold bg-[#d1fae5] text-[#047857] flex-shrink-0">Tutor</span>
+                </div>
+              )}
               {modalFiltered.map((m) => {
                 const name = m.profile?.full_name ?? 'Member';
                 const isMe = m.user_id === currentUserId;

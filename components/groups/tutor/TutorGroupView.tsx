@@ -756,6 +756,8 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
                 members={members}
                 currentUserId={currentUserId}
                 tutorId={group.tutor_id}
+                tutorName={tutorName}
+                tutorAvatarUrl={group.tutor?.avatar_url ?? null}
                 isTutor={true}
                 onRefresh={fetchMembers}
               />
