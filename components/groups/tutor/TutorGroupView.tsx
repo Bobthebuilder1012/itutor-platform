@@ -746,21 +746,20 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
           <div className="bg-white rounded-[14px] border border-gray-200 p-[18px] shadow-sm">
             <div className="flex items-center justify-between mb-3.5">
               <p className="text-[12px] font-bold uppercase tracking-wider text-slate-500">Members</p>
-              <span className="text-[11px] font-semibold bg-gray-100 px-2 py-0.5 rounded-xl">{approvedMembers.length}</span>
+              <span className="bg-[#d1fae5] text-[#047857] px-2 py-0.5 rounded-[10px] text-[11px] font-bold">{approvedMembers.length + 1}</span>
             </div>
             {membersLoading ? (
               <div className="py-6 flex justify-center"><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-emerald-600" /></div>
             ) : (
-              <MemberList groupId={group.id} members={members} onRefresh={fetchMembers} />
+              <MemberList
+                groupId={group.id}
+                members={members}
+                currentUserId={currentUserId}
+                tutorId={group.tutor_id}
+                isTutor={true}
+                onRefresh={fetchMembers}
+              />
             )}
-            <div
-              onClick={copyInviteLink}
-              className="flex items-center gap-2 mt-3 py-2.5 px-3 bg-gray-50 rounded-[10px] cursor-pointer hover:bg-emerald-50 transition-colors"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth={2}><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" /></svg>
-              <span className="flex-1 text-[12px] text-slate-500 truncate">{typeof window !== 'undefined' ? window.location.href : `itutor.com/groups/${group.id}`}</span>
-              <span className="text-[11px] font-semibold text-emerald-600 whitespace-nowrap">{linkCopied ? 'Copied!' : 'Copy link'}</span>
-            </div>
           </div>
 
           {/* Quick Actions */}
