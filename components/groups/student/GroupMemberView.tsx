@@ -108,6 +108,8 @@ export default function GroupMemberView({ group, currentUserId }: GroupMemberVie
             members={members}
             currentUserId={currentUserId}
             tutorId={group.tutor_id}
+            tutorName={tutorName}
+            tutorAvatarUrl={group.tutor?.avatar_url ?? null}
             isTutor={false}
             onRefresh={fetchMembers}
           />
@@ -165,36 +167,35 @@ export default function GroupMemberView({ group, currentUserId }: GroupMemberVie
         ))}
       </div>
 
-      {/* Content area */}
-      {tab === 'messages' ? (
-        <div className="flex-1 flex overflow-hidden">
-          <div className="flex-1 min-w-0 flex flex-col">
+      {/* Content area — sidebar always visible */}
+      <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 min-w-0 flex flex-col">
+          {tab === 'messages' ? (
             <GroupMessageBoard
               groupId={group.id}
               isTutor={false}
               currentUserId={currentUserId}
               memberCount={approvedMembers.length}
             />
-          </div>
-          {membersSidebar}
-        </div>
-      ) : (
-        <div className="flex-1 overflow-y-auto px-6 py-5">
-          {tab === 'stream' && (
-            <GroupStreamPage groupId={group.id} currentUserId={currentUserId} isTutor={false} />
-          )}
-
-          {tab === 'sessions' && (
-            <StudentSessionsTab
-              sessions={sessions}
-              loading={sessionsLoading}
-              groupId={group.id}
-              onJoin={handleJoinOccurrence}
-              joiningOccurrenceId={joiningOccurrenceId}
-            />
+          ) : (
+            <div className="flex-1 overflow-y-auto px-6 py-5">
+              {tab === 'stream' && (
+                <GroupStreamPage groupId={group.id} currentUserId={currentUserId} isTutor={false} />
+              )}
+              {tab === 'sessions' && (
+                <StudentSessionsTab
+                  sessions={sessions}
+                  loading={sessionsLoading}
+                  groupId={group.id}
+                  onJoin={handleJoinOccurrence}
+                  joiningOccurrenceId={joiningOccurrenceId}
+                />
+              )}
+            </div>
           )}
         </div>
-      )}
+        {membersSidebar}
+      </div>
     </div>
   );
 }
