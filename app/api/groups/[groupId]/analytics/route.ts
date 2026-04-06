@@ -46,7 +46,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     let sessions: any[] | null = null;
     let attendance: any[] | null = null;
 
-    let membersResult = await service
+    let membersResult: { data: any[] | null; error: any } = await service
       .from('group_members')
       .select('user_id, joined_at, status, profile:profiles(full_name)')
       .eq('group_id', groupId);
