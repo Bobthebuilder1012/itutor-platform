@@ -11,8 +11,11 @@ function isSchemaMismatch(error: any) {
     code === '42P01' ||
     code === 'PGRST204' ||
     code === 'PGRST205' ||
+    code === 'PGRST201' ||
     message.includes('does not exist') ||
-    message.includes('could not find')
+    message.includes('could not find') ||
+    message.includes('more than one relationship') ||
+    message.includes('could not embed')
   );
 }
 
@@ -46,7 +49,9 @@ export async function GET(request: NextRequest) {
       tutor_name: z.string().optional(),
       archived: z.enum(['true', 'false']).optional(),
     });
-    const parsed = querySchema.safeParse(Object.fromEntries(searchParams.entries()));
+    const parsed = querySchema.safeParse(
+      Object.fromEntries([...searchParams.entries()].filter(([, v]) => v !== ''))
+    );
     if (!parsed.success) {
       return NextResponse.json({ success: false, error: 'Invalid query parameters' }, { status: 400 });
     }
@@ -189,7 +194,7 @@ export async function GET(request: NextRequest) {
         ...g,
         group_members: undefined,
         member_count: approvedMembers.length,
-        member_previews: approvedMembers.slice(0, 3).map((m: any) => m.profile),
+        member_previews: approvedMembers.slice(0, 3).map((m: any) => m.profile).filter(Boolean),
         current_user_membership: currentUserMembership,
         next_occurrence: nextOccurrenceByGroupId.get(g.id) ?? null,
       };

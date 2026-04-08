@@ -6,6 +6,7 @@ import Link from 'next/link';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { getDisplayName } from '@/lib/utils/displayName';
+import { ParentAttendanceReadOnly } from '@/components/student/StudentSessionAttendance';
 
 type ChildSessionsData = {
   child: {
@@ -21,6 +22,7 @@ type ChildSessionsData = {
     scheduledStartAt: string;
     scheduledEndAt: string;
     durationMinutes: number;
+    selfReportedAttendance: { status: 'attending' | 'not_attending'; updatedAt: string } | null;
   }>;
 };
 
@@ -125,9 +127,13 @@ export default function ParentChildSessionsPage() {
                       {formatDateTime(session.scheduledStartAt)} • {session.durationMinutes} min
                     </p>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right md:min-w-[200px]">
                     <p className="font-semibold text-gray-900">{session.status}</p>
                     <p className="text-sm text-gray-500">{formatDateTime(session.scheduledEndAt)} end</p>
+                    <p className="mt-2 text-left text-xs font-medium text-gray-500 md:text-right">Attendance (self-reported)</p>
+                    <div className="text-left md:flex md:justify-end">
+                      <ParentAttendanceReadOnly attendance={session.selfReportedAttendance} />
+                    </div>
                   </div>
                 </div>
               </div>

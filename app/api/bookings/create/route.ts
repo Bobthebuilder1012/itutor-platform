@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { isPaidClassesEnabled } from '@/lib/featureFlags/paidClasses';
-import { getServiceClient } from '@/lib/supabase/server';
+import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { calculateCommission } from '@/lib/utils/commissionCalculator';
 
 type Body = {
@@ -17,28 +16,13 @@ type Body = {
   communityId?: string | null;
 };
 
-function getAuthedSupabase() {
-  const cookieStore = cookies();
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
-        },
-      },
-    }
-  );
-}
-
 export const dynamic = 'force-dynamic';
 
 async function createParentBooking(
   userId: string,
   body: Body,
   durationMinutes: number,
-  supabase: ReturnType<typeof getAuthedSupabase>
+  supabase: SupabaseClient
 ) {
   const admin = getServiceClient();
   const childId = body.studentId!;
@@ -205,7 +189,7 @@ async function createParentBooking(
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = getAuthedSupabase();
+    const supabase = await getServerClient();
     const {
       data: { user },
       error: authError,

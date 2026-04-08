@@ -88,23 +88,39 @@ export async function createBookingRequest(
   durationMinutes: number = 60,
   communityId?: string | null
 ): Promise<{ success: boolean; booking_id: string; status?: string; requires_payment?: boolean }> {
-  const response = await fetch('/api/bookings/create', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      studentId,
-      tutorId,
-      subjectId,
-      sessionTypeId,
-      requestedStartAt,
-      requestedEndAt,
-      studentNotes,
-      durationMinutes,
-      communityId: communityId ?? null,
-    }),
-  });
+  let response: Response;
+  try {
+    response = await fetch('/api/bookings/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        studentId,
+        tutorId,
+        subjectId,
+        sessionTypeId,
+        requestedStartAt,
+        requestedEndAt,
+        studentNotes,
+        durationMinutes,
+        communityId: communityId ?? null,
+      }),
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Network error';
+    if (msg === 'Failed to fetch') {
+      throw new Error(
+        'Could not reach the server. If the page just refreshed, wait a moment and try again. Otherwise check your connection.'
+      );
+    }
+    throw e;
+  }
 
-  const result = await response.json();
+  let result: { error?: string; booking_id?: string; success?: boolean };
+  try {
+    result = await response.json();
+  } catch {
+    throw new Error(`Booking request failed (${response.status}). Please try again.`);
+  }
   if (!response.ok) {
     throw new Error(result?.error || 'Failed to create booking request');
   }

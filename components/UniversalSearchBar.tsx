@@ -274,7 +274,7 @@ export default function UniversalSearchBar({ userRole, onResultClick }: SearchBa
                     : 'text-gray-400 hover:text-gray-600'
                 }`}
               >
-                {mode === 'tutor' ? 'By Name' : 'By Subject'}
+                {mode === 'tutor' ? 'By Name' : 'By Class'}
               </button>
             ))}
           </div>

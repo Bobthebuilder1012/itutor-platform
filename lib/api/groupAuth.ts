@@ -15,7 +15,7 @@ export async function requireTutor(userId: string) {
 
 export async function requireGroupOwner(groupId: string, userId: string) {
   const service = getServiceClient();
-  const { data } = await service.from('groups').select('id, tutor_id').eq('id', groupId).single();
+  const { data } = await service.from('groups').select('id, tutor_id').eq('id', groupId).maybeSingle();
   return data?.tutor_id === userId;
 }
 

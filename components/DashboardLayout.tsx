@@ -57,6 +57,18 @@ const icons = {
   users: <I><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-[18px] h-[18px]"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" strokeWidth="1.8"/><circle cx="9" cy="7" r="4" strokeWidth="1.8"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" strokeWidth="1.8"/></svg></I>,
   mail: <I><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-[18px] h-[18px]"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" strokeWidth="1.8"/><polyline points="22,6 12,13 2,6" strokeWidth="1.8"/></svg></I>,
   queue: <I><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-[18px] h-[18px]"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2m-6 9l2 2 4-4" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg></I>,
+  chatFeedback: (
+    <I>
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-[18px] h-[18px]">
+        <path
+          d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </I>
+  ),
   settings: <I><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-[18px] h-[18px]"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" strokeWidth="1.8"/><circle cx="12" cy="12" r="3" strokeWidth="1.8"/></svg></I>,
 };
 
@@ -69,6 +81,8 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
   const [collapsed, setCollapsed] = useState(false);
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   const [authEmail, setAuthEmail] = useState<string | null>(null);
+  /** Parent only: at least one linked student account (null = still checking). */
+  const [parentHasLinkedChild, setParentHasLinkedChild] = useState<boolean | null>(null);
 
   const effectiveUserId = profile?.id || authUserId;
   const effectiveEmail = authEmail || profile?.email || null;
@@ -115,6 +129,30 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
   useEffect(() => {
     if (effectiveUserId) initializePushNotifications(effectiveUserId);
   }, [effectiveUserId]);
+
+  useEffect(() => {
+    if (role !== 'parent' || !effectiveUserId) {
+      setParentHasLinkedChild(null);
+      return;
+    }
+    let cancelled = false;
+    void supabase
+      .from('parent_child_links')
+      .select('child_id')
+      .eq('parent_id', effectiveUserId)
+      .limit(1)
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          setParentHasLinkedChild(false);
+          return;
+        }
+        setParentHasLinkedChild((data?.length ?? 0) > 0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [role, effectiveUserId, pathname]);
 
   useEffect(() => {
     if (emailOnlyAdmin && pathname !== '/admin/emails') router.replace('/admin/emails');
@@ -168,16 +206,26 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/tutor/settings', label: 'Settings', icon: icons.settings },
         ]},
       ];
-      case 'parent': return [
-        { label: 'Menu', items: [
+      case 'parent': {
+        const menuItems = [
           { href: '/parent/dashboard', label: 'Dashboard', icon: icons.dashboard },
           { href: '/parent/add-child', label: 'Add Child', icon: icons.userPlus },
           { href: '/parent/approve-bookings', label: 'Booking Requests', icon: icons.calendar },
-        ]},
-        { label: 'Account', items: [
-          { href: '/parent/settings', label: 'Settings', icon: icons.settings },
-        ]},
-      ];
+        ];
+        if (parentHasLinkedChild === true) {
+          menuItems.push({
+            href: '/parent/session-feedback',
+            label: 'Session feedback',
+            icon: icons.chatFeedback,
+          });
+        }
+        return [
+          { label: 'Menu', items: menuItems },
+          { label: 'Account', items: [
+            { href: '/parent/settings', label: 'Settings', icon: icons.settings },
+          ]},
+        ];
+      }
       case 'reviewer': return [
         { label: 'Review', items: [
           { href: '/reviewer/dashboard', label: 'Dashboard', icon: icons.dashboard },

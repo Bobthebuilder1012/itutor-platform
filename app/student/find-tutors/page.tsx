@@ -11,16 +11,31 @@ import { getAvatarColor } from '@/lib/utils/avatarColors';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import UserAvatar from '@/components/UserAvatar';
 
+const TEACHING_MODE_LABELS: Record<string, string> = {
+  online: 'Online sessions',
+  in_person: 'In-person sessions',
+  both: 'Online & in-person',
+};
+
+const TUTOR_TYPE_LABELS: Record<string, string> = {
+  professional_teacher: 'Professional teacher',
+  university_tutor: 'University tutor',
+  graduate_tutor: 'Graduate tutor',
+};
+
 type Tutor = {
   id: string;
   full_name: string;
   username: string | null;
   display_name: string | null;
   avatar_url: string | null;
+  profile_banner_url?: string | null;
   school?: string | null;
   institution_id?: string | null;
   institution_name?: string | null;
-  country: string;
+  country?: string | null;
+  teaching_mode?: string | null;
+  tutor_type?: string | null;
   bio: string | null;
   tutor_verification_status: string | null;
   subjects: Array<{
@@ -93,12 +108,12 @@ export default function FindTutorsPage() {
         console.error('❌ Exception fetching institutions:', err);
       }
       
-      // Fetch all tutor profiles with bio
+      // Fetch all tutor profiles with bio (omit profile_banner_url until migration 104 is applied — cards use gradient fallback)
       const { data: tutorProfiles, error: profilesError } = await supabase
         .from('profiles')
-        .select('id, full_name, username, display_name, avatar_url, institution_id, country, bio, tutor_verification_status')
+        .select('id, full_name, username, display_name, avatar_url, institution_id, country, bio, tutor_verification_status, teaching_mode, tutor_type')
         .eq('role', 'tutor')
-        .order('tutor_verification_status', { ascending: false, nullsFirst: false }); // Verified tutors first
+        .order('tutor_verification_status', { ascending: false });
 
       if (profilesError) {
         console.error('❌ Error fetching tutor profiles:', profilesError);
@@ -503,122 +518,174 @@ export default function FindTutorsPage() {
             <p className="text-sm text-gray-500">Try adjusting your filters</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 items-stretch">
             {pagedTutors.map(tutor => {
               const matchesStudentSubjects = profile.subjects_of_study?.some(studentSubject =>
                 tutor.subjects.some(tutorSubject => tutorSubject.name === studentSubject)
               );
+              const bannerGradient = getAvatarColor(tutor.id);
+              const teachingLabel = tutor.teaching_mode
+                ? TEACHING_MODE_LABELS[tutor.teaching_mode] ?? null
+                : null;
+              const typeLabel = tutor.tutor_type ? TUTOR_TYPE_LABELS[tutor.tutor_type] ?? null : null;
 
               return (
-                <div
+                <article
                   key={tutor.id}
-                  className="bg-white border-2 border-gray-200 rounded-2xl p-6 hover:shadow-xl hover:border-itutor-green transition-all duration-300 flex flex-col"
+                  className="group flex h-full min-h-[28rem] flex-col overflow-hidden rounded-2xl border-2 border-gray-200 bg-white shadow-sm transition-all duration-300 hover:border-itutor-green hover:shadow-xl"
                 >
-                  {/* Verified Badge */}
-                  {matchesStudentSubjects && tutor.tutor_verification_status === 'VERIFIED' && (
-                    <div className="mb-3">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gradient-to-r from-itutor-green to-emerald-600 text-white">
-                        ✓ Verified
-                      </span>
+                  <div className="relative h-36 shrink-0 sm:h-40">
+                    {tutor.profile_banner_url ? (
+                      <img
+                        src={tutor.profile_banner_url}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div
+                        className={`h-full w-full bg-gradient-to-br ${bannerGradient}`}
+                        aria-hidden
+                      />
+                    )}
+                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/35 via-black/5 to-transparent" />
+                    <div className="absolute left-4 top-4 right-4 flex flex-wrap items-start justify-end gap-2">
+                      {matchesStudentSubjects && tutor.tutor_verification_status === 'VERIFIED' && (
+                        <span className="inline-flex items-center rounded-full bg-white/95 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 shadow-sm ring-1 ring-emerald-200/80 backdrop-blur-sm">
+                          ✓ Matches your subjects
+                        </span>
+                      )}
                     </div>
-                  )}
+                  </div>
 
-                  {/* Tutor Info */}
-                  <div className="flex items-start gap-4 mb-4">
-                    <UserAvatar avatarUrl={tutor.avatar_url} name={getDisplayName(tutor)} size={64} />
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-lg font-bold text-gray-900 truncate flex items-center gap-2">
-                        {getDisplayName(tutor)}
-                        {tutor.tutor_verification_status === 'VERIFIED' && <VerifiedBadge size="sm" />}
-                      </h3>
-                      {tutor.username && (
-                        <p className="text-xs text-gray-500 truncate">@{tutor.username}</p>
-                      )}
+                  <div className="relative flex flex-1 flex-col px-6 pb-6 pt-5">
+                    <div className="mb-4 flex items-start gap-4">
+                      <div className="relative -mt-14 shrink-0 rounded-full ring-4 ring-white shadow-md sm:-mt-16">
+                        <UserAvatar avatarUrl={tutor.avatar_url} name={getDisplayName(tutor)} size={88} />
+                      </div>
+                      <div className="min-w-0 flex-1 pt-1">
+                        <div className="flex items-start gap-2">
+                          <h3 className="line-clamp-2 flex-1 text-lg font-bold leading-tight text-gray-900">
+                            {getDisplayName(tutor)}
+                          </h3>
+                          {tutor.tutor_verification_status === 'VERIFIED' && (
+                            <VerifiedBadge size="sm" />
+                          )}
+                        </div>
+                        {tutor.username && (
+                          <p className="truncate text-xs text-gray-500">@{tutor.username}</p>
+                        )}
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-gray-600">
+                          <span className="flex items-center gap-0.5">
+                            <span className="text-yellow-400">★</span>
+                            {tutor.average_rating !== null ? (
+                              <>
+                                <span className="font-bold text-gray-900">{tutor.average_rating.toFixed(1)}</span>
+                                <span className="text-xs text-gray-500">
+                                  ({tutor.total_reviews} {tutor.total_reviews === 1 ? 'review' : 'reviews'})
+                                </span>
+                              </>
+                            ) : (
+                              <span className="text-xs italic text-gray-500">No reviews yet</span>
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mb-4 min-h-[2.75rem] space-y-1.5 border-b border-gray-100 pb-4 text-sm text-gray-600">
                       {tutor.institution_name && (
-                        <p className="text-sm text-gray-600 truncate">{tutor.institution_name}</p>
+                        <p className="flex items-start gap-2">
+                          <span className="mt-0.5 shrink-0 text-gray-400" aria-hidden>
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                            </svg>
+                          </span>
+                          <span className="line-clamp-2 font-medium text-gray-800">{tutor.institution_name}</span>
+                        </p>
                       )}
-                      {/* Always show rating */}
-                      <div className="flex items-center gap-1 mt-1">
-                        <span className="text-yellow-400 text-base">★</span>
-                        {tutor.average_rating !== null ? (
-                          <>
-                            <span className="text-sm font-bold text-gray-900">
-                              {tutor.average_rating.toFixed(1)}
+                      {tutor.country && (
+                        <p className="flex items-center gap-2 text-xs text-gray-500">
+                          <span className="shrink-0 text-gray-400" aria-hidden>
+                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          </span>
+                          {tutor.country}
+                        </p>
+                      )}
+                      {(teachingLabel || typeLabel) && (
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          {typeLabel && (
+                            <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-gray-700">
+                              {typeLabel}
                             </span>
-                            <span className="text-xs text-gray-600">
-                              ({tutor.total_reviews} {tutor.total_reviews === 1 ? 'review' : 'reviews'})
+                          )}
+                          {teachingLabel && (
+                            <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-800 ring-1 ring-emerald-100">
+                              {teachingLabel}
                             </span>
-                          </>
-                        ) : (
-                          <span className="text-xs text-gray-500 italic">No reviews yet</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {tutor.bio && (
+                      <div className="mb-4">
+                        <p className="text-xs font-bold uppercase tracking-widest text-gray-400">About</p>
+                        <p className="mt-1 line-clamp-3 text-sm leading-relaxed text-gray-700">{tutor.bio}</p>
+                      </div>
+                    )}
+
+                    {tutor.topComment && (
+                      <div className="mb-4 rounded-xl border border-emerald-100 bg-gradient-to-b from-emerald-50/80 to-white p-3">
+                        <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-emerald-800/80">Featured review</p>
+                        <div className="mb-1 flex items-center gap-0.5">
+                          {[...Array(tutor.topComment.stars)].map((_, i) => (
+                            <span key={i} className="text-sm text-yellow-400">★</span>
+                          ))}
+                          <span className="ml-1 text-xs text-gray-500">· {tutor.topComment.student_name}</span>
+                        </div>
+                        <p className="line-clamp-2 text-xs italic text-gray-700">"{tutor.topComment.comment}"</p>
+                      </div>
+                    )}
+
+                    <div className="mb-4 flex-1">
+                      <p className="mb-2 text-xs font-bold uppercase tracking-widest text-gray-400">Teaches</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {tutor.subjects.slice(0, 5).map(subject => (
+                          <span
+                            key={subject.id}
+                            className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-xs font-medium text-gray-800"
+                          >
+                            {subject.name}
+                          </span>
+                        ))}
+                        {tutor.subjects.length > 5 && (
+                          <span className="rounded-md border border-gray-200 bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-600">
+                            +{tutor.subjects.length - 5} more
+                          </span>
                         )}
                       </div>
                     </div>
-                  </div>
 
-                  {/* Bio */}
-                  {tutor.bio && (
-                    <div className="mb-4">
-                      <p className="text-sm text-gray-700 line-clamp-2">
-                        {tutor.bio}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Top Comment */}
-                  {tutor.topComment && (
-                    <div className="mb-4 bg-white/70 rounded-lg p-3 border border-green-200">
-                      <div className="flex items-center gap-1 mb-1">
-                        {[...Array(tutor.topComment.stars)].map((_, i) => (
-                          <span key={i} className="text-yellow-400 text-sm">★</span>
-                        ))}
-                        <span className="text-xs text-gray-500 ml-1">• {tutor.topComment.student_name}</span>
-                      </div>
-                      <p className="text-xs text-gray-700 italic line-clamp-2">
-                        "{tutor.topComment.comment}"
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Subjects */}
-                  <div className="mb-4 flex-1">
-                    <p className="text-xs text-gray-500 mb-2 font-medium">Teaches:</p>
-                    <div className="flex flex-wrap gap-1">
-                      {tutor.subjects.slice(0, 4).map(subject => (
-                        <span
-                          key={subject.id}
-                          className="text-xs px-2 py-1 rounded bg-gray-50 border border-gray-300 text-gray-700"
-                        >
-                          {subject.name}
-                        </span>
-                      ))}
-                      {tutor.subjects.length > 4 && (
-                        <span className="text-xs px-2 py-1 rounded bg-gray-100 border border-gray-300 text-gray-700 font-medium">
-                          +{tutor.subjects.length - 4} more
-                        </span>
+                    <div className="mt-auto space-y-3 border-t border-gray-100 pt-4">
+                      {tutor.subjects.length > 0 && (
+                        <p className="text-sm font-semibold text-gray-900">
+                          {process.env.NEXT_PUBLIC_ENABLE_PAID_SESSIONS === 'true'
+                            ? `From $${Math.min(...tutor.subjects.map(s => s.price_per_hour_ttd))}/hr`
+                            : '$0.00/hr'}
+                        </p>
                       )}
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/student/tutors/${tutor.id}`)}
+                        className="w-full rounded-xl bg-gradient-to-r from-itutor-green to-emerald-600 py-3 px-4 font-semibold text-white shadow-lg transition-all duration-300 hover:from-emerald-600 hover:to-itutor-green hover:shadow-itutor-green/40"
+                      >
+                        View Profile
+                      </button>
                     </div>
                   </div>
-
-                  {/* Price Range */}
-                  {tutor.subjects.length > 0 && (
-                    <p className="text-sm text-gray-600 mb-3">
-                      {process.env.NEXT_PUBLIC_ENABLE_PAID_SESSIONS === 'true'
-                        ? `From $${Math.min(...tutor.subjects.map(s => s.price_per_hour_ttd))}/hr`
-                        : '$0.00/hr'}
-                    </p>
-                  )}
-
-                  {/* View Profile Button */}
-                  <div className="mt-auto pt-2">
-                    <button
-                      onClick={() => router.push(`/student/tutors/${tutor.id}`)}
-                      className="w-full bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-white py-2 px-4 rounded-lg font-semibold transition-all duration-300 shadow-lg hover:shadow-itutor-green/50"
-                    >
-                      View Profile
-                    </button>
-                  </div>
-                </div>
+                </article>
               );
             })}
           </div>
