@@ -17,6 +17,10 @@ function verifyCronSecret(request: NextRequest): boolean {
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
+  // DISABLED: Onboarding emails were sending as transactional instead of marketing.
+  // Must be moved to Resend Broadcast/Audience API before re-enabling.
+  return NextResponse.json({ message: 'Onboarding emails disabled', sent: 0 });
+
   console.log('=== Onboarding Email Cron Job Started ===');
 
   // Verify cron secret
