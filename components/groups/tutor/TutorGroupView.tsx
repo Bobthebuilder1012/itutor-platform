@@ -19,7 +19,7 @@ import WhatsAppSetupTab from './WhatsAppSetupTab';
 import GroupStreamPage from '../stream/GroupStreamPage';
 
 type Tab = 'stream' | 'sessions' | 'messages' | 'whatsapp';
-type ManageSection = 'profile' | 'pricing' | 'sessions';
+type ManageSection = 'profile' | 'pricing';
 
 interface TutorGroupViewProps {
   group: GroupWithTutor;
@@ -77,9 +77,6 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
     pricing_mode: ((group as any).pricing_mode ?? 'FREE') as 'FREE' | 'PER_SESSION' | 'PER_COURSE',
     price_per_session: (group as any).price_per_session ?? '',
     price_per_course: (group as any).price_per_course ?? '',
-    session_length_minutes: (group as any).session_length_minutes ?? '',
-    session_frequency: ((group as any).session_frequency ?? 'weekly') as string,
-    availability_window: ((group as any).availability_window ?? '') as string,
   });
 
   const fetchSessions = useCallback(async () => {
@@ -134,9 +131,6 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
       pricing_mode: ((group as any).pricing_mode ?? 'FREE') as 'FREE' | 'PER_SESSION' | 'PER_COURSE',
       price_per_session: (group as any).price_per_session ?? '',
       price_per_course: (group as any).price_per_course ?? '',
-      session_length_minutes: (group as any).session_length_minutes ?? '',
-      session_frequency: ((group as any).session_frequency ?? 'weekly') as string,
-      availability_window: ((group as any).availability_window ?? '') as string,
     });
     setManageError('');
   }, [group]);
@@ -174,10 +168,6 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
           manageForm.pricing_mode === 'PER_COURSE' && manageForm.price_per_course !== ''
             ? Number(manageForm.price_per_course)
             : null,
-        session_length_minutes:
-          manageForm.session_length_minutes === '' ? null : Number(manageForm.session_length_minutes),
-        session_frequency: manageForm.session_frequency || null,
-        availability_window: manageForm.availability_window.trim() || null,
       };
       const res = await fetch(`/api/groups/${group.id}`, {
         method: 'PATCH',
@@ -430,7 +420,7 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
           <div className="bg-white rounded-[14px] border border-gray-200 p-5 shadow-sm">
             <div className="mb-4 border-b border-gray-100">
               <div className="flex items-center gap-4">
-                {(['profile', 'pricing', 'sessions'] as ManageSection[]).map((s) => (
+                {(['profile', 'pricing'] as ManageSection[]).map((s) => (
                   <button
                     key={s}
                     type="button"
@@ -441,7 +431,7 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
                         : 'border-transparent text-gray-500 hover:text-gray-700'
                     }`}
                   >
-                    {s === 'sessions' ? 'Session Defaults' : s}
+                    {s}
                   </button>
                 ))}
               </div>
@@ -557,22 +547,6 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
                   </div>
                   <div><label className="block text-xs font-medium text-gray-600 mb-1">Price per session</label><input type="number" min={0} value={manageForm.price_per_session} onChange={(e) => setManageForm((p) => ({ ...p, price_per_session: e.target.value }))} disabled={manageForm.pricing_mode !== 'PER_SESSION'} className={`${inputCls} disabled:bg-gray-100`} /></div>
                   <div><label className="block text-xs font-medium text-gray-600 mb-1">Price per month</label><input type="number" min={0} value={manageForm.price_per_course} onChange={(e) => setManageForm((p) => ({ ...p, price_per_course: e.target.value }))} disabled={manageForm.pricing_mode !== 'PER_COURSE'} className={`${inputCls} disabled:bg-gray-100`} /></div>
-                </div>
-              </div>
-            )}
-
-            {manageSection === 'sessions' && (
-              <div className="rounded-lg border border-gray-100 bg-gray-50/70 p-3">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Session defaults</p>
-                <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div><label className="block text-xs font-medium text-gray-600 mb-1">Session length (mins)</label><input type="number" min={15} value={manageForm.session_length_minutes} onChange={(e) => setManageForm((p) => ({ ...p, session_length_minutes: e.target.value }))} className={inputCls} /></div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Session frequency</label>
-                    <select value={manageForm.session_frequency} onChange={(e) => setManageForm((p) => ({ ...p, session_frequency: e.target.value }))} className={inputCls}>
-                      <option value="weekly">Weekly</option><option value="biweekly">Biweekly</option><option value="monthly">Monthly</option>
-                    </select>
-                  </div>
-                  <div><label className="block text-xs font-medium text-gray-600 mb-1">Availability window</label><input type="text" value={manageForm.availability_window} onChange={(e) => setManageForm((p) => ({ ...p, availability_window: e.target.value }))} placeholder="e.g. Fridays 6:00 PM - 7:00 PM" className={inputCls} /></div>
                 </div>
               </div>
             )}
