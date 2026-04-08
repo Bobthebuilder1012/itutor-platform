@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { Session } from '@/lib/types/database';
+import StudentSessionAttendance, { type SessionAttendanceState } from '@/components/student/StudentSessionAttendance';
 
 type EnrichedSession = Session & {
   tutor?: { id: string; full_name?: string; display_name?: string; username?: string } | null;
@@ -12,11 +13,19 @@ type Props = {
   sessions: EnrichedSession[];
   loading: boolean;
   onViewSession?: (sessionId: string) => void;
+  attendanceBySessionId?: Record<string, SessionAttendanceState>;
+  onAttendanceRefresh?: () => void;
 };
 
 const cardBase = 'bg-white border border-gray-100 rounded-2xl p-5 sm:p-6 shadow-sm hover:shadow-md transition-all duration-200';
 
-export default function UpcomingSessionsCard({ sessions, loading, onViewSession }: Props) {
+export default function UpcomingSessionsCard({
+  sessions,
+  loading,
+  onViewSession,
+  attendanceBySessionId,
+  onAttendanceRefresh,
+}: Props) {
   const getTutorName = (tutor: EnrichedSession['tutor']) =>
     tutor ? (tutor.display_name || tutor.full_name || tutor.username || 'Tutor') : 'Tutor';
 
@@ -127,6 +136,16 @@ export default function UpcomingSessionsCard({ sessions, loading, onViewSession 
           >
             View session details
           </button>
+        )}
+        {attendanceBySessionId && (
+          <StudentSessionAttendance
+            sessionId={next.id}
+            scheduledStartAt={next.scheduled_start_at}
+            sessionStatus={next.status || ''}
+            attendance={attendanceBySessionId[next.id] ?? null}
+            compact
+            onUpdated={onAttendanceRefresh}
+          />
         )}
       </div>
 

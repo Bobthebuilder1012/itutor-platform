@@ -61,21 +61,9 @@ export default function VerifyCodePage() {
 
       if (data.session) {
         setSuccess(true);
-        
-        const userRole = data.session.user.user_metadata?.role as string | undefined;
-
-        console.log('✅ Email verified! User role:', userRole ?? '(none)');
 
         setTimeout(() => {
-          if (userRole === 'tutor') {
-            router.push('/onboarding/tutor');
-          } else if (userRole === 'parent') {
-            router.push('/onboarding/parent');
-          } else if (userRole === 'student') {
-            router.push('/onboarding/student');
-          } else {
-            router.push('/signup/complete-role');
-          }
+          router.push('/signup/complete-role');
         }, 1500);
       } else {
         setError('Verification failed. Please try again.');

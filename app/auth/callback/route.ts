@@ -71,18 +71,7 @@ export async function GET(request: NextRequest) {
   // Only treat explicit email verification callbacks as email-confirmation flows.
   const isEmailConfirmationFlow = type === 'signup' || type === 'email';
   if (isEmailConfirmationFlow) {
-    console.log('✅ Email confirmation detected - redirecting to onboarding');
-    const userRole = session.user.user_metadata?.role as string | undefined;
-
-    if (userRole === 'tutor') {
-      return NextResponse.redirect(new URL('/onboarding/tutor', request.url));
-    }
-    if (userRole === 'parent') {
-      return NextResponse.redirect(new URL('/parent/dashboard', request.url));
-    }
-    if (userRole === 'student') {
-      return NextResponse.redirect(new URL('/onboarding/student', request.url));
-    }
+    console.log('✅ Email confirmation detected - redirecting to role selection');
     return NextResponse.redirect(new URL('/signup/complete-role', request.url));
   }
 

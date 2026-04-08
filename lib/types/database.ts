@@ -28,6 +28,7 @@ export interface Profile {
   rating_count: number;
   bio?: string | null;
   avatar_url?: string | null;
+  profile_banner_url?: string | null;
   created_at: string;
   updated_at: string;
   is_reviewer?: boolean;
@@ -98,6 +99,14 @@ export interface Rating {
   stars: number;
   comment?: string;
   created_at: string;
+}
+
+/** Student self-reported plan to attend (not tutor-managed). */
+export interface SessionStudentAttendance {
+  session_id: string;
+  student_id: string;
+  status: 'attending' | 'not_attending';
+  updated_at: string;
 }
 
 export interface TutorVerification {

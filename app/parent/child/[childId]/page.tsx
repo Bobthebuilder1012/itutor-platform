@@ -6,6 +6,7 @@ import Link from 'next/link';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { getDisplayName } from '@/lib/utils/displayName';
+import { ParentAttendanceReadOnly } from '@/components/student/StudentSessionAttendance';
 import { getBookingStatusColor, getBookingStatusLabel } from '@/lib/types/booking';
 
 type ChildDetail = {
@@ -47,6 +48,7 @@ type ChildDetail = {
     scheduledStartAt: string;
     scheduledEndAt: string;
     durationMinutes: number;
+    selfReportedAttendance: { status: 'attending' | 'not_attending'; updatedAt: string } | null;
   }>;
 };
 
@@ -270,6 +272,7 @@ export default function ParentChildPage() {
                     <p className="mt-1 text-sm text-gray-500">
                       {formatDateTime(session.scheduledStartAt)} • {session.durationMinutes} min
                     </p>
+                    <ParentAttendanceReadOnly attendance={session.selfReportedAttendance} />
                   </div>
                 ))}
               </div>

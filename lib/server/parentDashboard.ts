@@ -53,6 +53,30 @@ type SessionRow = {
   created_at: string;
 };
 
+type AttendanceRow = {
+  session_id: string;
+  status: 'attending' | 'not_attending';
+  updated_at: string;
+};
+
+async function buildAttendanceMap(
+  admin: ReturnType<typeof getServiceClient>,
+  sessionIds: string[]
+): Promise<Map<string, { status: 'attending' | 'not_attending'; updatedAt: string }>> {
+  const m = new Map<string, { status: 'attending' | 'not_attending'; updatedAt: string }>();
+  if (sessionIds.length === 0) return m;
+
+  const { data } = await admin
+    .from('session_student_attendance')
+    .select('session_id, status, updated_at')
+    .in('session_id', sessionIds);
+
+  for (const row of (data ?? []) as AttendanceRow[]) {
+    m.set(row.session_id, { status: row.status, updatedAt: row.updated_at });
+  }
+  return m;
+}
+
 type PaymentRow = {
   id: string;
   booking_id: string;
@@ -196,6 +220,11 @@ export async function getParentDashboardData(parentId: string) {
   const subjectMap = new Map((subjects ?? []).map((row) => [row.id, row as SubjectRow]));
   const bookingMap = new Map(bookingRows.map((row) => [row.id, row]));
 
+  const attendanceMap = await buildAttendanceMap(
+    admin,
+    sessionRows.map((s) => s.id)
+  );
+
   const upcomingSessions = sessionRows
     .filter(isUpcomingSession)
     .slice(0, 6)
@@ -213,6 +242,7 @@ export async function getParentDashboardData(parentId: string) {
         durationMinutes: session.duration_minutes,
         status: session.status,
         bookingId: session.booking_id,
+        selfReportedAttendance: attendanceMap.get(session.id) ?? null,
       };
     });
 
@@ -363,6 +393,11 @@ export async function getParentChildDetail(parentId: string, childId: string) {
   const subjectMap = new Map((subjects ?? []).map((row) => [row.id, row as SubjectRow]));
   const bookingMap = new Map(bookingRows.map((row) => [row.id, row]));
 
+  const attendanceMap = await buildAttendanceMap(
+    admin,
+    sessionRows.map((s) => s.id)
+  );
+
   const classEntries = Array.from(
     new Map(
       bookingRows
@@ -415,6 +450,7 @@ export async function getParentChildDetail(parentId: string, childId: string) {
         scheduledStartAt: session.scheduled_start_at,
         scheduledEndAt: session.scheduled_end_at,
         durationMinutes: session.duration_minutes,
+        selfReportedAttendance: attendanceMap.get(session.id) ?? null,
       };
     }),
   };

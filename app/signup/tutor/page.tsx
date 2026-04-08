@@ -68,20 +68,22 @@ export default function TutorSignupPage() {
       setUsernameChecking(true);
       
       try {
-        const { data: existingUser } = await supabase
+        const { data: existingUser, error: usernameLookupError } = await supabase
           .from('profiles')
           .select('username')
           .eq('username', trimmedUsername)
-          .single();
+          .maybeSingle();
 
-        if (existingUser) {
+        if (usernameLookupError) {
+          setUsernameAvailable(false);
+        } else if (existingUser) {
           setUsernameError('This username is already taken');
           setUsernameAvailable(false);
         } else {
           setUsernameAvailable(true);
         }
-      } catch (err) {
-        setUsernameAvailable(true);
+      } catch {
+        setUsernameAvailable(false);
       } finally {
         setUsernameChecking(false);
       }

@@ -12,7 +12,20 @@ import type { Institution } from '@/lib/hooks/useInstitutionsSearch';
 import { getDisplayName } from '@/lib/utils/displayName';
 import { ensureSchoolCommunityAndMembership } from '@/lib/actions/community';
 
-type SettingsSection = 'profile' | 'security' | 'payment';
+type SettingsSection = 'profile' | 'security' | 'payment' | 'reviews';
+
+type RatingWithTutor = {
+  id: string;
+  tutor_id: string;
+  stars: number;
+  comment?: string | null;
+  created_at: string;
+  tutor?: {
+    full_name?: string | null;
+    display_name?: string | null;
+    username?: string | null;
+  } | null;
+};
 
 export default function StudentSettingsPage() {
   const { profile, loading: profileLoading } = useProfile();
@@ -41,6 +54,9 @@ export default function StudentSettingsPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   
+  const [ratings, setRatings] = useState<RatingWithTutor[]>([]);
+  const [ratingsLoading, setRatingsLoading] = useState(false);
+
   const [saving, setSaving] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
   const [sendingResetEmail, setSendingResetEmail] = useState(false);
@@ -337,11 +353,40 @@ export default function StudentSettingsPage() {
   // NOTE: Defined before early returns to keep hook order stable across renders.
   const isChildAccount = profile?.billing_mode === 'parent_required';
 
+  const fetchRatings = async () => {
+    if (!profile) return;
+    setRatingsLoading(true);
+    try {
+      const { data } = await supabase
+        .from('ratings')
+        .select('id, tutor_id, stars, comment, created_at, tutor:profiles!ratings_tutor_id_fkey(full_name, display_name, username)')
+        .eq('student_id', profile.id)
+        .order('created_at', { ascending: false });
+      if (data) {
+        const seen = new Set<string>();
+        setRatings((data as RatingWithTutor[]).filter((r) => {
+          if (seen.has(r.tutor_id)) return false;
+          seen.add(r.tutor_id);
+          return true;
+        }));
+      }
+    } finally {
+      setRatingsLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    localStorage.clear();
+    sessionStorage.clear();
+    await supabase.auth.signOut({ scope: 'local' });
+    window.location.href = '/login';
+  };
+
   const sections = [
     { id: 'profile' as SettingsSection, label: 'Profile Information', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z' },
     { id: 'security' as SettingsSection, label: 'Security & Password', icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z' },
-    // Only show payment settings for regular students (not child accounts)
     ...(!isChildAccount ? [{ id: 'payment' as SettingsSection, label: 'Payment Settings', icon: 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z' }] : []),
+    { id: 'reviews' as SettingsSection, label: 'Review History', icon: 'M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5z' },
   ];
 
   if (profileLoading || !profile) {
@@ -377,7 +422,7 @@ export default function StudentSettingsPage() {
               {sections.map((section) => (
                 <button
                   key={section.id}
-                  onClick={() => setActiveSection(section.id)}
+                  onClick={() => { setActiveSection(section.id); if (section.id === 'reviews') fetchRatings(); }}
                   className={`
                     flex-shrink-0 flex flex-col items-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all whitespace-nowrap text-xs
                     ${activeSection === section.id
@@ -404,7 +449,7 @@ export default function StudentSettingsPage() {
                 {sections.map((section) => (
                   <button
                     key={section.id}
-                    onClick={() => setActiveSection(section.id)}
+                    onClick={() => { setActiveSection(section.id); if (section.id === 'reviews') fetchRatings(); }}
                     className={`
                       w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg font-medium transition-all text-sm
                       ${activeSection === section.id
@@ -419,6 +464,17 @@ export default function StudentSettingsPage() {
                     <span className="text-xs">{section.label}</span>
                   </button>
                 ))}
+                <div className="pt-1 mt-1 border-t border-gray-100">
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg font-medium transition-all text-sm text-red-500 hover:bg-red-50"
+                  >
+                    <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                    </svg>
+                    <span className="text-xs">Log Out</span>
+                  </button>
+                </div>
               </nav>
             </div>
           </div>
@@ -650,6 +706,65 @@ export default function StudentSettingsPage() {
             </div>
           </div>
         </div>
+        )}
+
+        {/* Review History */}
+        {activeSection === 'reviews' && (
+          <div className="bg-white border-2 border-gray-200 rounded-2xl p-6">
+            <div className="flex items-start gap-4 mb-6">
+              <div className="p-3 bg-yellow-50 rounded-full flex-shrink-0">
+                <svg className="w-6 h-6 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5z" />
+                </svg>
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 mb-1">Review History</h2>
+                <p className="text-sm text-gray-600">Reviews you have given to your tutors</p>
+              </div>
+            </div>
+
+            {ratingsLoading ? (
+              <div className="flex justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-itutor-green" />
+              </div>
+            ) : ratings.length > 0 ? (
+              <div className="space-y-4">
+                {ratings.map((rating) => (
+                  <div key={rating.id} className="border border-gray-200 rounded-xl p-4">
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">
+                          {rating.tutor?.display_name || rating.tutor?.full_name || 'Unknown Tutor'}
+                          {rating.tutor?.username && (
+                            <span className="ml-2 text-sm font-normal text-gray-400">@{rating.tutor.username}</span>
+                          )}
+                        </p>
+                        <div className="flex items-center gap-1 mt-1">
+                          {[...Array(5)].map((_, i) => (
+                            <svg key={i} className={`w-4 h-4 ${i < rating.stars ? 'text-yellow-400' : 'text-gray-200'}`} fill="currentColor" viewBox="0 0 20 20">
+                              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                            </svg>
+                          ))}
+                          <span className="text-sm font-semibold text-gray-700 ml-1">{rating.stars}/5</span>
+                        </div>
+                      </div>
+                      <span className="text-xs text-gray-400">{new Date(rating.created_at).toLocaleDateString()}</span>
+                    </div>
+                    {rating.comment && (
+                      <p className="text-sm text-gray-600 mt-2 border-t border-gray-100 pt-2">{rating.comment}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12 text-gray-400">
+                <svg className="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5z" />
+                </svg>
+                <p className="text-sm">No reviews given yet</p>
+              </div>
+            )}
+          </div>
         )}
 
           </div>

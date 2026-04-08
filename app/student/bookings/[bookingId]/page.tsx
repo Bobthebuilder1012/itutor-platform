@@ -22,6 +22,7 @@ import SessionJoinButton from '@/components/sessions/SessionJoinButton';
 import MarkNoShowButtonEnhanced from '@/components/sessions/MarkNoShowButtonEnhanced';
 import { Session } from '@/lib/types/sessions';
 import { isPaidClassesEnabled } from '@/lib/featureFlags/paidClasses';
+import StudentSessionAttendance, { type SessionAttendanceState } from '@/components/student/StudentSessionAttendance';
 
 export default function BookingThreadPage() {
   const { profile, loading: profileLoading } = useProfile();
@@ -31,6 +32,7 @@ export default function BookingThreadPage() {
   
   const [booking, setBooking] = useState<Booking | null>(null);
   const [session, setSession] = useState<Session | null>(null);
+  const [sessionAttendance, setSessionAttendance] = useState<SessionAttendanceState>(null);
   const [messages, setMessages] = useState<BookingMessageWithSender[]>([]);
   const [tutorName, setTutorName] = useState('');
   const [subjectName, setSubjectName] = useState('');
@@ -116,7 +118,26 @@ export default function BookingThreadPage() {
         
         if (!sessionError && sessionData) {
           setSession(sessionData as Session);
+          const { data: attRow } = await supabase
+            .from('session_student_attendance')
+            .select('status, updated_at')
+            .eq('session_id', sessionData.id)
+            .maybeSingle();
+          setSessionAttendance(
+            attRow
+              ? {
+                  status: attRow.status as 'attending' | 'not_attending',
+                  updatedAt: attRow.updated_at,
+                }
+              : null
+          );
+        } else {
+          setSession(null);
+          setSessionAttendance(null);
         }
+      } else {
+        setSession(null);
+        setSessionAttendance(null);
       }
 
       await loadMessages();
@@ -349,6 +370,14 @@ export default function BookingThreadPage() {
               session={session} 
               userRole="student" 
               onSuccess={() => loadBookingData()}
+            />
+
+            <StudentSessionAttendance
+              sessionId={session.id}
+              scheduledStartAt={session.scheduled_start_at}
+              sessionStatus={session.status}
+              attendance={sessionAttendance}
+              onUpdated={() => void loadBookingData()}
             />
           </div>
         )}
