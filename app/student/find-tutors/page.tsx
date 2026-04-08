@@ -94,42 +94,74 @@ export default function FindTutorsPage() {
         console.error('❌ Exception fetching institutions:', err);
       }
       
-      // Fetch all tutor profiles with bio
-      const { data: tutorProfiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('id, full_name, username, display_name, avatar_url, institution_id, country, bio, tutor_verification_status')
-        .eq('role', 'tutor')
-        .order('tutor_verification_status', { ascending: false, nullsFirst: false }); // Verified tutors first
+      const tutorSelectTiers = [
+        'id, full_name, username, display_name, avatar_url, updated_at, institution_id, country, bio, tutor_verification_status, teaching_mode, tutor_type',
+        'id, full_name, username, display_name, avatar_url, institution_id, country, bio, tutor_verification_status, teaching_mode, tutor_type',
+        'id, full_name, username, display_name, avatar_url, country, bio, tutor_verification_status, teaching_mode, tutor_type',
+        'id, full_name, username, display_name, avatar_url, country, bio, tutor_verification_status',
+        'id, full_name, username, display_name, country, bio, tutor_verification_status',
+        'id, full_name, country, bio, tutor_verification_status',
+        'id, full_name, country, tutor_verification_status',
+        'id, full_name',
+      ];
 
-      if (profilesError) {
-        console.error('❌ Error fetching tutor profiles:', profilesError);
-        alert(`Error loading tutors: ${profilesError.message}`);
-        throw profilesError;
+      let tutorProfiles: Record<string, unknown>[] | null = null;
+      let profilesError: { message: string; code?: string; details?: string } | null = null;
+      for (const cols of tutorSelectTiers) {
+        const res = await supabase.from('profiles').select(cols).eq('role', 'tutor');
+        if (!res.error) {
+          tutorProfiles = (res.data ?? []) as Record<string, unknown>[];
+          profilesError = null;
+          break;
+        }
+        profilesError = res.error;
+        console.warn('find-tutors profiles select retry:', cols, res.error.message);
       }
-      
-      console.log('✅ Fetched tutor profiles:', tutorProfiles?.length || 0);
-      console.log('Tutor profiles data:', tutorProfiles);
 
-      const activeTutorProfiles = tutorProfiles || [];
+      if (profilesError || !tutorProfiles) {
+        console.error('❌ Error fetching tutor profiles:', JSON.stringify(profilesError));
+        alert(`Error loading tutors: ${profilesError?.message ?? 'Unknown error'}`);
+        throw profilesError ?? new Error('No tutor profiles');
+      }
 
-      console.log(`✅ Showing ${activeTutorProfiles.length} tutor profiles`);
+      const verificationRank: Record<string, number> = {
+        VERIFIED: 0,
+        PENDING: 1,
+        PROCESSING: 2,
+        UNVERIFIED: 3,
+        REJECTED: 4,
+      };
+      tutorProfiles.sort(
+        (a, b) =>
+          (verificationRank[String(a.tutor_verification_status ?? 'UNVERIFIED')] ?? 9) -
+          (verificationRank[String(b.tutor_verification_status ?? 'UNVERIFIED')] ?? 9)
+      );
 
-      const activeTutorIds = activeTutorProfiles.map(t => t.id);
+      const tutorProfilesWithBanners: Array<Record<string, unknown> & { id: string }> = tutorProfiles;
+
+      console.log('✅ Fetched tutor profiles:', tutorProfilesWithBanners?.length || 0);
+      console.log('Tutor profiles data:', tutorProfilesWithBanners);
+
+      const activeTutorProfiles = tutorProfilesWithBanners;
+      const activeTutorIds = activeTutorProfiles.map((t) => t.id);
+
+      console.log(`✅ Showing ${activeTutorProfiles.length} tutors (video provider filter disabled)`);
 
       // Fetch subjects for all tutor profiles
-      const { data: tutorSubjects, error: subjectsError } = activeTutorIds.length > 0
-        ? await supabase
-            .from('tutor_subjects')
-            .select('tutor_id, price_per_hour_ttd, subject_id')
-            .in('tutor_id', activeTutorIds)
-        : { data: [], error: null };
+      const { data: tutorSubjects, error: subjectsError } =
+        activeTutorIds.length > 0
+          ? await supabase
+              .from('tutor_subjects')
+              .select('tutor_id, price_per_hour_ttd, subject_id')
+              .in('tutor_id', activeTutorIds)
+          : { data: [], error: null };
 
       if (subjectsError) {
         console.error('❌ Error fetching tutor subjects:', subjectsError);
         alert(`Error loading tutor subjects: ${subjectsError.message}`);
         throw subjectsError;
       }
-      
+
       console.log('✅ Fetched tutor subjects:', tutorSubjects?.length || 0);
 
       // Fetch all subjects separately
@@ -141,32 +173,36 @@ export default function FindTutorsPage() {
         console.error('Error fetching subjects:', allSubjectsError);
         throw allSubjectsError;
       }
-      
+
       console.log('Fetched subjects:', allSubjectsData?.length || 0);
 
       // Create a map for quick subject lookup
-      const subjectsMap = new Map(allSubjectsData.map(s => [s.id, s]));
-      
+      const subjectsMap = new Map(allSubjectsData.map((s) => [s.id, s]));
+
       // Create a map for quick institution lookup
       const institutionsMap = new Map<string, string>();
-      institutionsData.forEach(inst => {
+      institutionsData.forEach((inst) => {
         institutionsMap.set(inst.id, inst.name);
       });
 
-      // Fetch ratings only for fully-complete tutor profiles
-      const ratingsQuery = activeTutorIds.length > 0
-        ? supabase.from('ratings').select('tutor_id, stars').in('tutor_id', activeTutorIds)
-        : Promise.resolve({ data: [] as { tutor_id: string; stars: number }[], error: null });
+      // Fetch ratings only for these tutors
+      const ratingsQuery =
+        activeTutorIds.length > 0
+          ? supabase.from('ratings').select('tutor_id, stars').in('tutor_id', activeTutorIds)
+          : Promise.resolve({ data: [] as { tutor_id: string; stars: number }[], error: null });
 
-      const commentsQuery = activeTutorIds.length > 0
-        ? supabase
-            .from('ratings')
-            .select(`tutor_id, stars, comment, helpful_count, student:student_id (display_name, full_name, username)`)
-            .in('tutor_id', activeTutorIds)
-            .not('comment', 'is', null)
-            .order('helpful_count', { ascending: false, nullsFirst: false })
-            .order('stars', { ascending: false })
-        : Promise.resolve({ data: [] as any[], error: null });
+      const commentsQuery =
+        activeTutorIds.length > 0
+          ? supabase
+              .from('ratings')
+              .select(
+                `tutor_id, stars, comment, helpful_count, student:student_id (display_name, full_name, username)`
+              )
+              .in('tutor_id', activeTutorIds)
+              .not('comment', 'is', null)
+              .order('helpful_count', { ascending: false })
+              .order('stars', { ascending: false })
+          : Promise.resolve({ data: [] as any[], error: null });
 
       const [{ data: allRatings, error: allRatingsError }, { data: ratingsWithComments, error: commentsError }] =
         await Promise.all([ratingsQuery, commentsQuery]);
