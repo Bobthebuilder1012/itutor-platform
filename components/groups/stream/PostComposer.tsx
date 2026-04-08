@@ -14,10 +14,28 @@ interface PostComposerProps {
   onPosted: () => void;
 }
 
-const POST_TYPES: { value: StreamPostType; label: string }[] = [
-  { value: 'announcement', label: 'Announcement' },
-  { value: 'content', label: 'Learning content' },
-  { value: 'discussion', label: 'Discussion' },
+const TYPE_PILLS: { value: StreamPostType; label: string; icon: React.ReactNode; tip: string; tutorOnly: boolean }[] = [
+  {
+    value: 'announcement',
+    label: 'Announcement',
+    tip: 'Bold, pinnable. Students can react but replies are limited.',
+    tutorOnly: true,
+    icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 01-3.46 0" /></svg>,
+  },
+  {
+    value: 'discussion',
+    label: 'Discussion',
+    tip: 'Opens a full thread. Students can reply freely.',
+    tutorOnly: false,
+    icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" /></svg>,
+  },
+  {
+    value: 'content',
+    label: 'Learning Content',
+    tip: 'Share files, links, or study materials with your class.',
+    tutorOnly: true,
+    icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>,
+  },
 ];
 
 const MAX_FILES = 10;
@@ -38,6 +56,8 @@ export default function PostComposer({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
+  const visiblePills = TYPE_PILLS.filter((p) => isTutor || !p.tutorOnly);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files?.length) return;
@@ -48,7 +68,7 @@ export default function PostComposer({
       if (file.size > maxBytes) continue;
       next.push({
         file_name: file.name,
-        file_url: '', // will be set after upload
+        file_url: '',
         file_type: file.type || undefined,
         file_size_bytes: file.size,
         _file: file,
@@ -71,17 +91,10 @@ export default function PostComposer({
       let attachmentUrls: CreateStreamPostInput['attachment_urls'] = [];
       const pending = attachments ?? [];
       const withFile = pending.filter((a) => (a as { _file?: File })._file) as Array<{
-        file_name: string;
-        file_url: string;
-        file_type?: string;
-        file_size_bytes?: number;
-        _file: File;
+        file_name: string; file_url: string; file_type?: string; file_size_bytes?: number; _file: File;
       }>;
       const alreadyUploaded = pending.filter((a) => !(a as { _file?: File })._file) as Array<{
-        file_name: string;
-        file_url: string;
-        file_type?: string;
-        file_size_bytes?: number;
+        file_name: string; file_url: string; file_type?: string; file_size_bytes?: number;
       }>;
       for (const a of withFile) {
         const up = await uploadStreamAttachment(currentUserId, groupId, a._file);
@@ -115,111 +128,92 @@ export default function PostComposer({
   };
 
   return (
-    <div className="bg-white border border-[#e2e8f0] rounded-[14px] p-5 mb-6">
+    <div className="bg-white border border-[#e4e8ee] rounded-[14px] p-[18px] mb-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
       <form onSubmit={handleSubmit}>
-        <div className="flex items-center gap-3 mb-3.5">
+        {/* Top: avatar + type pills */}
+        <div className="flex items-center gap-3 mb-3">
           {authorAvatarUrl ? (
-            <img
-              src={authorAvatarUrl}
-              alt={authorName}
-              className="w-9 h-9 rounded-full object-cover flex-shrink-0"
-            />
+            <img src={authorAvatarUrl} alt={authorName} className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
           ) : (
-            <div className="w-9 h-9 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[13px] font-bold flex-shrink-0">
+            <div className="w-9 h-9 rounded-full bg-[#0d9668] text-white flex items-center justify-center text-[12px] font-bold flex-shrink-0">
               {getInitials(authorName)}
             </div>
           )}
-          {isTutor && (
-            <select
-              value={postType}
-              onChange={(e) => setPostType(e.target.value as StreamPostType)}
-              className="py-1.5 px-3 rounded-lg border border-[#e2e8f0] bg-[#f6f8fb] text-xs font-semibold text-gray-700 cursor-pointer focus:outline-none focus:border-emerald-500"
-            >
-              {POST_TYPES.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          )}
+          <div className="flex gap-[5px] flex-wrap">
+            {visiblePills.map((p) => (
+              <button
+                key={p.value}
+                type="button"
+                onClick={() => setPostType(p.value)}
+                className={`group relative flex items-center gap-[5px] px-3.5 py-[6px] rounded-[20px] text-[12px] font-semibold border-[1.5px] transition-colors ${
+                  postType === p.value
+                    ? 'border-[#0d9668] bg-[#d1fae5] text-[#047857]'
+                    : 'border-[#e4e8ee] bg-white text-[#6b7280] hover:border-[#0d9668] hover:text-[#0d9668]'
+                }`}
+              >
+                {p.icon}
+                {p.label}
+                <span className="hidden group-hover:block absolute bottom-[calc(100%+8px)] left-1/2 -translate-x-1/2 bg-[#111827] text-white px-2.5 py-1.5 rounded-md text-[10px] font-medium whitespace-nowrap z-10 after:content-[''] after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-[5px] after:border-transparent after:border-t-[#111827]">
+                  {p.tip}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
 
+        {/* Textarea */}
         <textarea
           value={messageBody}
           onChange={(e) => setMessageBody(e.target.value)}
-          placeholder={
-            isTutor
-              ? 'Share an announcement, learning content, or start a discussion...'
-              : 'Share something with your class…'
-          }
+          placeholder="Share an announcement, start a discussion, or post learning content..."
           rows={3}
           disabled={submitting}
-          className="w-full resize-y min-h-[80px] border border-[#e2e8f0] rounded-lg px-3 py-3 text-sm focus:outline-none focus:border-emerald-500 disabled:opacity-50 placeholder:text-[#94a3b8]"
+          className="w-full resize-y min-h-[72px] border border-[#e4e8ee] rounded-[10px] px-3.5 py-2.5 text-[13.5px] leading-[1.5] focus:outline-none focus:border-[#0d9668] focus:shadow-[0_0_0_3px_#d1fae5] disabled:opacity-50 placeholder:text-[#9ca3af] transition-all"
         />
 
+        {/* Attachment list */}
         {attachments && attachments.length > 0 && (
           <ul className="flex flex-wrap gap-1.5 mt-2">
             {attachments.map((a, i) => (
-              <li
-                key={i}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-gray-200 bg-[#f6f8fb] text-xs"
-              >
+              <li key={i} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-gray-200 bg-[#f5f7fa] text-xs">
                 <span className="truncate max-w-[140px]">{a.file_name}</span>
-                <button
-                  type="button"
-                  onClick={() => removeAttachment(i)}
-                  className="text-gray-400 hover:text-red-500"
-                  aria-label="Remove"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
+                <button type="button" onClick={() => removeAttachment(i)} className="text-gray-400 hover:text-red-500" aria-label="Remove">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </li>
             ))}
           </ul>
         )}
 
-        <div className="flex justify-between items-center mt-3">
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            className="hidden"
-            onChange={handleFileChange}
-          />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={submitting || (attachments?.length ?? 0) >= MAX_FILES}
-            className="inline-flex items-center gap-1.5 text-[13px] font-medium text-emerald-500 hover:underline bg-transparent border-none p-0 cursor-pointer"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-              <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.49" />
-            </svg>
-            Add attachment
-            {attachments && attachments.length > 0 && (
-              <span className="text-gray-400 font-normal ml-1">
-                ({attachments.length}/{MAX_FILES})
-              </span>
-            )}
-          </button>
-          <button
-            type="submit"
-            disabled={submitting || (!messageBody.trim() && !(attachments?.length))}
-            className="px-7 py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 text-white rounded-lg text-sm font-semibold transition-colors cursor-pointer"
-          >
-            {submitting ? 'Posting…' : 'Post'}
-          </button>
+        {/* Bottom bar: tools + post */}
+        <div className="flex justify-between items-center mt-2.5">
+          <div className="flex gap-[2px]">
+            <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileChange} />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={submitting || (attachments?.length ?? 0) >= MAX_FILES}
+              className="w-8 h-8 rounded-[7px] flex items-center justify-center text-[#6b7280] hover:bg-[#f5f7fa] hover:text-[#0d9668] transition-colors disabled:opacity-40"
+              title="Attach file"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.49" /></svg>
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-[#6b7280]">
+              {isTutor ? 'Announcements and content are tutor-only.' : 'Students can post discussions.'}
+            </span>
+            <button
+              type="submit"
+              disabled={submitting || (!messageBody.trim() && !(attachments?.length))}
+              className="px-6 py-[9px] bg-[#0d9668] hover:bg-[#047857] disabled:opacity-35 disabled:cursor-not-allowed text-white rounded-[10px] text-[13px] font-semibold transition-colors"
+            >
+              {submitting ? 'Posting…' : 'Post'}
+            </button>
+          </div>
         </div>
 
-        {error ? (
-          <p className="text-[11px] text-red-500 mt-2">{error}</p>
-        ) : (
-          <p className="text-[11px] text-[#64748b] mt-2">
-            {isTutor ? 'Announcements and content are tutor-only.' : 'Students can post discussions.'}
-          </p>
-        )}
+        {error && <p className="text-[11px] text-[#ef4444] mt-2">{error}</p>}
       </form>
     </div>
   );
