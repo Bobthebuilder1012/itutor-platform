@@ -15,10 +15,10 @@ import SessionRow from './SessionRow';
 import MemberList from './MemberList';
 import CreateSessionModal from './CreateSessionModal';
 import GroupMessageBoard from '../messages/GroupMessageBoard';
-
+import WhatsAppSetupTab from './WhatsAppSetupTab';
 import GroupStreamPage from '../stream/GroupStreamPage';
 
-type Tab = 'stream' | 'sessions' | 'messages';
+type Tab = 'stream' | 'sessions' | 'messages' | 'whatsapp';
 type ManageSection = 'profile' | 'pricing' | 'sessions';
 
 interface TutorGroupViewProps {
@@ -80,7 +80,6 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
     session_length_minutes: (group as any).session_length_minutes ?? '',
     session_frequency: ((group as any).session_frequency ?? 'weekly') as string,
     availability_window: ((group as any).availability_window ?? '') as string,
-    whatsapp_link: ((group as any).whatsapp_link ?? '') as string,
   });
 
   const fetchSessions = useCallback(async () => {
@@ -138,7 +137,6 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
       session_length_minutes: (group as any).session_length_minutes ?? '',
       session_frequency: ((group as any).session_frequency ?? 'weekly') as string,
       availability_window: ((group as any).availability_window ?? '') as string,
-      whatsapp_link: ((group as any).whatsapp_link ?? '') as string,
     });
     setManageError('');
   }, [group]);
@@ -180,7 +178,6 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
           manageForm.session_length_minutes === '' ? null : Number(manageForm.session_length_minutes),
         session_frequency: manageForm.session_frequency || null,
         availability_window: manageForm.availability_window.trim() || null,
-        whatsapp_link: manageForm.whatsapp_link.trim() || null,
       };
       const res = await fetch(`/api/groups/${group.id}`, {
         method: 'PATCH',
@@ -254,9 +251,9 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
 
   const TABS: { id: Tab; label: string }[] = [
     { id: 'stream', label: 'Stream' },
-
     { id: 'sessions', label: 'Sessions' },
     { id: 'messages', label: 'Lesson Chat' },
+    { id: 'whatsapp', label: 'WhatsApp' },
   ];
 
   const copyInviteLink = () => {
@@ -669,9 +666,16 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
               groupId={group.id}
               isTutor={true}
               currentUserId={currentUserId}
+              memberCount={approvedMembers.length}
+            />
+          )}
+
+          {tab === 'whatsapp' && (
+            <WhatsAppSetupTab
+              groupId={group.id}
               whatsappLink={(group as any).whatsapp_link ?? ''}
               memberCount={approvedMembers.length}
-              onWhatsAppSave={async (link) => {
+              onSave={async (link) => {
                 const res = await fetch(`/api/groups/${group.id}`, {
                   method: 'PATCH',
                   headers: { 'Content-Type': 'application/json' },
