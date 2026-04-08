@@ -311,165 +311,106 @@ export default function SignupPage() {
     }
   };
 
-  const inputBase = "w-full bg-white border border-gray-200 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-400 text-sm py-3 px-4";
-  const inputWithIcon = "w-full bg-white border border-gray-200 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-400 text-sm py-3 pl-10 pr-4";
+  const inputBase = "w-full bg-white border border-gray-200 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-400 text-sm py-2 px-4";
+  const inputWithIcon = "w-full bg-white border border-gray-200 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-400 text-sm py-2 pl-10 pr-4";
 
   return (
-    <div className="min-h-screen flex" style={{ backgroundColor: '#dff0e8' }}>
-      {/* Decorative circles — scattered across full page */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute w-40 h-40 rounded-full" style={{ background: 'rgba(74,222,128,0.25)', top: '-30px', left: '60px' }} />
-        <div className="absolute w-24 h-24 rounded-full" style={{ background: 'rgba(74,222,128,0.18)', top: '38%', left: '-20px' }} />
-        <div className="absolute w-56 h-56 rounded-full" style={{ background: 'rgba(74,222,128,0.12)', bottom: '-40px', left: '18%' }} />
-        <div className="absolute w-20 h-20 rounded-full" style={{ background: 'rgba(74,222,128,0.22)', top: '10%', left: '32%' }} />
-        <div className="absolute w-12 h-12 rounded-full" style={{ background: 'rgba(74,222,128,0.28)', bottom: '20%', left: '6%' }} />
-        <div className="absolute w-8 h-8 rounded-full" style={{ background: 'rgba(74,222,128,0.20)', top: '55%', left: '42%' }} />
-      </div>
+    <div className="min-h-screen flex" style={{ background: 'linear-gradient(135deg, #071a0e 0%, #0d2318 50%, #0a1e14 100%)' }}>
 
       {/* LEFT PANEL */}
-      <div className="hidden lg:flex flex-1 flex-col justify-center px-16 py-12 relative">
-        <h1 className="text-[2.6rem] font-extrabold text-gray-900 leading-[1.15] mb-8">
-          #1 Tutoring platform<br />in the Caribbean!
-        </h1>
+      <div className="hidden lg:flex flex-1 flex-col justify-start px-14 py-10 relative overflow-hidden">
+        {/* Background glows using brand green */}
+        <div className="absolute top-[-60px] right-[-60px] w-80 h-80 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(25,147,86,0.18) 0%, transparent 70%)' }} />
+        <div className="absolute bottom-[40px] left-[-60px] w-64 h-64 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(25,147,86,0.10) 0%, transparent 70%)' }} />
 
-        <ul className="space-y-5 mb-12">
-          {['Verified iTutors', 'Caribbean Curriculum', 'Exam-focused help'].map((item) => (
-            <li key={item} className="flex items-center gap-3">
-              <span className="w-7 h-7 rounded-full bg-itutor-green flex items-center justify-center flex-shrink-0">
-                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                </svg>
-              </span>
-              <span className="text-[1.05rem] font-semibold text-gray-800">{item}</span>
-            </li>
-          ))}
-        </ul>
-
-        {/* Illustration */}
-        <div className="w-full max-w-[420px]">
-          <svg viewBox="0 0 480 320" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full drop-shadow-sm">
-            {/* Floor/desk surface */}
-            <rect x="20" y="232" width="440" height="16" rx="8" fill="#86c9a0" opacity="0.6"/>
-
-            {/* Desk top */}
-            <rect x="60" y="220" width="360" height="14" rx="7" fill="#a7d9bc"/>
-
-            {/* Lamp pole */}
-            <rect x="390" y="148" width="7" height="74" rx="3.5" fill="#9ca3af"/>
-            {/* Lamp arm */}
-            <rect x="370" y="144" width="28" height="7" rx="3.5" fill="#9ca3af" transform="rotate(-20 384 147)"/>
-            {/* Lamp shade */}
-            <ellipse cx="375" cy="130" rx="26" ry="13" fill="#4ade80" opacity="0.85"/>
-            <ellipse cx="375" cy="130" rx="16" ry="8" fill="#bbf7d0"/>
-            {/* Lamp glow */}
-            <ellipse cx="375" cy="158" rx="30" ry="10" fill="#4ade80" opacity="0.08"/>
-
-            {/* Pencil cup */}
-            <rect x="72" y="196" width="26" height="28" rx="4" fill="#34d399" opacity="0.5"/>
-            <rect x="77" y="178" width="5" height="22" rx="2.5" fill="#fbbf24" transform="rotate(-12 79 189)"/>
-            <rect x="85" y="176" width="5" height="22" rx="2.5" fill="#f87171" transform="rotate(6 87 187)"/>
-            <rect x="80" y="174" width="5" height="22" rx="2.5" fill="#60a5fa" transform="rotate(-3 82 185)"/>
-
-            {/* Book stack */}
-            <rect x="108" y="208" width="44" height="12" rx="3" fill="#6ee7b7"/>
-            <rect x="111" y="198" width="38" height="12" rx="3" fill="#34d399"/>
-            <rect x="114" y="188" width="32" height="12" rx="3" fill="#059669"/>
-
-            {/* Laptop base */}
-            <rect x="158" y="192" width="220" height="30" rx="8" fill="#4ade80" opacity="0.9"/>
-            <rect x="168" y="196" width="200" height="22" rx="5" fill="#86efac" opacity="0.5"/>
-
-            {/* Laptop screen */}
-            <rect x="155" y="85" width="226" height="114" rx="12" fill="#1a2e1f"/>
-            <rect x="163" y="93" width="210" height="98" rx="7" fill="#0f2218"/>
-            {/* Screen glow tint */}
-            <rect x="163" y="93" width="210" height="98" rx="7" fill="#22c55e" opacity="0.08"/>
-
-            {/* Screen content */}
-            <rect x="175" y="108" width="90" height="9" rx="4.5" fill="#4ade80" opacity="0.75"/>
-            <rect x="175" y="124" width="70" height="7" rx="3.5" fill="#4ade80" opacity="0.4"/>
-            <rect x="175" y="137" width="80" height="7" rx="3.5" fill="#4ade80" opacity="0.35"/>
-            <rect x="175" y="150" width="55" height="7" rx="3.5" fill="#4ade80" opacity="0.3"/>
-
-            {/* Chat bubble on screen */}
-            <rect x="267" y="98" width="90" height="56" rx="10" fill="white" opacity="0.92"/>
-            <path d="M273 154 l8 12 l6-12" fill="white" opacity="0.92"/>
-            {/* Avatar circle in bubble */}
-            <circle cx="283" cy="116" r="9" fill="#4ade80"/>
-            <circle cx="283" cy="113" r="3.5" fill="white" opacity="0.9"/>
-            <path d="M277 122 q6-4 12 0" stroke="white" strokeWidth="1.2" fill="none" opacity="0.8"/>
-            {/* Text lines in bubble */}
-            <rect x="297" y="110" width="52" height="5" rx="2.5" fill="#d1fae5"/>
-            <rect x="297" y="120" width="40" height="4" rx="2" fill="#d1fae5" opacity="0.7"/>
-            <rect x="272" y="133" width="78" height="4" rx="2" fill="#d1fae5" opacity="0.5"/>
-            <rect x="272" y="141" width="60" height="4" rx="2" fill="#d1fae5" opacity="0.4"/>
-
-            {/* Hinge */}
-            <rect x="245" y="195" width="50" height="6" rx="3" fill="#16a34a" opacity="0.6"/>
-
-            {/* Boy student */}
-            {/* Body */}
-            <rect x="162" y="180" width="58" height="46" rx="10" fill="#16a34a"/>
-            {/* Head */}
-            <circle cx="191" cy="158" r="25" fill="#fde68a"/>
-            {/* Hair */}
-            <path d="M166 152 q25-38 50 0" fill="#92400e"/>
-            {/* Eyes */}
-            <circle cx="183" cy="156" r="2.5" fill="#1f2937"/>
-            <circle cx="199" cy="156" r="2.5" fill="#1f2937"/>
-            {/* Smile */}
-            <path d="M184 165 q7 6 14 0" stroke="#d97706" strokeWidth="1.8" fill="none" strokeLinecap="round"/>
-            {/* Arm reaching to laptop */}
-            <rect x="216" y="186" width="40" height="14" rx="7" fill="#fde68a" transform="rotate(-10 236 193)"/>
-
-            {/* Girl student */}
-            {/* Body */}
-            <rect x="268" y="180" width="56" height="46" rx="10" fill="#fbbf24"/>
-            {/* Head */}
-            <circle cx="296" cy="160" r="23" fill="#fecdd3"/>
-            {/* Hair */}
-            <path d="M273 156 q23-34 46 0" fill="#7c3aed" opacity="0.55"/>
-            {/* Ponytail */}
-            <path d="M319 158 q12-6 10 10" stroke="#7c3aed" strokeWidth="7" strokeLinecap="round" fill="none" opacity="0.5"/>
-            {/* Eyes */}
-            <circle cx="288" cy="158" r="2.3" fill="#1f2937"/>
-            <circle cx="304" cy="158" r="2.3" fill="#1f2937"/>
-            {/* Smile */}
-            <path d="M289 167 q7 5 14 0" stroke="#be185d" strokeWidth="1.6" fill="none" strokeLinecap="round"/>
-            {/* Arm with pencil */}
-            <rect x="232" y="185" width="38" height="13" rx="6.5" fill="#fecdd3" transform="rotate(8 251 191)"/>
-            <rect x="262" y="194" width="4" height="18" rx="2" fill="#fbbf24" transform="rotate(15 264 203)"/>
-
-            {/* Notebook */}
-            <rect x="295" y="200" width="80" height="22" rx="5" fill="white" opacity="0.9"/>
-            <line x1="308" y1="208" x2="366" y2="208" stroke="#4ade80" strokeWidth="1.5"/>
-            <line x1="308" y1="215" x2="352" y2="215" stroke="#4ade80" strokeWidth="1.5"/>
-          </svg>
+        {/* Top logo */}
+        <div className="flex items-center mb-10">
+          <img src="/assets/logo/itutor-logo-dark.png" alt="iTutor" className="h-7 w-auto" style={{ filter: 'brightness(0) invert(1)' }} />
         </div>
-      </div>
 
-      {/* RIGHT PANEL */}
-      <div className="w-full lg:w-auto lg:min-w-[460px] flex items-center justify-center px-6 py-10 relative z-10">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[400px] px-8 py-8">
-
-          {/* Logo */}
-          <div className="flex justify-center mb-3">
-            <img src="/assets/logo/itutor-logo-dark.png" alt="iTutor" className="h-8 w-auto" />
+        {/* Main content */}
+        <div className="flex flex-col">
+          {/* Badge */}
+          <div className="inline-flex mb-5">
+            <span className="px-3 py-1 rounded-full text-xs font-semibold tracking-wide" style={{ color: '#5dcea0', border: '1px solid rgba(25,147,86,0.45)', backgroundColor: 'rgba(25,147,86,0.15)' }}>
+              ✦ CARIBBEAN&apos;S #1 TUTORING PLATFORM
+            </span>
           </div>
 
           {/* Heading */}
-          <div className="text-center mb-5">
-            <h2 className="text-2xl font-bold text-gray-900 mb-1">Welcome</h2>
-            <p className="text-sm text-gray-500">Sign up for your iTutor account</p>
+          <h1 className="text-4xl font-extrabold text-white leading-tight mb-3">
+            Find your <span style={{ color: '#2ecc7a' }}>perfect tutor,</span><br />
+            ace every subject.
+          </h1>
+
+          <p className="text-sm mb-7 leading-relaxed" style={{ color: 'rgba(180,230,200,0.70)' }}>
+            Get matched with top-rated verified iTutors.<br />
+            CSEC, CAPE &amp; beyond — all in one platform.
+          </p>
+
+          {/* Feature cards */}
+          <div className="space-y-2.5">
+            {[
+              {
+                icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />,
+                title: '1-on-1 Live Sessions',
+                desc: 'Real-time tutoring, any time you need',
+              },
+              {
+                icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />,
+                title: 'Track Your Progress',
+                desc: 'Visual dashboards & session history',
+              },
+              {
+                icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />,
+                title: 'Flexible Scheduling',
+                desc: 'Book sessions around your timetable',
+              },
+            ].map(({ icon, title, desc }) => (
+              <div key={title} className="flex items-center gap-3 rounded-xl px-4 py-3" style={{ backgroundColor: 'rgba(25,147,86,0.10)', border: '1px solid rgba(25,147,86,0.18)' }}>
+                <span className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(25,147,86,0.25)' }}>
+                  <svg className="w-5 h-5" style={{ color: '#2ecc7a' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">{icon}</svg>
+                </span>
+                <div>
+                  <p className="text-white text-sm font-semibold">{title}</p>
+                  <p className="text-xs" style={{ color: 'rgba(180,230,200,0.65)' }}>{desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+      </div>
+
+      {/* RIGHT PANEL */}
+      <div className="w-full lg:w-auto lg:min-w-[400px] flex items-center justify-center px-6 py-4 relative z-10">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[360px] px-5 py-4" style={{ borderTop: '3px solid #199356' }}>
+
+          {/* Heading */}
+          <div className="text-center mb-2">
+            <h2 className="text-base font-bold text-gray-900 mb-0.5">Create your account</h2>
+            <p className="text-xs text-gray-500">Sign up for your iTutor account</p>
+          </div>
+
+          {/* Google button */}
+          <div className="mb-2">
+            <SocialLoginButton provider="google" mode="signup" redirectTo="/auth/callback?next=/signup/complete-role" />
+          </div>
+
+          {/* Divider */}
+          <div className="flex items-center gap-2 mb-2">
+            <div className="flex-1 h-px bg-gray-200" />
+            <span className="text-xs text-gray-400 font-medium tracking-wider">OR CONTINUE WITH EMAIL</span>
+            <div className="flex-1 h-px bg-gray-200" />
           </div>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-2.5 rounded-lg mb-4">
-              <p className="text-sm">{error}</p>
+            <div className="bg-red-50 border border-red-200 text-red-600 px-3 py-1.5 rounded-lg mb-2">
+              <p className="text-xs">{error}</p>
             </div>
           )}
 
-          <form onSubmit={handleSignup} className="space-y-3.5">
+          <form onSubmit={handleSignup} className="space-y-1">
             {/* Name */}
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
@@ -501,7 +442,7 @@ export default function SignupPage() {
                 ) : null}
               </div>
             </div>
-            {usernameError && <p className="text-xs text-red-400 -mt-2">{usernameError}</p>}
+            {usernameError && <p className="text-xs text-red-400 -mt-1">{usernameError}</p>}
 
             {/* Email */}
             <div className="relative">
@@ -519,7 +460,7 @@ export default function SignupPage() {
 
             {/* Password */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+              <label className="block text-xs font-medium text-gray-700 mb-0">Password</label>
               <div className="relative">
                 <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)}
                   className={`${inputBase} pr-14`} placeholder="At least 8 characters" required disabled={loading} />
@@ -532,7 +473,7 @@ export default function SignupPage() {
 
             {/* Confirm password */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Confirm password</label>
+              <label className="block text-xs font-medium text-gray-700 mb-0">Confirm password</label>
               <div className="relative">
                 <input type={showConfirmPassword ? 'text' : 'password'} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
                   className={`${inputBase} pr-14`} placeholder="Re-enter your password" required disabled={loading} />
@@ -554,19 +495,16 @@ export default function SignupPage() {
             </div>
 
             <button type="submit" disabled={loading}
-              className="w-full bg-itutor-green hover:bg-emerald-700 text-white py-3 rounded-lg font-bold text-base transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-1">
+              className="w-full bg-itutor-green hover:bg-emerald-700 text-white py-2 rounded-lg font-bold text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
               {loading ? 'Creating your account...' : 'Sign Up'}
             </button>
           </form>
 
-          <div className="mt-4 text-center space-y-3">
-            <p className="text-sm text-gray-600">
+          <div className="mt-1.5 text-center space-y-1">
+            <p className="text-xs text-gray-600">
               Already have an account?{' '}
               <a href="/login" className="font-bold text-gray-900 hover:text-itutor-green transition-colors">Log in</a>
             </p>
-
-            <SocialLoginButton provider="google" mode="signup" redirectTo="/auth/callback?next=/signup/complete-role" />
-
             <p className="text-xs text-gray-400">
               Signing up for your child?{' '}
               <a href="/signup/parent" className="text-itutor-green font-medium hover:underline">Parent/guardian signup</a>
