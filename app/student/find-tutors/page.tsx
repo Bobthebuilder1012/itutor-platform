@@ -121,14 +121,7 @@ export default function FindTutorsPage() {
         .eq('role', 'tutor')
         .order('tutor_verification_status', { ascending: false });
 
-      const msg = (tutorProfilesRes.error?.message ?? '').toLowerCase();
-      const bannerColMissing =
-        tutorProfilesRes.error &&
-        msg.includes('profile_banner_url') &&
-        (msg.includes('does not exist') ||
-          msg.includes('schema cache') ||
-          msg.includes('could not find'));
-      if (bannerColMissing) {
+      if (tutorProfilesRes.error) {
         tutorProfilesRes = await supabase
           .from('profiles')
           .select(selectWithoutBanner)
