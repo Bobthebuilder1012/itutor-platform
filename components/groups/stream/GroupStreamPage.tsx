@@ -65,6 +65,7 @@ export default function GroupStreamPage({
   const handlePosted = () => fetchStream(1, false);
   const handleDeleted = () => fetchStream(1, false);
   const handleReplyAdded = () => fetchStream(1, false);
+  const handlePinToggled = () => fetchStream(1, false);
 
   return (
     <div className="space-y-4">
@@ -102,6 +103,7 @@ export default function GroupStreamPage({
                 currentUserId={currentUserId}
                 onDeleted={handleDeleted}
                 onReplyAdded={handleReplyAdded}
+                onPinToggled={handlePinToggled}
               />
             ))}
           </div>

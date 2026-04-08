@@ -57,6 +57,7 @@ const icons = {
   users: <I><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-[18px] h-[18px]"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" strokeWidth="1.8"/><circle cx="9" cy="7" r="4" strokeWidth="1.8"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" strokeWidth="1.8"/></svg></I>,
   mail: <I><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-[18px] h-[18px]"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" strokeWidth="1.8"/><polyline points="22,6 12,13 2,6" strokeWidth="1.8"/></svg></I>,
   queue: <I><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-[18px] h-[18px]"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2m-6 9l2 2 4-4" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg></I>,
+  settings: <I><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-[18px] h-[18px]"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" strokeWidth="1.8"/><circle cx="12" cy="12" r="3" strokeWidth="1.8"/></svg></I>,
 };
 
 export default function DashboardLayout({ children, role, userName }: DashboardLayoutProps) {
@@ -149,8 +150,9 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         ]},
         { label: 'Learning', items: [
           { href: '/student/bookings', label: 'My Bookings', icon: icons.calendar },
-          { href: '/student/ratings', label: 'My Reviews', icon: icons.star },
-          { href: '/verification', label: 'Verification', badge: '!', icon: icons.shield },
+        ]},
+        { label: 'Account', items: [
+          { href: '/student/settings', label: 'Settings', icon: icons.settings },
         ]},
       ];
       case 'tutor': return [
@@ -163,6 +165,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         { label: 'Settings', items: [
           { href: '/tutor/curriculum', label: 'Curriculum', icon: icons.book },
           { href: '/verification', label: 'Verification', badge: '!', icon: icons.shield },
+          { href: '/tutor/settings', label: 'Settings', icon: icons.settings },
         ]},
       ];
       case 'parent': return [
@@ -170,6 +173,9 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/parent/dashboard', label: 'Dashboard', icon: icons.dashboard },
           { href: '/parent/add-child', label: 'Add Child', icon: icons.userPlus },
           { href: '/parent/approve-bookings', label: 'Booking Requests', icon: icons.calendar },
+        ]},
+        { label: 'Account', items: [
+          { href: '/parent/settings', label: 'Settings', icon: icons.settings },
         ]},
       ];
       case 'reviewer': return [
@@ -287,11 +293,11 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         {/* User footer */}
         <div className="border-t border-white/10 p-2">
           {collapsed ? (
-            <button onClick={handleLogout} title={`${displayName} — logout`} className="w-full flex justify-center py-2">
+            <Link href={getDashboardLink()} onClick={() => setSidebarOpen(false)} title={displayName} className="w-full flex justify-center py-2">
               <div className="w-9 h-9 rounded-full bg-gradient-to-br from-itutor-green to-emerald-600 flex items-center justify-center text-black font-bold text-[12px]">{initials}</div>
-            </button>
+            </Link>
           ) : (
-            <button onClick={handleLogout} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-white/5 transition-colors group text-left">
+            <Link href={getDashboardLink()} onClick={() => setSidebarOpen(false)} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-white/5 transition-colors group text-left">
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-itutor-green to-emerald-600 flex items-center justify-center text-black font-bold text-[12px] flex-shrink-0">{initials}</div>
               <div className="flex-1 min-w-0">
                 <p className="text-[13px] font-semibold text-white truncate">{displayName}</p>
@@ -302,7 +308,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
               <svg className="w-3.5 h-3.5 text-gray-600 group-hover:text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path d="M9 18l6-6-6-6" strokeWidth="2" strokeLinecap="round" />
               </svg>
-            </button>
+            </Link>
           )}
         </div>
       </aside>

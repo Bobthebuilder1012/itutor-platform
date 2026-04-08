@@ -18,7 +18,8 @@ export default function VerificationHubPage() {
 
   useEffect(() => {
     if (profileLoading) return;
-    if (!profile) router.push('/login');
+    if (!profile) { router.push('/login'); return; }
+    if (profile.role === 'student') router.push('/student/dashboard');
   }, [profile, profileLoading, router]);
 
   if (profileLoading || !profile) {
