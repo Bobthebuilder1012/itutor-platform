@@ -178,15 +178,13 @@ export default function MemberList({
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
                       <p className="text-[12.5px] font-semibold truncate">{m.profile?.full_name ?? 'Unknown'}</p>
-                      {m.profile?.role && (
-                        <span className={`px-[6px] py-[1px] rounded text-[9px] font-semibold flex-shrink-0 ${
-                          m.profile.role === 'tutor'
-                            ? 'bg-[#eef2ff] text-[#6366f1]'
-                            : 'bg-[#dbeafe] text-[#2563eb]'
-                        }`}>
-                          {m.profile.role === 'tutor' ? 'Tutor' : 'Student'}
-                        </span>
-                      )}
+                      <span className={`px-[6px] py-[1px] rounded text-[9px] font-semibold flex-shrink-0 ${
+                        m.profile?.role === 'tutor'
+                          ? 'bg-[#eef2ff] text-[#6366f1]'
+                          : 'bg-[#dbeafe] text-[#2563eb]'
+                      }`}>
+                        {m.profile?.role === 'tutor' ? 'Tutor' : 'Student'}
+                      </span>
                     </div>
                     <p className="text-[10px] text-[#6b7280]">Requested to join</p>
                   </div>
