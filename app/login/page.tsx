@@ -292,14 +292,15 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex">
+    <div
+      className="min-h-screen flex"
+      style={{ background: 'radial-gradient(ellipse 70% 60% at 15% 20%, rgba(34,197,94,0.22) 0%, transparent 65%), radial-gradient(ellipse 55% 50% at 85% 80%, rgba(34,197,94,0.14) 0%, transparent 65%), linear-gradient(160deg, #07180b 0%, #0e2a14 50%, #081510 100%)' }}
+    >
+      {/* Dot grid overlay */}
+      <div className="fixed inset-0 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, rgba(34,197,94,0.07) 1px, transparent 1px)', backgroundSize: '34px 34px' }} />
+
       {/* LEFT PANEL */}
-      <div
-        className="hidden lg:flex flex-1 flex-col justify-between p-12 relative overflow-hidden"
-        style={{ background: 'radial-gradient(ellipse 70% 60% at 15% 20%, rgba(34,197,94,0.22) 0%, transparent 65%), radial-gradient(ellipse 55% 50% at 85% 80%, rgba(34,197,94,0.14) 0%, transparent 65%), linear-gradient(160deg, #07180b 0%, #0e2a14 50%, #081510 100%)' }}
-      >
-        {/* Dot grid overlay */}
-        <div className="absolute inset-0 pointer-events-none opacity-100" style={{ backgroundImage: 'radial-gradient(circle, rgba(34,197,94,0.09) 1px, transparent 1px)', backgroundSize: '34px 34px' }} />
+      <div className="hidden lg:flex flex-1 flex-col justify-between p-14 relative overflow-hidden">
         {/* Decorative rings */}
         <div className="absolute w-[540px] h-[540px] -top-40 -left-40 rounded-full border border-itutor-green/10 pointer-events-none" />
         <div className="absolute w-[340px] h-[340px] -bottom-28 -right-12 rounded-full border border-itutor-green/[0.07] pointer-events-none" />
@@ -330,7 +331,7 @@ export default function LoginPage() {
             { icon: 'chart', color: 'from-teal-400 to-teal-600', title: 'Track Your Progress', sub: 'Visual dashboards & session history' },
             { icon: 'calendar', color: 'from-blue-400 to-blue-600', title: 'Flexible Scheduling', sub: 'Book sessions around your timetable' },
           ].map((feat, i) => (
-            <div key={i} className="flex items-center gap-4 bg-white/[0.04] border border-white/[0.08] backdrop-blur-sm rounded-2xl px-5 py-4 w-fit min-w-[280px]" style={{ marginLeft: i === 1 ? '20px' : i === 2 ? '8px' : '0' }}>
+            <div key={i} className="flex items-center gap-4 bg-white/[0.05] border border-white/[0.1] backdrop-blur-sm rounded-2xl px-5 py-4 w-fit min-w-[280px]" style={{ marginLeft: i === 1 ? '20px' : i === 2 ? '8px' : '0' }}>
               <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${feat.color} flex items-center justify-center flex-shrink-0`}>
                 {feat.icon === 'person' && <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M6 20v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>}
                 {feat.icon === 'chart' && <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>}
@@ -360,12 +361,17 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* RIGHT PANEL */}
-      <div className="w-full lg:w-[480px] flex-shrink-0 bg-white flex flex-col justify-center relative overflow-y-auto px-10 py-12">
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-itutor-green via-emerald-300 to-itutor-green" />
-        <div className="w-full max-w-sm mx-auto">
+      {/* RIGHT PANEL — floating card */}
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 lg:p-12 relative z-10 overflow-y-auto">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md px-8 py-10">
+        <div className="w-full">
+          {/* Logo at top of card */}
+          <div className="flex justify-center mb-6">
+            <img src="/assets/logo/itutor-logo-dark.png.png" alt="iTutor" className="h-8 w-auto" onError={(e) => { (e.target as HTMLImageElement).src = '/assets/logo/itutor-logo-dark.png'; }} />
+          </div>
+
           {/* Heading */}
-          <div className="mb-7">
+          <div className="mb-7 text-center">
             <h2 className="text-2xl font-extrabold text-gray-900 tracking-tight mb-1">Welcome back</h2>
             <p className="text-sm text-gray-500">Sign in to your iTutor account</p>
           </div>
@@ -599,6 +605,7 @@ export default function LoginPage() {
               ← Back to home
             </a>
           </div>
+        </div>
         </div>
       </div>
     </div>

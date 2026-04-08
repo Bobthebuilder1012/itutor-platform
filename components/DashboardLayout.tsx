@@ -144,7 +144,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         { label: 'Menu', items: [
           { href: '/student/dashboard', label: 'Dashboard', icon: icons.dashboard },
           { href: '/student/find-tutors', label: 'Find iTutors', icon: icons.search },
-          ...(showGroups ? [{ href: '/groups', label: 'Groups', icon: icons.groups }] : []),
+          ...(showGroups ? [{ href: '/groups', label: 'Lessons', icon: icons.groups }] : []),
           { href: '/student/curriculum', label: 'Curriculum', icon: icons.book },
         ]},
         { label: 'Learning', items: [
@@ -158,7 +158,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/tutor/dashboard', label: 'Dashboard', icon: icons.dashboard },
           { href: '/tutor/find-students', label: 'Find Students', icon: icons.search },
           { href: '/tutor/bookings', label: 'Booking Requests', icon: icons.calendar },
-          ...(showGroups ? [{ href: '/groups', label: 'Groups', icon: icons.groups }] : []),
+          ...(showGroups ? [{ href: '/groups', label: 'Lessons', icon: icons.groups }] : []),
         ]},
         { label: 'Settings', items: [
           { href: '/tutor/curriculum', label: 'Curriculum', icon: icons.book },

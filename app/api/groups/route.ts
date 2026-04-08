@@ -44,6 +44,7 @@ export async function GET(request: NextRequest) {
       page: z.coerce.number().min(1).default(1),
       limit: z.coerce.number().min(1).max(50).default(12),
       tutor_name: z.string().optional(),
+      archived: z.enum(['true', 'false']).optional(),
     });
     const parsed = querySchema.safeParse(Object.fromEntries(searchParams.entries()));
     if (!parsed.success) {
@@ -65,7 +66,10 @@ export async function GET(request: NextRequest) {
       page,
       limit,
       tutor_name: tutorName,
+      archived: archivedParam,
     } = parsed.data;
+
+    const fetchArchived = archivedParam === 'true';
 
     const service = getServiceClient();
 
@@ -84,18 +88,22 @@ export async function GET(request: NextRequest) {
           id, name, description, tutor_id, subject, pricing, created_at, ${withStatus ? 'status,' : ''}${legacySchema ? '' : 'difficulty, form_level, topic, session_length_minutes, session_frequency,'}
           ${
             legacySchema
-              ? ''
+              ? 'cover_image, header_image, whatsapp_link,'
               : `pricing_model, pricing_mode, price_per_session, price_per_course, price_monthly, recurrence_type, max_students, cover_image, ${includeHeaderImage ? 'header_image, ' : ''}availability_window,`
           }
           tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, rating_average, rating_count),
           group_members(id, user_id, status, profile:profiles(id, full_name, avatar_url))
         `)
-        .is('archived_at', null)
         .order('created_at', { ascending: false });
 
-      if (withStatus) {
-        if (isTutor) query = query.or(`status.eq.PUBLISHED,tutor_id.eq.${user.id}`);
-        else query = query.or('status.eq.PUBLISHED,status.eq.published,status.is.null');
+      if (fetchArchived) {
+        query = query.not('archived_at', 'is', null).eq('tutor_id', user.id);
+      } else {
+        query = query.is('archived_at', null);
+        if (withStatus) {
+          if (isTutor) query = query.or(`status.eq.PUBLISHED,tutor_id.eq.${user.id}`);
+          else query = query.or('status.eq.PUBLISHED,status.eq.published,status.is.null');
+        }
       }
 
       return query;

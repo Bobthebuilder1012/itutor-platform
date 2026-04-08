@@ -10,7 +10,9 @@ function isSchemaMismatch(error: any): boolean {
   return (
     code === '42703' ||
     code === '42P01' ||
+    code === 'PGRST204' ||
     code === 'PGRST205' ||
+    msg.includes('could not find') ||
     msg.includes('does not exist') ||
     msg.includes('could not find the table')
   );
@@ -34,18 +36,20 @@ export async function GET(_req: NextRequest, { params }: Params) {
         id, name, description, tutor_id, subject, pricing, created_at, archived_at,
         difficulty, goals, price_per_session, price_monthly, pricing_model, recurrence_type, recurrence_rule,
         form_level, topic, session_length_minutes, session_frequency, price_per_course, pricing_mode, availability_window, media_gallery,
-        timezone, max_students, cover_image, header_image, content_blocks, status, updated_at,
+        timezone, max_students, cover_image, header_image, content_blocks, status, updated_at, whatsapp_link,
         tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, response_time_minutes),
         group_members(id, user_id, status, profile:profiles(id, full_name, avatar_url))
       `,
       `
         id, name, description, tutor_id, subject, pricing, created_at, archived_at,
         form_level, topic, session_length_minutes, session_frequency, price_per_course, pricing_mode, availability_window,
+        cover_image, header_image, whatsapp_link,
         tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url),
         group_members(id, user_id, status, profile:profiles(id, full_name, avatar_url))
       `,
       `
         id, name, description, tutor_id, subject, pricing, created_at,
+        cover_image, header_image, whatsapp_link,
         tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url),
         group_members(id, user_id, status, profile:profiles(id, full_name, avatar_url))
       `,
@@ -121,7 +125,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const now = new Date();
     const allUpcoming = sessions
       .flatMap((s: any) => s.occurrences)
-      .filter((o: any) => o.status === 'upcoming' && new Date(o.scheduled_start_at) > now)
+      .filter((o: any) => (o.status ? o.status === 'upcoming' : true) && new Date(o.scheduled_start_at) > now)
       .sort((a: any, b: any) => new Date(a.scheduled_start_at).getTime() - new Date(b.scheduled_start_at).getTime());
 
     const nextOccurrence = allUpcoming[0] ?? null;
@@ -265,6 +269,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (body.pricing_model !== undefined) updates.pricing_model = body.pricing_model;
     if ((body as any).pricing_mode !== undefined) updates.pricing_mode = (body as any).pricing_mode;
     if ((body as any).availability_window !== undefined) updates.availability_window = (body as any).availability_window;
+    if ((body as any).whatsapp_link !== undefined) updates.whatsapp_link = (body as any).whatsapp_link;
     if (body.recurrence_type !== undefined) updates.recurrence_type = body.recurrence_type;
     if (body.recurrence_rule !== undefined) updates.recurrence_rule = body.recurrence_rule;
     if (body.timezone !== undefined) updates.timezone = body.timezone;
@@ -298,16 +303,47 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const {
       topic: _ignoredTopic,
       form_level: _ignoredFormLevel,
+      goals: _ignoredGoals,
+      difficulty: _ignoredDifficulty,
+      price_per_session: _ignoredPricePerSession,
+      price_monthly: _ignoredPriceMonthly,
+      pricing_model: _ignoredPricingModel,
       session_length_minutes: _ignoredSessionLength,
       session_frequency: _ignoredSessionFrequency,
       price_per_course: _ignoredPricePerCourse,
       pricing_mode: _ignoredPricingMode,
       availability_window: _ignoredAvailabilityWindow,
       header_image: _ignoredHeaderImage,
+      whatsapp_link: _ignoredWhatsappLink,
+      recurrence_type: _ignoredRecurrenceType,
+      recurrence_rule: _ignoredRecurrenceRule,
+      timezone: _ignoredTimezone,
+      max_students: _ignoredMaxStudents,
+      content_blocks: _ignoredContentBlocks,
+      status: _ignoredStatus,
       ...legacyCompatibleUpdates
     } = withoutUpdatedAt;
     if (error && isSchemaMismatch(error)) {
       ({ data: group, error } = await runUpdate(legacyCompatibleUpdates));
+    }
+
+    // Attempt 4: very old schema used by current staging branch
+    const {
+      name: legacyName,
+      description: legacyDescription,
+      subject: legacySubject,
+      cover_image: legacyCoverImage,
+      whatsapp_link: legacyWhatsappLink,
+    } = withoutUpdatedAt;
+    const oldestCompatibleUpdates: Record<string, any> = {};
+    if (legacyName !== undefined) oldestCompatibleUpdates.name = legacyName;
+    if (legacyDescription !== undefined) oldestCompatibleUpdates.description = legacyDescription;
+    if (legacySubject !== undefined) oldestCompatibleUpdates.subject = legacySubject;
+    if (legacyCoverImage !== undefined) oldestCompatibleUpdates.cover_image = legacyCoverImage;
+    if (legacyWhatsappLink !== undefined) oldestCompatibleUpdates.whatsapp_link = legacyWhatsappLink;
+
+    if (error && isSchemaMismatch(error)) {
+      ({ data: group, error } = await runUpdate(oldestCompatibleUpdates));
     }
 
     if (error) throw error;
