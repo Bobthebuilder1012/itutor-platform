@@ -38,6 +38,161 @@ const STEPS = [
   },
 ];
 
+/* ───── Shared small icons ───── */
+const ChevronLeft = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="15 18 9 12 15 6" /></svg>
+);
+const ChevronRight = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="9 6 15 12 9 18" /></svg>
+);
+const UserIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2" /><circle cx="9" cy="7" r="4" /></svg>
+);
+const SmileyIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line x1="9" y1="9" x2="9.01" y2="9" /><line x1="15" y1="9" x2="15.01" y2="9" /></svg>
+);
+const SendIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M22 2L11 13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
+);
+
+/* ── Phone shell wrapper ── */
+function PhoneShell({ time, children }: { time: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-[#111b21] rounded-[20px] border-2 border-[#2a3942] shadow-[0_8px_24px_rgba(0,0,0,0.15)] overflow-hidden w-[260px] flex-shrink-0">
+      <div className="h-[18px] bg-[#111b21] flex items-center px-3"><span className="text-[8px] text-[#8696a0] font-semibold">{time}</span></div>
+      {children}
+    </div>
+  );
+}
+
+function PhoneHeader({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <div className="bg-[#1f2c34] px-2.5 py-2 flex items-center gap-2">
+      <span className="text-[#00a884]"><ChevronLeft /></span>
+      <div className="w-7 h-7 rounded-full bg-[#2a3942] flex items-center justify-center flex-shrink-0"><UserIcon /></div>
+      <div className="flex-1 min-w-0">
+        <div className="text-[11px] font-semibold text-[#e9edef] truncate">{title}</div>
+        {subtitle && <div className="text-[8px] text-[#8696a0]">{subtitle}</div>}
+      </div>
+    </div>
+  );
+}
+
+function PhoneComposer() {
+  return (
+    <div className="bg-[#1f2c34] px-2 py-1.5 flex items-center gap-1.5">
+      <span className="text-[#8696a0]"><SmileyIcon /></span>
+      <div className="flex-1 py-1 px-2.5 rounded-2xl bg-[#2a3942] text-[9px] text-[#8696a0]">Type a message</div>
+      <div className="w-[26px] h-[26px] rounded-full bg-[#00a884] flex items-center justify-center"><SendIcon /></div>
+    </div>
+  );
+}
+
+/* ───── Phone mockup per step ───── */
+function Phone1() {
+  return (
+    <PhoneShell time="9:41">
+      <PhoneHeader title="CSEC Physics - Test Group" subtitle="You created this group" />
+      <div className="bg-[#0b141a] px-2.5 py-3 min-h-[120px] relative">
+        <div className="absolute inset-0 opacity-[0.15]" style={{ background: 'repeating-linear-gradient(45deg,transparent,transparent 8px,rgba(255,255,255,.02) 8px,rgba(255,255,255,.02) 16px)' }} />
+        <div className="text-center mb-2 relative z-[1]"><span className="inline-block px-2.5 py-[3px] rounded-[5px] bg-[#1d2b36] text-[8px] text-[#8696a0]">You created group &quot;CSEC Physics - Test Group&quot;</span></div>
+        <div className="relative z-[1] max-w-[82%] ml-auto p-1.5 px-2 rounded-md bg-[#005c4b] text-[9px] text-[#e9edef] leading-[1.45] rounded-tr-none">
+          Welcome everyone! This is our study group for CSEC Physics.
+          <div className="text-[7px] text-[#8696a0] text-right mt-0.5">9:41 AM</div>
+        </div>
+      </div>
+      <PhoneComposer />
+    </PhoneShell>
+  );
+}
+
+function Phone2() {
+  const rows: { label: string; desc: string; highlight?: boolean; toggle?: 'on' | 'off' }[] = [
+    { label: 'Edit group info', desc: 'Only admins' },
+    { label: 'Send messages', desc: 'All participants' },
+    { label: 'Approve new members', desc: 'Admins approve join requests', highlight: true, toggle: 'on' },
+  ];
+  return (
+    <PhoneShell time="9:42">
+      <div className="bg-[#1f2c34] px-2.5 py-2 flex items-center gap-2">
+        <span className="text-[#00a884]"><ChevronLeft /></span>
+        <div className="flex-1 min-w-0"><div className="text-[11px] font-semibold text-[#e9edef]">Group settings</div></div>
+      </div>
+      <div className="bg-[#111b21] p-2.5">
+        {rows.map((r, i) => (
+          <div key={i} className={`flex items-center justify-between px-2.5 py-2.5 ${r.highlight ? 'bg-[#12261e] rounded-md border border-[#00a884] mt-1' : 'border-b border-[#222d35]'}`}>
+            <div>
+              <div className={`text-[10px] ${r.highlight ? 'text-[#00a884]' : 'text-[#e9edef]'}`}>{r.label}</div>
+              <div className="text-[8px] text-[#8696a0] mt-px">{r.desc}</div>
+            </div>
+            {r.toggle ? (
+              <div className={`w-[30px] h-4 rounded-lg relative ${r.toggle === 'on' ? 'bg-[#00a884]' : 'bg-[#3b4a54]'}`}>
+                <div className={`absolute top-[2px] w-3 h-3 rounded-full bg-[#e9edef] ${r.toggle === 'on' ? 'right-[2px]' : 'left-[2px]'}`} />
+              </div>
+            ) : (
+              <ChevronRight />
+            )}
+          </div>
+        ))}
+      </div>
+    </PhoneShell>
+  );
+}
+
+function Phone3() {
+  const qrCells = [1,1,1,0,1,1,1,0,1,1,0,1,1,1,0,1,1,0,0,1,1,0,1,1,1,0,1,1,0,1,1,1,0,1,1,1];
+  return (
+    <PhoneShell time="9:43">
+      <div className="bg-[#1f2c34] px-2.5 py-2 flex items-center gap-2">
+        <span className="text-[#00a884]"><ChevronLeft /></span>
+        <div className="flex-1 min-w-0"><div className="text-[11px] font-semibold text-[#e9edef]">Invite to group via link</div></div>
+      </div>
+      <div className="bg-[#111b21] px-3 py-4 flex flex-col items-center gap-2 min-h-[130px]">
+        <div className="w-16 h-16 rounded-md bg-[#2a3942] grid grid-cols-6 gap-px p-1">
+          {qrCells.map((c, i) => (
+            <i key={i} className={`rounded-[1px] ${c ? 'bg-[#e9edef]' : 'bg-transparent'}`} />
+          ))}
+        </div>
+        <div className="px-2.5 py-1 bg-[#1f2c34] rounded-md text-[8px] text-[#00a884] text-center break-all">
+          https://chat.whatsapp.com/AbCdEf123456xyz
+        </div>
+        <div className="flex gap-1.5">
+          <span className="px-3 py-1 rounded-full text-[8px] font-semibold bg-[#00a884] text-white">Copy link</span>
+          <span className="px-3 py-1 rounded-full text-[8px] font-semibold bg-[#2a3942] text-[#e9edef]">Share link</span>
+        </div>
+      </div>
+    </PhoneShell>
+  );
+}
+
+function Phone4() {
+  return (
+    <PhoneShell time="9:44">
+      <div className="bg-[#1f2c34] px-2.5 py-2 flex items-center gap-2">
+        <span className="text-[#00a884]"><ChevronLeft /></span>
+        <div className="w-7 h-7 rounded-full bg-[#00a884] flex items-center justify-center flex-shrink-0">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={1.5}><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2" /><circle cx="9" cy="7" r="4" /></svg>
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-[11px] font-semibold text-[#e9edef] truncate">CSEC Physics - Test Group</div>
+          <div className="text-[8px] text-[#8696a0]">You, Kiran, Maya, +3 more</div>
+        </div>
+      </div>
+      <div className="bg-[#0b141a] px-3 py-5 min-h-[120px] flex flex-col items-center justify-center gap-1.5 text-center relative">
+        <div className="absolute inset-0 opacity-[0.15]" style={{ background: 'repeating-linear-gradient(45deg,transparent,transparent 8px,rgba(255,255,255,.02) 8px,rgba(255,255,255,.02) 16px)' }} />
+        <div className="w-10 h-10 rounded-full bg-[#00a884] flex items-center justify-center relative z-[1]">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.5}><polyline points="20 6 9 17 4 12" /></svg>
+        </div>
+        <div className="text-[12px] font-bold text-[#e9edef] relative z-[1]">Connected to iTutor!</div>
+        <div className="text-[9px] text-[#8696a0] relative z-[1] leading-snug">Students can now join from<br />your class page</div>
+      </div>
+      <PhoneComposer />
+    </PhoneShell>
+  );
+}
+
+const PHONE_MOCKUPS = [Phone1, Phone2, Phone3, Phone4];
+
 const WA_LOGO = (
   <svg className="w-[26px] h-[26px]" viewBox="0 0 24 24" fill="none">
     <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" fill="#25D366" />
@@ -169,7 +324,7 @@ export default function WhatsAppSetupTab({ groupId, whatsappLink, memberCount, o
 
         {/* Slide content */}
         <div className="px-7 py-8">
-          <div className="flex items-start gap-8">
+          <div className="flex items-center gap-8 flex-col md:flex-row">
             <div className="flex-1 min-w-0">
               <div className="w-7 h-7 rounded-full bg-[#ecfdf5] text-[#047857] flex items-center justify-center text-[12px] font-bold mb-3">{step + 1}</div>
               <h4 className="text-[16px] font-bold mb-2">{STEPS[step].title}</h4>
@@ -185,6 +340,9 @@ export default function WhatsAppSetupTab({ groupId, whatsappLink, memberCount, o
                   ))}
                 </div>
               )}
+            </div>
+            <div className="flex-shrink-0">
+              {(() => { const Phone = PHONE_MOCKUPS[step]; return <Phone />; })()}
             </div>
           </div>
         </div>
