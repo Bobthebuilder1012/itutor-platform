@@ -83,7 +83,7 @@ export interface GroupMember {
   user_id: string;
   status: GroupMemberStatus;
   joined_at: string;
-  profile?: Pick<Profile, 'id' | 'full_name' | 'avatar_url'>;
+  profile?: Pick<Profile, 'id' | 'full_name' | 'avatar_url'> & { role?: string | null };
 }
 
 export interface GroupSession {
