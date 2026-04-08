@@ -10,6 +10,7 @@ import { getDisplayName } from '@/lib/utils/displayName';
 import { getAvatarColor } from '@/lib/utils/avatarColors';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import UserAvatar from '@/components/UserAvatar';
+import { profileBannerDisplayUrl } from '@/lib/utils/profileBannerDisplayUrl';
 
 const TEACHING_MODE_LABELS: Record<string, string> = {
   online: 'Online sessions',
@@ -30,6 +31,7 @@ type Tutor = {
   display_name: string | null;
   avatar_url: string | null;
   profile_banner_url?: string | null;
+  updated_at?: string;
   school?: string | null;
   institution_id?: string | null;
   institution_name?: string | null;
@@ -108,10 +110,11 @@ export default function FindTutorsPage() {
         console.error('❌ Exception fetching institutions:', err);
       }
       
-      // Fetch all tutor profiles with bio (omit profile_banner_url until migration 104 is applied — cards use gradient fallback)
       const { data: tutorProfiles, error: profilesError } = await supabase
         .from('profiles')
-        .select('id, full_name, username, display_name, avatar_url, institution_id, country, bio, tutor_verification_status, teaching_mode, tutor_type')
+        .select(
+          'id, full_name, username, display_name, avatar_url, profile_banner_url, updated_at, institution_id, country, bio, tutor_verification_status, teaching_mode, tutor_type'
+        )
         .eq('role', 'tutor')
         .order('tutor_verification_status', { ascending: false });
 
@@ -537,7 +540,7 @@ export default function FindTutorsPage() {
                   <div className="relative h-36 shrink-0 sm:h-40">
                     {tutor.profile_banner_url ? (
                       <img
-                        src={tutor.profile_banner_url}
+                        src={profileBannerDisplayUrl(tutor.profile_banner_url, tutor.updated_at)}
                         alt=""
                         className="h-full w-full object-cover"
                       />
