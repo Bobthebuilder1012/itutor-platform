@@ -150,7 +150,6 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         { label: 'Learning', items: [
           { href: '/student/bookings', label: 'My Bookings', icon: icons.calendar },
           { href: '/student/ratings', label: 'My Reviews', icon: icons.star },
-          { href: '/verification', label: 'Verification', badge: '!', icon: icons.shield },
         ]},
       ];
       case 'tutor': return [
