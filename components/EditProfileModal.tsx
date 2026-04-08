@@ -8,6 +8,10 @@ import SubjectMultiSelect from '@/components/SubjectMultiSelect';
 import InstitutionAutocomplete from '@/components/InstitutionAutocomplete';
 import type { Institution } from '@/lib/hooks/useInstitutionsSearch';
 import { ensureSchoolCommunityAndMembership } from '@/lib/actions/community';
+import { getAvatarColor } from '@/lib/utils/avatarColors';
+import { useProfileBannerUpload } from '@/lib/hooks/useProfileBannerUpload';
+import ProfileBannerUploadModal from '@/components/ProfileBannerUploadModal';
+import type { Area } from '@/lib/utils/imageCrop';
 
 type EditProfileModalProps = {
   isOpen: boolean;
@@ -30,6 +34,9 @@ export default function EditProfileModal({
   const [biography, setBiography] = useState(profile.bio || '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [bannerModalOpen, setBannerModalOpen] = useState(false);
+  const { uploadBanner, deleteBanner, uploading: bannerUploading, error: bannerHookError } =
+    useProfileBannerUpload(profile.id);
 
   useEffect(() => {
     if (isOpen) {
@@ -54,6 +61,16 @@ export default function EditProfileModal({
       }
     }
   }, [isOpen, profile]);
+
+  const handleBannerUpload = async (imageSrc: string, croppedArea: Area) => {
+    const result = await uploadBanner(imageSrc, croppedArea);
+    if (result.success) onSuccess();
+  };
+
+  const handleRemoveBanner = async () => {
+    const result = await deleteBanner();
+    if (result.success) onSuccess();
+  };
 
   const handleSave = async () => {
     if (!displayName.trim()) {
@@ -124,6 +141,52 @@ export default function EditProfileModal({
           )}
 
           <div className="space-y-5">
+            {profile.role === 'tutor' && (
+              <div className="rounded-xl border-2 border-gray-200 bg-white p-4">
+                <label className="mb-2 block text-sm font-medium text-gray-700">Profile banner</label>
+                <p className="mb-3 text-xs text-gray-500">
+                  Shown on your dashboard and when students browse tutors. Wide images work best.
+                </p>
+                <div className="relative mb-3 aspect-[3/1] w-full overflow-hidden rounded-lg border border-gray-200">
+                  {profile.profile_banner_url ? (
+                    <img
+                      src={profile.profile_banner_url}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div
+                      className={`flex h-full w-full items-center justify-center bg-gradient-to-br ${getAvatarColor(profile.id)}`}
+                      aria-hidden
+                    >
+                      <span className="text-sm font-medium text-white/90 drop-shadow">No banner yet</span>
+                    </div>
+                  )}
+                </div>
+                {bannerHookError && <p className="mb-2 text-sm text-red-600">{bannerHookError}</p>}
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setBannerModalOpen(true)}
+                    disabled={bannerUploading}
+                    className="rounded-lg bg-gradient-to-r from-itutor-green to-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:from-emerald-600 hover:to-itutor-green disabled:opacity-50"
+                  >
+                    {profile.profile_banner_url ? 'Change banner' : 'Upload banner'}
+                  </button>
+                  {profile.profile_banner_url && (
+                    <button
+                      type="button"
+                      onClick={handleRemoveBanner}
+                      disabled={bannerUploading}
+                      className="rounded-lg border-2 border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:border-red-300 hover:text-red-600 disabled:opacity-50"
+                    >
+                      Remove banner
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Display Name */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -224,6 +287,13 @@ export default function EditProfileModal({
           </button>
         </div>
       </div>
+
+      <ProfileBannerUploadModal
+        isOpen={bannerModalOpen}
+        onClose={() => setBannerModalOpen(false)}
+        onUpload={handleBannerUpload}
+        uploading={bannerUploading}
+      />
     </div>
   );
 }

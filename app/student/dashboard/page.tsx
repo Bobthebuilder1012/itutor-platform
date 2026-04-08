@@ -15,6 +15,7 @@ import OffersCard from '@/components/student/OffersCard';
 import ProfileSnapshotCard from '@/components/student/ProfileSnapshotCard';
 import LearningJourneyCard from '@/components/student/LearningJourneyCard';
 import StatsRow from '@/components/student/StatsRow';
+import type { SessionAttendanceState } from '@/components/student/StudentSessionAttendance';
 import { useAvatarUpload } from '@/lib/hooks/useAvatarUpload';
 import { Session } from '@/lib/types/database';
 import { Area } from '@/lib/utils/imageCrop';
@@ -40,6 +41,7 @@ export default function StudentDashboard() {
   const searchParams = useSearchParams();
   const testMode = searchParams.get('test') === 'true';
   const [upcomingSessions, setUpcomingSessions] = useState<EnrichedSession[]>([]);
+  const [attendanceBySessionId, setAttendanceBySessionId] = useState<Record<string, SessionAttendanceState>>({});
   const [completedSessionsCount, setCompletedSessionsCount] = useState(0);
   const [totalHoursTutored, setTotalHoursTutored] = useState(0);
   const [loadingData, setLoadingData] = useState(true);
@@ -162,8 +164,25 @@ export default function StudentDashboard() {
         }));
 
         setUpcomingSessions(enrichedSessions);
+
+        const sessionIds = enrichedSessions.map((s) => s.id);
+        if (sessionIds.length > 0) {
+          const { data: attRows } = await supabase
+            .from('session_student_attendance')
+            .select('session_id, status, updated_at')
+            .in('session_id', sessionIds);
+          const next: Record<string, SessionAttendanceState> = {};
+          for (const r of attRows ?? []) {
+            const row = r as { session_id: string; status: 'attending' | 'not_attending'; updated_at: string };
+            next[row.session_id] = { status: row.status, updatedAt: row.updated_at };
+          }
+          setAttendanceBySessionId(next);
+        } else {
+          setAttendanceBySessionId({});
+        }
       } else {
         setUpcomingSessions([]);
+        setAttendanceBySessionId({});
       }
       
       if (completedRes.data) {
@@ -252,7 +271,9 @@ export default function StudentDashboard() {
               <UpcomingSessionsCard
                 sessions={upcomingSessions}
                 loading={loadingData}
-                onViewSession={() => router.push('/student/dashboard')}
+                onViewSession={() => router.push('/student/bookings')}
+                attendanceBySessionId={attendanceBySessionId}
+                onAttendanceRefresh={() => void fetchStudentData()}
               />
               <OffersCard studentId={profile.id} />
             </div>

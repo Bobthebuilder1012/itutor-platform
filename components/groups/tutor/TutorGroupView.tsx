@@ -17,8 +17,9 @@ import CreateSessionModal from './CreateSessionModal';
 import GroupMessageBoard from '../messages/GroupMessageBoard';
 import WhatsAppSetupTab from './WhatsAppSetupTab';
 import GroupStreamPage from '../stream/GroupStreamPage';
+import GroupAnalyticsTab from './GroupAnalyticsTab';
 
-type Tab = 'stream' | 'sessions' | 'messages' | 'whatsapp';
+type Tab = 'stream' | 'sessions' | 'messages' | 'whatsapp' | 'analytics';
 type ManageSection = 'profile' | 'pricing';
 
 interface TutorGroupViewProps {
@@ -52,6 +53,18 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
       joined_at: string | null;
     }>;
   } | null>(null);
+  const [monthlyRetention, setMonthlyRetention] = useState<
+    Array<{
+      year: number;
+      month: number;
+      monthLabel: string;
+      startCount: number;
+      endCount: number;
+      changePercent: number | null;
+      retentionPercent: number | null;
+    }>
+  | null>(null);
+  const [monthlyRetentionLoading, setMonthlyRetentionLoading] = useState(true);
   const [archiving, setArchiving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
@@ -113,6 +126,20 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
       if (res.ok) {
         const data = await res.json();
         setAnalytics(data?.data ?? null);
+      }
+    })();
+    (async () => {
+      setMonthlyRetentionLoading(true);
+      try {
+        const res = await fetch(`/api/groups/${group.id}/retention?months=12`);
+        if (res.ok) {
+          const body = await res.json();
+          setMonthlyRetention(body?.data?.months ?? []);
+        } else {
+          setMonthlyRetention([]);
+        }
+      } finally {
+        setMonthlyRetentionLoading(false);
       }
     })();
     // Track tutor visit (resets auto-archive inactivity timer)
@@ -244,6 +271,7 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
     { id: 'sessions', label: 'Sessions' },
     { id: 'messages', label: 'Lesson Chat' },
     { id: 'whatsapp', label: 'WhatsApp' },
+    { id: 'analytics', label: 'Analytics' },
   ];
 
   const copyInviteLink = () => {
@@ -666,6 +694,16 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
               }}
             />
           )}
+
+          {tab === 'analytics' && (
+            <GroupAnalyticsTab
+              groupName={group.name ?? 'Class'}
+              estimatedEarnings={estimatedEarnings}
+              analytics={analytics}
+              monthlyRetention={monthlyRetention}
+              loadingRetention={monthlyRetentionLoading}
+            />
+          )}
         </div>
 
         {/* RIGHT: Sidebar */}
@@ -685,12 +723,19 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
               </div>
               <div className="relative overflow-hidden py-3.5 px-2.5 bg-gray-50 rounded-[10px] text-center before:absolute before:top-0 before:left-0 before:right-0 before:h-[3px] before:bg-orange-500 before:rounded-t-[10px]">
                 <p className="text-[22px] font-extrabold leading-tight">{analytics?.student_retention_rate ?? 0}%</p>
-                <p className="text-[10.5px] text-slate-500 font-medium mt-0.5">Retention</p>
+                <p className="text-[10.5px] text-slate-500 font-medium mt-0.5">Session retention</p>
               </div>
               <div className="relative overflow-hidden py-3.5 px-2.5 bg-gray-50 rounded-[10px] text-center before:absolute before:top-0 before:left-0 before:right-0 before:h-[3px] before:bg-amber-400 before:rounded-t-[10px]">
                 <p className="text-[22px] font-extrabold leading-tight">${estimatedEarnings.toFixed(0)}</p>
                 <p className="text-[10.5px] text-slate-500 font-medium mt-0.5">Total Earnings</p>
               </div>
+            </div>
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Enrollment trends</p>
+              <p className="text-[10.5px] text-slate-500 leading-snug">
+                Open the <span className="font-semibold text-emerald-700">Analytics</span> tab for charts and monthly
+                retention (subscription enrollments, UTC).
+              </p>
             </div>
           </div>
 

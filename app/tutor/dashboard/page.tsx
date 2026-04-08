@@ -7,6 +7,7 @@ import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
 import AvatarUploadModal from '@/components/AvatarUploadModal';
+import ProfileBannerUploadModal from '@/components/ProfileBannerUploadModal';
 import AddSubjectModal from '@/components/tutor/AddSubjectModal';
 import EditSubjectModal from '@/components/tutor/EditSubjectModal';
 import EditProfileModal from '@/components/EditProfileModal';
@@ -14,6 +15,8 @@ import SentOffersList from '@/components/offers/SentOffersList';
 import AvailabilityRequiredModal from '@/components/AvailabilityRequiredModal';
 import ShareProfileModal from '@/components/ShareProfileModal';
 import { useAvatarUpload } from '@/lib/hooks/useAvatarUpload';
+import { useProfileBannerUpload } from '@/lib/hooks/useProfileBannerUpload';
+import { getAvatarColor } from '@/lib/utils/avatarColors';
 import { Session, TutorSubject, Subject, Rating } from '@/lib/types/database';
 import { Area } from '@/lib/utils/imageCrop';
 import { getDisplayName } from '@/lib/utils/displayName';
@@ -42,6 +45,7 @@ export default function TutorDashboard() {
   const [loadingData, setLoadingData] = useState(true);
   const [reviewsModalOpen, setReviewsModalOpen] = useState(false);
   const [avatarModalOpen, setAvatarModalOpen] = useState(false);
+  const [bannerModalOpen, setBannerModalOpen] = useState(false);
   const [addSubjectModalOpen, setAddSubjectModalOpen] = useState(false);
   const [editSubjectModalOpen, setEditSubjectModalOpen] = useState(false);
   const [editProfileModalOpen, setEditProfileModalOpen] = useState(false);
@@ -51,6 +55,7 @@ export default function TutorDashboard() {
   const [hasAvailability, setHasAvailability] = useState<boolean | null>(null);
   const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
   const { uploadAvatar, uploading } = useAvatarUpload(profile?.id || '');
+  const { uploadBanner, uploading: bannerUploading } = useProfileBannerUpload(profile?.id || '');
   const [paidClassesEnabled, setPaidClassesEnabled] = useState<boolean>(false);
 
   useEffect(() => {
@@ -161,6 +166,12 @@ export default function TutorDashboard() {
     if (result.success) window.location.reload();
   };
 
+  const handleBannerUpload = async (imageSrc: string, croppedArea: Area) => {
+    if (!profile) return;
+    const result = await uploadBanner(imageSrc, croppedArea);
+    if (result.success) window.location.reload();
+  };
+
   if (!testMode && (loading || !profile)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -192,6 +203,28 @@ export default function TutorDashboard() {
 
         {/* ── PROFILE BANNER ── */}
         <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
+          {testMode ? (
+            <div className="h-28 shrink-0 bg-gradient-to-br from-gray-200 to-gray-300 sm:h-36" aria-hidden />
+          ) : profile ? (
+            <div className="relative h-28 shrink-0 sm:h-36">
+              {profile.profile_banner_url ? (
+                <img src={profile.profile_banner_url} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <div
+                  className={`h-full w-full bg-gradient-to-br ${getAvatarColor(profile.id)}`}
+                  aria-hidden
+                />
+              )}
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
+              <button
+                type="button"
+                onClick={() => setBannerModalOpen(true)}
+                className="absolute bottom-2 right-2 rounded-lg bg-white/90 px-3 py-1.5 text-xs font-semibold text-gray-800 shadow-sm ring-1 ring-gray-200/80 backdrop-blur-sm transition hover:bg-white"
+              >
+                {profile.profile_banner_url ? 'Change banner' : 'Add banner'}
+              </button>
+            </div>
+          ) : null}
           <div className="px-6 py-6">
             {/* Avatar row */}
             <div className="flex items-start gap-5 mb-5">
@@ -686,6 +719,12 @@ export default function TutorDashboard() {
 
       {/* ── MODALS ── */}
       <AvatarUploadModal isOpen={avatarModalOpen} onClose={() => setAvatarModalOpen(false)} onUpload={handleAvatarUpload} uploading={uploading} />
+      <ProfileBannerUploadModal
+        isOpen={bannerModalOpen}
+        onClose={() => setBannerModalOpen(false)}
+        onUpload={handleBannerUpload}
+        uploading={bannerUploading}
+      />
 
       {!testMode && profile && (
         <>

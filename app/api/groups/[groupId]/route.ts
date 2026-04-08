@@ -12,9 +12,12 @@ function isSchemaMismatch(error: any): boolean {
     code === '42P01' ||
     code === 'PGRST204' ||
     code === 'PGRST205' ||
+    code === 'PGRST201' ||
     msg.includes('could not find') ||
     msg.includes('does not exist') ||
-    msg.includes('could not find the table')
+    msg.includes('could not find the table') ||
+    msg.includes('more than one relationship') ||
+    msg.includes('could not embed')
   );
 }
 
@@ -77,6 +80,62 @@ export async function GET(_req: NextRequest, { params }: Params) {
       console.warn(`[GET /api/groups/[groupId]] group select fallback attempt ${i + 1} failed:`, groupError?.message);
     }
 
+    // PostgREST nested embeds can fail (ambiguous FK, hint mismatch). Load core row + relations manually.
+    if (!group) {
+      const { data: bareGroup, error: bareErr } = await service
+        .from('groups')
+        .select('*')
+        .eq('id', groupId)
+        .maybeSingle();
+
+      if (!bareErr && bareGroup) {
+        let tutor: any = null;
+        const tutorFull = await service
+          .from('profiles')
+          .select('id, full_name, avatar_url, response_time_minutes')
+          .eq('id', bareGroup.tutor_id)
+          .maybeSingle();
+        if (!tutorFull.error && tutorFull.data) {
+          tutor = tutorFull.data;
+        } else {
+          const tutorLite = await service
+            .from('profiles')
+            .select('id, full_name, avatar_url')
+            .eq('id', bareGroup.tutor_id)
+            .maybeSingle();
+          if (!tutorLite.error) tutor = tutorLite.data;
+        }
+
+        const { data: memberRows, error: memErr } = await service
+          .from('group_members')
+          .select('id, user_id, status')
+          .eq('group_id', groupId);
+
+        const rows = memErr ? [] : (memberRows ?? []);
+        const userIds = [...new Set(rows.map((m: { user_id: string }) => m.user_id))];
+        const profileById = new Map<string, { id: string; full_name: string | null; avatar_url: string | null }>();
+        if (userIds.length > 0) {
+          const { data: profs } = await service
+            .from('profiles')
+            .select('id, full_name, avatar_url')
+            .in('id', userIds);
+          for (const p of profs ?? []) profileById.set(p.id, p);
+        }
+
+        group = {
+          ...bareGroup,
+          tutor: tutor ?? null,
+          group_members: rows.map((m: any) => ({
+            ...m,
+            profile: profileById.get(m.user_id) ?? null,
+          })),
+        };
+        groupError = null;
+      } else if (!bareErr && !bareGroup) {
+        return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+      }
+    }
+
     if (!group) {
       if (groupError?.code === 'PGRST116') {
         return NextResponse.json({ error: 'Group not found' }, { status: 404 });
@@ -112,7 +171,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
         .order('starts_on', { ascending: true }));
     }
     if (sessionsError && !isSchemaMismatch(sessionsError)) {
-      throw sessionsError;
+      console.warn('[GET /api/groups/[groupId]] sessions load failed (non-fatal):', sessionsError?.message ?? sessionsError);
+      sessionsRaw = [];
     }
 
     const sessions = (sessionsRaw ?? []).map((s: any) => ({
@@ -146,7 +206,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
     if (reviewsError && isSchemaMismatch(reviewsError)) {
       reviewsRaw = [];
     } else if (reviewsError) {
-      throw reviewsError;
+      console.warn('[GET /api/groups/[groupId]] reviews load failed (non-fatal):', reviewsError?.message ?? reviewsError);
+      reviewsRaw = [];
     }
 
     const reviews = reviewsRaw ?? [];
@@ -158,7 +219,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
       .eq('group_id', groupId)
       .is('deleted_at', null));
     if (ratingsError && !isSchemaMismatch(ratingsError)) {
-      throw ratingsError;
+      console.warn('[GET /api/groups/[groupId]] ratings aggregate failed (non-fatal):', ratingsError?.message ?? ratingsError);
+      ratingRows = [];
     }
     const ratings = (ratingRows ?? []).map((r: any) => Number(r.rating)).filter((n) => Number.isFinite(n));
     const averageRating =
@@ -195,7 +257,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
         group_members: undefined,
         members: group.group_members,
         member_count: approvedMembers.length,
-        member_previews: approvedMembers.slice(0, 3).map((m: any) => m.profile),
+        member_previews: approvedMembers.slice(0, 3).map((m: any) => m.profile).filter(Boolean),
         current_user_membership: currentUserMembership,
         sessions,
         next_occurrence: nextOccurrence,
@@ -212,7 +274,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
           group_members: undefined,
           members: group.group_members,
           member_count: approvedMembers.length,
-          member_previews: approvedMembers.slice(0, 3).map((m: any) => m.profile),
+          member_previews: approvedMembers.slice(0, 3).map((m: any) => m.profile).filter(Boolean),
           current_user_membership: currentUserMembership,
           sessions,
           next_occurrence: nextOccurrence,

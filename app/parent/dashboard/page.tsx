@@ -12,6 +12,7 @@ import UniversalSearchBar from '@/components/UniversalSearchBar';
 import { useAvatarUpload } from '@/lib/hooks/useAvatarUpload';
 import { Area } from '@/lib/utils/imageCrop';
 import { getDisplayName } from '@/lib/utils/displayName';
+import { ParentAttendanceReadOnly } from '@/components/student/StudentSessionAttendance';
 
 type DashboardData = {
   overview: {
@@ -47,6 +48,7 @@ type DashboardData = {
     durationMinutes: number;
     status: string;
     bookingId: string;
+    selfReportedAttendance: { status: 'attending' | 'not_attending'; updatedAt: string } | null;
   }>;
   recentBookings: Array<{
     id: string;
@@ -411,6 +413,8 @@ export default function ParentDashboard() {
                               {formatDateTime(session.scheduledStartAt)} • {session.durationMinutes}{' '}
                               min
                             </p>
+                            <p className="mt-1 text-xs font-medium text-gray-500">Child&apos;s plan (self-reported)</p>
+                            <ParentAttendanceReadOnly attendance={session.selfReportedAttendance} />
                           </div>
                           <Link
                             href={`/parent/child/${session.childId}/sessions`}
