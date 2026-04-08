@@ -17,7 +17,7 @@ export default function Hero() {
 
           {/* Main Heading */}
           <div className="mb-3 2xl:mb-5 3xl:mb-7">
-            <h1 className="text-[1.75rem] font-bold leading-tight text-gray-900 sm:whitespace-nowrap sm:text-[2.25rem] lg:text-[3rem] 2xl:text-[4.5rem] 3xl:text-[6rem]">
+            <h1 className="whitespace-nowrap font-bold leading-tight text-gray-900" style={{ fontSize: 'clamp(1rem, 3.8vw, 4rem)' }}>
               Better Grades Start With{' '}
               <span className="text-itutor-green">Better Support</span>
             </h1>

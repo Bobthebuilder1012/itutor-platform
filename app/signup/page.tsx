@@ -318,38 +318,63 @@ export default function SignupPage() {
     <div className="min-h-screen flex" style={{ background: 'linear-gradient(135deg, #071a0e 0%, #0d2318 50%, #0a1e14 100%)' }}>
 
       {/* LEFT PANEL */}
-      <div className="hidden lg:flex flex-1 flex-col justify-start px-14 py-10 relative overflow-hidden">
-        {/* Background glows using brand green */}
+      <div className="hidden lg:flex lg:w-[58%] flex-col justify-center px-24 py-12 items-center relative overflow-hidden">
+        {/* Background glows */}
         <div className="absolute top-[-60px] right-[-60px] w-80 h-80 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(25,147,86,0.18) 0%, transparent 70%)' }} />
         <div className="absolute bottom-[40px] left-[-60px] w-64 h-64 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(25,147,86,0.10) 0%, transparent 70%)' }} />
 
-        {/* Top logo */}
-        <div className="flex items-center mb-10">
-          <img src="/assets/logo/itutor-logo-dark.png" alt="iTutor" className="h-7 w-auto" style={{ filter: 'brightness(0) invert(1)' }} />
-        </div>
-
         {/* Main content */}
-        <div className="flex flex-col">
+        <div className="flex flex-col w-full max-w-lg">
+          {/* Top logo */}
+          <div className="mb-12">
+            <img src="/assets/logo/itutor-logo-dark.png" alt="iTutor" className="h-24 w-auto" style={{ filter: 'brightness(0) invert(1)' }} />
+          </div>
+
           {/* Badge */}
-          <div className="inline-flex mb-5">
-            <span className="px-3 py-1 rounded-full text-xs font-semibold tracking-wide" style={{ color: '#5dcea0', border: '1px solid rgba(25,147,86,0.45)', backgroundColor: 'rgba(25,147,86,0.15)' }}>
+          <div className="inline-flex mb-6">
+            <span className="px-4 py-1.5 rounded-full text-sm font-semibold tracking-wide" style={{ color: '#5dcea0', border: '1px solid rgba(25,147,86,0.45)', backgroundColor: 'rgba(25,147,86,0.15)' }}>
               ✦ CARIBBEAN&apos;S #1 TUTORING PLATFORM
             </span>
           </div>
 
           {/* Heading */}
-          <h1 className="text-4xl font-extrabold text-white leading-tight mb-3">
-            Find your <span style={{ color: '#2ecc7a' }}>perfect tutor,</span><br />
+          <h1 className="text-[3.25rem] font-extrabold text-white leading-tight mb-6">
+            Find your<br />
+            <span style={{ color: '#2ecc7a' }} className="whitespace-nowrap">perfect tutor,</span><br />
             ace every subject.
           </h1>
 
-          <p className="text-sm mb-7 leading-relaxed" style={{ color: 'rgba(180,230,200,0.70)' }}>
+          {/* Stats — liquid glass squares */}
+          <div className="flex gap-3 mb-8">
+            {[
+              { value: '100+', label: 'Expert Tutors' },
+              { value: '50+', label: 'Subjects' },
+              { value: '4.9★', label: 'Avg. Rating' },
+              { value: '200+', label: 'Students' },
+            ].map(({ value, label }) => (
+              <div
+                key={label}
+                className="flex flex-col items-center justify-center rounded-xl px-4 py-3 backdrop-blur-md"
+                style={{
+                  background: 'rgba(25,147,86,0.15)',
+                  border: '1px solid rgba(46,204,122,0.30)',
+                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(25,147,86,0.12)',
+                  minWidth: '78px',
+                }}
+              >
+                <span className="text-xl font-extrabold leading-none" style={{ color: '#2ecc7a' }}>{value}</span>
+                <span className="text-[10px] mt-1 text-center leading-tight" style={{ color: 'rgba(180,230,200,0.70)' }}>{label}</span>
+              </div>
+            ))}
+          </div>
+
+          <p className="text-base mb-8 leading-relaxed" style={{ color: 'rgba(180,230,200,0.70)' }}>
             Get matched with top-rated verified iTutors.<br />
             CSEC, CAPE &amp; beyond — all in one platform.
           </p>
 
           {/* Feature cards */}
-          <div className="space-y-2.5">
+          <div className="space-y-3">
             {[
               {
                 icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />,
@@ -367,13 +392,13 @@ export default function SignupPage() {
                 desc: 'Book sessions around your timetable',
               },
             ].map(({ icon, title, desc }) => (
-              <div key={title} className="flex items-center gap-3 rounded-xl px-4 py-3" style={{ backgroundColor: 'rgba(25,147,86,0.10)', border: '1px solid rgba(25,147,86,0.18)' }}>
+              <div key={title} className="flex items-center gap-4 rounded-xl px-5 py-3" style={{ backgroundColor: 'rgba(25,147,86,0.10)', border: '1px solid rgba(25,147,86,0.18)' }}>
                 <span className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(25,147,86,0.25)' }}>
                   <svg className="w-5 h-5" style={{ color: '#2ecc7a' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">{icon}</svg>
                 </span>
                 <div>
-                  <p className="text-white text-sm font-semibold">{title}</p>
-                  <p className="text-xs" style={{ color: 'rgba(180,230,200,0.65)' }}>{desc}</p>
+                  <p className="text-white text-base font-semibold">{title}</p>
+                  <p className="text-sm" style={{ color: 'rgba(180,230,200,0.65)' }}>{desc}</p>
                 </div>
               </div>
             ))}
@@ -383,8 +408,8 @@ export default function SignupPage() {
       </div>
 
       {/* RIGHT PANEL */}
-      <div className="w-full lg:w-auto lg:min-w-[400px] flex items-center justify-center px-6 py-4 relative z-10">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[360px] px-5 py-4" style={{ borderTop: '3px solid #199356' }}>
+      <div className="w-full lg:w-[42%] flex items-center justify-center px-8 py-10 relative z-10">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[400px] px-8 py-6">
 
           {/* Heading */}
           <div className="text-center mb-2">
@@ -410,7 +435,7 @@ export default function SignupPage() {
             </div>
           )}
 
-          <form onSubmit={handleSignup} className="space-y-1">
+          <form onSubmit={handleSignup} className="space-y-2">
             {/* Name */}
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
@@ -456,7 +481,12 @@ export default function SignupPage() {
             </div>
 
             {/* Country */}
-            <CountrySelect value={countryCode} onChange={setCountryCode} disabled={loading} />
+            <CountrySelect
+              value={countryCode}
+              onChange={setCountryCode}
+              disabled={loading}
+              className={`w-full bg-white border border-gray-200 text-sm py-2 px-4 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition ${!countryCode ? 'text-gray-400' : 'text-gray-900'} ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            />
 
             {/* Password */}
             <div>

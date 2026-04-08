@@ -3,14 +3,11 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import AuthModal from '@/components/auth/AuthModal';
 import CompleteRoleModal from '@/components/auth/CompleteRoleModal';
 
 export default function Header() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [authOpen, setAuthOpen] = useState(false);
-  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [completeRoleOpen, setCompleteRoleOpen] = useState(false);
 
   useEffect(() => {
@@ -43,20 +40,15 @@ export default function Header() {
             >
               Sign Up
             </Link>
-            <button
-              type="button"
-              onClick={() => {
-                setAuthMode('login');
-                setAuthOpen(true);
-              }}
+            <Link
+              href="/login"
               className="px-3 sm:px-6 py-2 sm:py-2.5 text-sm sm:text-base font-bold text-itutor-black bg-itutor-green rounded-lg hover:bg-emerald-400 transition-all duration-300 whitespace-nowrap shadow-lg shadow-itutor-green/30 hover:shadow-xl hover:scale-105"
             >
               Log In
-            </button>
+            </Link>
           </div>
         </div>
       </nav>
-      <AuthModal isOpen={authOpen} mode={authMode} onClose={() => setAuthOpen(false)} />
       <CompleteRoleModal isOpen={completeRoleOpen} onClose={handleCloseCompleteRole} />
     </header>
   );

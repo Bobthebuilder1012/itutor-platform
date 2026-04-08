@@ -291,321 +291,173 @@ export default function LoginPage() {
     }
   };
 
+  const inputBase = "w-full bg-white border border-gray-200 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-400 text-sm py-3 px-4";
+  const inputWithIcon = "w-full bg-white border border-gray-200 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-400 text-sm py-3 pl-10 pr-4";
+
   return (
-    <div
-      className="min-h-screen flex"
-      style={{ background: 'radial-gradient(ellipse 70% 60% at 15% 20%, rgba(34,197,94,0.22) 0%, transparent 65%), radial-gradient(ellipse 55% 50% at 85% 80%, rgba(34,197,94,0.14) 0%, transparent 65%), linear-gradient(160deg, #07180b 0%, #0e2a14 50%, #081510 100%)' }}
-    >
-      {/* Dot grid overlay */}
-      <div className="fixed inset-0 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, rgba(34,197,94,0.07) 1px, transparent 1px)', backgroundSize: '34px 34px' }} />
+    <div className="min-h-screen flex" style={{ background: 'linear-gradient(135deg, #071a0e 0%, #0d2318 50%, #0a1e14 100%)' }}>
 
       {/* LEFT PANEL */}
-      <div className="hidden lg:flex flex-1 flex-col justify-between p-14 relative overflow-hidden">
-        {/* Decorative rings */}
-        <div className="absolute w-[540px] h-[540px] -top-40 -left-40 rounded-full border border-itutor-green/10 pointer-events-none" />
-        <div className="absolute w-[340px] h-[340px] -bottom-28 -right-12 rounded-full border border-itutor-green/[0.07] pointer-events-none" />
+      <div className="hidden lg:flex lg:w-[52%] flex-col justify-between px-16 py-14 relative overflow-hidden">
+        <div className="absolute top-[-80px] right-[-80px] w-[500px] h-[500px] rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(25,147,86,0.13) 0%, transparent 65%)' }} />
+        <div className="absolute bottom-[-60px] left-[-60px] w-80 h-80 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(25,147,86,0.09) 0%, transparent 70%)' }} />
 
-        {/* Brand */}
-        <div className="relative z-10">
-          <img src="/assets/logo/itutor-logo-dark.png" alt="iTutor" className="h-8 w-auto" />
+        {/* Logo */}
+        <div>
+          <img src="/assets/logo/itutor-logo-dark.png" alt="iTutor" className="h-24 w-auto" style={{ filter: 'brightness(0) invert(1)' }} />
         </div>
 
-        {/* Hero */}
-        <div className="relative z-10">
-          <div className="inline-flex items-center gap-2 bg-itutor-green/10 border border-itutor-green/25 rounded-full px-4 py-1.5 mb-5">
-            <span className="w-2 h-2 rounded-full bg-itutor-green animate-pulse" />
-            <span className="text-[11px] font-bold uppercase tracking-wider text-itutor-green">Caribbean&apos;s #1 Tutoring Platform</span>
-          </div>
-          <h1 className="text-[2.6rem] font-extrabold text-white leading-[1.08] tracking-tight mb-4">
-            Find your <span className="text-itutor-green">perfect tutor,</span><br />ace every subject.
+        {/* Main copy */}
+        <div className="flex flex-col">
+          <h1 className="font-extrabold text-white leading-[1.05] mb-5" style={{ fontSize: 'clamp(3rem, 5.5vw, 4.5rem)' }}>
+            Good to<br />see<br />
+            <span style={{ color: '#2ecc7a' }}>you again.</span>
           </h1>
-          <p className="text-white/50 text-[15px] leading-relaxed max-w-[340px]">
-            Get matched with top-rated verified iTutors. CSEC, CAPE &amp; beyond — all in one platform.
+
+          <p className="text-base mb-8 max-w-xs leading-relaxed" style={{ color: 'rgba(180,230,200,0.65)' }}>
+            Your tutors are ready. Pick up right<br />where you left off.
           </p>
+
+          {/* Pill tags */}
+          <div className="flex flex-wrap gap-2">
+            {['📚 Study', '✏️ Practice', '⭐ Achieve', '🔬 Explore', '🚀 Grow'].map((tag) => (
+              <span
+                key={tag}
+                className="px-4 py-1.5 rounded-full text-sm font-medium"
+                style={{
+                  background: 'rgba(25,147,86,0.15)',
+                  border: '1px solid rgba(46,204,122,0.25)',
+                  color: 'rgba(180,230,200,0.80)',
+                }}
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
         </div>
 
-        {/* Feature cards */}
-        <div className="relative z-10 flex flex-col gap-3">
-          {[
-            { icon: 'person', color: 'from-itutor-green to-emerald-600', title: '1-on-1 Live Sessions', sub: 'Real-time tutoring, any time you need' },
-            { icon: 'chart', color: 'from-teal-400 to-teal-600', title: 'Track Your Progress', sub: 'Visual dashboards & session history' },
-            { icon: 'calendar', color: 'from-blue-400 to-blue-600', title: 'Flexible Scheduling', sub: 'Book sessions around your timetable' },
-          ].map((feat, i) => (
-            <div key={i} className="flex items-center gap-4 bg-white/[0.05] border border-white/[0.1] backdrop-blur-sm rounded-2xl px-5 py-4 w-fit min-w-[280px]" style={{ marginLeft: i === 1 ? '20px' : i === 2 ? '8px' : '0' }}>
-              <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${feat.color} flex items-center justify-center flex-shrink-0`}>
-                {feat.icon === 'person' && <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M6 20v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>}
-                {feat.icon === 'chart' && <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>}
-                {feat.icon === 'calendar' && <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>}
-              </div>
-              <div>
-                <p className="text-[13px] font-semibold text-white">{feat.title}</p>
-                <p className="text-[11px] text-white/40">{feat.sub}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Stats strip */}
-        <div className="relative z-10 flex gap-8">
-          {[
-            { val: '2,300+', lbl: 'Expert Tutors' },
-            { val: '80+', lbl: 'Subjects' },
-            { val: '4.9★', lbl: 'Avg. Rating' },
-            { val: '50K+', lbl: 'Students' },
-          ].map((s) => (
-            <div key={s.lbl}>
-              <p className="text-2xl font-extrabold text-itutor-green tracking-tight">{s.val}</p>
-              <p className="text-[11px] text-white/40 mt-0.5">{s.lbl}</p>
-            </div>
-          ))}
-        </div>
+        {/* Bottom tagline */}
+        <p className="text-xs tracking-widest font-semibold uppercase" style={{ color: 'rgba(46,204,122,0.45)' }}>
+          Caribbean&apos;s #1 Tutoring Platform
+        </p>
       </div>
 
-      {/* RIGHT PANEL — floating card */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 lg:p-12 relative z-10 overflow-y-auto">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md px-8 py-10">
-        <div className="w-full">
-          {/* Logo at top of card */}
-          <div className="flex justify-center mb-6">
-            <img src="/assets/logo/itutor-logo-dark.png.png" alt="iTutor" className="h-8 w-auto" onError={(e) => { (e.target as HTMLImageElement).src = '/assets/logo/itutor-logo-dark.png'; }} />
-          </div>
+      {/* RIGHT PANEL */}
+      <div className="w-full lg:w-[48%] flex items-center justify-center px-8 py-10 relative z-10">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[400px] px-8 py-8">
 
           {/* Heading */}
-          <div className="mb-7 text-center">
-            <h2 className="text-2xl font-extrabold text-gray-900 tracking-tight mb-1">Welcome back</h2>
+          <div className="text-center mb-5">
+            <h2 className="text-2xl font-bold text-gray-900 mb-1">Welcome</h2>
             <p className="text-sm text-gray-500">Sign in to your iTutor account</p>
           </div>
 
-          {/* Google button + divider */}
-          <div className="mb-5 space-y-3">
-            <SocialLoginButton provider="google" mode="login" />
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-200" />
-              </div>
-              <div className="relative flex justify-center text-xs uppercase tracking-wide">
-                <span className="bg-white px-2 text-gray-400">or continue with email</span>
+          {/* Status banners */}
+          {emailConfirmed && (
+            <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-4 relative">
+              <button onClick={() => setEmailConfirmed(false)} type="button" className="absolute top-2 right-2 text-green-500 hover:text-green-700">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
+              <p className="text-sm font-semibold">Email confirmed! You can now sign in.</p>
+            </div>
+          )}
+
+          {showEmailSent && (
+            <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-4 relative">
+              <button onClick={() => setShowEmailSent(false)} type="button" className="absolute top-2 right-2 text-green-500 hover:text-green-700">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
+              <p className="text-sm font-semibold mb-1">Account created! Check your email to verify.</p>
+              {resendSuccess && <p className="text-xs text-green-600 mt-1">{resendSuccess}</p>}
+              {resendError && <p className="text-xs text-red-500 mt-1">{resendError}</p>}
+              <button type="button" onClick={handleResendEmail} disabled={resendCooldown > 0 || resendLoading}
+                className="mt-2 text-xs font-medium text-itutor-green hover:underline disabled:opacity-50">
+                {resendLoading ? 'Sending...' : resendCooldown > 0 ? `Resend (${resendCooldown}s)` : 'Resend verification email'}
+              </button>
+            </div>
+          )}
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-2.5 rounded-lg mb-4">
+              <p className="text-sm">{error}</p>
+            </div>
+          )}
+
+          <form onSubmit={handleLogin} className="space-y-3.5">
+            {/* Email */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                </span>
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                  className={inputWithIcon} placeholder="you@example.com" required disabled={loading} />
               </div>
             </div>
-          </div>
 
-          <form onSubmit={handleLogin} className="space-y-5">
-            {/* Email Confirmed Success Banner */}
-            {emailConfirmed && (
-              <div className="bg-green-900/20 border-2 border-green-500/50 text-green-200 px-4 py-4 rounded-lg backdrop-blur-sm relative">
-                <button
-                  onClick={() => setEmailConfirmed(false)}
-                  className="absolute top-2 right-2 text-green-400 hover:text-green-300 transition-colors"
-                  type="button"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-                <div className="flex items-start gap-3">
-                  <div className="flex-shrink-0 mt-0.5">
-                    <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                  <div className="flex-1 pr-4">
-                    <p className="font-bold text-green-100 mb-2 text-lg">✅ Email Confirmed!</p>
-                    <p className="text-sm text-green-200 mb-2">
-                      Your email has been successfully verified. You can now log in to your iTutor account.
-                    </p>
-                    <p className="text-xs text-green-300">
-                      Enter your email and password below to continue.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Email Sent (Awaiting Confirmation) Banner */}
-            {showEmailSent && (
-              <div className="bg-green-900/20 border-2 border-green-500/50 text-green-200 px-4 py-4 rounded-lg backdrop-blur-sm space-y-3 relative">
-                <button
-                  onClick={() => setShowEmailSent(false)}
-                  className="absolute top-2 right-2 text-green-400 hover:text-green-300 transition-colors"
-                  type="button"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-                <div className="flex items-start gap-3">
-                  <div className="flex-shrink-0 mt-0.5">
-                    <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                  <div className="flex-1 pr-4">
-                    <p className="font-semibold text-green-100 mb-1">Account Created!</p>
-                    <p className="text-sm text-green-200 mb-3">
-                      Please check your email to verify your account. After verification, you can log in below.
-                    </p>
-
-                    <div className="bg-green-950/30 border border-green-600/30 rounded-md p-3 mb-3">
-                      <p className="text-xs text-green-300 font-medium mb-1">Didn't receive the email?</p>
-                      <ul className="text-xs text-green-300/90 space-y-0.5 list-disc list-inside">
-                        <li>Check your spam or junk folder</li>
-                        <li>Make sure you entered the correct email</li>
-                        <li>Wait a few minutes for delivery</li>
-                      </ul>
-                    </div>
-
-                    {resendSuccess && (
-                      <div className="bg-green-800/30 border border-green-400/30 text-green-100 px-3 py-2 rounded-md text-sm mb-2">
-                        {resendSuccess}
-                      </div>
-                    )}
-
-                    {resendError && (
-                      <div className="bg-red-900/30 border border-red-400/30 text-red-200 px-3 py-2 rounded-md text-sm mb-2">
-                        {resendError}
-                      </div>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={handleResendEmail}
-                      disabled={resendCooldown > 0 || resendLoading}
-                      className="w-full bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {resendLoading ? (
-                        'Sending...'
-                      ) : resendCooldown > 0 ? (
-                        `Resend email (${resendCooldown}s)`
-                      ) : (
-                        'Resend verification email'
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {error && (
-              <div className="bg-red-900/20 border border-red-500/50 text-red-400 px-4 py-3 rounded-lg backdrop-blur-sm">
-                <p className="text-sm">{error}</p>
-              </div>
-            )}
-
+            {/* Password */}
             <div>
-              <label htmlFor="email" className="block text-sm font-semibold text-gray-800 mb-1.5">
-                Email address
-              </label>
-              <input
-                type="email"
-                id="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 text-gray-900 rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none focus:bg-white transition placeholder-gray-400 text-sm"
-                placeholder="you@example.com"
-                required
-                disabled={loading}
-              />
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label htmlFor="password" className="block text-sm font-semibold text-gray-800">
-                  Password
-                </label>
-                <a
-                  href="/forgot-password"
-                  className="text-sm text-itutor-green hover:text-emerald-400 font-medium transition-colors"
-                >
-                  Forgot password?
-                </a>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-sm font-medium text-gray-700">Password</label>
+                <a href="/forgot-password" className="text-sm text-itutor-green font-medium hover:underline">Forgot password?</a>
               </div>
               <div className="relative">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  id="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-3 pr-10 bg-gray-50 border-2 border-gray-200 text-gray-900 rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none focus:bg-white transition placeholder-gray-400 text-sm"
-                  placeholder="Enter your password"
-                  required
-                  disabled={loading}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-                  tabIndex={-1}
-                >
-                  {showPassword ? (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                    </svg>
-                  ) : (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
-                  )}
+                <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)}
+                  className={`${inputBase} pr-14`} placeholder="Enter your password" required disabled={loading} />
+                <button type="button" onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500 hover:text-gray-700 font-medium" tabIndex={-1}>
+                  {showPassword ? 'Hide' : 'Show'}
                 </button>
               </div>
             </div>
 
-            <div className="flex items-center">
-              <input
-                type="checkbox"
-                id="rememberMe"
-                checked={rememberMe}
-                onChange={(e) => setRememberMe(e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300 text-itutor-green focus:ring-2 focus:ring-itutor-green focus:ring-offset-0 cursor-pointer"
-                disabled={loading}
-              />
-              <label htmlFor="rememberMe" className="ml-2 block text-sm text-gray-600 cursor-pointer select-none">
-                Keep me signed in
-              </label>
+            {/* Remember me */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="rememberMe" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-itutor-green focus:ring-itutor-green cursor-pointer" disabled={loading} />
+                <label htmlFor="rememberMe" className="text-sm text-gray-600 cursor-pointer">Keep me signed in</label>
+              </div>
             </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-white py-3 px-4 rounded-lg focus:ring-4 focus:ring-itutor-green/30 focus:outline-none transition-all font-semibold text-lg disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-itutor-green/20 transform hover:scale-[1.02] active:scale-[0.98]"
-            >
+            <button type="submit" disabled={loading}
+              className="w-full bg-itutor-green hover:bg-emerald-700 text-white py-3 rounded-lg font-bold text-base transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
               {loading ? (
-                <span className="flex items-center justify-center">
-                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
                   </svg>
                   Signing in...
                 </span>
-              ) : (
-                'Sign in'
-              )}
+              ) : 'Sign in'}
             </button>
           </form>
 
-          <div className="mt-6 space-y-3">
-            <p className="text-sm text-gray-500 text-center">
+          <div className="mt-4 text-center space-y-3">
+            <p className="text-sm text-gray-600">
               Don&apos;t have an account?{' '}
-              <a href="/signup" className="text-itutor-green hover:text-emerald-500 font-semibold transition-colors">
-                Sign up
-              </a>
+              <a href="/signup" className="font-bold text-gray-900 hover:text-itutor-green transition-colors">Sign up</a>
             </p>
 
-            {/* Only show verification link if user just signed up or has unverified email */}
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-px bg-gray-200" />
+              <span className="text-xs text-gray-400">or</span>
+              <div className="flex-1 h-px bg-gray-200" />
+            </div>
+
+            <SocialLoginButton provider="google" mode="login" />
+
             {showEmailSent && (
-              <p className="text-sm text-gray-500 text-center">
-                Haven&apos;t verified your email?{' '}
-                <a href={`/verify-code${resendEmail ? `?email=${encodeURIComponent(resendEmail)}` : ''}`} className="text-itutor-green hover:text-emerald-500 font-semibold transition-colors">
-                  Enter verification code
-                </a>
+              <p className="text-xs text-gray-400">
+                Haven&apos;t verified?{' '}
+                <a href={`/verify-code${resendEmail ? `?email=${encodeURIComponent(resendEmail)}` : ''}`} className="text-itutor-green font-medium hover:underline">Enter code</a>
               </p>
             )}
-
-            <a href="/" className="flex items-center justify-center gap-1 text-xs text-gray-400 hover:text-gray-600 pt-4 border-t border-gray-100 mt-4 transition">
-              ← Back to home
-            </a>
           </div>
-        </div>
         </div>
       </div>
     </div>
