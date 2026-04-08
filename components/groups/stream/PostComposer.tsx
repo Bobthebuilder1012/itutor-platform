@@ -115,115 +115,112 @@ export default function PostComposer({
   };
 
   return (
-    <div className="border border-emerald-200 rounded-xl p-4 bg-emerald-50/80">
-      <div className="flex gap-3">
-        {authorAvatarUrl ? (
-          <img
-            src={authorAvatarUrl}
-            alt={authorName}
-            className="w-9 h-9 rounded-full object-cover flex-shrink-0"
-          />
-        ) : (
-          <div className="w-9 h-9 rounded-full bg-emerald-200 text-emerald-800 flex items-center justify-center text-sm font-bold flex-shrink-0">
-            {getInitials(authorName)}
-          </div>
-        )}
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold text-emerald-800 mb-2">Create a post</p>
-          <form onSubmit={handleSubmit} className="space-y-2">
-            {isTutor && (
-              <select
-                value={postType}
-                onChange={(e) => setPostType(e.target.value as StreamPostType)}
-                className="text-xs border border-emerald-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              >
-                {POST_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-            )}
-            <textarea
-              value={messageBody}
-              onChange={(e) => setMessageBody(e.target.value)}
-              placeholder={
-                isTutor
-                  ? 'Share an announcement, learning content, or start a discussion…'
-                  : 'Share something with your group…'
-              }
-              rows={3}
-              disabled={submitting}
-              className="w-full resize-none border border-emerald-200 bg-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
+    <div className="bg-white border border-[#e2e8f0] rounded-[14px] p-5 mb-6">
+      <form onSubmit={handleSubmit}>
+        <div className="flex items-center gap-3 mb-3.5">
+          {authorAvatarUrl ? (
+            <img
+              src={authorAvatarUrl}
+              alt={authorName}
+              className="w-9 h-9 rounded-full object-cover flex-shrink-0"
             />
-            <div className="flex flex-col gap-2">
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                className="hidden"
-                onChange={handleFileChange}
-              />
-              <div className="flex items-center gap-2 flex-wrap">
+          ) : (
+            <div className="w-9 h-9 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[13px] font-bold flex-shrink-0">
+              {getInitials(authorName)}
+            </div>
+          )}
+          {isTutor && (
+            <select
+              value={postType}
+              onChange={(e) => setPostType(e.target.value as StreamPostType)}
+              className="py-1.5 px-3 rounded-lg border border-[#e2e8f0] bg-[#f6f8fb] text-xs font-semibold text-gray-700 cursor-pointer focus:outline-none focus:border-emerald-500"
+            >
+              {POST_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+
+        <textarea
+          value={messageBody}
+          onChange={(e) => setMessageBody(e.target.value)}
+          placeholder={
+            isTutor
+              ? 'Share an announcement, learning content, or start a discussion...'
+              : 'Share something with your class…'
+          }
+          rows={3}
+          disabled={submitting}
+          className="w-full resize-y min-h-[80px] border border-[#e2e8f0] rounded-lg px-3 py-3 text-sm focus:outline-none focus:border-emerald-500 disabled:opacity-50 placeholder:text-[#94a3b8]"
+        />
+
+        {attachments && attachments.length > 0 && (
+          <ul className="flex flex-wrap gap-1.5 mt-2">
+            {attachments.map((a, i) => (
+              <li
+                key={i}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-gray-200 bg-[#f6f8fb] text-xs"
+              >
+                <span className="truncate max-w-[140px]">{a.file_name}</span>
                 <button
                   type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={submitting || (attachments?.length ?? 0) >= MAX_FILES}
-                  className="text-xs text-emerald-700 hover:text-emerald-800 font-medium flex items-center gap-1.5"
+                  onClick={() => removeAttachment(i)}
+                  className="text-gray-400 hover:text-red-500"
+                  aria-label="Remove"
                 >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
-                  Add attachment
                 </button>
-                {attachments && attachments.length > 0 && (
-                  <span className="text-xs text-gray-500">
-                    {attachments.length} file{attachments.length !== 1 ? 's' : ''} (max {MAX_FILES}, {MAX_FILE_SIZE_MB}MB each)
-                  </span>
-                )}
-              </div>
-              {attachments && attachments.length > 0 && (
-                <ul className="flex flex-wrap gap-1.5">
-                  {attachments.map((a, i) => (
-                    <li
-                      key={i}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-gray-200 bg-white text-xs"
-                    >
-                      <span className="truncate max-w-[140px]">{a.file_name}</span>
-                      <button
-                        type="button"
-                        onClick={() => removeAttachment(i)}
-                        className="text-gray-400 hover:text-red-500"
-                        aria-label="Remove"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <div className="flex items-center justify-between">
-              {error ? (
-                <p className="text-xs text-red-500">{error}</p>
-              ) : (
-                <span className="text-xs text-gray-400">
-                  {isTutor ? 'Announcements and content are tutor-only.' : 'Students can post discussions.'}
-                </span>
-              )}
-              <button
-                type="submit"
-                disabled={submitting || (!messageBody.trim() && !(attachments?.length))}
-                className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-              >
-                {submitting ? 'Posting…' : 'Post'}
-              </button>
-            </div>
-          </form>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div className="flex justify-between items-center mt-3">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={handleFileChange}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={submitting || (attachments?.length ?? 0) >= MAX_FILES}
+            className="inline-flex items-center gap-1.5 text-[13px] font-medium text-emerald-500 hover:underline bg-transparent border-none p-0 cursor-pointer"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.49" />
+            </svg>
+            Add attachment
+            {attachments && attachments.length > 0 && (
+              <span className="text-gray-400 font-normal ml-1">
+                ({attachments.length}/{MAX_FILES})
+              </span>
+            )}
+          </button>
+          <button
+            type="submit"
+            disabled={submitting || (!messageBody.trim() && !(attachments?.length))}
+            className="px-7 py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 text-white rounded-lg text-sm font-semibold transition-colors cursor-pointer"
+          >
+            {submitting ? 'Posting…' : 'Post'}
+          </button>
         </div>
-      </div>
+
+        {error ? (
+          <p className="text-[11px] text-red-500 mt-2">{error}</p>
+        ) : (
+          <p className="text-[11px] text-[#64748b] mt-2">
+            {isTutor ? 'Announcements and content are tutor-only.' : 'Students can post discussions.'}
+          </p>
+        )}
+      </form>
     </div>
   );
 }

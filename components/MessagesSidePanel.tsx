@@ -11,6 +11,7 @@ import { getRelativeTime, formatTime } from '@/lib/utils/calendar';
 import { getAvatarColor } from '@/lib/utils/avatarColors';
 import { uploadMessageAttachment } from '@/lib/utils/messageAttachments';
 import MessageInputBar from '@/components/MessageInputBar';
+import UserAvatar from '@/components/UserAvatar';
 
 interface MessagesSidePanelProps {
   isOpen: boolean;
@@ -279,13 +280,7 @@ export default function MessagesSidePanel({ isOpen, onClose, userId, role }: Mes
                     >
                       <div className="flex items-start gap-3">
                         {/* Avatar */}
-                        <div className={`w-12 h-12 rounded-full bg-gradient-to-br ${getAvatarColor(conversation.other_participant?.id || '')} flex items-center justify-center text-white font-bold flex-shrink-0`}>
-                          {conversation.other_participant?.avatar_url ? (
-                            <img src={conversation.other_participant.avatar_url} alt="" className="w-full h-full rounded-full object-cover" />
-                          ) : (
-                            getDisplayName(conversation.other_participant).charAt(0).toUpperCase()
-                          )}
-                        </div>
+                        <UserAvatar avatarUrl={conversation.other_participant?.avatar_url} name={getDisplayName(conversation.other_participant)} size={48} />
 
                         {/* Content */}
                         <div className="flex-1 min-w-0">
@@ -338,13 +333,7 @@ export default function MessagesSidePanel({ isOpen, onClose, userId, role }: Mes
                     <div className={`max-w-[75%] ${message.is_own_message ? '' : 'flex items-end gap-2'}`}>
                       {/* Avatar (for other person) */}
                       {!message.is_own_message && (
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
-                          {message.sender.avatar_url ? (
-                            <img src={message.sender.avatar_url} alt="" className="w-full h-full rounded-full object-cover" />
-                          ) : (
-                            getDisplayName(message.sender).charAt(0).toUpperCase()
-                          )}
-                        </div>
+                        <UserAvatar avatarUrl={message.sender.avatar_url} name={getDisplayName(message.sender)} size={32} />
                       )}
 
                       {/* Message Bubble */}

@@ -6,6 +6,7 @@ import type { CreateGroupInput } from '@/lib/types/groups';
 import SubjectMultiSelect from '@/components/SubjectMultiSelect';
 import { supabase } from '@/lib/supabase/client';
 import { getCroppedImg, type Area } from '@/lib/utils/imageCrop';
+import { randomDefaultThumbnailValue, isDefaultThumbnail } from '@/lib/defaultThumbnails';
 
 interface CreateGroupModalProps {
   onCreated: (groupId: string) => void;
@@ -23,17 +24,16 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const [uploadingImage, setUploadingImage] = useState<'cover' | 'header' | null>(null);
-  const [draggingImage, setDraggingImage] = useState<'cover' | 'header' | null>(null);
+  const [uploadingImage, setUploadingImage] = useState<'cover' | null>(null);
+  const [draggingImage, setDraggingImage] = useState<'cover' | null>(null);
   const coverInputRef = useRef<HTMLInputElement | null>(null);
-  const headerInputRef = useRef<HTMLInputElement | null>(null);
-  const [cropTarget, setCropTarget] = useState<'cover' | 'header' | null>(null);
+  const [cropTarget, setCropTarget] = useState<'cover' | null>(null);
   const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
 
-  const uploadImage = async (file: Blob, target: 'cover' | 'header') => {
+  const uploadImage = async (file: Blob, target: 'cover') => {
     if (!file.type.startsWith('image/')) {
       throw new Error('Please upload an image file');
     }
@@ -66,11 +66,7 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
     const { data: publicUrlData } = supabase.storage.from('avatars').getPublicUrl(path);
     const publicUrl = `${publicUrlData.publicUrl}?t=${Date.now()}`;
 
-    if (target === 'cover') {
-      setForm((prev) => ({ ...prev, cover_image: publicUrl }));
-    } else {
-      setForm((prev) => ({ ...prev, header_image: publicUrl }));
-    }
+    setForm((prev) => ({ ...prev, cover_image: publicUrl }));
 
     setUploadingImage(null);
   };
@@ -79,7 +75,7 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
     setCroppedAreaPixels(nextCroppedAreaPixels);
   }, []);
 
-  const handleImageSelection = async (file: File | null, target: 'cover' | 'header') => {
+  const handleImageSelection = async (file: File | null, target: 'cover') => {
     if (!file) return;
     if (!file.type.startsWith('image/')) {
       setError('Please upload an image file');
@@ -122,19 +118,23 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
 
   const handleSubmit = async () => {
     if (!form.name.trim()) {
-      setError('Group name is required');
+      setError('Class name is required');
       return;
     }
     setSubmitting(true);
     setError('');
     try {
+      const payload = { ...form };
+      if (!payload.cover_image || isDefaultThumbnail(payload.cover_image)) {
+        payload.cover_image = randomDefaultThumbnailValue();
+      }
       const res = await fetch('/api/groups', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Failed to create group');
+      if (!res.ok) throw new Error(data.error ?? 'Failed to create class');
       onCreated(data.group.id);
     } catch (err: any) {
       setError(err.message);
@@ -149,7 +149,7 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
         <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-5 border-b border-gray-100 sticky top-0 bg-white rounded-t-2xl z-10">
           <div>
-            <h2 className="text-lg font-bold text-gray-900">Create Group Course</h2>
+            <h2 className="text-lg font-bold text-gray-900">Create a New Class</h2>
             <p className="text-xs text-gray-500 mt-0.5">Step {step} of 3</p>
           </div>
           <button
@@ -174,7 +174,7 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Group Title <span className="text-red-400">*</span>
+                  Class Title <span className="text-red-400">*</span>
                 </label>
                 <input
                   type="text"
@@ -185,7 +185,7 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">About group</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">About class</label>
                 <input
                   type="text"
                   value={form.topic ?? ''}
@@ -250,7 +250,7 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
           {step === 3 && (
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Group thumbnail</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Lesson thumbnail</label>
                 <div
                   onDragOver={(e) => {
                     e.preventDefault();
@@ -275,7 +275,7 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
                   {form.cover_image ? (
                     <img
                       src={form.cover_image}
-                      alt="Group thumbnail preview"
+                      alt="Lesson thumbnail preview"
                       className="h-36 w-full rounded-lg object-cover border border-gray-200"
                     />
                   ) : (
@@ -303,7 +303,7 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
                     <span className="text-xs text-gray-500">
                       {uploadingImage === 'cover'
                         ? 'Uploading...'
-                        : 'Recommended: 1280 x 720 px (16:9). Drag image in frame to reposition. PNG, JPG, WEBP up to 10MB'}
+                        : 'Recommended: 1920 x 1080 px (16:9). Drag image in frame to reposition. PNG, JPG, WEBP up to 10MB'}
                     </span>
                   </div>
                   <input
@@ -314,76 +314,6 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
                     onChange={(e) => {
                       const file = e.target.files?.[0] ?? null;
                       void handleImageSelection(file, 'cover');
-                      e.currentTarget.value = '';
-                    }}
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Header image (optional)</label>
-                <div
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setDraggingImage('header');
-                  }}
-                  onDragLeave={(e) => {
-                    e.preventDefault();
-                    setDraggingImage((prev) => (prev === 'header' ? null : prev));
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    setDraggingImage(null);
-                    const file = e.dataTransfer.files?.[0] ?? null;
-                    void handleImageSelection(file, 'header');
-                  }}
-                  className={`rounded-xl border-2 border-dashed p-4 transition-colors ${
-                    draggingImage === 'header'
-                      ? 'border-emerald-500 bg-emerald-50'
-                      : 'border-gray-300 bg-gray-50/60'
-                  }`}
-                >
-                  {form.header_image ? (
-                    <img
-                      src={form.header_image}
-                      alt="Header image preview"
-                      className="h-36 w-full rounded-lg object-cover border border-gray-200"
-                    />
-                  ) : (
-                    <div className="h-36 w-full rounded-lg border border-gray-200 bg-white flex items-center justify-center text-sm text-gray-500">
-                      Drag and drop header image here
-                    </div>
-                  )}
-                  <div className="mt-3 flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => headerInputRef.current?.click()}
-                      className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
-                    >
-                      Choose file
-                    </button>
-                    {form.header_image && (
-                      <button
-                        type="button"
-                        onClick={() => setForm((prev) => ({ ...prev, header_image: null }))}
-                        className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
-                      >
-                        Remove
-                      </button>
-                    )}
-                    <span className="text-xs text-gray-500">
-                      {uploadingImage === 'header'
-                        ? 'Uploading...'
-                        : 'Recommended: 1280 x 720 px (16:9). Drag image in frame to reposition. PNG, JPG, WEBP up to 10MB'}
-                    </span>
-                  </div>
-                  <input
-                    ref={headerInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0] ?? null;
-                      void handleImageSelection(file, 'header');
                       e.currentTarget.value = '';
                     }}
                   />
@@ -420,14 +350,26 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
                 Next
               </button>
             ) : (
-              <button
-                type="button"
-                onClick={() => void handleSubmit()}
-                disabled={submitting}
-                className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white py-2.5 rounded-xl text-sm font-semibold transition-colors"
-              >
-                {submitting ? 'Creating…' : 'Create Group'}
-              </button>
+              <>
+                {!form.cover_image && (
+                  <button
+                    type="button"
+                    onClick={() => void handleSubmit()}
+                    disabled={submitting || uploadingImage === 'cover'}
+                    className="flex-1 border border-gray-200 text-gray-700 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  >
+                    {submitting ? 'Creating…' : 'Add later'}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void handleSubmit()}
+                  disabled={submitting}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white py-2.5 rounded-xl text-sm font-semibold transition-colors"
+                >
+                  {submitting ? 'Creating…' : 'Create Class'}
+                </button>
+              </>
             )}
           </div>
         </form>
@@ -439,7 +381,7 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
           <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
               <h3 className="text-base font-semibold text-gray-900">
-                Reposition {cropTarget === 'cover' ? 'group thumbnail' : 'header image'}
+                Reposition {cropTarget === 'cover' ? 'lesson thumbnail' : 'header image'}
               </h3>
               <button
                 type="button"

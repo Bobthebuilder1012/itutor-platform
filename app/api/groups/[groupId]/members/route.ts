@@ -31,7 +31,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
     const isTutor = group?.tutor_id === user.id;
 
-    let query = service
+    let query: any = service
       .from('group_members')
       .select('id, group_id, user_id, status, joined_at, profile:profiles(id, full_name, avatar_url, role)')
       .eq('group_id', groupId)
@@ -41,7 +41,21 @@ export async function GET(_req: NextRequest, { params }: Params) {
       query = query.eq('status', 'approved');
     }
 
-    const { data: members, error } = await query;
+    let { data: members, error } = await query;
+    if (error && isSchemaMismatch(error)) {
+      query = service
+        .from('group_members')
+        .select('id, group_id, user_id, status, joined_at, profile:profiles(id, full_name, avatar_url)')
+        .eq('group_id', groupId)
+        .order('joined_at', { ascending: true });
+      if (!isTutor) {
+        query = query.eq('status', 'approved');
+      }
+      ({ data: members, error } = await query);
+    }
+    if (error && isSchemaMismatch(error)) {
+      return NextResponse.json({ members: [] });
+    }
     if (error) throw error;
 
     return NextResponse.json({ members: members ?? [] });

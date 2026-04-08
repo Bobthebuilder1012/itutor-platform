@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "staging:env:check": "npx ts-node scripts/validate-staging-env.ts",
     "communities:check": "npx ts-node scripts/check-subject-communities-migration.ts",
     "communities:migrate": "npx ts-node scripts/run-migration-088.ts",
     "stream:migrate": "npx ts-node scripts/run-migration-092.ts",

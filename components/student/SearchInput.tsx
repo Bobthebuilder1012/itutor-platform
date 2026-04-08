@@ -3,7 +3,7 @@
 export default function SearchInput({
   value,
   onChange,
-  placeholder = 'Search groups, tutors, or subjects...',
+  placeholder = 'Search lessons, tutors, or subjects...',
 }: {
   value: string;
   onChange: (value: string) => void;

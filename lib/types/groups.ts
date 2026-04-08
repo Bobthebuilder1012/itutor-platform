@@ -66,6 +66,7 @@ export interface Group {
   created_at: string;
   updated_at?: string;
   archived_at: string | null;
+  archived_reason?: string | null;
 }
 
 export interface GroupWithTutor extends Group {

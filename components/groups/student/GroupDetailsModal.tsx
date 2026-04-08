@@ -141,12 +141,12 @@ export default function GroupDetailsModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white px-5 py-4">
-          <h2 className="text-lg font-bold text-gray-900">Group details</h2>
+          <h2 className="text-lg font-bold text-gray-900">Class details</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">Close</button>
         </div>
 
         {loading || !group ? (
-          <div className="p-8 text-center text-sm text-gray-500">Loading group details...</div>
+          <div className="p-8 text-center text-sm text-gray-500">Loading class details...</div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-5">
             <section className="lg:col-span-2 space-y-5">

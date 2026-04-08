@@ -60,9 +60,12 @@ export async function GET(request: NextRequest) {
         status: tokenResponse.status,
         statusText: tokenResponse.statusText,
         error: errorData,
-        redirectUri
+        redirectUri,
+        clientIdPrefix: clientId.slice(0, 12) + '...',
       });
-      throw new Error('Failed to exchange code for tokens');
+      return NextResponse.redirect(
+        new URL(`/tutor/video-setup?error=connection_failed&detail=${encodeURIComponent(`Token exchange ${tokenResponse.status}: ${errorData}`)}`, request.url)
+      );
     }
 
     const tokens = await tokenResponse.json();
@@ -110,8 +113,10 @@ export async function GET(request: NextRequest) {
       });
 
     if (dbError) {
-      console.error('Database error:', dbError);
-      throw new Error('Failed to save connection');
+      console.error('❌ Database upsert error:', JSON.stringify(dbError, null, 2));
+      return NextResponse.redirect(
+        new URL(`/tutor/video-setup?error=connection_failed&detail=${encodeURIComponent(dbError.message ?? dbError.code ?? 'unknown')}`, request.url)
+      );
     }
 
     // If switching from another provider, migrate all future sessions
@@ -134,9 +139,12 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.redirect(new URL('/tutor/video-setup?success=true', request.url));
-  } catch (error) {
-    console.error('OAuth callback error:', error);
-    return NextResponse.redirect(new URL('/tutor/video-setup?error=connection_failed', request.url));
+  } catch (error: any) {
+    console.error('❌ OAuth callback error:', error);
+    const detail = error?.message ?? 'unknown';
+    return NextResponse.redirect(
+      new URL(`/tutor/video-setup?error=connection_failed&detail=${encodeURIComponent(detail)}`, request.url)
+    );
   }
 }
 

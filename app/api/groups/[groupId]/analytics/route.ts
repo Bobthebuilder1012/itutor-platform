@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 
 type Params = { params: Promise<{ groupId: string }> };
+function isSchemaMismatch(error: any): boolean {
+  const code = String(error?.code ?? '');
+  const msg = String(error?.message ?? '').toLowerCase();
+  return code === '42703' || code === '42P01' || code === 'PGRST205' || msg.includes('does not exist');
+}
 
 function extractProfileName(profile: unknown): string {
   if (Array.isArray(profile)) {
@@ -37,33 +42,54 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const { data: group } = await service.from('groups').select('id, tutor_id').eq('id', groupId).single();
     if (!group || group.tutor_id !== user.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-    const [{ data: members }, { data: sessions }, { data: attendance }] = await Promise.all([
-      service
+    let members: any[] | null = null;
+    let sessions: any[] | null = null;
+    let attendance: any[] | null = null;
+
+    let membersResult: { data: any[] | null; error: any } = await service
+      .from('group_members')
+      .select('user_id, joined_at, status, profile:profiles(full_name)')
+      .eq('group_id', groupId);
+    if (membersResult.error && isSchemaMismatch(membersResult.error)) {
+      membersResult = await service
         .from('group_members')
-        .select('user_id, joined_at, status, profile:profiles(full_name)')
-        .eq('group_id', groupId),
-      service
-        .from('group_sessions')
-        .select('id, group_session_occurrences(id)')
-        .eq('group_id', groupId),
-      service
+        .select('user_id, joined_at, status')
+        .eq('group_id', groupId);
+    }
+    if (membersResult.error && !isSchemaMismatch(membersResult.error)) throw membersResult.error;
+    members = membersResult.data ?? [];
+
+    let sessionsResult = await service
+      .from('group_sessions')
+      .select('id, group_session_occurrences(id)')
+      .eq('group_id', groupId);
+    if (sessionsResult.error && isSchemaMismatch(sessionsResult.error)) {
+      return NextResponse.json({
+        success: true,
+        data: {
+          total_sessions: 0,
+          average_attendance_rate: 0,
+          student_retention_rate: 0,
+          student_analytics: [],
+        },
+      });
+    }
+    if (sessionsResult.error) throw sessionsResult.error;
+    sessions = sessionsResult.data ?? [];
+
+    const occurrenceIds =
+      (sessions ?? []).flatMap((s: any) => (s.group_session_occurrences ?? []).map((o: any) => o.id)).filter(Boolean);
+
+    if (occurrenceIds.length > 0) {
+      const attendanceResult = await service
         .from('group_attendance_records')
         .select('student_id, status')
-        .in(
-          'session_id',
-          (
-            (await service
-              .from('group_session_occurrences')
-              .select('id, group_session_id')
-              .in(
-                'group_session_id',
-                (
-                  await service.from('group_sessions').select('id').eq('group_id', groupId)
-                ).data?.map((s: any) => s.id) ?? ['00000000-0000-0000-0000-000000000000']
-              )) as any
-          ).data?.map((o: any) => o.id) ?? ['00000000-0000-0000-0000-000000000000']
-        ),
-    ]);
+        .in('session_id', occurrenceIds);
+      if (attendanceResult.error && !isSchemaMismatch(attendanceResult.error)) throw attendanceResult.error;
+      attendance = attendanceResult.data ?? [];
+    } else {
+      attendance = [];
+    }
 
     const approvedMembers = (members ?? []).filter((m: any) => m.status === 'approved');
     const attendanceRows = attendance ?? [];

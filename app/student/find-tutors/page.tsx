@@ -9,6 +9,7 @@ import SubjectMultiSelect from '@/components/SubjectMultiSelect';
 import { getDisplayName } from '@/lib/utils/displayName';
 import { getAvatarColor } from '@/lib/utils/avatarColors';
 import VerifiedBadge from '@/components/VerifiedBadge';
+import UserAvatar from '@/components/UserAvatar';
 
 type Tutor = {
   id: string;
@@ -54,6 +55,8 @@ export default function FindTutorsPage() {
   const [selectedRating, setSelectedRating] = useState<string>('');
   const [selectedPrice, setSelectedPrice] = useState<string>('');
   const [selectedSchool, setSelectedSchool] = useState<string>('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const TUTORS_PER_PAGE = 9;
 
   useEffect(() => {
     if (loading) return;
@@ -326,6 +329,15 @@ export default function FindTutorsPage() {
     return filtered;
   }, [tutors, searchQuery, selectedSubjects, selectedRating, selectedPrice, selectedSchool, profile]);
 
+  // Reset to page 1 whenever filters change
+  useEffect(() => { setCurrentPage(1); }, [searchQuery, selectedSubjects, selectedRating, selectedPrice, selectedSchool]);
+
+  const totalPages = Math.ceil(filteredTutors.length / TUTORS_PER_PAGE);
+  const pagedTutors = filteredTutors.slice(
+    (currentPage - 1) * TUTORS_PER_PAGE,
+    currentPage * TUTORS_PER_PAGE
+  );
+
   if (loading || !profile) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -334,72 +346,82 @@ export default function FindTutorsPage() {
     );
   }
 
+  const hasActiveFilters = searchQuery || selectedSubjects.length > 0 || selectedRating || selectedPrice || selectedSchool;
+
+  const clearFilters = () => {
+    setSearchQuery('');
+    setSelectedSubjects([]);
+    setSelectedRating('');
+    setSelectedPrice('');
+    setSelectedSchool('');
+  };
+
+  const quickSubjects = ['CSEC Mathematics', 'CSEC English A', 'CSEC Biology', 'CSEC Chemistry', 'CAPE Physics', 'SEA Mathematics'];
+
   return (
     <DashboardLayout role="student" userName={getDisplayName(profile)}>
-      <div className="px-4 py-3 sm:px-0">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Find an iTutor</h1>
-          <p className="text-gray-600">Search for tutors and book your sessions</p>
+      <div className="px-1 py-2 sm:px-0">
+
+        {/* ── HERO HEADER ── */}
+        <div className="mb-5">
+          <p className="text-[11px] font-bold uppercase tracking-[1.5px] text-itutor-green mb-1">Discover</p>
+          <div className="flex items-center gap-4 flex-wrap">
+            <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">Find an iTutor</h1>
+            <span className="inline-flex items-center gap-1.5 bg-itutor-green text-black text-sm font-bold px-3 py-1 rounded-full">
+              <span className="text-base font-extrabold">100+</span> tutors available
+            </span>
+          </div>
+          <p className="text-gray-500 text-sm mt-1">Search and book from verified tutors across Trinidad &amp; Tobago</p>
         </div>
 
-        {/* Search and Filters */}
-        <div className="bg-white border-2 border-gray-200 rounded-xl p-4 mb-4 shadow-md">
-          {/* Search Bar */}
-          <div className="mb-3">
+        {/* ── FILTER PANEL ── */}
+        <div className="bg-white border border-gray-200 rounded-2xl shadow-sm mb-5 overflow-hidden">
+
+          {/* Search row */}
+          <div className="px-5 pt-5 pb-4 border-b border-gray-100">
             <div className="relative">
+              <svg className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search tutors by name..."
-                className="w-full px-3 py-2 pl-10 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition text-sm"
+                placeholder="Search tutors by name or username..."
+                className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none focus:bg-white transition text-sm"
               />
-              <svg className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
             </div>
           </div>
 
-          {/* Filters */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          {/* Filter dropdowns */}
+          <div className="px-5 py-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Subjects
-              </label>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Subjects</p>
               <SubjectMultiSelect
                 selectedSubjects={selectedSubjects}
                 onChange={setSelectedSubjects}
                 placeholder="Select subjects..."
               />
             </div>
-
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                School/Institution
-              </label>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">School / Institution</p>
               <select
                 value={selectedSchool}
                 onChange={(e) => setSelectedSchool(e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition text-sm"
+                className="w-full px-3 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition text-sm"
               >
                 <option value="">All Schools</option>
-                {institutions.map(institution => (
-                  <option key={institution.id} value={institution.id}>
-                    {institution.name}
-                  </option>
+                {institutions.map(inst => (
+                  <option key={inst.id} value={inst.id}>{inst.name}</option>
                 ))}
               </select>
             </div>
-
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Price Range
-              </label>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Price Range</p>
               <select
                 value={selectedPrice}
                 onChange={(e) => setSelectedPrice(e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition text-sm"
+                className="w-full px-3 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition text-sm"
               >
                 <option value="">Any Price</option>
                 <option value="free">Free Sessions</option>
@@ -410,15 +432,12 @@ export default function FindTutorsPage() {
                 <option value="300">Up to $300</option>
               </select>
             </div>
-
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Rating
-              </label>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Rating</p>
               <select
                 value={selectedRating}
                 onChange={(e) => setSelectedRating(e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition text-sm"
+                className="w-full px-3 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition text-sm"
               >
                 <option value="">Any Rating</option>
                 <option value="4.5">4.5+ Stars</option>
@@ -427,31 +446,43 @@ export default function FindTutorsPage() {
                 <option value="3.0">3.0+ Stars</option>
               </select>
             </div>
+          </div>
 
-            {/* Clear Filters Button (aligned in grid) */}
-            <div className="flex items-end">
-              {(searchQuery || selectedSubjects.length > 0 || selectedRating || selectedPrice || selectedSchool) && (
-                <button
-                  onClick={() => {
-                    setSearchQuery('');
-                    setSelectedSubjects([]);
-                    setSelectedRating('');
-                    setSelectedPrice('');
-                    setSelectedSchool('');
-                  }}
-                  className="w-full px-3 py-2 text-sm text-itutor-green hover:text-emerald-400 font-medium transition-colors border border-itutor-green/30 rounded-lg hover:border-itutor-green/60"
-                >
-                  Clear Filters
-                </button>
-              )}
-            </div>
+          {/* Quick chips + clear */}
+          <div className="px-5 pb-4 flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mr-1">Quick:</span>
+            {quickSubjects.map(subj => (
+              <button
+                key={subj}
+                onClick={() => setSelectedSubjects(prev =>
+                  prev.includes(subj) ? prev.filter(s => s !== subj) : [...prev, subj]
+                )}
+                className={`text-xs px-3 py-1 rounded-full border font-medium transition-colors ${
+                  selectedSubjects.includes(subj)
+                    ? 'bg-itutor-green text-black border-itutor-green'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-itutor-green hover:text-itutor-green'
+                }`}
+              >
+                {subj}
+              </button>
+            ))}
+            {hasActiveFilters && (
+              <button
+                onClick={clearFilters}
+                className="ml-auto text-xs px-3 py-1 rounded-full border border-gray-200 text-gray-500 hover:border-red-300 hover:text-red-500 transition-colors font-medium flex items-center gap-1"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
+                Clear
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Results Count */}
-        <div className="mb-3">
-          <p className="text-gray-600 text-sm">
-            Showing {filteredTutors.length} {filteredTutors.length === 1 ? 'tutor' : 'tutors'}
+        {/* Results count */}
+        <div className="mb-4 flex items-center justify-between">
+          <p className="text-sm text-gray-500">
+            Showing <span className="font-semibold text-gray-900">{filteredTutors.length}</span> {filteredTutors.length === 1 ? 'tutor' : 'tutors'}
+            {totalPages > 1 && <span> — page <span className="font-semibold text-gray-900">{currentPage}</span> of {totalPages}</span>}
           </p>
         </div>
 
@@ -473,7 +504,7 @@ export default function FindTutorsPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredTutors.map(tutor => {
+            {pagedTutors.map(tutor => {
               const matchesStudentSubjects = profile.subjects_of_study?.some(studentSubject =>
                 tutor.subjects.some(tutorSubject => tutorSubject.name === studentSubject)
               );
@@ -481,9 +512,9 @@ export default function FindTutorsPage() {
               return (
                 <div
                   key={tutor.id}
-                  className="bg-white border-2 border-gray-200 rounded-2xl p-6 hover:shadow-xl hover:border-itutor-green transition-all duration-300 hover:scale-105"
+                  className="bg-white border-2 border-gray-200 rounded-2xl p-6 hover:shadow-xl hover:border-itutor-green transition-all duration-300 flex flex-col"
                 >
-                  {/* Verified Badge - Only for verified tutors */}
+                  {/* Verified Badge */}
                   {matchesStudentSubjects && tutor.tutor_verification_status === 'VERIFIED' && (
                     <div className="mb-3">
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gradient-to-r from-itutor-green to-emerald-600 text-white">
@@ -494,13 +525,7 @@ export default function FindTutorsPage() {
 
                   {/* Tutor Info */}
                   <div className="flex items-start gap-4 mb-4">
-                    <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${getAvatarColor(tutor.id)} flex items-center justify-center text-white font-bold text-xl flex-shrink-0`}>
-                      {tutor.avatar_url ? (
-                        <img src={tutor.avatar_url} alt={getDisplayName(tutor)} className="w-full h-full rounded-full object-cover" />
-                      ) : (
-                        getDisplayName(tutor).charAt(0).toUpperCase()
-                      )}
-                    </div>
+                    <UserAvatar avatarUrl={tutor.avatar_url} name={getDisplayName(tutor)} size={64} />
                     <div className="flex-1 min-w-0">
                       <h3 className="text-lg font-bold text-gray-900 truncate flex items-center gap-2">
                         {getDisplayName(tutor)}
@@ -556,20 +581,20 @@ export default function FindTutorsPage() {
                   )}
 
                   {/* Subjects */}
-                  <div className="mb-4">
+                  <div className="mb-4 flex-1">
                     <p className="text-xs text-gray-500 mb-2 font-medium">Teaches:</p>
                     <div className="flex flex-wrap gap-1">
-                      {tutor.subjects.slice(0, 3).map(subject => (
+                      {tutor.subjects.slice(0, 4).map(subject => (
                         <span
                           key={subject.id}
-                          className="text-xs px-2 py-1 rounded bg-white border border-gray-300 text-gray-700"
+                          className="text-xs px-2 py-1 rounded bg-gray-50 border border-gray-300 text-gray-700"
                         >
                           {subject.name}
                         </span>
                       ))}
-                      {tutor.subjects.length > 3 && (
-                        <span className="text-xs px-2 py-1 rounded bg-white border border-gray-300 text-gray-700">
-                          +{tutor.subjects.length - 3} more
+                      {tutor.subjects.length > 4 && (
+                        <span className="text-xs px-2 py-1 rounded bg-gray-100 border border-gray-300 text-gray-700 font-medium">
+                          +{tutor.subjects.length - 4} more
                         </span>
                       )}
                     </div>
@@ -577,23 +602,68 @@ export default function FindTutorsPage() {
 
                   {/* Price Range */}
                   {tutor.subjects.length > 0 && (
-                    <p className="text-sm text-gray-600 mb-4">
-                      {process.env.NEXT_PUBLIC_ENABLE_PAID_SESSIONS === 'true' 
+                    <p className="text-sm text-gray-600 mb-3">
+                      {process.env.NEXT_PUBLIC_ENABLE_PAID_SESSIONS === 'true'
                         ? `From $${Math.min(...tutor.subjects.map(s => s.price_per_hour_ttd))}/hr`
                         : '$0.00/hr'}
                     </p>
                   )}
 
                   {/* View Profile Button */}
-                  <button
-                    onClick={() => router.push(`/student/tutors/${tutor.id}`)}
-                    className="w-full bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-white py-2 px-4 rounded-lg font-semibold transition-all duration-300 shadow-lg hover:shadow-itutor-green/50"
-                  >
-                    View Profile
-                  </button>
+                  <div className="mt-auto pt-2">
+                    <button
+                      onClick={() => router.push(`/student/tutors/${tutor.id}`)}
+                      className="w-full bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-white py-2 px-4 rounded-lg font-semibold transition-all duration-300 shadow-lg hover:shadow-itutor-green/50"
+                    >
+                      View Profile
+                    </button>
+                  </div>
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="mt-8 flex items-center justify-center gap-2">
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg border-2 border-gray-200 bg-white text-gray-700 font-medium text-sm transition-all hover:border-itutor-green hover:text-itutor-green disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-gray-200 disabled:hover:text-gray-700"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              Previous
+            </button>
+
+            <div className="flex items-center gap-1">
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                <button
+                  key={page}
+                  onClick={() => setCurrentPage(page)}
+                  className={`w-9 h-9 rounded-lg text-sm font-semibold transition-all ${
+                    page === currentPage
+                      ? 'bg-itutor-green text-white shadow-md'
+                      : 'border-2 border-gray-200 bg-white text-gray-600 hover:border-itutor-green hover:text-itutor-green'
+                  }`}
+                >
+                  {page}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg border-2 border-gray-200 bg-white text-gray-700 font-medium text-sm transition-all hover:border-itutor-green hover:text-itutor-green disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-gray-200 disabled:hover:text-gray-700"
+            >
+              Next
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
           </div>
         )}
       </div>

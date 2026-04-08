@@ -40,6 +40,39 @@ export async function bootstrapProfileIfMissing(user: User): Promise<{ error: { 
 
   const now = new Date().toISOString();
   const termsAccepted = Boolean(meta.terms_accepted);
+  const avatarUrl =
+    (meta.avatar_url as string | undefined) ||
+    (meta.picture as string | undefined) ||
+    null;
+
+  if (email) {
+    const { data: existingByEmail } = await admin
+      .from('profiles')
+      .select('id, full_name, display_name, avatar_url')
+      .eq('email', email)
+      .maybeSingle();
+
+    if (existingByEmail?.id && existingByEmail.id !== user.id) {
+      const { data: existingAuthUser, error: existingAuthUserError } = await admin.auth.admin.getUserById(existingByEmail.id);
+
+      if (!existingAuthUserError && existingAuthUser.user) {
+        return { error: { message: 'An account with this email already exists. Please log in instead.' } };
+      }
+
+      const archivedEmail = `${email}.staging-orphan-${String(Date.now()).slice(-6)}`;
+      const { error: archiveError } = await admin
+        .from('profiles')
+        .update({
+          email: archivedEmail,
+          updated_at: now,
+        })
+        .eq('id', existingByEmail.id);
+
+      if (archiveError) {
+        return { error: { message: archiveError.message } };
+      }
+    }
+  }
 
   const payload: Record<string, unknown> = {
     id: user.id,
@@ -47,10 +80,7 @@ export async function bootstrapProfileIfMissing(user: User): Promise<{ error: { 
     role,
     full_name: fullName || 'User',
     username,
-    avatar_url:
-      (meta.avatar_url as string | undefined) ||
-      (meta.picture as string | undefined) ||
-      null,
+    avatar_url: avatarUrl,
     country: (meta.country as string | undefined) || null,
     display_name: (meta.display_name as string | undefined) || null,
     terms_accepted: termsAccepted,

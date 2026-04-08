@@ -3,6 +3,11 @@ import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import type { CreateGroupSessionInput, DayOfWeek } from '@/lib/types/groups';
 
 type Params = { params: Promise<{ groupId: string }> };
+function isSchemaMismatch(error: any): boolean {
+  const code = String(error?.code ?? '');
+  const msg = String(error?.message ?? '').toLowerCase();
+  return code === '42703' || code === '42P01' || code === 'PGRST205' || msg.includes('does not exist');
+}
 
 // GET /api/groups/[groupId]/sessions — list sessions with occurrences
 export const dynamic = 'force-dynamic';
@@ -19,7 +24,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const service = getServiceClient();
     const now = new Date().toISOString();
 
-    const { data: sessions, error } = await service
+    let sessions: any[] | null = null;
+    let error: any = null;
+    ({ data: sessions, error } = await service
       .from('group_sessions')
       .select(`
         id, group_id, title, recurrence_type, recurrence_days,
@@ -30,7 +37,25 @@ export async function GET(_req: NextRequest, { params }: Params) {
         )
       `)
       .eq('group_id', groupId)
-      .order('starts_on', { ascending: true });
+      .order('starts_on', { ascending: true }));
+
+    if (error && isSchemaMismatch(error)) {
+      ({ data: sessions, error } = await service
+        .from('group_sessions')
+        .select(`
+          id, group_id, title, recurrence_type, recurrence_days,
+          start_time, duration_minutes, starts_on, ends_on, created_at,
+          occurrences:group_session_occurrences(
+            id, group_session_id, scheduled_start_at, scheduled_end_at
+          )
+        `)
+        .eq('group_id', groupId)
+        .order('starts_on', { ascending: true }));
+    }
+
+    if (error && isSchemaMismatch(error)) {
+      return NextResponse.json({ sessions: [] });
+    }
 
     // Post-process: sort occurrences and keep only next 20 upcoming + last 2 past per session
     // (DB-level filtering on nested tables isn't supported in Supabase JS client,
@@ -38,11 +63,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const trimmed = (sessions ?? []).map((s: any) => {
       const occs: any[] = s.occurrences ?? [];
       const upcoming = occs
-        .filter((o) => o.status === 'upcoming' && o.scheduled_end_at >= now)
+        .filter((o) => (o.status ? o.status === 'upcoming' : true) && o.scheduled_end_at >= now)
         .sort((a: any, b: any) => a.scheduled_start_at.localeCompare(b.scheduled_start_at))
         .slice(0, 20);
       const past = occs
-        .filter((o) => o.status === 'upcoming' && o.scheduled_end_at < now)
+        .filter((o) => (o.status ? o.status === 'upcoming' : true) && o.scheduled_end_at < now)
         .sort((a: any, b: any) => b.scheduled_start_at.localeCompare(a.scheduled_start_at))
         .slice(0, 2);
       return { ...s, occurrences: [...past, ...upcoming] };
