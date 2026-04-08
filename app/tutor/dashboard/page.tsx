@@ -188,6 +188,8 @@ export default function TutorDashboard() {
   // Profile strength calculation
   const strengthItems = [
     { label: 'Profile created', done: true },
+    { label: 'Profile photo uploaded', done: Boolean(profile?.avatar_url) },
+    { label: 'Bio added', done: Boolean(profile?.bio?.trim()) },
     { label: 'Subjects added', done: tutorSubjects.length > 0 },
     { label: 'Availability set', done: Boolean(hasAvailability) },
     {
@@ -689,6 +691,17 @@ export default function TutorDashboard() {
                   </div>
                 ))}
               </div>
+
+              {strengthPct < 100 && (
+                <div className="mt-4 flex items-start gap-2 rounded-xl bg-orange-50 border border-orange-200 px-3 py-2.5">
+                  <svg className="w-3.5 h-3.5 text-orange-500 flex-shrink-0 mt-px" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                  </svg>
+                  <p className="text-[11px] leading-snug text-orange-600 font-medium">
+                    Your profile will only be visible to students once your profile strength reaches 100%.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Getting Started */}

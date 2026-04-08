@@ -39,6 +39,7 @@ export default function FindStudentsPage() {
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
   const [selectedFormLevel, setSelectedFormLevel] = useState<string>('');
   const [selectedSchool, setSelectedSchool] = useState<string>('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [availableSchools, setAvailableSchools] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const STUDENTS_PER_PAGE = 9;
@@ -279,97 +280,112 @@ export default function FindStudentsPage() {
           <p className="text-gray-600">Discover students looking for tutoring in your subjects</p>
         </div>
 
-        {/* Search and Filters */}
-        <div className="bg-white border-2 border-gray-200 rounded-2xl p-6 mb-6 shadow-sm">
-          {/* Search Bar */}
-          <div className="mb-4">
-            <div className="relative">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search students by name..."
-                className="w-full px-4 py-3 pl-11 bg-white border-2 border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-500"
-              />
-              <svg className="absolute left-3 top-3.5 h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
+        {/* ── FILTER PANEL ── */}
+        {(() => {
+          const hasActive = !!(searchQuery || selectedSubjects.length > 0 || selectedFormLevel || selectedSchool);
+          return (
+            <div className="bg-white border border-gray-200 rounded-2xl shadow-sm mb-6 overflow-hidden">
+
+              {/* Search + toggle row */}
+              <div className="px-4 py-3 flex items-center gap-2">
+                <div className="relative flex-1">
+                  <svg className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search students by name or username..."
+                    className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none focus:bg-white transition text-sm" />
+                </div>
+
+                {hasActive && (
+                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-itutor-green text-white text-[10px] font-bold flex items-center justify-center">
+                    {[selectedSubjects.length > 0, selectedSchool, selectedFormLevel].filter(Boolean).length}
+                  </span>
+                )}
+
+                <button onClick={() => setFiltersOpen(o => !o)}
+                  className={`flex-shrink-0 flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border text-sm font-medium transition-all ${
+                    filtersOpen ? 'bg-itutor-green/10 border-itutor-green text-itutor-green' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                  }`}>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z"/>
+                  </svg>
+                  <span className="hidden sm:inline">Filters</span>
+                  <svg className={`w-3.5 h-3.5 transition-transform duration-200 ${filtersOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/>
+                  </svg>
+                </button>
+
+                <button className="flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-itutor-green text-white text-sm font-semibold hover:bg-emerald-700 transition">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                  </svg>
+                  <span className="hidden sm:inline">Search</span>
+                </button>
+              </div>
+
+              {/* Expandable filters */}
+              {filtersOpen && (
+                <div className="border-t border-gray-100">
+                  <div className="px-4 py-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Subjects</p>
+                      <SubjectMultiSelect selectedSubjects={selectedSubjects} onChange={setSelectedSubjects} placeholder="Type a subject..." />
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">School</p>
+                      <div className="relative">
+                        <select value={selectedSchool} onChange={(e) => setSelectedSchool(e.target.value)}
+                          className="w-full px-3 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition text-sm appearance-none pr-8">
+                          <option value="">All schools</option>
+                          {availableSchools.map(school => <option key={school} value={school}>{school}</option>)}
+                        </select>
+                        <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/></svg>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Form Level</p>
+                      <div className="relative">
+                        <select value={selectedFormLevel} onChange={(e) => setSelectedFormLevel(e.target.value)}
+                          className="w-full px-3 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition text-sm appearance-none pr-8">
+                          <option value="">Any level</option>
+                          <option value="Form 1">Form 1</option>
+                          <option value="Form 2">Form 2</option>
+                          <option value="Form 3">Form 3</option>
+                          <option value="Form 4">Form 4</option>
+                          <option value="Form 5">Form 5</option>
+                          <option value="Lower 6">Lower 6</option>
+                          <option value="Upper 6">Upper 6</option>
+                        </select>
+                        <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/></svg>
+                      </div>
+                    </div>
+                  </div>
+                  {hasActive && (
+                    <div className="px-4 pb-3 flex justify-end">
+                      <button onClick={() => { setSearchQuery(''); setSelectedSubjects([]); setSelectedFormLevel(''); setSelectedSchool(''); }}
+                        className="text-xs px-3 py-1.5 rounded-full border border-red-200 text-red-400 hover:bg-red-50 transition font-medium">
+                        Clear all
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Results bar */}
+              <div className={`px-4 py-2.5 flex items-center justify-between ${filtersOpen ? 'border-t border-gray-100' : ''}`}>
+                <p className="text-sm font-semibold text-itutor-green">
+                  {filteredStudents.length >= 100 ? '100+' : filteredStudents.length} Students Found
+                  {totalPages > 1 && <span className="text-gray-400 font-normal ml-2 text-xs">page {currentPage} of {totalPages}</span>}
+                </p>
+                {hasActive && !filtersOpen && (
+                  <button onClick={() => { setSearchQuery(''); setSelectedSubjects([]); setSelectedFormLevel(''); setSelectedSchool(''); }}
+                    className="text-xs text-gray-400 hover:text-red-400 transition font-medium">Clear filters</button>
+                )}
+              </div>
             </div>
-          </div>
-
-          {/* Filters */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Filter by Subject Interests
-              </label>
-              <SubjectMultiSelect
-                selectedSubjects={selectedSubjects}
-                onChange={setSelectedSubjects}
-                placeholder="Select subjects to filter..."
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                School
-              </label>
-              <select
-                value={selectedSchool}
-                onChange={(e) => setSelectedSchool(e.target.value)}
-                className="w-full px-4 py-2.5 bg-white border-2 border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition"
-              >
-                <option value="">Any School</option>
-                {availableSchools.map(school => (
-                  <option key={school} value={school}>{school}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Form Level
-              </label>
-              <select
-                value={selectedFormLevel}
-                onChange={(e) => setSelectedFormLevel(e.target.value)}
-                className="w-full px-4 py-2.5 bg-white border-2 border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition"
-              >
-                <option value="">Any Level</option>
-                <option value="Form 1">Form 1</option>
-                <option value="Form 2">Form 2</option>
-                <option value="Form 3">Form 3</option>
-                <option value="Form 4">Form 4</option>
-                <option value="Form 5">Form 5</option>
-                <option value="Lower 6">Lower 6</option>
-                <option value="Upper 6">Upper 6</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Clear Filters */}
-          {(searchQuery || selectedSubjects.length > 0 || selectedFormLevel || selectedSchool) && (
-            <button
-              onClick={() => {
-                setSearchQuery('');
-                setSelectedSubjects([]);
-                setSelectedFormLevel('');
-                setSelectedSchool('');
-              }}
-              className="mt-4 text-sm text-gray-600 hover:text-itutor-green font-medium transition-colors"
-            >
-              Clear all filters
-            </button>
-          )}
-        </div>
-
-        {/* Results Count */}
-        <div className="mb-4">
-          <p className="text-gray-600 text-sm">
-            Showing {filteredStudents.length} {filteredStudents.length === 1 ? 'student' : 'students'}
-            {totalPages > 1 && ` — page ${currentPage} of ${totalPages}`}
-          </p>
-        </div>
+          );
+        })()}
 
         {/* Students Grid */}
         {loadingStudents ? (
