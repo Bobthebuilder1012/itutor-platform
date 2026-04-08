@@ -18,6 +18,7 @@ export interface StreamPost {
   author_role: StreamAuthorRole;
   post_type: StreamPostType;
   message_body: string;
+  pinned_at: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -9,29 +9,20 @@ interface GroupMessageBoardProps {
   groupId: string;
   isTutor: boolean;
   currentUserId: string;
-  whatsappLink?: string;
   memberCount?: number;
-  onWhatsAppSave?: (link: string) => Promise<void>;
 }
 
 export default function GroupMessageBoard({
   groupId,
   isTutor,
   currentUserId,
-  whatsappLink,
   memberCount,
-  onWhatsAppSave,
 }: GroupMessageBoardProps) {
   const [messages, setMessages] = useState<GroupMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [waInput, setWaInput] = useState(whatsappLink ?? '');
-  const [waSaving, setWaSaving] = useState(false);
-  const [waSaved, setWaSaved] = useState(false);
   const [waRedirectUrl, setWaRedirectUrl] = useState('');
   const [waTokenState, setWaTokenState] = useState<'loading' | 'ready' | 'hidden' | 'error'>('loading');
-
-  useEffect(() => { setWaInput(whatsappLink ?? ''); }, [whatsappLink]);
 
   useEffect(() => {
     if (isTutor || !groupId) return;
@@ -46,16 +37,6 @@ export default function GroupMessageBoard({
       } catch { setWaTokenState('error'); }
     })();
   }, [groupId, isTutor]);
-
-  const handleWaSave = async () => {
-    if (!onWhatsAppSave) return;
-    setWaSaving(true);
-    try {
-      await onWhatsAppSave(waInput.trim());
-      setWaSaved(true);
-      setTimeout(() => setWaSaved(false), 3000);
-    } catch {} finally { setWaSaving(false); }
-  };
 
   const fetchMessages = useCallback(async () => {
     setError('');
@@ -90,49 +71,7 @@ export default function GroupMessageBoard({
     </svg>
   );
 
-  const whatsAppSection = isTutor ? (
-    <div className="mb-4 rounded-xl border border-[#d1fae5] bg-gradient-to-r from-[#ecfdf5] to-[#d1fae5]/40 p-4">
-      <div className="flex items-center gap-2 mb-3">
-        {waLogo}
-        <h4 className="text-[13px] font-bold text-[#166534]">WhatsApp Group</h4>
-      </div>
-      <div className="flex gap-2">
-        <input
-          type="url"
-          value={waInput}
-          onChange={(e) => setWaInput(e.target.value)}
-          placeholder="https://chat.whatsapp.com/..."
-          className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[13px] text-gray-800 placeholder:text-gray-400 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition-all"
-        />
-        <button
-          onClick={handleWaSave}
-          disabled={waSaving || waInput.trim() === (whatsappLink ?? '')}
-          className="px-4 py-2 rounded-lg bg-[#25D366] hover:bg-[#1fb855] text-white text-[12px] font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm"
-        >
-          {waSaving ? (
-            <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-          ) : waSaved ? (
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}><polyline points="20 6 9 17 4 12" /></svg>
-          ) : (
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" /><polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" /></svg>
-          )}
-          {waSaved ? 'Saved' : 'Save'}
-        </button>
-      </div>
-      {waSaved && (
-        <p className="mt-2 text-[11px] text-emerald-600 font-medium flex items-center gap-1">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}><polyline points="20 6 9 17 4 12" /></svg>
-          WhatsApp link saved. Approved members can now join.
-        </p>
-      )}
-      <p className="mt-2 text-[10.5px] text-gray-500">
-        Paste your WhatsApp group invite link. Only approved members will see the join button.
-        {memberCount !== undefined && memberCount > 0 && (
-          <span className="ml-1 font-medium text-emerald-700">{memberCount} member{memberCount !== 1 ? 's' : ''} in this class.</span>
-        )}
-      </p>
-    </div>
-  ) : waTokenState === 'ready' ? (
+  const whatsAppSection = !isTutor && waTokenState === 'ready' ? (
     <div className="mb-4 rounded-xl border border-[#d1fae5] bg-gradient-to-r from-[#ecfdf5] to-[#d1fae5]/40 p-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">

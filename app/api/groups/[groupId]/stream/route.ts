@@ -48,9 +48,10 @@ export async function GET(req: NextRequest, { params }: Params) {
     const { data: posts, error: postsError } = await service
       .from('stream_posts')
       .select(`
-        id, group_id, author_id, author_role, post_type, message_body, created_at, updated_at
+        id, group_id, author_id, author_role, post_type, message_body, pinned_at, created_at, updated_at
       `)
       .eq('group_id', groupId)
+      .order('pinned_at', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
