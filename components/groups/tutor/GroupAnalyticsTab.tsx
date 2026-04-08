@@ -82,8 +82,8 @@ export default function GroupAnalyticsTab({
           <p className="text-[11px] text-slate-500 font-medium mt-1">Avg attendance</p>
         </div>
         <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-4 text-center border-t-[3px] border-t-orange-500">
-          <p className="text-2xl font-extrabold text-gray-900">{analytics?.student_retention_rate ?? 0}%</p>
-          <p className="text-[11px] text-slate-500 font-medium mt-1">Session retention</p>
+          <p className={`text-2xl font-extrabold ${(analytics?.student_retention_rate ?? 0) > 0 ? 'text-emerald-600' : (analytics?.student_retention_rate ?? 0) < 0 ? 'text-red-600' : 'text-gray-900'}`}>{(analytics?.student_retention_rate ?? 0) > 0 ? '+' : ''}{analytics?.student_retention_rate ?? 0}%</p>
+          <p className="text-[11px] text-slate-500 font-medium mt-1">Retention</p>
         </div>
         <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-4 text-center border-t-[3px] border-t-amber-400">
           <p className="text-2xl font-extrabold text-emerald-700">${estimatedEarnings.toFixed(0)}</p>

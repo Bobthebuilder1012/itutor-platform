@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { GroupSessionWithOccurrences, GroupOccurrence } from '@/lib/types/groups';
 
 interface SessionRowProps {
@@ -55,12 +55,36 @@ function hasLiveOccurrence(session: GroupSessionWithOccurrences): boolean {
   );
 }
 
+type RsvpSummary = Record<string, { attending: number; not_attending: number; reasons: Array<{ name: string; reason: string }> }>;
+
 export default function SessionRow({ session, groupId, onRefresh }: SessionRowProps) {
   const [deleting, setDeleting] = useState(false);
   const [joiningOccurrenceId, setJoiningOccurrenceId] = useState<string | null>(null);
+  const [rsvpSummary, setRsvpSummary] = useState<RsvpSummary>({});
+  const [expandedRsvp, setExpandedRsvp] = useState<string | null>(null);
   const color = getSessionColor(session);
   const isLive = hasLiveOccurrence(session);
   const isUpcoming = hasUpcomingOccurrence(session);
+
+  const fetchRsvps = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/groups/${groupId}/rsvps`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const summary: RsvpSummary = {};
+      (data.rsvps ?? []).forEach((r: any) => {
+        if (!summary[r.occurrence_id]) summary[r.occurrence_id] = { attending: 0, not_attending: 0, reasons: [] };
+        if (r.status === 'attending') summary[r.occurrence_id].attending++;
+        else {
+          summary[r.occurrence_id].not_attending++;
+          if (r.reason) summary[r.occurrence_id].reasons.push({ name: r.student?.full_name ?? 'Student', reason: r.reason });
+        }
+      });
+      setRsvpSummary(summary);
+    } catch {}
+  }, [groupId]);
+
+  useEffect(() => { fetchRsvps(); }, [fetchRsvps]);
 
   const recurrenceLabel =
     session.recurrence_type === 'weekly'
@@ -165,61 +189,97 @@ export default function SessionRow({ session, groupId, onRefresh }: SessionRowPr
             const isOccLive = occStatus === 'live';
 
             return (
-              <div
-                key={occ.id}
-                className="flex items-center py-3 px-5 pl-[38px] relative hover:bg-[#f4f6fa] transition-colors"
-              >
-                {/* Connecting line */}
-                {idx < upcomingOccs.length - 1 && (
-                  <div className="absolute left-[43px] top-8 bottom-[-12px] w-[2px] bg-[#e2e8f0]" />
+              <div key={occ.id}>
+                <div className="flex items-center py-3 px-5 pl-[38px] relative hover:bg-[#f4f6fa] transition-colors">
+                  {/* Connecting line */}
+                  {idx < upcomingOccs.length - 1 && (
+                    <div className="absolute left-[43px] top-8 bottom-[-12px] w-[2px] bg-[#e2e8f0]" />
+                  )}
+
+                  {/* Dot */}
+                  <div
+                    className={`w-2.5 h-2.5 rounded-full flex-shrink-0 relative z-[1] border-2 ${
+                      isOccLive
+                        ? 'border-green-500 bg-green-100 animate-pulse'
+                        : isEnded
+                        ? 'border-[#64748b] bg-[#f4f6fa]'
+                        : 'border-emerald-500 bg-emerald-50'
+                    }`}
+                  />
+
+                  {/* Date */}
+                  <div className="flex-1 ml-3.5">
+                    <span className={`text-[13.5px] font-semibold ${isEnded ? 'text-[#64748b] line-through font-medium' : ''}`}>
+                      {new Date(occ.scheduled_start_at).toLocaleString(undefined, {
+                        weekday: 'short', month: 'short', day: 'numeric',
+                        hour: 'numeric', minute: '2-digit',
+                      })}
+                    </span>
+                  </div>
+
+                  {/* RSVP counts */}
+                  {(() => {
+                    const r = rsvpSummary[occ.id];
+                    if (!r || (r.attending === 0 && r.not_attending === 0)) return null;
+                    return (
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        {r.attending > 0 && (
+                          <span className="inline-flex items-center gap-0.5 px-2 py-[3px] rounded text-[10px] font-semibold bg-[#d1fae5] text-[#047857]">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><polyline points="20 6 9 17 4 12" /></svg>
+                            {r.attending}
+                          </span>
+                        )}
+                        {r.not_attending > 0 && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setExpandedRsvp(expandedRsvp === occ.id ? null : occ.id); }}
+                            className="inline-flex items-center gap-0.5 px-2 py-[3px] rounded text-[10px] font-semibold bg-[#fee2e2] text-[#991b1b] hover:bg-[#fecaca] transition-colors"
+                          >
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                            {r.not_attending}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Status + Actions */}
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {isOccLive ? (
+                      <button
+                        onClick={() => handleJoinOccurrence(occ.id)}
+                        disabled={joiningOccurrenceId === occ.id}
+                        className="bg-green-600 hover:bg-green-700 text-white text-[12px] font-semibold px-3.5 py-1 rounded-md transition-colors disabled:opacity-50"
+                      >
+                        {joiningOccurrenceId === occ.id ? 'Opening…' : 'Join Session'}
+                      </button>
+                    ) : isEnded ? (
+                      <span className="text-[12px] font-medium px-2.5 py-1 rounded-md bg-[#f4f6fa] text-[#64748b]">Session ended</span>
+                    ) : (
+                      <span className="text-[12px] font-medium px-2.5 py-1 rounded-md bg-[#dbeafe] text-[#2563eb]">Opens 15 min before</span>
+                    )}
+                    {!isEnded && (
+                      <button
+                        onClick={() => handleCancelOccurrence(occ.id)}
+                        className="w-6 h-6 rounded-md flex items-center justify-center text-base text-[#64748b] hover:bg-red-50 hover:text-red-500 transition-colors"
+                        title="Cancel this occurrence"
+                      >
+                        &times;
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Expanded absence reasons */}
+                {expandedRsvp === occ.id && rsvpSummary[occ.id]?.reasons.length > 0 && (
+                  <div className="ml-[54px] mr-5 mb-2 p-2.5 rounded-[8px] bg-[#fef2f2] border border-[#fecaca]">
+                    <p className="text-[10px] font-bold text-[#991b1b] mb-1.5">Absence reasons:</p>
+                    {rsvpSummary[occ.id].reasons.map((r, ri) => (
+                      <div key={ri} className="text-[11px] text-[#7f1d1d] mb-1 last:mb-0">
+                        <span className="font-semibold">{r.name}:</span> {r.reason}
+                      </div>
+                    ))}
+                  </div>
                 )}
-
-                {/* Dot */}
-                <div
-                  className={`w-2.5 h-2.5 rounded-full flex-shrink-0 relative z-[1] border-2 ${
-                    isOccLive
-                      ? 'border-green-500 bg-green-100 animate-pulse'
-                      : isEnded
-                      ? 'border-[#64748b] bg-[#f4f6fa]'
-                      : 'border-emerald-500 bg-emerald-50'
-                  }`}
-                />
-
-                {/* Date */}
-                <div className="flex-1 ml-3.5">
-                  <span className={`text-[13.5px] font-semibold ${isEnded ? 'text-[#64748b] line-through font-medium' : ''}`}>
-                    {new Date(occ.scheduled_start_at).toLocaleString(undefined, {
-                      weekday: 'short', month: 'short', day: 'numeric',
-                      hour: 'numeric', minute: '2-digit',
-                    })}
-                  </span>
-                </div>
-
-                {/* Status + Actions */}
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  {isOccLive ? (
-                    <button
-                      onClick={() => handleJoinOccurrence(occ.id)}
-                      disabled={joiningOccurrenceId === occ.id}
-                      className="bg-green-600 hover:bg-green-700 text-white text-[12px] font-semibold px-3.5 py-1 rounded-md transition-colors disabled:opacity-50"
-                    >
-                      {joiningOccurrenceId === occ.id ? 'Opening…' : 'Join Session'}
-                    </button>
-                  ) : isEnded ? (
-                    <span className="text-[12px] font-medium px-2.5 py-1 rounded-md bg-[#f4f6fa] text-[#64748b]">Session ended</span>
-                  ) : (
-                    <span className="text-[12px] font-medium px-2.5 py-1 rounded-md bg-[#dbeafe] text-[#2563eb]">Opens 15 min before</span>
-                  )}
-                  {!isEnded && (
-                    <button
-                      onClick={() => handleCancelOccurrence(occ.id)}
-                      className="w-6 h-6 rounded-md flex items-center justify-center text-base text-[#64748b] hover:bg-red-50 hover:text-red-500 transition-colors"
-                      title="Cancel this occurrence"
-                    >
-                      &times;
-                    </button>
-                  )}
-                </div>
               </div>
             );
           })}

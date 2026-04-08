@@ -1162,8 +1162,8 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
                 <p className="text-[10.5px] text-slate-500 font-medium mt-0.5">Avg Attendance</p>
               </div>
               <div className="relative overflow-hidden py-3.5 px-2.5 bg-gray-50 rounded-[10px] text-center before:absolute before:top-0 before:left-0 before:right-0 before:h-[3px] before:bg-orange-500 before:rounded-t-[10px]">
-                <p className="text-[22px] font-extrabold leading-tight">{analytics?.student_retention_rate ?? 0}%</p>
-                <p className="text-[10.5px] text-slate-500 font-medium mt-0.5">Session retention</p>
+                <p className={`text-[22px] font-extrabold leading-tight ${(analytics?.student_retention_rate ?? 0) > 0 ? 'text-emerald-600' : (analytics?.student_retention_rate ?? 0) < 0 ? 'text-red-600' : ''}`}>{(analytics?.student_retention_rate ?? 0) > 0 ? '+' : ''}{analytics?.student_retention_rate ?? 0}%</p>
+                <p className="text-[10.5px] text-slate-500 font-medium mt-0.5">Retention</p>
               </div>
               <div className="relative overflow-hidden py-3.5 px-2.5 bg-gray-50 rounded-[10px] text-center before:absolute before:top-0 before:left-0 before:right-0 before:h-[3px] before:bg-amber-400 before:rounded-t-[10px]">
                 <p className="text-[22px] font-extrabold leading-tight">${estimatedEarnings.toFixed(0)}</p>

@@ -122,15 +122,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const total_attendance_marks = attendanceRows.length;
     const present_count = attendanceRows.filter((r: any) => r.status === 'PRESENT').length;
     const average_attendance_rate = total_attendance_marks > 0 ? Number(((present_count / total_attendance_marks) * 100).toFixed(1)) : 0;
-    const student_retention_rate =
-      approvedMembers.length > 0
-        ? Number(
-            (
-              (student_analytics.filter((s) => s.attended + s.late > 0).length / approvedMembers.length) *
-              100
-            ).toFixed(1)
-          )
-        : 0;
+    // Retention: % change in members from start of current month to now
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfMonthCount = approvedMembers.filter((m: any) => m.joined_at && new Date(m.joined_at) < monthStart).length;
+    const currentCount = approvedMembers.length;
+    const student_retention_rate = startOfMonthCount > 0
+      ? Number((((currentCount - startOfMonthCount) / startOfMonthCount) * 100).toFixed(1))
+      : currentCount > 0 ? 100 : 0;
 
     return NextResponse.json({
       success: true,
