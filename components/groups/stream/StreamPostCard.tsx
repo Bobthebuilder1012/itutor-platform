@@ -13,6 +13,7 @@ interface StreamPostCardProps {
   currentUserId: string;
   onDeleted: () => void;
   onReplyAdded: () => void;
+  onPinToggled: () => void;
 }
 
 const POST_TYPE_LABELS: Record<string, string> = {
@@ -27,11 +28,14 @@ export default function StreamPostCard({
   currentUserId,
   onDeleted,
   onReplyAdded,
+  onPinToggled,
 }: StreamPostCardProps) {
   const [showReplies, setShowReplies] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const [pinning, setPinning] = useState(false);
 
   const canDelete = isTutor || post.author_id === currentUserId;
+  const isPinned = !!post.pinned_at;
 
   const handleDelete = async () => {
     if (!confirm('Delete this post? This cannot be undone.')) return;
@@ -44,6 +48,20 @@ export default function StreamPostCard({
     }
   };
 
+  const handlePinToggle = async () => {
+    setPinning(true);
+    try {
+      const res = await fetch(`/api/stream/post/${post.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinned: !isPinned }),
+      });
+      if (res.ok) onPinToggled();
+    } finally {
+      setPinning(false);
+    }
+  };
+
   function countReplies(replies: StreamReplyWithAuthor[] | undefined): number {
     if (!replies?.length) return 0;
     return replies.length + replies.reduce((acc, r) => acc + countReplies(r.replies), 0);
@@ -53,9 +71,19 @@ export default function StreamPostCard({
   return (
     <div
       className={`rounded-xl border p-4 transition-colors ${
-        post.post_type === 'announcement' ? 'border-amber-200 bg-amber-50/50' : 'border-gray-200 bg-white'
+        isPinned
+          ? 'border-emerald-300 bg-emerald-50/40 ring-1 ring-emerald-200'
+          : post.post_type === 'announcement'
+          ? 'border-amber-200 bg-amber-50/50'
+          : 'border-gray-200 bg-white'
       }`}
     >
+      {isPinned && (
+        <div className="flex items-center gap-1.5 mb-2.5 text-[11px] font-semibold text-emerald-600">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="flex-shrink-0"><path d="M12 17v5" /><path d="M9 11l-4 4h14l-4-4" /><path d="M15 3l-3 8-3-8h6z" /></svg>
+          Pinned
+        </div>
+      )}
       <div className="flex gap-3">
         <UserAvatar
           avatarUrl={post.author?.avatar_url}
@@ -78,16 +106,32 @@ export default function StreamPostCard({
               )}
               <span className="text-xs text-gray-400">{timeAgo(post.created_at)}</span>
             </div>
-            {canDelete && (
-              <button
-                type="button"
-                onClick={handleDelete}
-                disabled={deleting}
-                className="text-xs text-gray-400 hover:text-red-500 transition-colors disabled:opacity-40"
-              >
-                Delete
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              {isTutor && (
+                <button
+                  type="button"
+                  onClick={handlePinToggle}
+                  disabled={pinning}
+                  className={`text-xs transition-colors disabled:opacity-40 flex items-center gap-1 ${
+                    isPinned ? 'text-emerald-600 hover:text-emerald-700' : 'text-gray-400 hover:text-emerald-500'
+                  }`}
+                  title={isPinned ? 'Unpin post' : 'Pin to top'}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill={isPinned ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={2}><path d="M12 17v5" /><path d="M9 11l-4 4h14l-4-4" /><path d="M15 3l-3 8-3-8h6z" /></svg>
+                  {pinning ? '…' : isPinned ? 'Unpin' : 'Pin'}
+                </button>
+              )}
+              {canDelete && (
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="text-xs text-gray-400 hover:text-red-500 transition-colors disabled:opacity-40"
+                >
+                  Delete
+                </button>
+              )}
+            </div>
           </div>
 
           <p className="mt-1.5 text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{post.message_body}</p>
