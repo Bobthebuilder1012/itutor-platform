@@ -5,21 +5,8 @@
       "schedule": "* * * * *"
     },
     {
-      "path": "/api/cron/send-onboarding-emails",
-      "schedule": "*/15 * * * *"
+      "path": "/api/cron/archive-groups",
+      "schedule": "0 3 * * *"
     }
   ]
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
