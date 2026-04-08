@@ -12,6 +12,7 @@ import { getAvatarColor } from '@/lib/utils/avatarColors';
 import { useProfileBannerUpload } from '@/lib/hooks/useProfileBannerUpload';
 import ProfileBannerUploadModal from '@/components/ProfileBannerUploadModal';
 import type { Area } from '@/lib/utils/imageCrop';
+import { profileBannerDisplayUrl } from '@/lib/utils/profileBannerDisplayUrl';
 
 type EditProfileModalProps = {
   isOpen: boolean;
@@ -150,7 +151,7 @@ export default function EditProfileModal({
                 <div className="relative mb-3 aspect-[3/1] w-full overflow-hidden rounded-lg border border-gray-200">
                   {profile.profile_banner_url ? (
                     <img
-                      src={profile.profile_banner_url}
+                      src={profileBannerDisplayUrl(profile.profile_banner_url, profile.updated_at)}
                       alt=""
                       className="h-full w-full object-cover"
                     />

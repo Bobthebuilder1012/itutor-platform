@@ -20,6 +20,7 @@ import { getAvatarColor } from '@/lib/utils/avatarColors';
 import { Session, TutorSubject, Subject, Rating } from '@/lib/types/database';
 import { Area } from '@/lib/utils/imageCrop';
 import { getDisplayName } from '@/lib/utils/displayName';
+import { profileBannerDisplayUrl } from '@/lib/utils/profileBannerDisplayUrl';
 import TutorReviewsModal from '@/components/tutor/TutorReviewsModal';
 import UserAvatar from '@/components/UserAvatar';
 
@@ -208,7 +209,11 @@ export default function TutorDashboard() {
           ) : profile ? (
             <div className="relative h-28 shrink-0 sm:h-36">
               {profile.profile_banner_url ? (
-                <img src={profile.profile_banner_url} alt="" className="h-full w-full object-cover" />
+                <img
+                  src={profileBannerDisplayUrl(profile.profile_banner_url, profile.updated_at)}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
               ) : (
                 <div
                   className={`h-full w-full bg-gradient-to-br ${getAvatarColor(profile.id)}`}
