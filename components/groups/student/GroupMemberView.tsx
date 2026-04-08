@@ -3,13 +3,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { GroupWithTutor, GroupSessionWithOccurrences, GroupMember } from '@/lib/types/groups';
-import GroupMessageBoard from '../messages/GroupMessageBoard';
 import GroupStreamPage from '../stream/GroupStreamPage';
 import StudentSessionsTab from './StudentSessionsTab';
 import MemberList from '../tutor/MemberList';
 import WhatsAppJoinButton from './WhatsAppJoinButton';
+import StudentFeedbackTab from './StudentFeedbackTab';
 
-type Tab = 'stream' | 'sessions' | 'messages';
+type Tab = 'stream' | 'sessions' | 'feedback';
 
 interface GroupMemberViewProps {
   group: GroupWithTutor;
@@ -90,7 +90,7 @@ export default function GroupMemberView({ group, currentUserId }: GroupMemberVie
   const TABS: { id: Tab; label: string }[] = [
     { id: 'stream', label: 'Stream' },
     { id: 'sessions', label: 'Sessions' },
-    { id: 'messages', label: 'Messages' },
+    { id: 'feedback', label: 'My Feedback' },
   ];
 
   const membersSidebar = (
@@ -170,29 +170,23 @@ export default function GroupMemberView({ group, currentUserId }: GroupMemberVie
       {/* Content area — sidebar always visible */}
       <div className="flex-1 flex overflow-hidden">
         <div className="flex-1 min-w-0 flex flex-col">
-          {tab === 'messages' ? (
-            <GroupMessageBoard
-              groupId={group.id}
-              isTutor={false}
-              currentUserId={currentUserId}
-              memberCount={approvedMembers.length}
-            />
-          ) : (
-            <div className="flex-1 overflow-y-auto px-6 py-5">
-              {tab === 'stream' && (
-                <GroupStreamPage groupId={group.id} currentUserId={currentUserId} isTutor={false} />
-              )}
-              {tab === 'sessions' && (
-                <StudentSessionsTab
-                  sessions={sessions}
-                  loading={sessionsLoading}
-                  groupId={group.id}
-                  onJoin={handleJoinOccurrence}
-                  joiningOccurrenceId={joiningOccurrenceId}
-                />
-              )}
-            </div>
-          )}
+          <div className="flex-1 overflow-y-auto px-6 py-5">
+            {tab === 'stream' && (
+              <GroupStreamPage groupId={group.id} currentUserId={currentUserId} isTutor={false} />
+            )}
+            {tab === 'sessions' && (
+              <StudentSessionsTab
+                sessions={sessions}
+                loading={sessionsLoading}
+                groupId={group.id}
+                onJoin={handleJoinOccurrence}
+                joiningOccurrenceId={joiningOccurrenceId}
+              />
+            )}
+            {tab === 'feedback' && (
+              <StudentFeedbackTab groupId={group.id} />
+            )}
+          </div>
         </div>
         {membersSidebar}
       </div>

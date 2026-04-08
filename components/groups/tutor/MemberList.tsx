@@ -62,9 +62,12 @@ export default function MemberList({
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    if (!q) return approved;
-    return approved.filter((m) => (m.profile?.full_name ?? '').toLowerCase().includes(q));
+    const list = !q ? approved : approved.filter((m) => (m.profile?.full_name ?? '').toLowerCase().includes(q));
+    return list;
   }, [approved, search]);
+
+  const filteredTutors = useMemo(() => filtered.filter((m) => m.profile?.role === 'tutor'), [filtered]);
+  const filteredStudents = useMemo(() => filtered.filter((m) => m.profile?.role !== 'tutor'), [filtered]);
 
   const modalFiltered = useMemo(() => {
     const q = modalSearch.toLowerCase();
@@ -141,6 +144,8 @@ export default function MemberList({
           <span className="px-[7px] py-[2px] rounded text-[9px] font-semibold bg-[#d1fae5] text-[#047857] flex-shrink-0">Tutor</span>
         ) : isMe ? (
           <span className="px-[7px] py-[2px] rounded text-[9px] font-semibold bg-[#6366f1] text-white opacity-70 flex-shrink-0">You</span>
+        ) : m.profile?.role === 'tutor' ? (
+          <span className="px-[7px] py-[2px] rounded text-[9px] font-semibold bg-[#eef2ff] text-[#6366f1] flex-shrink-0">Tutor</span>
         ) : opts?.showRemove && isTutor ? (
           <button
             onClick={() => handleRemove(m.user_id)}
@@ -246,12 +251,30 @@ export default function MemberList({
         </div>
       </div>
 
-      {/* Member list */}
-      <div className={`relative ${!expanded && hasMore ? 'max-h-[232px] overflow-hidden' : 'max-h-[320px] overflow-y-auto'}`}>
+      {/* Member list — separated by role */}
+      <div className={`relative ${!expanded && hasMore ? 'max-h-[280px] overflow-hidden' : 'max-h-[400px] overflow-y-auto'}`}>
         {!expanded && hasMore && (
           <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-white to-transparent pointer-events-none z-[1]" />
         )}
-        {displayMembers.map((m) => renderMember(m, { showRemove: true }))}
+
+        {filteredTutors.length > 0 && (
+          <div className="mb-1">
+            <p className="text-[9px] font-bold uppercase tracking-[.08em] text-[#6366f1] px-2 pt-1.5 pb-1">
+              Tutors ({filteredTutors.length})
+            </p>
+            {(expanded ? filteredTutors : filteredTutors.slice(0, COLLAPSED_COUNT)).map((m) => renderMember(m, { showRemove: true }))}
+          </div>
+        )}
+
+        {filteredStudents.length > 0 && (
+          <div className="mb-1">
+            <p className="text-[9px] font-bold uppercase tracking-[.08em] text-[#2563eb] px-2 pt-1.5 pb-1">
+              Students ({filteredStudents.length})
+            </p>
+            {(expanded ? filteredStudents : filteredStudents.slice(0, COLLAPSED_COUNT - Math.min(filteredTutors.length, COLLAPSED_COUNT))).map((m) => renderMember(m, { showRemove: true }))}
+          </div>
+        )}
+
         {filtered.length === 0 && (
           <p className="text-[11px] text-[#9ca3af] text-center py-3">No members found.</p>
         )}
@@ -324,47 +347,67 @@ export default function MemberList({
                   <span className="px-[7px] py-[2px] rounded text-[9px] font-semibold bg-[#d1fae5] text-[#047857] flex-shrink-0">Tutor</span>
                 </div>
               )}
-              {modalFiltered.map((m) => {
-                const name = m.profile?.full_name ?? 'Member';
-                const isMe = m.user_id === currentUserId;
-                const isMemberTutor = m.user_id === tutorId;
+              {(() => {
+                const modalTutors = modalFiltered.filter((m) => m.profile?.role === 'tutor');
+                const modalStudents = modalFiltered.filter((m) => m.profile?.role !== 'tutor');
                 return (
-                  <div key={m.id} className="flex items-center gap-2.5 py-[9px] px-2.5 rounded-[10px] hover:bg-[#f5f7fa] transition-colors">
-                    <div className="relative flex-shrink-0">
-                      {m.profile?.avatar_url ? (
-                        <UserAvatar avatarUrl={m.profile.avatar_url} name={name} size={34} />
-                      ) : (
-                        <div className="w-[34px] h-[34px] rounded-full flex items-center justify-center text-[12px] font-bold text-white" style={{ background: avatarColor(m.user_id) }}>
-                          {getInitials(name)}
-                        </div>
-                      )}
-                      <span className={`absolute -bottom-px -right-px w-[10px] h-[10px] rounded-full border-2 border-white ${isMemberTutor ? 'bg-[#0d9668]' : 'bg-[#d1d5db]'}`} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[13px] font-semibold truncate">{name}</p>
-                      <p className="text-[11px] text-[#6b7280]">{isMemberTutor ? 'Head Tutor' : 'Student'}</p>
-                    </div>
-                    {isMemberTutor ? (
-                      <span className="px-[7px] py-[2px] rounded text-[9px] font-semibold bg-[#d1fae5] text-[#047857] flex-shrink-0">Tutor</span>
-                    ) : isMe ? (
-                      <span className="text-[10px] text-[#6b7280] flex-shrink-0">
-                        {new Date(m.joined_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                      </span>
-                    ) : (
-                      <span className="text-[10px] text-[#6b7280] flex-shrink-0">
-                        {new Date(m.joined_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                      </span>
+                  <>
+                    {modalTutors.length > 0 && (
+                      <div className="mb-1">
+                        <p className="text-[9px] font-bold uppercase tracking-[.08em] text-[#6366f1] px-2.5 pt-2 pb-1">Tutors ({modalTutors.length})</p>
+                        {modalTutors.map((m) => renderModalMember(m))}
+                      </div>
                     )}
-                  </div>
+                    {modalStudents.length > 0 && (
+                      <div className="mb-1">
+                        <p className="text-[9px] font-bold uppercase tracking-[.08em] text-[#2563eb] px-2.5 pt-2 pb-1">Students ({modalStudents.length})</p>
+                        {modalStudents.map((m) => renderModalMember(m))}
+                      </div>
+                    )}
+                  </>
                 );
-              })}
-              {modalFiltered.length === 0 && (
-                <p className="text-[12px] text-[#9ca3af] text-center py-4">No members found.</p>
-              )}
+              })()}
             </div>
           </div>
         </div>
       )}
     </>
   );
+
+  function renderModalMember(m: GroupMember) {
+    const name = m.profile?.full_name ?? 'Member';
+    const isMe = m.user_id === currentUserId;
+    const isMemberTutor = m.user_id === tutorId;
+    return (
+      <div key={m.id} className="flex items-center gap-2.5 py-[9px] px-2.5 rounded-[10px] hover:bg-[#f5f7fa] transition-colors">
+        <div className="relative flex-shrink-0">
+          {m.profile?.avatar_url ? (
+            <UserAvatar avatarUrl={m.profile.avatar_url} name={name} size={34} />
+          ) : (
+            <div className="w-[34px] h-[34px] rounded-full flex items-center justify-center text-[12px] font-bold text-white" style={{ background: avatarColor(m.user_id) }}>
+              {getInitials(name)}
+            </div>
+          )}
+          <span className={`absolute -bottom-px -right-px w-[10px] h-[10px] rounded-full border-2 border-white ${isMemberTutor ? 'bg-[#0d9668]' : 'bg-[#d1d5db]'}`} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[13px] font-semibold truncate">{name}</p>
+          <p className="text-[11px] text-[#6b7280]">{isMemberTutor ? 'Head Tutor' : m.profile?.role === 'tutor' ? 'Tutor' : 'Student'}</p>
+        </div>
+        {isMemberTutor ? (
+          <span className="px-[7px] py-[2px] rounded text-[9px] font-semibold bg-[#d1fae5] text-[#047857] flex-shrink-0">Tutor</span>
+        ) : m.profile?.role === 'tutor' ? (
+          <span className="px-[7px] py-[2px] rounded text-[9px] font-semibold bg-[#eef2ff] text-[#6366f1] flex-shrink-0">Tutor</span>
+        ) : isMe ? (
+          <span className="text-[10px] text-[#6b7280] flex-shrink-0">
+            {new Date(m.joined_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+          </span>
+        ) : (
+          <span className="text-[10px] text-[#6b7280] flex-shrink-0">
+            {new Date(m.joined_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+          </span>
+        )}
+      </div>
+    );
+  }
 }

@@ -47,7 +47,8 @@ export default function CreateSessionModal({ groupId, onCreated, onClose }: Crea
     try {
       const payload = {
         ...form,
-        ends_on: form.ends_on || undefined,
+        starts_on: form.recurrence_type !== 'none' ? today : form.starts_on,
+        ends_on: undefined,
       };
       const res = await fetch(`/api/groups/${groupId}/sessions`, {
         method: 'POST',
@@ -158,11 +159,10 @@ export default function CreateSessionModal({ groupId, onCreated, onClose }: Crea
             </div>
           )}
 
-          <div className="space-y-3">
+          {form.recurrence_type === 'none' && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                {form.recurrence_type === 'none' ? 'Session Date' : 'Schedule Start Date'}{' '}
-                <span className="text-red-400">*</span>
+                Session Date <span className="text-red-400">*</span>
               </label>
               <input
                 type="date"
@@ -170,29 +170,16 @@ export default function CreateSessionModal({ groupId, onCreated, onClose }: Crea
                 onChange={(e) => setForm({ ...form, starts_on: e.target.value })}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
-              <p className="text-xs text-gray-400 mt-1">
-                {form.recurrence_type === 'none'
-                  ? 'The date this session will take place.'
-                  : 'Sessions will be generated from this date onwards. No sessions will be created before this date.'}
-              </p>
+              <p className="text-xs text-gray-400 mt-1">The date this one-time session will take place.</p>
             </div>
+          )}
 
-            {form.recurrence_type !== 'none' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Schedule End Date</label>
-                <input
-                  type="date"
-                  value={form.ends_on ?? ''}
-                  onChange={(e) => setForm({ ...form, ends_on: e.target.value })}
-                  min={form.starts_on}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-                <p className="text-xs text-gray-400 mt-1">
-                  Last date sessions are generated up to. Leave blank to run ongoing (up to 52 weeks).
-                </p>
-              </div>
-            )}
-          </div>
+          {form.recurrence_type !== 'none' && (
+            <div className="flex items-start gap-2 p-3 bg-indigo-50 rounded-lg text-[11px] text-indigo-600 leading-relaxed">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="flex-shrink-0 mt-px"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+              <span>Sessions start from the nearest upcoming day you selected. They repeat automatically until the class is archived.</span>
+            </div>
+          )}
 
           {error && <p className="text-sm text-red-500">{error}</p>}
 

@@ -45,10 +45,22 @@ export default function StreamPostCard({
   const [showReplies, setShowReplies] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [pinning, setPinning] = useState(false);
+  const [showPinMenu, setShowPinMenu] = useState(false);
 
   const canDelete = isTutor || post.author_id === currentUserId;
   const isPinned = !!post.pinned_at;
   const isDiscussion = post.post_type === 'discussion';
+
+  const pinExpiresAt = post.pin_expires_at ? new Date(post.pin_expires_at) : null;
+  const pinTimeLeft = isPinned && pinExpiresAt
+    ? Math.max(0, pinExpiresAt.getTime() - Date.now())
+    : null;
+
+  const PIN_DURATIONS = [
+    { label: '24 hours', hours: 24 },
+    { label: '7 days', hours: 168 },
+    { label: '30 days', hours: 720 },
+  ];
 
   const handleDelete = async () => {
     if (!confirm('Delete this post? This cannot be undone.')) return;
@@ -61,19 +73,42 @@ export default function StreamPostCard({
     }
   };
 
-  const handlePinToggle = async () => {
+  const handlePin = async (durationHours: number) => {
+    setShowPinMenu(false);
     setPinning(true);
     try {
       const res = await fetch(`/api/stream/post/${post.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pinned: !isPinned }),
+        body: JSON.stringify({ pinned: true, pin_duration_hours: durationHours || undefined }),
       });
       if (res.ok) onPinToggled();
     } finally {
       setPinning(false);
     }
   };
+
+  const handleUnpin = async () => {
+    setPinning(true);
+    try {
+      const res = await fetch(`/api/stream/post/${post.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinned: false }),
+      });
+      if (res.ok) onPinToggled();
+    } finally {
+      setPinning(false);
+    }
+  };
+
+  function formatTimeLeft(ms: number): string {
+    const hours = Math.floor(ms / 3600000);
+    if (hours >= 24) return `${Math.floor(hours / 24)}d left`;
+    if (hours >= 1) return `${hours}h left`;
+    const mins = Math.max(1, Math.floor(ms / 60000));
+    return `${mins}m left`;
+  }
 
   function countReplies(replies: StreamReplyWithAuthor[] | undefined): number {
     if (!replies?.length) return 0;
@@ -84,9 +119,9 @@ export default function StreamPostCard({
   const authorInitials = getInitials(post.author?.full_name ?? 'U');
 
   return (
-    <div className="bg-white border border-[#e4e8ee] rounded-[14px] overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+    <div className="bg-white border border-[#e4e8ee] rounded-[14px] shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
       {/* Accent bar */}
-      <div className={`h-1 ${ACCENT[post.post_type] ?? ACCENT.discussion}`} />
+      <div className={`h-1 rounded-t-[14px] ${ACCENT[post.post_type] ?? ACCENT.discussion}`} />
 
       <div className="p-5">
         {/* Header */}
@@ -112,17 +147,47 @@ export default function StreamPostCard({
           <span className="text-[11px] text-[#6b7280] flex-shrink-0">{timeAgo(post.created_at)}</span>
           <div className="flex items-center gap-1 flex-shrink-0">
             {isTutor && (
-              <button
-                type="button"
-                onClick={handlePinToggle}
-                disabled={pinning}
-                className={`flex items-center gap-1 px-2.5 py-[5px] rounded-md text-[11px] font-medium transition-colors disabled:opacity-40 ${
-                  isPinned ? 'bg-[#fef3c7] text-[#92400e] hover:bg-[#fde68a]' : 'text-[#6b7280] hover:bg-[#f5f7fa] hover:text-[#111827]'
-                }`}
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                {pinning ? '…' : isPinned ? 'Unpin' : 'Pin'}
-              </button>
+              <div className="relative">
+                {isPinned ? (
+                  <button
+                    type="button"
+                    onClick={handleUnpin}
+                    disabled={pinning}
+                    className="flex items-center gap-1 px-2.5 py-[5px] rounded-md text-[11px] font-medium bg-[#fef3c7] text-[#92400e] hover:bg-[#fde68a] transition-colors disabled:opacity-40"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                    {pinning ? '…' : 'Unpin'}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowPinMenu((p) => !p)}
+                    disabled={pinning}
+                    className="flex items-center gap-1 px-2.5 py-[5px] rounded-md text-[11px] font-medium text-[#6b7280] hover:bg-[#f5f7fa] hover:text-[#111827] transition-colors disabled:opacity-40"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                    {pinning ? '…' : 'Pin'}
+                  </button>
+                )}
+                {showPinMenu && (
+                  <>
+                    <div className="fixed inset-0 z-[9]" onClick={() => setShowPinMenu(false)} />
+                    <div className="absolute right-0 top-full mt-1 z-10 w-[180px] bg-white border border-[#e4e8ee] rounded-[10px] shadow-[0_4px_14px_rgba(0,0,0,0.08)] py-1.5 overflow-hidden">
+                      <p className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.06em] text-[#6b7280]">Pin duration</p>
+                      {PIN_DURATIONS.map((d) => (
+                        <button
+                          key={d.hours}
+                          type="button"
+                          onClick={() => handlePin(d.hours)}
+                          className="w-full text-left px-3 py-[7px] text-[12px] font-medium text-[#111827] hover:bg-[#f5f7fa] transition-colors"
+                        >
+                          {d.label}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
             )}
             {canDelete && (
               <button
@@ -140,9 +205,12 @@ export default function StreamPostCard({
 
         {/* Pinned badge */}
         {isPinned && (
-          <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#fef3c7] text-[#92400e] text-[10px] font-semibold mb-3">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#fef3c7] text-[#92400e] text-[10px] font-semibold mb-3">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
             Pinned
+            {pinTimeLeft !== null && pinTimeLeft > 0 && (
+              <span className="text-[9px] font-medium text-[#b45309] opacity-80">· {formatTimeLeft(pinTimeLeft)}</span>
+            )}
           </div>
         )}
 

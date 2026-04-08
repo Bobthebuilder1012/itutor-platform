@@ -19,6 +19,7 @@ export interface StreamPost {
   post_type: StreamPostType;
   message_body: string;
   pinned_at: string | null;
+  pin_expires_at: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -31,10 +31,17 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Only the tutor can pin posts' }, { status: 403 });
     }
 
-    const { pinned } = await req.json();
+    const { pinned, pin_duration_hours } = await req.json();
+    let pinExpiresAt: string | null = null;
+    if (pinned && typeof pin_duration_hours === 'number' && pin_duration_hours > 0) {
+      pinExpiresAt = new Date(Date.now() + pin_duration_hours * 60 * 60 * 1000).toISOString();
+    }
     const { error: updateError } = await service
       .from('stream_posts')
-      .update({ pinned_at: pinned ? new Date().toISOString() : null })
+      .update({
+        pinned_at: pinned ? new Date().toISOString() : null,
+        pin_expires_at: pinned ? pinExpiresAt : null,
+      })
       .eq('id', postId);
 
     if (updateError) throw updateError;

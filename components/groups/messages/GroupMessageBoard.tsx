@@ -101,11 +101,11 @@ export default function GroupMessageBoard({
   ) : null;
 
   return (
-    <div className="flex flex-col h-full min-h-0 flex-1 pb-2 px-2">
+    <div className="flex flex-col max-h-[calc(100vh-220px)] min-h-[400px] pb-2 px-2">
       {whatsAppSection}
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 flex-shrink-0">
         <h3 className="text-sm font-semibold text-gray-700">Lesson Chat</h3>
         <button
           onClick={fetchMessages}
@@ -119,7 +119,7 @@ export default function GroupMessageBoard({
       </div>
 
       {error && (
-        <div className="mb-3 p-3 bg-red-50 border border-red-100 rounded-lg text-sm text-red-600">
+        <div className="mb-3 p-3 bg-red-50 border border-red-100 rounded-lg text-sm text-red-600 flex-shrink-0">
           {error}
         </div>
       )}
@@ -127,7 +127,7 @@ export default function GroupMessageBoard({
       {/* Message thread */}
       <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide space-y-1 mb-2">
         {messages.length === 0 ? (
-          <div className="py-12 text-center text-gray-400 text-sm">
+          <div className="py-8 text-center text-gray-400 text-sm">
             <div className="text-3xl mb-2">💬</div>
             No messages yet. Start the conversation.
           </div>

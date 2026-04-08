@@ -45,10 +45,10 @@ export async function GET(req: NextRequest, { params }: Params) {
     const limit = Math.min(50, Math.max(10, parseInt(url.searchParams.get('limit') ?? '20', 10)));
     const offset = (page - 1) * limit;
 
-    const { data: posts, error: postsError } = await service
+    const { data: rawPosts, error: postsError } = await service
       .from('stream_posts')
       .select(`
-        id, group_id, author_id, author_role, post_type, message_body, pinned_at, created_at, updated_at
+        id, group_id, author_id, author_role, post_type, message_body, pinned_at, pin_expires_at, created_at, updated_at
       `)
       .eq('group_id', groupId)
       .order('pinned_at', { ascending: false, nullsFirst: false })
@@ -56,6 +56,14 @@ export async function GET(req: NextRequest, { params }: Params) {
       .range(offset, offset + limit - 1);
 
     if (postsError) throw postsError;
+
+    const now = new Date().toISOString();
+    const posts = (rawPosts ?? []).map((p: any) => {
+      if (p.pinned_at && p.pin_expires_at && p.pin_expires_at < now) {
+        return { ...p, pinned_at: null, pin_expires_at: null };
+      }
+      return p;
+    });
 
     const postIds = (posts ?? []).map((p: { id: string }) => p.id);
     if (postIds.length === 0) {

@@ -14,12 +14,12 @@ import { getCroppedImg, type Area } from '@/lib/utils/imageCrop';
 import SessionRow from './SessionRow';
 import MemberList from './MemberList';
 import CreateSessionModal from './CreateSessionModal';
-import GroupMessageBoard from '../messages/GroupMessageBoard';
 import WhatsAppSetupTab from './WhatsAppSetupTab';
 import GroupStreamPage from '../stream/GroupStreamPage';
+import TutorFeedbackTab from './TutorFeedbackTab';
 
-type Tab = 'stream' | 'sessions' | 'messages' | 'whatsapp';
-type ManageSection = 'profile' | 'pricing';
+type Tab = 'stream' | 'sessions' | 'feedback' | 'whatsapp';
+type ManageSection = 'profile' | 'members' | 'access' | 'danger';
 
 interface TutorGroupViewProps {
   group: GroupWithTutor;
@@ -78,6 +78,75 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
     price_per_session: (group as any).price_per_session ?? '',
     price_per_course: (group as any).price_per_course ?? '',
   });
+
+  const [capEnabled, setCapEnabled] = useState(false);
+  const [capValue, setCapValue] = useState(25);
+  const [waitlistEnabled, setWaitlistEnabled] = useState(true);
+  const [autoNotify, setAutoNotify] = useState(true);
+  const [visibility, setVisibility] = useState<'public' | 'unlisted' | 'private'>('public');
+  const [requireApproval, setRequireApproval] = useState(true);
+  const [allowStudentInvites, setAllowStudentInvites] = useState(false);
+  const [rules, setRules] = useState([
+    { text: 'Camera must be on during live sessions', enabled: true },
+    { text: 'No recording or screenshots without permission', enabled: true },
+    { text: 'Be respectful in discussions and chat', enabled: true },
+  ]);
+
+  const PERM_OPTIONS = [
+    { id: 'sessions', label: 'Manage sessions' },
+    { id: 'members', label: 'Manage members' },
+    { id: 'stream', label: 'Post to stream' },
+    { id: 'chat', label: 'Access lesson chat' },
+    { id: 'settings', label: 'Edit class settings' },
+  ] as const;
+  type CoTutorRole = 'co-tutor' | 'assistant';
+  interface CoTutor { id: string; name: string; email: string; role: CoTutorRole; permissions: string[]; }
+  const [coTutors, setCoTutors] = useState<CoTutor[]>([]);
+  const [showAddCoTutor, setShowAddCoTutor] = useState(false);
+  const [coEmail, setCoEmail] = useState('');
+  const [coRole, setCoRole] = useState<CoTutorRole>('co-tutor');
+  const [coPerms, setCoPerms] = useState<string[]>(PERM_OPTIONS.map((p) => p.id));
+  const [coSearching, setCoSearching] = useState(false);
+  const [coSearchResult, setCoSearchResult] = useState<{ id: string; name: string; email: string } | null>(null);
+  const [coError, setCoError] = useState('');
+
+  const searchCoTutor = async () => {
+    if (!coEmail.trim()) return;
+    setCoSearching(true);
+    setCoError('');
+    setCoSearchResult(null);
+    try {
+      const res = await fetch(`/api/profile/search?email=${encodeURIComponent(coEmail.trim())}`);
+      if (!res.ok) { setCoError('User not found. They must have an account on iTutor.'); return; }
+      const data = await res.json();
+      if (data.profile) {
+        if (data.profile.id === currentUserId) { setCoError('You cannot add yourself.'); return; }
+        if (coTutors.some((c) => c.id === data.profile.id)) { setCoError('This user is already a co-tutor.'); return; }
+        setCoSearchResult({ id: data.profile.id, name: data.profile.full_name ?? data.profile.email, email: data.profile.email });
+      } else {
+        setCoError('User not found. They must have an account on iTutor.');
+      }
+    } catch {
+      setCoError('Failed to search. Please try again.');
+    } finally {
+      setCoSearching(false);
+    }
+  };
+
+  const addCoTutor = () => {
+    if (!coSearchResult) return;
+    setCoTutors((prev) => [...prev, { id: coSearchResult.id, name: coSearchResult.name, email: coSearchResult.email, role: coRole, permissions: coPerms }]);
+    setShowAddCoTutor(false);
+    setCoEmail('');
+    setCoRole('co-tutor');
+    setCoPerms(PERM_OPTIONS.map((p) => p.id));
+    setCoSearchResult(null);
+    setCoError('');
+  };
+
+  const removeCoTutor = (id: string) => {
+    setCoTutors((prev) => prev.filter((c) => c.id !== id));
+  };
 
   const fetchSessions = useCallback(async () => {
     setSessionsLoading(true);
@@ -242,7 +311,7 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
   const TABS: { id: Tab; label: string }[] = [
     { id: 'stream', label: 'Stream' },
     { id: 'sessions', label: 'Sessions' },
-    { id: 'messages', label: 'Lesson Chat' },
+    { id: 'feedback', label: 'Feedback' },
     { id: 'whatsapp', label: 'WhatsApp' },
   ];
 
@@ -416,169 +485,544 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
 
       {/* ── MANAGE PANEL (conditional) ── */}
       {manageOpen && (
-        <div className="max-w-[1100px] mx-auto px-7 mt-5">
-          <div className="bg-white rounded-[14px] border border-gray-200 p-5 shadow-sm">
-            <div className="mb-4 border-b border-gray-100">
-              <div className="flex items-center gap-4">
-                {(['profile', 'pricing'] as ManageSection[]).map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setManageSection(s)}
-                    className={`pb-2 text-sm font-medium border-b-2 capitalize ${
-                      manageSection === s
-                        ? 'border-emerald-500 text-emerald-700'
-                        : 'border-transparent text-gray-500 hover:text-gray-700'
+        <div className="max-w-[820px] mx-auto px-6 mt-5 pb-14">
+          {/* Header */}
+          <div className="flex items-center gap-3 mb-6">
+            <button onClick={() => setManageOpen(false)} className="w-9 h-9 rounded-[10px] border border-[#e4e8ee] bg-white flex items-center justify-center hover:border-emerald-500 hover:text-emerald-600 transition-colors flex-shrink-0">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="15 18 9 12 15 6" /></svg>
+            </button>
+            <h1 className="text-[22px] font-extrabold tracking-tight">Manage Class</h1>
+            <span className="text-[13px] text-[#6b7280] ml-auto">{group.name}</span>
+          </div>
+
+          {/* Tabs */}
+          <div className="flex gap-0 border-b-2 border-[#e4e8ee] mb-6">
+            {([
+              { id: 'profile' as ManageSection, label: 'Profile' },
+              { id: 'members' as ManageSection, label: 'Members' },
+              { id: 'access' as ManageSection, label: 'Access & Rules' },
+              { id: 'danger' as ManageSection, label: 'Danger Zone' },
+            ]).map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setManageSection(t.id)}
+                className={`py-[11px] px-4 text-[13px] font-semibold border-b-2 -mb-[2px] transition-colors ${
+                  manageSection === t.id
+                    ? 'text-emerald-600 border-emerald-500'
+                    : 'text-[#6b7280] border-transparent hover:text-[#111827]'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* ─── PROFILE TAB ─── */}
+          {manageSection === 'profile' && (
+            <>
+              {/* Basic Info */}
+              <div className="bg-white border border-[#e4e8ee] rounded-[14px] p-[22px] mb-[18px] shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                <div className="text-[11px] font-bold uppercase tracking-[.08em] text-[#6b7280] mb-[18px] flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+                  Basic Info
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-[14px]">
+                  <div className="flex flex-col gap-1"><label className="text-[12.5px] font-semibold">Class title</label><input type="text" value={manageForm.name} onChange={(e) => setManageForm((p) => ({ ...p, name: e.target.value }))} className={inputCls} /></div>
+                  <div className="flex flex-col gap-1"><label className="text-[12.5px] font-semibold">About class</label><input type="text" value={manageForm.topic} onChange={(e) => setManageForm((p) => ({ ...p, topic: e.target.value }))} placeholder="A short tagline..." className={inputCls} /></div>
+                  <div className="flex flex-col gap-1"><label className="text-[12.5px] font-semibold">Subjects</label><input type="text" value={manageForm.subject} onChange={(e) => setManageForm((p) => ({ ...p, subject: e.target.value }))} placeholder="e.g. CSEC Math, CSEC Biology" className={inputCls} /></div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[12.5px] font-semibold">Form level</label>
+                    <select value={manageForm.form_level} onChange={(e) => setManageForm((p) => ({ ...p, form_level: e.target.value }))} className={inputCls}>
+                      <option value="FORM_1">Form 1</option><option value="FORM_2">Form 2</option><option value="FORM_3">Form 3</option>
+                      <option value="FORM_4">Form 4</option><option value="FORM_5">Form 5</option><option value="CAPE">CAPE</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Thumbnail */}
+              <div className="bg-white border border-[#e4e8ee] rounded-[14px] p-[22px] mb-[18px] shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                <div className="text-[11px] font-bold uppercase tracking-[.08em] text-[#6b7280] mb-[18px] flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>
+                  Class Thumbnail
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[12.5px] font-semibold">Thumbnail image</label>
+                  <span className="text-[11px] text-[#6b7280]">Shown on marketplace cards. Drag and drop or click to upload.</span>
+                  <div
+                    onDragOver={(e) => { e.preventDefault(); setDraggingImage(true); }}
+                    onDragLeave={(e) => { e.preventDefault(); setDraggingImage(false); }}
+                    onDrop={(e) => { e.preventDefault(); setDraggingImage(false); void handleCoverSelection(e.dataTransfer.files?.[0] ?? null); }}
+                    onClick={() => !manageForm.cover_image && coverInputRef.current?.click()}
+                    className={`mt-2 rounded-[14px] border-2 border-dashed relative transition-colors cursor-pointer ${
+                      manageForm.cover_image && !isDefaultThumbnail(manageForm.cover_image)
+                        ? 'border-emerald-500 border-solid p-0'
+                        : draggingImage ? 'border-emerald-500 bg-emerald-50 p-7' : 'border-[#e4e8ee] bg-[#f5f7fa] p-7'
                     }`}
                   >
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {manageSection === 'profile' && (
-              <div className="space-y-4">
-                <div className="rounded-lg border border-gray-100 bg-gray-50/70 p-3">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Basic info</p>
-                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Class title</label><input type="text" value={manageForm.name} onChange={(e) => setManageForm((p) => ({ ...p, name: e.target.value }))} className={inputCls} /></div>
-                    <div><label className="block text-xs font-medium text-gray-600 mb-1">About class</label><input type="text" value={manageForm.topic} onChange={(e) => setManageForm((p) => ({ ...p, topic: e.target.value }))} className={inputCls} /></div>
-                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Subjects</label><input type="text" value={manageForm.subject} onChange={(e) => setManageForm((p) => ({ ...p, subject: e.target.value }))} placeholder="e.g. CSEC Math, CSEC Biology" className={inputCls} /></div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Form level</label>
-                      <select value={manageForm.form_level} onChange={(e) => setManageForm((p) => ({ ...p, form_level: e.target.value }))} className={inputCls}>
-                        <option value="FORM_1">Form 1</option><option value="FORM_2">Form 2</option><option value="FORM_3">Form 3</option>
-                        <option value="FORM_4">Form 4</option><option value="FORM_5">Form 5</option><option value="CAPE">CAPE</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-                <div className="rounded-lg border border-gray-100 bg-gray-50/70 p-3">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Description</p>
-                  <div className="mt-3 space-y-3">
-                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Course overview</label><textarea value={manageForm.description} onChange={(e) => setManageForm((p) => ({ ...p, description: e.target.value }))} rows={3} className={`${inputCls} resize-none`} /></div>
-                    <div><label className="block text-xs font-medium text-gray-600 mb-1">Learning objectives</label><textarea value={manageForm.goals} onChange={(e) => setManageForm((p) => ({ ...p, goals: e.target.value }))} rows={3} className={`${inputCls} resize-none`} /></div>
-                  </div>
-                </div>
-                <div className="rounded-lg border border-gray-100 bg-gray-50/70 p-3">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Branding</p>
-                  <div className="mt-3">
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Lesson thumbnail</label>
-                    <div
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        setDraggingImage(true);
-                      }}
-                      onDragLeave={(e) => {
-                        e.preventDefault();
-                        setDraggingImage(false);
-                      }}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        setDraggingImage(false);
-                        const file = e.dataTransfer.files?.[0] ?? null;
-                        void handleCoverSelection(file);
-                      }}
-                      className={`rounded-xl border-2 border-dashed p-4 transition-colors ${
-                        draggingImage ? 'border-emerald-500 bg-emerald-50' : 'border-gray-300 bg-white'
-                      }`}
-                    >
-                      {manageForm.cover_image ? (
-                        <img
-                          src={manageForm.cover_image}
-                          alt="Lesson thumbnail preview"
-                          className="h-40 w-full rounded-lg border border-gray-200 object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-40 w-full items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-sm text-gray-500">
-                          Drag and drop thumbnail image here
-                        </div>
-                      )}
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {manageForm.cover_image && !isDefaultThumbnail(manageForm.cover_image) ? (
+                      <>
+                        <img src={manageForm.cover_image} alt="Preview" className="w-full h-40 object-cover rounded-xl block" />
                         <button
                           type="button"
-                          onClick={() => coverInputRef.current?.click()}
-                          className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
-                        >
-                          Choose file
-                        </button>
-                        {manageForm.cover_image && (
-                          <button
-                            type="button"
-                            onClick={() => setManageForm((p) => ({ ...p, cover_image: '' }))}
-                            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
-                          >
-                            Remove
-                          </button>
-                        )}
-                        <span className="text-xs text-gray-500">
-                          {uploadingImage
-                            ? 'Uploading...'
-                            : 'Recommended: 1920 x 1080 px. PNG, JPG, WEBP up to 10MB. Drag inside crop to reposition.'}
-                        </span>
+                          onClick={(e) => { e.stopPropagation(); setManageForm((p) => ({ ...p, cover_image: '' })); }}
+                          className="absolute top-2 right-2 w-[26px] h-[26px] rounded-full bg-black/55 border-none cursor-pointer flex items-center justify-center text-white text-[13px] hover:bg-red-500 transition-colors z-[2]"
+                        >&times;</button>
+                      </>
+                    ) : (
+                      <div className="text-center">
+                        <div className="w-11 h-11 rounded-[11px] bg-white flex items-center justify-center mx-auto mb-2 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth={2}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
+                        </div>
+                        <div className="text-[12.5px] font-semibold mb-0.5">Drag & drop image here</div>
+                        <div className="text-[11px] text-[#6b7280]">PNG, JPG up to 2MB</div>
+                        <div className="text-[10px] text-[#6b7280] my-1.5">or</div>
+                        <button type="button" onClick={(e) => { e.stopPropagation(); coverInputRef.current?.click(); }} className="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-[10px] bg-emerald-600 text-white text-[11.5px] font-semibold border-none cursor-pointer hover:bg-emerald-700 transition-colors">Browse Files</button>
                       </div>
-                      <input
-                        ref={coverInputRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0] ?? null;
-                          void handleCoverSelection(file);
-                          e.currentTarget.value = '';
-                        }}
-                      />
-                    </div>
+                    )}
                   </div>
+                  <input ref={coverInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { void handleCoverSelection(e.target.files?.[0] ?? null); e.currentTarget.value = ''; }} />
                 </div>
               </div>
-            )}
 
-            {manageSection === 'pricing' && (
-              <div className="rounded-lg border border-gray-100 bg-gray-50/70 p-3">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Monetization</p>
-                <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Pricing mode</label>
+              {/* Description */}
+              <div className="bg-white border border-[#e4e8ee] rounded-[14px] p-[22px] mb-[18px] shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                <div className="text-[11px] font-bold uppercase tracking-[.08em] text-[#6b7280] mb-[18px] flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
+                  Description
+                </div>
+                <div className="grid grid-cols-1 gap-[14px]">
+                  <div className="flex flex-col gap-1"><label className="text-[12.5px] font-semibold">Course overview</label><textarea value={manageForm.description} onChange={(e) => setManageForm((p) => ({ ...p, description: e.target.value }))} placeholder="Tell students what they'll learn..." className={`${inputCls} min-h-[80px] resize-y leading-relaxed`} /></div>
+                  <div className="flex flex-col gap-1"><label className="text-[12.5px] font-semibold">Learning objectives</label><textarea value={manageForm.goals} onChange={(e) => setManageForm((p) => ({ ...p, goals: e.target.value }))} placeholder="Key skills students will gain..." className={`${inputCls} min-h-[80px] resize-y leading-relaxed`} /></div>
+                </div>
+              </div>
+
+              {/* Pricing */}
+              <div className="bg-white border border-[#e4e8ee] rounded-[14px] p-[22px] mb-[18px] shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                <div className="text-[11px] font-bold uppercase tracking-[.08em] text-[#6b7280] mb-[18px] flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" /></svg>
+                  Monetization
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-[14px]">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[12.5px] font-semibold">Pricing mode</label>
                     <select value={manageForm.pricing_mode} onChange={(e) => setManageForm((p) => ({ ...p, pricing_mode: e.target.value as any }))} className={inputCls}>
                       <option value="FREE">Free</option><option value="PER_SESSION">Per session</option><option value="PER_COURSE">Per month</option>
                     </select>
                   </div>
-                  <div><label className="block text-xs font-medium text-gray-600 mb-1">Price per session</label><input type="number" min={0} value={manageForm.price_per_session} onChange={(e) => setManageForm((p) => ({ ...p, price_per_session: e.target.value }))} disabled={manageForm.pricing_mode !== 'PER_SESSION'} className={`${inputCls} disabled:bg-gray-100`} /></div>
-                  <div><label className="block text-xs font-medium text-gray-600 mb-1">Price per month</label><input type="number" min={0} value={manageForm.price_per_course} onChange={(e) => setManageForm((p) => ({ ...p, price_per_course: e.target.value }))} disabled={manageForm.pricing_mode !== 'PER_COURSE'} className={`${inputCls} disabled:bg-gray-100`} /></div>
+                  <div className="flex flex-col gap-1"><label className="text-[12.5px] font-semibold">Price per session</label><input type="number" min={0} value={manageForm.price_per_session} onChange={(e) => setManageForm((p) => ({ ...p, price_per_session: e.target.value }))} disabled={manageForm.pricing_mode !== 'PER_SESSION'} className={`${inputCls} disabled:bg-gray-100`} /></div>
+                  <div className="flex flex-col gap-1"><label className="text-[12.5px] font-semibold">Price per month</label><input type="number" min={0} value={manageForm.price_per_course} onChange={(e) => setManageForm((p) => ({ ...p, price_per_course: e.target.value }))} disabled={manageForm.pricing_mode !== 'PER_COURSE'} className={`${inputCls} disabled:bg-gray-100`} /></div>
                 </div>
               </div>
-            )}
+            </>
+          )}
 
-            {manageError && <p className="mt-3 text-xs text-red-500">{manageError}</p>}
-            <div className="mt-4 flex gap-2 justify-end">
-              <button type="button" onClick={() => setManageOpen(false)} className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
-              <button type="button" onClick={() => void handleManageSave()} disabled={manageSaving} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">{manageSaving ? 'Saving…' : 'Save Settings'}</button>
-            </div>
+          {/* ─── MEMBERS TAB ─── */}
+          {manageSection === 'members' && (
+            <>
+              {/* Class Size */}
+              <div className="bg-white border border-[#e4e8ee] rounded-[14px] p-[22px] mb-[18px] shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                <div className="text-[11px] font-bold uppercase tracking-[.08em] text-[#6b7280] mb-[18px] flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87" /><path d="M16 3.13a4 4 0 010 7.75" /></svg>
+                  Class Size
+                </div>
+                <div className="flex items-center justify-between pb-3">
+                  <div className="flex-1 mr-4">
+                    <div className="text-[13px] font-semibold">Set a maximum class size</div>
+                    <div className="text-[11px] text-[#6b7280] mt-px">Unlimited students can join by default. Enable this to set a preferred maximum. When reached, new students are added to a waitlist.</div>
+                  </div>
+                  <div onClick={() => setCapEnabled((p) => !p)} className={`w-[42px] h-6 rounded-xl cursor-pointer relative transition-colors flex-shrink-0 ${capEnabled ? 'bg-emerald-600' : 'bg-[#d1d5db]'}`}>
+                    <div className={`absolute top-[3px] w-[18px] h-[18px] rounded-full bg-white shadow-sm transition-all ${capEnabled ? 'left-[21px]' : 'left-[3px]'}`} />
+                  </div>
+                </div>
+                {capEnabled ? (
+                  <div className="mt-3">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[12.5px] font-semibold">Preferred maximum students</label>
+                      <span className="text-[11px] text-[#6b7280]">When this number is reached, new students join the waitlist. You can still manually approve waitlisted students to go over this limit.</span>
+                      <div className="flex items-center gap-3.5 mt-2">
+                        <input type="range" min={5} max={200} step={5} value={capValue} onChange={(e) => setCapValue(Number(e.target.value))} className="flex-1 accent-emerald-600" />
+                        <div className="min-w-[50px] py-1.5 px-2.5 border border-[#e4e8ee] rounded-[10px] text-center text-sm font-bold text-emerald-700 bg-emerald-50">{capValue}</div>
+                      </div>
+                      <div className="mt-2">
+                        <div className="h-2 bg-[#f5f7fa] rounded overflow-hidden"><div className="h-full bg-emerald-500 rounded transition-all" style={{ width: `${Math.round(((approvedMembers.length) / capValue) * 100)}%` }} /></div>
+                        <div className="flex justify-between mt-1 text-[10px] text-[#6b7280]">
+                          <span><strong>{approvedMembers.length}</strong> / {capValue} enrolled</span>
+                          <span>{Math.max(capValue - approvedMembers.length, 0)} spots until waitlist</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-2 p-2.5 bg-indigo-50 rounded-[10px] mt-3 text-[11px] text-indigo-600 leading-relaxed">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="flex-shrink-0 mt-px"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+                      <span>This is a soft limit. You can always approve waitlisted students manually, even if it goes over your preferred maximum.</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 p-3 bg-emerald-50 rounded-[10px] mt-2.5 text-[12px] text-emerald-700">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="flex-shrink-0"><path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
+                    <span>No limit set. Unlimited students can join this class.</span>
+                  </div>
+                )}
+              </div>
 
-            <div className="mt-6 pt-5 border-t border-red-100">
-              <p className="text-xs font-semibold text-red-500 uppercase tracking-wide mb-3">Danger Zone</p>
-              <div className="flex flex-wrap gap-2">
+              {/* Current Members Table */}
+              <div className="bg-white border border-[#e4e8ee] rounded-[14px] p-[22px] mb-[18px] shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                <div className="text-[11px] font-bold uppercase tracking-[.08em] text-[#6b7280] mb-[18px] flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2" /><circle cx="9" cy="7" r="4" /></svg>
+                  Students
+                </div>
+                {approvedMembers.filter((m) => m.profile?.role !== 'tutor').length === 0 ? (
+                  <p className="text-center py-5 text-[13px] text-[#6b7280] bg-[#f5f7fa] rounded-[10px]">No students yet</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse mt-3">
+                      <thead>
+                        <tr>
+                          <th className="text-left p-2 text-[10px] font-semibold uppercase tracking-[.06em] text-[#6b7280] border-b-2 border-[#e4e8ee]">Student</th>
+                          <th className="text-left p-2 text-[10px] font-semibold uppercase tracking-[.06em] text-[#6b7280] border-b-2 border-[#e4e8ee]">Joined</th>
+                          <th className="text-left p-2 text-[10px] font-semibold uppercase tracking-[.06em] text-[#6b7280] border-b-2 border-[#e4e8ee]"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {approvedMembers.filter((m) => m.profile?.role !== 'tutor').map((m) => {
+                          const name = m.profile?.full_name ?? 'Member';
+                          return (
+                            <tr key={m.id} className="hover:bg-[rgba(0,0,0,0.01)]">
+                              <td className="p-2.5 border-b border-[#f1f5f9] text-[13px]">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0" style={{ background: '#6366f1' }}>{getInitials(name)}</div>
+                                  <span className="font-semibold">{name}</span>
+                                </div>
+                              </td>
+                              <td className="p-2.5 border-b border-[#f1f5f9] text-[13px]">{new Date(m.joined_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</td>
+                              <td className="p-2.5 border-b border-[#f1f5f9]">
+                                <button
+                                  onClick={async () => { if (!confirm(`Remove ${name} from this class?`)) return; await fetch(`/api/groups/${group.id}/members/${m.user_id}`, { method: 'DELETE' }); fetchMembers(); }}
+                                  className="px-2.5 py-1 rounded-md text-[11px] font-medium border border-[#e4e8ee] bg-white text-[#6b7280] hover:border-red-400 hover:text-red-500 transition-colors"
+                                >Remove</button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Waitlist */}
+              <div className="bg-white border border-[#e4e8ee] rounded-[14px] p-[22px] mb-[18px] shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                <div className="text-[11px] font-bold uppercase tracking-[.08em] text-[#6b7280] mb-[18px] flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
+                  Waitlist
+                </div>
+                <div className="flex items-center justify-between pb-3 border-b border-[#f1f5f9]">
+                  <div className="flex-1 mr-4"><div className="text-[13px] font-semibold">Enable waitlist</div><div className="text-[11px] text-[#6b7280] mt-px">When the class reaches maximum size, new students are placed in a queue.</div></div>
+                  <div onClick={() => setWaitlistEnabled((p) => !p)} className={`w-[42px] h-6 rounded-xl cursor-pointer relative transition-colors flex-shrink-0 ${waitlistEnabled ? 'bg-emerald-600' : 'bg-[#d1d5db]'}`}><div className={`absolute top-[3px] w-[18px] h-[18px] rounded-full bg-white shadow-sm transition-all ${waitlistEnabled ? 'left-[21px]' : 'left-[3px]'}`} /></div>
+                </div>
+                <div className="flex items-center justify-between py-3 border-b border-[#f1f5f9]">
+                  <div className="flex-1 mr-4"><div className="text-[13px] font-semibold">Auto-notify next in line</div><div className="text-[11px] text-[#6b7280] mt-px">When a spot opens, the first waitlisted student is automatically notified and has 48 hours to accept.</div></div>
+                  <div onClick={() => setAutoNotify((p) => !p)} className={`w-[42px] h-6 rounded-xl cursor-pointer relative transition-colors flex-shrink-0 ${autoNotify ? 'bg-emerald-600' : 'bg-[#d1d5db]'}`}><div className={`absolute top-[3px] w-[18px] h-[18px] rounded-full bg-white shadow-sm transition-all ${autoNotify ? 'left-[21px]' : 'left-[3px]'}`} /></div>
+                </div>
+                <div className="flex items-center gap-2 p-3 bg-indigo-50 rounded-[10px] mt-2 text-[11px] text-indigo-600 leading-relaxed">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="flex-shrink-0"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+                  <span>Once you approve a waitlisted student, they are automatically added to the class.</span>
+                </div>
+                <div className="text-center p-5 text-[#6b7280] text-[13px] bg-[#f5f7fa] rounded-[10px] mt-3.5">No students on waitlist</div>
+              </div>
+
+              {/* Co-Tutors */}
+              <div className="bg-white border border-[#e4e8ee] rounded-[14px] p-[22px] mb-[18px] shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                <div className="text-[11px] font-bold uppercase tracking-[.08em] text-[#6b7280] mb-[18px] flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2" /><circle cx="9" cy="7" r="4" /><line x1="19" y1="8" x2="19" y2="14" /><line x1="22" y1="11" x2="16" y2="11" /></svg>
+                  Co-Tutors & Assistants
+                </div>
+                {/* Owner */}
+                <div className="flex items-center gap-3 p-3 border border-[#e4e8ee] rounded-[10px] mb-2">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0 bg-emerald-600">{getInitials(tutorName)}</div>
+                  <div className="flex-1"><div className="text-[13px] font-semibold">{tutorName}</div><div className="text-[11px] text-[#6b7280]">Owner</div></div>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-[#f5f7fa] text-[#6b7280]">Full access</span>
+                </div>
+                {/* Auto co-tutors: approved members with tutor role */}
+                {approvedMembers.filter((m) => m.profile?.role === 'tutor' && m.user_id !== group.tutor_id).map((m) => {
+                  const coName = m.profile?.full_name ?? 'Tutor';
+                  return (
+                    <div key={m.id} className="flex items-center gap-3 p-3 border border-[#e4e8ee] rounded-[10px] mb-2">
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0 bg-indigo-500">{getInitials(coName)}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[13px] font-semibold truncate">{coName}</div>
+                        <div className="text-[11px] text-[#6b7280]">Co-Tutor</div>
+                      </div>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-indigo-50 text-indigo-600 flex-shrink-0">Full access</span>
+                      <button
+                        onClick={async () => { if (!confirm(`Remove ${coName} from this class?`)) return; await fetch(`/api/groups/${group.id}/members/${m.user_id}`, { method: 'DELETE' }); fetchMembers(); }}
+                        className="px-2.5 py-1 rounded-md text-[11px] font-medium border border-[#e4e8ee] bg-white text-[#6b7280] hover:border-red-400 hover:text-red-500 transition-colors flex-shrink-0"
+                      >Remove</button>
+                    </div>
+                  );
+                })}
+                {/* Manually added co-tutors */}
+                {coTutors.map((ct) => (
+                  <div key={ct.id} className="flex items-center gap-3 p-3 border border-[#e4e8ee] rounded-[10px] mb-2">
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0" style={{ background: ct.role === 'co-tutor' ? '#6366f1' : '#f59e0b' }}>{getInitials(ct.name)}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[13px] font-semibold truncate">{ct.name}</div>
+                      <div className="text-[11px] text-[#6b7280] capitalize">{ct.role === 'co-tutor' ? 'Co-Tutor' : 'Assistant'}</div>
+                    </div>
+                    <div className="flex gap-1 flex-wrap flex-shrink-0">
+                      {ct.permissions.length === PERM_OPTIONS.length ? (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-[#f5f7fa] text-[#6b7280]">Full access</span>
+                      ) : (
+                        ct.permissions.slice(0, 2).map((p) => (
+                          <span key={p} className="px-2 py-0.5 rounded text-[10px] font-medium bg-[#f5f7fa] text-[#6b7280]">{PERM_OPTIONS.find((o) => o.id === p)?.label ?? p}</span>
+                        ))
+                      )}
+                      {ct.permissions.length < PERM_OPTIONS.length && ct.permissions.length > 2 && (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-[#f5f7fa] text-[#6b7280]">+{ct.permissions.length - 2}</span>
+                      )}
+                    </div>
+                    <button onClick={() => removeCoTutor(ct.id)} className="w-6 h-6 rounded-md flex items-center justify-center text-[#6b7280] hover:bg-red-50 hover:text-red-500 transition-colors flex-shrink-0">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                    </button>
+                  </div>
+                ))}
                 <button
-                  onClick={handleArchive}
-                  disabled={archiving || deleting}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[10px] text-[13px] font-semibold border border-gray-200 bg-white text-gray-700 hover:border-amber-500 hover:text-amber-600 transition-all disabled:opacity-40"
+                  onClick={() => { setShowAddCoTutor(true); setCoEmail(''); setCoSearchResult(null); setCoError(''); setCoRole('co-tutor'); setCoPerms(PERM_OPTIONS.map((p) => p.id)); }}
+                  className="w-full py-2.5 border-[1.5px] border-dashed border-[#e4e8ee] rounded-[10px] bg-transparent text-[12px] font-medium text-[#6b7280] cursor-pointer flex items-center justify-center gap-1.5 hover:border-emerald-500 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="3" y="3" width="18" height="18" rx="2" /><line x1="9" y1="3" x2="9" y2="21" /></svg>
-                  {archiving ? 'Archiving…' : 'Archive Class'}
-                </button>
-                <button
-                  onClick={handleDelete}
-                  disabled={deleting || archiving}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[10px] text-[13px] font-semibold border border-red-500 text-red-500 bg-transparent hover:bg-red-500 hover:text-white transition-all disabled:opacity-40"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" /></svg>
-                  {deleting ? 'Deleting…' : 'Delete Class'}
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                  Add co-tutor or assistant
                 </button>
               </div>
+
+              {/* Add Co-Tutor Modal */}
+              {showAddCoTutor && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-[3px]" onClick={() => setShowAddCoTutor(false)}>
+                  <div className="bg-white rounded-[14px] w-[480px] max-w-[92vw] shadow-[0_4px_14px_rgba(0,0,0,0.06)] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                    {/* Header */}
+                    <div className="px-5 py-4 border-b border-[#e4e8ee] flex items-center justify-between">
+                      <h3 className="text-[16px] font-bold">Add Co-Tutor or Assistant</h3>
+                      <button onClick={() => setShowAddCoTutor(false)} className="w-[30px] h-[30px] rounded-lg flex items-center justify-center text-[#6b7280] hover:bg-[#f5f7fa] hover:text-[#111827] transition-colors text-[18px]">&times;</button>
+                    </div>
+
+                    <div className="px-5 py-5 space-y-5">
+                      {/* Search */}
+                      <div>
+                        <label className="text-[12.5px] font-semibold block mb-1">Find by email</label>
+                        <div className="flex gap-2">
+                          <input
+                            type="email"
+                            placeholder="tutor@example.com"
+                            value={coEmail}
+                            onChange={(e) => { setCoEmail(e.target.value); setCoSearchResult(null); setCoError(''); }}
+                            onKeyDown={(e) => e.key === 'Enter' && searchCoTutor()}
+                            className="flex-1 rounded-[10px] border border-[#e4e8ee] px-3 py-2.5 text-[13px] outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
+                          />
+                          <button
+                            onClick={searchCoTutor}
+                            disabled={coSearching || !coEmail.trim()}
+                            className="px-4 py-2.5 rounded-[10px] bg-emerald-600 text-white text-[12px] font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-50 flex-shrink-0"
+                          >
+                            {coSearching ? 'Searching…' : 'Search'}
+                          </button>
+                        </div>
+                        {coError && <p className="text-[11px] text-red-500 mt-1.5">{coError}</p>}
+                      </div>
+
+                      {/* Search result */}
+                      {coSearchResult && (
+                        <div className="flex items-center gap-3 p-3 bg-emerald-50 border border-emerald-200 rounded-[10px]">
+                          <div className="w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0 bg-emerald-600">{getInitials(coSearchResult.name)}</div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[13px] font-semibold truncate">{coSearchResult.name}</div>
+                            <div className="text-[11px] text-emerald-700 truncate">{coSearchResult.email}</div>
+                          </div>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#047857" strokeWidth={2.5} className="flex-shrink-0"><polyline points="20 6 9 17 4 12" /></svg>
+                        </div>
+                      )}
+
+                      {/* Role */}
+                      {coSearchResult && (
+                        <div>
+                          <label className="text-[12.5px] font-semibold block mb-2">Role</label>
+                          <div className="flex gap-2">
+                            {([['co-tutor', 'Co-Tutor', 'Can manage the class alongside you'], ['assistant', 'Assistant', 'Limited access, helps with day-to-day tasks']] as const).map(([val, label, desc]) => (
+                              <div
+                                key={val}
+                                onClick={() => {
+                                  setCoRole(val);
+                                  setCoPerms(val === 'co-tutor' ? PERM_OPTIONS.map((p) => p.id) : ['stream', 'chat']);
+                                }}
+                                className={`flex-1 p-3 rounded-[10px] border-2 cursor-pointer transition-all ${
+                                  coRole === val ? 'border-emerald-500 bg-emerald-50' : 'border-[#e4e8ee] hover:border-gray-300'
+                                }`}
+                              >
+                                <div className="text-[13px] font-semibold">{label}</div>
+                                <div className="text-[11px] text-[#6b7280] mt-0.5">{desc}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Permissions */}
+                      {coSearchResult && (
+                        <div>
+                          <label className="text-[12.5px] font-semibold block mb-2">Permissions</label>
+                          <div className="space-y-1">
+                            {PERM_OPTIONS.map((p) => {
+                              const checked = coPerms.includes(p.id);
+                              return (
+                                <div
+                                  key={p.id}
+                                  onClick={() => setCoPerms((prev) => checked ? prev.filter((x) => x !== p.id) : [...prev, p.id])}
+                                  className="flex items-center gap-2.5 py-2 px-2 rounded-lg cursor-pointer hover:bg-[#f5f7fa] transition-colors"
+                                >
+                                  <div className={`w-[18px] h-[18px] rounded flex items-center justify-center flex-shrink-0 border-2 transition-colors ${
+                                    checked ? 'border-emerald-500 bg-emerald-50' : 'border-[#e4e8ee]'
+                                  }`}>
+                                    {checked && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#0d9668" strokeWidth={2.5}><polyline points="20 6 9 17 4 12" /></svg>}
+                                  </div>
+                                  <span className="text-[13px]">{p.label}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Footer */}
+                    {coSearchResult && (
+                      <div className="px-5 py-4 border-t border-[#e4e8ee] flex justify-end gap-2">
+                        <button onClick={() => setShowAddCoTutor(false)} className="py-2.5 px-5 border border-[#e4e8ee] rounded-[10px] text-[13px] font-semibold text-[#111827] hover:bg-gray-50 transition-colors">Cancel</button>
+                        <button
+                          onClick={addCoTutor}
+                          disabled={coPerms.length === 0}
+                          className="py-2.5 px-6 bg-emerald-600 text-white rounded-[10px] text-[13px] font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2" /><circle cx="9" cy="7" r="4" /><line x1="19" y1="8" x2="19" y2="14" /><line x1="22" y1="11" x2="16" y2="11" /></svg>
+                          Add {coRole === 'co-tutor' ? 'Co-Tutor' : 'Assistant'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ─── ACCESS & RULES TAB ─── */}
+          {manageSection === 'access' && (
+            <>
+              {/* Visibility */}
+              <div className="bg-white border border-[#e4e8ee] rounded-[14px] p-[22px] mb-[18px] shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                <div className="text-[11px] font-bold uppercase tracking-[.08em] text-[#6b7280] mb-[18px] flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>
+                  Class Visibility
+                </div>
+                <div className="flex flex-col gap-1 mb-4">
+                  <label className="text-[12.5px] font-semibold">Who can find this class?</label>
+                  <select value={visibility} onChange={(e) => setVisibility(e.target.value as any)} className={inputCls}>
+                    <option value="public">Public — visible in marketplace, anyone can request to join</option>
+                    <option value="unlisted">Unlisted — only people with the direct link can see it</option>
+                    <option value="private">Private — invite only, hidden from marketplace and search</option>
+                  </select>
+                </div>
+                <div className="flex items-center justify-between py-3 border-b border-[#f1f5f9]">
+                  <div className="flex-1 mr-4"><div className="text-[13px] font-semibold">Require approval to join</div><div className="text-[11px] text-[#6b7280] mt-px">You must manually approve each student before they can access class content.</div></div>
+                  <div onClick={() => setRequireApproval((p) => !p)} className={`w-[42px] h-6 rounded-xl cursor-pointer relative transition-colors flex-shrink-0 ${requireApproval ? 'bg-emerald-600' : 'bg-[#d1d5db]'}`}><div className={`absolute top-[3px] w-[18px] h-[18px] rounded-full bg-white shadow-sm transition-all ${requireApproval ? 'left-[21px]' : 'left-[3px]'}`} /></div>
+                </div>
+                <div className="flex items-center justify-between py-3">
+                  <div className="flex-1 mr-4"><div className="text-[13px] font-semibold">Allow students to invite others</div><div className="text-[11px] text-[#6b7280] mt-px">Approved students can share an invite link with friends.</div></div>
+                  <div onClick={() => setAllowStudentInvites((p) => !p)} className={`w-[42px] h-6 rounded-xl cursor-pointer relative transition-colors flex-shrink-0 ${allowStudentInvites ? 'bg-emerald-600' : 'bg-[#d1d5db]'}`}><div className={`absolute top-[3px] w-[18px] h-[18px] rounded-full bg-white shadow-sm transition-all ${allowStudentInvites ? 'left-[21px]' : 'left-[3px]'}`} /></div>
+                </div>
+              </div>
+
+              {/* Class Rules */}
+              <div className="bg-white border border-[#e4e8ee] rounded-[14px] p-[22px] mb-[18px] shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                <div className="text-[11px] font-bold uppercase tracking-[.08em] text-[#6b7280] mb-[18px] flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
+                  Class Rules
+                </div>
+                <div className="flex flex-col gap-1 mb-2.5">
+                  <label className="text-[12.5px] font-semibold">Rules students must acknowledge</label>
+                  <span className="text-[11px] text-[#6b7280]">Students will see these before joining and must agree to them.</span>
+                </div>
+                <div className="mt-2.5">
+                  {rules.map((r, i) => (
+                    <div key={i} className="flex items-center gap-2.5 py-2 border-b border-[#f1f5f9] last:border-b-0">
+                      <div
+                        onClick={() => setRules((prev) => prev.map((rule, idx) => idx === i ? { ...rule, enabled: !rule.enabled } : rule))}
+                        className={`w-[18px] h-[18px] rounded flex items-center justify-center flex-shrink-0 cursor-pointer transition-colors border-2 ${
+                          r.enabled ? 'border-emerald-500 bg-emerald-50' : 'border-[#e4e8ee]'
+                        }`}
+                      >
+                        {r.enabled && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#0d9668" strokeWidth={2.5}><polyline points="20 6 9 17 4 12" /></svg>}
+                      </div>
+                      <input
+                        type="text"
+                        value={r.text}
+                        onChange={(e) => setRules((prev) => prev.map((rule, idx) => idx === i ? { ...rule, text: e.target.value } : rule))}
+                        placeholder="Type a new rule..."
+                        className="flex-1 border-none outline-none text-[13px] bg-transparent"
+                      />
+                    </div>
+                  ))}
+                  <button
+                    onClick={() => setRules((prev) => [...prev, { text: '', enabled: false }])}
+                    className="flex items-center gap-1 text-[12px] font-medium text-emerald-600 cursor-pointer mt-2 hover:underline"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                    Add another rule
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+
+
+          {/* ─── DANGER ZONE TAB ─── */}
+          {manageSection === 'danger' && (
+            <div className="bg-white border border-red-200 rounded-[14px] p-[22px] shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+              <div className="text-[11px] font-bold uppercase tracking-[.08em] text-red-500 mb-[18px] flex items-center gap-2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
+                Danger Zone
+              </div>
+              <div className="flex items-center justify-between py-2.5 border-b border-red-50">
+                <div><strong className="text-[13px] block mb-px">Archive this class</strong><span className="text-[11px] text-[#6b7280]">Hide from marketplace. Members lose access. Data is preserved and you can restore later.</span></div>
+                <button onClick={handleArchive} disabled={archiving || deleting} className="px-4 py-2 rounded-[10px] text-[12px] font-semibold border border-red-500 text-red-500 bg-transparent hover:bg-red-500 hover:text-white transition-all disabled:opacity-40 flex-shrink-0">{archiving ? 'Archiving…' : 'Archive Class'}</button>
+              </div>
+              <div className="flex items-center justify-between py-2.5 border-b border-red-50">
+                <div><strong className="text-[13px] block mb-px">Transfer ownership</strong><span className="text-[11px] text-[#6b7280]">Hand this class to another tutor. You'll become a co-tutor.</span></div>
+                <button className="px-4 py-2 rounded-[10px] text-[12px] font-semibold border border-red-500 text-red-500 bg-transparent hover:bg-red-500 hover:text-white transition-all flex-shrink-0">Transfer</button>
+              </div>
+              <div className="flex items-center justify-between py-2.5">
+                <div><strong className="text-[13px] block mb-px">Delete this class permanently</strong><span className="text-[11px] text-[#6b7280]">Remove all sessions, messages, members, and data. This cannot be undone.</span></div>
+                <button onClick={handleDelete} disabled={deleting || archiving} className="px-4 py-2 rounded-[10px] text-[12px] font-semibold border border-red-500 text-red-500 bg-transparent hover:bg-red-500 hover:text-white transition-all disabled:opacity-40 flex-shrink-0">{deleting ? 'Deleting…' : 'Delete Class'}</button>
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* Footer */}
+          {manageSection !== 'danger' && (
+            <>
+              {manageError && <p className="mt-3 text-xs text-red-500">{manageError}</p>}
+              <div className="flex justify-between items-center mt-2 pt-5">
+                <div className="text-[12px] text-[#6b7280] flex items-center gap-[5px]">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
+                  Unsaved changes
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setManageOpen(false)} className="py-2.5 px-5 border border-[#e4e8ee] rounded-[10px] bg-white text-[13px] font-semibold cursor-pointer text-[#111827] hover:bg-gray-50 transition-colors">Cancel</button>
+                  <button type="button" onClick={() => void handleManageSave()} disabled={manageSaving} className="py-2.5 px-6 bg-emerald-600 text-white border-none rounded-[10px] text-[13px] font-semibold cursor-pointer flex items-center gap-1.5 shadow-[0_2px_8px_rgba(13,150,104,0.2)] hover:bg-emerald-700 hover:-translate-y-px transition-all disabled:opacity-50">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><polyline points="20 6 9 17 4 12" /></svg>
+                    {manageSaving ? 'Saving…' : 'Save Settings'}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -641,13 +1085,9 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
             </div>
           )}
 
-          {tab === 'messages' && (
-            <GroupMessageBoard
-              groupId={group.id}
-              isTutor={true}
-              currentUserId={currentUserId}
-              memberCount={approvedMembers.length}
-            />
+
+          {tab === 'feedback' && (
+            <TutorFeedbackTab groupId={group.id} memberCount={approvedMembers.filter((m) => m.profile?.role !== 'tutor' && m.user_id !== group.tutor_id).length} />
           )}
 
           {tab === 'whatsapp' && (
