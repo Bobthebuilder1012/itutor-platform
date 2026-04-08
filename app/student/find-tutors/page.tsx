@@ -110,13 +110,33 @@ export default function FindTutorsPage() {
         console.error('❌ Exception fetching institutions:', err);
       }
       
-      const { data: tutorProfiles, error: profilesError } = await supabase
+      const selectWithBanner =
+        'id, full_name, username, display_name, avatar_url, profile_banner_url, updated_at, institution_id, country, bio, tutor_verification_status, teaching_mode, tutor_type';
+      const selectWithoutBanner =
+        'id, full_name, username, display_name, avatar_url, updated_at, institution_id, country, bio, tutor_verification_status, teaching_mode, tutor_type';
+
+      let tutorProfilesRes = await supabase
         .from('profiles')
-        .select(
-          'id, full_name, username, display_name, avatar_url, profile_banner_url, updated_at, institution_id, country, bio, tutor_verification_status, teaching_mode, tutor_type'
-        )
+        .select(selectWithBanner)
         .eq('role', 'tutor')
         .order('tutor_verification_status', { ascending: false });
+
+      const msg = (tutorProfilesRes.error?.message ?? '').toLowerCase();
+      const bannerColMissing =
+        tutorProfilesRes.error &&
+        msg.includes('profile_banner_url') &&
+        (msg.includes('does not exist') ||
+          msg.includes('schema cache') ||
+          msg.includes('could not find'));
+      if (bannerColMissing) {
+        tutorProfilesRes = await supabase
+          .from('profiles')
+          .select(selectWithoutBanner)
+          .eq('role', 'tutor')
+          .order('tutor_verification_status', { ascending: false });
+      }
+
+      const { data: tutorProfiles, error: profilesError } = tutorProfilesRes;
 
       if (profilesError) {
         console.error('❌ Error fetching tutor profiles:', profilesError);
