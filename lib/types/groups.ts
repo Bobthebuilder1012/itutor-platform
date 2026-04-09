@@ -248,6 +248,7 @@ export interface CreateGroupSessionInput {
   duration_minutes: number;
   starts_on: string;
   ends_on?: string;
+  timezone_offset?: number;
 }
 
 export interface PostGroupMessageInput {
