@@ -48,30 +48,7 @@ function buildSubject(payload: ReminderEmailPayload): string {
 export async function sendReminderEmail(
   payload: ReminderEmailPayload
 ): Promise<ReminderEmailResult> {
-  try {
-    const resend = getResendClient();
-    const { data, error } = await resend.emails.send({
-      from: process.env.RESEND_FROM_EMAIL || 'iTutor <hello@myitutor.com>',
-      to: payload.recipientEmail,
-      subject: buildSubject(payload),
-      react: React.createElement(SessionReminderEmail, payload),
-    });
-
-    if (error) {
-      return {
-        success: false,
-        error: error.message || 'Failed to send reminder email',
-      };
-    }
-
-    return {
-      success: true,
-      messageId: data?.id,
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown reminder email error',
-    };
-  }
+  // ALL EMAILS DISABLED
+  console.log(`[EMAIL BLOCKED] reminder to=${payload.recipientEmail}`);
+  return { success: true, messageId: 'disabled' };
 }
