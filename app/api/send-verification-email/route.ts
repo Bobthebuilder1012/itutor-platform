@@ -6,6 +6,9 @@ import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
+  // ALL EMAILS DISABLED
+  return NextResponse.json({ success: true, id: 'disabled' });
+
   try {
     const { email, code } = await request.json();
 

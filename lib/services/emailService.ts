@@ -36,44 +36,9 @@ export async function sendEmail({
   html,
   from = process.env.RESEND_FROM_EMAIL || 'iTutor <hello@myitutor.com>',
 }: SendEmailParams): Promise<EmailResult> {
-  if (!process.env.RESEND_API_KEY) {
-    console.error('Email not sent: RESEND_API_KEY is not configured');
-    return { success: false, error: 'RESEND_API_KEY not configured' };
-  }
-  try {
-    const resend = getResend();
-    if (!resend) {
-      return {
-        success: false,
-        error: 'Email service is not configured',
-      };
-    }
-    const { data, error } = await resend.emails.send({
-      from,
-      to,
-      subject,
-      html,
-    });
-
-    if (error) {
-      console.error('Resend error:', error);
-      return {
-        success: false,
-        error: error.message || 'Failed to send email',
-      };
-    }
-
-    return {
-      success: true,
-      messageId: data?.id,
-    };
-  } catch (error: any) {
-    console.error('Email service error:', error);
-    return {
-      success: false,
-      error: error?.message || 'Unknown error sending email',
-    };
-  }
+  // ALL EMAILS DISABLED
+  console.log(`[EMAIL BLOCKED] to=${to} subject=${subject}`);
+  return { success: true, messageId: 'disabled' };
 }
 
 /**

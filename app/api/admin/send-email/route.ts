@@ -7,6 +7,9 @@ import { Resend } from 'resend';
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
+  // ALL EMAILS DISABLED
+  return NextResponse.json({ sent: 0, failed: 0, message: 'All emails disabled' });
+
   try {
     const auth = await requireAdmin();
     if (auth.error) return auth.error;
