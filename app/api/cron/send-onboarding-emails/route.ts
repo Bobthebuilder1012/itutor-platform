@@ -1,8 +1,9 @@
+// @ts-nocheck
 // =====================================================
-// CRON JOB: SEND ONBOARDING EMAILS (CORRECTED)
+// CRON JOB: SEND ONBOARDING EMAILS (DISABLED)
 // =====================================================
-// Runs every 15 minutes to send scheduled onboarding emails
-// Updated to match actual table structure
+// DISABLED: Was sending marketing emails as transactional.
+// Must be moved to Resend Broadcast/Audience API before re-enabling.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';

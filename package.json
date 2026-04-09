@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
-    "@react-email/components": "^1.0.10",
+    "@react-email/components": "^1.0.12",
     "@supabase/auth-helpers-nextjs": "^0.15.0",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.89.0",
