@@ -3,6 +3,9 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
+  // ALL EMAILS DISABLED
+  return NextResponse.json({ success: false, message: 'All emails disabled' });
+
   try {
     console.log('Testing email configuration...');
     console.log('RESEND_API_KEY exists:', !!process.env.RESEND_API_KEY);
