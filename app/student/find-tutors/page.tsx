@@ -10,6 +10,7 @@ import { getDisplayName } from '@/lib/utils/displayName';
 import { getAvatarColor } from '@/lib/utils/avatarColors';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import UserAvatar from '@/components/UserAvatar';
+import { profileBannerDisplayUrl } from '@/lib/utils/profileBannerDisplayUrl';
 
 type Tutor = {
   id: string;
@@ -17,6 +18,8 @@ type Tutor = {
   username: string | null;
   display_name: string | null;
   avatar_url: string | null;
+  profile_banner_url?: string | null;
+  updated_at?: string;
   school?: string | null;
   institution_id?: string | null;
   institution_name?: string | null;
@@ -95,8 +98,8 @@ export default function FindTutorsPage() {
       }
       
       const tutorSelectTiers = [
+        'id, full_name, username, display_name, avatar_url, profile_banner_url, updated_at, institution_id, country, bio, tutor_verification_status, teaching_mode, tutor_type',
         'id, full_name, username, display_name, avatar_url, updated_at, institution_id, country, bio, tutor_verification_status, teaching_mode, tutor_type',
-        'id, full_name, username, display_name, avatar_url, institution_id, country, bio, tutor_verification_status, teaching_mode, tutor_type',
         'id, full_name, username, display_name, avatar_url, country, bio, tutor_verification_status, teaching_mode, tutor_type',
         'id, full_name, username, display_name, avatar_url, country, bio, tutor_verification_status',
         'id, full_name, username, display_name, country, bio, tutor_verification_status',
@@ -567,8 +570,25 @@ export default function FindTutorsPage() {
               return (
                 <div
                   key={tutor.id}
-                  className="bg-white border-2 border-gray-200 rounded-2xl p-6 hover:shadow-xl hover:border-itutor-green transition-all duration-300 flex flex-col"
+                  className="bg-white border-2 border-gray-200 rounded-2xl overflow-hidden hover:shadow-xl hover:border-itutor-green transition-all duration-300 flex flex-col"
                 >
+                  <div className="relative h-28 shrink-0 sm:h-32">
+                    {tutor.profile_banner_url ? (
+                      <img
+                        src={profileBannerDisplayUrl(tutor.profile_banner_url, tutor.updated_at)}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div
+                        className={`h-full w-full bg-gradient-to-br ${getAvatarColor(tutor.id)}`}
+                        aria-hidden
+                      />
+                    )}
+                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/25 to-transparent" />
+                  </div>
+
+                  <div className="p-6 flex flex-col flex-1">
                   {/* Verified Badge */}
                   {matchesStudentSubjects && tutor.tutor_verification_status === 'VERIFIED' && (
                     <div className="mb-3">
@@ -663,6 +683,7 @@ export default function FindTutorsPage() {
                     >
                       View Profile
                     </button>
+                  </div>
                   </div>
                 </div>
               );

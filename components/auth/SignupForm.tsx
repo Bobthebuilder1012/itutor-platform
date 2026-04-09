@@ -67,6 +67,7 @@ export default function SignupForm({ onSwitchMode, onSuccess, redirectTo }: Sign
         options: {
           data: {
             full_name: trimmedName,
+            role: 'student',
           },
         },
       });
