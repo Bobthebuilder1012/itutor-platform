@@ -24,7 +24,7 @@ function getOccurrenceStatus(occ: GroupOccurrence): OccurrenceStatus {
   const joinWindowMs = 15 * 60 * 1000;
 
   if (now < start - joinWindowMs) return 'too_early';
-  if (now > end + 30 * 60 * 1000) return 'ended';
+  if (now > end) return 'ended';
   return 'live';
 }
 
