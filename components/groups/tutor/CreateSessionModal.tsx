@@ -49,6 +49,7 @@ export default function CreateSessionModal({ groupId, onCreated, onClose }: Crea
         ...form,
         starts_on: form.recurrence_type !== 'none' ? today : form.starts_on,
         ends_on: undefined,
+        timezone_offset: new Date().getTimezoneOffset(),
       };
       const res = await fetch(`/api/groups/${groupId}/sessions`, {
         method: 'POST',

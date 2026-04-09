@@ -179,52 +179,64 @@ function generateOccurrences(session: any) {
 
   const [startHour, startMin] = session.start_time.split(':').map(Number);
   const durationMs = session.duration_minutes * 60 * 1000;
+  const offsetMs = (session.timezone_offset ?? 0) * 60 * 1000;
 
-  const startsOn = new Date(session.starts_on + 'T00:00:00');
-  const endsOn = session.ends_on ? new Date(session.ends_on + 'T23:59:59') : null;
+  const [y, m, d] = session.starts_on.split('-').map(Number);
+  const endsOn = session.ends_on
+    ? (() => { const [ey, em, ed] = session.ends_on.split('-').map(Number); return Date.UTC(ey, em - 1, ed, 23, 59, 59); })()
+    : null;
+
+  function localToUtc(year: number, month: number, day: number): Date {
+    const utcBase = Date.UTC(year, month - 1, day, startHour, startMin, 0, 0);
+    return new Date(utcBase + offsetMs);
+  }
 
   if (session.recurrence_type === 'none') {
-    const d = new Date(startsOn);
-    d.setHours(startHour, startMin, 0, 0);
+    const start = localToUtc(y, m, d);
     occurrences.push({
-      scheduled_start_at: d.toISOString(),
-      scheduled_end_at: new Date(d.getTime() + durationMs).toISOString(),
+      scheduled_start_at: start.toISOString(),
+      scheduled_end_at: new Date(start.getTime() + durationMs).toISOString(),
       status: 'upcoming',
     });
     return occurrences;
   }
 
   const maxOccurrences = 400;
-  const current = new Date(startsOn);
-  current.setHours(startHour, startMin, 0, 0);
+  const cursor = new Date(Date.UTC(y, m - 1, d));
 
   while (occurrences.length < maxOccurrences) {
-    if (endsOn && current > endsOn) break;
+    const curY = cursor.getUTCFullYear();
+    const curM = cursor.getUTCMonth() + 1;
+    const curD = cursor.getUTCDate();
+    const curDay = cursor.getUTCDay();
+
+    if (endsOn && cursor.getTime() > endsOn) break;
 
     if (session.recurrence_type === 'weekly') {
       const days: DayOfWeek[] = session.recurrence_days ?? [];
       if (days.length === 0) break;
 
-      if (days.includes(current.getDay() as DayOfWeek)) {
+      if (days.includes(curDay as DayOfWeek)) {
+        const start = localToUtc(curY, curM, curD);
         occurrences.push({
-          scheduled_start_at: current.toISOString(),
-          scheduled_end_at: new Date(current.getTime() + durationMs).toISOString(),
+          scheduled_start_at: start.toISOString(),
+          scheduled_end_at: new Date(start.getTime() + durationMs).toISOString(),
           status: 'upcoming',
         });
       }
-      current.setDate(current.getDate() + 1);
     } else if (session.recurrence_type === 'daily') {
+      const start = localToUtc(curY, curM, curD);
       occurrences.push({
-        scheduled_start_at: current.toISOString(),
-        scheduled_end_at: new Date(current.getTime() + durationMs).toISOString(),
+        scheduled_start_at: start.toISOString(),
+        scheduled_end_at: new Date(start.getTime() + durationMs).toISOString(),
         status: 'upcoming',
       });
-      current.setDate(current.getDate() + 1);
     } else {
       break;
     }
 
-    // Cap: ~1 year for daily, ~2 years for weekly (when no end date set)
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+
     const cap = session.recurrence_type === 'daily' ? 365 : 104;
     if (!endsOn && occurrences.length >= cap) break;
   }
