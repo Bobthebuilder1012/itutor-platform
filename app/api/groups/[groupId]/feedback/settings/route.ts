@@ -102,7 +102,47 @@ async function ensureCurrentPeriod(
 
   if (existing && existing.length > 0) {
     const current = existing[0] as any;
-    if (current.frequency === frequency) return;
+    if (current.frequency === frequency) {
+      // Period exists — make sure it has entries (re-populate if empty)
+      const { count } = await service
+        .from('group_feedback_entries')
+        .select('id', { count: 'exact', head: true })
+        .eq('period_id', current.id);
+      if ((count ?? 0) === 0) {
+        const { data: members } = await service
+          .from('group_members')
+          .select('user_id')
+          .eq('group_id', groupId)
+          .eq('status', 'approved');
+
+        const { data: grp } = await service.from('groups').select('tutor_id').eq('id', groupId).single();
+        const tid = grp?.tutor_id;
+
+        const { data: profiles } = await service
+          .from('profiles')
+          .select('id, role')
+          .in('id', (members ?? []).map((m: any) => m.user_id));
+
+        const tutorIds = new Set(
+          (profiles ?? []).filter((p: any) => p.role === 'tutor').map((p: any) => p.id)
+        );
+        if (tid) tutorIds.add(tid);
+
+        const students = (members ?? []).filter((m: any) => !tutorIds.has(m.user_id));
+        if (students.length > 0) {
+          await service.from('group_feedback_entries').insert(
+            students.map((s: any) => ({
+              period_id: current.id,
+              group_id: groupId,
+              student_id: s.user_id,
+              tutor_id: tid,
+              status: 'pending',
+            }))
+          );
+        }
+      }
+      return;
+    }
 
     // Frequency changed — delete old periods and their entries so we can recreate
     const { data: oldPeriods } = await service
