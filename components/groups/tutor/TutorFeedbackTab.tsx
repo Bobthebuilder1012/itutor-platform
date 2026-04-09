@@ -58,6 +58,7 @@ export default function TutorFeedbackTab({ groupId, memberCount }: TutorFeedback
   const [settings, setSettings] = useState<FeedbackSettings | null>(null);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
+  const [settingsCollapsed, setSettingsCollapsed] = useState(false);
 
   const [periodsLoading, setPeriodsLoading] = useState(true);
   const [periods, setPeriods] = useState<FeedbackPeriodWithEntries[]>([]);
@@ -190,12 +191,19 @@ export default function TutorFeedbackTab({ groupId, memberCount }: TutorFeedback
       {/* ─── Settings Section ─── */}
       {settings && (
         <div className="bg-white border border-[#e4e8ee] rounded-[14px] p-[22px] shadow-[0_1px_3px_rgba(0,0,0,0.04)] mb-5">
-          <div className="text-[11px] font-bold uppercase tracking-[.08em] text-[#6b7280] mb-4 flex items-center gap-2">
+          <div
+            className="text-[11px] font-bold uppercase tracking-[.08em] text-[#6b7280] mb-4 flex items-center gap-2 cursor-pointer select-none"
+            onClick={() => setSettingsCollapsed(!settingsCollapsed)}
+          >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" /></svg>
             Feedback Settings
+            <svg
+              width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+              className={`ml-auto transition-transform ${settingsCollapsed ? '' : 'rotate-180'}`}
+            ><polyline points="6 9 12 15 18 9" /></svg>
           </div>
 
-          <div className="flex items-center justify-between py-3">
+          {!settingsCollapsed && <><div className="flex items-center justify-between py-3">
             <div className="flex-1 mr-4">
               <div className="text-[13px] font-semibold">Enable student feedback</div>
               <div className="text-[11px] text-[#6b7280] mt-px leading-relaxed">Give written feedback to each student on their progress. Feedback is private — students only see their own, and linked parent accounts can also view it.</div>
@@ -284,6 +292,7 @@ export default function TutorFeedbackTab({ groupId, memberCount }: TutorFeedback
               {settingsSaving ? 'Saving…' : settingsSaved ? 'Saved!' : 'Save Feedback Settings'}
             </button>
           </div>
+          </>}
         </div>
       )}
 
