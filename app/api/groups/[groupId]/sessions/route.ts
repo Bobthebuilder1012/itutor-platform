@@ -126,8 +126,8 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     if (sessionError) throw sessionError;
 
-    // Generate occurrences
-    const occurrences = generateOccurrences(session);
+    // Generate occurrences (pass client timezone since it's not stored in DB)
+    const occurrences = generateOccurrences({ ...session, timezone_offset: body.timezone_offset });
 
     if (occurrences.length > 0) {
       const { error: occError } = await service
