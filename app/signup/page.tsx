@@ -319,7 +319,7 @@ export default function SignupPage() {
     <div className="min-h-screen flex" style={{ background: 'linear-gradient(135deg, #071a0e 0%, #0d2318 50%, #0a1e14 100%)' }}>
 
       {/* LEFT PANEL */}
-      <div className="hidden lg:flex lg:w-[58%] flex-col justify-center px-24 py-12 items-center relative overflow-hidden">
+      <div className="hidden lg:flex lg:w-[55%] flex-col justify-center px-24 py-12 items-center relative overflow-hidden">
         {/* Background glows */}
         <div className="absolute top-[-60px] right-[-60px] w-80 h-80 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(25,147,86,0.18) 0%, transparent 70%)' }} />
         <div className="absolute bottom-[40px] left-[-60px] w-64 h-64 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(25,147,86,0.10) 0%, transparent 70%)' }} />
@@ -409,8 +409,8 @@ export default function SignupPage() {
       </div>
 
       {/* RIGHT PANEL */}
-      <div className="w-full lg:w-[42%] flex items-center justify-center px-8 py-10 relative z-10">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[400px] px-8 py-6">
+      <div className="w-full lg:w-[45%] flex items-center justify-center px-8 py-10 relative z-10">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[480px] px-10 py-8">
 
           {/* Heading */}
           <div className="text-center mb-2">
