@@ -303,7 +303,7 @@ export default function SignupPage() {
   return (
     <div className="min-h-screen flex" style={{ background: 'linear-gradient(135deg, #071a0e 0%, #0d2318 50%, #0a1e14 100%)' }}>
       {/* LEFT PANEL */}
-      <div className="hidden lg:flex lg:w-[58%] flex-col justify-center px-24 py-12 items-center relative overflow-hidden">
+      <div className="hidden lg:flex lg:w-[55%] flex-col justify-center px-24 py-12 items-center relative overflow-hidden">
         <div className="absolute top-[-60px] right-[-60px] w-80 h-80 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(25,147,86,0.18) 0%, transparent 70%)' }} />
         <div className="absolute bottom-[40px] left-[-60px] w-64 h-64 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(25,147,86,0.10) 0%, transparent 70%)' }} />
         <div className="flex flex-col w-full max-w-lg">
@@ -357,8 +357,8 @@ export default function SignupPage() {
       </div>
 
       {/* RIGHT PANEL */}
-      <div className="w-full lg:w-[42%] flex items-center justify-center px-6 py-6 relative z-10">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[460px] px-6 py-5 max-h-[calc(100vh-48px)] overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#d1d5db transparent' }}>
+      <div className="w-full lg:w-[45%] flex items-center justify-center px-6 py-6 relative z-10">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[480px] px-8 py-6 max-h-[calc(100vh-48px)] overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#d1d5db transparent' }}>
 
           {/* Step Indicator — 5 dots */}
           <div className="flex items-center gap-0 mb-1 px-1">

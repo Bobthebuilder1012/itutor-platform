@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
       .order('next_send_at', { ascending: true })
       .limit(50); // Process max 50 emails per run
 
-    if (fetchError) {
+    if (fetchError != null) {
       console.error('Error fetching pending emails:', fetchError);
       return NextResponse.json({ error: fetchError.message }, { status: 500 });
     }
