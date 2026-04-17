@@ -115,9 +115,6 @@ export default function GroupMemberView({ group, currentUserId }: GroupMemberVie
           />
         )}
       </div>
-      <div className="border-t border-[#e4e8ee] p-4 flex-shrink-0">
-        <WhatsAppJoinButton groupId={group.id} />
-      </div>
     </div>
   );
 
@@ -137,8 +134,9 @@ export default function GroupMemberView({ group, currentUserId }: GroupMemberVie
             <p className="text-[12px] text-[#6b7280] mt-px">{tutorName}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
           <span className="px-3 py-1 rounded-[20px] text-[11px] font-semibold bg-[#d1fae5] text-[#047857]">Active</span>
+          <WhatsAppJoinButton groupId={group.id} variant="toolbar" />
           <button
             onClick={handleMessageTutor}
             disabled={dmLoading}

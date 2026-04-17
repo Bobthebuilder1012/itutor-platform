@@ -39,13 +39,26 @@ export default function GroupGridCard({ group, onClick, onAskToJoin }: GroupGrid
   const isManageCard = !onAskToJoin && membershipStatus !== 'approved' && membershipStatus !== 'pending';
   const sessionLengthMinutes =
     (group as any).sessionLengthMinutes ?? (group as any).session_length_minutes ?? null;
+  const pricingMode =
+    ((group as any).pricing_mode as string | undefined) ??
+    (group.pricing_model === 'PER_SESSION'
+      ? 'PER_SESSION'
+      : group.pricing_model === 'MONTHLY'
+        ? 'PER_COURSE'
+        : (group.pricing_model as string | undefined) ?? 'FREE');
   const effectivePrice =
-    (group as any).pricePerSession ??
-    (group as any).price_per_session ??
-    (group as any).pricePerCourse ??
-    (group as any).price_per_course ??
-    null;
-  const isPaid = effectivePrice && Number(effectivePrice) > 0;
+    pricingMode === 'PER_SESSION'
+      ? (group as any).pricePerSession ?? (group as any).price_per_session ?? null
+      : pricingMode === 'PER_COURSE'
+        ? (group as any).pricePerCourse ?? (group as any).price_per_course ?? null
+        : (group as any).pricePerSession ??
+          (group as any).price_per_session ??
+          (group as any).pricePerCourse ??
+          (group as any).price_per_course ??
+          null;
+  const isPaid =
+    pricingMode !== 'FREE' && effectivePrice != null && Number(effectivePrice) > 0;
+  const priceSuffix = pricingMode === 'PER_SESSION' ? '/session' : '/mo';
   const nextSession = group.next_occurrence
     ? new Date(group.next_occurrence.scheduled_start_at).toLocaleString(undefined, {
         month: 'short',
@@ -53,6 +66,11 @@ export default function GroupGridCard({ group, onClick, onAskToJoin }: GroupGrid
       })
     : null;
   const estimatedEarnings = Number((group as any).estimated_earnings ?? 0);
+  const cap = group.max_students != null && group.max_students > 0 ? group.max_students : null;
+  const enrolledCount = group.member_count ?? 0;
+  const enrolledStudents = Math.max(0, enrolledCount - 1);
+  const spotsLeft = cap != null ? Math.max(cap - enrolledStudents, 0) : null;
+  const pctFull = cap && cap > 0 ? enrolledStudents / cap : 0;
 
   const hasCustomImage = coverImage && !isDefaultThumbnail(coverImage);
   const thumbnail: DefaultThumbnail =
@@ -92,7 +110,17 @@ export default function GroupGridCard({ group, onClick, onAskToJoin }: GroupGrid
             </div>
           </div>
         )}
-        <div className="absolute top-3 left-3 flex gap-1.5 flex-wrap">
+        <div className="absolute top-3 left-3 flex gap-1.5 flex-wrap max-w-[85%]">
+          {cap != null && spotsLeft !== null && spotsLeft > 0 && spotsLeft <= 5 && (
+            <span className="px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider bg-orange-500/90 text-white backdrop-blur-sm">
+              Only {spotsLeft} spot{spotsLeft === 1 ? '' : 's'} left
+            </span>
+          )}
+          {cap != null && pctFull >= 0.8 && (
+            <span className="px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider bg-rose-600/90 text-white backdrop-blur-sm">
+              Filling fast
+            </span>
+          )}
           {membershipStatus === 'approved' && (
             <span className="px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-700 backdrop-blur-sm">
               Member
@@ -119,9 +147,12 @@ export default function GroupGridCard({ group, onClick, onAskToJoin }: GroupGrid
       </div>
 
       <div className="p-[18px]">
-        <h3 className="text-[17px] font-bold text-gray-900 mb-3 leading-snug line-clamp-2">
+        <h3 className="text-[17px] font-bold text-gray-900 mb-1 leading-snug line-clamp-2">
           {group.name}
         </h3>
+        <p className="text-[12px] text-slate-500 mb-3">
+          {enrolledStudents} student{enrolledStudents === 1 ? '' : 's'} enrolled
+        </p>
 
         <div className="flex items-center gap-2.5 mb-3.5">
           {group.tutor?.avatar_url ? (
@@ -195,7 +226,7 @@ export default function GroupGridCard({ group, onClick, onAskToJoin }: GroupGrid
             </span>
           </div>
           <span className={`text-base font-extrabold ${isPaid ? 'text-indigo-600' : 'text-emerald-600'}`}>
-            {isPaid ? `$${Number(effectivePrice)}/mo` : 'Free'}
+            {isPaid ? `$${Number(effectivePrice)}${priceSuffix}` : 'Free'}
           </span>
         </div>
       </div>

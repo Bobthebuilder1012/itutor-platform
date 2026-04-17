@@ -1,9 +1,9 @@
 import * as React from 'react';
-import { Resend } from 'resend';
 import SessionReminderEmail, {
   SessionReminderRecipientType,
   SessionReminderType,
 } from '@/emails/SessionReminderEmail';
+import { sendEmail } from '@/lib/services/emailService';
 
 export interface ReminderEmailPayload {
   recipientEmail: string;
@@ -24,20 +24,6 @@ export interface ReminderEmailResult {
   error?: string;
 }
 
-let resendClient: Resend | null = null;
-
-function getResendClient(): Resend {
-  if (!process.env.RESEND_API_KEY) {
-    throw new Error('RESEND_API_KEY is not configured');
-  }
-
-  if (!resendClient) {
-    resendClient = new Resend(process.env.RESEND_API_KEY);
-  }
-
-  return resendClient;
-}
-
 function buildSubject(payload: ReminderEmailPayload): string {
   return `Reminder: your ${payload.subjectName} session starts in ${payload.reminderType === '24h' ? '24 hours' : '1 hour'}`;
 }
@@ -48,7 +34,28 @@ function buildSubject(payload: ReminderEmailPayload): string {
 export async function sendReminderEmail(
   payload: ReminderEmailPayload
 ): Promise<ReminderEmailResult> {
-  // ALL EMAILS DISABLED
-  console.log(`[EMAIL BLOCKED] reminder to=${payload.recipientEmail}`);
-  return { success: true, messageId: 'disabled' };
+  const subject = buildSubject(payload);
+  const result = await sendEmail({
+    to: payload.recipientEmail,
+    subject,
+    react: (
+      <SessionReminderEmail
+        recipientType={payload.recipientType}
+        reminderType={payload.reminderType}
+        subjectName={payload.subjectName}
+        tutorName={payload.tutorName}
+        studentName={payload.studentName}
+        sessionStartAt={payload.sessionStartAt}
+        durationMinutes={payload.durationMinutes}
+        joinUrl={payload.joinUrl}
+        cancelOrRescheduleUrl={payload.cancelOrRescheduleUrl}
+      />
+    ),
+  });
+
+  return {
+    success: result.success,
+    messageId: result.messageId,
+    error: result.error,
+  };
 }

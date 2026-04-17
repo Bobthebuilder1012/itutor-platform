@@ -80,7 +80,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
     // Check group exists and is not archived
     const { data: group } = await service
       .from('groups')
-      .select('id, tutor_id')
+      .select('id, tutor_id, name')
       .eq('id', groupId)
       .is('archived_at', null)
       .single();
@@ -137,13 +137,15 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
     // Notify tutor of new join request (non-critical)
     try {
+      const groupName = (group as { name?: string }).name ?? 'your class';
       await service.from('notifications').insert({
         user_id: group.tutor_id,
         type: 'booking_request',
-        title: 'New group join request',
-        message: 'A student has requested to join your group.',
-        link: `/groups`,
+        title: 'New join request',
+        message: `A student requested to join "${groupName}".`,
+        link: `/groups/${groupId}`,
         group_id: groupId,
+        metadata: { groupId, studentId: user.id },
       });
     } catch {
       // Non-critical: notifications table may use a different name

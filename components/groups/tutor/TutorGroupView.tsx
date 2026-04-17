@@ -215,6 +215,19 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
     fetch(`/api/groups/${group.id}/visit`, { method: 'POST' }).catch(() => {});
   }, [fetchSessions, fetchMembers, group.id]);
 
+  const sidebarRetentionPercent = useMemo(() => {
+    const months = monthlyRetention ?? [];
+    if (months.length >= 2) {
+      const priorComplete = months[months.length - 2];
+      if (priorComplete?.retentionPercent != null) return priorComplete.retentionPercent;
+    }
+    if (months.length >= 1) {
+      const latest = months[months.length - 1];
+      if (latest?.retentionPercent != null) return latest.retentionPercent;
+    }
+    return analytics?.student_retention_rate ?? 0;
+  }, [monthlyRetention, analytics]);
+
   useEffect(() => {
     setManageForm({
       name: group.name ?? '',
@@ -317,6 +330,23 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
     : null;
   const estimatedEarnings = Number((group as any).estimated_earnings ?? 0);
   const approvedMembers = members.filter((m) => m.status === 'approved');
+  const pendingJoinRequests = useMemo(() => members.filter((m) => m.status === 'pending'), [members]);
+  const [pendingActionId, setPendingActionId] = useState<string | null>(null);
+
+  const decideJoinRequest = async (userId: string, status: 'approved' | 'denied') => {
+    setPendingActionId(userId);
+    try {
+      await fetch(`/api/groups/${group.id}/members/${userId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      await fetchMembers();
+      onGroupUpdated();
+    } finally {
+      setPendingActionId(null);
+    }
+  };
   const starCount = Math.round(Number(group.tutor?.rating_average ?? 0));
   const stars = '★'.repeat(Math.min(starCount, 5)) + '☆'.repeat(Math.max(5 - starCount, 0));
   const reviewCount = group.tutor?.rating_count ?? 0;
@@ -510,6 +540,46 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
           </div>
         </div>
       </div>
+
+      {pendingJoinRequests.length > 0 && (
+        <div className="max-w-[1100px] mx-auto px-7 mt-4">
+          <div className="rounded-[14px] border border-amber-200 bg-amber-50 px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-[13px] font-bold text-amber-900">
+                {pendingJoinRequests.length} pending join request{pendingJoinRequests.length === 1 ? '' : 's'}
+              </p>
+              <p className="text-[12px] text-amber-800 mt-0.5">Approve or deny without opening Manage Class.</p>
+            </div>
+            <div className="flex flex-col gap-2 min-w-0">
+              {pendingJoinRequests.map((m) => {
+                const name = m.profile?.full_name ?? 'Student';
+                const busy = pendingActionId === m.user_id;
+                return (
+                  <div key={m.id} className="flex flex-wrap items-center gap-2">
+                    <span className="text-[13px] font-semibold text-gray-900 truncate max-w-[200px]">{name}</span>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void decideJoinRequest(m.user_id, 'approved')}
+                      className="px-3 py-1.5 rounded-[10px] text-[12px] font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+                    >
+                      {busy ? '…' : 'Approve'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void decideJoinRequest(m.user_id, 'denied')}
+                      className="px-3 py-1.5 rounded-[10px] text-[12px] font-semibold border border-gray-300 bg-white text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Deny
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── MANAGE PANEL (conditional) ── */}
       {manageOpen && (
@@ -1162,7 +1232,19 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
                 <p className="text-[10.5px] text-slate-500 font-medium mt-0.5">Avg Attendance</p>
               </div>
               <div className="relative overflow-hidden py-3.5 px-2.5 bg-gray-50 rounded-[10px] text-center before:absolute before:top-0 before:left-0 before:right-0 before:h-[3px] before:bg-orange-500 before:rounded-t-[10px]">
-                <p className={`text-[22px] font-extrabold leading-tight ${(analytics?.student_retention_rate ?? 0) > 0 ? 'text-emerald-600' : (analytics?.student_retention_rate ?? 0) < 0 ? 'text-red-600' : ''}`}>{(analytics?.student_retention_rate ?? 0) > 0 ? '+' : ''}{analytics?.student_retention_rate ?? 0}%</p>
+                <p
+                  className={`text-[22px] font-extrabold leading-tight ${
+                    sidebarRetentionPercent > 100
+                      ? 'text-emerald-600'
+                      : sidebarRetentionPercent >= 80
+                        ? 'text-emerald-600'
+                        : sidebarRetentionPercent < 50
+                          ? 'text-amber-600'
+                          : 'text-slate-800'
+                  }`}
+                >
+                  {sidebarRetentionPercent}%
+                </p>
                 <p className="text-[10.5px] text-slate-500 font-medium mt-0.5">Retention</p>
               </div>
               <div className="relative overflow-hidden py-3.5 px-2.5 bg-gray-50 rounded-[10px] text-center before:absolute before:top-0 before:left-0 before:right-0 before:h-[3px] before:bg-amber-400 before:rounded-t-[10px]">

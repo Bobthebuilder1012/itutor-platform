@@ -61,6 +61,7 @@ export default function FindTutorsPage() {
   const [selectedSchool, setSelectedSchool] = useState<string>('');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [sortOrder, setSortOrder] = useState<'relevance' | 'price_low' | 'rating_high'>('relevance');
   const TUTORS_PER_PAGE = 9;
 
   useEffect(() => {
@@ -329,34 +330,36 @@ export default function FindTutorsPage() {
       }
     }
 
-    // Sort: Prioritize tutors who teach student's subjects, then by rating
-    if (profile?.subjects_of_study && profile.subjects_of_study.length > 0) {
+    const minPrice = (t: Tutor) => {
+      const prices = t.subjects.map((s) => s.price_per_hour_ttd);
+      return prices.length ? Math.min(...prices) : Number.POSITIVE_INFINITY;
+    };
+
+    if (sortOrder === 'price_low') {
+      filtered.sort((a, b) => minPrice(a) - minPrice(b));
+    } else if (sortOrder === 'rating_high') {
+      filtered.sort((a, b) => (b.average_rating ?? -1) - (a.average_rating ?? -1));
+    } else if (profile?.subjects_of_study && profile.subjects_of_study.length > 0) {
       filtered.sort((a, b) => {
-        const aMatchesSubjects = a.subjects.some(s =>
-          profile.subjects_of_study?.includes(s.name)
-        );
-        const bMatchesSubjects = b.subjects.some(s =>
-          profile.subjects_of_study?.includes(s.name)
-        );
+        const aMatchesSubjects = a.subjects.some((s) => profile.subjects_of_study?.includes(s.name));
+        const bMatchesSubjects = b.subjects.some((s) => profile.subjects_of_study?.includes(s.name));
 
         if (aMatchesSubjects && !bMatchesSubjects) return -1;
         if (!aMatchesSubjects && bMatchesSubjects) return 1;
 
-        // If both match or both don't match, sort by rating
         const aRating = a.average_rating || 0;
         const bRating = b.average_rating || 0;
         return bRating - aRating;
       });
     } else {
-      // Just sort by rating if no student subjects
       filtered.sort((a, b) => (b.average_rating || 0) - (a.average_rating || 0));
     }
 
     return filtered;
-  }, [tutors, searchQuery, selectedSubjects, selectedRating, selectedPrice, selectedSchool, profile]);
+  }, [tutors, searchQuery, selectedSubjects, selectedRating, selectedPrice, selectedSchool, profile, sortOrder]);
 
   // Reset to page 1 whenever filters change
-  useEffect(() => { setCurrentPage(1); }, [searchQuery, selectedSubjects, selectedRating, selectedPrice, selectedSchool]);
+  useEffect(() => { setCurrentPage(1); }, [searchQuery, selectedSubjects, selectedRating, selectedPrice, selectedSchool, sortOrder]);
 
   const totalPages = Math.ceil(filteredTutors.length / TUTORS_PER_PAGE);
   const pagedTutors = filteredTutors.slice(
@@ -534,11 +537,23 @@ export default function FindTutorsPage() {
           )}
 
           {/* Results bar */}
-          <div className={`px-4 py-2.5 flex items-center justify-between ${filtersOpen ? 'border-t border-gray-100' : ''}`}>
+          <div className={`px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap ${filtersOpen ? 'border-t border-gray-100' : ''}`}>
             <p className="text-sm font-semibold text-itutor-green">
               {filteredTutors.length >= 100 ? '100+' : filteredTutors.length} iTutors Found
               {totalPages > 1 && <span className="text-gray-400 font-normal ml-2 text-xs">page {currentPage} of {totalPages}</span>}
             </p>
+            <div className="flex items-center gap-2 ml-auto">
+              <label className="text-xs text-gray-500 whitespace-nowrap">Sort</label>
+              <select
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value as 'relevance' | 'price_low' | 'rating_high')}
+                className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-800 focus:ring-2 focus:ring-itutor-green focus:border-itutor-green"
+              >
+                <option value="relevance">Best match</option>
+                <option value="price_low">Price: Low to High</option>
+                <option value="rating_high">Rating: High to Low</option>
+              </select>
+            </div>
             {hasActiveFilters && !filtersOpen && (
               <button onClick={clearFilters} className="text-xs text-gray-400 hover:text-red-400 transition font-medium">Clear filters</button>
             )}
