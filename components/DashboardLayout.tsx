@@ -10,8 +10,6 @@ import { useSuspensionCheck } from '@/lib/hooks/useSuspensionCheck';
 import NotificationBell from '@/components/NotificationBell';
 import MessagesIcon from '@/components/MessagesIcon';
 import CalendarIcon from '@/components/CalendarIcon';
-import EnableNotificationsPrompt from '@/components/EnableNotificationsPrompt';
-import IOSInstallPrompt from '@/components/IOSInstallPrompt';
 import { initializePushNotifications } from '@/lib/services/browserPushService';
 import { isCommunitiesArchived } from '@/lib/featureFlags/communitiesArchived';
 import { isGroupsFeatureEnabled } from '@/lib/featureFlags/groupsFeature';
@@ -412,8 +410,6 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
 
         {/* Content */}
         <main className={`flex-1 ${isGroupsPage ? 'flex flex-col min-h-0' : 'p-5 lg:p-8'}`}>
-          {effectiveUserId && <EnableNotificationsPrompt userId={effectiveUserId} />}
-          <IOSInstallPrompt />
           {children}
         </main>
       </div>
