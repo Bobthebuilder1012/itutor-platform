@@ -56,7 +56,7 @@ export default function StudentDashboard() {
   const [avatarModalOpen, setAvatarModalOpen] = useState(false);
   const [editSubjectsModalOpen, setEditSubjectsModalOpen] = useState(false);
   const [editProfileModalOpen, setEditProfileModalOpen] = useState(false);
-  const { uploadAvatar, uploading } = useAvatarUpload(profile?.id || '');
+  const { uploadAvatar, deleteAvatar, uploading } = useAvatarUpload(profile?.id || '');
 
   useEffect(() => {
     if (testMode) {
@@ -272,6 +272,14 @@ export default function StudentDashboard() {
     }
   };
 
+  const handleRemoveAvatar = async () => {
+    if (!profile) return;
+    const result = await deleteAvatar();
+    if (!result.success) throw new Error(result.error || 'Failed to remove photo');
+    setAvatarModalOpen(false);
+    window.location.reload();
+  };
+
   return (
     <DashboardLayout role="student" userName={displayName}>
       <div className="max-w-7xl mx-auto space-y-5">
@@ -372,6 +380,8 @@ export default function StudentDashboard() {
         onClose={() => setAvatarModalOpen(false)}
         onUpload={handleAvatarUpload}
         uploading={uploading}
+        hasAvatar={Boolean(profile?.avatar_url)}
+        onRemovePhoto={!testMode && profile ? handleRemoveAvatar : undefined}
       />
 
       {!testMode && profile && (

@@ -8,6 +8,15 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      keyframes: {
+        'logout-drift': {
+          from: { transform: 'translate(0, 0) scale(1)' },
+          to: { transform: 'translate(30px, 20px) scale(1.08)' },
+        },
+      },
+      animation: {
+        'logout-drift': 'logout-drift 8s ease-in-out infinite alternate',
+      },
       screens: {
         '3xl': '1920px',
       },

@@ -319,16 +319,23 @@ export default function SignupPage() {
     <div className="min-h-screen flex" style={{ background: 'linear-gradient(135deg, #071a0e 0%, #0d2318 50%, #0a1e14 100%)' }}>
 
       {/* LEFT PANEL */}
-      <div className="hidden lg:flex lg:w-[55%] flex-col justify-center px-24 py-12 items-center relative overflow-hidden">
+      <div className="relative hidden flex-col justify-center overflow-hidden px-24 py-12 lg:flex lg:w-[55%] lg:items-start">
         {/* Background glows */}
         <div className="absolute top-[-60px] right-[-60px] w-80 h-80 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(25,147,86,0.18) 0%, transparent 70%)' }} />
         <div className="absolute bottom-[40px] left-[-60px] w-64 h-64 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(25,147,86,0.10) 0%, transparent 70%)' }} />
 
         {/* Main content */}
-        <div className="flex flex-col w-full max-w-lg">
-          {/* Top logo */}
-          <div className="mb-12">
-            <img src="/assets/logo/itutor-logo-dark.png" alt="iTutor" className="h-24 w-auto" style={{ filter: 'brightness(0) invert(1)' }} />
+        <div className="flex w-full max-w-lg flex-col">
+          {/* Top logo — pull left to match badge/heading (asset has extra canvas on the left) */}
+          <div className="mb-12 flex items-center gap-3 -ml-4 sm:-ml-6">
+            <img
+              src="/assets/logo/itutor-mark.png"
+              alt=""
+              className="h-28 w-auto shrink-0 object-contain object-left mix-blend-screen sm:h-[9rem]"
+              aria-hidden
+            />
+            <span className="text-7xl font-bold lowercase tracking-tight text-white sm:text-8xl">itutor</span>
+            <span className="sr-only">iTutor</span>
           </div>
 
           {/* Badge */}

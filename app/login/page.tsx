@@ -298,13 +298,20 @@ export default function LoginPage() {
     <div className="min-h-screen flex" style={{ background: 'linear-gradient(135deg, #071a0e 0%, #0d2318 50%, #0a1e14 100%)' }}>
 
       {/* LEFT PANEL */}
-      <div className="hidden lg:flex lg:w-[52%] flex-col justify-between px-16 py-14 relative overflow-hidden">
+      <div className="relative hidden flex-col justify-between overflow-hidden px-16 py-14 lg:flex lg:w-[52%] lg:items-start">
         <div className="absolute top-[-80px] right-[-80px] w-[500px] h-[500px] rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(25,147,86,0.13) 0%, transparent 65%)' }} />
         <div className="absolute bottom-[-60px] left-[-60px] w-80 h-80 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(25,147,86,0.09) 0%, transparent 70%)' }} />
 
-        {/* Logo */}
-        <div>
-          <img src="/assets/logo/itutor-logo-dark.png" alt="iTutor" className="h-24 w-auto" style={{ filter: 'brightness(0) invert(1)' }} />
+        {/* Logo: green mark + white wordmark (same as signup hero) */}
+        <div className="flex items-center gap-3 -ml-4 sm:-ml-6">
+          <img
+            src="/assets/logo/itutor-mark.png"
+            alt=""
+            className="h-28 w-auto shrink-0 object-contain object-left mix-blend-screen sm:h-[9rem]"
+            aria-hidden
+          />
+          <span className="text-7xl font-bold lowercase tracking-tight text-white sm:text-8xl">itutor</span>
+          <span className="sr-only">iTutor</span>
         </div>
 
         {/* Main copy */}
