@@ -7,7 +7,6 @@ import { supabase } from '@/lib/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
 import SubjectMultiSelect from '@/components/SubjectMultiSelect';
 import { getDisplayName } from '@/lib/utils/displayName';
-import { getAvatarColor } from '@/lib/utils/avatarColors';
 import UserAvatar from '@/components/UserAvatar';
 
 type Student = {
@@ -42,7 +41,7 @@ export default function FindStudentsPage() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [availableSchools, setAvailableSchools] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const STUDENTS_PER_PAGE = 9;
+  const STUDENTS_PER_PAGE = 12;
 
   useEffect(() => {
     if (loading) return;
@@ -404,7 +403,7 @@ export default function FindStudentsPage() {
             <p className="text-sm text-gray-500">Try adjusting your filters</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {pagedStudents.map(student => {
               // Check if tutor teaches any of the student's subjects
               const matchesTutorSubjects = profile.subjects_of_study?.some(tutorSubject =>
@@ -414,11 +413,11 @@ export default function FindStudentsPage() {
               return (
                 <div
                   key={student.id}
-                  className="bg-white border-2 border-gray-200 rounded-2xl p-6 hover:shadow-xl hover:border-itutor-green transition-all duration-300 flex flex-col"
+                  className="bg-white border-2 border-gray-200 rounded-2xl p-4 hover:shadow-xl hover:border-itutor-green transition-all duration-300 flex flex-col"
                 >
                   {/* Matched Badge */}
                   {matchesTutorSubjects && (
-                    <div className="mb-3">
+                    <div className="mb-2">
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gradient-to-r from-itutor-green to-emerald-600 text-white">
                         ⭐ Matches Your Subjects
                       </span>
@@ -426,25 +425,34 @@ export default function FindStudentsPage() {
                   )}
 
                   {/* Student Info */}
-                  <div className="flex items-start gap-4 mb-4">
-                    <UserAvatar avatarUrl={student.avatar_url} name={getDisplayName(student)} size={64} />
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-lg font-bold text-gray-900 truncate">
-                        {getDisplayName(student)}
-                      </h3>
-                      {student.username && (
-                        <p className="text-xs text-gray-500 truncate">@{student.username}</p>
-                      )}
-                      {student.school && (
-                        <p className="text-sm text-gray-600 truncate">{student.school}</p>
-                      )}
-                      {student.form_level && (
-                        <p className="text-xs text-gray-500 mt-1">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-medium">
-                            {student.form_level}
-                          </span>
-                        </p>
-                      )}
+                  <div className="flex items-start gap-3 mb-3">
+                    <UserAvatar avatarUrl={student.avatar_url} name={getDisplayName(student)} size={56} />
+                    <div className="flex min-w-0 flex-1 items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-base font-bold text-gray-900 truncate">
+                          {getDisplayName(student)}
+                        </h3>
+                        {student.username && (
+                          <p className="text-xs text-gray-500 truncate">@{student.username}</p>
+                        )}
+                        {student.form_level && (
+                          <p className="mt-1 text-xs text-gray-500">
+                            <span className="inline-flex items-center rounded bg-blue-100 px-2 py-0.5 font-medium text-blue-800">
+                              {student.form_level}
+                            </span>
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/tutor/students/${student.id}`)}
+                        aria-label={`Open ${getDisplayName(student)}'s profile`}
+                        className="flex h-10 w-10 shrink-0 items-center justify-center self-start rounded-full border border-itutor-green/55 bg-itutor-green/15 text-itutor-green shadow-sm transition hover:bg-itutor-green/25 hover:border-itutor-green"
+                      >
+                        <span className="text-[15px] font-extrabold leading-none" aria-hidden>
+                          !
+                        </span>
+                      </button>
                     </div>
                   </div>
 
@@ -458,8 +466,8 @@ export default function FindStudentsPage() {
                   )}
 
                   {/* Subjects */}
-                  <div className="mb-4 flex-1">
-                    <p className="text-xs text-gray-500 mb-2 font-medium">Studying:</p>
+                  <div className="mt-auto flex-1">
+                    <p className="mb-1.5 text-xs font-medium text-gray-500">Studying:</p>
                     <div className="flex flex-wrap gap-1">
                       {student.subjectDetails.slice(0, 4).map(subject => (
                         <span
@@ -475,16 +483,6 @@ export default function FindStudentsPage() {
                         </span>
                       )}
                     </div>
-                  </div>
-
-                  {/* View Profile Button */}
-                  <div className="mt-auto pt-2">
-                    <button
-                      onClick={() => router.push(`/tutor/students/${student.id}`)}
-                      className="w-full bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-white py-2 px-4 rounded-lg font-semibold transition-all duration-300 shadow-lg hover:shadow-itutor-green/50"
-                    >
-                      View Profile
-                    </button>
                   </div>
                 </div>
               );

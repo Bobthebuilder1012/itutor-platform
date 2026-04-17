@@ -8,7 +8,6 @@ import SubjectMultiSelect from '@/components/SubjectMultiSelect';
 import InstitutionAutocomplete from '@/components/InstitutionAutocomplete';
 import type { Institution } from '@/lib/hooks/useInstitutionsSearch';
 import { ensureSchoolCommunityAndMembership } from '@/lib/actions/community';
-import { getAvatarColor } from '@/lib/utils/avatarColors';
 import { useProfileBannerUpload } from '@/lib/hooks/useProfileBannerUpload';
 import ProfileBannerUploadModal from '@/components/ProfileBannerUploadModal';
 import type { Area } from '@/lib/utils/imageCrop';
@@ -149,20 +148,11 @@ export default function EditProfileModal({
                   Shown on your dashboard and when students browse tutors. Wide images work best.
                 </p>
                 <div className="relative mb-3 aspect-[3/1] w-full overflow-hidden rounded-lg border border-gray-200">
-                  {profile.profile_banner_url ? (
-                    <img
-                      src={profileBannerDisplayUrl(profile.profile_banner_url, profile.updated_at)}
-                      alt=""
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div
-                      className={`flex h-full w-full items-center justify-center bg-gradient-to-br ${getAvatarColor(profile.id)}`}
-                      aria-hidden
-                    >
-                      <span className="text-sm font-medium text-white/90 drop-shadow">No banner yet</span>
-                    </div>
-                  )}
+                  <img
+                    src={profileBannerDisplayUrl(profile.profile_banner_url, profile.updated_at)}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
                 </div>
                 {bannerHookError && <p className="mb-2 text-sm text-red-600">{bannerHookError}</p>}
                 <div className="flex flex-wrap gap-2">

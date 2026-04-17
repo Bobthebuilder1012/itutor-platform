@@ -100,7 +100,7 @@ export default function ParentDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [avatarModalOpen, setAvatarModalOpen] = useState(false);
   const [editProfileModalOpen, setEditProfileModalOpen] = useState(false);
-  const { uploadAvatar, uploading } = useAvatarUpload(profile?.id || '');
+  const { uploadAvatar, deleteAvatar, uploading } = useAvatarUpload(profile?.id || '');
 
   useEffect(() => {
     if (loading) return;
@@ -148,6 +148,14 @@ export default function ParentDashboard() {
     }
   };
 
+  const handleRemoveAvatar = async () => {
+    if (!profile) return;
+    const result = await deleteAvatar();
+    if (!result.success) throw new Error(result.error || 'Failed to remove photo');
+    setAvatarModalOpen(false);
+    window.location.reload();
+  };
+
   if (loading || !profile) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -192,6 +200,8 @@ export default function ParentDashboard() {
           onClose={() => setAvatarModalOpen(false)}
           onUpload={handleAvatarUpload}
           uploading={uploading}
+          hasAvatar={Boolean(profile.avatar_url)}
+          onRemovePhoto={handleRemoveAvatar}
         />
 
         <EditProfileModal

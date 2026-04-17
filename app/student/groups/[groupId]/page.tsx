@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import GroupDetailClient from '@/app/(student)/tutors/[tutorId]/GroupDetailClient';
-import { getServiceClient } from '@/lib/supabase/server';
+import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import DashboardLayout from '@/components/DashboardLayout';
 import { isGroupsFeatureEnabled } from '@/lib/featureFlags/groupsFeature';
 
 async function getGroup(groupId: string) {
@@ -75,18 +76,37 @@ export default async function StudentGroupDetailPage({
   const { groupId } = await params;
   const group = await getGroup(groupId);
 
+  const supabase = await getServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('display_name, full_name, username')
+    .eq('id', user.id)
+    .single();
+  const userName =
+    profile?.display_name || profile?.full_name || profile?.username || 'Student';
+
   if (!group) {
     return (
-      <main className="mx-auto max-w-4xl p-6">
-        <p className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-700">Lesson not found.</p>
-      </main>
+      <DashboardLayout role="student" userName={userName}>
+        <div className="mx-auto max-w-4xl">
+          <p className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-700">
+            Lesson not found.
+          </p>
+        </div>
+      </DashboardLayout>
     );
   }
 
   return (
-    <main className="mx-auto max-w-6xl p-4 md:p-8">
-      <GroupDetailClient group={group} />
-    </main>
+    <DashboardLayout role="student" userName={userName}>
+      <div className="mx-auto max-w-6xl">
+        <GroupDetailClient group={group} />
+      </div>
+    </DashboardLayout>
   );
 }
 

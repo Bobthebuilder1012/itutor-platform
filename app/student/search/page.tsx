@@ -6,8 +6,10 @@ import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import { Profile } from '@/lib/types/database';
 import { getDisplayName } from '@/lib/utils/displayName';
-import { getAvatarColor } from '@/lib/utils/avatarColors';
+import { profileBannerDisplayUrl } from '@/lib/utils/profileBannerDisplayUrl';
 import DashboardLayout from '@/components/DashboardLayout';
+import UserAvatar from '@/components/UserAvatar';
+import VerifiedBadge from '@/components/VerifiedBadge';
 
 type ProfileWithRating = Profile & {
   average_rating?: number | null;
@@ -381,133 +383,108 @@ export default function StudentSearchResultsPage() {
             <p className="text-gray-500">Try adjusting your filters or search for a different subject</p>
           </div>
         ) : (
-          <div className="space-y-6">
-            {results.map((tutor) => (
-              <button
-                key={tutor.id}
-                onClick={() => router.push(`/student/tutors/${tutor.id}`)}
-                className="group w-full block bg-gradient-to-br from-white via-white to-gray-50/30 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 border-2 border-gray-100 hover:border-itutor-green hover:scale-[1.02] transform text-left"
-              >
-                <div className="p-6">
-                  <div className="flex items-center gap-6">
-                    {/* Avatar */}
-                    <div className="relative flex-shrink-0">
-                      {tutor.avatar_url ? (
-                        <img
-                          src={tutor.avatar_url}
-                          alt={getDisplayName(tutor)}
-                          className="w-20 h-20 rounded-full object-cover"
-                        />
-                      ) : (
-                        <div className={`w-20 h-20 rounded-full bg-gradient-to-br ${getAvatarColor(tutor.id)} flex items-center justify-center text-white font-bold text-2xl`}>
-                          {getDisplayName(tutor).charAt(0)}
-                        </div>
-                      )}
-                      {tutor.tutor_verification_status === 'VERIFIED' && (
-                        <div className="absolute -bottom-1 -right-1 bg-itutor-green rounded-full p-2 border-2 border-white">
-                          <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                          </svg>
-                        </div>
-                      )}
-                    </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {results.map((tutor) => {
+              const subjectTags =
+                tutor.subjects_of_study && tutor.subjects_of_study.length > 0
+                  ? tutor.subjects_of_study
+                  : subject
+                    ? [decodeURIComponent(subject)]
+                    : [];
+              return (
+                <div
+                  key={tutor.id}
+                  className="flex flex-col overflow-hidden rounded-2xl border-2 border-gray-200 bg-white transition-all duration-300 hover:border-itutor-green hover:shadow-xl"
+                >
+                  <div className="relative h-24 shrink-0 sm:h-28">
+                    <img
+                      src={profileBannerDisplayUrl(tutor.profile_banner_url, tutor.updated_at)}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/25 to-transparent" />
+                  </div>
 
-                    {/* Info */}
-                    <div className="flex-1 min-w-0">
-                      {/* Name and Verified Badge */}
-                      <div className="flex items-center gap-3 mb-2">
-                        <h3 className="font-bold text-2xl text-gray-900">{getDisplayName(tutor)}</h3>
-                        {tutor.tutor_verification_status === 'VERIFIED' && (
-                          <span className="inline-flex items-center gap-1 px-3 py-1 bg-itutor-green text-white text-sm font-bold rounded-full">
-                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                            </svg>
-                            VERIFIED
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Rating next to name - Always show, even if 0.0 */}
-                      <div className="flex items-center gap-2 mb-3">
-                        <div className="flex">
-                          {[1, 2, 3, 4, 5].map(star => (
-                            <svg
-                              key={star}
-                              className={`w-5 h-5 ${star <= Math.round(tutor.average_rating || 0) ? 'text-yellow-400' : 'text-gray-300'}`}
-                              fill="currentColor"
-                              viewBox="0 0 20 20"
-                            >
-                              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                            </svg>
-                          ))}
-                        </div>
-                        <span className="text-lg font-bold text-gray-900">{(tutor.average_rating || 0).toFixed(1)}</span>
-                        <span className="text-sm text-gray-500">
-                          ({tutor.total_reviews || 0} {tutor.total_reviews === 1 ? 'review' : 'reviews'})
-                        </span>
-                      </div>
-
-                      {/* Bio */}
-                      {tutor.bio && (
-                        <p className="text-sm text-gray-700 mb-3 line-clamp-2">
-                          {tutor.bio}
-                        </p>
-                      )}
-
-                      {/* Top Comment */}
-                      {tutor.topComment && (
-                        <div className="mb-3 bg-gradient-to-r from-yellow-50 to-orange-50 rounded-lg p-3 border-2 border-yellow-200">
-                          <div className="flex items-center gap-1 mb-1">
-                            {[...Array(tutor.topComment.stars)].map((_, i) => (
-                              <span key={i} className="text-yellow-400 text-sm">★</span>
-                            ))}
-                            <span className="text-xs text-gray-600 ml-1 font-medium">• {tutor.topComment.student_name}</span>
+                  <div className="flex flex-1 flex-col p-4">
+                    <div className="mb-3 flex items-start gap-3">
+                      <UserAvatar avatarUrl={tutor.avatar_url} name={getDisplayName(tutor)} size={56} />
+                      <div className="flex min-w-0 flex-1 items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <h3 className="flex items-center gap-2 truncate text-base font-bold text-gray-900">
+                            {getDisplayName(tutor)}
+                            {tutor.tutor_verification_status === 'VERIFIED' && <VerifiedBadge size="sm" />}
+                          </h3>
+                          {tutor.username && (
+                            <p className="truncate text-xs text-gray-500">@{tutor.username}</p>
+                          )}
+                          <div className="mt-1 flex flex-wrap items-center gap-1">
+                            <span className="text-sm text-yellow-400">★</span>
+                            <span className="text-xs font-bold text-gray-900">
+                              {(tutor.average_rating || 0).toFixed(1)}
+                            </span>
+                            <span className="text-[11px] text-gray-600">
+                              ({tutor.total_reviews || 0} {tutor.total_reviews === 1 ? 'review' : 'reviews'})
+                            </span>
                           </div>
-                          <p className="text-sm text-gray-700 italic line-clamp-2">
-                            "{tutor.topComment.comment}"
-                          </p>
+                          {tutor.subject_price !== null && tutor.subject_price !== undefined && (
+                            <p className="mt-1 text-[11px] font-semibold text-emerald-700">
+                              ${tutor.subject_price.toFixed(2)}/hr
+                            </p>
+                          )}
                         </div>
-                      )}
-
-                      {/* School and Country */}
-                      <div className="flex flex-wrap gap-4 text-sm text-gray-600 mb-3">
-                        {tutor.school && (
-                          <span className="flex items-center gap-1">
-                            <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                            </svg>
-                            {tutor.school}
+                        <button
+                          type="button"
+                          onClick={() => router.push(`/student/tutors/${tutor.id}`)}
+                          aria-label={`Open ${getDisplayName(tutor)}'s profile`}
+                          className="flex h-10 w-10 shrink-0 items-center justify-center self-start rounded-full border border-itutor-green/55 bg-itutor-green/15 text-itutor-green shadow-sm transition hover:bg-itutor-green/25 hover:border-itutor-green"
+                        >
+                          <span className="text-[15px] font-extrabold leading-none" aria-hidden>
+                            !
                           </span>
-                        )}
-                        {tutor.country && (
-                          <span className="flex items-center gap-1">
-                            <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            {tutor.country}
+                        </button>
+                      </div>
+                    </div>
+
+                    {tutor.bio && (
+                      <p className="mb-2 line-clamp-2 text-xs text-gray-700">{tutor.bio}</p>
+                    )}
+
+                    {tutor.topComment && (
+                      <div className="mb-2 rounded-lg border border-amber-200/80 bg-amber-50/80 p-2">
+                        <div className="mb-0.5 flex items-center gap-1">
+                          {[...Array(Math.min(tutor.topComment.stars, 5))].map((_, i) => (
+                            <span key={i} className="text-xs text-yellow-500">
+                              ★
+                            </span>
+                          ))}
+                          <span className="text-[10px] text-gray-500">• {tutor.topComment.student_name}</span>
+                        </div>
+                        <p className="line-clamp-2 text-[11px] italic text-gray-700">&ldquo;{tutor.topComment.comment}&rdquo;</p>
+                      </div>
+                    )}
+
+                    <div className="mt-auto flex-1">
+                      <p className="mb-1.5 text-xs font-medium text-gray-500">Teaches:</p>
+                      <div className="flex flex-wrap gap-1">
+                        {subjectTags.slice(0, 4).map((name) => (
+                          <span
+                            key={name}
+                            className="rounded border border-gray-300 bg-gray-50 px-2 py-1 text-xs text-gray-700"
+                          >
+                            {name}
+                          </span>
+                        ))}
+                        {subjectTags.length > 4 && (
+                          <span className="rounded border border-gray-300 bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">
+                            +{subjectTags.length - 4} more
                           </span>
                         )}
                       </div>
-
-                      {/* Price */}
-                      {tutor.subject_price !== null && tutor.subject_price !== undefined && (
-                        <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-50 to-green-50 text-emerald-700 font-bold rounded-full border-2 border-emerald-200 shadow-sm">
-                          <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          <span className="text-base">${tutor.subject_price.toFixed(2)}/hr</span>
-                        </div>
-                      )}
                     </div>
-
-                    {/* Arrow */}
-                    <svg className="w-6 h-6 text-itutor-green flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
                   </div>
                 </div>
-              </button>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

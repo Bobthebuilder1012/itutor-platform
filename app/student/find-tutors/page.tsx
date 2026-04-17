@@ -8,7 +8,6 @@ import { supabase } from '@/lib/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
 import SubjectMultiSelect from '@/components/SubjectMultiSelect';
 import { getDisplayName } from '@/lib/utils/displayName';
-import { getAvatarColor } from '@/lib/utils/avatarColors';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import UserAvatar from '@/components/UserAvatar';
 import { profileBannerDisplayUrl } from '@/lib/utils/profileBannerDisplayUrl';
@@ -62,7 +61,7 @@ export default function FindTutorsPage() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [sortOrder, setSortOrder] = useState<'relevance' | 'price_low' | 'rating_high'>('relevance');
-  const TUTORS_PER_PAGE = 9;
+  const TUTORS_PER_PAGE = 12;
 
   useEffect(() => {
     if (loading) return;
@@ -577,73 +576,64 @@ export default function FindTutorsPage() {
             <p className="text-sm text-gray-500">Try adjusting your filters</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {pagedTutors.map(tutor => {
-              const matchesStudentSubjects = profile.subjects_of_study?.some(studentSubject =>
-                tutor.subjects.some(tutorSubject => tutorSubject.name === studentSubject)
-              );
-
               return (
                 <div
                   key={tutor.id}
                   className="bg-white border-2 border-gray-200 rounded-2xl overflow-hidden hover:shadow-xl hover:border-itutor-green transition-all duration-300 flex flex-col"
                 >
-                  <div className="relative h-28 shrink-0 sm:h-32">
-                    {tutor.profile_banner_url ? (
-                      <img
-                        src={profileBannerDisplayUrl(tutor.profile_banner_url, tutor.updated_at)}
-                        alt=""
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div
-                        className={`h-full w-full bg-gradient-to-br ${getAvatarColor(tutor.id)}`}
-                        aria-hidden
-                      />
-                    )}
+                  <div className="relative h-24 shrink-0 sm:h-28">
+                    <img
+                      src={profileBannerDisplayUrl(tutor.profile_banner_url, tutor.updated_at)}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
                     <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/25 to-transparent" />
                   </div>
 
-                  <div className="p-6 flex flex-col flex-1">
-                  {/* Verified Badge */}
-                  {matchesStudentSubjects && tutor.tutor_verification_status === 'VERIFIED' && (
-                    <div className="mb-3">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gradient-to-r from-itutor-green to-emerald-600 text-white">
-                        ✓ Verified
-                      </span>
-                    </div>
-                  )}
-
+                  <div className="flex flex-1 flex-col p-4">
                   {/* Tutor Info */}
-                  <div className="flex items-start gap-4 mb-4">
-                    <UserAvatar avatarUrl={tutor.avatar_url} name={getDisplayName(tutor)} size={64} />
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-lg font-bold text-gray-900 truncate flex items-center gap-2">
-                        {getDisplayName(tutor)}
-                        {tutor.tutor_verification_status === 'VERIFIED' && <VerifiedBadge size="sm" />}
-                      </h3>
-                      {tutor.username && (
-                        <p className="text-xs text-gray-500 truncate">@{tutor.username}</p>
-                      )}
-                      {tutor.institution_name && (
-                        <p className="text-sm text-gray-600 truncate">{tutor.institution_name}</p>
-                      )}
-                      {/* Always show rating */}
-                      <div className="flex items-center gap-1 mt-1">
-                        <span className="text-yellow-400 text-base">★</span>
-                        {tutor.average_rating !== null ? (
-                          <>
-                            <span className="text-sm font-bold text-gray-900">
-                              {tutor.average_rating.toFixed(1)}
-                            </span>
-                            <span className="text-xs text-gray-600">
-                              ({tutor.total_reviews} {tutor.total_reviews === 1 ? 'review' : 'reviews'})
-                            </span>
-                          </>
-                        ) : (
-                          <span className="text-xs text-gray-500 italic">No reviews yet</span>
+                  <div className="mb-3 flex items-start gap-3">
+                    <UserAvatar avatarUrl={tutor.avatar_url} name={getDisplayName(tutor)} size={56} />
+                    <div className="flex min-w-0 flex-1 items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <h3 className="flex items-center gap-2 truncate text-base font-bold text-gray-900">
+                          {getDisplayName(tutor)}
+                          {tutor.tutor_verification_status === 'VERIFIED' && <VerifiedBadge size="sm" />}
+                        </h3>
+                        {tutor.username && (
+                          <p className="text-xs text-gray-500 truncate">@{tutor.username}</p>
                         )}
+                        {tutor.institution_name && (
+                          <p className="truncate text-xs text-gray-600">{tutor.institution_name}</p>
+                        )}
+                        <div className="mt-1 flex flex-wrap items-center gap-1">
+                          <span className="text-sm text-yellow-400">★</span>
+                          {tutor.average_rating !== null ? (
+                            <>
+                              <span className="text-xs font-bold text-gray-900">
+                                {tutor.average_rating.toFixed(1)}
+                              </span>
+                              <span className="text-[11px] text-gray-600">
+                                ({tutor.total_reviews} {tutor.total_reviews === 1 ? 'review' : 'reviews'})
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-[11px] text-gray-500 italic">No reviews yet</span>
+                          )}
+                        </div>
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/student/tutors/${tutor.id}`)}
+                        aria-label={`Open ${getDisplayName(tutor)}'s profile`}
+                        className="flex h-10 w-10 shrink-0 items-center justify-center self-start rounded-full border border-itutor-green/55 bg-itutor-green/15 text-itutor-green shadow-sm transition hover:bg-itutor-green/25 hover:border-itutor-green"
+                      >
+                        <span className="text-[15px] font-extrabold leading-none" aria-hidden>
+                          !
+                        </span>
+                      </button>
                     </div>
                   </div>
 
@@ -672,8 +662,8 @@ export default function FindTutorsPage() {
                   )}
 
                   {/* Subjects */}
-                  <div className="mb-4 flex-1">
-                    <p className="text-xs text-gray-500 mb-2 font-medium">Teaches:</p>
+                  <div className="mt-auto flex-1">
+                    <p className="mb-1.5 text-xs font-medium text-gray-500">Teaches:</p>
                     <div className="flex flex-wrap gap-1">
                       {tutor.subjects.slice(0, 4).map(subject => (
                         <span
@@ -689,16 +679,6 @@ export default function FindTutorsPage() {
                         </span>
                       )}
                     </div>
-                  </div>
-
-                  {/* View Profile Button */}
-                  <div className="mt-auto pt-2">
-                    <button
-                      onClick={() => router.push(`/student/tutors/${tutor.id}`)}
-                      className="w-full bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-white py-2 px-4 rounded-lg font-semibold transition-all duration-300 shadow-lg hover:shadow-itutor-green/50"
-                    >
-                      View Profile
-                    </button>
                   </div>
                   </div>
                 </div>

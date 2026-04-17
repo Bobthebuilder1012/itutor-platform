@@ -5,8 +5,6 @@ import { useRouter } from 'next/navigation';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase/client';
 import SubjectMultiSelect from '@/components/SubjectMultiSelect';
-import InstitutionAutocomplete from '@/components/InstitutionAutocomplete';
-import { Institution } from '@/lib/hooks/useInstitutionsSearch';
 import { PAID_CLASSES_DISABLED_MESSAGE } from '@/lib/featureFlags/paidClasses';
 import { ensureSchoolCommunityAndMembership } from '@/lib/actions/community';
 
@@ -97,7 +95,6 @@ async function resolveSubjectRowsForOnboarding(client: SupabaseClient, labels: s
 export default function TutorOnboardingPage() {
   const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
-  const [selectedInstitution, setSelectedInstitution] = useState<Institution | null>(null);
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
   const [selectedSeaSubjects, setSelectedSeaSubjects] = useState<string[]>([]);
   const [selectedLevels, setSelectedLevels] = useState<string[]>([]);
@@ -194,22 +191,6 @@ export default function TutorOnboardingPage() {
     setSubmitting(true);
 
     try {
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update(
-          selectedInstitution
-            ? { school: selectedInstitution.name, institution_id: selectedInstitution.id }
-            : { school: null, institution_id: null }
-        )
-        .eq('id', userId);
-
-      if (updateError) {
-        console.error('Profile update error:', updateError);
-        setError(`Error updating profile: ${updateError.message}`);
-        setSubmitting(false);
-        return;
-      }
-
       const allLabels = [...new Set([...selectedSubjects, ...selectedSeaSubjects])];
 
       const needsSeaRows = allLabels.some((l) => SEA_SUBJECT_LABELS.has(l));
@@ -354,24 +335,6 @@ export default function TutorOnboardingPage() {
               <p className="text-sm font-medium">{error}</p>
             </div>
           )}
-
-          {/* School/Institution */}
-          <div className="bg-gradient-to-br from-emerald-50/50 to-teal-50/50 p-6 rounded-xl border border-emerald-100/50">
-            <label className="block text-sm font-semibold text-gray-800 mb-2">School (optional)</label>
-            <p className="text-sm text-gray-600 mb-3">
-              Search for your school, college, or university. Type &quot;none&quot; to skip if you prefer not to list one.
-            </p>
-            <InstitutionAutocomplete
-              selectedInstitution={selectedInstitution}
-              onChange={setSelectedInstitution}
-              filters={{ country_code: 'TT' }}
-              disabled={submitting}
-              placeholder="Type to search (e.g. QRC, UWI, Presentation, COSTAATT)..."
-              required={false}
-              allowNoneOption
-              hideDefaultHint
-            />
-          </div>
 
           {/* Teaching Levels */}
           <div className="bg-gradient-to-br from-teal-50/50 to-emerald-50/50 p-5 sm:p-6 rounded-xl border border-teal-100/50">
