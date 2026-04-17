@@ -14,9 +14,6 @@ export default function SessionJoinButton({ session, userRole, onRetrySuccess }:
   const [retrying, setRetrying] = useState(false);
   const [needsReconnect, setNeedsReconnect] = useState(false);
   const router = useRouter();
-  const terminalStatuses = new Set(['COMPLETED_ASSUMED', 'NO_SHOW_STUDENT', 'EARLY_END_SHORT', 'CANCELLED']);
-  const hasSessionEnded = terminalStatuses.has(session.status);
-
   async function handleRetryMeetingLink() {
     setRetrying(true);
     setNeedsReconnect(false);
@@ -57,6 +54,27 @@ export default function SessionJoinButton({ session, userRole, onRetrySuccess }:
     router.push('/tutor/video-setup');
   }
 
+  const terminalStatuses = new Set(['COMPLETED_ASSUMED', 'NO_SHOW_STUDENT', 'EARLY_END_SHORT', 'CANCELLED']);
+  const hasSessionEnded = terminalStatuses.has(session.status);
+
+  if (hasSessionEnded) {
+    return (
+      <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-6">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="p-3 bg-gray-400 rounded-xl">
+            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-gray-900">Session Ended</h3>
+            <p className="text-sm text-gray-600">The meeting link is no longer available</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!session.join_url) {
     return (
       <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-6">
@@ -84,24 +102,6 @@ export default function SessionJoinButton({ session, userRole, onRetrySuccess }:
               )}
             </div>
           )}
-        </div>
-      </div>
-    );
-  }
-
-  if (hasSessionEnded) {
-    return (
-      <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-6">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="p-3 bg-gray-400 rounded-xl">
-            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <div>
-            <h3 className="text-xl font-bold text-gray-900">Session Ended</h3>
-            <p className="text-sm text-gray-600">The meeting link is no longer available</p>
-          </div>
         </div>
       </div>
     );

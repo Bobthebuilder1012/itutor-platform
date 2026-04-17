@@ -21,6 +21,13 @@ import { Session } from '@/lib/types/database';
 import { Area } from '@/lib/utils/imageCrop';
 import { getDisplayName } from '@/lib/utils/displayName';
 
+type RecentTutor = {
+  tutorId: string;
+  name: string;
+  avatarUrl: string | null;
+  subjectLabel: string;
+};
+
 type EnrichedSession = Session & {
   tutor?: {
     id: string;
@@ -45,6 +52,7 @@ export default function StudentDashboard() {
   const [completedSessionsCount, setCompletedSessionsCount] = useState(0);
   const [totalHoursTutored, setTotalHoursTutored] = useState(0);
   const [loadingData, setLoadingData] = useState(true);
+  const [recentTutors, setRecentTutors] = useState<RecentTutor[]>([]);
   const [avatarModalOpen, setAvatarModalOpen] = useState(false);
   const [editSubjectsModalOpen, setEditSubjectsModalOpen] = useState(false);
   const [editProfileModalOpen, setEditProfileModalOpen] = useState(false);
@@ -193,6 +201,50 @@ export default function StudentDashboard() {
         }, 0);
         setTotalHoursTutored(Math.round((totalMinutes / 60) * 10) / 10);
       }
+
+      const { data: bookingRows } = await supabase
+        .from('bookings')
+        .select('tutor_id, subject_id, updated_at')
+        .eq('student_id', profile.id)
+        .order('updated_at', { ascending: false })
+        .limit(40);
+
+      const orderedTutorIds: string[] = [];
+      const tutorSubject = new Map<string, string>();
+      const seenTutors = new Set<string>();
+      for (const row of bookingRows ?? []) {
+        const tid = row.tutor_id as string;
+        if (!tid || seenTutors.has(tid)) continue;
+        seenTutors.add(tid);
+        orderedTutorIds.push(tid);
+        tutorSubject.set(tid, row.subject_id as string);
+        if (orderedTutorIds.length >= 8) break;
+      }
+
+      if (orderedTutorIds.length > 0) {
+        const subjectIds = [...new Set([...tutorSubject.values()].filter(Boolean))];
+        const [{ data: tutorProfiles }, { data: subjectRows }] = await Promise.all([
+          supabase.from('profiles').select('id, full_name, display_name, username, avatar_url').in('id', orderedTutorIds),
+          subjectIds.length
+            ? supabase.from('subjects').select('id, name, label').in('id', subjectIds)
+            : Promise.resolve({ data: [] as { id: string; name: string; label: string | null }[], error: null }),
+        ]);
+        const subMap = new Map((subjectRows ?? []).map((s) => [s.id, s.label || s.name]));
+        const profMap = new Map((tutorProfiles ?? []).map((p) => [p.id, p]));
+        const recents: RecentTutor[] = orderedTutorIds.map((tid) => {
+          const p = profMap.get(tid);
+          const sid = tutorSubject.get(tid);
+          return {
+            tutorId: tid,
+            name: p ? getDisplayName(p) : 'Tutor',
+            avatarUrl: p?.avatar_url ?? null,
+            subjectLabel: sid ? subMap.get(sid) || 'Subject' : 'Subject',
+          };
+        });
+        setRecentTutors(recents.slice(0, 6));
+      } else {
+        setRecentTutors([]);
+      }
     } catch (error) {
       console.error('Error fetching student data:', error);
     } finally {
@@ -249,6 +301,38 @@ export default function StudentDashboard() {
               loading={loadingData}
               subjectsCount={profile.subjects_of_study?.length || 0}
             />
+
+            {!loadingData && recentTutors.length > 0 && (
+              <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-bold text-gray-900">Recent tutors</h2>
+                  <span className="text-xs text-gray-500">From your bookings</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {recentTutors.map((t) => (
+                    <button
+                      key={t.tutorId}
+                      type="button"
+                      onClick={() => router.push(`/student/tutors/${t.tutorId}`)}
+                      className="flex items-center gap-3 rounded-xl border border-gray-200 p-3 text-left hover:border-itutor-green hover:bg-emerald-50/40 transition"
+                    >
+                      {t.avatarUrl ? (
+                        <img src={t.avatarUrl} alt="" className="h-12 w-12 rounded-full object-cover flex-shrink-0" />
+                      ) : (
+                        <div className="h-12 w-12 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center text-sm font-bold flex-shrink-0">
+                          {t.name.charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="font-semibold text-gray-900 truncate">{t.name}</p>
+                        <p className="text-xs text-gray-500 truncate">{t.subjectLabel}</p>
+                        <p className="text-xs text-itutor-green font-medium mt-1">Book again →</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Profile + Next Step — 2 cols */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">

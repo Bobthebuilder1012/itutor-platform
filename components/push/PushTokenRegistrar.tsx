@@ -71,7 +71,7 @@ export default function PushTokenRegistrar() {
 
     const run = async () => {
       try {
-        // Don't auto-request permission - let EnableNotificationsPrompt handle that
+        // Don't auto-request permission; only register when already granted
         if (Notification.permission !== 'granted') return;
 
         // Register service worker

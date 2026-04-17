@@ -144,7 +144,7 @@ async function processDueReminders(request: NextRequest) {
       const counterpart = profileCache.get(counterpartId);
       const nextAttempts = reminder.attempts + 1;
 
-      if (!recipient?.email || !counterpart?.full_name) {
+      if (!recipient?.email) {
         await supabase
           .from('session_reminders')
           .update({
@@ -165,11 +165,11 @@ async function processDueReminders(request: NextRequest) {
         subjectName: booking?.subjects?.name || booking?.subjects?.label || 'Tutoring Session',
         tutorName:
           reminder.recipient_type === 'student'
-            ? counterpart.full_name
+            ? counterpart?.full_name || 'Tutor'
             : recipient.full_name || 'Tutor',
         studentName:
           reminder.recipient_type === 'tutor'
-            ? counterpart.full_name
+            ? counterpart?.full_name || 'Student'
             : recipient.full_name || 'Student',
         joinUrl: session.join_url || `${appUrl}/student/dashboard`,
         cancelOrRescheduleUrl: `${appUrl}/${reminder.recipient_type === 'student' ? 'student' : 'tutor'}/bookings/${session.booking_id}`,

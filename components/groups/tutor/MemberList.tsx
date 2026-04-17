@@ -51,7 +51,6 @@ export default function MemberList({
 }: MemberListProps) {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [expanded, setExpanded] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalSearch, setModalSearch] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
@@ -75,7 +74,6 @@ export default function MemberList({
     return approved.filter((m) => (m.profile?.full_name ?? '').toLowerCase().includes(q));
   }, [approved, modalSearch]);
 
-  const displayMembers = expanded ? filtered : filtered.slice(0, COLLAPSED_COUNT);
   const hasMore = filtered.length > COLLAPSED_COUNT;
 
   const handleDecide = async (userId: string, status: 'approved' | 'denied') => {
@@ -252,8 +250,8 @@ export default function MemberList({
       </div>
 
       {/* Member list — separated by role */}
-      <div className={`relative ${!expanded && hasMore ? 'max-h-[280px] overflow-hidden' : 'max-h-[400px] overflow-y-auto'}`}>
-        {!expanded && hasMore && (
+      <div className={`relative ${hasMore ? 'max-h-[280px] overflow-hidden' : 'max-h-[400px] overflow-y-auto'}`}>
+        {hasMore && (
           <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-white to-transparent pointer-events-none z-[1]" />
         )}
 
@@ -262,7 +260,7 @@ export default function MemberList({
             <p className="text-[9px] font-bold uppercase tracking-[.08em] text-[#6366f1] px-2 pt-1.5 pb-1">
               Tutors ({filteredTutors.length})
             </p>
-            {(expanded ? filteredTutors : filteredTutors.slice(0, COLLAPSED_COUNT)).map((m) => renderMember(m, { showRemove: true }))}
+            {filteredTutors.slice(0, COLLAPSED_COUNT).map((m) => renderMember(m, { showRemove: true }))}
           </div>
         )}
 
@@ -271,7 +269,9 @@ export default function MemberList({
             <p className="text-[9px] font-bold uppercase tracking-[.08em] text-[#2563eb] px-2 pt-1.5 pb-1">
               Students ({filteredStudents.length})
             </p>
-            {(expanded ? filteredStudents : filteredStudents.slice(0, COLLAPSED_COUNT - Math.min(filteredTutors.length, COLLAPSED_COUNT))).map((m) => renderMember(m, { showRemove: true }))}
+            {filteredStudents
+              .slice(0, COLLAPSED_COUNT - Math.min(filteredTutors.length, COLLAPSED_COUNT))
+              .map((m) => renderMember(m, { showRemove: true }))}
           </div>
         )}
 
@@ -284,11 +284,17 @@ export default function MemberList({
       {hasMore && (
         <div className="mt-1.5">
           <button
-            onClick={() => setExpanded((p) => !p)}
+            type="button"
+            onClick={() => {
+              setModalSearch('');
+              setModalOpen(true);
+            }}
             className="w-full py-2 rounded-[10px] border border-[#e4e8ee] bg-white text-[12px] font-semibold text-[#6b7280] hover:border-[#0d9668] hover:text-[#0d9668] hover:bg-[#d1fae5] transition-colors flex items-center justify-center gap-1.5"
           >
-            <span>{expanded ? 'Show less' : `See all ${totalCount} members`}</span>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className={`transition-transform ${expanded ? 'rotate-180' : ''}`}><polyline points="6 9 12 15 18 9" /></svg>
+            <span>View full list ({totalCount} members)</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
           </button>
         </div>
       )}

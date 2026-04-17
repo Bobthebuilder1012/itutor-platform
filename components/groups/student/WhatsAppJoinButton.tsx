@@ -4,11 +4,13 @@ import { useEffect, useState, useCallback } from 'react';
 
 interface Props {
   groupId: string;
+  /** Compact row for headers; omits section label and footer note */
+  variant?: 'default' | 'toolbar';
 }
 
 type BtnState = 'loading' | 'ready' | 'error' | 'hidden';
 
-export default function WhatsAppJoinButton({ groupId }: Props) {
+export default function WhatsAppJoinButton({ groupId, variant = 'default' }: Props) {
   const [state, setState] = useState<BtnState>('loading');
   const [redirectUrl, setRedirectUrl] = useState('');
 
@@ -36,9 +38,13 @@ export default function WhatsAppJoinButton({ groupId }: Props) {
 
   const isClickable = state === 'ready';
 
+  const isToolbar = variant === 'toolbar';
+
   return (
-    <div className="border-t border-gray-100 pt-3 mt-1">
-      <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest px-3 mb-2">Community</p>
+    <div className={isToolbar ? '' : 'border-t border-gray-100 pt-3 mt-1'}>
+      {!isToolbar && (
+        <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest px-3 mb-2">Community</p>
+      )}
 
       <a
         href={isClickable ? redirectUrl : '#'}
@@ -51,10 +57,15 @@ export default function WhatsAppJoinButton({ groupId }: Props) {
           }
         }}
         className={[
-          'mx-3 flex items-center gap-2.5 p-2.5 rounded-xl transition-all duration-150 no-underline',
-          isClickable
-            ? 'bg-[#dcfce7] hover:bg-[#bbf7d0] hover:-translate-y-0.5 cursor-pointer'
-            : 'bg-gray-50 pointer-events-none opacity-60',
+          isToolbar
+            ? `flex items-center gap-2 px-3 py-1.5 rounded-[10px] text-[12px] font-semibold no-underline border border-[#bbf7d0] bg-[#ecfdf5] text-[#047857] ${
+                isClickable ? 'hover:bg-[#d1fae5] cursor-pointer' : 'opacity-60 pointer-events-none'
+              }`
+            : `mx-3 flex items-center gap-2.5 p-2.5 rounded-xl transition-all duration-150 no-underline ${
+                isClickable
+                  ? 'bg-[#dcfce7] hover:bg-[#bbf7d0] hover:-translate-y-0.5 cursor-pointer'
+                  : 'bg-gray-50 pointer-events-none opacity-60'
+              }`,
         ].join(' ')}
       >
         {/* WhatsApp logo */}
@@ -71,14 +82,20 @@ export default function WhatsAppJoinButton({ groupId }: Props) {
           />
         </svg>
 
-        <div className="flex flex-col flex-1 min-w-0">
-          <span className="text-[12px] font-semibold text-[#166534] leading-tight truncate">
-            {state === 'loading' ? 'Loading…' : state === 'error' ? 'Unavailable' : 'Join WhatsApp group'}
+        {!isToolbar ? (
+          <div className="flex flex-col flex-1 min-w-0">
+            <span className="text-[12px] font-semibold text-[#166534] leading-tight truncate">
+              {state === 'loading' ? 'Loading…' : state === 'error' ? 'Unavailable' : 'Join WhatsApp group'}
+            </span>
+            <span className="text-[10px] text-gray-500 mt-0.5">
+              {state === 'error' ? 'Try refreshing the page' : 'Chat with your classmates'}
+            </span>
+          </div>
+        ) : (
+          <span className="truncate">
+            {state === 'loading' ? 'WhatsApp…' : state === 'error' ? 'WhatsApp' : 'WhatsApp group'}
           </span>
-          <span className="text-[10px] text-gray-500 mt-0.5">
-            {state === 'error' ? 'Try refreshing the page' : 'Chat with your classmates'}
-          </span>
-        </div>
+        )}
 
         {isClickable && (
           <svg
@@ -93,12 +110,14 @@ export default function WhatsAppJoinButton({ groupId }: Props) {
         )}
       </a>
 
-      <div className="flex items-center gap-1 mt-1.5 px-3">
-        <svg className="w-2.5 h-2.5 text-gray-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-        </svg>
-        <p className="text-[10px] text-gray-400">Only visible to approved members</p>
-      </div>
+      {!isToolbar && (
+        <div className="flex items-center gap-1 mt-1.5 px-3">
+          <svg className="w-2.5 h-2.5 text-gray-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          </svg>
+          <p className="text-[10px] text-gray-400">Only visible to approved members</p>
+        </div>
+      )}
     </div>
   );
 }

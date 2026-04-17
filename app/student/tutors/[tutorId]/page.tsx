@@ -1,7 +1,5 @@
 'use client';
 
-'use client';
-
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useProfile } from '@/lib/hooks/useProfile';
