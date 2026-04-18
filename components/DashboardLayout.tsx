@@ -27,16 +27,24 @@ interface DashboardLayoutProps {
   userName: string;
 }
 
-type NavItem = {
+type NavLeafItem = {
   href: string;
   label: string;
   badge?: string;
   icon: ReactNode;
 };
 
+type NavGroupItem = {
+  label: string;
+  icon: ReactNode;
+  children: NavLeafItem[];
+};
+
+type NavSectionItem = NavLeafItem | NavGroupItem;
+
 type NavSection = {
   label: string;
-  items: NavItem[];
+  items: NavSectionItem[];
 };
 
 /* ── Icon helpers ── */
@@ -70,6 +78,8 @@ const icons = {
     </I>
   ),
   settings: <I><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-[18px] h-[18px]"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" strokeWidth="1.8"/><circle cx="12" cy="12" r="3" strokeWidth="1.8"/></svg></I>,
+  tools: <I><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-[18px] h-[18px]"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg></I>,
+  sparkles: <I><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-[18px] h-[18px]"><path d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg></I>,
 };
 
 export default function DashboardLayout({ children, role, userName }: DashboardLayoutProps) {
@@ -176,7 +186,9 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
   };
 
   const getNavSections = (): NavSection[] => {
-    if (emailOnlyAdmin) return [{ label: 'Admin', items: [{ href: '/admin/emails', label: 'Email Management', icon: icons.mail }] }];
+    if (emailOnlyAdmin) {
+      return [{ label: 'Admin', items: [{ href: '/admin/emails', label: 'Email Management', icon: icons.mail }] satisfies NavSectionItem[] }];
+    }
 
     switch (role) {
       case 'student': return [
@@ -184,7 +196,14 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/student/dashboard', label: 'Dashboard', icon: icons.dashboard },
           { href: '/student/find-tutors', label: 'Find iTutors', icon: icons.search },
           ...(showGroups ? [{ href: '/groups', label: 'Lessons', icon: icons.groups }] : []),
-          { href: '/student/curriculum', label: 'Curriculum', icon: icons.book },
+          {
+            label: 'Tools',
+            icon: icons.tools,
+            children: [
+              { href: '/student/curriculum', label: 'Curriculum', icon: icons.book },
+              { href: '/tools/ai', label: 'iTutor AI', icon: icons.sparkles },
+            ],
+          },
         ]},
         { label: 'Learning', items: [
           { href: '/student/bookings', label: 'My Bookings', icon: icons.calendar },
@@ -201,7 +220,14 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           ...(showGroups ? [{ href: '/groups', label: 'Lessons', icon: icons.groups }] : []),
         ]},
         { label: 'Settings', items: [
-          { href: '/tutor/curriculum', label: 'Curriculum', icon: icons.book },
+          {
+            label: 'Tools',
+            icon: icons.tools,
+            children: [
+              { href: '/tutor/curriculum', label: 'Curriculum', icon: icons.book },
+              { href: '/tools/ai', label: 'iTutor AI', icon: icons.sparkles },
+            ],
+          },
           { href: '/verification', label: 'Verification', badge: '!', icon: icons.shield },
           { href: '/tutor/settings', label: 'Settings', icon: icons.settings },
         ]},
@@ -309,7 +335,60 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
                 </p>
               )}
               {section.items.map((item) => {
-                const isActive = pathname === item.href || (item.href !== getDashboardLink() && pathname.startsWith(item.href));
+                if ('children' in item) {
+                  const groupAnyActive = item.children.some(
+                    (c) =>
+                      pathname === c.href ||
+                      (c.href !== getDashboardLink() && pathname.startsWith(c.href)),
+                  );
+                  return (
+                    <div key={`nav-group-${section.label}-${item.label}`}>
+                      {!collapsed && (
+                        <div
+                          className={`flex items-center rounded-xl gap-3 px-3 py-[10px] mb-0.5 ${
+                            groupAnyActive ? 'text-itutor-green' : 'text-gray-500'
+                          }`}
+                        >
+                          {item.icon}
+                          <span className="text-[13.5px] font-medium">{item.label}</span>
+                        </div>
+                      )}
+                      {item.children.map((sub) => {
+                        const isActive =
+                          pathname === sub.href ||
+                          (sub.href !== getDashboardLink() && pathname.startsWith(sub.href));
+                        const hasBadge = Boolean(sub.badge);
+                        return (
+                          <Link
+                            key={sub.href}
+                            href={sub.href}
+                            onClick={() => setSidebarOpen(false)}
+                            title={collapsed ? sub.label : undefined}
+                            className={`relative flex items-center rounded-xl transition-all duration-150 ${collapsed ? 'justify-center w-10 h-10 mx-auto my-[3px]' : 'gap-3 px-3 py-[10px] mb-0.5'} ${isActive ? 'bg-itutor-green/10 text-itutor-green' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}
+                          >
+                            {sub.icon}
+                            {collapsed && hasBadge && (
+                              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-itutor-green" />
+                            )}
+                            {!collapsed && (
+                              <>
+                                <span className="text-[13.5px] font-medium">{sub.label}</span>
+                                {hasBadge && (
+                                  <span className="ml-auto w-[18px] h-[18px] rounded-full bg-itutor-green text-black text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                                    {sub.badge}
+                                  </span>
+                                )}
+                              </>
+                            )}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  );
+                }
+                const isActive =
+                  pathname === item.href ||
+                  (item.href !== getDashboardLink() && pathname.startsWith(item.href));
                 const hasBadge = Boolean(item.badge);
                 return (
                   <Link
