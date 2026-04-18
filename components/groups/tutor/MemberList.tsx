@@ -161,61 +161,6 @@ export default function MemberList({
 
   return (
     <>
-      {/* Pending requests */}
-      {isTutor && pending.length > 0 && (
-        <div className="mb-3">
-          <p className="text-[10px] font-bold uppercase tracking-[.07em] text-amber-600 mb-2">
-            Pending Requests ({pending.length})
-          </p>
-          <div className="space-y-2">
-            {pending.map((m) => (
-              <div key={m.id} className="bg-amber-50 border border-amber-100 rounded-[10px] p-2.5">
-                <div className="flex items-center gap-2.5 mb-2">
-                  <div className="relative flex-shrink-0">
-                    {m.profile?.avatar_url ? (
-                      <UserAvatar avatarUrl={m.profile.avatar_url} name={m.profile?.full_name ?? 'Member'} size={32} />
-                    ) : (
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white" style={{ background: avatarColor(m.user_id) }}>
-                        {getInitials(m.profile?.full_name ?? 'M')}
-                      </div>
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-[12.5px] font-semibold truncate">{m.profile?.full_name ?? 'Unknown'}</p>
-                      <span className={`px-[6px] py-[1px] rounded text-[9px] font-semibold flex-shrink-0 ${
-                        m.profile?.role === 'tutor'
-                          ? 'bg-[#eef2ff] text-[#6366f1]'
-                          : 'bg-[#dbeafe] text-[#2563eb]'
-                      }`}>
-                        {m.profile?.role === 'tutor' ? 'Tutor' : 'Student'}
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-[#6b7280]">Requested to join</p>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => handleDecide(m.user_id, 'approved')}
-                    disabled={actionLoading === m.user_id}
-                    className="w-full py-1.5 bg-[#0d9668] hover:bg-[#047857] text-white text-[11px] font-semibold rounded-lg transition-colors disabled:opacity-50"
-                  >
-                    Approve
-                  </button>
-                  <button
-                    onClick={() => handleDecide(m.user_id, 'denied')}
-                    disabled={actionLoading === m.user_id}
-                    className="w-full py-1.5 bg-white hover:bg-red-50 border border-[#e4e8ee] hover:border-red-300 text-[#6b7280] hover:text-red-500 text-[11px] font-semibold rounded-lg transition-colors disabled:opacity-50"
-                  >
-                    Deny
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Head tutor (pinned) */}
       {tutorName && (
         <div className="flex items-center gap-2.5 py-[7px] px-2 rounded-[10px] hover:bg-[#f5f7fa] transition-colors mb-1">

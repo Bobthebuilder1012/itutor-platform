@@ -317,6 +317,23 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
     : null;
   const estimatedEarnings = Number((group as any).estimated_earnings ?? 0);
   const approvedMembers = members.filter((m) => m.status === 'approved');
+  const pendingMembers = members.filter((m) => m.status === 'pending');
+  const [pendingOpen, setPendingOpen] = useState(true);
+  const [decidingMember, setDecidingMember] = useState<string | null>(null);
+
+  const handlePendingDecide = async (userId: string, status: 'approved' | 'denied') => {
+    setDecidingMember(userId);
+    try {
+      await fetch(`/api/groups/${group.id}/members/${userId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      fetchMembers();
+    } finally {
+      setDecidingMember(null);
+    }
+  };
   const starCount = Math.round(Number(group.tutor?.rating_average ?? 0));
   const stars = '★'.repeat(Math.min(starCount, 5)) + '☆'.repeat(Math.max(5 - starCount, 0));
   const reviewCount = group.tutor?.rating_count ?? 0;
@@ -453,8 +470,8 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
         {/* Floating hero card */}
         <div className="max-w-[1100px] mx-auto px-7 -mt-[60px] relative z-[2]">
           <div className="bg-white rounded-[14px] p-6 shadow-[0_4px_14px_rgba(0,0,0,0.06)] border border-gray-200">
-            <div className="flex justify-between items-start gap-5 flex-wrap">
-              <div className="flex-1 min-w-[260px]">
+            <div className="flex items-start gap-5">
+              <div className="min-w-[200px]">
                 <h1 className="text-2xl font-extrabold tracking-tight mb-1.5">{group.name}</h1>
                 {subjects.length > 0 && (
                   <div className="flex gap-1.5 flex-wrap mb-3">
@@ -476,15 +493,36 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
                   {reviewCount > 0 ? `${Number(group.tutor?.rating_average).toFixed(1)} (${reviewCount} reviews)` : 'No reviews yet'}
                 </div>
               </div>
-              <div className="flex gap-2 flex-shrink-0 flex-wrap">
-                <button
-                  onClick={() => setManageOpen((p) => !p)}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[10px] text-[13px] font-semibold bg-emerald-500 text-white border border-emerald-500 shadow-[0_2px_8px_rgba(16,185,129,0.25)] hover:bg-emerald-600 transition-all"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
-                  {manageOpen ? 'Close' : 'Manage Class'}
-                </button>
+
+              {/* Quick Actions (center) */}
+              <div className="flex-1 hidden md:block border-l border-gray-100 pl-5">
+                <p className="text-[10px] font-bold uppercase tracking-[.08em] text-slate-400 mb-2">Quick Actions</p>
+                <div className="flex flex-col gap-1">
+                  {[
+                    { label: 'Edit Class Details', action: () => setManageOpen(true), icon: <><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></> },
+                    { label: 'Schedule Session', action: () => setShowCreateSession(true), icon: <><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></> },
+                    { label: 'Invite Members', action: copyInviteLink, icon: <><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2" /><circle cx="8.5" cy="7" r="4" /><line x1="20" y1="8" x2="20" y2="14" /><line x1="23" y1="11" x2="17" y2="11" /></> },
+                  ].map((qa) => (
+                    <button key={qa.label} onClick={qa.action}
+                      className="flex items-center gap-2 py-1.5 px-2 rounded-lg text-[13px] font-medium text-gray-700 hover:bg-gray-50 transition-colors text-left">
+                      <svg className="w-4 h-4 text-slate-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>{qa.icon}</svg>
+                      {qa.label}
+                    </button>
+                  ))}
+                </div>
               </div>
+
+              {/* Gear icon */}
+              <button
+                onClick={() => setManageOpen((p) => !p)}
+                className="w-10 h-10 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-[0_2px_8px_rgba(16,185,129,0.25)] hover:bg-emerald-600 transition-all flex-shrink-0"
+                title="Manage Class"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
+                </svg>
+              </button>
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-gray-200 rounded-[10px] overflow-hidden mt-5">
@@ -503,10 +541,84 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
                 <p className="text-[17px] font-extrabold text-emerald-600">{isPaid ? `$${Number(effectivePrice)}` : 'Free'}</p>
               </div>
               <div className="bg-white py-3.5 px-4 text-center">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-0.5">Earnings</p>
-                <p className="text-[17px] font-extrabold text-emerald-600">${estimatedEarnings.toFixed(2)}</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-0.5">Student Limit</p>
+                <p className="text-[17px] font-extrabold">{capEnabled ? capValue : 250}</p>
               </div>
             </div>
+
+            {/* Inline analytics */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+              <div className="relative overflow-hidden py-3.5 px-3 bg-gray-50 rounded-[10px] before:absolute before:top-0 before:left-0 before:right-0 before:h-[3px] before:bg-emerald-500 before:rounded-t-[10px]">
+                <p className="text-[20px] font-extrabold leading-tight text-emerald-600">{analytics?.total_sessions ?? 0}</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mt-0.5">Total Sessions</p>
+              </div>
+              <div className="relative overflow-hidden py-3.5 px-3 bg-gray-50 rounded-[10px] before:absolute before:top-0 before:left-0 before:right-0 before:h-[3px] before:bg-indigo-500 before:rounded-t-[10px]">
+                <p className="text-[20px] font-extrabold leading-tight">{analytics?.average_attendance_rate ?? 0}%</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mt-0.5">Avg Attendance</p>
+              </div>
+              <div className="relative overflow-hidden py-3.5 px-3 bg-gray-50 rounded-[10px] before:absolute before:top-0 before:left-0 before:right-0 before:h-[3px] before:bg-orange-500 before:rounded-t-[10px]">
+                <p className={`text-[20px] font-extrabold leading-tight ${(analytics?.student_retention_rate ?? 0) > 0 ? 'text-emerald-600' : (analytics?.student_retention_rate ?? 0) < 0 ? 'text-red-600' : ''}`}>{(analytics?.student_retention_rate ?? 0) > 0 ? '+' : ''}{analytics?.student_retention_rate ?? 0}%</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mt-0.5">Retention</p>
+              </div>
+              <div className="relative overflow-hidden py-3.5 px-3 bg-gray-50 rounded-[10px] before:absolute before:top-0 before:left-0 before:right-0 before:h-[3px] before:bg-amber-400 before:rounded-t-[10px]">
+                <p className="text-[20px] font-extrabold leading-tight">${estimatedEarnings.toFixed(0)}</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mt-0.5">Total Earnings</p>
+              </div>
+            </div>
+
+            {/* Pending join requests banner */}
+            {pendingMembers.length > 0 && (
+              <div className="mt-4 border border-amber-200 bg-amber-50/60 rounded-[10px] overflow-hidden">
+                <button
+                  onClick={() => setPendingOpen((p) => !p)}
+                  className="w-full flex items-center gap-2.5 px-4 py-3 text-left hover:bg-amber-50 transition-colors"
+                >
+                  <svg className="w-4 h-4 text-amber-600 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
+                  <span className="text-[13px] font-semibold text-amber-800 flex-1">
+                    {pendingMembers.length} pending join request{pendingMembers.length !== 1 ? 's' : ''}
+                  </span>
+                  <span className="text-[11px] text-amber-600 hidden sm:inline">Approve or deny without opening Manage Class.</span>
+                  <svg className={`w-4 h-4 text-amber-600 flex-shrink-0 transition-transform ${pendingOpen ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="6 9 12 15 18 9" /></svg>
+                </button>
+                {pendingOpen && (
+                  <div className="border-t border-amber-200">
+                    {pendingMembers.map((m) => {
+                      const name = m.profile?.full_name ?? 'Unknown';
+                      return (
+                        <div key={m.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-amber-100 last:border-b-0">
+                          <div className="relative flex-shrink-0">
+                            {m.profile?.avatar_url ? (
+                              <img src={m.profile.avatar_url} alt={name} className="w-8 h-8 rounded-full object-cover" />
+                            ) : (
+                              <div className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white" style={{ background: m.profile?.role === 'tutor' ? '#6366f1' : '#0d9668' }}>
+                                {getInitials(name)}
+                              </div>
+                            )}
+                          </div>
+                          <span className="text-[13px] font-semibold text-gray-900 flex-1 truncate">{name}</span>
+                          <div className="flex gap-2 flex-shrink-0">
+                            <button
+                              onClick={() => handlePendingDecide(m.user_id, 'approved')}
+                              disabled={decidingMember === m.user_id}
+                              className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[12px] font-semibold rounded-lg transition-colors disabled:opacity-50"
+                            >
+                              Approve
+                            </button>
+                            <button
+                              onClick={() => handlePendingDecide(m.user_id, 'denied')}
+                              disabled={decidingMember === m.user_id}
+                              className="px-4 py-1.5 bg-white border border-gray-200 hover:border-red-300 hover:text-red-500 text-gray-600 text-[12px] font-semibold rounded-lg transition-colors disabled:opacity-50"
+                            >
+                              Deny
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1149,34 +1261,26 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
         {/* RIGHT: Sidebar */}
         <div className="flex flex-col gap-[18px]">
 
-          {/* Analytics */}
+          {/* Members */}
           <div className="bg-white rounded-[14px] border border-gray-200 p-[18px] shadow-sm">
-            <p className="text-[12px] font-bold uppercase tracking-wider text-slate-500 mb-3.5">Analytics</p>
-            <div className="grid grid-cols-2 gap-2.5">
-              <div className="relative overflow-hidden py-3.5 px-2.5 bg-gray-50 rounded-[10px] text-center before:absolute before:top-0 before:left-0 before:right-0 before:h-[3px] before:bg-emerald-500 before:rounded-t-[10px]">
-                <p className="text-[22px] font-extrabold leading-tight">{analytics?.total_sessions ?? 0}</p>
-                <p className="text-[10.5px] text-slate-500 font-medium mt-0.5">Total Sessions</p>
-              </div>
-              <div className="relative overflow-hidden py-3.5 px-2.5 bg-gray-50 rounded-[10px] text-center before:absolute before:top-0 before:left-0 before:right-0 before:h-[3px] before:bg-indigo-500 before:rounded-t-[10px]">
-                <p className="text-[22px] font-extrabold leading-tight">{analytics?.average_attendance_rate ?? 0}%</p>
-                <p className="text-[10.5px] text-slate-500 font-medium mt-0.5">Avg Attendance</p>
-              </div>
-              <div className="relative overflow-hidden py-3.5 px-2.5 bg-gray-50 rounded-[10px] text-center before:absolute before:top-0 before:left-0 before:right-0 before:h-[3px] before:bg-orange-500 before:rounded-t-[10px]">
-                <p className={`text-[22px] font-extrabold leading-tight ${(analytics?.student_retention_rate ?? 0) > 0 ? 'text-emerald-600' : (analytics?.student_retention_rate ?? 0) < 0 ? 'text-red-600' : ''}`}>{(analytics?.student_retention_rate ?? 0) > 0 ? '+' : ''}{analytics?.student_retention_rate ?? 0}%</p>
-                <p className="text-[10.5px] text-slate-500 font-medium mt-0.5">Retention</p>
-              </div>
-              <div className="relative overflow-hidden py-3.5 px-2.5 bg-gray-50 rounded-[10px] text-center before:absolute before:top-0 before:left-0 before:right-0 before:h-[3px] before:bg-amber-400 before:rounded-t-[10px]">
-                <p className="text-[22px] font-extrabold leading-tight">${estimatedEarnings.toFixed(0)}</p>
-                <p className="text-[10.5px] text-slate-500 font-medium mt-0.5">Total Earnings</p>
-              </div>
+            <div className="flex items-center justify-between mb-3.5">
+              <p className="text-[12px] font-bold uppercase tracking-wider text-slate-500">Members</p>
+              <span className="bg-[#d1fae5] text-[#047857] px-2 py-0.5 rounded-[10px] text-[11px] font-bold">{approvedMembers.length + 1}</span>
             </div>
-            <div className="mt-4 pt-4 border-t border-gray-100">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Enrollment trends</p>
-              <p className="text-[10.5px] text-slate-500 leading-snug">
-                Open the <span className="font-semibold text-emerald-700">Analytics</span> tab for charts and monthly
-                retention (subscription enrollments, UTC).
-              </p>
-            </div>
+            {membersLoading ? (
+              <div className="py-6 flex justify-center"><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-emerald-600" /></div>
+            ) : (
+              <MemberList
+                groupId={group.id}
+                members={members}
+                currentUserId={currentUserId}
+                tutorId={group.tutor_id}
+                tutorName={tutorName}
+                tutorAvatarUrl={group.tutor?.avatar_url ?? null}
+                isTutor={true}
+                onRefresh={fetchMembers}
+              />
+            )}
           </div>
 
           {/* Upcoming Sessions */}
@@ -1209,49 +1313,6 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
               Schedule a Session
             </button>
-          </div>
-
-          {/* Members */}
-          <div className="bg-white rounded-[14px] border border-gray-200 p-[18px] shadow-sm">
-            <div className="flex items-center justify-between mb-3.5">
-              <p className="text-[12px] font-bold uppercase tracking-wider text-slate-500">Members</p>
-              <span className="bg-[#d1fae5] text-[#047857] px-2 py-0.5 rounded-[10px] text-[11px] font-bold">{approvedMembers.length + 1}</span>
-            </div>
-            {membersLoading ? (
-              <div className="py-6 flex justify-center"><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-emerald-600" /></div>
-            ) : (
-              <MemberList
-                groupId={group.id}
-                members={members}
-                currentUserId={currentUserId}
-                tutorId={group.tutor_id}
-                tutorName={tutorName}
-                tutorAvatarUrl={group.tutor?.avatar_url ?? null}
-                isTutor={true}
-                onRefresh={fetchMembers}
-              />
-            )}
-          </div>
-
-          {/* Quick Actions */}
-          <div className="bg-white rounded-[14px] border border-gray-200 p-[18px] shadow-sm">
-            <p className="text-[12px] font-bold uppercase tracking-wider text-slate-500 mb-3.5">Quick Actions</p>
-            <div className="flex flex-col gap-1.5">
-              {[
-                { label: 'Edit Class Details', action: () => setManageOpen(true), icon: <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />, icon2: <path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /> },
-                { label: 'Schedule Session', action: () => setShowCreateSession(true), icon: <><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></> },
-                { label: 'Invite Members', action: copyInviteLink, icon: <><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2" /><circle cx="8.5" cy="7" r="4" /><line x1="20" y1="8" x2="20" y2="14" /><line x1="23" y1="11" x2="17" y2="11" /></> },
-              ].map((qa) => (
-                <button
-                  key={qa.label}
-                  onClick={qa.action}
-                  className="flex items-center gap-2.5 py-2.5 px-3 rounded-[10px] text-[13px] font-medium text-gray-700 hover:bg-gray-50 transition-colors text-left w-full"
-                >
-                  <svg className="w-[18px] h-[18px] text-slate-500 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>{qa.icon}{qa.icon2}</svg>
-                  {qa.label}
-                </button>
-              ))}
-            </div>
           </div>
 
         </div>
