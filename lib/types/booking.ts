@@ -87,6 +87,7 @@ export interface Booking {
   // Notes
   student_notes: string | null;
   tutor_notes: string | null;
+  cancellation_reason?: string | null;
   
   // Timestamps
   created_at: string;

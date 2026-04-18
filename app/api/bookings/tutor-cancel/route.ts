@@ -14,6 +14,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'booking_id required' }, { status: 400 });
     }
 
+    if (typeof reason !== 'string' || !reason.trim()) {
+      return NextResponse.json({ error: 'cancellation_reason_required' }, { status: 400 });
+    }
+
     const cookieStore = cookies();
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -35,7 +39,7 @@ export async function POST(request: NextRequest) {
     const admin = getServiceClient();
     const { data: booking, error: bookingError } = await admin
       .from('bookings')
-      .select('id, tutor_id, status')
+      .select('id, tutor_id, student_id, status')
       .eq('id', booking_id)
       .single();
 
@@ -52,6 +56,7 @@ export async function POST(request: NextRequest) {
       .update({
         status: 'CANCELLED',
         last_action_by: 'tutor',
+        cancellation_reason: reason.trim(),
         updated_at: new Date().toISOString()
       })
       .eq('id', booking_id);
@@ -89,6 +94,27 @@ export async function POST(request: NextRequest) {
       message_type: 'system',
       body: 'Booking cancelled by tutor'
     });
+
+    const { data: tutorProfile } = await admin
+      .from('profiles')
+      .select('full_name, display_name, username')
+      .eq('id', user.id)
+      .maybeSingle();
+    const tutorLabel =
+      tutorProfile?.display_name || tutorProfile?.full_name || tutorProfile?.username || 'Tutor';
+
+    try {
+      await admin.from('notifications').insert({
+        user_id: booking.student_id,
+        type: 'booking_cancelled',
+        title: 'Booking cancelled',
+        message: `Your booking with ${tutorLabel} has been cancelled.`,
+        link: `/student/bookings/${booking_id}`,
+        related_booking_id: booking_id,
+      });
+    } catch (e) {
+      console.error('tutor-cancel: notification insert failed', e);
+    }
 
     return NextResponse.json({ success: true, status: 'CANCELLED' }, { status: 200 });
   } catch (error) {

@@ -19,6 +19,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'bookingId is required' }, { status: 400 });
     }
 
+    if (typeof reason !== 'string' || !reason.trim()) {
+      return NextResponse.json({ error: 'cancellation_reason_required' }, { status: 400 });
+    }
+
     const serverClient = await getServerClient();
     const {
       data: { user },
@@ -32,7 +36,7 @@ export async function POST(request: NextRequest) {
     const admin = getServiceClient();
     const { data: booking, error: bookingError } = await admin
       .from('bookings')
-      .select('id, student_id')
+      .select('id, student_id, tutor_id')
       .eq('id', bookingId)
       .single();
 
@@ -46,7 +50,7 @@ export async function POST(request: NextRequest) {
 
     const { data, error } = await serverClient.rpc('student_cancel_booking', {
       p_booking_id: bookingId,
-      p_reason: reason || null,
+      p_reason: reason.trim(),
     });
 
     if (error) {
@@ -61,6 +65,30 @@ export async function POST(request: NextRequest) {
 
     if (session?.id) {
       await cancelSessionReminders(session.id);
+    }
+
+    const { data: studentProfile } = await admin
+      .from('profiles')
+      .select('full_name, display_name, username')
+      .eq('id', user.id)
+      .maybeSingle();
+    const studentLabel =
+      studentProfile?.display_name ||
+      studentProfile?.full_name ||
+      studentProfile?.username ||
+      'Student';
+
+    try {
+      await admin.from('notifications').insert({
+        user_id: booking.tutor_id,
+        type: 'booking_cancelled',
+        title: 'Booking cancelled',
+        message: `A booking from ${studentLabel} has been cancelled.`,
+        link: `/tutor/bookings/${bookingId}`,
+        related_booking_id: bookingId,
+      });
+    } catch (e) {
+      console.error('student-cancel: notification insert failed', e);
     }
 
     return NextResponse.json(data ?? { success: true, status: 'CANCELLED' });

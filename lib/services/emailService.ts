@@ -3,6 +3,7 @@
 // =====================================================
 // Handles all email sending logic with Resend integration
 
+import type { ReactElement } from 'react';
 import { Resend } from 'resend';
 
 let resendClient: Resend | null = null;
@@ -14,12 +15,11 @@ function getResend(): Resend | null {
   return resendClient;
 }
 
-export interface SendEmailParams {
+export type SendEmailParams = {
   to: string;
   subject: string;
-  html: string;
   from?: string;
-}
+} & ({ html: string; react?: never } | { react: ReactElement; html?: never });
 
 export interface EmailResult {
   success: boolean;
@@ -30,19 +30,30 @@ export interface EmailResult {
 /**
  * Send an email using Resend
  */
-export async function sendEmail({
-  to,
-  subject,
-  html,
-  from = process.env.RESEND_FROM_EMAIL || 'iTutor <hello@myitutor.com>',
-}: SendEmailParams): Promise<EmailResult> {
-  // ALL EMAILS DISABLED
-  console.log(`[EMAIL BLOCKED] to=${to} subject=${subject}`);
-  return { success: true, messageId: 'disabled' };
+export async function sendEmail(params: SendEmailParams): Promise<EmailResult> {
+  const from = params.from ?? (process.env.RESEND_FROM_EMAIL || 'iTutor <hello@myitutor.com>');
+  const resend = getResend();
+  if (!resend) {
+    return { success: false, error: 'RESEND_API_KEY is not configured' };
+  }
+
+  const sendPayload =
+    'react' in params && params.react
+      ? { from, to: params.to, subject: params.subject, react: params.react }
+      : { from, to: params.to, subject: params.subject, html: params.html };
+
+  const { data, error } = await resend.emails.send(sendPayload);
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  return { success: true, messageId: data?.id };
 }
 
 /**
- * Get email template content from database by user type and stage
+ * Get email template content: from database if present, else from code-based templates.
+ * Ensures welcome/onboarding emails work even when email_templates table is empty.
  */
 export async function getEmailTemplate(
   userType: 'student' | 'tutor' | 'parent',
@@ -60,19 +71,29 @@ export async function getEmailTemplate(
       .select('subject, html_content')
       .eq('user_type', userType)
       .eq('stage', stage)
-      .single();
+      .maybeSingle();
 
-    if (error || !data) {
-      console.error('Error fetching template:', error);
-      return null;
+    if (!error && data?.subject && data?.html_content) {
+      return {
+        subject: data.subject,
+        html: data.html_content,
+      };
     }
 
+    if (stage < 0 || stage > 4) return null;
+
+    const { getEmailForStage, getCtaUrl } = await import('@/lib/email-templates');
+    const ctaUrl = getCtaUrl(userType, stage as 0 | 1 | 2 | 3 | 4);
+    const template = getEmailForStage(userType, stage as 0 | 1 | 2 | 3 | 4, {
+      firstName: '{{firstName}}',
+      ctaUrl,
+    });
     return {
-      subject: data.subject,
-      html: data.html_content,
+      subject: template.subject,
+      html: template.html,
     };
-  } catch (error) {
-    console.error('Error in getEmailTemplate:', error);
+  } catch (err) {
+    console.error('Error in getEmailTemplate:', err);
     return null;
   }
 }
