@@ -624,46 +624,6 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
         </div>
       </div>
 
-      {pendingJoinRequests.length > 0 && (
-        <div className="max-w-[1100px] mx-auto px-7 mt-4">
-          <div className="rounded-[14px] border border-amber-200 bg-amber-50 px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-[13px] font-bold text-amber-900">
-                {pendingJoinRequests.length} pending join request{pendingJoinRequests.length === 1 ? '' : 's'}
-              </p>
-              <p className="text-[12px] text-amber-800 mt-0.5">Approve or deny without opening Manage Class.</p>
-            </div>
-            <div className="flex flex-col gap-2 min-w-0">
-              {pendingJoinRequests.map((m) => {
-                const name = m.profile?.full_name ?? 'Student';
-                const busy = pendingActionId === m.user_id;
-                return (
-                  <div key={m.id} className="flex flex-wrap items-center gap-2">
-                    <span className="text-[13px] font-semibold text-gray-900 truncate max-w-[200px]">{name}</span>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void decideJoinRequest(m.user_id, 'approved')}
-                      className="px-3 py-1.5 rounded-[10px] text-[12px] font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
-                    >
-                      {busy ? '…' : 'Approve'}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void decideJoinRequest(m.user_id, 'denied')}
-                      className="px-3 py-1.5 rounded-[10px] text-[12px] font-semibold border border-gray-300 bg-white text-gray-800 hover:bg-gray-50 disabled:opacity-50"
-                    >
-                      Deny
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* ── MANAGE PANEL (conditional) ── */}
       {manageOpen && (
         <div className="max-w-[820px] mx-auto px-6 mt-5 pb-14">
