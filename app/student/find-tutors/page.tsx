@@ -581,7 +581,17 @@ export default function FindTutorsPage() {
               return (
                 <div
                   key={tutor.id}
-                  className="bg-white border-2 border-gray-200 rounded-2xl overflow-hidden hover:shadow-xl hover:border-itutor-green transition-all duration-300 flex flex-col"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => router.push(`/student/tutors/${tutor.id}`)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      router.push(`/student/tutors/${tutor.id}`);
+                    }
+                  }}
+                  aria-label={`Open ${getDisplayName(tutor)}'s profile`}
+                  className="bg-white border-2 border-gray-200 rounded-2xl overflow-hidden hover:shadow-xl hover:border-itutor-green transition-all duration-300 flex flex-col cursor-pointer focus:outline-none focus:ring-2 focus:ring-itutor-green focus:ring-offset-2"
                 >
                   <div className="relative h-24 shrink-0 sm:h-28">
                     <img
@@ -624,16 +634,6 @@ export default function FindTutorsPage() {
                           )}
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => router.push(`/student/tutors/${tutor.id}`)}
-                        aria-label={`Open ${getDisplayName(tutor)}'s profile`}
-                        className="flex h-10 w-10 shrink-0 items-center justify-center self-start rounded-full border border-itutor-green/55 bg-itutor-green/15 text-itutor-green shadow-sm transition hover:bg-itutor-green/25 hover:border-itutor-green"
-                      >
-                        <span className="text-[15px] font-extrabold leading-none" aria-hidden>
-                          !
-                        </span>
-                      </button>
                     </div>
                   </div>
 

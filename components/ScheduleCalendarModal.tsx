@@ -190,8 +190,66 @@ function GlassBtn({
   );
 }
 
-function TodayBtn({ onClick }: { onClick: () => void }) {
+function ThemeToggle({ theme, onToggle }: { theme: 'dark' | 'light'; onToggle: () => void }) {
   const [hov, setHov] = useState(false);
+  const isDark = theme === 'dark';
+  return (
+    <button
+      type="button"
+      aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+      onClick={onToggle}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        position: 'relative',
+        width: 56,
+        height: 26,
+        borderRadius: 999,
+        border: `1px solid ${hov ? 'rgba(74,222,128,0.4)' : 'rgba(74,222,128,0.2)'}`,
+        background: hov ? 'rgba(74,222,128,0.12)' : 'rgba(74,222,128,0.06)',
+        backdropFilter: 'blur(14px) saturate(160%)',
+        WebkitBackdropFilter: 'blur(14px) saturate(160%)',
+        cursor: 'pointer',
+        transition: 'all 0.18s',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04), 0 2px 8px rgba(0,0,0,0.15)',
+        padding: 0,
+      }}
+    >
+      <span
+        style={{
+          position: 'absolute',
+          top: 2,
+          left: isDark ? 2 : 30,
+          width: 20,
+          height: 20,
+          borderRadius: '50%',
+          background: 'linear-gradient(135deg, rgba(167,243,208,0.25), rgba(74,222,128,0.15))',
+          border: '1px solid rgba(167,243,208,0.35)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          transition: 'left 0.22s cubic-bezier(0.34,1.56,0.64,1)',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
+        }}
+      >
+        {isDark ? (
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#d1fae5" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+          </svg>
+        ) : (
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#065f46" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+          </svg>
+        )}
+      </span>
+    </button>
+  );
+}
+
+function TodayBtn({ onClick, theme = 'dark' }: { onClick: () => void; theme?: 'dark' | 'light' }) {
+  const [hov, setHov] = useState(false);
+  const isLight = theme === 'light';
   return (
     <button
       type="button"
@@ -201,9 +259,13 @@ function TodayBtn({ onClick }: { onClick: () => void }) {
       style={{
         padding: '5px 16px',
         borderRadius: 20,
-        border: `1px solid ${hov ? 'rgba(74,222,128,0.45)' : 'rgba(74,222,128,0.2)'}`,
-        background: hov ? 'rgba(74,222,128,0.12)' : 'rgba(74,222,128,0.05)',
-        color: 'rgba(167,243,208,0.85)',
+        border: isLight
+          ? `1px solid ${hov ? 'rgba(25,147,86,0.55)' : 'rgba(25,147,86,0.3)'}`
+          : `1px solid ${hov ? 'rgba(74,222,128,0.45)' : 'rgba(74,222,128,0.2)'}`,
+        background: isLight
+          ? (hov ? 'rgba(25,147,86,0.14)' : 'rgba(25,147,86,0.06)')
+          : (hov ? 'rgba(74,222,128,0.12)' : 'rgba(74,222,128,0.05)'),
+        color: isLight ? '#199356' : 'rgba(167,243,208,0.85)',
         fontSize: 12,
         fontWeight: 600,
         cursor: 'pointer',
@@ -249,14 +311,14 @@ function ITutorMark({ height = 22 }: { height?: number }) {
   );
 }
 
-function ITutorLogo() {
+function ITutorLogo({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
   return (
     <div
       style={{
         display: 'flex',
         alignItems: 'center',
         fontSize: 18,
-        columnGap: '0.52em',
+        columnGap: '0.04em',
       }}
     >
       <ITutorMark height={22} />
@@ -267,7 +329,7 @@ function ITutorLogo() {
           fontSize: 'inherit',
           lineHeight: 1,
           letterSpacing: '-0.035em',
-          color: '#ffffff',
+          color: theme === 'dark' ? '#ffffff' : '#052e1d',
           textTransform: 'lowercase',
         }}
       >
@@ -387,6 +449,18 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
   const [mounted, setMounted] = useState(false);
   const [cursor, setCursor] = useState(() => new Date());
   const [view, setView] = useState<'week' | 'month' | 'year'>('week');
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const saved = window.localStorage.getItem('itutor-cal-theme');
+    if (saved === 'light' || saved === 'dark') setTheme(saved);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('itutor-cal-theme', theme);
+  }, [theme]);
   const [events, setEvents] = useState<ScheduleEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<ScheduleEvent | null>(null);
@@ -563,10 +637,45 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
         }
         .itutor-modal-anim { animation: itutor-slide-up 0.22s cubic-bezier(0.34,1.56,0.64,1); }
         .itutor-bg-anim { animation: itutor-bg-fade 0.18s ease; }
+
+        /* ===== Light mode overrides (white / black / green) ===== */
+        [data-cal-theme="light"] { color-scheme: light; }
+        [data-cal-theme="light"] .itutor-cal-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); }
+        [data-cal-theme="light"] .itutor-cal-scroll::-webkit-scrollbar-track { background: transparent; }
+
+        /* Aside / event list panel */
+        [data-cal-theme="light"] aside { background: #ffffff !important; }
+        [data-cal-theme="light"] aside h3,
+        [data-cal-theme="light"] aside li,
+        [data-cal-theme="light"] aside span,
+        [data-cal-theme="light"] aside div { color: #000000 !important; }
+        [data-cal-theme="light"] aside p { color: rgba(0,0,0,0.55) !important; }
+        [data-cal-theme="light"] aside, [data-cal-theme="light"] aside * { border-color: rgba(0,0,0,0.08) !important; }
+
+        /* Time gutter & grid labels */
+        [data-cal-theme="light"] .itutor-time-label { color: rgba(0,0,0,0.55) !important; }
+        [data-cal-theme="light"] .itutor-day-label { color: rgba(0,0,0,0.55) !important; }
+        [data-cal-theme="light"] .itutor-day-number { color: #000000 !important; }
+        [data-cal-theme="light"] .itutor-hour-row { border-color: rgba(0,0,0,0.07) !important; }
+        [data-cal-theme="light"] .itutor-col-divider { border-color: rgba(0,0,0,0.07) !important; }
+
+        /* Month / year cells */
+        [data-cal-theme="light"] .itutor-month-cell { background: #ffffff !important; color: #000000 !important; border-color: rgba(0,0,0,0.08) !important; }
+        [data-cal-theme="light"] .itutor-year-mini { background: #ffffff !important; color: #000000 !important; border-color: rgba(0,0,0,0.08) !important; }
+
+        /* Event detail popover */
+        [data-cal-theme="light"] .itutor-event-detail { background: #ffffff !important; color: #000000 !important; border-color: rgba(0,0,0,0.1) !important; }
+        [data-cal-theme="light"] .itutor-event-detail h2,
+        [data-cal-theme="light"] .itutor-event-detail h3 { color: #000000 !important; }
+        [data-cal-theme="light"] .itutor-event-detail .meta { color: rgba(0,0,0,0.6) !important; }
+
+        /* FAB green */
+        [data-cal-theme="light"] .itutor-fab { box-shadow: 0 10px 30px rgba(25,147,86,0.35) !important; }
       `}</style>
 
       <div
-        className="fixed inset-0 z-[200] flex flex-col overflow-hidden"
+        data-cal-theme={theme}
+        className="fixed inset-0 z-[200] flex flex-col overflow-hidden itutor-cal-root"
         style={{
           fontFamily: "'Sora', 'DM Sans', ui-sans-serif, system-ui, sans-serif",
         }}
@@ -579,7 +688,7 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
             position: 'absolute',
             inset: 0,
             zIndex: 0,
-            background: '#030804',
+            background: theme === 'dark' ? '#030804' : '#ffffff',
             overflow: 'hidden',
             pointerEvents: 'none',
           }}
@@ -636,38 +745,38 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
               gap: 10,
               flexWrap: 'wrap',
               padding: '10px 16px',
-              background: 'rgba(5,12,5,0.8)',
+              background: theme === 'dark' ? 'rgba(5,12,5,0.8)' : 'rgba(255,255,255,0.75)',
               backdropFilter: 'blur(28px) saturate(180%)',
               WebkitBackdropFilter: 'blur(28px) saturate(180%)',
-              borderBottom: '1px solid rgba(74,222,128,0.1)',
-              boxShadow: '0 1px 0 rgba(74,222,128,0.05)',
+              borderBottom: theme === 'dark' ? '1px solid rgba(74,222,128,0.1)' : '1px solid rgba(22,101,52,0.14)',
+              boxShadow: theme === 'dark' ? '0 1px 0 rgba(74,222,128,0.05)' : '0 1px 0 rgba(22,101,52,0.04)',
               flexShrink: 0,
             }}
           >
             <GlassBtn onClick={onClose} ariaLabel="Close calendar">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(74,222,128,0.65)" strokeWidth="2.2">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={theme === 'dark' ? 'rgba(74,222,128,0.65)' : '#199356'} strokeWidth="2.2">
                 <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" />
               </svg>
             </GlassBtn>
 
-            <ITutorLogo />
+            <ITutorLogo theme={theme} />
 
-            <div style={{ width: 1, height: 18, background: 'rgba(74,222,128,0.15)', margin: '0 2px' }} />
+            <div style={{ width: 1, height: 18, background: theme === 'dark' ? 'rgba(74,222,128,0.15)' : 'rgba(0,0,0,0.12)', margin: '0 2px' }} />
 
-            <span style={{ fontSize: 12, color: 'rgba(74,222,128,0.45)', fontWeight: 500 }}>Calendar</span>
+            <span style={{ fontSize: 12, color: theme === 'dark' ? 'rgba(74,222,128,0.45)' : 'rgba(22,101,52,0.65)', fontWeight: 500 }}>Calendar</span>
 
             <div style={{ flex: 1, minWidth: 8 }} />
 
-            <TodayBtn onClick={goToday} />
+            <TodayBtn onClick={goToday} theme={theme} />
 
             <div style={{ display: 'flex', gap: 3 }}>
               <GlassBtn onClick={prev} ariaLabel="Previous">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(74,222,128,0.65)" strokeWidth="2.5">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={theme === 'dark' ? 'rgba(74,222,128,0.65)' : '#199356'} strokeWidth="2.5">
                   <polyline points="15 18 9 12 15 6" />
                 </svg>
               </GlassBtn>
               <GlassBtn onClick={next} ariaLabel="Next">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(74,222,128,0.65)" strokeWidth="2.5">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={theme === 'dark' ? 'rgba(74,222,128,0.65)' : '#199356'} strokeWidth="2.5">
                   <polyline points="9 18 15 12 9 6" />
                 </svg>
               </GlassBtn>
@@ -684,14 +793,14 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
                 whiteSpace: 'nowrap',
                 ...(view === 'year'
                   ? {
-                      color: '#ffffff',
+                      color: theme === 'dark' ? '#ffffff' : '#052e1d',
                       padding: '6px 16px',
                       borderRadius: 999,
-                      background: 'rgba(255,255,255,0.06)',
-                      border: '1px solid rgba(255,255,255,0.12)',
+                      background: theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(22,101,52,0.08)',
+                      border: theme === 'dark' ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(22,101,52,0.18)',
                     }
                   : {
-                      color: '#d1fae5',
+                      color: theme === 'dark' ? '#d1fae5' : '#065f46',
                     }),
               }}
             >
@@ -701,11 +810,13 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
             <div style={{ flex: 1, minWidth: 8 }} />
 
             <GlassBtn ariaLabel="Search (placeholder)">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(74,222,128,0.55)" strokeWidth="2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={theme === 'dark' ? 'rgba(74,222,128,0.55)' : '#199356'} strokeWidth="2">
                 <circle cx="11" cy="11" r="8" />
                 <line x1="21" y1="21" x2="16.65" y2="16.65" />
               </svg>
             </GlassBtn>
+
+            <ThemeToggle theme={theme} onToggle={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))} />
 
             <div
               style={{
@@ -713,8 +824,8 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
                 gap: 2,
                 padding: 3,
                 borderRadius: 10,
-                background: 'rgba(74,222,128,0.04)',
-                border: '1px solid rgba(74,222,128,0.1)',
+                background: theme === 'dark' ? 'rgba(74,222,128,0.04)' : 'rgba(25,147,86,0.06)',
+                border: theme === 'dark' ? '1px solid rgba(74,222,128,0.1)' : '1px solid rgba(0,0,0,0.08)',
               }}
             >
               {(['Week', 'Month', 'Year'] as const).map((v) => {
@@ -729,13 +840,19 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
                       padding: '4px 11px',
                       borderRadius: 7,
                       border: 'none',
-                      background: active ? 'rgba(74,222,128,0.16)' : 'transparent',
-                      color: active ? '#4ade80' : 'rgba(74,222,128,0.38)',
+                      background: active
+                        ? (theme === 'dark' ? 'rgba(74,222,128,0.16)' : 'rgba(25,147,86,0.14)')
+                        : 'transparent',
+                      color: active
+                        ? (theme === 'dark' ? '#4ade80' : '#199356')
+                        : (theme === 'dark' ? 'rgba(74,222,128,0.38)' : 'rgba(0,0,0,0.55)'),
                       fontFamily: "'Sora',sans-serif",
                       fontSize: 11,
                       fontWeight: 700,
                       cursor: 'pointer',
-                      boxShadow: active ? '0 0 10px rgba(74,222,128,0.12)' : 'none',
+                      boxShadow: active
+                        ? (theme === 'dark' ? '0 0 10px rgba(74,222,128,0.12)' : '0 0 10px rgba(25,147,86,0.18)')
+                        : 'none',
                     }}
                   >
                     {v}
@@ -825,9 +942,9 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
                     style={{
                       display: 'grid',
                       gridTemplateColumns: `${TIME_W}px repeat(7, minmax(0, 1fr))`,
-                      background: 'rgba(4,10,4,0.7)',
+                      background: theme === 'dark' ? 'rgba(4,10,4,0.7)' : 'rgba(255,255,255,0.95)',
                       backdropFilter: 'blur(20px)',
-                      borderBottom: '1px solid rgba(74,222,128,0.08)',
+                      borderBottom: theme === 'dark' ? '1px solid rgba(74,222,128,0.08)' : '1px solid rgba(0,0,0,0.08)',
                       flexShrink: 0,
                     }}
                   >
@@ -836,7 +953,7 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
                         padding: '10px 0',
                         textAlign: 'center',
                         fontSize: 9.5,
-                        color: 'rgba(74,222,128,0.28)',
+                        color: theme === 'dark' ? 'rgba(74,222,128,0.28)' : 'rgba(0,0,0,0.45)',
                         fontFamily: "'DM Mono',monospace",
                         letterSpacing: '0.5px',
                       }}
@@ -851,7 +968,7 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
                           style={{
                             padding: '8px 4px',
                             textAlign: 'center',
-                            borderLeft: '1px solid rgba(74,222,128,0.06)',
+                            borderLeft: theme === 'dark' ? '1px solid rgba(74,222,128,0.06)' : '1px solid rgba(0,0,0,0.06)',
                           }}
                         >
                           <div
@@ -859,7 +976,7 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
                               fontSize: 9.5,
                               fontWeight: 700,
                               letterSpacing: 1.4,
-                              color: tod ? '#4ade80' : 'rgba(74,222,128,0.3)',
+                              color: tod ? (theme === 'dark' ? '#4ade80' : '#199356') : (theme === 'dark' ? 'rgba(74,222,128,0.3)' : 'rgba(0,0,0,0.5)'),
                             }}
                           >
                             {DAYS[i]}
@@ -873,10 +990,10 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
                               height: 32,
                               borderRadius: '50%',
                               marginTop: 3,
-                              background: tod ? 'rgba(74,222,128,0.12)' : 'transparent',
-                              border: `1.5px solid ${tod ? 'rgba(74,222,128,0.45)' : 'transparent'}`,
-                              boxShadow: tod ? '0 0 18px rgba(74,222,128,0.18), inset 0 0 10px rgba(74,222,128,0.06)' : 'none',
-                              color: tod ? '#4ade80' : '#d1fae5',
+                              background: tod ? (theme === 'dark' ? 'rgba(74,222,128,0.12)' : 'rgba(25,147,86,0.12)') : 'transparent',
+                              border: `1.5px solid ${tod ? (theme === 'dark' ? 'rgba(74,222,128,0.45)' : 'rgba(25,147,86,0.55)') : 'transparent'}`,
+                              boxShadow: tod ? (theme === 'dark' ? '0 0 18px rgba(74,222,128,0.18), inset 0 0 10px rgba(74,222,128,0.06)' : '0 0 14px rgba(25,147,86,0.18)') : 'none',
+                              color: tod ? (theme === 'dark' ? '#4ade80' : '#199356') : (theme === 'dark' ? '#d1fae5' : '#000000'),
                               fontSize: 15,
                               fontWeight: tod ? 800 : 400,
                             }}
@@ -905,7 +1022,7 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
                               top: i * CELL_H - 9,
                               right: 10,
                               fontSize: 9,
-                              color: 'rgba(255,255,255,0.88)',
+                              color: theme === 'dark' ? 'rgba(255,255,255,0.88)' : 'rgba(0,0,0,0.6)',
                               fontFamily: "'DM Mono',monospace",
                               fontWeight: 500,
                               userSelect: 'none',
@@ -928,9 +1045,9 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
                             key={dayIdx}
                             style={{
                               position: 'relative',
-                              borderLeft: '1px solid rgba(74,222,128,0.06)',
+                              borderLeft: theme === 'dark' ? '1px solid rgba(74,222,128,0.06)' : '1px solid rgba(0,0,0,0.06)',
                               height: HOURS.length * CELL_H,
-                              background: tod ? 'rgba(74,222,128,0.012)' : 'transparent',
+                              background: tod ? (theme === 'dark' ? 'rgba(74,222,128,0.012)' : 'rgba(25,147,86,0.025)') : 'transparent',
                             }}
                           >
                             {HOURS.map((_, i) => (
@@ -941,7 +1058,7 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
                                   top: i * CELL_H,
                                   left: 0,
                                   right: 0,
-                                  borderTop: '1px solid rgba(74,222,128,0.055)',
+                                  borderTop: theme === 'dark' ? '1px solid rgba(74,222,128,0.055)' : '1px solid rgba(0,0,0,0.07)',
                                 }}
                               >
                                 <div
@@ -950,7 +1067,7 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
                                     top: CELL_H / 2,
                                     left: 0,
                                     right: 0,
-                                    borderTop: '1px dashed rgba(74,222,128,0.025)',
+                                    borderTop: theme === 'dark' ? '1px dashed rgba(74,222,128,0.025)' : '1px dashed rgba(0,0,0,0.04)',
                                   }}
                                 />
                               </div>
@@ -1093,8 +1210,9 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
                           fontWeight: 700,
                           letterSpacing: 1,
                           padding: '10px 0',
-                          color: 'rgba(74,222,128,0.35)',
-                          background: 'rgba(4,10,4,0.85)',
+                          color: theme === 'dark' ? 'rgba(74,222,128,0.35)' : 'rgba(0,0,0,0.55)',
+                          background: theme === 'dark' ? 'rgba(4,10,4,0.85)' : '#ffffff',
+                          border: theme === 'dark' ? 'none' : '1px solid rgba(0,0,0,0.06)',
                           borderRadius: 4,
                         }}
                       >
@@ -1112,12 +1230,13 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
                       gap: 1,
                       borderRadius: 10,
                       overflow: 'hidden',
-                      border: '1px solid rgba(74,222,128,0.08)',
+                      border: theme === 'dark' ? '1px solid rgba(74,222,128,0.08)' : '1px solid rgba(0,0,0,0.08)',
+                      background: theme === 'dark' ? 'transparent' : 'rgba(0,0,0,0.08)',
                     }}
                   >
                     {monthMatrix.map((cell, idx) => {
                       if (!cell) {
-                        return <div key={`e-${idx}`} style={{ background: '#030804', minWidth: 0, minHeight: 0 }} />;
+                        return <div key={`e-${idx}`} style={{ background: theme === 'dark' ? '#030804' : '#f7f7f7', minWidth: 0, minHeight: 0 }} />;
                       }
                       const dayEv = events.filter((e) => isSameDay(e.start, cell));
                       const t = isToday(cell);
@@ -1127,20 +1246,24 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
                           style={{
                             minWidth: 0,
                             minHeight: 0,
-                            borderTop: '1px solid rgba(74,222,128,0.06)',
-                            borderLeft: '1px solid rgba(74,222,128,0.06)',
+                            borderTop: theme === 'dark' ? '1px solid rgba(74,222,128,0.06)' : '1px solid rgba(0,0,0,0.06)',
+                            borderLeft: theme === 'dark' ? '1px solid rgba(74,222,128,0.06)' : '1px solid rgba(0,0,0,0.06)',
                             padding: 8,
                             display: 'flex',
                             flexDirection: 'column',
                             overflow: 'hidden',
-                            background: t ? 'rgba(74,222,128,0.07)' : 'rgba(5,14,5,0.55)',
+                            background: t
+                              ? (theme === 'dark' ? 'rgba(74,222,128,0.07)' : 'rgba(25,147,86,0.08)')
+                              : (theme === 'dark' ? 'rgba(5,14,5,0.55)' : '#ffffff'),
                           }}
                         >
                           <span
                             style={{
                               fontSize: 13,
                               fontWeight: t ? 800 : 600,
-                              color: t ? '#4ade80' : 'rgba(209,250,229,0.72)',
+                              color: t
+                                ? (theme === 'dark' ? '#4ade80' : '#199356')
+                                : (theme === 'dark' ? 'rgba(209,250,229,0.72)' : '#000000'),
                               flexShrink: 0,
                             }}
                           >
@@ -1186,7 +1309,7 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
                               );
                             })}
                             {dayEv.length > 5 && (
-                              <span style={{ fontSize: 9, color: 'rgba(74,222,128,0.4)', flexShrink: 0 }}>
+                              <span style={{ fontSize: 9, color: theme === 'dark' ? 'rgba(74,222,128,0.4)' : 'rgba(0,0,0,0.5)', flexShrink: 0 }}>
                                 +{dayEv.length - 5} more
                               </span>
                             )}
@@ -1230,7 +1353,7 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
                           style={{
                             fontSize: 'clamp(12px, 1.35vw, 15px)',
                             fontWeight: 600,
-                            color: '#ffffff',
+                            color: theme === 'dark' ? '#ffffff' : '#000000',
                             margin: '0 0 10px 0',
                             letterSpacing: '-0.02em',
                           }}
@@ -1245,7 +1368,7 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
                             marginBottom: 6,
                             fontSize: 'clamp(9px, 1vw, 11px)',
                             textAlign: 'center',
-                            color: 'rgba(255,255,255,0.42)',
+                            color: theme === 'dark' ? 'rgba(255,255,255,0.42)' : 'rgba(0,0,0,0.5)',
                             fontWeight: 500,
                           }}
                         >
@@ -1284,23 +1407,29 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
                               borderRadius: '50%',
                               fontSize: 'clamp(9px, 1vw, 11px)',
                               fontWeight: isTd ? 600 : 500,
-                              color: isTd ? '#ecfdf5' : '#ffffff',
+                              color: isTd
+                                ? (theme === 'dark' ? '#ecfdf5' : '#ffffff')
+                                : (theme === 'dark' ? '#ffffff' : '#000000'),
                             };
                             const bubbleStyle: CSSProperties = isTd
                               ? {
                                   ...bubbleBase,
                                   background:
-                                    'linear-gradient(155deg, rgba(134,239,172,0.55) 0%, rgba(74,222,128,0.28) 38%, rgba(16,185,129,0.22) 72%, rgba(5,46,22,0.45) 100%)',
+                                    theme === 'dark'
+                                      ? 'linear-gradient(155deg, rgba(134,239,172,0.55) 0%, rgba(74,222,128,0.28) 38%, rgba(16,185,129,0.22) 72%, rgba(5,46,22,0.45) 100%)'
+                                      : '#199356',
                                   backdropFilter: 'blur(14px) saturate(175%)',
                                   WebkitBackdropFilter: 'blur(14px) saturate(175%)',
-                                  border: '1px solid rgba(187,247,208,0.65)',
+                                  border: theme === 'dark' ? '1px solid rgba(187,247,208,0.65)' : '1px solid rgba(25,147,86,0.6)',
                                   boxShadow:
-                                    'inset 0 1px 1px rgba(255,255,255,0.55), inset 0 -2px 4px rgba(6,78,59,0.45), 0 0 0 1px rgba(74,222,128,0.15), 0 6px 18px rgba(74,222,128,0.35)',
+                                    theme === 'dark'
+                                      ? 'inset 0 1px 1px rgba(255,255,255,0.55), inset 0 -2px 4px rgba(6,78,59,0.45), 0 0 0 1px rgba(74,222,128,0.15), 0 6px 18px rgba(74,222,128,0.35)'
+                                      : '0 4px 12px rgba(25,147,86,0.35)',
                                 }
                               : hasEv
                                 ? {
                                     ...bubbleBase,
-                                    background: 'rgba(148,163,184,0.5)',
+                                    background: theme === 'dark' ? 'rgba(148,163,184,0.5)' : 'rgba(25,147,86,0.18)',
                                   }
                                 : { ...bubbleBase, background: 'transparent' };
                             return (

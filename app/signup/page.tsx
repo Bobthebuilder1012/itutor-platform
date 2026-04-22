@@ -317,7 +317,7 @@ export default function SignupPage() {
               className="h-28 w-auto shrink-0 object-contain object-left mix-blend-screen sm:h-[9rem]"
               aria-hidden
             />
-            <span className="text-7xl font-bold lowercase tracking-tight text-white sm:text-8xl">itutor</span>
+            <span className="text-7xl font-normal lowercase tracking-tight text-white sm:text-8xl">itutor</span>
             <span className="sr-only">iTutor</span>
           </div>
           <div className="inline-flex mb-6">

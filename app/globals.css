@@ -3,15 +3,42 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --brand: #16a34a;
+    --brand-dark: #15803d;
+    --brand-light: #dcfce7;
+    --brand-accent: #22c55e;
+
+    --sidebar: #0f1a14;
+    --sidebar-fg: #e5e7eb;
+    --sidebar-muted: #9ca3af;
+    --sidebar-active: #22c55e;
+
+    --surface: #ffffff;
+    --surface-soft: #f5faf7;
+    --surface-border: #e5e7eb;
+
+    --ink: #111827;
+    --ink-muted: #6b7280;
+
+    --bg: #f3f4f6;
+  }
+
   html {
     scroll-behavior: smooth;
     overflow-x: hidden;
   }
-  
+
   body {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overflow-x: hidden;
+    font-family: var(--font-lato), system-ui, sans-serif;
+    color: var(--ink);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-syne), system-ui, sans-serif;
   }
 }
 
@@ -19,30 +46,29 @@
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
-  
+
   .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
 
-  /* Thin scrollbar styles for calendar */
   .scrollbar-thin {
     scrollbar-width: thin;
   }
-  
+
   .scrollbar-thin::-webkit-scrollbar {
     width: 8px;
   }
-  
+
   .scrollbar-thumb-gray-300::-webkit-scrollbar-thumb {
     background-color: #d1d5db;
     border-radius: 4px;
   }
-  
+
   .scrollbar-thumb-gray-400:hover::-webkit-scrollbar-thumb {
     background-color: #9ca3af;
   }
-  
+
   .scrollbar-track-gray-100::-webkit-scrollbar-track {
     background-color: #f3f4f6;
     border-radius: 4px;

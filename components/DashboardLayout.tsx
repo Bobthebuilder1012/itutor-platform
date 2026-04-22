@@ -18,6 +18,7 @@ import { isGroupsFeatureEnabled } from '@/lib/featureFlags/groupsFeature';
 import { getAdminHomePath, isEmailManagementOnlyAdmin } from '@/lib/auth/adminAccess';
 import dynamic from 'next/dynamic';
 import UniversalSearchBar from '@/components/UniversalSearchBar';
+import LogoutConfirmModal from '@/components/LogoutConfirmModal';
 
 const PushTokenRegistrar = dynamic(() => import('@/components/push/PushTokenRegistrar'), { ssr: false });
 
@@ -89,6 +90,8 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
   const { isSuspended, loading: suspensionLoading } = useSuspensionCheck();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  const [logoutModalOpen, setLogoutModalOpen] = useState(false);
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   const [authEmail, setAuthEmail] = useState<string | null>(null);
   /** Parent only: at least one linked student account (null = still checking). */
@@ -195,7 +198,6 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         { label: 'Menu', items: [
           { href: '/student/dashboard', label: 'Dashboard', icon: icons.dashboard },
           { href: '/student/find-tutors', label: 'Find iTutors', icon: icons.search },
-          ...(showGroups ? [{ href: '/groups', label: 'Lessons', icon: icons.groups }] : []),
           {
             label: 'Tools',
             icon: icons.tools,
@@ -329,11 +331,6 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         <nav className="flex-1 overflow-y-auto py-4 px-2">
           {navSections.map((section) => (
             <div key={section.label}>
-              {!collapsed && (
-                <p className="text-[10px] font-semibold uppercase tracking-[1.2px] text-gray-500 px-3 mb-2 mt-4 first:mt-0">
-                  {section.label}
-                </p>
-              )}
               {section.items.map((item) => {
                 if ('children' in item) {
                   const groupAnyActive = item.children.some(
@@ -341,19 +338,31 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
                       pathname === c.href ||
                       (c.href !== getDashboardLink() && pathname.startsWith(c.href)),
                   );
+                  const groupKey = `${section.label}-${item.label}`;
+                  const isOpen = openGroups[groupKey] ?? groupAnyActive;
                   return (
                     <div key={`nav-group-${section.label}-${item.label}`}>
                       {!collapsed && (
-                        <div
-                          className={`flex items-center rounded-xl gap-3 px-3 py-[10px] mb-0.5 ${
-                            groupAnyActive ? 'text-itutor-green' : 'text-gray-500'
+                        <button
+                          type="button"
+                          onClick={() => setOpenGroups((s) => ({ ...s, [groupKey]: !isOpen }))}
+                          className={`w-full flex items-center rounded-xl gap-3 px-3 py-[10px] mb-0.5 transition-colors ${
+                            groupAnyActive ? 'text-itutor-green' : 'text-gray-400 hover:bg-white/5 hover:text-white'
                           }`}
                         >
                           {item.icon}
-                          <span className="text-[13.5px] font-medium">{item.label}</span>
-                        </div>
+                          <span className="text-[13.5px] font-medium flex-1 text-left">{item.label}</span>
+                          <svg
+                            className={`w-3.5 h-3.5 flex-shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path d="M19 9l-7 7-7-7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        </button>
                       )}
-                      {item.children.map((sub) => {
+                      {(collapsed || isOpen) && item.children.map((sub) => {
                         const isActive =
                           pathname === sub.href ||
                           (sub.href !== getDashboardLink() && pathname.startsWith(sub.href));
@@ -368,13 +377,13 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
                           >
                             {sub.icon}
                             {collapsed && hasBadge && (
-                              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-itutor-green" />
+                              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-red-500" />
                             )}
                             {!collapsed && (
                               <>
                                 <span className="text-[13.5px] font-medium">{sub.label}</span>
                                 {hasBadge && (
-                                  <span className="ml-auto w-[18px] h-[18px] rounded-full bg-itutor-green text-black text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                                  <span className="ml-auto w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">
                                     {sub.badge}
                                   </span>
                                 )}
@@ -399,12 +408,12 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
                     className={`relative flex items-center rounded-xl transition-all duration-150 ${collapsed ? 'justify-center w-10 h-10 mx-auto my-[3px]' : 'gap-3 px-3 py-[10px] mb-0.5'} ${isActive ? 'bg-itutor-green/10 text-itutor-green' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}
                   >
                     {item.icon}
-                    {collapsed && hasBadge && <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-itutor-green" />}
+                    {collapsed && hasBadge && <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-red-500" />}
                     {!collapsed && (
                       <>
                         <span className="text-[13.5px] font-medium">{item.label}</span>
                         {hasBadge && (
-                          <span className="ml-auto w-[18px] h-[18px] rounded-full bg-itutor-green text-black text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                          <span className="ml-auto w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">
                             {item.badge}
                           </span>
                         )}
@@ -420,11 +429,20 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         {/* User footer */}
         <div className="border-t border-white/10 p-2">
           {collapsed ? (
-            <Link href={getDashboardLink()} onClick={() => setSidebarOpen(false)} title={displayName} className="w-full flex justify-center py-2">
+            <button
+              type="button"
+              onClick={() => setLogoutModalOpen(true)}
+              title={`Log out ${displayName}`}
+              className="w-full flex justify-center py-2"
+            >
               <div className="w-9 h-9 rounded-full bg-gradient-to-br from-itutor-green to-emerald-600 flex items-center justify-center text-black font-bold text-[12px]">{initials}</div>
-            </Link>
+            </button>
           ) : (
-            <Link href={getDashboardLink()} onClick={() => setSidebarOpen(false)} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-white/5 transition-colors group text-left">
+            <button
+              type="button"
+              onClick={() => setLogoutModalOpen(true)}
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-white/5 transition-colors group text-left"
+            >
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-itutor-green to-emerald-600 flex items-center justify-center text-black font-bold text-[12px] flex-shrink-0">{initials}</div>
               <div className="flex-1 min-w-0">
                 <p className="text-[13px] font-semibold text-white truncate">{displayName}</p>
@@ -435,10 +453,16 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
               <svg className="w-3.5 h-3.5 text-gray-600 group-hover:text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path d="M9 18l6-6-6-6" strokeWidth="2" strokeLinecap="round" />
               </svg>
-            </Link>
+            </button>
           )}
         </div>
       </aside>
+
+      <LogoutConfirmModal
+        open={logoutModalOpen}
+        onClose={() => setLogoutModalOpen(false)}
+        onConfirm={handleLogout}
+      />
 
       {/* ── MAIN ── */}
       <div className={`flex-1 ${collapsed ? 'lg:ml-[64px]' : 'lg:ml-[240px]'} flex flex-col min-h-screen transition-all duration-300`}>

@@ -27,6 +27,37 @@ const config: Config = {
         'itutor-card': '#0F0F0F',
         'itutor-border': '#1C1C1C',
         'itutor-muted': '#BDBDBD',
+        brand: {
+          DEFAULT: 'var(--brand)',
+          dark: 'var(--brand-dark)',
+          light: 'var(--brand-light)',
+          accent: 'var(--brand-accent)',
+        },
+        sidebar: {
+          DEFAULT: 'var(--sidebar)',
+          fg: 'var(--sidebar-fg)',
+          muted: 'var(--sidebar-muted)',
+          active: 'var(--sidebar-active)',
+        },
+        surface: {
+          DEFAULT: 'var(--surface)',
+          soft: 'var(--surface-soft)',
+          border: 'var(--surface-border)',
+        },
+        ink: {
+          DEFAULT: 'var(--ink)',
+          muted: 'var(--ink-muted)',
+        },
+      },
+      fontFamily: {
+        display: ['var(--font-syne)', 'system-ui', 'sans-serif'],
+        body: ['var(--font-lato)', 'system-ui', 'sans-serif'],
+      },
+      borderRadius: {
+        card: '1rem',
+      },
+      boxShadow: {
+        'brand-glow': '0 0 0 6px rgba(22,163,74,0.12)',
       },
     },
   },
