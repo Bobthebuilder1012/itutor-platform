@@ -22,44 +22,53 @@ const filters = [
   { id: 'English', label: 'English' },
 ];
 
+const filterTabsStyle = {
+  background: 'rgba(255,255,255,0.55)',
+  boxShadow: '0 8px 32px rgba(22,163,74,0.08),0 2px 8px rgba(0,0,0,0.04),inset 0 1px 0 rgba(255,255,255,0.8)',
+};
+
+const activeTabStyle = {
+  background: 'linear-gradient(135deg,#22c55e,#16a34a)',
+  boxShadow: '0 4px 14px rgba(34,197,94,0.35),inset 0 1px 0 rgba(255,255,255,0.3)',
+};
+
 export default function FeaturedTutors({ tutors, paidClassesEnabled = false }: FeaturedTutorsProps) {
   const [activeFilter, setActiveFilter] = useState('all');
 
   const filteredTutors = useMemo(() => {
-    if (activeFilter === 'all') {
-      return tutors;
-    }
-
+    if (activeFilter === 'all') return tutors;
     return tutors.filter((tutor) => {
       if (activeFilter === 'CSEC' || activeFilter === 'CAPE') {
         return tutor.subjects.some((s) => s.curriculum === activeFilter);
       }
-
       return tutor.subjects.some((s) =>
         s.name.toLowerCase().includes(activeFilter.toLowerCase())
       );
     });
   }, [tutors, activeFilter]);
 
-  const visibleTutors = useMemo(
-    () => filteredTutors.slice(0, MAX_FEATURED),
-    [filteredTutors]
-  );
+  const visibleTutors = useMemo(() => filteredTutors.slice(0, MAX_FEATURED), [filteredTutors]);
 
   if (tutors.length === 0) {
     return (
       <section className="relative bg-transparent py-20 sm:py-28">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-4xl text-center">
-            <h2 className="mb-3 text-3xl font-bold text-gray-900 sm:text-4xl lg:text-5xl">
-              Top Caribbean iTutors
+            <h2
+              className="mb-3 font-bold text-[#052e1a]"
+              style={{ fontSize: 'clamp(38px,5.5vw,64px)', letterSpacing: '-0.03em' }}
+            >
+              Top Caribbean{' '}
+              <span className="bg-gradient-to-r from-[#16a34a] to-[#22c55e] bg-clip-text font-instrument italic text-transparent">
+                iTutors
+              </span>
             </h2>
-            <p className="mb-6 text-lg text-gray-600">
+            <p className="mb-6 text-lg text-[#4b5563]">
               No iTutors available yet. Be the first to join our platform!
             </p>
             <Link
               href="/signup/tutor"
-              className="inline-block rounded-xl bg-gradient-to-r from-itutor-green to-emerald-500 px-8 py-4 font-bold text-white transition-all duration-300 hover:scale-105 hover:shadow-xl"
+              className="inline-block rounded-xl bg-gradient-to-r from-[#22c55e] to-[#16a34a] px-8 py-4 font-bold text-white transition-all duration-300 hover:scale-105 hover:shadow-xl"
             >
               Become a Tutor
             </Link>
@@ -72,29 +81,40 @@ export default function FeaturedTutors({ tutors, paidClassesEnabled = false }: F
   return (
     <section className="relative w-full bg-transparent py-20 sm:py-28 2xl:py-40 3xl:py-52">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 2xl:px-12 3xl:px-16">
-        <div className="mb-10 text-center 2xl:mb-16 3xl:mb-20">
-          <h2 className="mb-3 text-3xl font-bold text-gray-900 sm:text-4xl lg:text-5xl 2xl:mb-5 2xl:text-6xl 3xl:text-7xl">
-            Top Caribbean iTutors
+        <div className="mb-11 text-center 2xl:mb-16 3xl:mb-20">
+          <h2
+            className="mb-3 font-bold text-[#052e1a] 2xl:mb-5"
+            style={{ fontSize: 'clamp(38px,5.5vw,64px)', letterSpacing: '-0.03em', lineHeight: '1.05' }}
+          >
+            Top Caribbean{' '}
+            <span className="bg-gradient-to-r from-[#16a34a] to-[#22c55e] bg-clip-text font-instrument italic text-transparent">
+              iTutors
+            </span>
           </h2>
-          <p className="mx-auto max-w-3xl text-lg text-gray-600 sm:text-xl 2xl:max-w-5xl 2xl:text-2xl 3xl:max-w-6xl 3xl:text-3xl">
+          <p className="mx-auto max-w-[600px] text-lg text-[#4b5563] sm:text-xl 2xl:text-2xl">
             Verified iTutors, clear pricing, exam-focused help.
           </p>
         </div>
 
-        <div className="mb-8 flex flex-wrap justify-center gap-3 2xl:mb-10 2xl:gap-4 3xl:mb-14 3xl:gap-5">
-          {filters.map((filter) => (
-            <button
-              key={filter.id}
-              onClick={() => setActiveFilter(filter.id)}
-              className={`rounded-full px-5 py-2.5 font-semibold ring-1 ring-inset backdrop-blur-2xl backdrop-saturate-150 transition-all duration-300 2xl:px-7 2xl:py-3 2xl:text-base 3xl:px-9 3xl:py-4 3xl:text-lg ${
-                activeFilter === filter.id
-                  ? 'border border-itutor-green/40 bg-itutor-green/10 text-itutor-green shadow-sm ring-itutor-green/20'
-                  : 'border border-gray-200 bg-white/70 text-gray-700 ring-gray-100 hover:scale-[1.03] hover:border-itutor-green/30 hover:text-itutor-green'
-              }`}
-            >
-              {filter.label}
-            </button>
-          ))}
+        {/* Glass pill filter tabs */}
+        <div className="mb-11 flex justify-center 2xl:mb-14">
+          <div
+            className="flex flex-wrap justify-center gap-2 rounded-full border border-white/60 p-2 backdrop-blur-[20px]"
+            style={filterTabsStyle}
+          >
+            {filters.map((filter) => (
+              <button
+                key={filter.id}
+                onClick={() => setActiveFilter(filter.id)}
+                className="rounded-full px-[22px] py-2.5 text-sm font-medium font-body transition-all duration-200 2xl:text-base"
+                style={activeFilter === filter.id ? activeTabStyle : undefined}
+              >
+                <span className={activeFilter === filter.id ? 'text-white' : 'text-[#374151] hover:text-[#374151]'}>
+                  {filter.label}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
 
         {visibleTutors.length > 0 ? (
@@ -113,18 +133,22 @@ export default function FeaturedTutors({ tutors, paidClassesEnabled = false }: F
             </div>
             <Link
               href="/search"
-              className="flex h-12 w-12 flex-shrink-0 items-center justify-center self-center rounded-full border border-gray-200 bg-white/70 text-itutor-green shadow-sm backdrop-blur-md transition-all duration-300 hover:scale-[1.03] hover:border-itutor-green/40 hover:bg-white sm:h-14 sm:w-14 2xl:h-18 2xl:w-18 3xl:h-20 3xl:w-20"
+              className="flex h-12 w-12 flex-shrink-0 items-center justify-center self-center rounded-full border border-white/60 text-[#16a34a] backdrop-blur-[14px] transition-all duration-300 hover:scale-[1.03] hover:border-white/80 sm:h-14 sm:w-14 2xl:h-16 2xl:w-16"
+              style={{
+                background: 'rgba(255,255,255,0.7)',
+                boxShadow: '0 2px 8px rgba(22,163,74,0.08)',
+              }}
               aria-label="View all iTutors"
             >
-              <ChevronRightIcon className="h-7 w-7 sm:h-8 sm:w-8 2xl:h-10 2xl:w-10 3xl:h-12 3xl:w-12" strokeWidth={2} />
+              <ChevronRightIcon className="h-7 w-7 sm:h-8 sm:w-8" strokeWidth={2} />
             </Link>
           </div>
         ) : (
           <div className="py-12 text-center">
-            <p className="mb-4 text-xl text-gray-600">No iTutors found for this filter.</p>
+            <p className="mb-4 text-xl text-[#4b5563]">No iTutors found for this filter.</p>
             <button
               onClick={() => setActiveFilter('all')}
-              className="font-semibold text-itutor-green hover:underline"
+              className="font-semibold text-[#16a34a] hover:underline"
             >
               View all iTutors
             </button>

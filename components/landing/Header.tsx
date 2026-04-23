@@ -20,37 +20,44 @@ export default function Header() {
   };
 
   return (
-    <header className="absolute top-0 left-0 right-0 z-50 bg-itutor-black">
-      <nav className="w-full mx-auto px-2 sm:px-4 lg:px-6">
-        <div className="flex items-center justify-between py-4 gap-2 sm:gap-4">
-          {/* Logo - Left side */}
-          <Link href="/" className="flex-shrink-0 ml-2 sm:ml-12 md:ml-24 lg:ml-32">
-            <img
-              src="/assets/logo/itutor-logo-dark.png"
-              alt="iTutor"
-              className="h-10 sm:h-12 md:h-14 w-auto"
-            />
-          </Link>
+    <header
+      className="sticky top-0 z-50 border-b border-white/[0.08]"
+      style={{
+        background: 'rgba(5,46,26,0.72)',
+        backdropFilter: 'blur(24px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(24px) saturate(180%)',
+        boxShadow: '0 4px 24px rgba(0,0,0,0.12)',
+      }}
+    >
+      <nav className="mx-auto flex items-center justify-between px-6 py-4 lg:px-10">
+        <Link href="/" className="flex-shrink-0">
+          <img
+            src="/assets/logo/itutor-logo-dark.png"
+            alt="iTutor"
+            className="h-10 w-auto sm:h-12"
+          />
+        </Link>
 
-          {/* Auth Buttons - Right side */}
-          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0 mr-2">
-            <Link
-              href="/signup"
-              className="px-3 sm:px-6 py-2 sm:py-2.5 text-sm sm:text-base font-bold text-itutor-white hover:text-itutor-green transition-all duration-300 whitespace-nowrap hover:scale-105"
-            >
-              Sign Up
-            </Link>
-            <Link
-              href="/login"
-              className="px-3 sm:px-6 py-2 sm:py-2.5 text-sm sm:text-base font-bold text-itutor-black bg-itutor-green rounded-lg hover:bg-emerald-400 transition-all duration-300 whitespace-nowrap shadow-lg shadow-itutor-green/30 hover:shadow-xl hover:scale-105"
-            >
-              Log In
-            </Link>
-          </div>
+        <div className="flex items-center gap-3.5">
+          <Link
+            href="/signup"
+            className="rounded-xl px-[18px] py-2.5 text-[15px] font-medium text-white/90 transition-colors hover:bg-white/[0.08]"
+          >
+            Sign Up
+          </Link>
+          <Link
+            href="/login"
+            className="rounded-xl px-[22px] py-2.5 text-[15px] font-semibold text-white transition-all hover:-translate-y-px"
+            style={{
+              background: 'linear-gradient(135deg,#22c55e,#16a34a)',
+              boxShadow: '0 4px 14px rgba(34,197,94,0.4),inset 0 1px 0 rgba(255,255,255,0.3)',
+            }}
+          >
+            Log In
+          </Link>
         </div>
       </nav>
       <CompleteRoleModal isOpen={completeRoleOpen} onClose={handleCloseCompleteRole} />
     </header>
   );
 }
-

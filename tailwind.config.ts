@@ -13,9 +13,15 @@ const config: Config = {
           from: { transform: 'translate(0, 0) scale(1)' },
           to: { transform: 'translate(30px, 20px) scale(1.08)' },
         },
+        float: {
+          '0%, 100%': { transform: 'translate(0, 0) scale(1)' },
+          '33%': { transform: 'translate(60px, -40px) scale(1.1)' },
+          '66%': { transform: 'translate(-40px, 60px) scale(0.95)' },
+        },
       },
       animation: {
         'logout-drift': 'logout-drift 8s ease-in-out infinite alternate',
+        float: 'float 20s ease-in-out infinite',
       },
       screens: {
         '3xl': '1920px',
@@ -27,6 +33,7 @@ const config: Config = {
         'itutor-card': '#0F0F0F',
         'itutor-border': '#1C1C1C',
         'itutor-muted': '#BDBDBD',
+        'green-deep': '#052e1a',
         brand: {
           DEFAULT: 'var(--brand)',
           dark: 'var(--brand-dark)',
@@ -52,6 +59,7 @@ const config: Config = {
       fontFamily: {
         display: ['var(--font-syne)', 'system-ui', 'sans-serif'],
         body: ['var(--font-lato)', 'system-ui', 'sans-serif'],
+        instrument: ['var(--font-instrument-serif)', 'serif'],
       },
       borderRadius: {
         card: '1rem',

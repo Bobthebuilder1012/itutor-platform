@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Inter, Syne, Lato } from 'next/font/google';
+import { Inter, Syne, Lato, Instrument_Serif } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/components/AuthProvider';
 import SuppressHydrationWarnings from '@/components/SuppressHydrationWarnings';
@@ -17,6 +17,14 @@ const lato = Lato({
   subsets: ['latin'],
   variable: '--font-lato',
   weight: ['400', '700', '900'],
+  display: 'swap',
+});
+
+const instrumentSerif = Instrument_Serif({
+  subsets: ['latin'],
+  variable: '--font-instrument-serif',
+  weight: ['400'],
+  style: ['normal', 'italic'],
   display: 'swap',
 });
 
@@ -66,7 +74,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`scroll-smooth ${syne.variable} ${lato.variable}`}>
+    <html lang="en" className={`scroll-smooth ${syne.variable} ${lato.variable} ${instrumentSerif.variable}`}>
       <body className={inter.className}>
         <SuppressHydrationWarnings />
         <AuthProvider>

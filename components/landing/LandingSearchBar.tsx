@@ -111,7 +111,10 @@ export default function LandingSearchBar() {
   return (
     <div className="relative w-full" ref={dropdownRef}>
       {/* Search Input — pill on mobile, rounded-2xl on sm+ */}
-      <div className="relative flex items-center rounded-full border border-gray-200 bg-white shadow-md transition-shadow focus-within:ring-2 focus-within:ring-itutor-green/25 sm:rounded-2xl sm:border-2 sm:border-gray-300 sm:shadow-none sm:focus-within:border-itutor-green sm:focus-within:ring-4 sm:focus-within:ring-itutor-green/20 2xl:rounded-3xl">
+      <div
+        className="relative flex items-center rounded-full border border-gray-200 bg-white shadow-md transition-all focus-within:ring-2 focus-within:ring-itutor-green/25 sm:rounded-[20px] sm:border sm:border-white/60 sm:bg-white/75 sm:backdrop-blur-[20px] sm:focus-within:-translate-y-0.5 2xl:rounded-[20px]"
+        style={{ boxShadow: '0 8px 32px rgba(22,163,74,0.08),0 2px 8px rgba(0,0,0,0.04),inset 0 1px 0 rgba(255,255,255,0.8)' }}
+      >
         {/* Icon — inline on mobile, absolute on sm+ */}
         <svg
           className="ml-4 h-4 w-4 shrink-0 text-gray-400 sm:absolute sm:left-5 sm:ml-0 sm:h-6 sm:w-6 sm:top-1/2 sm:-translate-y-1/2 2xl:left-6 2xl:h-8 2xl:w-8 3xl:left-7 3xl:h-10 3xl:w-10"
