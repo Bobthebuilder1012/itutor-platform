@@ -41,7 +41,7 @@ export default function FindStudentsPage() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [availableSchools, setAvailableSchools] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const STUDENTS_PER_PAGE = 12;
+  const STUDENTS_PER_PAGE = 24;
 
   useEffect(() => {
     if (loading) return;
@@ -403,86 +403,54 @@ export default function FindStudentsPage() {
             <p className="text-sm text-gray-500">Try adjusting your filters</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-6 gap-4 w-full">
             {pagedStudents.map(student => {
-              // Check if tutor teaches any of the student's subjects
               const matchesTutorSubjects = profile.subjects_of_study?.some(tutorSubject =>
-                student.subjectDetails.some(studentSubject => studentSubject.name === tutorSubject)
+                student.subjectDetails.some(s => s.name === tutorSubject)
               );
-
               return (
                 <div
                   key={student.id}
                   role="button"
                   tabIndex={0}
                   onClick={() => router.push(`/tutor/students/${student.id}`)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      router.push(`/tutor/students/${student.id}`);
-                    }
-                  }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); router.push(`/tutor/students/${student.id}`); }}}
                   aria-label={`Open ${getDisplayName(student)}'s profile`}
-                  className="bg-white border-2 border-gray-200 rounded-2xl p-4 hover:shadow-xl hover:border-itutor-green transition-all duration-300 flex flex-col cursor-pointer focus:outline-none focus:ring-2 focus:ring-itutor-green focus:ring-offset-2"
+                  className="bg-white border border-gray-200 rounded-2xl p-5 hover:shadow-md hover:border-itutor-green transition-all duration-200 flex flex-col items-center gap-3 cursor-pointer focus:outline-none focus:ring-2 focus:ring-itutor-green focus:ring-offset-1 text-center"
                 >
-                  {/* Matched Badge */}
-                  {matchesTutorSubjects && (
-                    <div className="mb-2">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gradient-to-r from-itutor-green to-emerald-600 text-white">
-                        ⭐ Matches Your Subjects
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Student Info */}
-                  <div className="flex items-start gap-3 mb-3">
-                    <UserAvatar avatarUrl={student.avatar_url} name={getDisplayName(student)} size={56} />
-                    <div className="flex min-w-0 flex-1 items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <h3 className="text-base font-bold text-gray-900 truncate">
-                          {getDisplayName(student)}
-                        </h3>
-                        {student.username && (
-                          <p className="text-xs text-gray-500 truncate">@{student.username}</p>
-                        )}
-                        {student.form_level && (
-                          <p className="mt-1 text-xs text-gray-500">
-                            <span className="inline-flex items-center rounded bg-blue-100 px-2 py-0.5 font-medium text-blue-800">
-                              {student.form_level}
-                            </span>
-                          </p>
-                        )}
-                      </div>
-                    </div>
+                  {/* Avatar */}
+                  <div className="relative">
+                    <UserAvatar avatarUrl={student.avatar_url} name={getDisplayName(student)} size={64} />
+                    {matchesTutorSubjects && (
+                      <span className="absolute -top-1 -right-1 text-[10px]">⭐</span>
+                    )}
                   </div>
 
-                  {/* Bio */}
-                  {student.bio && (
-                    <div className="mb-4">
-                      <p className="text-sm text-gray-700 line-clamp-2">
-                        {student.bio}
-                      </p>
-                    </div>
+                  {/* Name + username */}
+                  <div className="w-full">
+                      <p className="text-[13px] font-bold text-gray-900 truncate leading-tight">{getDisplayName(student)}</p>
+                      {student.username && <p className="text-[11px] text-gray-400 truncate leading-none">@{student.username}</p>}
+                  </div>
+
+                  {/* Form level */}
+                  {student.form_level && (
+                    <span className="inline-flex items-center rounded-full bg-blue-50 border border-blue-100 px-3 py-1 text-[11px] font-semibold text-blue-700">
+                      {student.form_level}
+                    </span>
                   )}
 
                   {/* Subjects */}
-                  <div className="mt-auto flex-1">
-                    <p className="mb-1.5 text-xs font-medium text-gray-500">Studying:</p>
-                    <div className="flex flex-wrap gap-1">
-                      {student.subjectDetails.slice(0, 4).map(subject => (
-                        <span
-                          key={subject.id}
-                          className="text-xs px-2 py-1 rounded bg-gray-50 border border-gray-300 text-gray-700"
-                        >
-                          {subject.name}
-                        </span>
-                      ))}
-                      {student.subjectDetails.length > 4 && (
-                        <span className="text-xs px-2 py-1 rounded bg-gray-100 border border-gray-300 text-gray-700 font-medium">
-                          +{student.subjectDetails.length - 4} more
-                        </span>
-                      )}
-                    </div>
+                  <div className="flex flex-col gap-1 w-full">
+                    {student.subjectDetails.slice(0, 3).map(subject => (
+                      <span key={subject.id} className="text-[11px] px-2.5 py-1 rounded-full bg-gray-50 border border-gray-200 text-gray-600 truncate">
+                        {subject.name}
+                      </span>
+                    ))}
+                    {student.subjectDetails.length > 3 && (
+                      <span className="text-[11px] px-2.5 py-1 rounded-full bg-gray-100 border border-gray-200 text-gray-500 font-medium">
+                        +{student.subjectDetails.length - 3} more
+                      </span>
+                    )}
                   </div>
                 </div>
               );

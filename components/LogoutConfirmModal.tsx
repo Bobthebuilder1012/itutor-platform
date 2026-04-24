@@ -1,9 +1,9 @@
 'use client';
 
-import { Syne } from 'next/font/google';
+import { Oswald } from 'next/font/google';
 import { useEffect } from 'react';
 
-const syne = Syne({ subsets: ['latin'], weight: ['400', '600', '700'] });
+const oswald = Oswald({ subsets: ['latin'], weight: ['400', '500', '600', '700'] });
 
 type Props = {
   open: boolean;
@@ -40,7 +40,7 @@ export default function LogoutConfirmModal({ open, onClose, onConfirm }: Props) 
 
   return (
     <div
-      className={`${syne.className} fixed inset-0 z-[200] flex items-center justify-center p-4`}
+      className={`${oswald.className} fixed inset-0 z-[200] flex items-center justify-center p-4`}
       role="dialog"
       aria-modal="true"
       aria-labelledby="logout-modal-title"

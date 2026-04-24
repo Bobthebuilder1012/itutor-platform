@@ -324,7 +324,7 @@ function ITutorLogo({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
       <ITutorMark height={22} />
       <span
         style={{
-          fontFamily: "'Plus Jakarta Sans', 'Inter', 'DM Sans', ui-sans-serif, system-ui, sans-serif",
+          fontFamily: "'Oswald', system-ui, sans-serif",
           fontWeight: 500,
           fontSize: 'inherit',
           lineHeight: 1,
@@ -618,7 +618,7 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
   return createPortal(
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600&family=Inter:wght@500;600&family=Sora:wght@400;500;600;700;800&family=DM+Sans:wght@500&family=DM+Mono:wght@400;500&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@300;400;500;600;700&display=swap');
         .itutor-cal-scroll::-webkit-scrollbar { width: 5px; }
         .itutor-cal-scroll::-webkit-scrollbar-track { background: transparent; }
         .itutor-cal-scroll::-webkit-scrollbar-thumb { background: rgba(74,222,128,0.18); border-radius: 4px; }
@@ -677,7 +677,7 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
         data-cal-theme={theme}
         className="fixed inset-0 z-[200] flex flex-col overflow-hidden itutor-cal-root"
         style={{
-          fontFamily: "'Sora', 'DM Sans', ui-sans-serif, system-ui, sans-serif",
+          fontFamily: "'Oswald', system-ui, sans-serif",
         }}
         role="dialog"
         aria-modal="true"
@@ -846,7 +846,7 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
                       color: active
                         ? (theme === 'dark' ? '#4ade80' : '#199356')
                         : (theme === 'dark' ? 'rgba(74,222,128,0.38)' : 'rgba(0,0,0,0.55)'),
-                      fontFamily: "'Sora',sans-serif",
+                      fontFamily: "'Oswald',sans-serif",
                       fontSize: 11,
                       fontWeight: 700,
                       cursor: 'pointer',
@@ -910,7 +910,7 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
                             <p
                               style={{
                                 fontSize: 9,
-                                fontFamily: "'DM Mono',monospace",
+                                fontFamily: "'Oswald',sans-serif",
                                 color: 'rgba(167,243,208,0.55)',
                                 margin: '4px 0 0',
                               }}
@@ -954,7 +954,7 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
                         textAlign: 'center',
                         fontSize: 9.5,
                         color: theme === 'dark' ? 'rgba(74,222,128,0.28)' : 'rgba(0,0,0,0.45)',
-                        fontFamily: "'DM Mono',monospace",
+                        fontFamily: "'Oswald',sans-serif",
                         letterSpacing: '0.5px',
                       }}
                     >
@@ -1023,7 +1023,7 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
                               right: 10,
                               fontSize: 9,
                               color: theme === 'dark' ? 'rgba(255,255,255,0.88)' : 'rgba(0,0,0,0.6)',
-                              fontFamily: "'DM Mono',monospace",
+                              fontFamily: "'Oswald',sans-serif",
                               fontWeight: 500,
                               userSelect: 'none',
                             }}
@@ -1164,7 +1164,7 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
                                         color: c.text,
                                         opacity: 0.6,
                                         marginTop: 2,
-                                        fontFamily: "'DM Mono',monospace",
+                                        fontFamily: "'Oswald',sans-serif",
                                       }}
                                     >
                                       {fmtFromDate(clipStart)} – {fmtFromDate(clipEnd)}
@@ -1549,7 +1549,7 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
                           background: 'rgba(74,222,128,0.14)',
                           border: '1px solid rgba(74,222,128,0.3)',
                           color: '#4ade80',
-                          fontFamily: "'Sora',sans-serif",
+                          fontFamily: "'Oswald',sans-serif",
                           fontWeight: 700,
                           fontSize: 12.5,
                           cursor: 'pointer',
@@ -1568,7 +1568,7 @@ export default function ScheduleCalendarModal({ open, onClose, userId, role }: S
                           background: 'rgba(255,255,255,0.03)',
                           border: '1px solid rgba(74,222,128,0.1)',
                           color: 'rgba(167,243,208,0.45)',
-                          fontFamily: "'Sora',sans-serif",
+                          fontFamily: "'Oswald',sans-serif",
                           fontWeight: 600,
                           fontSize: 12,
                           cursor: 'pointer',

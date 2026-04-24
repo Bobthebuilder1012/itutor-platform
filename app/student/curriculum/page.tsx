@@ -58,7 +58,7 @@ function SyllabusWithStar({
   onDownload: (url: string) => void;
 }) {
   return (
-    <div className="relative">
+    <div className="relative h-full">
       <StarToggle syllabusId={syllabus.id} isFav={isFav} onToggle={onToggleFavourite} />
       <SyllabusCard syllabus={syllabus} onView={onView} onDownload={onDownload} />
     </div>

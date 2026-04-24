@@ -1,30 +1,13 @@
 import type { Metadata } from 'next';
-import { Inter, Syne, Lato, Instrument_Serif } from 'next/font/google';
+import { Oswald } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/components/AuthProvider';
 import SuppressHydrationWarnings from '@/components/SuppressHydrationWarnings';
 
-const inter = Inter({ subsets: ['latin'] });
-
-const syne = Syne({
+const oswald = Oswald({
   subsets: ['latin'],
-  variable: '--font-syne',
-  weight: ['500', '600', '700', '800'],
-  display: 'swap',
-});
-
-const lato = Lato({
-  subsets: ['latin'],
-  variable: '--font-lato',
-  weight: ['400', '700', '900'],
-  display: 'swap',
-});
-
-const instrumentSerif = Instrument_Serif({
-  subsets: ['latin'],
-  variable: '--font-instrument-serif',
-  weight: ['400'],
-  style: ['normal', 'italic'],
+  variable: '--font-oswald',
+  weight: ['300', '400', '500', '600', '700'],
   display: 'swap',
 });
 
@@ -74,8 +57,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`scroll-smooth ${syne.variable} ${lato.variable} ${instrumentSerif.variable}`}>
-      <body className={inter.className}>
+    <html lang="en" className={`scroll-smooth ${oswald.variable} ${oswald.className}`}>
+      <body>
         <SuppressHydrationWarnings />
         <AuthProvider>
           {children}

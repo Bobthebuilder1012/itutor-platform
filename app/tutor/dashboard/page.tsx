@@ -55,7 +55,7 @@ export default function TutorDashboard() {
   const [hasAvailability, setHasAvailability] = useState<boolean | null>(null);
   const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
   const { uploadAvatar, deleteAvatar, uploading } = useAvatarUpload(profile?.id || '');
-  const { uploadBanner, uploading: bannerUploading } = useProfileBannerUpload(profile?.id || '');
+  const { uploadBanner, deleteBanner, uploading: bannerUploading } = useProfileBannerUpload(profile?.id || '');
   const [paidClassesEnabled, setPaidClassesEnabled] = useState<boolean>(false);
 
   useEffect(() => {
@@ -177,6 +177,12 @@ export default function TutorDashboard() {
   const handleBannerUpload = async (imageSrc: string, croppedArea: Area) => {
     if (!profile) return;
     const result = await uploadBanner(imageSrc, croppedArea);
+    if (result.success) window.location.reload();
+  };
+
+  const handleRemoveBanner = async () => {
+    if (!profile) return;
+    const result = await deleteBanner();
     if (result.success) window.location.reload();
   };
 
@@ -772,6 +778,8 @@ export default function TutorDashboard() {
         onClose={() => setBannerModalOpen(false)}
         onUpload={handleBannerUpload}
         uploading={bannerUploading}
+        currentBannerUrl={profile?.profile_banner_url}
+        onRemove={handleRemoveBanner}
       />
 
       {!testMode && profile && (

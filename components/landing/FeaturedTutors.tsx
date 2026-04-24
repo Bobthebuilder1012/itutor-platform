@@ -67,7 +67,7 @@ export default function FeaturedTutors({ tutors, paidClassesEnabled = false }: F
               No iTutors available yet. Be the first to join our platform!
             </p>
             <Link
-              href="/signup/tutor"
+              href="/signup"
               className="inline-block rounded-xl bg-gradient-to-r from-[#22c55e] to-[#16a34a] px-8 py-4 font-bold text-white transition-all duration-300 hover:scale-105 hover:shadow-xl"
             >
               Become a Tutor

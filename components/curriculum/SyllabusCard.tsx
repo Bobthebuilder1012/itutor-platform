@@ -13,25 +13,27 @@ interface SyllabusCardProps {
 
 export default function SyllabusCard({ syllabus, onView, onDownload }: SyllabusCardProps) {
   return (
-    <div className="bg-gradient-to-br from-blue-50 to-green-50 border-2 border-gray-200 rounded-2xl p-6 hover:shadow-xl hover:border-itutor-green transition-all duration-300 hover:scale-[1.02]">
-      {/* Subject Name */}
-      <h3 className="text-lg font-bold text-gray-900 mb-2">
-        {syllabus.subject_name}
-      </h3>
+    <div className="flex flex-col h-full bg-gradient-to-br from-blue-50 to-green-50 border-2 border-gray-200 rounded-2xl p-6 hover:shadow-xl hover:border-itutor-green transition-all duration-300 hover:scale-[1.02]">
+      <div className="flex-1">
+        {/* Subject Name */}
+        <h3 className="text-lg font-bold text-gray-900 mb-2">
+          {syllabus.subject_name}
+        </h3>
 
-      {/* Syllabus Title */}
-      <p className="text-gray-700 font-medium mb-1">
-        {syllabus.title}
-      </p>
-
-      {/* Version/Year */}
-      {(syllabus.version || syllabus.effective_year) && (
-        <p className="text-sm text-gray-600 mb-4">
-          {syllabus.version && <span>{syllabus.version}</span>}
-          {syllabus.version && syllabus.effective_year && <span> • </span>}
-          {syllabus.effective_year && <span>Effective {syllabus.effective_year}</span>}
+        {/* Syllabus Title */}
+        <p className="text-gray-700 font-medium mb-1">
+          {syllabus.title}
         </p>
-      )}
+
+        {/* Version/Year */}
+        {(syllabus.version || syllabus.effective_year) && (
+          <p className="text-sm text-gray-600 mb-4">
+            {syllabus.version && <span>{syllabus.version}</span>}
+            {syllabus.version && syllabus.effective_year && <span> • </span>}
+            {syllabus.effective_year && <span>Effective {syllabus.effective_year}</span>}
+          </p>
+        )}
+      </div>
 
       {/* Action Buttons */}
       <div className="flex gap-3 mt-4">
@@ -59,6 +61,7 @@ export default function SyllabusCard({ syllabus, onView, onDownload }: SyllabusC
     </div>
   );
 }
+
 
 
 

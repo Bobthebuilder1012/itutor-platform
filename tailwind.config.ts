@@ -57,9 +57,9 @@ const config: Config = {
         },
       },
       fontFamily: {
-        display: ['var(--font-syne)', 'system-ui', 'sans-serif'],
-        body: ['var(--font-lato)', 'system-ui', 'sans-serif'],
-        instrument: ['var(--font-instrument-serif)', 'serif'],
+        display: ['var(--font-oswald)', 'system-ui', 'sans-serif'],
+        body: ['var(--font-oswald)', 'system-ui', 'sans-serif'],
+        instrument: ['var(--font-oswald)', 'system-ui', 'sans-serif'],
       },
       borderRadius: {
         card: '1rem',

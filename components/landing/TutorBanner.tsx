@@ -32,7 +32,7 @@ export default function TutorBanner() {
             We're always looking for talented iTutors. Set your own rate, get paid, and make a difference in students' lives.
           </p>
           <Link
-            href="/signup/tutor"
+            href="/signup"
             className="inline-block px-10 py-4 bg-itutor-black text-itutor-white font-bold rounded-xl hover:bg-itutor-black/90 hover:scale-105 hover:shadow-2xl transition-all duration-300"
           >
             Apply Now

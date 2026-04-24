@@ -591,95 +591,84 @@ export default function FindTutorsPage() {
                     }
                   }}
                   aria-label={`Open ${getDisplayName(tutor)}'s profile`}
-                  className="bg-white border-2 border-gray-200 rounded-2xl overflow-hidden hover:shadow-xl hover:border-itutor-green transition-all duration-300 flex flex-col cursor-pointer focus:outline-none focus:ring-2 focus:ring-itutor-green focus:ring-offset-2"
+                  className="bg-white border border-gray-200 rounded-2xl overflow-hidden hover:shadow-lg hover:border-itutor-green transition-all duration-300 flex flex-col cursor-pointer focus:outline-none focus:ring-2 focus:ring-itutor-green focus:ring-offset-2"
                 >
-                  <div className="relative h-24 shrink-0 sm:h-28">
+                  {/* Banner — compact height */}
+                  <div className="relative h-16 shrink-0">
                     <img
                       src={profileBannerDisplayUrl(tutor.profile_banner_url, tutor.updated_at)}
                       alt=""
                       className="h-full w-full object-cover"
                     />
-                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/25 to-transparent" />
+                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
                   </div>
 
-                  <div className="flex flex-1 flex-col p-4">
-                  {/* Tutor Info */}
-                  <div className="mb-3 flex items-start gap-3">
-                    <UserAvatar avatarUrl={tutor.avatar_url} name={getDisplayName(tutor)} size={56} />
-                    <div className="flex min-w-0 flex-1 items-start justify-between gap-2">
+                  <div className="flex flex-1 flex-col p-3 gap-2">
+
+                    {/* Avatar + name row */}
+                    <div className="flex items-center gap-2.5">
+                      <UserAvatar avatarUrl={tutor.avatar_url} name={getDisplayName(tutor)} size={40} />
                       <div className="min-w-0 flex-1">
-                        <h3 className="flex items-center gap-2 truncate text-base font-bold text-gray-900">
+                        <h3 className="flex items-center gap-1.5 truncate text-sm font-bold text-gray-900 leading-tight">
                           {getDisplayName(tutor)}
                           {tutor.tutor_verification_status === 'VERIFIED' && <VerifiedBadge size="sm" />}
                         </h3>
                         {tutor.username && (
-                          <p className="text-xs text-gray-500 truncate">@{tutor.username}</p>
+                          <p className="text-[11px] text-gray-400 truncate leading-tight">@{tutor.username}</p>
                         )}
                         {tutor.institution_name && (
-                          <p className="truncate text-xs text-gray-600">{tutor.institution_name}</p>
+                          <p className="truncate text-[11px] text-gray-500 leading-tight">{tutor.institution_name}</p>
                         )}
-                        <div className="mt-1 flex flex-wrap items-center gap-1">
-                          <span className="text-sm text-yellow-400">★</span>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <span className="text-xs text-yellow-400">★</span>
                           {tutor.average_rating !== null ? (
                             <>
-                              <span className="text-xs font-bold text-gray-900">
-                                {tutor.average_rating.toFixed(1)}
-                              </span>
-                              <span className="text-[11px] text-gray-600">
-                                ({tutor.total_reviews} {tutor.total_reviews === 1 ? 'review' : 'reviews'})
-                              </span>
+                              <span className="text-[11px] font-bold text-gray-900">{tutor.average_rating.toFixed(1)}</span>
+                              <span className="text-[10px] text-gray-500">({tutor.total_reviews} {tutor.total_reviews === 1 ? 'review' : 'reviews'})</span>
                             </>
                           ) : (
-                            <span className="text-[11px] text-gray-500 italic">No reviews yet</span>
+                            <span className="text-[10px] text-gray-400 italic">No reviews yet</span>
                           )}
                         </div>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Bio */}
-                  {tutor.bio && (
-                    <div className="mb-4">
-                      <p className="text-sm text-gray-700 line-clamp-2">
-                        {tutor.bio}
-                      </p>
-                    </div>
-                  )}
+                    {/* Bio — 1 line only */}
+                    {tutor.bio && (
+                      <p className="text-[12px] text-gray-600 line-clamp-1 leading-snug">{tutor.bio}</p>
+                    )}
 
-                  {/* Top Comment */}
-                  {tutor.topComment && (
-                    <div className="mb-4 bg-white/70 rounded-lg p-3 border border-green-200">
-                      <div className="flex items-center gap-1 mb-1">
-                        {[...Array(tutor.topComment.stars)].map((_, i) => (
-                          <span key={i} className="text-yellow-400 text-sm">★</span>
-                        ))}
-                        <span className="text-xs text-gray-500 ml-1">• {tutor.topComment.student_name}</span>
+                    {/* Top Comment — compact */}
+                    {tutor.topComment && (
+                      <div className="rounded-lg p-2 border border-green-100 bg-green-50/50">
+                        <div className="flex items-center gap-0.5 mb-0.5">
+                          {[...Array(tutor.topComment.stars)].map((_, i) => (
+                            <span key={i} className="text-yellow-400 text-[10px]">★</span>
+                          ))}
+                          <span className="text-[10px] text-gray-400 ml-1">· {tutor.topComment.student_name}</span>
+                        </div>
+                        <p className="text-[11px] text-gray-600 italic line-clamp-1">
+                          &ldquo;{tutor.topComment.comment}&rdquo;
+                        </p>
                       </div>
-                      <p className="text-xs text-gray-700 italic line-clamp-2">
-                        "{tutor.topComment.comment}"
-                      </p>
-                    </div>
-                  )}
+                    )}
 
-                  {/* Subjects */}
-                  <div className="mt-auto flex-1">
-                    <p className="mb-1.5 text-xs font-medium text-gray-500">Teaches:</p>
-                    <div className="flex flex-wrap gap-1">
-                      {tutor.subjects.slice(0, 4).map(subject => (
-                        <span
-                          key={subject.id}
-                          className="text-xs px-2 py-1 rounded bg-gray-50 border border-gray-300 text-gray-700"
-                        >
-                          {subject.name}
-                        </span>
-                      ))}
-                      {tutor.subjects.length > 4 && (
-                        <span className="text-xs px-2 py-1 rounded bg-gray-100 border border-gray-300 text-gray-700 font-medium">
-                          +{tutor.subjects.length - 4} more
-                        </span>
-                      )}
+                    {/* Subjects */}
+                    <div className="mt-auto">
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">Teaches</p>
+                      <div className="flex flex-wrap gap-1">
+                        {tutor.subjects.slice(0, 3).map(subject => (
+                          <span key={subject.id} className="text-[11px] px-2 py-0.5 rounded-full bg-gray-50 border border-gray-200 text-gray-700">
+                            {subject.name}
+                          </span>
+                        ))}
+                        {tutor.subjects.length > 3 && (
+                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 border border-gray-200 text-gray-500 font-medium">
+                            +{tutor.subjects.length - 3} more
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
                   </div>
                 </div>
               );

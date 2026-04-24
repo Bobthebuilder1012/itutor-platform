@@ -34,7 +34,7 @@ export default function SuccessCTABanner() {
             <span className="text-[15px] font-medium text-[#1f2937] 2xl:text-base">
               Love teaching? Become a verified iTutor.
             </span>
-            <Link href="/signup/tutor" className={pillButton} style={pillButtonStyle}>
+            <Link href="/signup" className={pillButton} style={pillButtonStyle}>
               Become a tutor
             </Link>
           </div>

@@ -23,7 +23,7 @@ export default function Header() {
     <header
       className="sticky top-0 z-50 border-b border-white/[0.08]"
       style={{
-        background: 'rgba(5,46,26,0.72)',
+        background: 'rgba(0,0,0,0.92)',
         backdropFilter: 'blur(24px) saturate(180%)',
         WebkitBackdropFilter: 'blur(24px) saturate(180%)',
         boxShadow: '0 4px 24px rgba(0,0,0,0.12)',

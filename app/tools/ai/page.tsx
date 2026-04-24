@@ -121,7 +121,7 @@ export default function ToolsAiPage() {
   useEffect(() => {
     if (loading) return;
     if (!profile) { router.push('/login'); return; }
-    if (profile.role !== 'student' && profile.role !== 'tutor') { router.replace('/login'); }
+    if (profile.role !== 'tutor') { router.replace('/login'); }
   }, [profile, loading, router]);
 
   useEffect(() => {

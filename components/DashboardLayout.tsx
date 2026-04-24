@@ -198,19 +198,18 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         { label: 'Menu', items: [
           { href: '/student/dashboard', label: 'Dashboard', icon: icons.dashboard },
           { href: '/student/find-tutors', label: 'Find iTutors', icon: icons.search },
-          {
-            label: 'Tools',
-            icon: icons.tools,
-            children: [
-              { href: '/student/curriculum', label: 'Curriculum', icon: icons.book },
-              { href: '/tools/ai', label: 'iTutor AI', icon: icons.sparkles },
-            ],
-          },
         ]},
         { label: 'Learning', items: [
           { href: '/student/bookings', label: 'My Bookings', icon: icons.calendar },
         ]},
         { label: 'Account', items: [
+          {
+            label: 'Tools',
+            icon: icons.tools,
+            children: [
+              { href: '/student/curriculum', label: 'Curriculum', icon: icons.book },
+            ],
+          },
           { href: '/student/settings', label: 'Settings', icon: icons.settings },
         ]},
       ];
@@ -222,6 +221,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           ...(showGroups ? [{ href: '/groups', label: 'Lessons', icon: icons.groups }] : []),
         ]},
         { label: 'Settings', items: [
+          { href: '/verification', label: 'Verification', badge: '!', icon: icons.shield },
           {
             label: 'Tools',
             icon: icons.tools,
@@ -230,7 +230,6 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
               { href: '/tools/ai', label: 'iTutor AI', icon: icons.sparkles },
             ],
           },
-          { href: '/verification', label: 'Verification', badge: '!', icon: icons.shield },
           { href: '/tutor/settings', label: 'Settings', icon: icons.settings },
         ]},
       ];

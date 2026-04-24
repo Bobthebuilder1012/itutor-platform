@@ -44,6 +44,10 @@ export default function TutorBookingThreadPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showDeclineModal, setShowDeclineModal] = useState(false);
+  const [declineQuickReason, setDeclineQuickReason] = useState('');
+  const [declineMessage, setDeclineMessage] = useState('');
   const [reconnectPrompt, setReconnectPrompt] = useState<{
     open: boolean;
     reason: string;
@@ -252,18 +256,17 @@ export default function TutorBookingThreadPage() {
     }
   }
 
-  async function handleConfirmBooking() {
-    if (!confirm('Confirm this booking? The time slot will be blocked.')) return;
+  function handleConfirmBooking() {
+    setShowConfirmModal(true);
+  }
 
+  async function submitConfirmBooking() {
+    setShowConfirmModal(false);
     setActionLoading(true);
     try {
       const result = await tutorConfirmBooking(bookingId);
-      if (result.alreadyConfirmed) {
-        alert('Booking was already confirmed. Session sync was retried.');
-      } else if (result.sessionCreationWarning) {
+      if (result.sessionCreationWarning) {
         alert('✅ Booking confirmed, but session setup needs a retry. You can refresh and retry link generation.');
-      } else {
-        alert('✅ Booking confirmed successfully.');
       }
       await loadBookingData();
     } catch (error: any) {
@@ -347,14 +350,18 @@ export default function TutorBookingThreadPage() {
     }, 700);
   }
 
-  async function handleDeclineBooking() {
-    const reason = prompt('Reason for declining? (optional)');
-    if (reason === null) return; // User cancelled
+  function handleDeclineBooking() {
+    setDeclineQuickReason('');
+    setDeclineMessage('');
+    setShowDeclineModal(true);
+  }
 
+  async function submitDeclineBooking() {
+    setShowDeclineModal(false);
     setActionLoading(true);
+    const fullReason = [declineQuickReason, declineMessage].filter(Boolean).join(' — ') || undefined;
     try {
-      await tutorDeclineBooking(bookingId, reason || undefined);
-      alert('Booking declined');
+      await tutorDeclineBooking(bookingId, fullReason);
       await loadBookingData();
     } catch (error) {
       console.error('Error declining booking:', error);
@@ -667,6 +674,126 @@ export default function TutorBookingThreadPage() {
           </div>
         )}
 
+        {/* Confirm Booking Modal */}
+        {showConfirmModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowConfirmModal(false)}>
+            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-bold text-gray-900">Confirm Booking Request</h3>
+                <button onClick={() => setShowConfirmModal(false)} className="text-gray-400 hover:text-gray-600 transition">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <p className="text-sm text-gray-500 mb-4">
+                You're about to accept this booking. The time slot will be blocked on your calendar and the student will be notified.
+              </p>
+
+              <div className="rounded-xl border border-gray-200 p-4 mb-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="font-semibold text-gray-900">Session with {studentName}</p>
+                  <span className="bg-green-100 text-green-700 text-xs font-semibold px-2.5 py-1 rounded-full">{subjectName}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-3 text-sm">
+                  <div className="flex items-start gap-1.5">
+                    <svg className="w-4 h-4 text-itutor-green mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    <div>
+                      <p className="font-medium text-gray-900">{displayStartTime ? new Date(displayStartTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</p>
+                      <p className="text-xs text-gray-500">{displayStartTime ? new Date(displayStartTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : ''}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-1.5">
+                    <svg className="w-4 h-4 text-itutor-green mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    <div>
+                      <p className="font-medium text-gray-900">{booking?.duration_minutes ? `${Math.floor(booking.duration_minutes / 60)}h${booking.duration_minutes % 60 ? ` ${booking.duration_minutes % 60}m` : ''}` : '—'}</p>
+                      <p className="text-xs text-gray-500">Duration</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-1.5">
+                    <svg className="w-4 h-4 text-itutor-green mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    <div>
+                      <p className="font-medium text-gray-900">{paidClassesEnabled ? `$${booking?.price_ttd} TTD` : 'Free'}</p>
+                      <p className="text-xs text-gray-500">No payment required</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {hasOutsideAvailabilityDisclaimer && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 mb-4">
+                  <p className="text-xs text-amber-800"><span className="font-semibold">Note:</span> This slot falls outside your set availability window.</p>
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button onClick={() => setShowConfirmModal(false)} className="flex-1 rounded-xl border border-gray-200 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition">
+                  Cancel
+                </button>
+                <button onClick={submitConfirmBooking} disabled={actionLoading} className="flex-1 rounded-xl bg-itutor-green hover:bg-emerald-700 text-white py-2.5 text-sm font-semibold transition disabled:opacity-50 flex items-center justify-center gap-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                  Confirm Booking
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Decline Booking Modal */}
+        {showDeclineModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowDeclineModal(false)}>
+            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-bold text-gray-900">Decline Booking Request</h3>
+                <button onClick={() => setShowDeclineModal(false)} className="text-gray-400 hover:text-gray-600 transition">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <p className="text-sm text-gray-500 mb-4">
+                Let the student know why you're declining.{' '}
+                <span className="text-itutor-green font-medium">This helps them find a better match.</span>
+              </p>
+
+              <p className="text-sm font-semibold text-gray-800 mb-2">Quick reasons</p>
+              <div className="flex flex-wrap gap-2 mb-4">
+                {['Schedule conflict', 'Outside availability', 'Subject mismatch', 'Other'].map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setDeclineQuickReason(declineQuickReason === r ? '' : r)}
+                    className={`px-3 py-1.5 rounded-full border text-sm font-medium transition ${
+                      declineQuickReason === r
+                        ? 'border-red-500 bg-red-50 text-red-600'
+                        : 'border-gray-300 text-gray-700 hover:border-gray-400'
+                    }`}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+
+              <label className="block text-sm font-semibold text-gray-800 mb-1">
+                Message <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <textarea
+                value={declineMessage}
+                onChange={(e) => setDeclineMessage(e.target.value)}
+                placeholder="Add a short note for the student..."
+                rows={3}
+                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-red-400 focus:border-red-400 outline-none transition resize-none mb-4"
+              />
+
+              <div className="flex gap-3">
+                <button onClick={() => setShowDeclineModal(false)} className="flex-1 rounded-xl border border-gray-200 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition">
+                  Cancel
+                </button>
+                <button onClick={submitDeclineBooking} disabled={actionLoading} className="flex-1 rounded-xl bg-red-600 hover:bg-red-700 text-white py-2.5 text-sm font-semibold transition disabled:opacity-50 flex items-center justify-center gap-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" /></svg>
+                  Decline Booking
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Session Join & Controls */}
         {session && booking.status === 'CONFIRMED' && (
           <div className="mb-6 space-y-4">
@@ -720,60 +847,61 @@ export default function TutorBookingThreadPage() {
 
         {/* Counter Offer Modal */}
         {showCounterOffer && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-white border border-gray-200 rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-bold text-gray-900">Propose Alternative Time</h2>
-                <button
-                  onClick={() => setShowCounterOffer(false)}
-                  className="text-gray-400 hover:text-gray-900"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowCounterOffer(false)}>
+            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-bold text-gray-900">Propose Alternative Time</h3>
+                <button onClick={() => setShowCounterOffer(false)} className="text-gray-400 hover:text-gray-600 transition">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </div>
+              <p className="text-sm text-gray-500 mb-4">
+                Suggest a time that works better for you. The student will be notified and can accept or decline.
+              </p>
 
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Date</label>
-                <input
-                  type="date"
-                  value={counterDate}
-                  onChange={(e) => setCounterDate(e.target.value)}
-                  min={new Date().toISOString().slice(0, 10)}
-                  className="w-full px-4 py-3 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="rounded-xl border border-gray-200 p-4 mb-4 space-y-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Start Time</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">Date</label>
                   <input
-                    type="time"
-                    value={counterStartTime}
-                    onChange={(e) => setCounterStartTime(e.target.value)}
-                    className="w-full px-4 py-3 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition"
+                    type="date"
+                    value={counterDate}
+                    onChange={(e) => setCounterDate(e.target.value)}
+                    min={new Date().toISOString().slice(0, 10)}
+                    className="w-full px-3 py-2.5 bg-white border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">End Time</label>
-                  <input
-                    type="time"
-                    value={counterEndTime}
-                    onChange={(e) => setCounterEndTime(e.target.value)}
-                    className="w-full px-4 py-3 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition"
-                  />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Start Time</label>
+                    <input
+                      type="time"
+                      value={counterStartTime}
+                      onChange={(e) => setCounterStartTime(e.target.value)}
+                      className="w-full px-3 py-2.5 bg-white border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">End Time</label>
+                    <input
+                      type="time"
+                      value={counterEndTime}
+                      onChange={(e) => setCounterEndTime(e.target.value)}
+                      className="w-full px-3 py-2.5 bg-white border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition"
+                    />
+                  </div>
                 </div>
               </div>
 
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Message (optional)</label>
+                <label className="block text-sm font-semibold text-gray-800 mb-1">
+                  Message <span className="text-gray-400 font-normal">(optional)</span>
+                </label>
                 <textarea
                   value={counterMessage}
                   onChange={(e) => setCounterMessage(e.target.value)}
                   placeholder="Explain why you're proposing this time..."
                   rows={3}
-                  className="w-full px-4 py-3 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-400"
+                  className="w-full px-3 py-2.5 bg-white border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-400 resize-none"
                 />
               </div>
 
@@ -781,14 +909,14 @@ export default function TutorBookingThreadPage() {
                 <button
                   onClick={() => setShowCounterOffer(false)}
                   disabled={actionLoading}
-                  className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-900 py-3 px-4 rounded-lg font-semibold transition disabled:opacity-50"
+                  className="flex-1 rounded-xl border border-gray-200 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSendCounterOffer}
                   disabled={actionLoading || !counterDate || !counterStartTime || !counterEndTime}
-                  className="flex-1 bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-white py-3 px-4 rounded-lg font-semibold transition disabled:opacity-50"
+                  className="flex-1 rounded-xl bg-itutor-green hover:bg-emerald-700 text-white py-2.5 text-sm font-semibold transition disabled:opacity-50"
                 >
                   {actionLoading ? 'Sending...' : 'Send Counter-Offer'}
                 </button>

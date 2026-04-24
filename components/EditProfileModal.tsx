@@ -284,6 +284,8 @@ export default function EditProfileModal({
         onClose={() => setBannerModalOpen(false)}
         onUpload={handleBannerUpload}
         uploading={bannerUploading}
+        currentBannerUrl={profile.profile_banner_url}
+        onRemove={handleRemoveBanner}
       />
     </div>
   );

@@ -2,6 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
+@keyframes marquee-left {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+@keyframes marquee-right {
+  0%   { transform: translateX(-50%); }
+  100% { transform: translateX(0); }
+}
+.animate-marquee-left  { animation: marquee-left  linear infinite; }
+.animate-marquee-right { animation: marquee-right linear infinite; }
+.marquee-track:hover .animate-marquee-left,
+.marquee-track:hover .animate-marquee-right { animation-play-state: paused; }
+
 @layer base {
   :root {
     --brand: #16a34a;
@@ -33,12 +46,12 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overflow-x: hidden;
-    font-family: var(--font-lato), system-ui, sans-serif;
+    font-family: var(--font-oswald), system-ui, sans-serif;
     color: var(--ink);
   }
 
   h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-syne), system-ui, sans-serif;
+    font-family: var(--font-oswald), system-ui, sans-serif;
   }
 }
 
