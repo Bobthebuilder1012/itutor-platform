@@ -11,9 +11,8 @@ import type {
 import { supabase } from '@/lib/supabase/client';
 import { getDefaultThumbnail, deterministicDefault, isDefaultThumbnail } from '@/lib/defaultThumbnails';
 import { getCroppedImg, type Area } from '@/lib/utils/imageCrop';
-import SessionRow from './SessionRow';
+import SessionsList from './SessionsList';
 import MemberList from './MemberList';
-import CreateSessionModal from './CreateSessionModal';
 import WhatsAppSetupTab from './WhatsAppSetupTab';
 import GroupStreamPage from '../stream/GroupStreamPage';
 import TutorFeedbackTab from './TutorFeedbackTab';
@@ -39,7 +38,6 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [membersLoading, setMembersLoading] = useState(true);
-  const [showCreateSession, setShowCreateSession] = useState(false);
   const [analytics, setAnalytics] = useState<{
     total_sessions: number;
     average_attendance_rate: number;
@@ -1201,27 +1199,10 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
 
           {tab === 'sessions' && (
             <div>
-              <div className="flex justify-end mb-[18px]">
-                <button
-                  onClick={() => setShowCreateSession(true)}
-                  className="inline-flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white px-[18px] py-[9px] rounded-[10px] text-[13px] font-semibold transition-all shadow-[0_2px_8px_rgba(16,185,129,0.25)] hover:-translate-y-px"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                  Add Session
-                </button>
-              </div>
               {sessionsLoading ? (
                 <div className="py-8 flex justify-center"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-600" /></div>
-              ) : sessions.length === 0 ? (
-                <div className="text-center py-14">
-                  <div className="w-20 h-20 rounded-[20px] bg-[#f4f6fa] flex items-center justify-center mx-auto mb-4">
-                    <svg className="w-9 h-9 text-[#64748b] opacity-50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
-                  </div>
-                  <h3 className="text-base font-bold mb-1.5">No sessions scheduled</h3>
-                  <p className="text-[13px] text-[#64748b] max-w-[300px] mx-auto">Schedule your first session to get started.</p>
-                </div>
               ) : (
-                <div>{sessions.map((s) => <SessionRow key={s.id} session={s} groupId={group.id} onRefresh={fetchSessions} />)}</div>
+                <SessionsList sessions={sessions} groupId={group.id} onRefresh={fetchSessions} />
               )}
             </div>
           )}
@@ -1318,14 +1299,6 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
 
         </div>
       </div>
-
-      {showCreateSession && (
-        <CreateSessionModal
-          groupId={group.id}
-          onCreated={() => { setShowCreateSession(false); fetchSessions(); }}
-          onClose={() => setShowCreateSession(false)}
-        />
-      )}
 
       {cropImageSrc && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">

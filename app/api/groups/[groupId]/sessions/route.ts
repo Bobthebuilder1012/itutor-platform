@@ -22,7 +22,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     }
 
     const service = getServiceClient();
-    const now = new Date().toISOString();
+    const nowIso = new Date().toISOString();
 
     let sessions: any[] | null = null;
     let error: any = null;
@@ -32,7 +32,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
         id, group_id, title, recurrence_type, recurrence_days,
         start_time, duration_minutes, starts_on, ends_on, created_at,
         occurrences:group_session_occurrences(
-          id, group_session_id, scheduled_start_at, scheduled_end_at,
+          id, group_session_id, title, scheduled_start_at, scheduled_end_at,
           status, cancelled_at, cancellation_note
         )
       `)
@@ -46,7 +46,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
           id, group_id, title, recurrence_type, recurrence_days,
           start_time, duration_minutes, starts_on, ends_on, created_at,
           occurrences:group_session_occurrences(
-            id, group_session_id, scheduled_start_at, scheduled_end_at
+            id, group_session_id, scheduled_start_at, scheduled_end_at,
+            status, cancelled_at, cancellation_note
           )
         `)
         .eq('group_id', groupId)
@@ -57,19 +58,16 @@ export async function GET(_req: NextRequest, { params }: Params) {
       return NextResponse.json({ sessions: [] });
     }
 
-    // Post-process: sort occurrences and keep only next 20 upcoming + last 2 past per session
-    // (DB-level filtering on nested tables isn't supported in Supabase JS client,
-    //  but we trim here before sending to the client to keep the payload small)
+    // Return all occurrences (including cancelled) so the client can render
+    // a unified chronological list with full upcoming + past history.
     const trimmed = (sessions ?? []).map((s: any) => {
       const occs: any[] = s.occurrences ?? [];
       const upcoming = occs
-        .filter((o) => (o.status ? o.status === 'upcoming' : true) && o.scheduled_end_at >= now)
-        .sort((a: any, b: any) => a.scheduled_start_at.localeCompare(b.scheduled_start_at))
-        .slice(0, 20);
+        .filter((o) => o.scheduled_end_at >= nowIso)
+        .sort((a: any, b: any) => a.scheduled_start_at.localeCompare(b.scheduled_start_at));
       const past = occs
-        .filter((o) => (o.status ? o.status === 'upcoming' : true) && o.scheduled_end_at < now)
-        .sort((a: any, b: any) => b.scheduled_start_at.localeCompare(a.scheduled_start_at))
-        .slice(0, 2);
+        .filter((o) => o.scheduled_end_at < nowIso)
+        .sort((a: any, b: any) => b.scheduled_start_at.localeCompare(a.scheduled_start_at));
       return { ...s, occurrences: [...past, ...upcoming] };
     });
 

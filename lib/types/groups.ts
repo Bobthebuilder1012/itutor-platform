@@ -110,6 +110,7 @@ export interface GroupSessionWithOccurrences extends GroupSession {
 export interface GroupOccurrence {
   id: string;
   group_session_id: string;
+  title?: string | null;
   scheduled_start_at: string;
   scheduled_end_at: string;
   status: OccurrenceStatus;
