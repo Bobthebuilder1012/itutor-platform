@@ -242,7 +242,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     if (isSchemaMismatch(otherGroupsResult.error)) {
       otherGroupsResult = await service
         .from('groups')
-        .select('id, name, subject, created_at')
+        .select('id, name, subject, cover_image, created_at')
         .eq('tutor_id', group.tutor_id)
         .neq('id', groupId)
         .is('archived_at', null)

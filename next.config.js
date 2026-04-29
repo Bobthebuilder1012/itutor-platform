@@ -1,9 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-    // Write build output outside OneDrive sync to avoid file-lock + symlink issues.
-    // Path is relative to project root: c:\Users\liamd\OneDrive\Desktop\iTutor Cursor
-    // -> escape 3 dirs up to c:\Users\liamd, then into .itutor-next/build.
-    distDir: '../../../.itutor-next/build',
+    // In development, write output outside OneDrive to avoid file-lock + symlink issues.
+    // In production/staging use the standard .next directory.
+    distDir: process.env.NODE_ENV === 'production' ? '.next' : '../../../.itutor-next/build',
     // Don't try to prerender API routes
     generateBuildId: async () => {
       return 'build-' + Date.now()

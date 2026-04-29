@@ -53,19 +53,23 @@ export async function GET(_req: NextRequest, { params }: Params) {
       const { data: subs } = memberIds.length > 0
         ? await service
             .from('lesson_submissions')
-            .select('student_id, file_url, file_name, files, status, score, score_total, result, submitted_at')
+            .select('student_id, file_url, file_name, files, feedback, status, score, score_total, result, submitted_at')
             .eq('post_id', postId)
             .in('student_id', memberIds)
         : { data: [] };
 
       const subsMap = new Map((subs ?? []).map((s: { student_id: string }) => [s.student_id, s]));
 
-      const submissions = (profiles ?? []).map((p: { id: string; full_name: string | null; avatar_url: string | null }) => ({
-        student_id: p.id,
-        student_name: p.full_name ?? 'Unknown',
-        student_avatar: p.avatar_url,
-        ...(subsMap.get(p.id) ?? { file_url: null, file_name: null, files: null, status: null, score: null, score_total: null, result: null, submitted_at: null }),
-      }));
+      const submissions = (profiles ?? []).map((p: { id: string; full_name: string | null; avatar_url: string | null }) => {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { student_id: _sid, ...subData } = subsMap.get(p.id) ?? { file_url: null, file_name: null, files: null, feedback: null, status: null, score: null, score_total: null, result: null, submitted_at: null };
+        return {
+          student_id: p.id,
+          student_name: p.full_name ?? 'Unknown',
+          student_avatar: p.avatar_url,
+          ...subData,
+        };
+      });
 
       return NextResponse.json({ submissions, enrolled_count: memberIds.length });
     } else {
