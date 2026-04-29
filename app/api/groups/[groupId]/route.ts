@@ -56,6 +56,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
         tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url),
         group_members(id, user_id, status, profile:profiles(id, full_name, avatar_url))
       `,
+      `
+        id, name, description, tutor_id, subject, pricing, created_at,
+        tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url),
+        group_members(id, user_id, status, profile:profiles(id, full_name, avatar_url))
+      `,
     ];
 
     let group: any = null;
@@ -227,15 +232,24 @@ export async function GET(_req: NextRequest, { params }: Params) {
       ratings.length === 0 ? 0 : Math.round((ratings.reduce((acc, n) => acc + n, 0) / ratings.length) * 100) / 100;
 
     let otherGroups: any[] = [];
-    const { data: otherGroupsRaw, error: otherGroupsError } = await service
+    let otherGroupsResult = await service
       .from('groups')
       .select('id, name, subject, cover_image, created_at')
       .eq('tutor_id', group.tutor_id)
       .neq('id', groupId)
       .is('archived_at', null)
       .limit(6);
-    if (!otherGroupsError) {
-      otherGroups = otherGroupsRaw ?? [];
+    if (isSchemaMismatch(otherGroupsResult.error)) {
+      otherGroupsResult = await service
+        .from('groups')
+        .select('id, name, subject, created_at')
+        .eq('tutor_id', group.tutor_id)
+        .neq('id', groupId)
+        .is('archived_at', null)
+        .limit(6);
+    }
+    if (!otherGroupsResult.error) {
+      otherGroups = otherGroupsResult.data ?? [];
     }
 
     const keyInfo = {

@@ -13,8 +13,10 @@ import { getDefaultThumbnail, deterministicDefault, isDefaultThumbnail } from '@
 import { getCroppedImg, type Area } from '@/lib/utils/imageCrop';
 import SessionsList from './SessionsList';
 import MemberList from './MemberList';
+import AddSessionModal from './AddSessionModal';
+import AddRecurringSessionModal from './AddRecurringSessionModal';
 import WhatsAppSetupTab from './WhatsAppSetupTab';
-import GroupStreamPage from '../stream/GroupStreamPage';
+import TutorStreamView from '../stream/TutorStreamView';
 import TutorFeedbackTab from './TutorFeedbackTab';
 import GroupAnalyticsTab from './GroupAnalyticsTab';
 
@@ -112,6 +114,8 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
   ] as const;
   type CoTutorRole = 'co-tutor' | 'assistant';
   interface CoTutor { id: string; name: string; email: string; role: CoTutorRole; permissions: string[]; }
+  const [showCreateSession, setShowCreateSession] = useState(false);
+  const [showCreateRecurring, setShowCreateRecurring] = useState(false);
   const [coTutors, setCoTutors] = useState<CoTutor[]>([]);
   const [showAddCoTutor, setShowAddCoTutor] = useState(false);
   const [coEmail, setCoEmail] = useState('');
@@ -289,7 +293,7 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
       const res = await fetch(`/api/groups/${group.id}`, { method: 'DELETE' });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload?.error || 'Failed to delete class');
-      router.push('/groups');
+      router.push('/lessons');
     } catch (err: any) {
       alert(err?.message || 'Failed to delete class');
       setDeleting(false);
@@ -1187,18 +1191,39 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
           </div>
 
           {tab === 'stream' && (
-            <GroupStreamPage
+            <TutorStreamView
               groupId={group.id}
+              lessonId={group.id}
               currentUserId={currentUserId}
-              isTutor={true}
-              authorName={group.tutor?.full_name ?? undefined}
-              authorAvatarUrl={group.tutor?.avatar_url ?? undefined}
+              tutorName={group.tutor?.full_name ?? tutorName}
             />
           )}
 
 
           {tab === 'sessions' && (
             <div>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-[17px] font-bold text-gray-900">Sessions</h3>
+                  <p className="text-[13px] text-gray-500">All sessions for this lesson — including deleted</p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowCreateRecurring(true)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[10px] border border-[#e5e9ee] bg-white text-[13px] font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M21 12a9 9 0 11-3-6.7L21 8M21 3v5h-5" /></svg>
+                    Recurring session
+                  </button>
+                  <button
+                    onClick={() => setShowCreateSession(true)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[10px] bg-[#199356] hover:bg-[#137a48] text-white text-[13px] font-semibold transition-colors"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}><path d="M12 5v14M5 12h14" /></svg>
+                    Add session
+                  </button>
+                </div>
+              </div>
               {sessionsLoading ? (
                 <div className="py-8 flex justify-center"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-600" /></div>
               ) : (
@@ -1369,6 +1394,21 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
             </div>
           </div>
         </div>
+      )}
+
+      {showCreateSession && (
+        <AddSessionModal
+          groupId={group.id}
+          onCreated={() => { setShowCreateSession(false); void fetchSessions(); }}
+          onClose={() => setShowCreateSession(false)}
+        />
+      )}
+      {showCreateRecurring && (
+        <AddRecurringSessionModal
+          groupId={group.id}
+          onCreated={() => { setShowCreateRecurring(false); void fetchSessions(); }}
+          onClose={() => setShowCreateRecurring(false)}
+        />
       )}
     </div>
   );

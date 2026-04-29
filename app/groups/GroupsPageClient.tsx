@@ -262,7 +262,7 @@ export default function GroupsPageClient({
                 <GroupGridCard
                   key={g.id}
                   group={g}
-                  onClick={() => router.push(`/groups/${g.id}`)}
+                  onClick={() => router.push(`/lessons/${g.id}`)}
                 />
               ))}
             </div>
@@ -402,7 +402,7 @@ export default function GroupsPageClient({
 
         {showCreateGroup && (
           <CreateGroupModal
-            onCreated={(id) => { setShowCreateGroup(false); void fetchAll(); router.push(`/groups/${id}`); }}
+            onCreated={(id) => { setShowCreateGroup(false); void fetchAll(); router.push(`/lessons/${id}`); }}
             onClose={() => setShowCreateGroup(false)}
           />
         )}
@@ -464,7 +464,7 @@ export default function GroupsPageClient({
               {myGroups.map((g) => (
                 <button
                   key={g.id}
-                  onClick={() => router.push(`/groups/${g.id}`)}
+                  onClick={() => router.push(`/lessons/${g.id}`)}
                   className="w-full text-left px-3 py-2.5 hover:bg-gray-50 transition-colors"
                 >
                   <p className="text-xs font-semibold text-gray-800 truncate leading-snug">{g.name}</p>

@@ -25,9 +25,13 @@ type Student = {
   name: string;
   paperFiles: File[];
   paperFileNames: string[];
+  preAttachedUrl?: string;
+  preAttachedName?: string;
   result: MarkingResult | null;
   status: 'pending' | 'marking' | 'done' | 'failed';
 };
+
+type LessonContext = { groupId: string; postId: string };
 
 type GradingSession = {
   id: string;
@@ -113,6 +117,9 @@ export default function ToolsAiPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState('all');
   const [sortBy, setSortBy] = useState('newest');
+  const [lessonContext, setLessonContext] = useState<LessonContext | null>(null);
+  const [prefillBanner, setPrefillBanner] = useState<string | null>(null);
+  const [writingBack, setWritingBack] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const answerKeyRef = useRef<HTMLInputElement>(null);
@@ -128,11 +135,40 @@ export default function ToolsAiPage() {
     setSessions(loadSessions());
   }, []);
 
+  // Read sessionStorage prefill from lesson assignment flow
+  useEffect(() => {
+    const raw = sessionStorage.getItem('itutor_ai_prefill');
+    if (!raw) return;
+    try {
+      const prefill = JSON.parse(raw);
+      if (prefill.source !== 'lesson') return;
+      setSessionName(`${prefill.groupTitle} — ${prefill.postTitle}`);
+      const n = parseInt(String(prefill.marksAvailable), 10);
+      if (n > 0) { setSelectedQuick(null); setTotalMarks(n); setCustomMarks(String(n)); }
+      setStudents(
+        (prefill.students as { id: string; name: string; fileUrl: string; fileName: string }[]).map((s) => ({
+          id: s.id,
+          name: s.name,
+          paperFiles: [],
+          paperFileNames: [],
+          preAttachedUrl: s.fileUrl,
+          preAttachedName: s.fileName,
+          result: null,
+          status: 'pending' as const,
+        }))
+      );
+      setLessonContext({ groupId: prefill.groupId, postId: prefill.postId });
+      setPrefillBanner(`Pre-filled from lesson: ${prefill.groupTitle} — ${(prefill.students as unknown[]).length} paper${(prefill.students as unknown[]).length !== 1 ? 's' : ''} loaded`);
+      sessionStorage.removeItem('itutor_ai_prefill');
+      setCurrentState(1);
+    } catch { /* ignore malformed data */ }
+  }, []);
+
   const readyStudents = useMemo(
-    () => students.filter((s) => s.name.trim() && s.paperFiles.length > 0),
+    () => students.filter((s) => s.name.trim() && (s.paperFiles.length > 0 || !!s.preAttachedUrl)),
     [students],
   );
-  const uploadedCount = useMemo(() => students.filter((s) => s.paperFiles.length > 0).length, [students]);
+  const uploadedCount = useMemo(() => students.filter((s) => s.paperFiles.length > 0 || !!s.preAttachedUrl).length, [students]);
   const canGrade = !!answerKey && readyStudents.length > 0;
 
   const updateStudent = useCallback((id: string, patch: Partial<Student>) => {
@@ -172,17 +208,32 @@ export default function ToolsAiPage() {
     setGradingIndex(0);
     setExpandedRow(null);
     setViewingSession(null);
+    setLessonContext(null);
+    setPrefillBanner(null);
+    setWritingBack(false);
   };
 
   const startGrading = async () => {
     if (!canGrade || !answerKey) return;
+    const capturedContext = lessonContext;
+    const capturedTotalMarks = totalMarks;
     const controller = new AbortController();
     abortRef.current = controller;
     setCurrentState(2);
     setGradingIndex(0);
 
-    const snapshot = readyStudents.map((s) => ({ ...s }));
+    const snapshot = readyStudents.map((s) => ({
+      id: s.id,
+      name: s.name,
+      paperFiles: s.paperFiles,
+      paperFileNames: s.paperFileNames,
+      preAttachedUrl: s.preAttachedUrl,
+      preAttachedName: s.preAttachedName,
+    }));
     const targets = snapshot.map((s) => s.id);
+    const resultsMap = new Map<string, { status: 'done' | 'failed'; result: MarkingResult | null }>();
+
+    console.log(`[iTutor AI] Starting grading for ${snapshot.length} students:`, snapshot.map((s) => s.name));
 
     setStudents((prev) =>
       prev.map((s) =>
@@ -190,62 +241,101 @@ export default function ToolsAiPage() {
       ),
     );
 
-    let finalStudents: Student[] = [];
-
-    const batchSize = 5;
-    for (let i = 0; i < targets.length; i += batchSize) {
+    for (let i = 0; i < targets.length; i++) {
+      const sid = targets[i];
       if (controller.signal.aborted) break;
-      const batch = targets.slice(i, i + batchSize);
-      await Promise.all(
-        batch.map(async (sid) => {
-          setStudents((prev) => prev.map((s) => (s.id === sid ? { ...s, status: 'marking' } : s)));
-          try {
-            const stu = snapshot.find((s) => s.id === sid)!;
-            const fd = new FormData();
-            fd.append('answer_key', answerKey);
-            fd.append('student_paper', stu.paperFiles[0]);
-            fd.append('student_name', stu.name);
-            fd.append('total_marks', String(totalMarks));
-            const res = await fetch('/api/ai/mark-paper', {
-              method: 'POST',
-              body: fd,
-              signal: controller.signal,
-            });
-            const data = await res.json();
-            if (data.error) throw new Error(data.error);
-            setStudents((prev) => {
-              const updated = prev.map((s) => (s.id === sid ? { ...s, status: 'done' as const, result: data } : s));
-              finalStudents = updated;
-              return updated;
-            });
-          } catch (err: unknown) {
-            if (err instanceof Error && err.name === 'AbortError') return;
-            setStudents((prev) => {
-              const updated = prev.map((s) => (s.id === sid ? { ...s, status: 'failed' as const } : s));
-              finalStudents = updated;
-              return updated;
-            });
-          }
-          setGradingIndex((p) => p + 1);
-        }),
-      );
+      setStudents((prev) => prev.map((s) => (s.id === sid ? { ...s, status: 'marking' } : s)));
+      try {
+        const stu = snapshot.find((s) => s.id === sid)!;
+
+        // Resolve student paper — either locally uploaded or pre-attached from lesson
+        let studentPaper: File;
+        if (stu.preAttachedUrl && stu.paperFiles.length === 0) {
+          const resp = await fetch(stu.preAttachedUrl, { signal: controller.signal });
+          const blob = await resp.blob();
+          studentPaper = new File([blob], stu.preAttachedName ?? 'submission.pdf', { type: blob.type || 'application/octet-stream' });
+        } else {
+          studentPaper = stu.paperFiles[0];
+        }
+
+        console.log(`[iTutor AI] Marking ${stu.name} (${i + 1}/${targets.length}), file: ${studentPaper.name}`);
+        const fd = new FormData();
+        fd.append('answer_key', answerKey);
+        fd.append('student_paper', studentPaper);
+        fd.append('student_name', stu.name);
+        fd.append('total_marks', String(capturedTotalMarks));
+        const res = await fetch('/api/ai/mark-paper', {
+          method: 'POST',
+          body: fd,
+          signal: controller.signal,
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        console.log(`[iTutor AI] ✓ ${stu.name}: ${data.total_score}/${capturedTotalMarks}`);
+        resultsMap.set(sid, { status: 'done', result: data });
+        setStudents((prev) => prev.map((s) => (s.id === sid ? { ...s, status: 'done' as const, result: data } : s)));
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === 'AbortError') return;
+        console.error(`[iTutor AI] ✗ ${snapshot.find((s) => s.id === sid)?.name}:`, err);
+        resultsMap.set(sid, { status: 'failed', result: null });
+        setStudents((prev) => prev.map((s) => (s.id === sid ? { ...s, status: 'failed' as const } : s)));
+      }
+      setGradingIndex(i + 1);
     }
 
     if (!controller.signal.aborted) {
+      const sessionStudents = snapshot.map((s) => {
+        const entry = resultsMap.get(s.id);
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { paperFiles, preAttachedUrl, preAttachedName, ...rest } = s;
+        return {
+          ...rest,
+          status: entry?.status ?? ('failed' as const),
+          result: entry?.result ?? null,
+        };
+      });
       const session: GradingSession = {
         id: crypto.randomUUID(),
         createdAt: new Date().toISOString(),
         sessionName: sessionName || 'Untitled session',
-        totalMarks,
-        students: finalStudents
-          .filter((s) => targets.includes(s.id))
-          .map(({ paperFiles, ...rest }) => rest),
+        totalMarks: capturedTotalMarks,
+        students: sessionStudents,
       };
       const existing = loadSessions();
       existing.unshift(session);
       saveSessions(existing);
       setSessions(existing);
       setViewingSession(session);
+
+      // Write results back to lesson stream if this came from a lesson assignment
+      if (capturedContext) {
+        setWritingBack(true);
+        try {
+          const grades = snapshot
+            .filter((s) => resultsMap.get(s.id)?.status === 'done')
+            .map((s) => {
+              const entry = resultsMap.get(s.id)!;
+              const pct = capturedTotalMarks > 0 ? ((entry.result?.total_score ?? 0) / capturedTotalMarks) * 100 : 0;
+              return {
+                student_id: s.id,
+                score: entry.result?.total_score ?? 0,
+                score_total: capturedTotalMarks,
+                result: pct >= 50 ? 'pass' : 'fail',
+                feedback: entry.result?.student_results ?? null,
+              };
+            });
+          await fetch(`/api/groups/${capturedContext.groupId}/stream/post/${capturedContext.postId}/submissions`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ grades, student_count: snapshot.length }),
+          });
+        } catch (e) {
+          console.error('[iTutor AI] write-back failed:', e);
+        } finally {
+          setWritingBack(false);
+        }
+      }
+
       setCurrentState(3);
     }
   };
@@ -420,6 +510,18 @@ export default function ToolsAiPage() {
     return (
       <DashboardLayout role={profile.role as 'student' | 'tutor'} userName={displayName}>
         <div className="space-y-6">
+          {writingBack && (
+            <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-sm text-emerald-700">
+              <div className="w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+              Saving grades to lesson stream…
+            </div>
+          )}
+          {lessonContext && !writingBack && (
+            <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-sm text-emerald-700">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
+              Grades saved to lesson stream.
+            </div>
+          )}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
               <h1 className="text-xl font-semibold text-gray-900">Results</h1>
@@ -428,6 +530,14 @@ export default function ToolsAiPage() {
               </p>
             </div>
             <div className="flex gap-2">
+              {lessonContext && (
+                <button
+                  onClick={() => router.push(`/lessons/${lessonContext.groupId}?tab=stream`)}
+                  className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  ← Back to lesson
+                </button>
+              )}
               <button
                 onClick={() => exportCSV(s3Studs, s3Marks)}
                 className="px-4 py-2 text-sm font-medium border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
@@ -588,13 +698,34 @@ export default function ToolsAiPage() {
             <span>›</span>
             <span>New grading session</span>
           </div>
-          <button
-            onClick={() => { resetSetupState(); setCurrentState(0); }}
-            className="flex items-center gap-1.5 text-sm text-gray-600 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-colors"
-          >
-            ← Back to sessions
-          </button>
+          <div className="flex items-center gap-2">
+            {lessonContext && (
+              <button
+                onClick={() => router.push(`/lessons/${lessonContext.groupId}?tab=stream`)}
+                className="flex items-center gap-1.5 text-sm text-gray-600 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-colors"
+              >
+                ← Back to lesson
+              </button>
+            )}
+            <button
+              onClick={() => { resetSetupState(); setCurrentState(0); }}
+              className="flex items-center gap-1.5 text-sm text-gray-600 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-colors"
+            >
+              ← Back to sessions
+            </button>
+          </div>
         </div>
+
+        {/* Prefill banner */}
+        {prefillBanner && (
+          <div className="flex items-start justify-between gap-3 px-4 py-3 mb-4 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-700">
+            <div className="flex items-start gap-2">
+              <svg className="flex-shrink-0 mt-0.5" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+              <span>{prefillBanner} — Upload an answer key below to begin grading.</span>
+            </div>
+            <button onClick={() => setPrefillBanner(null)} className="text-blue-400 hover:text-blue-600 flex-shrink-0">×</button>
+          </div>
+        )}
 
         <div className="flex gap-6 items-start">
           <div className="flex-1 min-w-0 space-y-5">
@@ -726,10 +857,12 @@ export default function ToolsAiPage() {
                 {students.map((s, idx) => {
                   const color = AVATAR_COLORS[idx % AVATAR_COLORS.length];
                   const hasPaper = s.paperFiles.length > 0;
+                  const isPreAttached = !!s.preAttachedUrl && !hasPaper;
+                  const hasAnyPaper = hasPaper || isPreAttached;
                   return (
                     <div
                       key={s.id}
-                      className={`grid gap-2.5 items-center rounded-lg p-2.5 border transition-colors ${hasPaper ? 'bg-gray-50 border-gray-200 border-l-[3px] border-l-itutor-green' : s.name ? 'bg-gray-50 border-gray-200' : 'bg-white border-dashed border-gray-200'}`}
+                      className={`grid gap-2.5 items-center rounded-lg p-2.5 border transition-colors ${hasAnyPaper ? 'bg-gray-50 border-gray-200 border-l-[3px] border-l-itutor-green' : s.name ? 'bg-gray-50 border-gray-200' : 'bg-white border-dashed border-gray-200'}`}
                       style={{ gridTemplateColumns: '44px 1fr 200px 100px 32px' }}
                     >
                       <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold ${s.name ? `${color.bg} ${color.text}` : 'bg-gray-100 text-gray-400'}`}>
@@ -755,16 +888,29 @@ export default function ToolsAiPage() {
                               updateStudent(s.id, {
                                 paperFiles: Array.from(files),
                                 paperFileNames: Array.from(files).map((f) => f.name),
+                                preAttachedUrl: undefined,
+                                preAttachedName: undefined,
                               });
                             }
                           }}
                         />
+                        {isPreAttached ? (
+                          <div className="flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs">
+                            <span className="text-itutor-green truncate flex-1">✓ {s.preAttachedName}</span>
+                            <button
+                              onClick={() => updateStudent(s.id, { preAttachedUrl: undefined, preAttachedName: undefined })}
+                              className="text-gray-400 hover:text-red-500 transition-colors flex-shrink-0"
+                              title="Remove pre-attached file"
+                            >×</button>
+                          </div>
+                        ) : (
                         <button
                           onClick={() => paperRefs.current[s.id]?.click()}
                           className={`w-full text-left rounded-lg border px-3 py-2 text-xs transition-colors ${hasPaper ? 'bg-emerald-50 border-emerald-200 text-itutor-green' : 'border-gray-200 text-gray-400 hover:border-gray-300'}`}
                         >
                           {hasPaper ? `✓ ${s.paperFileNames[0]}` : '📎 Upload answer sheet'}
                         </button>
+                        )}
                       </div>
                       <div className="flex items-baseline justify-center gap-0.5">
                         <span className="text-lg font-medium text-gray-300">—</span>

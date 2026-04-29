@@ -1,9 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import type { GroupWithTutor, GroupSessionWithOccurrences, GroupMember } from '@/lib/types/groups';
-import GroupStreamPage from '../stream/GroupStreamPage';
+import { getDefaultThumbnail, deterministicDefault, isDefaultThumbnail } from '@/lib/defaultThumbnails';
+import StudentStreamView from '../stream/StudentStreamView';
 import StudentSessionsTab from './StudentSessionsTab';
 import MemberList from '../tutor/MemberList';
 import WhatsAppJoinButton from './WhatsAppJoinButton';
@@ -18,7 +19,9 @@ interface GroupMemberViewProps {
 
 export default function GroupMemberView({ group, currentUserId }: GroupMemberViewProps) {
   const router = useRouter();
-  const [tab, setTab] = useState<Tab>('stream');
+  const searchParams = useSearchParams();
+  const initialTab = (searchParams?.get('tab') as Tab | null) ?? 'stream';
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [sessions, setSessions] = useState<GroupSessionWithOccurrences[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [members, setMembers] = useState<GroupMember[]>([]);
@@ -28,6 +31,10 @@ export default function GroupMemberView({ group, currentUserId }: GroupMemberVie
 
   const tutorName = group.tutor?.full_name ?? 'Tutor';
   const approvedMembers = members.filter((m) => m.status === 'approved');
+
+  const coverImage = (group as any).cover_image ?? null;
+  const hasCustomImage = coverImage && !isDefaultThumbnail(coverImage);
+  const thumbnail = getDefaultThumbnail(coverImage) ?? deterministicDefault(group.id);
 
   const fetchSessions = useCallback(async () => {
     setSessionsLoading(true);
@@ -119,7 +126,22 @@ export default function GroupMemberView({ group, currentUserId }: GroupMemberVie
   );
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-y-auto bg-[#f4f6fa]">
+      {/* ── LESSON BANNER (all tabs) ── */}
+      <div className="relative flex-shrink-0 h-[180px] overflow-hidden">
+        {hasCustomImage ? (
+          <img src={coverImage} alt={group.name} className="absolute inset-0 w-full h-full object-cover" />
+        ) : (
+          <div className="absolute inset-0" style={{ background: thumbnail.gradient }} />
+        )}
+        <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/40" />
+        <div className="absolute bottom-0 left-0 right-0 px-8 pb-7">
+          <h1 className="text-[26px] font-extrabold text-white leading-tight" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.2)' }}>
+            {group.name}
+          </h1>
+        </div>
+      </div>
+
       {/* Lesson header */}
       <div className="flex-shrink-0 px-6 py-3.5 bg-white border-b border-[#e4e8ee] flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
@@ -170,7 +192,7 @@ export default function GroupMemberView({ group, currentUserId }: GroupMemberVie
         <div className="flex-1 min-w-0 flex flex-col">
           <div className="flex-1 overflow-y-auto px-6 py-5">
             {tab === 'stream' && (
-              <GroupStreamPage groupId={group.id} currentUserId={currentUserId} isTutor={false} />
+              <StudentStreamView groupId={group.id} lessonId={group.id} />
             )}
             {tab === 'sessions' && (
               <StudentSessionsTab

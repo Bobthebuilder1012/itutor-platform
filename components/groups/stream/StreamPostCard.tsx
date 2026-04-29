@@ -6,9 +6,12 @@ import UserAvatar from '@/components/UserAvatar';
 import { timeAgo, getInitials } from './timeAgo';
 import StreamAttachmentList from './StreamAttachmentList';
 import ReplyThread from './ReplyThread';
+import AssignmentPostCard from './AssignmentPostCard';
 
 interface StreamPostCardProps {
   post: StreamPostWithAuthor;
+  groupId: string;
+  groupTitle: string;
   isTutor: boolean;
   currentUserId: string;
   onDeleted: () => void;
@@ -20,22 +23,27 @@ const ACCENT: Record<string, string> = {
   announcement: 'bg-gradient-to-r from-[#0d9668] to-[#34d399]',
   discussion: 'bg-gradient-to-r from-[#3b82f6] to-[#60a5fa]',
   content: 'bg-gradient-to-r from-[#f59e0b] to-[#fbbf24]',
+  assignment: 'bg-gradient-to-r from-[#7c3aed] to-[#a78bfa]',
 };
 
 const BADGE_STYLE: Record<string, string> = {
   announcement: 'bg-[#d1fae5] text-[#047857]',
   discussion: 'bg-[#dbeafe] text-[#1d4ed8]',
   content: 'bg-[#fef3c7] text-[#92400e]',
+  assignment: 'bg-[#ede9fe] text-[#6d28d9]',
 };
 
 const BADGE_LABEL: Record<string, string> = {
   announcement: 'Announcement',
   discussion: 'Discussion',
   content: 'Learning Content',
+  assignment: 'Assignment',
 };
 
 export default function StreamPostCard({
   post,
+  groupId,
+  groupTitle,
   isTutor,
   currentUserId,
   onDeleted,
@@ -219,11 +227,43 @@ export default function StreamPostCard({
           {post.message_body}
         </div>
 
+        {/* Assignment metadata */}
+        {post.post_type === 'assignment' && (post.marks_available || post.due_date) && (
+          <div className="flex flex-wrap gap-3 mb-3">
+            {post.marks_available && (
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#6d28d9] bg-[#ede9fe] px-2.5 py-1 rounded-full">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><circle cx="12" cy="12" r="10" /><path d="M12 8v4l3 3" /></svg>
+                {post.marks_available} marks
+              </span>
+            )}
+            {post.due_date && (
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#6b7280] bg-[#f3f4f6] px-2.5 py-1 rounded-full">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
+                Due {new Date(post.due_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Attachments */}
         {post.attachments && post.attachments.length > 0 && (
           <div className="mb-3">
             <StreamAttachmentList attachments={post.attachments} />
           </div>
+        )}
+
+        {/* Assignment card — submission section */}
+        {post.post_type === 'assignment' && (
+          <AssignmentPostCard
+            postId={post.id}
+            groupId={groupId}
+            groupTitle={groupTitle}
+            content={post.message_body}
+            marksAvailable={post.marks_available ?? null}
+            dueDate={post.due_date ?? null}
+            isTutor={isTutor}
+            currentUserId={currentUserId}
+          />
         )}
 
         {/* Footer — Discussion style */}

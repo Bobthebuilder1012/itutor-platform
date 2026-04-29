@@ -8,6 +8,7 @@ import StreamPostCard from './StreamPostCard';
 
 interface GroupStreamPageProps {
   groupId: string;
+  groupTitle?: string;
   currentUserId: string;
   isTutor: boolean;
   authorName?: string;
@@ -16,6 +17,7 @@ interface GroupStreamPageProps {
 
 export default function GroupStreamPage({
   groupId,
+  groupTitle = '',
   currentUserId,
   isTutor,
   authorName: authorNameProp,
@@ -99,6 +101,8 @@ export default function GroupStreamPage({
               <StreamPostCard
                 key={post.id}
                 post={post}
+                groupId={groupId}
+                groupTitle={groupTitle}
                 isTutor={isTutor}
                 currentUserId={currentUserId}
                 onDeleted={handleDeleted}

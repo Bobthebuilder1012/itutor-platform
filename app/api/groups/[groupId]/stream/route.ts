@@ -49,22 +49,36 @@ export async function GET(req: NextRequest, { params }: Params) {
     const limit = Math.min(50, Math.max(10, parseInt(url.searchParams.get('limit') ?? '20', 10)));
     const offset = (page - 1) * limit;
 
-    const { data: rawPosts, error: postsError } = await service
+    let rawPosts: unknown[] | null = null;
+
+    // Try full select including assignment columns
+    const fullPostsResult = await service
       .from('stream_posts')
-      .select(`
-        id, group_id, author_id, author_role, post_type, message_body, pinned_at, pin_expires_at, created_at, updated_at
-      `)
+      .select('id, group_id, author_id, author_role, post_type, message_body, marks_available, due_date, pinned_at, pin_expires_at, created_at, updated_at')
       .eq('group_id', groupId)
       .order('pinned_at', { ascending: false })
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
-    if (postsError) {
-      console.warn('[GET /api/groups/[groupId]/stream] posts query failed, returning empty feed:', postsError.message);
-      return NextResponse.json({
-        posts: [],
-        pagination: { page, limit, has_more: false },
-      });
+    if (fullPostsResult.error?.code === 'PGRST204' || fullPostsResult.error?.message?.includes('marks_available') || fullPostsResult.error?.message?.includes('due_date') || fullPostsResult.error?.message?.includes('pinned_at')) {
+      // Migration not yet fully run — fall back to minimal base columns only
+      console.warn('[GET /api/groups/[groupId]/stream] extended columns missing, using minimal fallback select');
+      const fallbackResult = await service
+        .from('stream_posts')
+        .select('id, group_id, author_id, author_role, post_type, message_body, created_at, updated_at')
+        .eq('group_id', groupId)
+        .order('created_at', { ascending: false })
+        .range(offset, offset + limit - 1);
+      if (fallbackResult.error) {
+        console.warn('[GET /api/groups/[groupId]/stream] fallback posts query failed:', fallbackResult.error.message);
+        return NextResponse.json({ posts: [], pagination: { page, limit, has_more: false } });
+      }
+      rawPosts = fallbackResult.data;
+    } else if (fullPostsResult.error) {
+      console.warn('[GET /api/groups/[groupId]/stream] posts query failed, returning empty feed:', fullPostsResult.error.message);
+      return NextResponse.json({ posts: [], pagination: { page, limit, has_more: false } });
+    } else {
+      rawPosts = fullPostsResult.data;
     }
 
     const now = new Date().toISOString();

@@ -198,6 +198,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         { label: 'Menu', items: [
           { href: '/student/dashboard', label: 'Dashboard', icon: icons.dashboard },
           { href: '/student/find-tutors', label: 'Find iTutors', icon: icons.search },
+          ...(showGroups ? [{ href: '/lessons', label: 'Lessons', icon: icons.groups }] : []),
         ]},
         { label: 'Learning', items: [
           { href: '/student/bookings', label: 'My Bookings', icon: icons.calendar },
@@ -218,7 +219,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/tutor/dashboard', label: 'Dashboard', icon: icons.dashboard },
           { href: '/tutor/find-students', label: 'Find Students', icon: icons.search },
           { href: '/tutor/bookings', label: 'Booking Requests', icon: icons.calendar },
-          ...(showGroups ? [{ href: '/groups', label: 'Lessons', icon: icons.groups }] : []),
+          ...(showGroups ? [{ href: '/lessons', label: 'Lessons', icon: icons.groups }] : []),
         ]},
         { label: 'Settings', items: [
           { href: '/verification', label: 'Verification', badge: '!', icon: icons.shield },
@@ -245,6 +246,9 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
             label: 'Session feedback',
             icon: icons.chatFeedback,
           });
+        }
+        if (showGroups) {
+          menuItems.push({ href: '/lessons', label: 'Lessons', icon: icons.groups });
         }
         return [
           { label: 'Menu', items: menuItems },
@@ -276,7 +280,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
   };
 
   const navSections = getNavSections();
-  const isGroupsPage = pathname === '/groups' || pathname.startsWith('/groups/');
+  const isGroupsPage = pathname === '/lessons' || pathname.startsWith('/lessons/') || pathname === '/groups' || pathname.startsWith('/groups/');
 
   if (suspensionLoading) {
     return (

@@ -12,7 +12,7 @@ interface CreateGroupModalProps {
   onClose: () => void;
 }
 
-const STEPS = ['Details', 'Description', 'Schedule', 'Finish'] as const;
+const STEPS = ['Details', 'Schedule', 'Review'] as const;
 const DAY_SHORT: Record<number, string> = { 0: 'Sun', 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat' };
 
 function formatTime12(t: string) {
@@ -134,7 +134,7 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
 
   const canProceed = () => {
     if (step === 1) return !!form.name.trim();
-    if (step === 3) {
+    if (step === 2) {
       if (recurrenceType === 'weekly' && recurrenceDays.length === 0) return false;
       return !!startTime;
     }
@@ -203,7 +203,7 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
           <div className="flex items-center justify-between p-5 border-b border-gray-100 flex-shrink-0">
             <div>
               <h2 className="text-lg font-bold text-gray-900">Create a New Class</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Step {step} of 4</p>
+              <p className="text-xs text-gray-500 mt-0.5">Step {step} of 3</p>
             </div>
             <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 transition-colors">
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -212,10 +212,10 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
 
           {/* Step bar */}
           <div className="flex items-center gap-0 px-5 pt-3 flex-shrink-0">
-            {[1, 2, 3, 4].map((s, i) => (
+            {[1, 2, 3].map((s, i) => (
               <div key={s} className="flex items-center flex-1 last:flex-none">
                 <div className={`transition-all rounded-full ${s < step ? 'w-2 h-2 bg-emerald-500' : s === step ? 'w-5 h-2 bg-emerald-500 rounded-md' : 'w-2 h-2 bg-gray-200'}`} />
-                {i < 3 && <div className={`flex-1 h-0.5 mx-1 transition-colors ${s < step ? 'bg-emerald-500' : 'bg-gray-200'}`} />}
+                {i < 2 && <div className={`flex-1 h-0.5 mx-1 transition-colors ${s < step ? 'bg-emerald-500' : 'bg-gray-200'}`} />}
               </div>
             ))}
           </div>
@@ -273,28 +273,8 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
               </div>
             )}
 
-            {/* STEP 2: DESCRIPTION */}
+            {/* STEP 2: SCHEDULE */}
             {step === 2 && (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Course overview</label>
-                  <p className="text-xs text-gray-500 mb-1.5">Describe what students will learn in this class.</p>
-                  <textarea value={form.description ?? ''} onChange={(e) => setForm({ ...form, description: e.target.value })}
-                    placeholder="Describe what students will learn..." rows={4}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Learning objectives</label>
-                  <p className="text-xs text-gray-500 mb-1.5">List key outcomes and who this course is for.</p>
-                  <textarea value={goals} onChange={(e) => setGoals(e.target.value)}
-                    placeholder="List key outcomes and who this course is for..." rows={3}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                </div>
-              </div>
-            )}
-
-            {/* STEP 3: SCHEDULE */}
-            {step === 3 && (
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Recurrence</label>
@@ -372,75 +352,38 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
               </div>
             )}
 
-            {/* STEP 4: FINISH */}
-            {step === 4 && (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Lesson thumbnail</label>
-                  <p className="text-xs text-gray-500 mb-1.5">Optional. Shown on marketplace cards.</p>
-                  <div
-                    onDragOver={(e) => { e.preventDefault(); setDraggingImage(true); }}
-                    onDragLeave={(e) => { e.preventDefault(); setDraggingImage(false); }}
-                    onDrop={(e) => { e.preventDefault(); setDraggingImage(false); handleImageSelection(e.dataTransfer.files?.[0] ?? null); }}
-                    className={`rounded-xl border-2 border-dashed p-4 transition-colors ${draggingImage ? 'border-emerald-500 bg-emerald-50' : 'border-gray-300 bg-gray-50/60'}`}>
-                    {form.cover_image ? (
-                      <img src={form.cover_image} alt="Thumbnail" className="h-36 w-full rounded-lg object-cover border border-gray-200" />
-                    ) : (
-                      <div className="h-32 w-full rounded-lg border border-gray-200 bg-white flex flex-col items-center justify-center text-gray-400">
-                        <svg className="w-8 h-8 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
-                        <span className="text-xs">Drag and drop image here</span>
-                      </div>
-                    )}
-                    <div className="mt-2 flex items-center gap-2">
-                      <button type="button" onClick={() => coverInputRef.current?.click()}
-                        className="px-3 py-1.5 rounded-lg border border-gray-300 text-xs text-gray-700 hover:bg-gray-100 transition-colors">
-                        Choose file
-                      </button>
-                      {form.cover_image && (
-                        <button type="button" onClick={() => setForm((p) => ({ ...p, cover_image: null }))}
-                          className="px-3 py-1.5 rounded-lg border border-gray-300 text-xs text-gray-700 hover:bg-gray-100 transition-colors">Remove</button>
-                      )}
-                      <span className="text-[10px] text-gray-400">{uploadingImage ? 'Uploading...' : 'PNG, JPG, WEBP up to 10MB'}</span>
-                    </div>
-                    <input ref={coverInputRef} type="file" accept="image/*" className="hidden"
-                      onChange={(e) => { handleImageSelection(e.target.files?.[0] ?? null); e.currentTarget.value = ''; }} />
+            {/* STEP 3: REVIEW */}
+            {step === 3 && (
+              <div className="space-y-3">
+                <p className="text-sm font-bold text-gray-900 mb-3">Review your class</p>
+
+                {/* Class card */}
+                <div className="flex items-start gap-3 p-4 border border-gray-200 rounded-xl">
+                  <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0 text-xl">📚</div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">Class</p>
+                    <p className="text-sm font-bold text-gray-900 truncate">{form.name || '—'}</p>
+                    <p className="text-sm text-gray-600">{[form.subject, form.form_level?.replace('_', ' ')].filter(Boolean).join(' · ') || '—'}</p>
                   </div>
+                  <button type="button" onClick={() => setStep(1)} className="text-sm font-semibold flex-shrink-0" style={{ color: '#199356', background: 'none', border: 'none', cursor: 'pointer' }}>Edit</button>
                 </div>
 
-                {/* Summary */}
-                <div>
-                  <p className="text-sm font-bold text-gray-900 mb-2">Summary</p>
-                  <div className="space-y-2">
-                    <div className="flex items-start gap-3 p-3 border border-gray-200 rounded-lg">
-                      <div className="w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                        <svg className="w-4 h-4 text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path d="M4 19.5A2.5 2.5 0 016.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" /></svg>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Class</p>
-                        <p className="text-sm font-bold text-gray-900 truncate">{form.name || '—'}</p>
-                        <p className="text-xs text-gray-500">{[form.subject, form.form_level?.replace('_', ' ')].filter(Boolean).join(' · ') || '—'}</p>
-                      </div>
-                      <button type="button" onClick={() => setStep(1)} className="text-xs text-emerald-600 font-semibold hover:underline flex-shrink-0">Edit</button>
-                    </div>
-                    <div className="flex items-start gap-3 p-3 border border-gray-200 rounded-lg">
-                      <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
-                        <svg className="w-4 h-4 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Schedule</p>
-                        <p className="text-sm font-bold text-gray-900">{formatTime12(startTime)} – {computeEndTime(startTime, durationMinutes)} · {durationMinutes} min</p>
-                        <p className="text-xs text-gray-500">
-                          {recurrenceType === 'weekly' ? activeDayLabels || '—' : recurrenceType === 'daily' ? 'Every day' : sessionDate}
-                        </p>
-                      </div>
-                      <button type="button" onClick={() => setStep(3)} className="text-xs text-emerald-600 font-semibold hover:underline flex-shrink-0">Edit</button>
-                    </div>
+                {/* Schedule card */}
+                <div className="flex items-start gap-3 p-4 border border-gray-200 rounded-xl">
+                  <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0 text-xl">📅</div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">Schedule</p>
+                    <p className="text-sm font-semibold text-gray-900">
+                      {recurrenceType === 'weekly' ? `Weekly · ${activeDayLabels || '—'}` : recurrenceType === 'daily' ? 'Daily' : `One-time · ${sessionDate}`}
+                    </p>
+                    <p className="text-sm text-gray-600">{formatTime12(startTime)} – {computeEndTime(startTime, durationMinutes)} · {durationMinutes} min</p>
                   </div>
+                  <button type="button" onClick={() => setStep(2)} className="text-sm font-semibold flex-shrink-0" style={{ color: '#199356', background: 'none', border: 'none', cursor: 'pointer' }}>Edit</button>
                 </div>
 
-                <div className="flex items-start gap-2 p-3 bg-emerald-50 rounded-lg text-[11px] text-emerald-800 leading-relaxed">
+                <div className="flex items-start gap-2 p-3 bg-emerald-50 rounded-lg text-[11px] text-emerald-800 leading-relaxed mt-1">
                   <svg className="w-4 h-4 flex-shrink-0 mt-px" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
-                  Your class will be published with sessions already scheduled. Students can join immediately.
+                  Your class will be published with sessions already scheduled. You can add a banner image by hovering over the lesson card on your Lessons page.
                 </div>
               </div>
             )}
@@ -451,17 +394,17 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
             {step === 1 ? (
               <button type="button" onClick={onClose} className="flex-1 border border-gray-200 text-gray-700 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors">Cancel</button>
             ) : (
-              <button type="button" onClick={() => { setStep((p) => Math.max(1, p - 1) as 1 | 2 | 3 | 4); setError(''); }}
+              <button type="button" onClick={() => { setStep((p) => Math.max(1, p - 1) as 1 | 2 | 3); setError(''); }}
                 className="flex-1 border border-gray-200 text-gray-700 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors">Back</button>
             )}
-            {step < 4 ? (
-              <button type="button" onClick={() => { setError(''); setStep((p) => Math.min(4, p + 1) as 1 | 2 | 3 | 4); }} disabled={!canProceed()}
+            {step < 3 ? (
+              <button type="button" onClick={() => { setError(''); setStep((p) => Math.min(3, p + 1) as 1 | 2 | 3); }} disabled={!canProceed()}
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white py-2.5 rounded-xl text-sm font-semibold transition-colors">Next</button>
             ) : (
               <button type="button" onClick={handleSubmit} disabled={submitting}
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white py-2.5 rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-1.5">
                 {submitting ? 'Creating…' : (
-                  <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><polyline points="20 6 9 17 4 12" /></svg>Create Class</>
+                  <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}><polyline points="20 6 9 17 4 12" /></svg>Create class</>
                 )}
               </button>
             )}

@@ -1,15 +1,7 @@
 import type { Metadata } from 'next';
-import { Oswald } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/components/AuthProvider';
 import SuppressHydrationWarnings from '@/components/SuppressHydrationWarnings';
-
-const oswald = Oswald({
-  subsets: ['latin'],
-  variable: '--font-oswald',
-  weight: ['300', '400', '500', '600', '700'],
-  display: 'swap',
-});
 
 export const metadata: Metadata = {
   title: 'iTutor - Caribbean Education Platform',
@@ -57,7 +49,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`scroll-smooth ${oswald.variable} ${oswald.className}`}>
+    <html lang="en" className="scroll-smooth">
       <body>
         <SuppressHydrationWarnings />
         <AuthProvider>

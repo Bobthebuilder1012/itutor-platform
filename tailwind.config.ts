@@ -57,9 +57,9 @@ const config: Config = {
         },
       },
       fontFamily: {
-        display: ['var(--font-oswald)', 'system-ui', 'sans-serif'],
-        body: ['var(--font-oswald)', 'system-ui', 'sans-serif'],
-        instrument: ['var(--font-oswald)', 'system-ui', 'sans-serif'],
+        display: ['Arial', 'Helvetica', 'sans-serif'],
+        body: ['Arial', 'Helvetica', 'sans-serif'],
+        instrument: ['Arial', 'Helvetica', 'sans-serif'],
       },
       borderRadius: {
         card: '1rem',

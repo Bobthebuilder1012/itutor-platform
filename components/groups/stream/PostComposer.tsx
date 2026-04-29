@@ -36,6 +36,13 @@ const TYPE_PILLS: { value: StreamPostType; label: string; icon: React.ReactNode;
     tutorOnly: true,
     icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>,
   },
+  {
+    value: 'assignment',
+    label: 'Assignment',
+    tip: 'Set a graded assignment. Students upload their papers directly.',
+    tutorOnly: true,
+    icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" /></svg>,
+  },
 ];
 
 const MAX_FILES = 10;
@@ -53,6 +60,8 @@ export default function PostComposer({
   const [messageBody, setMessageBody] = useState('');
   const [postType, setPostType] = useState<StreamPostType>(isTutor ? 'announcement' : 'discussion');
   const [attachments, setAttachments] = useState<CreateStreamPostInput['attachment_urls']>([]);
+  const [marksAvailable, setMarksAvailable] = useState<number | ''>('');
+  const [dueDate, setDueDate] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -85,6 +94,10 @@ export default function PostComposer({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!messageBody.trim() && !(attachments?.length)) return;
+    if (postType === 'assignment' && (!marksAvailable || Number(marksAvailable) < 1)) {
+      setError('Marks available is required for assignments.');
+      return;
+    }
     setSubmitting(true);
     setError('');
     try {
@@ -106,6 +119,10 @@ export default function PostComposer({
         post_type: postType,
         message_body: messageBody.trim() || '.',
         attachment_urls: attachmentUrls.length ? attachmentUrls : undefined,
+        ...(postType === 'assignment' && {
+          marks_available: Number(marksAvailable),
+          due_date: dueDate || undefined,
+        }),
       };
       const res = await fetch(`/api/groups/${groupId}/stream/post`, {
         method: 'POST',
@@ -119,6 +136,9 @@ export default function PostComposer({
       }
       setMessageBody('');
       setAttachments([]);
+      setMarksAvailable('');
+      setDueDate('');
+      setPostType(isTutor ? 'announcement' : 'discussion');
       onPosted();
     } catch {
       setError('Could not post. Try again.');
@@ -165,11 +185,39 @@ export default function PostComposer({
         <textarea
           value={messageBody}
           onChange={(e) => setMessageBody(e.target.value)}
-          placeholder="Share an announcement, start a discussion, or post learning content..."
+          placeholder={postType === 'assignment' ? 'Describe the assignment instructions...' : 'Share an announcement, start a discussion, or post learning content...'}
           rows={3}
           disabled={submitting}
           className="w-full resize-y min-h-[72px] border border-[#e4e8ee] rounded-[10px] px-3.5 py-2.5 text-[13.5px] leading-[1.5] focus:outline-none focus:border-[#0d9668] focus:shadow-[0_0_0_3px_#d1fae5] disabled:opacity-50 placeholder:text-[#9ca3af] transition-all"
         />
+
+        {/* Assignment extra fields */}
+        {postType === 'assignment' && (
+          <div className="mt-3 flex flex-col sm:flex-row gap-3 p-3 bg-[#f0fdf4] border border-[#bbf7d0] rounded-[10px]">
+            <div className="flex-1">
+              <label className="block text-[11px] font-semibold text-[#047857] mb-1">Marks available *</label>
+              <input
+                type="number"
+                min={1}
+                placeholder="e.g. 30"
+                value={marksAvailable}
+                onChange={(e) => setMarksAvailable(e.target.value === '' ? '' : Number(e.target.value))}
+                disabled={submitting}
+                className="w-full border border-[#e4e8ee] rounded-[8px] px-3 py-2 text-[13px] focus:outline-none focus:border-[#0d9668] focus:shadow-[0_0_0_3px_#d1fae5] disabled:opacity-50"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="block text-[11px] font-semibold text-[#047857] mb-1">Due date (optional)</label>
+              <input
+                type="datetime-local"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                disabled={submitting}
+                className="w-full border border-[#e4e8ee] rounded-[8px] px-3 py-2 text-[13px] focus:outline-none focus:border-[#0d9668] focus:shadow-[0_0_0_3px_#d1fae5] disabled:opacity-50"
+              />
+            </div>
+          </div>
+        )}
 
         {/* Attachment list */}
         {attachments && attachments.length > 0 && (
@@ -205,7 +253,7 @@ export default function PostComposer({
             </span>
             <button
               type="submit"
-              disabled={submitting || (!messageBody.trim() && !(attachments?.length))}
+              disabled={submitting || (!messageBody.trim() && !(attachments?.length)) || (postType === 'assignment' && (!marksAvailable || Number(marksAvailable) < 1))}
               className="px-6 py-[9px] bg-[#0d9668] hover:bg-[#047857] disabled:opacity-35 disabled:cursor-not-allowed text-white rounded-[10px] text-[13px] font-semibold transition-colors"
             >
               {submitting ? 'Posting…' : 'Post'}

@@ -80,25 +80,35 @@ export async function POST(req: NextRequest) {
 
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-    const result = await model.generateContent([
-      {
-        inlineData: {
-          mimeType: answerKey.type,
-          data: answerKeyBase64
-        }
-      },
-      {
-        inlineData: {
-          mimeType: studentPaper.type,
-          data: studentPaperBase64
-        }
-      },
-      {
-        text: buildPrompt(totalMarks)
-      }
-    ]);
+    const contentParts = [
+      { inlineData: { mimeType: answerKey.type, data: answerKeyBase64 } },
+      { inlineData: { mimeType: studentPaper.type, data: studentPaperBase64 } },
+      { text: buildPrompt(totalMarks) },
+    ];
 
-    const responseText = result.response.text();
+    const MAX_RETRIES = 3;
+    let lastError: unknown = null;
+    let responseText = "";
+
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        const result = await model.generateContent(contentParts);
+        responseText = result.response.text();
+        lastError = null;
+        break;
+      } catch (err: unknown) {
+        lastError = err;
+        const isRetryable =
+          err instanceof Error &&
+          (err.message.includes("503") ||
+            err.message.includes("429") ||
+            err.message.includes("high demand") ||
+            err.message.includes("RESOURCE_EXHAUSTED"));
+        if (!isRetryable || attempt === MAX_RETRIES - 1) throw err;
+        await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+      }
+    }
+    if (lastError) throw lastError;
 
     const cleaned = responseText.replace(/```json|```/g, "").trim();
     let parsed = JSON.parse(cleaned) as Record<string, unknown>;

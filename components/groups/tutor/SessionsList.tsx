@@ -249,7 +249,7 @@ export default function SessionsList({ sessions, groupId, onRefresh }: SessionsL
       <div
         key={occ.id}
         className={`flex items-start gap-3.5 px-5 py-3.5 border-b border-[#e5e9ee]/60 last:border-b-0 transition-colors ${
-          isDeleted ? 'bg-[#fef9f9]' : 'bg-white hover:bg-[#fafbfc]'
+          isDeleted ? 'bg-[#fef2f2]' : 'bg-white hover:bg-[#fafbfc]'
         }`}
       >
         <div className="pt-[3px] flex-shrink-0">
@@ -396,8 +396,8 @@ export default function SessionsList({ sessions, groupId, onRefresh }: SessionsL
           )}
 
           {isDeleted && (
-            <span className="px-2.5 py-1 rounded-md text-[11px] font-semibold uppercase tracking-wide bg-red-100 text-[#991b1b] line-through">
-              Deleted
+            <span style={{ background: '#fee2e2', color: '#dc2626', padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>
+              DELETED
             </span>
           )}
 
@@ -405,8 +405,9 @@ export default function SessionsList({ sessions, groupId, onRefresh }: SessionsL
             <button
               onClick={() => handleRestore(row)}
               disabled={isBusy}
-              className="text-[11px] font-semibold text-emerald-600 px-2.5 py-1 border border-emerald-100 rounded-md bg-emerald-50 hover:bg-emerald-100 transition-colors disabled:opacity-50"
+              style={{ background: '#e8f5ee', color: '#199358', padding: '6px 12px', borderRadius: 8, fontWeight: 600, fontSize: 12, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, opacity: isBusy ? 0.6 : 1 }}
             >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M3 7v6h6M3 13a9 9 0 105.5-8.4" /></svg>
               {isBusy ? '…' : 'Restore'}
             </button>
           ) : isUpcoming ? (

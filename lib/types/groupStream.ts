@@ -1,4 +1,4 @@
-export type StreamPostType = 'announcement' | 'content' | 'discussion';
+export type StreamPostType = 'announcement' | 'content' | 'discussion' | 'assignment';
 export type StreamAuthorRole = 'tutor' | 'student';
 
 export interface StreamAttachment {
@@ -18,6 +18,8 @@ export interface StreamPost {
   author_role: StreamAuthorRole;
   post_type: StreamPostType;
   message_body: string;
+  marks_available: number | null;
+  due_date: string | null;
   pinned_at: string | null;
   pin_expires_at: string | null;
   created_at: string;
@@ -48,6 +50,8 @@ export interface StreamReplyWithAuthor extends StreamReply {
 export interface CreateStreamPostInput {
   post_type: StreamPostType;
   message_body: string;
+  marks_available?: number;
+  due_date?: string;
   attachment_urls?: { file_name: string; file_url: string; file_type?: string; file_size_bytes?: number }[];
 }
 
