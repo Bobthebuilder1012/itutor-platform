@@ -244,10 +244,16 @@ export default function TutorDashboard() {
 
           <div className="relative px-6 pb-6 pt-0">
             <div className="mb-5 flex items-start gap-5">
-              <div className="relative z-10 -mt-14 shrink-0">
+              <div className="relative z-10 -mt-14 shrink-0 self-start">
                 <button
                   type="button"
-                  className="relative flex h-28 w-28 cursor-pointer items-center justify-center overflow-hidden rounded-full border-4 border-white bg-white p-0 shadow-[0_10px_40px_rgba(0,0,0,0.15)] transition hover:brightness-[1.02]"
+                  style={{
+                    width: '112px',
+                    height: '112px',
+                    minWidth: '112px',
+                    minHeight: '112px',
+                  }}
+                  className="relative shrink-0 cursor-pointer overflow-hidden rounded-full border-4 border-white bg-white p-0 shadow-[0_10px_40px_rgba(0,0,0,0.15)] transition hover:brightness-[1.02]"
                   onClick={() => !testMode && setAvatarModalOpen(true)}
                   aria-label="Change profile photo"
                 >
@@ -255,8 +261,8 @@ export default function TutorDashboard() {
                     avatarUrl={profile?.avatar_url}
                     name={displayName}
                     size={104}
+                    fill
                     rounded="full"
-                    className="!rounded-full"
                   />
                 </button>
                 <button

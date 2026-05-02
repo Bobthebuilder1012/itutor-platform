@@ -15,8 +15,8 @@ export type Area = {
 export async function getCroppedImg(
   imageSrc: string,
   pixelCrop: Area,
-  outputWidth = 1920,
-  outputHeight = 1080
+  outputWidth?: number,
+  outputHeight?: number
 ): Promise<Blob> {
   const image = await createImage(imageSrc);
   const canvas = document.createElement('canvas');
@@ -26,8 +26,13 @@ export async function getCroppedImg(
     throw new Error('Failed to get canvas context');
   }
 
-  canvas.width = outputWidth;
-  canvas.height = outputHeight;
+  // Default to the crop region's native size so the output preserves the
+  // crop's aspect ratio (e.g. a 1:1 avatar crop stays 1:1, not 16:9).
+  const finalWidth = outputWidth ?? pixelCrop.width;
+  const finalHeight = outputHeight ?? pixelCrop.height;
+
+  canvas.width = finalWidth;
+  canvas.height = finalHeight;
 
   ctx.drawImage(
     image,
@@ -37,8 +42,8 @@ export async function getCroppedImg(
     pixelCrop.height,
     0,
     0,
-    outputWidth,
-    outputHeight
+    finalWidth,
+    finalHeight
   );
 
   // Convert canvas to blob
