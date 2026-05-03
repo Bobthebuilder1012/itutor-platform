@@ -76,6 +76,14 @@ interface TutorStreamViewProps {
   tutorName: string;
 }
 
+const PIN_DURATIONS = [
+  { label: '24 hours', hours: 24 },
+  { label: '7 days', hours: 168 },
+  { label: '30 days', hours: 720 },
+];
+
+type MenuView = 'main' | 'pin-duration';
+
 // ── component ─────────────────────────────────────────────────────────────────
 
 export default function TutorStreamView({ groupId, lessonId, currentUserId, tutorName }: TutorStreamViewProps) {
@@ -86,6 +94,16 @@ export default function TutorStreamView({ groupId, lessonId, currentUserId, tuto
   const [submissions, setSubmissions] = useState<Record<string, Submission[]>>({});
   const [submissionsLoading, setSubmissionsLoading] = useState<Record<string, boolean>>({});
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [menuView, setMenuView] = useState<MenuView>('main');
+
+  // Inline edit state
+  const [inlineEditingPostId, setInlineEditingPostId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  // Pin/unpin busy tracking (per-post)
+  const [pinningId, setPinningId] = useState<string | null>(null);
 
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
@@ -126,19 +144,34 @@ export default function TutorStreamView({ groupId, lessonId, currentUserId, tuto
 
   useEffect(() => { fetchStream(); }, [fetchStream]);
 
-  // Close menus on outside click
+  // Close menus on outside click — only when a menu is open, and ignore clicks
+  // on the menu button/panel themselves (identified by [data-post-menu]).
   useEffect(() => {
-    function handler() { setOpenMenuId(null); }
-    document.addEventListener('click', handler);
-    return () => document.removeEventListener('click', handler);
-  }, []);
+    if (!openMenuId) return;
+    function handler(e: MouseEvent) {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('[data-post-menu]')) return;
+      setOpenMenuId(null);
+      setMenuView('main');
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [openMenuId]);
 
-  // Close modal on Escape
+  // Close menu / modal on Escape
   useEffect(() => {
-    function handler(e: KeyboardEvent) { if (e.key === 'Escape') closeModal(); }
+    function handler(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return;
+      if (openMenuId) {
+        setOpenMenuId(null);
+        setMenuView('main');
+        return;
+      }
+      closeModal();
+    }
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, []);
+  }, [openMenuId]);
 
   function openModal(post?: StreamPostWithAuthor) {
     if (post) {
@@ -268,10 +301,89 @@ export default function TutorStreamView({ groupId, lessonId, currentUserId, tuto
     }
   }
 
-  function copyLink(postId: string) {
-    const url = `${window.location.origin}/lessons/${lessonId}/posts/${postId}`;
-    navigator.clipboard.writeText(url).catch(() => {});
-    showToast('Link copied to clipboard');
+  async function handlePin(postId: string, hours: number) {
+    setOpenMenuId(null);
+    setMenuView('main');
+    setPinningId(postId);
+    try {
+      const res = await fetch(`/api/stream/post/${postId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinned: true, pin_duration_hours: hours }),
+      });
+      if (res.ok) {
+        showToast('Post pinned');
+        fetchStream();
+      }
+    } finally {
+      setPinningId(null);
+    }
+  }
+
+  async function handleUnpin(postId: string) {
+    setOpenMenuId(null);
+    setMenuView('main');
+    setPinningId(postId);
+    try {
+      const res = await fetch(`/api/stream/post/${postId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinned: false }),
+      });
+      if (res.ok) {
+        showToast('Post unpinned');
+        fetchStream();
+      }
+    } finally {
+      setPinningId(null);
+    }
+  }
+
+  function startInlineEdit(post: StreamPostWithAuthor) {
+    setOpenMenuId(null);
+    setMenuView('main');
+    setInlineEditingPostId(post.id);
+    setEditDraft(post.message_body);
+    setEditError(null);
+  }
+
+  function cancelInlineEdit() {
+    setInlineEditingPostId(null);
+    setEditDraft('');
+    setEditError(null);
+  }
+
+  async function saveInlineEdit(postId: string, original: string) {
+    const trimmed = editDraft.trim();
+    if (!trimmed) {
+      setEditError('Post cannot be empty');
+      return;
+    }
+    if (trimmed === original.trim()) {
+      cancelInlineEdit();
+      return;
+    }
+    setSavingEdit(true);
+    setEditError(null);
+    try {
+      const res = await fetch(`/api/stream/post/${postId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message_body: trimmed }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error ?? 'Failed to save');
+      }
+      setInlineEditingPostId(null);
+      setEditDraft('');
+      showToast('Post updated');
+      fetchStream();
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSavingEdit(false);
+    }
   }
 
   if (loading) {
@@ -325,6 +437,11 @@ export default function TutorStreamView({ groupId, lessonId, currentUserId, tuto
           const totalCount = postSubs.length;
           const hasSubmissions = submittedCount > 0;
           const isDeleting = deletingId === post.id;
+          const isEditingThis = inlineEditingPostId === post.id;
+          const isAuthor = post.author_id === currentUserId;
+          const isPinned = !!post.pinned_at;
+          const isMenuOpen = openMenuId === post.id;
+          const isPinning = pinningId === post.id;
 
           return (
             <div
@@ -334,19 +451,64 @@ export default function TutorStreamView({ groupId, lessonId, currentUserId, tuto
             >
               {/* Card row */}
               <div
-                className="flex items-center gap-3 px-[18px] py-3.5 cursor-pointer hover:bg-[#fafafa] transition-colors"
-                onClick={() => isAssignment && toggleExpand(post.id)}
+                className={`flex items-${isEditingThis ? 'start' : 'center'} gap-3 px-[18px] py-3.5 ${isEditingThis ? '' : 'cursor-pointer hover:bg-[#fafafa]'} transition-colors`}
+                onClick={() => {
+                  if (isEditingThis) return;
+                  if (isAssignment) toggleExpand(post.id);
+                }}
               >
                 <PostIcon type={post.post_type} />
 
-                <div className="flex-1 min-w-0">
-                  <p className="text-[14px] font-semibold text-[#111827] truncate">{post.message_body}</p>
-                  <p className="text-[12px] text-[#6b7280] mt-0.5">
-                    {post.author?.full_name ?? tutorName} · {timeAgo(post.created_at)}
-                    {isAssignment && post.due_date ? ` · Due ${fmtDate(post.due_date)}` : ''}
-                    {isAssignment && post.marks_available ? ` · ${post.marks_available} marks` : ''}
-                  </p>
-                </div>
+                {isEditingThis ? (
+                  <div className="flex-1 min-w-0" onClick={(e) => e.stopPropagation()}>
+                    <textarea
+                      value={editDraft}
+                      onChange={(e) => setEditDraft(e.target.value)}
+                      rows={Math.min(8, Math.max(2, editDraft.split('\n').length + 1))}
+                      autoFocus
+                      disabled={savingEdit}
+                      className="w-full rounded-[10px] border-[1.5px] border-[#d1d5db] bg-white px-3 py-2 text-[14px] leading-[1.6] text-[#111827] outline-none focus:border-[#199358] resize-y"
+                    />
+                    {editError && (
+                      <p className="mt-1.5 text-[11px] text-[#dc2626]">{editError}</p>
+                    )}
+                    <div className="mt-2 flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={cancelInlineEdit}
+                        disabled={savingEdit}
+                        className="px-3 py-1.5 rounded-[8px] border border-[#e5e7eb] bg-white text-[12px] font-semibold text-[#6b7280] hover:bg-[#f9fafb] disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => saveInlineEdit(post.id, post.message_body)}
+                        disabled={savingEdit}
+                        className="px-3 py-1.5 rounded-[8px] bg-[#199358] text-white text-[12px] font-semibold hover:opacity-90 disabled:opacity-50"
+                      >
+                        {savingEdit ? 'Saving…' : 'Save'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      {isPinned && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-[2px] rounded-[4px] bg-[#fef3c7] text-[#92400e] text-[10px] font-bold uppercase tracking-[0.04em] flex-shrink-0">
+                          <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L8.5 8.5 2 9.75l4.75 4.55L5.5 21 12 17.5 18.5 21l-1.25-6.7L22 9.75l-6.5-1.25z" /></svg>
+                          Pinned
+                        </span>
+                      )}
+                      <p className="text-[14px] font-semibold text-[#111827] truncate">{post.message_body}</p>
+                    </div>
+                    <p className="text-[12px] text-[#6b7280] mt-0.5">
+                      {post.author?.full_name ?? tutorName} · {timeAgo(post.created_at)}
+                      {isAssignment && post.due_date ? ` · Due ${fmtDate(post.due_date)}` : ''}
+                      {isAssignment && post.marks_available ? ` · ${post.marks_available} marks` : ''}
+                    </p>
+                  </div>
+                )}
 
                 <div className="flex items-center gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
                   {isAssignment && (
@@ -368,43 +530,115 @@ export default function TutorStreamView({ groupId, lessonId, currentUserId, tuto
                   )}
 
                   {/* ⋮ menu */}
-                  <div className="relative">
+                  <div className="relative" data-post-menu>
                     <button
-                      onClick={(e) => { e.stopPropagation(); setOpenMenuId((id) => id === post.id ? null : post.id); }}
-                      className="w-7 h-7 flex items-center justify-center rounded-[6px] text-[18px] text-[#9ca3af] hover:bg-[#f3f4f6] hover:text-[#374151] transition-colors leading-none"
+                      data-post-menu
+                      aria-label="Post actions"
+                      aria-haspopup="menu"
+                      aria-expanded={isMenuOpen}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (isMenuOpen) {
+                          setOpenMenuId(null);
+                          setMenuView('main');
+                        } else {
+                          setOpenMenuId(post.id);
+                          setMenuView('main');
+                        }
+                      }}
+                      className="w-7 h-7 flex items-center justify-center rounded-[6px] text-[#9ca3af] hover:bg-[#f3f4f6] hover:text-[#374151] transition-colors"
                     >
-                      ⋮
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <circle cx="12" cy="5" r="1.6" />
+                        <circle cx="12" cy="12" r="1.6" />
+                        <circle cx="12" cy="19" r="1.6" />
+                      </svg>
                     </button>
-                    {openMenuId === post.id && (
-                      <>
-                        <div className="fixed inset-0 z-[9]" onClick={() => setOpenMenuId(null)} />
-                        <div className="absolute right-0 top-8 z-[100] bg-white border border-[#e5e7eb] rounded-[12px] shadow-[0_8px_30px_rgba(0,0,0,0.12)] py-1.5 min-w-[186px]">
-                          {isAssignment && (
+                    {isMenuOpen && (
+                      <div
+                        data-post-menu
+                        role="menu"
+                        className="absolute right-0 top-8 z-[100] bg-white border border-[#e5e7eb] rounded-[12px] shadow-[0_8px_30px_rgba(0,0,0,0.12)] py-1.5 min-w-[196px]"
+                      >
+                        {menuView === 'main' && (
+                          <>
+                            {isPinned ? (
+                              <button
+                                onClick={() => handleUnpin(post.id)}
+                                disabled={isPinning}
+                                className="w-full flex items-center gap-2.5 px-3 py-2.5 text-[14px] font-medium text-[#374151] hover:bg-[#f9fafb] transition-colors text-left disabled:opacity-50"
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                                  <path d="M12 17v5" />
+                                  <path d="M9 10.76a2 2 0 01-1.11 1.79l-1.78.9A2 2 0 005 15.24V17h14v-1.76a2 2 0 00-1.11-1.79l-1.78-.9A2 2 0 0115 10.76V7a1 1 0 011-1 2 2 0 000-4H8a2 2 0 000 4 1 1 0 011 1z" />
+                                </svg>
+                                {isPinning ? 'Unpinning…' : 'Unpin'}
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => setMenuView('pin-duration')}
+                                disabled={isPinning}
+                                className="w-full flex items-center gap-2.5 px-3 py-2.5 text-[14px] font-medium text-[#374151] hover:bg-[#f9fafb] transition-colors text-left disabled:opacity-50"
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                                  <path d="M12 17v5" />
+                                  <path d="M9 10.76a2 2 0 01-1.11 1.79l-1.78.9A2 2 0 005 15.24V17h14v-1.76a2 2 0 00-1.11-1.79l-1.78-.9A2 2 0 0115 10.76V7a1 1 0 011-1 2 2 0 000-4H8a2 2 0 000 4 1 1 0 011 1z" />
+                                </svg>
+                                Pin
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="ml-auto text-[#9ca3af]">
+                                  <polyline points="9 18 15 12 9 6" />
+                                </svg>
+                              </button>
+                            )}
+                            {isAuthor && (
+                              <button
+                                onClick={() => startInlineEdit(post)}
+                                className="w-full flex items-center gap-2.5 px-3 py-2.5 text-[14px] font-medium text-[#374151] hover:bg-[#f9fafb] transition-colors text-left"
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                                  <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                                  <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                </svg>
+                                Edit
+                              </button>
+                            )}
+                            <div className="h-px bg-[#f3f4f6] mx-1.5 my-1" />
                             <button
-                              onClick={() => { setOpenMenuId(null); openModal(post); }}
-                              className="w-full flex items-center gap-2.5 px-3 py-2.5 text-[14px] font-medium text-[#374151] hover:bg-[#f9fafb] transition-colors text-left"
+                              onClick={() => { setOpenMenuId(null); setMenuView('main'); openDeleteConfirm(post); }}
+                              className="w-full flex items-center gap-2.5 px-3 py-2.5 text-[14px] font-medium text-[#dc2626] hover:bg-[#fef2f2] transition-colors text-left"
                             >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4z" /></svg>
-                              Edit post
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                                <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" />
+                                <path d="M10 11v6M14 11v6" />
+                              </svg>
+                              Delete
                             </button>
-                          )}
-                          <button
-                            onClick={() => { setOpenMenuId(null); copyLink(post.id); }}
-                            className="w-full flex items-center gap-2.5 px-3 py-2.5 text-[14px] font-medium text-[#374151] hover:bg-[#f9fafb] transition-colors text-left"
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" /></svg>
-                            Copy link
-                          </button>
-                          <div className="h-px bg-[#f3f4f6] mx-1.5 my-1" />
-                          <button
-                            onClick={() => { setOpenMenuId(null); openDeleteConfirm(post); }}
-                            className="w-full flex items-center gap-2.5 px-3 py-2.5 text-[14px] font-medium text-[#dc2626] hover:bg-[#fef2f2] transition-colors text-left"
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" /></svg>
-                            Delete post
-                          </button>
-                        </div>
-                      </>
+                          </>
+                        )}
+                        {menuView === 'pin-duration' && (
+                          <>
+                            <button
+                              onClick={() => setMenuView('main')}
+                              className="w-full flex items-center gap-1.5 px-3 py-2 text-[11px] font-bold uppercase tracking-[.06em] text-[#6b7280] hover:bg-[#f9fafb] transition-colors text-left"
+                            >
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                                <polyline points="15 18 9 12 15 6" />
+                              </svg>
+                              Pin duration
+                            </button>
+                            {PIN_DURATIONS.map((d) => (
+                              <button
+                                key={d.hours}
+                                onClick={() => handlePin(post.id, d.hours)}
+                                disabled={isPinning}
+                                className="w-full text-left px-3 py-2.5 text-[14px] font-medium text-[#374151] hover:bg-[#f9fafb] transition-colors disabled:opacity-50"
+                              >
+                                {d.label}
+                              </button>
+                            ))}
+                          </>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
