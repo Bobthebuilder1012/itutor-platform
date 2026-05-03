@@ -1,8 +1,18 @@
 /** @type {import('next').NextConfig} */
+const path = require('path');
+const os = require('os');
+
+// In development, relocate the build output outside OneDrive to avoid file-lock
+// + symlink issues. Only apply the workaround when the project actually sits
+// inside a OneDrive-synced folder; otherwise use the standard .next directory.
+const projectRoot = __dirname.toLowerCase();
+const insideOneDrive = /[\\/]onedrive(\b|[\\/])/.test(projectRoot);
+const devDistDir = insideOneDrive
+  ? path.join(os.homedir(), '.itutor-next', 'build')
+  : '.next';
+
 const nextConfig = {
-    // In development, write output outside OneDrive to avoid file-lock + symlink issues.
-    // In production/staging use the standard .next directory.
-    distDir: process.env.NODE_ENV === 'production' ? '.next' : '../../../.itutor-next/build',
+    distDir: process.env.NODE_ENV === 'production' ? '.next' : devDistDir,
     // Don't try to prerender API routes
     generateBuildId: async () => {
       return 'build-' + Date.now()

@@ -16,7 +16,8 @@ export async function getCroppedImg(
   imageSrc: string,
   pixelCrop: Area,
   outputWidth?: number,
-  outputHeight?: number
+  outputHeight?: number,
+  quality: number = 0.95
 ): Promise<Blob> {
   const image = await createImage(imageSrc);
   const canvas = document.createElement('canvas');
@@ -28,11 +29,26 @@ export async function getCroppedImg(
 
   // Default to the crop region's native size so the output preserves the
   // crop's aspect ratio (e.g. a 1:1 avatar crop stays 1:1, not 16:9).
-  const finalWidth = outputWidth ?? pixelCrop.width;
-  const finalHeight = outputHeight ?? pixelCrop.height;
+  const requestedWidth = outputWidth ?? pixelCrop.width;
+  const requestedHeight = outputHeight ?? pixelCrop.height;
+
+  // Never upscale beyond the cropped region's native pixels — upscaling just
+  // inflates file size without adding detail.
+  const scale = Math.min(
+    1,
+    requestedWidth / pixelCrop.width,
+    requestedHeight / pixelCrop.height
+  );
+  const finalWidth = Math.round(pixelCrop.width * scale);
+  const finalHeight = Math.round(pixelCrop.height * scale);
 
   canvas.width = finalWidth;
   canvas.height = finalHeight;
+
+  // Use higher-quality downsampling (browser default interpolation is "low"
+  // for canvas). This noticeably improves clarity on downscaled JPEGs.
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
 
   ctx.drawImage(
     image,
@@ -54,7 +70,7 @@ export async function getCroppedImg(
       } else {
         reject(new Error('Failed to create blob from canvas'));
       }
-    }, 'image/jpeg', 0.95);
+    }, 'image/jpeg', quality);
   });
 }
 
@@ -94,7 +110,9 @@ export async function resizeImage(
   canvas.width = width;
   canvas.height = height;
 
-  // Draw resized image
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+
   ctx.drawImage(image, 0, 0, width, height);
 
   // Clean up
