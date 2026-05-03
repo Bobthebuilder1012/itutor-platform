@@ -30,6 +30,7 @@ export default function SignupPage() {
 
   const [step, setStep] = useState<Step>(1);
   const [userId, setUserId] = useState<string | null>(null);
+  const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [countryCode, setCountryCode] = useState('');
@@ -117,6 +118,9 @@ export default function SignupPage() {
   // --- Step 1 ---
   const handleStep1 = async () => {
     setError('');
+    const trimmedName = fullName.trim();
+    if (!trimmedName || trimmedName.length < 2) { setError('Enter your full name.'); return; }
+    if (trimmedName.length > 50) { setError('Name must be 50 characters or less.'); return; }
     if (usernameError || !usernameAvailable) { setError('Choose a valid available username.'); return; }
     if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError('Enter a valid email.'); return; }
     if (!countryCode) { setError('Select your country.'); return; }
@@ -233,7 +237,7 @@ export default function SignupPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          username: username.trim(), email: email.trim().toLowerCase(),
+          name: fullName.trim(), username: username.trim(), email: email.trim().toLowerCase(),
           country: countryCode, password, role, verificationCode: verificationCode.join(''),
         }),
       });
@@ -411,6 +415,15 @@ export default function SignupPage() {
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                  </span>
+                  <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)}
+                    className={inputWithIcon}
+                    placeholder="Full name" required disabled={loading} maxLength={50} />
+                </div>
+
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                   </span>
                   <input type="text" value={username} onChange={(e) => setUsername(e.target.value)}
                     className={`${inputWithIcon} pr-10 ${usernameError ? 'border-red-400 focus:ring-red-400' : usernameAvailable && username ? 'border-itutor-green' : ''}`}

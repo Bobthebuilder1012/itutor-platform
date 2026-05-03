@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import SocialLoginButton from '@/components/SocialLoginButton';
@@ -26,6 +26,7 @@ function isNetworkError(error: unknown): boolean {
 export default function SignupForm({ onSwitchMode, onSuccess, redirectTo }: SignupFormProps) {
   const router = useRouter();
   const [fullName, setFullName] = useState('');
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -33,6 +34,34 @@ export default function SignupForm({ onSwitchMode, onSuccess, redirectTo }: Sign
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [usernameError, setUsernameError] = useState('');
+  const [usernameChecking, setUsernameChecking] = useState(false);
+  const [usernameAvailable, setUsernameAvailable] = useState(false);
+
+  useEffect(() => {
+    setUsernameError('');
+    setUsernameAvailable(false);
+    const trimmed = username.trim();
+    if (!trimmed) return;
+    if (trimmed.length < 3) { setUsernameError('Min 3 characters'); return; }
+    if (trimmed.length > 30) { setUsernameError('Max 30 characters'); return; }
+    if (!/^[a-zA-Z0-9_]+$/.test(trimmed)) { setUsernameError('Letters, numbers, _ only'); return; }
+
+    setUsernameChecking(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/auth/check-availability', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: trimmed }),
+        });
+        const data = await res.json();
+        if (data.usernameAvailable === false) setUsernameError('Username taken');
+        else setUsernameAvailable(true);
+      } catch { /* ignore */ } finally { setUsernameChecking(false); }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [username]);
 
   const handleSignup = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -58,6 +87,12 @@ export default function SignupForm({ onSwitchMode, onSuccess, redirectTo }: Sign
       return;
     }
 
+    const trimmedUsername = username.trim();
+    if (!trimmedUsername || usernameError || !usernameAvailable) {
+      setError('Please choose a valid, available username.');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -67,6 +102,7 @@ export default function SignupForm({ onSwitchMode, onSuccess, redirectTo }: Sign
         options: {
           data: {
             full_name: trimmedName,
+            username: trimmedUsername,
             role: 'student',
           },
         },
@@ -163,6 +199,47 @@ export default function SignupForm({ onSwitchMode, onSuccess, redirectTo }: Sign
             maxLength={120}
             className="w-full rounded-lg border border-gray-300 px-3 py-2.5 focus:ring-2 focus:ring-itutor-green focus:border-itutor-green outline-none"
           />
+        </div>
+
+        <div>
+          <label htmlFor="auth-signup-username" className="block text-sm font-medium text-gray-700 mb-1">
+            Username
+          </label>
+          <div className="relative">
+            <input
+              id="auth-signup-username"
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="johndoe123"
+              disabled={loading}
+              required
+              autoComplete="username"
+              minLength={3}
+              maxLength={30}
+              className={`w-full rounded-lg border px-3 py-2.5 pr-10 focus:ring-2 focus:ring-itutor-green focus:border-itutor-green outline-none ${
+                usernameError
+                  ? 'border-red-400'
+                  : usernameAvailable && username
+                  ? 'border-itutor-green'
+                  : 'border-gray-300'
+              }`}
+            />
+            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+              {usernameChecking ? (
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-itutor-green" />
+              ) : usernameError ? (
+                <svg className="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg>
+              ) : usernameAvailable && username ? (
+                <svg className="w-4 h-4 text-itutor-green" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+              ) : null}
+            </div>
+          </div>
+          {usernameError ? (
+            <p className="mt-1 text-xs text-red-500">{usernameError}</p>
+          ) : (
+            <p className="mt-1 text-xs text-gray-500">3-30 characters. Letters, numbers and underscores.</p>
+          )}
         </div>
 
         <div>
