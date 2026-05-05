@@ -13,10 +13,10 @@ export function useAvatarUpload(userId: string) {
     setError(null);
 
     try {
-      // Get the cropped image as a blob
-      const croppedBlob = await getCroppedImg(imageSrc, croppedArea);
+      // Get the cropped image as a blob (force 400x400 square output)
+      const croppedBlob = await getCroppedImg(imageSrc, croppedArea, 400, 400);
 
-      // Resize to 400x400px
+      // Resize pass is a no-op at this size but kept for safety on very small inputs
       const resizedBlob = await resizeImage(croppedBlob, 400, 400);
 
       // Delete old avatar if it exists

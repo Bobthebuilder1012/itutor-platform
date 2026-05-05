@@ -1,6 +1,10 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  getAdminHomePath,
+  isEmailManagementOnlyAdmin,
+} from '@/lib/auth/adminAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -86,6 +90,10 @@ export async function GET(request: NextRequest) {
     if (profile) {
       const role = profile.role;
 
+      if (isEmailManagementOnlyAdmin(session.user.email)) {
+        return NextResponse.redirect(new URL('/admin/emails', request.url));
+      }
+
       // Check if profile is complete
       if (role === 'student') {
         const hasBasicInfo = Boolean(profile.form_level);
@@ -101,7 +109,8 @@ export async function GET(request: NextRequest) {
       } else if (role === 'tutor') {
         return NextResponse.redirect(new URL('/tutor/dashboard', request.url));
       } else if (role === 'admin') {
-        return NextResponse.redirect(new URL('/admin/dashboard', request.url));
+        const adminPath = getAdminHomePath(session.user.email);
+        return NextResponse.redirect(new URL(adminPath, request.url));
       }
     }
   }

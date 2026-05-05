@@ -4,6 +4,10 @@ import { FormEvent, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase, setRememberMePreference, createSupabaseClient } from '@/lib/supabase/client';
 import SocialLoginButton from '@/components/SocialLoginButton';
+import {
+  getAdminHomePath,
+  isEmailManagementOnlyAdmin,
+} from '@/lib/auth/adminAccess';
 
 // Helper function to detect network errors
 function isNetworkError(error: unknown): boolean {
@@ -46,7 +50,7 @@ export default function LoginPage() {
     const errorParam = searchParams.get('error');
     const messageParam = searchParams.get('message');
     const reasonParam = searchParams.get('reason');
-    
+
     // Handle email confirmation success
     if (confirmed === 'true') {
       setEmailConfirmed(true);
@@ -64,7 +68,7 @@ export default function LoginPage() {
       setShowEmailSent(false);
       setError('This email is already in use. Please sign in instead.');
     }
-    
+
     // Handle email sent (awaiting confirmation)
     if (emailSent === 'true' && userEmail) {
       setShowEmailSent(true);
@@ -73,7 +77,7 @@ export default function LoginPage() {
       // Start 60-second cooldown
       setResendCooldown(60);
     }
-    
+
     // Handle callback errors
     if (errorParam) {
       let errorMessage = '';
@@ -113,7 +117,7 @@ export default function LoginPage() {
 
   const handleResendEmail = async () => {
     if (resendCooldown > 0) return;
-    
+
     setResendLoading(true);
     setResendError('');
     setResendSuccess('');
@@ -145,7 +149,7 @@ export default function LoginPage() {
     try {
       // Store the "Keep me signed in" preference FIRST
       setRememberMePreference(rememberMe);
-      
+
       // Now create client with the correct storage based on preference
       const supabaseClient = createSupabaseClient(rememberMe);
 
@@ -156,7 +160,7 @@ export default function LoginPage() {
 
       if (signInError) {
         // Check if error is due to unverified email
-        if (signInError.message.includes('Email not confirmed') || 
+        if (signInError.message.includes('Email not confirmed') ||
             signInError.message.includes('not confirmed') ||
             signInError.message.includes('verify your email')) {
           // Redirect to code verification page with email
@@ -164,8 +168,8 @@ export default function LoginPage() {
           return;
         }
         // Show user-friendly error message
-        if (signInError.message.includes('Invalid login credentials') || 
-            signInError.message.includes('Invalid') || 
+        if (signInError.message.includes('Invalid login credentials') ||
+            signInError.message.includes('Invalid') ||
             signInError.message.includes('credentials')) {
           setError('Incorrect email or password');
         } else {
@@ -213,7 +217,12 @@ export default function LoginPage() {
 
       // Check for redirect parameter
       const redirectUrl = searchParams.get('redirect');
-      
+
+      if (isEmailManagementOnlyAdmin(profileData.email)) {
+        router.push('/admin/emails');
+        return;
+      }
+
       // If there's a redirect URL, go there instead of dashboard
       if (redirectUrl) {
         router.push(decodeURIComponent(redirectUrl));
@@ -222,7 +231,7 @@ export default function LoginPage() {
 
       // Check if user is an admin first
       if (profileData.role === 'admin') {
-        router.push('/admin/dashboard');
+        router.push(getAdminHomePath(profileData.email));
         return;
       }
 
@@ -239,23 +248,23 @@ export default function LoginPage() {
             router.push('/student/dashboard');
             break;
           }
-          
+
           // For regular students, check if profile is complete
           const hasBasicInfo = Boolean(profileData.form_level);
-          
+
           // Check for subjects in user_subjects table
           const { data: userSubjects } = await supabaseClient
             .from('user_subjects')
             .select('subject_id')
             .eq('user_id', authData.user.id)
             .limit(1);
-          
-          const hasSubjects = 
+
+          const hasSubjects =
             (profileData.subjects_of_study && profileData.subjects_of_study.length > 0) ||
             (userSubjects && userSubjects.length > 0);
-          
+
           const isStudentProfileComplete = hasBasicInfo && hasSubjects;
-          
+
           if (isStudentProfileComplete) {
             router.push('/student/dashboard');
           } else {
@@ -282,249 +291,179 @@ export default function LoginPage() {
     }
   };
 
+  const inputBase = "w-full bg-white border border-gray-200 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-400 text-sm py-3 px-4";
+  const inputWithIcon = "w-full bg-white border border-gray-200 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-400 text-sm py-3 pl-10 pr-4";
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-white px-4 py-8">
-      <div className="bg-black border border-gray-700 rounded-2xl shadow-2xl p-8 max-w-md w-full">
-        <div className="text-center mb-8">
-          <div className="mb-4 flex justify-center">
-            <img 
-              src="/assets/logo/itutor-logo-dark.png" 
-              alt="iTutor Logo" 
-              className="h-12 w-auto"
-            />
-          </div>
-          <h1 className="text-4xl font-bold text-itutor-white mb-2 tracking-tight">Welcome back</h1>
-          <p className="text-gray-400">Sign in to your iTutor account</p>
+    <div className="min-h-screen flex" style={{ background: 'linear-gradient(135deg, #071a0e 0%, #0d2318 50%, #0a1e14 100%)' }}>
+
+      {/* LEFT PANEL */}
+      <div className="relative hidden flex-col justify-between overflow-hidden px-16 py-14 lg:flex lg:w-[52%] lg:items-start">
+        <div className="absolute top-[-80px] right-[-80px] w-[500px] h-[500px] rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(25,147,86,0.13) 0%, transparent 65%)' }} />
+        <div className="absolute bottom-[-60px] left-[-60px] w-80 h-80 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(25,147,86,0.09) 0%, transparent 70%)' }} />
+
+        {/* Logo: green mark + white wordmark (same as signup hero) */}
+        <div className="flex items-center gap-3 -ml-4 sm:-ml-6">
+          <img
+            src="/assets/logo/itutor-mark.png"
+            alt=""
+            className="h-28 w-auto shrink-0 object-contain object-left mix-blend-screen sm:h-[9rem]"
+            aria-hidden
+          />
+          <span className="text-7xl font-normal lowercase tracking-tight text-white sm:text-8xl">itutor</span>
+          <span className="sr-only">iTutor</span>
         </div>
 
-        <div className="mb-5 space-y-3">
-          <SocialLoginButton provider="google" mode="login" />
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-700" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase tracking-wide">
-              <span className="bg-black px-2 text-gray-400">or continue with email</span>
-            </div>
+        {/* Main copy */}
+        <div className="flex flex-col">
+          <h1 className="font-extrabold text-white leading-[1.05] mb-5" style={{ fontSize: 'clamp(3rem, 5.5vw, 4.5rem)' }}>
+            Good to<br />see<br />
+            <span style={{ color: '#2ecc7a' }}>you again.</span>
+          </h1>
+
+          <p className="text-base mb-8 max-w-xs leading-relaxed" style={{ color: 'rgba(180,230,200,0.65)' }}>
+            Your tutors are ready. Pick up right<br />where you left off.
+          </p>
+
+          {/* Pill tags */}
+          <div className="flex flex-wrap gap-2">
+            {['📚 Study', '✏️ Practice', '⭐ Achieve', '🔬 Explore', '🚀 Grow'].map((tag) => (
+              <span
+                key={tag}
+                className="px-4 py-1.5 rounded-full text-sm font-medium"
+                style={{
+                  background: 'rgba(25,147,86,0.15)',
+                  border: '1px solid rgba(46,204,122,0.25)',
+                  color: 'rgba(180,230,200,0.80)',
+                }}
+              >
+                {tag}
+              </span>
+            ))}
           </div>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-5">
-          {/* Email Confirmed Success Banner */}
+        {/* Bottom tagline */}
+        <p className="text-xs tracking-widest font-semibold uppercase" style={{ color: 'rgba(46,204,122,0.45)' }}>
+          Caribbean&apos;s #1 Tutoring Platform
+        </p>
+      </div>
+
+      {/* RIGHT PANEL */}
+      <div className="w-full lg:w-[48%] flex items-center justify-center px-8 py-10 relative z-10">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[400px] px-8 py-8">
+
+          {/* Heading */}
+          <div className="text-center mb-5">
+            <h2 className="text-2xl font-bold text-gray-900 mb-1">Welcome</h2>
+            <p className="text-sm text-gray-500">Sign in to your iTutor account</p>
+          </div>
+
+          {/* Status banners */}
           {emailConfirmed && (
-            <div className="bg-green-900/20 border-2 border-green-500/50 text-green-200 px-4 py-4 rounded-lg backdrop-blur-sm relative">
-              <button
-                onClick={() => setEmailConfirmed(false)}
-                className="absolute top-2 right-2 text-green-400 hover:text-green-300 transition-colors"
-                type="button"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+            <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-4 relative">
+              <button onClick={() => setEmailConfirmed(false)} type="button" className="absolute top-2 right-2 text-green-500 hover:text-green-700">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
               </button>
-              <div className="flex items-start gap-3">
-                <div className="flex-shrink-0 mt-0.5">
-                  <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <div className="flex-1 pr-4">
-                  <p className="font-bold text-green-100 mb-2 text-lg">✅ Email Confirmed!</p>
-                  <p className="text-sm text-green-200 mb-2">
-                    Your email has been successfully verified. You can now log in to your iTutor account.
-                  </p>
-                  <p className="text-xs text-green-300">
-                    Enter your email and password below to continue.
-                  </p>
-                </div>
-              </div>
+              <p className="text-sm font-semibold">Email confirmed! You can now sign in.</p>
             </div>
           )}
 
-          {/* Email Sent (Awaiting Confirmation) Banner */}
           {showEmailSent && (
-            <div className="bg-green-900/20 border-2 border-green-500/50 text-green-200 px-4 py-4 rounded-lg backdrop-blur-sm space-y-3 relative">
-              <button
-                onClick={() => setShowEmailSent(false)}
-                className="absolute top-2 right-2 text-green-400 hover:text-green-300 transition-colors"
-                type="button"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+            <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-4 relative">
+              <button onClick={() => setShowEmailSent(false)} type="button" className="absolute top-2 right-2 text-green-500 hover:text-green-700">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
               </button>
-              <div className="flex items-start gap-3">
-                <div className="flex-shrink-0 mt-0.5">
-                  <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <div className="flex-1 pr-4">
-                  <p className="font-semibold text-green-100 mb-1">Account Created!</p>
-                  <p className="text-sm text-green-200 mb-3">
-                    Please check your email to verify your account. After verification, you can log in below.
-                  </p>
-                  
-                  <div className="bg-green-950/30 border border-green-600/30 rounded-md p-3 mb-3">
-                    <p className="text-xs text-green-300 font-medium mb-1">Didn't receive the email?</p>
-                    <ul className="text-xs text-green-300/90 space-y-0.5 list-disc list-inside">
-                      <li>Check your spam or junk folder</li>
-                      <li>Make sure you entered the correct email</li>
-                      <li>Wait a few minutes for delivery</li>
-                    </ul>
-                  </div>
-
-                  {resendSuccess && (
-                    <div className="bg-green-800/30 border border-green-400/30 text-green-100 px-3 py-2 rounded-md text-sm mb-2">
-                      {resendSuccess}
-                    </div>
-                  )}
-                  
-                  {resendError && (
-                    <div className="bg-red-900/30 border border-red-400/30 text-red-200 px-3 py-2 rounded-md text-sm mb-2">
-                      {resendError}
-                    </div>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={handleResendEmail}
-                    disabled={resendCooldown > 0 || resendLoading}
-                    className="w-full bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {resendLoading ? (
-                      'Sending...'
-                    ) : resendCooldown > 0 ? (
-                      `Resend email (${resendCooldown}s)`
-                    ) : (
-                      'Resend verification email'
-                    )}
-                  </button>
-                </div>
-              </div>
+              <p className="text-sm font-semibold mb-1">Account created! Check your email to verify.</p>
+              {resendSuccess && <p className="text-xs text-green-600 mt-1">{resendSuccess}</p>}
+              {resendError && <p className="text-xs text-red-500 mt-1">{resendError}</p>}
+              <button type="button" onClick={handleResendEmail} disabled={resendCooldown > 0 || resendLoading}
+                className="mt-2 text-xs font-medium text-itutor-green hover:underline disabled:opacity-50">
+                {resendLoading ? 'Sending...' : resendCooldown > 0 ? `Resend (${resendCooldown}s)` : 'Resend verification email'}
+              </button>
             </div>
           )}
-          
+
           {error && (
-            <div className="bg-red-900/20 border border-red-500/50 text-red-400 px-4 py-3 rounded-lg backdrop-blur-sm">
+            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-2.5 rounded-lg mb-4">
               <p className="text-sm">{error}</p>
             </div>
           )}
 
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-2">
-              Email address
-            </label>
-            <input
-              type="email"
-              id="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 bg-gray-900 border border-gray-700 text-itutor-white rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-500"
-              placeholder="you@example.com"
-              required
-              disabled={loading}
-            />
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label htmlFor="password" className="block text-sm font-medium text-gray-300">
-                Password
-              </label>
-              <a 
-                href="/forgot-password" 
-                className="text-sm text-itutor-green hover:text-emerald-400 font-medium transition-colors"
-              >
-                Forgot password?
-              </a>
-            </div>
-            <div className="relative">
-              <input
-                type={showPassword ? "text" : "password"}
-                id="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 pr-10 bg-gray-900 border border-gray-700 text-itutor-white rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-500"
-                placeholder="Enter your password"
-                required
-                disabled={loading}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300 transition-colors"
-                tabIndex={-1}
-              >
-                {showPassword ? (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+          <form onSubmit={handleLogin} className="space-y-3.5">
+            {/* Email */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                   </svg>
-                ) : (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                )}
-              </button>
+                </span>
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                  className={inputWithIcon} placeholder="you@example.com" required disabled={loading} />
+              </div>
             </div>
-          </div>
 
-          <div className="flex items-center">
-            <input
-              type="checkbox"
-              id="rememberMe"
-              checked={rememberMe}
-              onChange={(e) => setRememberMe(e.target.checked)}
-              className="h-4 w-4 rounded border-gray-700 bg-gray-900 text-itutor-green focus:ring-2 focus:ring-itutor-green focus:ring-offset-0 cursor-pointer"
-              disabled={loading}
-            />
-            <label htmlFor="rememberMe" className="ml-2 block text-sm text-gray-300 cursor-pointer select-none">
-              Keep me signed in
-            </label>
-          </div>
+            {/* Password */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-sm font-medium text-gray-700">Password</label>
+                <a href="/forgot-password" className="text-sm text-itutor-green font-medium hover:underline">Forgot password?</a>
+              </div>
+              <div className="relative">
+                <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)}
+                  className={`${inputBase} pr-14`} placeholder="Enter your password" required disabled={loading} />
+                <button type="button" onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500 hover:text-gray-700 font-medium" tabIndex={-1}>
+                  {showPassword ? 'Hide' : 'Show'}
+                </button>
+              </div>
+            </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-white py-3 px-4 rounded-lg focus:ring-4 focus:ring-itutor-green/30 focus:outline-none transition-all font-semibold text-lg disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-itutor-green/20 transform hover:scale-[1.02] active:scale-[0.98]"
-          >
-            {loading ? (
-              <span className="flex items-center justify-center">
-                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Signing in...
-              </span>
-            ) : (
-              'Sign in'
-            )}
-          </button>
-        </form>
+            {/* Remember me */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="rememberMe" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-itutor-green focus:ring-itutor-green cursor-pointer" disabled={loading} />
+                <label htmlFor="rememberMe" className="text-sm text-gray-600 cursor-pointer">Keep me signed in</label>
+              </div>
+            </div>
 
-        <div className="mt-6 text-center space-y-3">
-          <p className="text-sm text-gray-400">
-            Don't have an account?{' '}
-            <a href="/signup" className="text-itutor-green hover:text-emerald-400 font-semibold transition-colors">
-              Sign up
-            </a>
-          </p>
-          
-          {/* Only show verification link if user just signed up or has unverified email */}
-          {showEmailSent && (
-            <p className="text-sm text-gray-400">
-              Haven't verified your email?{' '}
-              <a href={`/verify-code${resendEmail ? `?email=${encodeURIComponent(resendEmail)}` : ''}`} className="text-itutor-green hover:text-emerald-400 font-semibold transition-colors">
-                Enter verification code
-              </a>
+            <button type="submit" disabled={loading}
+              className="w-full bg-itutor-green hover:bg-emerald-700 text-white py-3 rounded-lg font-bold text-base transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+              {loading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                  </svg>
+                  Signing in...
+                </span>
+              ) : 'Sign in'}
+            </button>
+          </form>
+
+          <div className="mt-4 text-center space-y-3">
+            <p className="text-sm text-gray-600">
+              Don&apos;t have an account?{' '}
+              <a href="/signup" className="font-bold text-gray-900 hover:text-itutor-green transition-colors">Sign up</a>
             </p>
-          )}
-          
-          <div className="pt-4 border-t border-gray-700">
-            <a href="/" className="text-xs text-gray-500 hover:text-gray-400 transition-colors">
-              ← Back to home
-            </a>
+
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-px bg-gray-200" />
+              <span className="text-xs text-gray-400">or</span>
+              <div className="flex-1 h-px bg-gray-200" />
+            </div>
+
+            <SocialLoginButton provider="google" mode="login" />
+
+            {showEmailSent && (
+              <p className="text-xs text-gray-400">
+                Haven&apos;t verified?{' '}
+                <a href={`/verify-code${resendEmail ? `?email=${encodeURIComponent(resendEmail)}` : ''}`} className="text-itutor-green font-medium hover:underline">Enter code</a>
+              </p>
+            )}
           </div>
         </div>
       </div>

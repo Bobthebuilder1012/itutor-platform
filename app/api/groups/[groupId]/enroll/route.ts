@@ -34,7 +34,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     const { data: group } = await service
       .from('groups')
-      .select('id, tutor_id, status, max_students, pricing_model')
+      .select('id, tutor_id, status, max_students, pricing_model, name')
       .eq('id', groupId)
       .single();
     if (!group) return fail('Group not found', 404);
@@ -75,6 +75,30 @@ export async function POST(req: NextRequest, { params }: Params) {
         .select()
         .single();
       if (waitErr) return fail(waitErr.message, 500);
+      const groupName = (group as { name?: string }).name ?? 'your class';
+      try {
+        await service.from('notifications').insert([
+          {
+            user_id: user.id,
+            type: 'ENROLLMENT_CONFIRMED',
+            title: 'Added to waitlist',
+            message: `You're on the waitlist for "${groupName}" (position ${waitlist.position}).`,
+            group_id: groupId,
+            metadata: { groupId, waitlistPosition: waitlist.position },
+          },
+          {
+            user_id: group.tutor_id,
+            type: 'booking_request',
+            title: 'Waitlist signup',
+            message: `A student joined the waitlist for "${groupName}".`,
+            link: `/groups/${groupId}`,
+            group_id: groupId,
+            metadata: { groupId, studentId: user.id },
+          },
+        ]);
+      } catch {
+        // Non-critical
+      }
       return ok({ waitlisted: true, position: waitlist.position });
     }
 
@@ -97,14 +121,30 @@ export async function POST(req: NextRequest, { params }: Params) {
       .single();
     if (error) return fail(error.message, 500);
 
-    await service.from('notifications').insert({
-      user_id: user.id,
-      type: 'ENROLLMENT_CONFIRMED',
-      title: 'Enrollment Confirmed',
-      message: 'You have been successfully enrolled in the group.',
-      group_id: groupId,
-      metadata: { groupId, enrollmentId: enrollment.id },
-    });
+    const groupName = (group as { name?: string }).name ?? 'your class';
+    try {
+      await service.from('notifications').insert([
+        {
+          user_id: user.id,
+          type: 'ENROLLMENT_CONFIRMED',
+          title: 'Enrollment Confirmed',
+          message: `You have been enrolled in "${groupName}".`,
+          group_id: groupId,
+          metadata: { groupId, enrollmentId: enrollment.id },
+        },
+        {
+          user_id: group.tutor_id,
+          type: 'booking_request',
+          title: 'New enrollment',
+          message: `A student enrolled in "${groupName}".`,
+          link: `/groups/${groupId}`,
+          group_id: groupId,
+          metadata: { groupId, enrollmentId: enrollment.id, studentId: user.id },
+        },
+      ]);
+    } catch {
+      // Non-critical
+    }
 
     return ok(enrollment, 201);
   } catch (error: any) {

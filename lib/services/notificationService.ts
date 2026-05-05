@@ -30,8 +30,8 @@ export async function getNotifications(
   const { data, error } = await query;
 
   if (error) {
-    console.error('Error fetching notifications:', error);
-    throw error;
+    console.warn('Notifications unavailable:', error.message, error.code, error.details);
+    return [];
   }
 
   return data as Notification[];
@@ -48,8 +48,8 @@ export async function getUnreadNotificationCount(userId: string): Promise<number
     .eq('is_read', false);
 
   if (error) {
-    console.error('Error fetching unread count:', error);
-    throw error;
+    console.warn('Unread notification count unavailable:', error.message, error.code, error.details);
+    return 0;
   }
 
   return count || 0;

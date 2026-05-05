@@ -5,6 +5,7 @@ import { Profile } from '@/lib/types/database';
 import ShareProfileModal from '@/components/ShareProfileModal';
 import { supabase } from '@/lib/supabase/client';
 import { getAvatarColor } from '@/lib/utils/avatarColors';
+import UserAvatar from '@/components/UserAvatar';
 
 type ProfileSnapshotCardProps = {
   profile: Profile;
@@ -62,24 +63,16 @@ export default function ProfileSnapshotCard({
   };
 
   return (
-    <div className="bg-white border-2 border-gray-200 rounded-2xl p-4 sm:p-6 md:p-8 shadow-md hover:shadow-lg transition-shadow">
+    <div className="bg-white border border-gray-100 rounded-2xl p-5 sm:p-6 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
       <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6 mb-6">
         {/* Avatar */}
         <button
           onClick={onChangeAvatar}
           className="flex-shrink-0 group relative"
         >
-          {profile.avatar_url ? (
-            <img
-              src={profile.avatar_url}
-              alt={firstName}
-              className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover border-4 border-gray-200 group-hover:border-itutor-green transition-colors"
-            />
-          ) : (
-            <div className={`w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br ${getAvatarColor(profile.id)} flex items-center justify-center text-white font-bold text-2xl sm:text-3xl border-4 border-gray-200 group-hover:border-itutor-green transition-colors`}>
-              {firstName.charAt(0)}
-            </div>
-          )}
+          <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden border-4 border-gray-200 group-hover:border-itutor-green transition-colors">
+            <UserAvatar avatarUrl={profile.avatar_url} name={firstName} size={96} />
+          </div>
           <div className="absolute inset-0 rounded-full bg-black bg-opacity-0 group-hover:bg-opacity-20 flex items-center justify-center transition-all">
             <svg className="h-6 w-6 sm:h-8 sm:w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
@@ -117,9 +110,9 @@ export default function ProfileSnapshotCard({
           {profile.subjects_of_study && profile.subjects_of_study.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-3">
               {profile.subjects_of_study.map((subject, index) => (
-                <span 
+                <span
                   key={index}
-                  className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium"
+                  className="px-2.5 py-1 bg-itutor-green/10 border border-itutor-green/25 text-itutor-green rounded-lg text-xs font-medium"
                 >
                   {subject}
                 </span>
@@ -212,10 +205,10 @@ export default function ProfileSnapshotCard({
       </div>
 
       {/* Action Buttons */}
-      <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3 pt-4 border-t border-gray-200">
+      <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3 pt-4 border-t border-gray-100">
         <button
           onClick={onEditProfile}
-          className="w-full sm:w-auto px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors text-sm flex items-center justify-center gap-2"
+          className="w-full sm:w-auto px-4 py-2 bg-white border border-gray-200 hover:border-itutor-green hover:text-itutor-green text-gray-600 rounded-xl font-medium transition-all text-sm flex items-center justify-center gap-2"
         >
           <svg className="h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -224,7 +217,7 @@ export default function ProfileSnapshotCard({
         </button>
         <button
           onClick={onEditSubjects}
-          className="w-full sm:w-auto px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors text-sm flex items-center justify-center gap-2"
+          className="w-full sm:w-auto px-4 py-2 bg-white border border-gray-200 hover:border-itutor-green hover:text-itutor-green text-gray-600 rounded-xl font-medium transition-all text-sm flex items-center justify-center gap-2"
         >
           <svg className="h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
@@ -233,7 +226,7 @@ export default function ProfileSnapshotCard({
         </button>
         <button
           onClick={() => setShareModalOpen(true)}
-          className="w-full sm:w-auto px-4 py-2 bg-itutor-green hover:bg-emerald-600 text-black rounded-lg font-medium transition-colors text-sm flex items-center justify-center gap-2"
+          className="w-full sm:w-auto px-4 py-2 bg-itutor-green hover:bg-emerald-600 text-black rounded-xl font-semibold transition-all text-sm flex items-center justify-center gap-2"
         >
           <svg className="h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />

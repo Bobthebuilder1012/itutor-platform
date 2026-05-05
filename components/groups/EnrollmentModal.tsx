@@ -52,7 +52,7 @@ export default function EnrollmentModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
-        <h3 className="text-lg font-semibold text-gray-900">Join Group</h3>
+        <h3 className="text-lg font-semibold text-gray-900">Join Class</h3>
         <p className="mt-1 text-sm text-gray-600">Choose how you want to enroll.</p>
 
         <div className="mt-4 space-y-2">

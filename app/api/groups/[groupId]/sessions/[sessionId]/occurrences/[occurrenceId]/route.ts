@@ -291,6 +291,87 @@ export async function POST(_req: NextRequest, { params }: Params) {
   }
 }
 
+// PATCH /api/groups/[groupId]/sessions/[sessionId]/occurrences/[occurrenceId]
+// Supports:
+//   { action: 'restore' } — revert a soft-cancelled occurrence.
+//   { title: string | null } — rename a single occurrence (null clears override).
+export async function PATCH(req: NextRequest, { params }: Params) {
+  try {
+    const { groupId, sessionId, occurrenceId } = await params;
+    const supabase = await getServerClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const body = await req.json().catch(() => ({}));
+
+    const service = getServiceClient();
+    const { data: group } = await service
+      .from('groups')
+      .select('tutor_id')
+      .eq('id', groupId)
+      .single();
+
+    if (!group || group.tutor_id !== user.id) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const update: Record<string, any> = {};
+    if (body?.action === 'restore') {
+      update.status = 'upcoming';
+      update.cancelled_at = null;
+      update.cancellation_note = null;
+    }
+    if (Object.prototype.hasOwnProperty.call(body ?? {}, 'title')) {
+      const raw = typeof body.title === 'string' ? body.title.trim() : null;
+      update.title = raw && raw.length > 0 ? raw : null;
+    }
+
+    if (Object.keys(update).length === 0) {
+      return NextResponse.json({ error: 'No supported fields provided' }, { status: 400 });
+    }
+
+    let { error } = await service
+      .from('group_session_occurrences')
+      .update(update)
+      .eq('id', occurrenceId)
+      .eq('group_session_id', sessionId);
+
+    if (error && isPatchSchemaMismatch(error) && 'title' in update) {
+      const { title: _drop, ...rest } = update;
+      if (Object.keys(rest).length === 0) {
+        return NextResponse.json({ success: true, warning: 'title column unavailable' });
+      }
+      ({ error } = await service
+        .from('group_session_occurrences')
+        .update(rest)
+        .eq('id', occurrenceId)
+        .eq('group_session_id', sessionId));
+    }
+
+    if (error) throw error;
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error('[PATCH occurrence]', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+function isPatchSchemaMismatch(error: any): boolean {
+  const code = String(error?.code ?? '');
+  const msg = String(error?.message ?? '').toLowerCase();
+  return (
+    code === '42703' ||
+    code === '42P01' ||
+    code === 'PGRST204' ||
+    code === 'PGRST205' ||
+    msg.includes('does not exist') ||
+    msg.includes('schema cache')
+  );
+}
+
 // DELETE /api/groups/[groupId]/sessions/[sessionId]/occurrences/[occurrenceId] — cancel one occurrence
 export async function DELETE(_req: NextRequest, { params }: Params) {
   try {

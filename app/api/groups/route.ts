@@ -11,8 +11,11 @@ function isSchemaMismatch(error: any) {
     code === '42P01' ||
     code === 'PGRST204' ||
     code === 'PGRST205' ||
+    code === 'PGRST201' ||
     message.includes('does not exist') ||
-    message.includes('could not find')
+    message.includes('could not find') ||
+    message.includes('more than one relationship') ||
+    message.includes('could not embed')
   );
 }
 
@@ -44,8 +47,11 @@ export async function GET(request: NextRequest) {
       page: z.coerce.number().min(1).default(1),
       limit: z.coerce.number().min(1).max(50).default(12),
       tutor_name: z.string().optional(),
+      archived: z.enum(['true', 'false']).optional(),
     });
-    const parsed = querySchema.safeParse(Object.fromEntries(searchParams.entries()));
+    const parsed = querySchema.safeParse(
+      Object.fromEntries([...searchParams.entries()].filter(([, v]) => v !== ''))
+    );
     if (!parsed.success) {
       return NextResponse.json({ success: false, error: 'Invalid query parameters' }, { status: 400 });
     }
@@ -65,7 +71,10 @@ export async function GET(request: NextRequest) {
       page,
       limit,
       tutor_name: tutorName,
+      archived: archivedParam,
     } = parsed.data;
+
+    const fetchArchived = archivedParam === 'true';
 
     const service = getServiceClient();
 
@@ -77,25 +86,40 @@ export async function GET(request: NextRequest) {
 
     const isTutor = profile?.role === 'tutor';
 
-    const runGroupsQuery = async (withStatus: boolean, legacySchema: boolean, includeHeaderImage: boolean = true) => {
-      let query = service
-        .from('groups')
-        .select(`
+    const runGroupsQuery = async (withStatus: boolean, legacySchema: boolean, includeHeaderImage: boolean = true, bare: boolean = false) => {
+      let selectStr: string;
+      if (bare) {
+        selectStr = `
+          id, name, description, tutor_id, subject, pricing, created_at,
+          tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, rating_average, rating_count),
+          group_members(id, user_id, status, profile:profiles(id, full_name, avatar_url))
+        `;
+      } else {
+        selectStr = `
           id, name, description, tutor_id, subject, pricing, created_at, ${withStatus ? 'status,' : ''}${legacySchema ? '' : 'difficulty, form_level, topic, session_length_minutes, session_frequency,'}
           ${
             legacySchema
-              ? ''
+              ? 'cover_image, header_image, whatsapp_link,'
               : `pricing_model, pricing_mode, price_per_session, price_per_course, price_monthly, recurrence_type, max_students, cover_image, ${includeHeaderImage ? 'header_image, ' : ''}availability_window,`
           }
           tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, rating_average, rating_count),
           group_members(id, user_id, status, profile:profiles(id, full_name, avatar_url))
-        `)
-        .is('archived_at', null)
+        `;
+      }
+
+      let query = service
+        .from('groups')
+        .select(selectStr)
         .order('created_at', { ascending: false });
 
-      if (withStatus) {
-        if (isTutor) query = query.or(`status.eq.PUBLISHED,tutor_id.eq.${user.id}`);
-        else query = query.or('status.eq.PUBLISHED,status.eq.published,status.is.null');
+      if (fetchArchived) {
+        query = query.not('archived_at', 'is', null).eq('tutor_id', user.id);
+      } else {
+        query = query.is('archived_at', null);
+        if (withStatus) {
+          if (isTutor) query = query.or(`status.eq.PUBLISHED,tutor_id.eq.${user.id}`);
+          else query = query.or('status.eq.PUBLISHED,status.eq.published,status.is.null');
+        }
       }
 
       return query;
@@ -123,14 +147,19 @@ export async function GET(request: NextRequest) {
       ({ data: groups, error } = await applyFilters(await runGroupsQuery(true, false, false), false));
       if (isSchemaMismatch(error)) {
         ({ data: groups, error } = await applyFilters(await runGroupsQuery(false, true, false), true));
+        if (isSchemaMismatch(error)) {
+          ({ data: groups, error } = await applyFilters(await runGroupsQuery(false, false, false, true), false));
+        }
       }
     } else if (!error && !isTutor && (groups?.length ?? 0) === 0) {
-      // Legacy datasets can have status values that don't match modern publish enums.
       ({ data: groups, error } = await applyFilters(await runGroupsQuery(false, false, true), false));
       if (isSchemaMismatch(error)) {
         ({ data: groups, error } = await applyFilters(await runGroupsQuery(false, false, false), false));
         if (isSchemaMismatch(error)) {
           ({ data: groups, error } = await applyFilters(await runGroupsQuery(false, true, false), true));
+          if (isSchemaMismatch(error)) {
+            ({ data: groups, error } = await applyFilters(await runGroupsQuery(false, false, false, true), false));
+          }
         }
       }
     }
@@ -181,7 +210,7 @@ export async function GET(request: NextRequest) {
         ...g,
         group_members: undefined,
         member_count: approvedMembers.length,
-        member_previews: approvedMembers.slice(0, 3).map((m: any) => m.profile),
+        member_previews: approvedMembers.slice(0, 3).map((m: any) => m.profile).filter(Boolean),
         current_user_membership: currentUserMembership,
         next_occurrence: nextOccurrenceByGroupId.get(g.id) ?? null,
       };
@@ -374,6 +403,19 @@ export async function POST(request: NextRequest) {
           subject: subjectString,
           tutor_id: user.id,
           pricing: 'free',
+        })
+        .select()
+        .single());
+    }
+
+    if (isSchemaMismatch(error)) {
+      ({ data: group, error } = await service
+        .from('groups')
+        .insert({
+          name: body.name.trim(),
+          description: body.description?.trim() ?? null,
+          subject: subjectString,
+          tutor_id: user.id,
         })
         .select()
         .single());

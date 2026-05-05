@@ -66,6 +66,7 @@ export interface Group {
   created_at: string;
   updated_at?: string;
   archived_at: string | null;
+  archived_reason?: string | null;
 }
 
 export interface GroupWithTutor extends Group {
@@ -82,7 +83,7 @@ export interface GroupMember {
   user_id: string;
   status: GroupMemberStatus;
   joined_at: string;
-  profile?: Pick<Profile, 'id' | 'full_name' | 'avatar_url'>;
+  profile?: Pick<Profile, 'id' | 'full_name' | 'avatar_url'> & { role?: string | null };
 }
 
 export interface GroupSession {
@@ -109,6 +110,7 @@ export interface GroupSessionWithOccurrences extends GroupSession {
 export interface GroupOccurrence {
   id: string;
   group_session_id: string;
+  title?: string | null;
   scheduled_start_at: string;
   scheduled_end_at: string;
   status: OccurrenceStatus;
@@ -247,6 +249,7 @@ export interface CreateGroupSessionInput {
   duration_minutes: number;
   starts_on: string;
   ends_on?: string;
+  timezone_offset?: number;
 }
 
 export interface PostGroupMessageInput {

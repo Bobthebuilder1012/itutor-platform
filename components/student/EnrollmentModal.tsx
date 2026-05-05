@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 type EnrollmentType = 'SUBSCRIPTION' | 'SINGLE_SESSION';
 
@@ -26,6 +26,11 @@ export default function EnrollmentModal({
     () => [...sessions].sort((a, b) => new Date(a.scheduled_start_at).getTime() - new Date(b.scheduled_start_at).getTime()),
     [sessions]
   );
+
+  useEffect(() => {
+    if (!open) return;
+    setError(null);
+  }, [open]);
 
   if (!open) return null;
 

@@ -3,6 +3,11 @@ import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import type { CreateGroupSessionInput, DayOfWeek } from '@/lib/types/groups';
 
 type Params = { params: Promise<{ groupId: string }> };
+function isSchemaMismatch(error: any): boolean {
+  const code = String(error?.code ?? '');
+  const msg = String(error?.message ?? '').toLowerCase();
+  return code === '42703' || code === '42P01' || code === 'PGRST205' || msg.includes('does not exist');
+}
 
 // GET /api/groups/[groupId]/sessions — list sessions with occurrences
 export const dynamic = 'force-dynamic';
@@ -17,34 +22,52 @@ export async function GET(_req: NextRequest, { params }: Params) {
     }
 
     const service = getServiceClient();
-    const now = new Date().toISOString();
+    const nowIso = new Date().toISOString();
 
-    const { data: sessions, error } = await service
+    let sessions: any[] | null = null;
+    let error: any = null;
+    ({ data: sessions, error } = await service
       .from('group_sessions')
       .select(`
         id, group_id, title, recurrence_type, recurrence_days,
         start_time, duration_minutes, starts_on, ends_on, created_at,
         occurrences:group_session_occurrences(
-          id, group_session_id, scheduled_start_at, scheduled_end_at,
+          id, group_session_id, title, scheduled_start_at, scheduled_end_at,
           status, cancelled_at, cancellation_note
         )
       `)
       .eq('group_id', groupId)
-      .order('starts_on', { ascending: true });
+      .order('starts_on', { ascending: true }));
 
-    // Post-process: sort occurrences and keep only next 20 upcoming + last 2 past per session
-    // (DB-level filtering on nested tables isn't supported in Supabase JS client,
-    //  but we trim here before sending to the client to keep the payload small)
+    if (error && isSchemaMismatch(error)) {
+      ({ data: sessions, error } = await service
+        .from('group_sessions')
+        .select(`
+          id, group_id, title, recurrence_type, recurrence_days,
+          start_time, duration_minutes, starts_on, ends_on, created_at,
+          occurrences:group_session_occurrences(
+            id, group_session_id, scheduled_start_at, scheduled_end_at,
+            status, cancelled_at, cancellation_note
+          )
+        `)
+        .eq('group_id', groupId)
+        .order('starts_on', { ascending: true }));
+    }
+
+    if (error && isSchemaMismatch(error)) {
+      return NextResponse.json({ sessions: [] });
+    }
+
+    // Return all occurrences (including cancelled) so the client can render
+    // a unified chronological list with full upcoming + past history.
     const trimmed = (sessions ?? []).map((s: any) => {
       const occs: any[] = s.occurrences ?? [];
       const upcoming = occs
-        .filter((o) => o.status === 'upcoming' && o.scheduled_end_at >= now)
-        .sort((a: any, b: any) => a.scheduled_start_at.localeCompare(b.scheduled_start_at))
-        .slice(0, 20);
+        .filter((o) => o.scheduled_end_at >= nowIso)
+        .sort((a: any, b: any) => a.scheduled_start_at.localeCompare(b.scheduled_start_at));
       const past = occs
-        .filter((o) => o.status === 'upcoming' && o.scheduled_end_at < now)
-        .sort((a: any, b: any) => b.scheduled_start_at.localeCompare(a.scheduled_start_at))
-        .slice(0, 2);
+        .filter((o) => o.scheduled_end_at < nowIso)
+        .sort((a: any, b: any) => b.scheduled_start_at.localeCompare(a.scheduled_start_at));
       return { ...s, occurrences: [...past, ...upcoming] };
     });
 
@@ -101,8 +124,8 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     if (sessionError) throw sessionError;
 
-    // Generate occurrences
-    const occurrences = generateOccurrences(session);
+    // Generate occurrences (pass client timezone since it's not stored in DB)
+    const occurrences = generateOccurrences({ ...session, timezone_offset: body.timezone_offset });
 
     if (occurrences.length > 0) {
       const { error: occError } = await service
@@ -154,52 +177,64 @@ function generateOccurrences(session: any) {
 
   const [startHour, startMin] = session.start_time.split(':').map(Number);
   const durationMs = session.duration_minutes * 60 * 1000;
+  const offsetMs = (session.timezone_offset ?? 0) * 60 * 1000;
 
-  const startsOn = new Date(session.starts_on + 'T00:00:00');
-  const endsOn = session.ends_on ? new Date(session.ends_on + 'T23:59:59') : null;
+  const [y, m, d] = session.starts_on.split('-').map(Number);
+  const endsOn = session.ends_on
+    ? (() => { const [ey, em, ed] = session.ends_on.split('-').map(Number); return Date.UTC(ey, em - 1, ed, 23, 59, 59); })()
+    : null;
+
+  function localToUtc(year: number, month: number, day: number): Date {
+    const utcBase = Date.UTC(year, month - 1, day, startHour, startMin, 0, 0);
+    return new Date(utcBase + offsetMs);
+  }
 
   if (session.recurrence_type === 'none') {
-    const d = new Date(startsOn);
-    d.setHours(startHour, startMin, 0, 0);
+    const start = localToUtc(y, m, d);
     occurrences.push({
-      scheduled_start_at: d.toISOString(),
-      scheduled_end_at: new Date(d.getTime() + durationMs).toISOString(),
+      scheduled_start_at: start.toISOString(),
+      scheduled_end_at: new Date(start.getTime() + durationMs).toISOString(),
       status: 'upcoming',
     });
     return occurrences;
   }
 
   const maxOccurrences = 400;
-  const current = new Date(startsOn);
-  current.setHours(startHour, startMin, 0, 0);
+  const cursor = new Date(Date.UTC(y, m - 1, d));
 
   while (occurrences.length < maxOccurrences) {
-    if (endsOn && current > endsOn) break;
+    const curY = cursor.getUTCFullYear();
+    const curM = cursor.getUTCMonth() + 1;
+    const curD = cursor.getUTCDate();
+    const curDay = cursor.getUTCDay();
+
+    if (endsOn && cursor.getTime() > endsOn) break;
 
     if (session.recurrence_type === 'weekly') {
       const days: DayOfWeek[] = session.recurrence_days ?? [];
       if (days.length === 0) break;
 
-      if (days.includes(current.getDay() as DayOfWeek)) {
+      if (days.includes(curDay as DayOfWeek)) {
+        const start = localToUtc(curY, curM, curD);
         occurrences.push({
-          scheduled_start_at: current.toISOString(),
-          scheduled_end_at: new Date(current.getTime() + durationMs).toISOString(),
+          scheduled_start_at: start.toISOString(),
+          scheduled_end_at: new Date(start.getTime() + durationMs).toISOString(),
           status: 'upcoming',
         });
       }
-      current.setDate(current.getDate() + 1);
     } else if (session.recurrence_type === 'daily') {
+      const start = localToUtc(curY, curM, curD);
       occurrences.push({
-        scheduled_start_at: current.toISOString(),
-        scheduled_end_at: new Date(current.getTime() + durationMs).toISOString(),
+        scheduled_start_at: start.toISOString(),
+        scheduled_end_at: new Date(start.getTime() + durationMs).toISOString(),
         status: 'upcoming',
       });
-      current.setDate(current.getDate() + 1);
     } else {
       break;
     }
 
-    // Cap: ~1 year for daily, ~2 years for weekly (when no end date set)
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+
     const cap = session.recurrence_type === 'daily' ? 365 : 104;
     if (!endsOn && occurrences.length >= cap) break;
   }

@@ -18,10 +18,14 @@ function isFeedbackExemptPath(pathname: string) {
   );
 }
 
+function isApiPath(pathname: string) {
+  return pathname.startsWith('/api/');
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (isPublicAssetPath(pathname) || isFeedbackExemptPath(pathname)) {
+  if (isPublicAssetPath(pathname) || isFeedbackExemptPath(pathname) || isApiPath(pathname)) {
     return NextResponse.next();
   }
 

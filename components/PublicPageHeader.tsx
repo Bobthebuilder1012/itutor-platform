@@ -32,7 +32,7 @@ export default function PublicPageHeader({ profile = null, loading = false }: Pu
   };
 
   return (
-    <header className="bg-itutor-black border-b border-gray-800 sticky top-0 z-50">
+    <header className="sticky top-0 z-50 border-b border-black bg-black">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-4">
         <div className="flex items-center justify-between">
           <Link href="/" className="inline-block ml-12 md:ml-24 lg:ml-32">

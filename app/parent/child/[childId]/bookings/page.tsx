@@ -108,11 +108,19 @@ export default function ChildBookingsPage() {
     
     switch (activeTab) {
       case 'pending':
-        return bookings.filter(b => b.status === 'PENDING' || b.status === 'COUNTER_PROPOSED');
+        return bookings.filter(
+          b =>
+            b.status === 'PENDING' ||
+            b.status === 'COUNTER_PROPOSED' ||
+            b.status === 'PENDING_PARENT_APPROVAL' ||
+            b.status === 'PARENT_APPROVED'
+        );
       case 'confirmed':
         return bookings.filter(b => b.status === 'CONFIRMED' && new Date(b.confirmed_start_at || b.requested_start_at) > now);
       case 'cancelled':
-        return bookings.filter(b => b.status === 'CANCELLED' || b.status === 'DECLINED');
+        return bookings.filter(
+          b => b.status === 'CANCELLED' || b.status === 'DECLINED' || b.status === 'PARENT_REJECTED'
+        );
       case 'past':
         return bookings.filter(b => (b.status === 'CONFIRMED' && new Date(b.confirmed_start_at || b.requested_start_at) <= now) || b.status === 'COMPLETED');
       default:
@@ -123,9 +131,20 @@ export default function ChildBookingsPage() {
   const filteredBookings = filterBookings(bookings);
   const tabs = [
     { id: 'all' as const, label: 'All', count: bookings.length, color: 'text-gray-600 hover:text-gray-900 border-gray-300' },
-    { id: 'pending' as const, label: 'Pending', count: bookings.filter(b => b.status === 'PENDING' || b.status === 'COUNTER_PROPOSED').length, color: 'text-yellow-600 hover:text-yellow-800 border-yellow-400' },
+    {
+      id: 'pending' as const,
+      label: 'Pending',
+      count: bookings.filter(
+        b =>
+          b.status === 'PENDING' ||
+          b.status === 'COUNTER_PROPOSED' ||
+          b.status === 'PENDING_PARENT_APPROVAL' ||
+          b.status === 'PARENT_APPROVED'
+      ).length,
+      color: 'text-yellow-600 hover:text-yellow-800 border-yellow-400'
+    },
     { id: 'confirmed' as const, label: 'Confirmed', count: bookings.filter(b => b.status === 'CONFIRMED' && new Date(b.confirmed_start_at || b.requested_start_at) > new Date()).length, color: 'text-green-600 hover:text-green-800 border-green-400' },
-    { id: 'cancelled' as const, label: 'Cancelled', count: bookings.filter(b => b.status === 'CANCELLED' || b.status === 'DECLINED').length, color: 'text-red-600 hover:text-red-800 border-red-400' },
+    { id: 'cancelled' as const, label: 'Cancelled', count: bookings.filter(b => b.status === 'CANCELLED' || b.status === 'DECLINED' || b.status === 'PARENT_REJECTED').length, color: 'text-red-600 hover:text-red-800 border-red-400' },
     { id: 'past' as const, label: 'Past', count: bookings.filter(b => (b.status === 'CONFIRMED' && new Date(b.confirmed_start_at || b.requested_start_at) <= new Date()) || b.status === 'COMPLETED').length, color: 'text-blue-600 hover:text-blue-800 border-blue-400' }
   ];
 
@@ -212,10 +231,10 @@ export default function ChildBookingsPage() {
                       <p className="text-gray-600">with <span className="font-semibold text-purple-600">{booking.tutor_name}</span></p>
                     </div>
                     <Link
-                      href={`/student/bookings/${booking.id}`}
+                      href={`/parent/child/${childId}`}
                       className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition"
                     >
-                      View Details
+                      Child Summary
                     </Link>
                   </div>
                   

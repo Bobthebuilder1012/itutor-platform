@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
 import Link from 'next/link';
+import { isEmailManagementOnlyAdmin } from '@/lib/auth/adminAccess';
 
 type SessionWithDetails = {
   id: string;
@@ -64,6 +65,11 @@ export default function AdminDashboardPage() {
 
       if (profile?.role !== 'admin') {
         router.push('/login');
+        return;
+      }
+
+      if (isEmailManagementOnlyAdmin(profile.email)) {
+        router.replace('/admin/emails');
         return;
       }
 

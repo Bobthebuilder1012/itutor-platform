@@ -3,6 +3,10 @@
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
+import {
+  getAdminHomePath,
+  isEmailManagementOnlyAdmin,
+} from '@/lib/auth/adminAccess';
 import SocialLoginButton from '@/components/SocialLoginButton';
 
 interface LoginFormProps {
@@ -68,6 +72,13 @@ export default function LoginForm({ onSwitchMode, onSuccess, redirectTo }: Login
 
       const role = resolvedProfile?.role;
       const isReviewer = !!resolvedProfile?.is_reviewer;
+      const isEmailOnly = isEmailManagementOnlyAdmin(resolvedProfile?.email);
+
+      if (isEmailOnly) {
+        onSuccess?.();
+        router.push('/admin/emails');
+        return;
+      }
 
       if (redirectTo) {
         onSuccess?.();
@@ -77,7 +88,7 @@ export default function LoginForm({ onSwitchMode, onSuccess, redirectTo }: Login
 
       if (role === 'admin') {
         onSuccess?.();
-        router.push('/admin/dashboard');
+        router.push(getAdminHomePath(resolvedProfile?.email));
         return;
       }
 

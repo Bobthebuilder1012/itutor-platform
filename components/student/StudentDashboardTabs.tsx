@@ -46,7 +46,7 @@ export default function StudentDashboardTabs() {
       .flatMap((item) =>
         (item.session ?? []).map((session) => ({
           enrollmentId: item.id,
-          groupName: item.group?.name ?? 'Group',
+          groupName: item.group?.name ?? 'Lesson',
           scheduledAt: session.scheduled_start_at,
         }))
       )
@@ -58,7 +58,7 @@ export default function StudentDashboardTabs() {
   const groups = useMemo(() => {
     const map = new Map<string, string>();
     for (const enrollment of enrollmentsQuery.data ?? []) {
-      if (enrollment.group?.id) map.set(enrollment.group.id, enrollment.group.name ?? 'Group');
+      if (enrollment.group?.id) map.set(enrollment.group.id, enrollment.group.name ?? 'Lesson');
     }
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [enrollmentsQuery.data]);
@@ -79,7 +79,7 @@ export default function StudentDashboardTabs() {
             onClick={() => setTab('groups')}
             className={`rounded-lg px-3 py-2 text-sm ${tab === 'groups' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
           >
-            My Groups
+            My Lessons
           </button>
         )}
         <button
@@ -94,7 +94,7 @@ export default function StudentDashboardTabs() {
       {tab === 'upcoming' && (
         <div className="space-y-2">
           {upcoming.length === 0 ? (
-            <p className="text-sm text-gray-600">No upcoming group sessions.</p>
+            <p className="text-sm text-gray-600">No upcoming lesson sessions.</p>
           ) : (
             upcoming.map((session) => (
               <div key={`${session.enrollmentId}-${session.scheduledAt}`} className="rounded-lg border border-gray-200 p-3">
@@ -109,7 +109,7 @@ export default function StudentDashboardTabs() {
       {groupsOn && tab === 'groups' && (
         <div className="space-y-2">
           {groups.length === 0 ? (
-            <p className="text-sm text-gray-600">You are not enrolled in any groups yet.</p>
+            <p className="text-sm text-gray-600">You are not enrolled in any lessons yet.</p>
           ) : (
             groups.map((group) => (
               <a key={group.id} href={`/student/groups/${group.id}`} className="block rounded-lg border border-gray-200 p-3 text-sm text-gray-800 hover:border-blue-300">

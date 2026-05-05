@@ -7,8 +7,13 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import {
+  type AdminAccessScope,
+  canAccessAdminScope,
+  isEmailManagementOnlyAdmin,
+} from '@/lib/auth/adminAccess';
 
-export async function requireAdmin() {
+export async function requireAdmin(scope: AdminAccessScope = 'full') {
   const cookieStore = cookies();
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -61,11 +66,30 @@ export async function requireAdmin() {
     };
   }
 
+  if (scope === 'email-management' && isEmailManagementOnlyAdmin(profile.email)) {
+    return {
+      error: null,
+      user,
+      profile,
+    };
+  }
+
   // Check admin privileges: is_reviewer = true OR role = 'admin'
   if (!profile.is_reviewer && profile.role !== 'admin') {
     console.error('User lacks admin privileges:', profile);
     return {
       error: NextResponse.json({ error: 'Forbidden: Admin access required' }, { status: 403 }),
+      user,
+      profile,
+    };
+  }
+
+  if (!canAccessAdminScope(profile.email, scope)) {
+    return {
+      error: NextResponse.json(
+        { error: 'Forbidden: this account is restricted to Email Management only' },
+        { status: 403 }
+      ),
       user,
       profile,
     };

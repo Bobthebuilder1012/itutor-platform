@@ -10,7 +10,7 @@
 
 /* Custom styles for iTutor auth page */
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+  font-family: 'Oswald', system-ui, sans-serif;
   color: var(--neutral-grey-text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

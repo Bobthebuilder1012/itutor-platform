@@ -87,28 +87,45 @@ export async function createBookingRequest(
   studentNotes?: string,
   durationMinutes: number = 60,
   communityId?: string | null
-): Promise<{ success: boolean; booking_id: string }> {
-  const response = await fetch('/api/bookings/create', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      tutorId,
-      subjectId,
-      sessionTypeId,
-      requestedStartAt,
-      requestedEndAt,
-      studentNotes,
-      durationMinutes,
-      communityId: communityId ?? null,
-    }),
-  });
+): Promise<{ success: boolean; booking_id: string; status?: string; requires_payment?: boolean }> {
+  let response: Response;
+  try {
+    response = await fetch('/api/bookings/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        studentId,
+        tutorId,
+        subjectId,
+        sessionTypeId,
+        requestedStartAt,
+        requestedEndAt,
+        studentNotes,
+        durationMinutes,
+        communityId: communityId ?? null,
+      }),
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Network error';
+    if (msg === 'Failed to fetch') {
+      throw new Error(
+        'Could not reach the server. If the page just refreshed, wait a moment and try again. Otherwise check your connection.'
+      );
+    }
+    throw e;
+  }
 
-  const result = await response.json();
+  let result: { error?: string; booking_id?: string; success?: boolean };
+  try {
+    result = await response.json();
+  } catch {
+    throw new Error(`Booking request failed (${response.status}). Please try again.`);
+  }
   if (!response.ok) {
     throw new Error(result?.error || 'Failed to create booking request');
   }
 
-  return result as { success: boolean; booking_id: string };
+  return result as { success: boolean; booking_id: string; status?: string; requires_payment?: boolean };
 }
 
 /**
@@ -219,13 +236,21 @@ export async function studentCancelBooking(
   bookingId: string,
   reason?: string
 ): Promise<{ success: boolean; status: string }> {
-  const { data, error } = await supabase.rpc('student_cancel_booking', {
-    p_booking_id: bookingId,
-    p_reason: reason || null
-  } as StudentCancelBookingParams);
+  const response = await fetch('/api/bookings/student-cancel', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      bookingId,
+      reason: reason || null,
+    }),
+  });
 
-  if (error) throw error;
-  return data;
+  const result = await response.json();
+  if (!response.ok) {
+    throw new Error(result?.error || 'Failed to cancel booking');
+  }
+
+  return result as { success: boolean; status: string };
 }
 
 /**

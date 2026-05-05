@@ -31,7 +31,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
     const isTutor = group?.tutor_id === user.id;
 
-    let query = service
+    let query: any = service
       .from('group_members')
       .select('id, group_id, user_id, status, joined_at, profile:profiles(id, full_name, avatar_url, role)')
       .eq('group_id', groupId)
@@ -41,7 +41,21 @@ export async function GET(_req: NextRequest, { params }: Params) {
       query = query.eq('status', 'approved');
     }
 
-    const { data: members, error } = await query;
+    let { data: members, error } = await query;
+    if (error && isSchemaMismatch(error)) {
+      query = service
+        .from('group_members')
+        .select('id, group_id, user_id, status, joined_at, profile:profiles(id, full_name, avatar_url)')
+        .eq('group_id', groupId)
+        .order('joined_at', { ascending: true });
+      if (!isTutor) {
+        query = query.eq('status', 'approved');
+      }
+      ({ data: members, error } = await query);
+    }
+    if (error && isSchemaMismatch(error)) {
+      return NextResponse.json({ members: [] });
+    }
     if (error) throw error;
 
     return NextResponse.json({ members: members ?? [] });
@@ -66,7 +80,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
     // Check group exists and is not archived
     const { data: group } = await service
       .from('groups')
-      .select('id, tutor_id')
+      .select('id, tutor_id, name')
       .eq('id', groupId)
       .is('archived_at', null)
       .single();
@@ -123,13 +137,15 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
     // Notify tutor of new join request (non-critical)
     try {
+      const groupName = (group as { name?: string }).name ?? 'your class';
       await service.from('notifications').insert({
         user_id: group.tutor_id,
         type: 'booking_request',
-        title: 'New group join request',
-        message: 'A student has requested to join your group.',
-        link: `/groups`,
+        title: 'New join request',
+        message: `A student requested to join "${groupName}".`,
+        link: `/groups/${groupId}`,
         group_id: groupId,
+        metadata: { groupId, studentId: user.id },
       });
     } catch {
       // Non-critical: notifications table may use a different name

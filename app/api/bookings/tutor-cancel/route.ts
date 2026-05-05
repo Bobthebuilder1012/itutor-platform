@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { getServiceClient } from '@/lib/supabase/server';
+import { cancelSessionReminders } from '@/lib/reminders/scheduleReminders';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +12,10 @@ export async function POST(request: NextRequest) {
 
     if (!booking_id) {
       return NextResponse.json({ error: 'booking_id required' }, { status: 400 });
+    }
+
+    if (typeof reason !== 'string' || !reason.trim()) {
+      return NextResponse.json({ error: 'cancellation_reason_required' }, { status: 400 });
     }
 
     const cookieStore = cookies();
@@ -34,7 +39,7 @@ export async function POST(request: NextRequest) {
     const admin = getServiceClient();
     const { data: booking, error: bookingError } = await admin
       .from('bookings')
-      .select('id, tutor_id, status')
+      .select('id, tutor_id, student_id, status')
       .eq('id', booking_id)
       .single();
 
@@ -51,6 +56,7 @@ export async function POST(request: NextRequest) {
       .update({
         status: 'CANCELLED',
         last_action_by: 'tutor',
+        cancellation_reason: reason.trim(),
         updated_at: new Date().toISOString()
       })
       .eq('id', booking_id);
@@ -60,13 +66,18 @@ export async function POST(request: NextRequest) {
     }
 
     // Also update the session status if one exists
-    await admin
+    const { data: sessionRows } = await admin
       .from('sessions')
       .update({
         status: 'CANCELLED',
         updated_at: new Date().toISOString()
       })
-      .eq('booking_id', booking_id);
+      .eq('booking_id', booking_id)
+      .select('id');
+
+    for (const session of sessionRows ?? []) {
+      await cancelSessionReminders(session.id);
+    }
 
     if (reason) {
       await admin.from('booking_messages').insert({
@@ -83,6 +94,27 @@ export async function POST(request: NextRequest) {
       message_type: 'system',
       body: 'Booking cancelled by tutor'
     });
+
+    const { data: tutorProfile } = await admin
+      .from('profiles')
+      .select('full_name, display_name, username')
+      .eq('id', user.id)
+      .maybeSingle();
+    const tutorLabel =
+      tutorProfile?.display_name || tutorProfile?.full_name || tutorProfile?.username || 'Tutor';
+
+    try {
+      await admin.from('notifications').insert({
+        user_id: booking.student_id,
+        type: 'booking_cancelled',
+        title: 'Booking cancelled',
+        message: `Your booking with ${tutorLabel} has been cancelled.`,
+        link: `/student/bookings/${booking_id}`,
+        related_booking_id: booking_id,
+      });
+    } catch (e) {
+      console.error('tutor-cancel: notification insert failed', e);
+    }
 
     return NextResponse.json({ success: true, status: 'CANCELLED' }, { status: 200 });
   } catch (error) {

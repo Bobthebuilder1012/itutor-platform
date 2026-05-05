@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { isEmailManagementOnlyAdmin } from '@/lib/auth/adminAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,13 +38,20 @@ export async function GET(request: NextRequest) {
     // Check if user is a reviewer or admin
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('is_reviewer, role')
+      .select('is_reviewer, role, email')
       .eq('id', user.id)
       .single();
 
     if (profileError || (!profile?.is_reviewer && profile?.role !== 'admin')) {
       return NextResponse.json(
         { error: 'Access denied. Reviewer or admin role required.' },
+        { status: 403 }
+      );
+    }
+
+    if (profile.role === 'admin' && isEmailManagementOnlyAdmin(profile.email)) {
+      return NextResponse.json(
+        { error: 'Forbidden: this account is restricted to Email Management only' },
         { status: 403 }
       );
     }

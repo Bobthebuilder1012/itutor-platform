@@ -242,11 +242,23 @@ export default function ParentTutorProfilePage() {
     setBookingModalOpen(true);
   };
 
-  const handleBookingSuccess = (bookingId: string) => {
-    alert(`Booking request sent successfully for ${selectedChild?.full_name || selectedChild?.display_name}! The tutor will respond soon.`);
+  const handleBookingSuccess = (result: {
+    bookingId: string;
+    requiresPayment?: boolean;
+    status?: string;
+  }) => {
     setBookingModalOpen(false);
     setSelectedTimeSlot(null);
-    // Navigate to child's bookings page
+    if (result.requiresPayment) {
+      router.push(`/payments/checkout?bookingId=${result.bookingId}`);
+      return;
+    }
+
+    alert(
+      `Booking request sent successfully for ${
+        selectedChild?.full_name || selectedChild?.display_name
+      }! The tutor will respond soon.`
+    );
     router.push(`/parent/child/${selectedChild?.id}/bookings`);
   };
 

@@ -23,15 +23,23 @@ export interface CancelSessionResult {
  * Cancel a session as a tutor
  */
 export async function tutorCancelSession(params: CancelSessionParams): Promise<CancelSessionResult> {
-  const { data, error } = await supabase.rpc('tutor_cancel_session', {
-    p_session_id: params.sessionId,
-    p_cancellation_reason: params.cancellationReason,
-    p_reschedule_start: params.rescheduleStart || null,
-    p_reschedule_end: params.rescheduleEnd || null
+  const response = await fetch('/api/sessions/tutor-cancel', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sessionId: params.sessionId,
+      cancellationReason: params.cancellationReason,
+      rescheduleStart: params.rescheduleStart || null,
+      rescheduleEnd: params.rescheduleEnd || null,
+    }),
   });
 
-  if (error) throw error;
-  return data;
+  const result = await response.json();
+  if (!response.ok) {
+    throw new Error(result?.error || 'Failed to cancel session');
+  }
+
+  return result as CancelSessionResult;
 }
 
 /**

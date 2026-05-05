@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import UserAvatar from '@/components/UserAvatar';
 
 export interface Announcement {
   id: string;
@@ -27,10 +28,6 @@ function timeAgo(iso: string) {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   return `${days}d ago`;
-}
-
-function getInitials(name: string) {
-  return name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
 }
 
 export default function AnnouncementItem({
@@ -87,13 +84,12 @@ export default function AnnouncementItem({
 
       <div className="flex items-start gap-3">
         {/* Avatar */}
-        {announcement.author.avatar_url ? (
-          <img src={announcement.author.avatar_url} alt={announcement.author.full_name} className="w-8 h-8 rounded-full object-cover flex-shrink-0 mt-0.5" />
-        ) : (
-          <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">
-            {getInitials(announcement.author.full_name)}
-          </div>
-        )}
+        <UserAvatar
+          avatarUrl={announcement.author.avatar_url}
+          name={announcement.author.full_name}
+          size={32}
+          className="flex-shrink-0 mt-0.5"
+        />
 
         <div className="flex-1 min-w-0">
           {/* Header */}

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { LessonOffer } from '@/lib/types/lessonOffers';
 import { getDisplayName } from '@/lib/utils/displayName';
+import UserAvatar from '@/components/UserAvatar';
 
 type SentOffersListProps = {
   tutorId: string;
@@ -217,17 +218,7 @@ export default function SentOffersList({ tutorId }: SentOffersListProps) {
             >
               <div className="flex items-start gap-4">
                 {/* Student Avatar */}
-                {offer.student?.avatar_url ? (
-                  <img
-                    src={offer.student.avatar_url}
-                    alt={getDisplayName(offer.student)}
-                    className="w-12 h-12 rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
-                    {getDisplayName(offer.student).charAt(0)}
-                  </div>
-                )}
+                <UserAvatar avatarUrl={offer.student?.avatar_url} name={getDisplayName(offer.student)} size={48} />
 
                 <div className="flex-1">
                   {/* Student Info */}

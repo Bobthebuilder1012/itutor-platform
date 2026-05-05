@@ -8,7 +8,6 @@ import DashboardLayout from '@/components/DashboardLayout';
 import AvatarUploadModal from '@/components/AvatarUploadModal';
 import EditSubjectsModal from '@/components/student/EditSubjectsModal';
 import EditProfileModal from '@/components/EditProfileModal';
-import UniversalSearchBar from '@/components/UniversalSearchBar';
 import WelcomeHeader from '@/components/student/WelcomeHeader';
 import NextStepCard from '@/components/student/NextStepCard';
 import UpcomingSessionsCard from '@/components/student/UpcomingSessionsCard';
@@ -16,10 +15,18 @@ import OffersCard from '@/components/student/OffersCard';
 import ProfileSnapshotCard from '@/components/student/ProfileSnapshotCard';
 import LearningJourneyCard from '@/components/student/LearningJourneyCard';
 import StatsRow from '@/components/student/StatsRow';
+import type { SessionAttendanceState } from '@/components/student/StudentSessionAttendance';
 import { useAvatarUpload } from '@/lib/hooks/useAvatarUpload';
 import { Session } from '@/lib/types/database';
 import { Area } from '@/lib/utils/imageCrop';
 import { getDisplayName } from '@/lib/utils/displayName';
+
+type RecentTutor = {
+  tutorId: string;
+  name: string;
+  avatarUrl: string | null;
+  subjectLabel: string;
+};
 
 type EnrichedSession = Session & {
   tutor?: {
@@ -41,13 +48,15 @@ export default function StudentDashboard() {
   const searchParams = useSearchParams();
   const testMode = searchParams.get('test') === 'true';
   const [upcomingSessions, setUpcomingSessions] = useState<EnrichedSession[]>([]);
+  const [attendanceBySessionId, setAttendanceBySessionId] = useState<Record<string, SessionAttendanceState>>({});
   const [completedSessionsCount, setCompletedSessionsCount] = useState(0);
   const [totalHoursTutored, setTotalHoursTutored] = useState(0);
   const [loadingData, setLoadingData] = useState(true);
+  const [recentTutors, setRecentTutors] = useState<RecentTutor[]>([]);
   const [avatarModalOpen, setAvatarModalOpen] = useState(false);
   const [editSubjectsModalOpen, setEditSubjectsModalOpen] = useState(false);
   const [editProfileModalOpen, setEditProfileModalOpen] = useState(false);
-  const { uploadAvatar, uploading } = useAvatarUpload(profile?.id || '');
+  const { uploadAvatar, deleteAvatar, uploading } = useAvatarUpload(profile?.id || '');
 
   useEffect(() => {
     if (testMode) {
@@ -163,8 +172,25 @@ export default function StudentDashboard() {
         }));
 
         setUpcomingSessions(enrichedSessions);
+
+        const sessionIds = enrichedSessions.map((s) => s.id);
+        if (sessionIds.length > 0) {
+          const { data: attRows } = await supabase
+            .from('session_student_attendance')
+            .select('session_id, status, updated_at')
+            .in('session_id', sessionIds);
+          const next: Record<string, SessionAttendanceState> = {};
+          for (const r of attRows ?? []) {
+            const row = r as { session_id: string; status: 'attending' | 'not_attending'; updated_at: string };
+            next[row.session_id] = { status: row.status, updatedAt: row.updated_at };
+          }
+          setAttendanceBySessionId(next);
+        } else {
+          setAttendanceBySessionId({});
+        }
       } else {
         setUpcomingSessions([]);
+        setAttendanceBySessionId({});
       }
       
       if (completedRes.data) {
@@ -174,6 +200,50 @@ export default function StudentDashboard() {
           return acc + (session.duration_minutes || 0);
         }, 0);
         setTotalHoursTutored(Math.round((totalMinutes / 60) * 10) / 10);
+      }
+
+      const { data: bookingRows } = await supabase
+        .from('bookings')
+        .select('tutor_id, subject_id, updated_at')
+        .eq('student_id', profile.id)
+        .order('updated_at', { ascending: false })
+        .limit(40);
+
+      const orderedTutorIds: string[] = [];
+      const tutorSubject = new Map<string, string>();
+      const seenTutors = new Set<string>();
+      for (const row of bookingRows ?? []) {
+        const tid = row.tutor_id as string;
+        if (!tid || seenTutors.has(tid)) continue;
+        seenTutors.add(tid);
+        orderedTutorIds.push(tid);
+        tutorSubject.set(tid, row.subject_id as string);
+        if (orderedTutorIds.length >= 8) break;
+      }
+
+      if (orderedTutorIds.length > 0) {
+        const subjectIds = [...new Set([...tutorSubject.values()].filter(Boolean))];
+        const [{ data: tutorProfiles }, { data: subjectRows }] = await Promise.all([
+          supabase.from('profiles').select('id, full_name, display_name, username, avatar_url').in('id', orderedTutorIds),
+          subjectIds.length
+            ? supabase.from('subjects').select('id, name, label').in('id', subjectIds)
+            : Promise.resolve({ data: [] as { id: string; name: string; label: string | null }[], error: null }),
+        ]);
+        const subMap = new Map((subjectRows ?? []).map((s) => [s.id, s.label || s.name]));
+        const profMap = new Map((tutorProfiles ?? []).map((p) => [p.id, p]));
+        const recents: RecentTutor[] = orderedTutorIds.map((tid) => {
+          const p = profMap.get(tid);
+          const sid = tutorSubject.get(tid);
+          return {
+            tutorId: tid,
+            name: p ? getDisplayName(p) : 'Tutor',
+            avatarUrl: p?.avatar_url ?? null,
+            subjectLabel: sid ? subMap.get(sid) || 'Subject' : 'Subject',
+          };
+        });
+        setRecentTutors(recents.slice(0, 6));
+      } else {
+        setRecentTutors([]);
       }
     } catch (error) {
       console.error('Error fetching student data:', error);
@@ -202,84 +272,104 @@ export default function StudentDashboard() {
     }
   };
 
+  const handleRemoveAvatar = async () => {
+    if (!profile) return;
+    const result = await deleteAvatar();
+    if (!result.success) throw new Error(result.error || 'Failed to remove photo');
+    setAvatarModalOpen(false);
+    window.location.reload();
+  };
+
   return (
     <DashboardLayout role="student" userName={displayName}>
-      {/* Universal Search Bar */}
-      {!testMode && profile && (
-        <div className="px-4 sm:px-6 lg:px-8 pt-1 pb-2 bg-gradient-to-br from-gray-50 to-white">
-          <UniversalSearchBar
-            userRole="student"
-            onResultClick={(tutor) => {
-              router.push(`/student/tutors/${tutor.id}`);
-            }}
-          />
-        </div>
-      )}
-
-      {/* Main Content */}
-      <div className="px-4 pt-2 pb-6 sm:px-6 lg:px-8 space-y-6 max-w-6xl mx-auto">
+      <div className="max-w-7xl mx-auto space-y-5">
         {/* Test Mode Banner */}
         {testMode && (
-          <div className="bg-amber-50 border-l-4 border-amber-400 p-4 mb-6">
+          <div className="bg-amber-50 border-l-4 border-amber-400 p-4 rounded-xl">
             <div className="flex">
-              <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-amber-400" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <div className="ml-3">
-                <p className="text-sm text-amber-700">
-                  <strong>Test Mode:</strong> You're viewing the dashboard UI only. Real data requires authentication.
-                </p>
-              </div>
+              <svg className="h-5 w-5 text-amber-400 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+              <p className="ml-3 text-sm text-amber-700">
+                <strong>Test Mode:</strong> You&apos;re viewing the dashboard UI only. Real data requires authentication.
+              </p>
             </div>
           </div>
         )}
 
         {!testMode && profile && (
           <>
-            {/* Welcome Header */}
+            {/* Greeting */}
             <WelcomeHeader displayName={greetingName} />
 
-            {/* Profile Snapshot - Moved to top */}
-            <ProfileSnapshotCard
-              profile={profile}
-              onEditProfile={() => setEditProfileModalOpen(true)}
-              onEditSubjects={() => setEditSubjectsModalOpen(true)}
-              onChangeAvatar={() => setAvatarModalOpen(true)}
-            />
-
-            {/* Next Step Card */}
-            <NextStepCard
-              upcomingSessions={upcomingSessions}
-              subjects={profile.subjects_of_study}
-              onFindTutor={() => router.push('/student/find-tutors')}
-              onAddSubjects={() => setEditSubjectsModalOpen(true)}
-            />
-
-            {/* Upcoming Sessions */}
-            <UpcomingSessionsCard
-              sessions={upcomingSessions}
-              loading={loadingData}
-              onViewSession={() => router.push('/student/dashboard')}
-            />
-
-            {/* Offers Received */}
-            <OffersCard studentId={profile.id} />
-
-            {/* Learning Journey */}
-            <LearningJourneyCard
-              completedSessions={completedSessionsCount}
-              totalHours={totalHoursTutored}
-              subjects={profile.subjects_of_study?.length || 0}
-            />
-
-            {/* Stats Row */}
+            {/* Stats row — 3 cols */}
             <StatsRow
               completedSessions={completedSessionsCount}
               totalHours={totalHoursTutored}
               loading={loadingData}
+              subjectsCount={profile.subjects_of_study?.length || 0}
             />
+
+            {!loadingData && recentTutors.length > 0 && (
+              <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-bold text-gray-900">Recent tutors</h2>
+                  <span className="text-xs text-gray-500">From your bookings</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {recentTutors.map((t) => (
+                    <button
+                      key={t.tutorId}
+                      type="button"
+                      onClick={() => router.push(`/student/tutors/${t.tutorId}`)}
+                      className="flex items-center gap-3 rounded-xl border border-gray-200 p-3 text-left hover:border-itutor-green hover:bg-emerald-50/40 transition"
+                    >
+                      {t.avatarUrl ? (
+                        <img src={t.avatarUrl} alt="" className="h-12 w-12 rounded-full object-cover flex-shrink-0" />
+                      ) : (
+                        <div className="h-12 w-12 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center text-sm font-bold flex-shrink-0">
+                          {t.name.charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="font-semibold text-gray-900 truncate">{t.name}</p>
+                        <p className="text-xs text-gray-500 truncate">{t.subjectLabel}</p>
+                        <p className="text-xs text-itutor-green font-medium mt-1">Book again →</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Profile + Next Step — 2 cols */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              <ProfileSnapshotCard
+                profile={profile}
+                onEditProfile={() => setEditProfileModalOpen(true)}
+                onEditSubjects={() => setEditSubjectsModalOpen(true)}
+                onChangeAvatar={() => setAvatarModalOpen(true)}
+              />
+              <NextStepCard
+                upcomingSessions={upcomingSessions}
+                subjects={profile.subjects_of_study}
+                onFindTutor={() => router.push('/student/find-tutors')}
+                onAddSubjects={() => setEditSubjectsModalOpen(true)}
+              />
+            </div>
+
+            {/* Sessions + Offers — 2 cols */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              <UpcomingSessionsCard
+                sessions={upcomingSessions}
+                loading={loadingData}
+                onViewSession={() => router.push('/student/bookings')}
+                attendanceBySessionId={attendanceBySessionId}
+                onAttendanceRefresh={() => void fetchStudentData()}
+              />
+              <OffersCard studentId={profile.id} />
+            </div>
+
           </>
         )}
       </div>
@@ -290,6 +380,8 @@ export default function StudentDashboard() {
         onClose={() => setAvatarModalOpen(false)}
         onUpload={handleAvatarUpload}
         uploading={uploading}
+        hasAvatar={Boolean(profile?.avatar_url)}
+        onRemovePhoto={!testMode && profile ? handleRemoveAvatar : undefined}
       />
 
       {!testMode && profile && (

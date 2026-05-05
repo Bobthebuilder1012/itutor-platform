@@ -41,7 +41,7 @@ async function fetchGroups(search: string, filters: GroupFiltersState, page: num
 
   const res = await fetch(`/api/groups?${params.toString()}`, { cache: 'no-store' });
   const payload = await res.json();
-  if (!res.ok || payload?.success === false) throw new Error(payload?.error ?? 'Failed to load groups');
+  if (!res.ok || payload?.success === false) throw new Error(payload?.error ?? 'Failed to load lessons');
   return payload?.data ?? { groups: [], total: 0, page, limit: 9 };
 }
 
@@ -75,9 +75,9 @@ function InnerClient() {
       />
 
       {isLoading ? (
-        <p className="text-sm text-gray-600">Loading groups...</p>
+        <p className="text-sm text-gray-600">Loading lessons...</p>
       ) : groups.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-gray-300 p-4 text-sm text-gray-600">No groups found for your filters.</p>
+        <p className="rounded-xl border border-dashed border-gray-300 p-4 text-sm text-gray-600">No lessons found for your filters.</p>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {groups.map((group) => (

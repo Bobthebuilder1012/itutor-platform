@@ -41,7 +41,7 @@ export default function AnnouncementComposer({ groupId, onSent }: AnnouncementCo
       <textarea
         value={body}
         onChange={(e) => setBody(e.target.value)}
-        placeholder="Post a message or announcement to the group…"
+        placeholder="Post a message or announcement to the class…"
         rows={3}
         disabled={submitting}
         className="w-full resize-none border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"

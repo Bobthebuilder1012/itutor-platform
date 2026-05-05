@@ -97,6 +97,7 @@ export default function GroupDetailClient({
       </div>
 
       <EnrollmentModal
+        key={group.id}
         open={open}
         groupId={group.id}
         sessions={sessions.map((session) => ({ id: session.id, scheduled_start_at: session.scheduled_start_at }))}

@@ -8,6 +8,7 @@ import { getDisplayName } from '@/lib/utils/displayName';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import { getAvatarColor } from '@/lib/utils/avatarColors';
 import { format } from 'date-fns';
+import UserAvatar from '@/components/UserAvatar';
 
 interface VerifiedTutor {
   id: string;
@@ -173,13 +174,7 @@ export default function VerifiedTutorsPage() {
               >
                 <div className="flex items-start gap-4 mb-4">
                   {/* Avatar */}
-                  <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${getAvatarColor(tutor.id)} flex items-center justify-center text-white font-bold text-xl flex-shrink-0`}>
-                    {tutor.avatar_url ? (
-                      <img src={tutor.avatar_url} alt={getDisplayName(tutor)} className="w-full h-full rounded-full object-cover" />
-                    ) : (
-                      getDisplayName(tutor).charAt(0).toUpperCase()
-                    )}
-                  </div>
+                  <UserAvatar avatarUrl={tutor.avatar_url} name={getDisplayName(tutor)} size={64} />
 
                   {/* Info */}
                   <div className="flex-1 min-w-0">

@@ -40,7 +40,16 @@ export default function FlexibleTimePicker({
 
       // Generate 15-minute intervals
       let currentTime = new Date(windowStart);
-      
+      const now = new Date();
+      if (currentTime < now) {
+        const ms = now.getTime();
+        const rounded = Math.ceil(ms / (15 * 60 * 1000)) * (15 * 60 * 1000);
+        currentTime = new Date(rounded);
+        if (currentTime < windowStart) {
+          currentTime = new Date(windowStart);
+        }
+      }
+
       while (currentTime < windowEnd) {
         const timeString = currentTime.toTimeString().slice(0, 5); // HH:MM format
         const isoString = currentTime.toISOString();

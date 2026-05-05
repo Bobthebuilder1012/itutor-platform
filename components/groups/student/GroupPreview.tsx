@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { GroupWithTutor, GroupSessionWithOccurrences } from '@/lib/types/groups';
+import UserAvatar from '@/components/UserAvatar';
 import ProfilePictureRow from '../shared/ProfilePictureRow';
 import StatusBadge from '../shared/StatusBadge';
 
@@ -70,13 +71,7 @@ export default function GroupPreview({ group, onJoinRequested }: GroupPreviewPro
       <div>
         <h2 className="text-xl font-bold text-gray-900">{group.name}</h2>
         <div className="mt-2 flex items-center gap-3">
-          {group.tutor?.avatar_url ? (
-            <img src={group.tutor.avatar_url} alt={tutorName} className="w-9 h-9 rounded-full object-cover" />
-          ) : (
-            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-white font-semibold">
-              {tutorName.charAt(0)}
-            </div>
-          )}
+          <UserAvatar avatarUrl={group.tutor?.avatar_url} name={tutorName} size={36} />
           <div>
             <p className="text-sm font-medium text-gray-800">{tutorName}</p>
             {group.subject && <p className="text-xs text-gray-500">{group.subject}</p>}

@@ -1,116 +1,172 @@
 'use client';
 
-import LandingSearchBar from '@/components/landing/LandingSearchBar';
+import Link from 'next/link';
+
+const AVATAR_RINGS = [
+  { src: 'https://i.pravatar.cc/40?u=av1', ring: '#06b6d4' },
+  { src: 'https://i.pravatar.cc/40?u=av2', ring: '#f43f5e' },
+  { src: 'https://i.pravatar.cc/40?u=av3', ring: '#f97316' },
+  { src: 'https://i.pravatar.cc/40?u=av4', ring: '#a855f7' },
+  { src: 'https://i.pravatar.cc/40?u=av5', ring: '#3b82f6' },
+];
 
 export default function Hero() {
   return (
-    <section className="relative bg-green-50 pt-32 pb-32 sm:pt-36 md:pt-40 sm:pb-40 overflow-hidden min-h-screen flex items-center">
-      {/* Decorative Elements - iTutor Brand Colors */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {/* Top Right Circle - Teal */}
-        <div className="absolute top-4 right-4 sm:top-8 sm:right-12">
-          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-teal-200/70"></div>
-        </div>
-        
-        {/* Bottom Left Circle - Cyan */}
-        <div className="absolute bottom-4 left-4 sm:bottom-8 sm:left-12">
-          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-cyan-200/70"></div>
-        </div>
-        
-        {/* Top Left Circle - Emerald */}
-        <div className="absolute top-16 left-2 sm:top-20 sm:left-8">
-          <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-emerald-200/65"></div>
-        </div>
-        
-        {/* Bottom Right Circle - Light Green */}
-        <div className="absolute bottom-16 right-2 sm:bottom-20 sm:right-8">
-          <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-green-200/65"></div>
-        </div>
-        
-        {/* Top Far Left Circle - Mint */}
-        <div className="absolute top-1/4 left-0 -translate-x-1/4 sm:left-2">
-          <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-full bg-teal-100/70"></div>
-        </div>
-        
-        {/* Top Far Right Circle - Sky Blue */}
-        <div className="absolute top-1/3 right-0 translate-x-1/4 sm:right-2">
-          <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-full bg-sky-200/70"></div>
-        </div>
-        
-        {/* Additional Small Dots - All at edges */}
-        {/* Top Edge Small Dot - Emerald */}
-        <div className="absolute top-12 right-1/4 sm:top-16">
-          <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-emerald-300/60"></div>
-        </div>
-        
-        {/* Right Edge Small Dot - Cyan */}
-        <div className="absolute top-2/3 right-4 sm:right-8">
-          <div className="w-5 h-5 sm:w-7 sm:h-7 rounded-full bg-cyan-300/65"></div>
-        </div>
-        
-        {/* Bottom Edge Dot - Teal */}
-        <div className="absolute bottom-8 right-1/3 sm:bottom-12">
-          <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-full bg-teal-300/70"></div>
-        </div>
-        
-        {/* Left Edge Small Dot - Green */}
-        <div className="absolute top-3/4 left-2 sm:left-6">
-          <div className="w-4 h-4 sm:w-6 sm:h-6 rounded-full bg-green-300/60"></div>
-        </div>
-        
-        {/* Bottom Far Right Tiny Dot */}
-        <div className="absolute bottom-1/3 right-16 sm:right-24">
-          <div className="w-3 h-3 sm:w-4 sm:h-4 rounded-full bg-teal-400/60"></div>
-        </div>
-        
-        {/* Top Far Left Tiny Dot */}
-        <div className="absolute top-1/2 left-8 sm:left-16">
-          <div className="w-3 h-3 sm:w-5 sm:h-5 rounded-full bg-emerald-400/60"></div>
-        </div>
-      </div>
+    <section className="relative flex flex-col bg-transparent">
 
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full">
-        <div className="max-w-4xl mx-auto text-center">
-          {/* Main Heading */}
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 mb-6 leading-tight">
-            Search for{' '}
-            <span className="text-transparent bg-gradient-to-r from-itutor-green via-emerald-600 to-green-700 bg-clip-text text-4xl sm:text-5xl lg:text-6xl">
-              Caribbean iTutors
-            </span>
+      {/* ── MAIN HERO ── */}
+      <div className="container relative z-10 mx-auto flex w-full flex-col items-center gap-14 px-6 pb-4 pt-12 lg:flex-row lg:items-center lg:justify-between lg:gap-8 lg:px-14 lg:pt-16 xl:px-24">
+
+        {/* ──── LEFT ──── */}
+        <div className="flex flex-col items-start w-full max-w-[576px]">
+
+          {/* Trust badge */}
+          <div
+            className="mb-7 flex items-center gap-2 rounded-full px-5 py-2.5"
+            style={{ background: 'rgba(255,255,255,0.65)', border: '1px solid rgba(255,255,255,0.9)', backdropFilter: 'blur(8px)' }}
+          >
+            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" style={{ boxShadow: '0 0 6px rgba(34,197,94,0.9)' }} />
+            <span className="text-[16px] font-semibold text-gray-700">Caribbean&apos;s No. 1 Tutoring Platform</span>
+          </div>
+
+          {/* Headline */}
+          <h1 className="mb-6 font-extrabold leading-[1.08]" style={{ fontSize: 'clamp(48px,6.6vw,82px)', letterSpacing: '-0.03em' }}>
+            <span className="text-[#0a0f0d] block">Unlock Your</span>
+            <span className="text-[#22c55e] block">Academic Potential</span>
           </h1>
-          
-          <p className="text-base sm:text-lg text-gray-700 mb-10 max-w-2xl mx-auto leading-relaxed font-medium">
-            Expert tutoring for CSEC & CAPE. Search by subject to find verified educators.
+
+          {/* Subtitle */}
+          <p className="mb-10 max-w-[480px] text-[19px] leading-relaxed text-[#374151]">
+            Connect with verified Caribbean tutors for CSEC, CAPE &amp; beyond. Personalized 1-on-1 sessions that turn struggles into strengths.
           </p>
 
-          {/* Search Bar - Featured */}
-          <div className="max-w-2xl mx-auto mb-16">
-            <LandingSearchBar />
+          {/* Buttons */}
+          <div className="mb-10 flex flex-wrap items-center gap-4">
+            <Link
+              href="/signup"
+              className="inline-flex items-center gap-2 rounded-full px-9 py-4 text-[18px] font-bold text-white transition-all hover:opacity-90 hover:-translate-y-0.5"
+              style={{ background: '#16a34a', boxShadow: '0 4px 20px rgba(22,163,74,0.4)' }}
+            >
+              Find a Tutor →
+            </Link>
+            <Link
+              href="/signup"
+              className="inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white px-9 py-4 text-[18px] font-bold text-[#0a0f0d] transition-all hover:-translate-y-0.5 hover:shadow-md"
+            >
+              Become a Tutor
+            </Link>
           </div>
 
-          {/* Trust Indicators */}
-          <div className="flex flex-wrap items-center justify-center gap-6 text-gray-700 text-sm sm:text-base font-medium">
-            <div className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-full shadow-md border border-gray-200">
-              <svg className="w-5 h-5 text-itutor-green" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-              <span>Verified iTutors</span>
+          {/* Avatar row + rating */}
+          <div className="flex items-center gap-5">
+            <div className="flex -space-x-3">
+              {AVATAR_RINGS.map((av, i) => (
+                <div
+                  key={i}
+                  className="h-11 w-11 rounded-full p-[2px] flex-shrink-0"
+                  style={{ background: av.ring, boxShadow: '0 0 0 2px white' }}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={av.src} alt="student" width={44} height={44} className="h-full w-full rounded-full object-cover" />
+                </div>
+              ))}
             </div>
-            <div className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-full shadow-md border border-gray-200">
-              <svg className="w-5 h-5 text-itutor-green" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-              <span>CSEC & CAPE Focused</span>
+            <div>
+              <div className="flex items-center gap-1">
+                <span className="text-amber-400 text-base tracking-tight">★★★★★</span>
+                <span className="font-bold text-[18px] text-[#0a0f0d] ml-1">4.9</span>
+              </div>
+              <p className="text-[14px] text-gray-500">from <strong>100+</strong> student &amp; parent reviews</p>
             </div>
-            <div className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-full shadow-md border border-gray-200">
-              <svg className="w-5 h-5 text-itutor-green" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-              <span>Caribbean Curriculum</span>
+          </div>
+        </div>
+
+        {/* ──── RIGHT — Illustration card ──── */}
+        <div className="relative w-full max-w-[624px] flex-shrink-0 lg:max-w-[600px] xl:max-w-[636px]">
+
+          {/* Floating review card — above the main card */}
+          <div
+            className="absolute -top-7 left-4 z-20 w-[264px] rounded-2xl bg-white p-4 shadow-xl"
+            style={{ border: '1px solid rgba(0,0,0,0.06)' }}
+          >
+            <div className="flex items-center gap-2.5 mb-2.5">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/assets/mr-ramdeen.png" alt="Mr. Ramdeen" width={38} height={38} className="h-10 w-10 rounded-full object-cover flex-shrink-0" />
+              <div>
+                <p className="text-[14px] font-bold text-gray-900 leading-tight">Mr. Ramdeen</p>
+                <p className="text-[12px] text-gray-400">Parent · Chaguanes</p>
+              </div>
+            </div>
+            <div className="text-amber-400 text-[13px] mb-2">★★★★★</div>
+            <p className="text-[13px] text-gray-600 leading-snug">
+              My daughter was pulling a 3 on her mocks. Weeks after joining iTutor, she came home with a Grade I — straight A&apos;s on the profile. Worth every cent.
+            </p>
+          </div>
+
+          {/* Main illustration card */}
+          <div
+            className="relative rounded-3xl overflow-hidden mt-10"
+            style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.14)' }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/assets/hero-student.png"
+              alt="Student tutoring session"
+              className="w-full h-full object-cover"
+              style={{ minHeight: 336, maxHeight: 420 }}
+            />
+          </div>
+
+          {/* 150+ Verified iTutors badge */}
+          <div
+            className="absolute right-0 top-24 z-20 rounded-2xl bg-white px-6 py-3.5 text-center shadow-xl translate-x-4"
+            style={{ border: '1px solid rgba(0,0,0,0.06)' }}
+          >
+            <p className="text-[30px] font-extrabold text-[#0a0f0d] leading-tight">150+</p>
+            <p className="text-[13px] font-semibold text-gray-500 mt-0.5">Verified iTutors</p>
+          </div>
+
+          {/* 94% pass rate badge */}
+          <div
+            className="absolute right-0 bottom-16 z-20 rounded-2xl bg-white px-5 py-3 shadow-xl translate-x-4 flex items-center gap-2.5"
+            style={{ border: '1px solid rgba(0,0,0,0.06)' }}
+          >
+            <span className="text-2xl">🏆</span>
+            <div>
+              <p className="text-[16px] font-extrabold text-[#0a0f0d] leading-tight">94% pass rate</p>
+              <p className="text-[12px] text-gray-500">Students scoring Grade I–II</p>
             </div>
           </div>
         </div>
       </div>
+
+      {/* ── STATS BAR ── */}
+      <div
+        className="relative z-10 mx-4 mt-12 mb-1 rounded-3xl px-10 py-7 2xl:mx-10"
+        style={{
+          background: 'rgba(255,255,255,0.75)',
+          border: '1px solid rgba(255,255,255,0.9)',
+          backdropFilter: 'blur(16px)',
+          boxShadow: '0 4px 24px rgba(0,0,0,0.06)',
+        }}
+      >
+        <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-gray-200 text-center">
+          {[
+            { number: '1,000', plus: '+', label: 'Active Students',    plusColor: '#22c55e' },
+            { number: '1,000', plus: '+', label: 'Sessions Delivered', plusColor: '#22c55e' },
+            { number: '25',    plus: '+', label: 'Subjects Covered',   plusColor: '#22c55e' },
+            { number: '4.9',   plus: '★', label: 'Average Rating',     plusColor: '#f59e0b' },
+          ].map(s => (
+            <div key={s.label} className="px-5 py-1.5">
+              <p className="text-[34px] font-extrabold text-[#0a0f0d] leading-tight">
+                {s.number}<span style={{ color: s.plusColor }}>{s.plus}</span>
+              </p>
+              <p className="text-[16px] text-gray-500 mt-0.5">{s.label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
     </section>
   );
 }

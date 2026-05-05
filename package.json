@@ -3,16 +3,19 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "cross-env NODE_PATH=./node_modules next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "staging:env:check": "npx ts-node scripts/validate-staging-env.ts",
     "communities:check": "npx ts-node scripts/check-subject-communities-migration.ts",
     "communities:migrate": "npx ts-node scripts/run-migration-088.ts",
     "stream:migrate": "npx ts-node scripts/run-migration-092.ts",
+    "migrate:097": "node scripts/run-migration-097.js",
     "seed:groups": "npx ts-node prisma/seeds/groupSessions.seed.ts"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@heroicons/react": "^2.2.0",
     "@react-email/components": "^1.0.12",
     "@supabase/auth-helpers-nextjs": "^0.15.0",
@@ -38,6 +41,7 @@
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "autoprefixer": "^10.0.1",
+    "cross-env": "^10.1.0",
     "eslint": "^8",
     "eslint-config-next": "14.0.4",
     "pg": "^8.19.0",

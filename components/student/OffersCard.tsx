@@ -34,27 +34,40 @@ export default function OffersCard({ studentId }: OffersCardProps) {
     }
   }
 
+  const cardBase = 'bg-white border border-gray-100 rounded-2xl p-5 sm:p-6 shadow-sm scroll-mt-6';
+
+  const cardHeader = (
+    <div className="flex items-center gap-3 mb-5">
+      <div className="w-8 h-8 rounded-xl bg-itutor-green/10 text-itutor-green flex items-center justify-center">
+        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+        </svg>
+      </div>
+      <h2 className="text-base font-bold text-gray-900">Offers Received</h2>
+    </div>
+  );
+
   if (loading) {
     return (
-      <div id="lesson-offers" className="bg-white border-2 border-gray-200 rounded-2xl p-8 shadow-md scroll-mt-6">
-        <h2 className="text-2xl font-bold text-gray-900 mb-4">Offers Received</h2>
-        <p className="text-gray-600">Loading offers...</p>
+      <div id="lesson-offers" className={cardBase}>
+        {cardHeader}
+        <p className="text-sm text-gray-500">Loading offers…</p>
       </div>
     );
   }
 
   if (!hasOffers) {
     return (
-      <div id="lesson-offers" className="bg-white border-2 border-gray-200 rounded-2xl p-8 shadow-md scroll-mt-6">
-        <h2 className="text-2xl font-bold text-gray-900 mb-6">Offers Received</h2>
-        <div className="text-center py-8">
-          <div className="bg-gray-100 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-4">
-            <svg className="h-10 w-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+      <div id="lesson-offers" className={cardBase}>
+        {cardHeader}
+        <div className="flex flex-col items-center justify-center py-8 text-center">
+          <div className="w-14 h-14 bg-gray-50 border border-gray-100 rounded-2xl flex items-center justify-center mb-4">
+            <svg className="h-6 w-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
             </svg>
           </div>
-          <p className="text-gray-700 mb-2">No offers right now</p>
-          <p className="text-gray-500">When an iTutor reaches out, you'll see it here.</p>
+          <h4 className="text-sm font-semibold text-gray-900 mb-1">No offers yet</h4>
+          <p className="text-xs text-gray-500 max-w-[180px] leading-relaxed">When an iTutor reaches out, you'll see it here.</p>
         </div>
       </div>
     );

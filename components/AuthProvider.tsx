@@ -3,6 +3,10 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
+import {
+  getAdminHomePath,
+  isEmailManagementOnlyAdmin,
+} from '@/lib/auth/adminAccess';
 
 /**
  * Auth provider that checks for existing session on mount
@@ -20,6 +24,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { data: { session } } = await supabase.auth.getSession();
         
         if (session) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .maybeSingle();
+
+          const effectiveEmail = session.user.email || profile?.email || null;
+
+          if (isEmailManagementOnlyAdmin(effectiveEmail) && pathname !== '/admin/emails') {
+            router.replace('/admin/emails');
+            return;
+          }
+
           // User has valid session - check which page they're on
           const publicPages = ['/login', '/signup', '/forgot-password', '/reset-password'];
           const isPublicAuthPage = publicPages.includes(pathname) || pathname.startsWith('/verify-');
@@ -34,29 +51,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           // If user is on home page or other public auth pages, redirect to dashboard
           if (pathname === '/' || isPublicAuthPage) {
-            // Get user role and redirect to appropriate dashboard
-            const { data: profile } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', session.user.id)
-              .maybeSingle();
-
             if (profile) {
               // Keep loading state active during redirect to prevent flash
-              if (profile.role === 'admin') {
-                router.push('/admin/dashboard');
+              if (isEmailManagementOnlyAdmin(effectiveEmail)) {
+                router.replace('/admin/emails');
+                return;
+              } else if (profile.role === 'admin') {
+                router.replace(getAdminHomePath(effectiveEmail));
                 return; // Don't set loading to false - let the redirect happen
               } else if (profile.is_reviewer) {
-                router.push('/reviewer/dashboard');
+                router.replace('/reviewer/dashboard');
                 return;
               } else if (profile.role === 'tutor') {
-                router.push('/tutor/dashboard');
+                router.replace('/tutor/dashboard');
                 return;
               } else if (profile.role === 'student') {
-                router.push('/student/dashboard');
+                router.replace('/student/dashboard');
                 return;
               } else if (profile.role === 'parent') {
-                router.push('/parent/dashboard');
+                router.replace('/parent/dashboard');
                 return;
               }
             }

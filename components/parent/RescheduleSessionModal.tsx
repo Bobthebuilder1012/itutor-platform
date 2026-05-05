@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { supabase } from '@/lib/supabase/client';
 import TutorCalendarWidget from '@/components/booking/TutorCalendarWidget';
 
 interface RescheduleSessionModalProps {
@@ -59,77 +58,24 @@ export default function RescheduleSessionModal({
 
     setSubmitting(true);
     try {
-      // Calculate new end time based on duration
-      const startDate = new Date(selectedStartAt);
-      const endDate = new Date(startDate.getTime() + duration * 60000);
-      const calculatedEndAt = endDate.toISOString();
-
-      // First, get the session to find the tutor ID
-      const { data: session, error: sessionFetchError } = await supabase
-        .from('sessions')
-        .select('tutor_id, student_id')
-        .eq('id', sessionId)
-        .single();
-
-      if (sessionFetchError) throw sessionFetchError;
-
-      // Update session with new time
-      const { error: updateError } = await supabase
-        .from('sessions')
-        .update({
-          scheduled_start_at: selectedStartAt,
-          scheduled_end_at: calculatedEndAt,
-          duration_minutes: duration,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', sessionId);
-
-      if (updateError) throw updateError;
-
-      // Notify tutor of reschedule
-      const formattedDate = new Date(selectedStartAt).toLocaleString('en-US', {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit'
+      const response = await fetch('/api/sessions/reschedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId,
+          scheduledStartAt: selectedStartAt,
+          durationMinutes: duration,
+          reason: rescheduleReason || null,
+          tutorName,
+          studentName,
+          subjectName,
+        }),
       });
 
-      const reasonText = rescheduleReason ? ` Reason: ${rescheduleReason}` : '';
-
-      const { error: notificationError } = await supabase
-        .from('notifications')
-        .insert({
-          user_id: session.tutor_id,
-          type: 'session_rescheduled',
-          title: 'Session Rescheduled',
-          message: `A parent has rescheduled ${studentName}'s ${subjectName} session to ${formattedDate} (${duration} minutes).${reasonText}`,
-          link: `/tutor/dashboard`,
-          created_at: new Date().toISOString()
-        });
-
-      if (notificationError) {
-        console.error('Failed to create notification:', notificationError);
-        // Don't throw - reschedule was successful even if notification failed
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result?.error || 'Failed to reschedule session');
       }
-
-      // Also notify the student
-      const { error: studentNotificationError } = await supabase
-        .from('notifications')
-        .insert({
-          user_id: session.student_id,
-          type: 'session_rescheduled',
-          title: 'Session Rescheduled',
-          message: `Your ${subjectName} session with ${tutorName} has been rescheduled to ${formattedDate} (${duration} minutes).${reasonText}`,
-          link: `/student/dashboard`,
-          created_at: new Date().toISOString()
-        });
-
-      if (studentNotificationError) {
-        console.error('Failed to create student notification:', studentNotificationError);
-      }
-
-      // TODO: Create new meeting link with video provider if needed
 
       alert(`Session rescheduled! New time: ${new Date(selectedStartAt).toLocaleString()}`);
       onSuccess();

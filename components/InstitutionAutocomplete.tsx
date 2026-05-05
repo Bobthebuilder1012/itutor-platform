@@ -147,7 +147,7 @@ export default function InstitutionAutocomplete({
             placeholder={placeholder}
             disabled={disabled}
             required={required && !selectedInstitution && !(allowNoneOption && noneExplicit)}
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none transition"
+            className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 focus:outline-none transition placeholder-gray-400"
           />
 
           {/* Loading indicator */}

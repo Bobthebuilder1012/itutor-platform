@@ -10,6 +10,7 @@ import { getDisplayName } from '@/lib/utils/displayName';
 import type { ConversationWithParticipant } from '@/lib/types/notifications';
 import { getRelativeTime } from '@/lib/utils/calendar';
 import { getAvatarColor } from '@/lib/utils/avatarColors';
+import UserAvatar from '@/components/UserAvatar';
 
 export default function StudentMessagesPage() {
   const { profile, loading: profileLoading } = useProfile();
@@ -192,13 +193,7 @@ export default function StudentMessagesPage() {
                   <div className="flex items-center gap-4">
                     {/* Avatar */}
                     <div className="relative flex-shrink-0">
-                      <div className={`w-14 h-14 rounded-full bg-gradient-to-br ${getAvatarColor(otherUser?.id || '')} flex items-center justify-center text-white font-bold text-xl shadow-md`}>
-                        {otherUser?.avatar_url ? (
-                          <img src={otherUser.avatar_url} alt={getDisplayName(otherUser)} className="w-full h-full rounded-full object-cover" />
-                        ) : (
-                          getDisplayName(otherUser).charAt(0).toUpperCase()
-                        )}
-                      </div>
+                      <UserAvatar avatarUrl={otherUser?.avatar_url} name={getDisplayName(otherUser)} size={56} />
                       {hasUnread && (
                         <div className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-lg">
                           {conversation.unread_count > 9 ? '9+' : conversation.unread_count}

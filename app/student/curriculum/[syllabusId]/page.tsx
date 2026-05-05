@@ -7,6 +7,8 @@ import { useProfile } from '@/lib/hooks/useProfile';
 import { getSyllabusById } from '@/lib/services/curriculumService';
 import type { SyllabusWithSubject } from '@/lib/types/curriculum';
 import Link from 'next/link';
+import { getDisplayName } from '@/lib/utils/displayName';
+import { isSharedCurriculumRole } from '@/lib/utils/sharedCurriculumRoles';
 
 export default function SyllabusViewerPage() {
   const { profile, loading: profileLoading } = useProfile();
@@ -21,7 +23,7 @@ export default function SyllabusViewerPage() {
   useEffect(() => {
     if (profileLoading) return;
 
-    if (!profile || profile.role !== 'student') {
+    if (!profile || !isSharedCurriculumRole(profile.role)) {
       router.push('/login');
       return;
     }
@@ -63,10 +65,21 @@ export default function SyllabusViewerPage() {
     );
   }
 
-  const displayName = profile.full_name || profile.email?.split('@')[0] || 'Student';
+  if (!isSharedCurriculumRole(profile.role)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-itutor-green"></div>
+      </div>
+    );
+  }
+
+  const displayName = getDisplayName(profile);
 
   return (
-    <DashboardLayout role="student" userName={displayName}>
+    <DashboardLayout
+      role={profile.role as 'student' | 'tutor' | 'parent' | 'reviewer' | 'admin'}
+      userName={displayName}
+    >
       <div className="px-4 py-6 sm:px-0 max-w-7xl mx-auto">
         {/* Loading State */}
         {loading ? (

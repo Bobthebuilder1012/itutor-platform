@@ -135,42 +135,16 @@ export default function CompleteRoleModal({ isOpen, onClose }: CompleteRoleModal
         return;
       }
 
-      const { data: existingProfile } = await supabase
-        .from('profiles')
-        .select('id, full_name, email')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      const fallbackName =
-        user.user_metadata?.full_name ||
-        user.user_metadata?.name ||
-        (user.email ? user.email.split('@')[0] : null) ||
-        'User';
-      const fullName = existingProfile?.full_name || fallbackName;
-      const email = existingProfile?.email || user.email;
-
-      if (!email) throw new Error('Unable to determine account email for profile update.');
-
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .upsert(
-          {
-            id: user.id,
-            email,
-            full_name: fullName,
-            username: trimmedUsername,
-            role,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'id' }
-        );
-
-      if (profileError) throw profileError;
-
-      const { error: userError } = await supabase.auth.updateUser({
-        data: { role, username: trimmedUsername },
+      const response = await fetch('/api/profile/complete-role', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role, username: trimmedUsername }),
       });
-      if (userError) throw userError;
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+
+      if (!response.ok) {
+        throw new Error(payload.error || 'Unable to save your role. Please try again.');
+      }
 
       if (role === 'student') router.replace('/onboarding/student');
       else if (role === 'tutor') router.replace('/onboarding/tutor');

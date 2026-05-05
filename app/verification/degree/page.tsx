@@ -62,10 +62,8 @@ export default function VerificationDegreePage() {
 
   useEffect(() => {
     if (profileLoading) return;
-    if (!profile) {
-      router.push('/login');
-      return;
-    }
+    if (!profile) { router.push('/login'); return; }
+    if (profile.role === 'student') { router.push('/student/dashboard'); return; }
     refresh();
   }, [profile, profileLoading, router, refresh]);
 

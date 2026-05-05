@@ -41,7 +41,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
 
     if (isTutor) {
-      if (!['announcement', 'content', 'discussion'].includes(postType)) {
+      if (!['announcement', 'content', 'discussion', 'assignment'].includes(postType)) {
         return NextResponse.json({ error: 'Invalid post_type' }, { status: 400 });
       }
     } else {
@@ -52,19 +52,37 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     const authorRole = isTutor ? 'tutor' : 'student';
 
-    const { data: post, error: insertError } = await service
+    // Try inserting with assignment columns; fall back to base columns if migration not run.
+    const basePayload = {
+      group_id: groupId,
+      author_id: user.id,
+      author_role: authorRole,
+      post_type: postType,
+      message_body: messageBody,
+    };
+
+    const fullPayload = postType === 'assignment'
+      ? { ...basePayload, marks_available: body.marks_available ?? null, due_date: body.due_date ?? null }
+      : basePayload;
+
+    // First attempt: full payload + full select
+    let result = await service
       .from('stream_posts')
-      .insert({
-        group_id: groupId,
-        author_id: user.id,
-        author_role: authorRole,
-        post_type: postType,
-        message_body: messageBody,
-      })
-      .select('id, group_id, author_id, author_role, post_type, message_body, created_at, updated_at')
+      .insert(fullPayload)
+      .select('id, group_id, author_id, author_role, post_type, message_body, marks_available, due_date, created_at, updated_at')
       .single();
 
-    if (insertError) throw insertError;
+    if (result.error?.code === 'PGRST204') {
+      // Assignment columns not yet in DB (migration pending) — insert base-only payload
+      result = await service
+        .from('stream_posts')
+        .insert(basePayload)
+        .select('id, group_id, author_id, author_role, post_type, message_body, created_at, updated_at')
+        .single();
+    }
+
+    if (result.error) throw result.error;
+    const post = result.data as Record<string, unknown>;
 
     const attachmentUrls = body.attachment_urls ?? [];
     if (attachmentUrls.length > 0) {

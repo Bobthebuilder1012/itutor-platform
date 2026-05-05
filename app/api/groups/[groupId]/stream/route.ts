@@ -5,8 +5,12 @@ type Params = { params: Promise<{ groupId: string }> };
 
 async function ensureGroupAccess(groupId: string, userId: string) {
   const service = getServiceClient();
-  const { data: group } = await service.from('groups').select('tutor_id').eq('id', groupId).single();
-  if (!group) return { error: 'Group not found', status: 404 as const };
+  const { data: group, error: groupErr } = await service
+    .from('groups')
+    .select('tutor_id')
+    .eq('id', groupId)
+    .maybeSingle();
+  if (groupErr || !group) return { error: 'Group not found', status: 404 as const };
   const isTutor = group.tutor_id === userId;
   if (!isTutor) {
     const { data: membership } = await service
@@ -14,7 +18,7 @@ async function ensureGroupAccess(groupId: string, userId: string) {
       .select('status')
       .eq('group_id', groupId)
       .eq('user_id', userId)
-      .single();
+      .maybeSingle();
     if (!membership || membership.status !== 'approved') {
       return { error: 'Forbidden', status: 403 as const };
     }
@@ -45,16 +49,45 @@ export async function GET(req: NextRequest, { params }: Params) {
     const limit = Math.min(50, Math.max(10, parseInt(url.searchParams.get('limit') ?? '20', 10)));
     const offset = (page - 1) * limit;
 
-    const { data: posts, error: postsError } = await service
+    let rawPosts: unknown[] | null = null;
+
+    // Try full select including assignment columns
+    const fullPostsResult = await service
       .from('stream_posts')
-      .select(`
-        id, group_id, author_id, author_role, post_type, message_body, created_at, updated_at
-      `)
+      .select('id, group_id, author_id, author_role, post_type, message_body, marks_available, due_date, pinned_at, pin_expires_at, created_at, updated_at')
       .eq('group_id', groupId)
+      .order('pinned_at', { ascending: false })
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
-    if (postsError) throw postsError;
+    if (fullPostsResult.error?.code === 'PGRST204' || fullPostsResult.error?.message?.includes('marks_available') || fullPostsResult.error?.message?.includes('due_date') || fullPostsResult.error?.message?.includes('pinned_at')) {
+      // Migration not yet fully run — fall back to minimal base columns only
+      console.warn('[GET /api/groups/[groupId]/stream] extended columns missing, using minimal fallback select');
+      const fallbackResult = await service
+        .from('stream_posts')
+        .select('id, group_id, author_id, author_role, post_type, message_body, created_at, updated_at')
+        .eq('group_id', groupId)
+        .order('created_at', { ascending: false })
+        .range(offset, offset + limit - 1);
+      if (fallbackResult.error) {
+        console.warn('[GET /api/groups/[groupId]/stream] fallback posts query failed:', fallbackResult.error.message);
+        return NextResponse.json({ posts: [], pagination: { page, limit, has_more: false } });
+      }
+      rawPosts = fallbackResult.data;
+    } else if (fullPostsResult.error) {
+      console.warn('[GET /api/groups/[groupId]/stream] posts query failed, returning empty feed:', fullPostsResult.error.message);
+      return NextResponse.json({ posts: [], pagination: { page, limit, has_more: false } });
+    } else {
+      rawPosts = fullPostsResult.data;
+    }
+
+    const now = new Date().toISOString();
+    const posts = (rawPosts ?? []).map((p: any) => {
+      if (p.pinned_at && p.pin_expires_at && p.pin_expires_at < now) {
+        return { ...p, pinned_at: null, pin_expires_at: null };
+      }
+      return p;
+    });
 
     const postIds = (posts ?? []).map((p: { id: string }) => p.id);
     if (postIds.length === 0) {
@@ -74,12 +107,20 @@ export async function GET(req: NextRequest, { params }: Params) {
     const replyAuthorIds = [...new Set((repliesRes.data ?? []).map((r: { author_id: string }) => r.author_id))];
     const allAuthorIds = [...new Set([...authorIds, ...replyAuthorIds])];
 
-    const { data: profiles } = await service
-      .from('profiles')
-      .select('id, full_name, avatar_url')
-      .in('id', allAuthorIds);
+    let profiles: { id: string; full_name: string | null; avatar_url: string | null }[] = [];
+    if (allAuthorIds.length > 0) {
+      const profRes = await service
+        .from('profiles')
+        .select('id, full_name, avatar_url')
+        .in('id', allAuthorIds);
+      if (profRes.error) {
+        console.warn('[GET /api/groups/[groupId]/stream] profiles lookup failed:', profRes.error.message);
+      } else {
+        profiles = (profRes.data ?? []) as typeof profiles;
+      }
+    }
 
-    const profileMap = new Map((profiles ?? []).map((p: { id: string }) => [p.id, p]));
+    const profileMap = new Map(profiles.map((p) => [p.id, p]));
 
     const attachmentsByPost = new Map<string, unknown[]>();
     (attachmentsRes.data ?? []).forEach((a: unknown) => {

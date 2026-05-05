@@ -7,9 +7,10 @@ import { supabase } from '@/lib/supabase/client';
 interface MessagesIconProps {
   userId: string;
   role: 'student' | 'tutor' | 'parent' | 'reviewer' | 'admin';
+  variant?: 'dark' | 'light';
 }
 
-export default function MessagesIcon({ userId, role }: MessagesIconProps) {
+export default function MessagesIcon({ userId, role, variant = 'dark' }: MessagesIconProps) {
   const router = useRouter();
   const [unreadCount, setUnreadCount] = useState(0);
 
@@ -84,10 +85,14 @@ export default function MessagesIcon({ userId, role }: MessagesIconProps) {
     router.push(path);
   }
 
+  const btnCls = variant === 'light'
+    ? 'relative w-9 h-9 flex items-center justify-center text-gray-500 hover:text-itutor-green hover:bg-gray-50 hover:border-itutor-green border border-gray-200 rounded-xl bg-gray-50 transition-colors'
+    : 'relative p-1.5 sm:p-2 text-gray-400 hover:text-itutor-white transition-colors rounded-lg hover:bg-gray-800';
+
   return (
     <button
       onClick={handleClick}
-      className="relative p-1.5 sm:p-2 text-gray-400 hover:text-itutor-white transition-colors rounded-lg hover:bg-gray-800"
+      className={btnCls}
     >
       <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />

@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import type { StreamReplyWithAuthor } from '@/lib/types/groupStream';
-import { timeAgo, getInitials } from './timeAgo';
+import UserAvatar from '@/components/UserAvatar';
+import { timeAgo } from './timeAgo';
 
 interface ReplyThreadProps {
   postId: string;
@@ -56,17 +57,12 @@ function ReplyItem({
   return (
     <div className="mt-2" style={{ marginLeft: marginLeft ? `${marginLeft}px` : undefined }}>
       <div className="flex gap-2">
-        {reply.author?.avatar_url ? (
-          <img
-            src={reply.author.avatar_url}
-            alt={reply.author.full_name}
-            className="w-7 h-7 rounded-full object-cover flex-shrink-0"
-          />
-        ) : (
-          <div className="w-7 h-7 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center text-xs font-bold flex-shrink-0">
-            {getInitials(reply.author?.full_name ?? '?')}
-          </div>
-        )}
+        <UserAvatar
+          avatarUrl={reply.author?.avatar_url}
+          name={reply.author?.full_name}
+          size={28}
+          className="flex-shrink-0"
+        />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-semibold text-gray-800">{reply.author?.full_name ?? 'Unknown'}</span>

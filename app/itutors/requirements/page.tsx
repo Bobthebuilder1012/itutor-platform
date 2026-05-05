@@ -23,7 +23,7 @@ export default function ITutorRequirementsPage() {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link
-              href="/signup/tutor"
+              href="/signup"
               className="px-8 py-4 bg-itutor-black text-white font-bold rounded-xl hover:bg-gray-900 hover:scale-105 transition-all duration-300 shadow-lg"
             >
               Become an iTutor

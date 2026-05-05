@@ -14,10 +14,35 @@ interface PostComposerProps {
   onPosted: () => void;
 }
 
-const POST_TYPES: { value: StreamPostType; label: string }[] = [
-  { value: 'announcement', label: 'Announcement' },
-  { value: 'content', label: 'Learning content' },
-  { value: 'discussion', label: 'Discussion' },
+const TYPE_PILLS: { value: StreamPostType; label: string; icon: React.ReactNode; tip: string; tutorOnly: boolean }[] = [
+  {
+    value: 'announcement',
+    label: 'Announcement',
+    tip: 'Bold, pinnable. Students can react but replies are limited.',
+    tutorOnly: true,
+    icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 01-3.46 0" /></svg>,
+  },
+  {
+    value: 'discussion',
+    label: 'Discussion',
+    tip: 'Opens a full thread. Students can reply freely.',
+    tutorOnly: false,
+    icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" /></svg>,
+  },
+  {
+    value: 'content',
+    label: 'Learning Content',
+    tip: 'Share files, links, or study materials with your class.',
+    tutorOnly: true,
+    icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>,
+  },
+  {
+    value: 'assignment',
+    label: 'Assignment',
+    tip: 'Set a graded assignment. Students upload their papers directly.',
+    tutorOnly: true,
+    icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" /></svg>,
+  },
 ];
 
 const MAX_FILES = 10;
@@ -35,8 +60,12 @@ export default function PostComposer({
   const [messageBody, setMessageBody] = useState('');
   const [postType, setPostType] = useState<StreamPostType>(isTutor ? 'announcement' : 'discussion');
   const [attachments, setAttachments] = useState<CreateStreamPostInput['attachment_urls']>([]);
+  const [marksAvailable, setMarksAvailable] = useState<number | ''>('');
+  const [dueDate, setDueDate] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  const visiblePills = TYPE_PILLS.filter((p) => isTutor || !p.tutorOnly);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -48,7 +77,7 @@ export default function PostComposer({
       if (file.size > maxBytes) continue;
       next.push({
         file_name: file.name,
-        file_url: '', // will be set after upload
+        file_url: '',
         file_type: file.type || undefined,
         file_size_bytes: file.size,
         _file: file,
@@ -65,23 +94,20 @@ export default function PostComposer({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!messageBody.trim() && !(attachments?.length)) return;
+    if (postType === 'assignment' && (!marksAvailable || Number(marksAvailable) < 1)) {
+      setError('Marks available is required for assignments.');
+      return;
+    }
     setSubmitting(true);
     setError('');
     try {
       let attachmentUrls: CreateStreamPostInput['attachment_urls'] = [];
       const pending = attachments ?? [];
       const withFile = pending.filter((a) => (a as { _file?: File })._file) as Array<{
-        file_name: string;
-        file_url: string;
-        file_type?: string;
-        file_size_bytes?: number;
-        _file: File;
+        file_name: string; file_url: string; file_type?: string; file_size_bytes?: number; _file: File;
       }>;
       const alreadyUploaded = pending.filter((a) => !(a as { _file?: File })._file) as Array<{
-        file_name: string;
-        file_url: string;
-        file_type?: string;
-        file_size_bytes?: number;
+        file_name: string; file_url: string; file_type?: string; file_size_bytes?: number;
       }>;
       for (const a of withFile) {
         const up = await uploadStreamAttachment(currentUserId, groupId, a._file);
@@ -93,6 +119,10 @@ export default function PostComposer({
         post_type: postType,
         message_body: messageBody.trim() || '.',
         attachment_urls: attachmentUrls.length ? attachmentUrls : undefined,
+        ...(postType === 'assignment' && {
+          marks_available: Number(marksAvailable),
+          due_date: dueDate || undefined,
+        }),
       };
       const res = await fetch(`/api/groups/${groupId}/stream/post`, {
         method: 'POST',
@@ -106,6 +136,9 @@ export default function PostComposer({
       }
       setMessageBody('');
       setAttachments([]);
+      setMarksAvailable('');
+      setDueDate('');
+      setPostType(isTutor ? 'announcement' : 'discussion');
       onPosted();
     } catch {
       setError('Could not post. Try again.');
@@ -115,115 +148,121 @@ export default function PostComposer({
   };
 
   return (
-    <div className="border border-emerald-200 rounded-xl p-4 bg-emerald-50/80">
-      <div className="flex gap-3">
-        {authorAvatarUrl ? (
-          <img
-            src={authorAvatarUrl}
-            alt={authorName}
-            className="w-9 h-9 rounded-full object-cover flex-shrink-0"
-          />
-        ) : (
-          <div className="w-9 h-9 rounded-full bg-emerald-200 text-emerald-800 flex items-center justify-center text-sm font-bold flex-shrink-0">
-            {getInitials(authorName)}
+    <div className="bg-white border border-[#e4e8ee] rounded-[14px] p-[18px] mb-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+      <form onSubmit={handleSubmit}>
+        {/* Top: avatar + type pills */}
+        <div className="flex items-center gap-3 mb-3">
+          {authorAvatarUrl ? (
+            <img src={authorAvatarUrl} alt={authorName} className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
+          ) : (
+            <div className="w-9 h-9 rounded-full bg-[#0d9668] text-white flex items-center justify-center text-[12px] font-bold flex-shrink-0">
+              {getInitials(authorName)}
+            </div>
+          )}
+          <div className="flex gap-[5px] flex-wrap">
+            {visiblePills.map((p) => (
+              <button
+                key={p.value}
+                type="button"
+                onClick={() => setPostType(p.value)}
+                className={`group relative flex items-center gap-[5px] px-3.5 py-[6px] rounded-[20px] text-[12px] font-semibold border-[1.5px] transition-colors ${
+                  postType === p.value
+                    ? 'border-[#0d9668] bg-[#d1fae5] text-[#047857]'
+                    : 'border-[#e4e8ee] bg-white text-[#6b7280] hover:border-[#0d9668] hover:text-[#0d9668]'
+                }`}
+              >
+                {p.icon}
+                {p.label}
+                <span className="hidden group-hover:block absolute bottom-[calc(100%+8px)] left-1/2 -translate-x-1/2 bg-[#111827] text-white px-2.5 py-1.5 rounded-md text-[10px] font-medium whitespace-nowrap z-10 after:content-[''] after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-[5px] after:border-transparent after:border-t-[#111827]">
+                  {p.tip}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Textarea */}
+        <textarea
+          value={messageBody}
+          onChange={(e) => setMessageBody(e.target.value)}
+          placeholder={postType === 'assignment' ? 'Describe the assignment instructions...' : 'Share an announcement, start a discussion, or post learning content...'}
+          rows={3}
+          disabled={submitting}
+          className="w-full resize-y min-h-[72px] border border-[#e4e8ee] rounded-[10px] px-3.5 py-2.5 text-[13.5px] leading-[1.5] focus:outline-none focus:border-[#0d9668] focus:shadow-[0_0_0_3px_#d1fae5] disabled:opacity-50 placeholder:text-[#9ca3af] transition-all"
+        />
+
+        {/* Assignment extra fields */}
+        {postType === 'assignment' && (
+          <div className="mt-3 flex flex-col sm:flex-row gap-3 p-3 bg-[#f0fdf4] border border-[#bbf7d0] rounded-[10px]">
+            <div className="flex-1">
+              <label className="block text-[11px] font-semibold text-[#047857] mb-1">Marks available *</label>
+              <input
+                type="number"
+                min={1}
+                placeholder="e.g. 30"
+                value={marksAvailable}
+                onChange={(e) => setMarksAvailable(e.target.value === '' ? '' : Number(e.target.value))}
+                disabled={submitting}
+                className="w-full border border-[#e4e8ee] rounded-[8px] px-3 py-2 text-[13px] focus:outline-none focus:border-[#0d9668] focus:shadow-[0_0_0_3px_#d1fae5] disabled:opacity-50"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="block text-[11px] font-semibold text-[#047857] mb-1">Due date (optional)</label>
+              <input
+                type="datetime-local"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                disabled={submitting}
+                className="w-full border border-[#e4e8ee] rounded-[8px] px-3 py-2 text-[13px] focus:outline-none focus:border-[#0d9668] focus:shadow-[0_0_0_3px_#d1fae5] disabled:opacity-50"
+              />
+            </div>
           </div>
         )}
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold text-emerald-800 mb-2">Create a post</p>
-          <form onSubmit={handleSubmit} className="space-y-2">
-            {isTutor && (
-              <select
-                value={postType}
-                onChange={(e) => setPostType(e.target.value as StreamPostType)}
-                className="text-xs border border-emerald-200 rounded-lg px-2.5 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              >
-                {POST_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-            )}
-            <textarea
-              value={messageBody}
-              onChange={(e) => setMessageBody(e.target.value)}
-              placeholder={
-                isTutor
-                  ? 'Share an announcement, learning content, or start a discussion…'
-                  : 'Share something with your group…'
-              }
-              rows={3}
-              disabled={submitting}
-              className="w-full resize-none border border-emerald-200 bg-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
-            />
-            <div className="flex flex-col gap-2">
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                className="hidden"
-                onChange={handleFileChange}
-              />
-              <div className="flex items-center gap-2 flex-wrap">
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={submitting || (attachments?.length ?? 0) >= MAX_FILES}
-                  className="text-xs text-emerald-700 hover:text-emerald-800 font-medium flex items-center gap-1.5"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                  </svg>
-                  Add attachment
+
+        {/* Attachment list */}
+        {attachments && attachments.length > 0 && (
+          <ul className="flex flex-wrap gap-1.5 mt-2">
+            {attachments.map((a, i) => (
+              <li key={i} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-gray-200 bg-[#f5f7fa] text-xs">
+                <span className="truncate max-w-[140px]">{a.file_name}</span>
+                <button type="button" onClick={() => removeAttachment(i)} className="text-gray-400 hover:text-red-500" aria-label="Remove">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
-                {attachments && attachments.length > 0 && (
-                  <span className="text-xs text-gray-500">
-                    {attachments.length} file{attachments.length !== 1 ? 's' : ''} (max {MAX_FILES}, {MAX_FILE_SIZE_MB}MB each)
-                  </span>
-                )}
-              </div>
-              {attachments && attachments.length > 0 && (
-                <ul className="flex flex-wrap gap-1.5">
-                  {attachments.map((a, i) => (
-                    <li
-                      key={i}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-gray-200 bg-white text-xs"
-                    >
-                      <span className="truncate max-w-[140px]">{a.file_name}</span>
-                      <button
-                        type="button"
-                        onClick={() => removeAttachment(i)}
-                        className="text-gray-400 hover:text-red-500"
-                        aria-label="Remove"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <div className="flex items-center justify-between">
-              {error ? (
-                <p className="text-xs text-red-500">{error}</p>
-              ) : (
-                <span className="text-xs text-gray-400">
-                  {isTutor ? 'Announcements and content are tutor-only.' : 'Students can post discussions.'}
-                </span>
-              )}
-              <button
-                type="submit"
-                disabled={submitting || (!messageBody.trim() && !(attachments?.length))}
-                className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-              >
-                {submitting ? 'Posting…' : 'Post'}
-              </button>
-            </div>
-          </form>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {/* Bottom bar: tools + post */}
+        <div className="flex justify-between items-center mt-2.5">
+          <div className="flex gap-[2px]">
+            <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileChange} />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={submitting || (attachments?.length ?? 0) >= MAX_FILES}
+              className="w-8 h-8 rounded-[7px] flex items-center justify-center text-[#6b7280] hover:bg-[#f5f7fa] hover:text-[#0d9668] transition-colors disabled:opacity-40"
+              title="Attach file"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.49" /></svg>
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-[#6b7280]">
+              {isTutor ? 'Announcements and content are tutor-only.' : 'Students can post discussions.'}
+            </span>
+            <button
+              type="submit"
+              disabled={submitting || (!messageBody.trim() && !(attachments?.length)) || (postType === 'assignment' && (!marksAvailable || Number(marksAvailable) < 1))}
+              className="px-6 py-[9px] bg-[#0d9668] hover:bg-[#047857] disabled:opacity-35 disabled:cursor-not-allowed text-white rounded-[10px] text-[13px] font-semibold transition-colors"
+            >
+              {submitting ? 'Posting…' : 'Post'}
+            </button>
+          </div>
         </div>
-      </div>
+
+        {error && <p className="text-[11px] text-[#ef4444] mt-2">{error}</p>}
+      </form>
     </div>
   );
 }

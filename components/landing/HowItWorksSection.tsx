@@ -1,118 +1,130 @@
+const steps = [
+  {
+    number: '01',
+    title: 'Find Your iTutor',
+    description: 'Browse verified Caribbean tutors by subject, rating, and school. Filter to find your perfect match.',
+    icon: (
+      <svg width="32" height="32" fill="none" stroke="#7c3aed" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+        <circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/>
+      </svg>
+    ),
+    iconBg: '#ede9fe',
+    tag: '150+ verified tutors',
+  },
+  {
+    number: '02',
+    title: 'Book a Session',
+    description: 'Pick a time that fits your schedule. Sessions run on Google Meet or Zoom — no extra setup needed.',
+    icon: (
+      <svg width="32" height="32" fill="none" stroke="#db2777" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="18" rx="3"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+        <rect x="7" y="14" width="3" height="3" rx="0.5" fill="#db2777"/><rect x="14" y="14" width="3" height="3" rx="0.5" fill="#db2777"/>
+      </svg>
+    ),
+    iconBg: '#fce7f3',
+    tag: 'Flexible scheduling',
+  },
+  {
+    number: '03',
+    title: 'Learn & Grow',
+    description: 'Get personalized 1-on-1 tutoring built around your learning style, pace, and exam goals.',
+    icon: (
+      <svg width="32" height="32" fill="none" stroke="#16a34a" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+        <rect x="3" y="3" width="7" height="18" rx="1"/><rect x="14" y="3" width="7" height="18" rx="1"/>
+      </svg>
+    ),
+    iconBg: '#dcfce7',
+    tag: 'CSEC & CAPE Aligned',
+  },
+  {
+    number: '04',
+    title: 'Ace Your Exams',
+    description: 'Track progress, build confidence, and walk into your exam knowing you\'re ready.',
+    icon: (
+      <svg width="32" height="32" fill="none" stroke="#ea580c" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1" fill="#ea580c"/>
+        <line x1="12" y1="3" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="21"/><line x1="3" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="21" y2="12"/>
+      </svg>
+    ),
+    iconBg: '#ffedd5',
+    tag: '94% Grade I–II rate',
+  },
+];
+
 export default function HowItWorksSection() {
-  const steps = [
-    {
-      number: "01",
-      title: "Find Your iTutor",
-      description: "Browse verified iTutors by subject, rating, and school. Filter to find your perfect match.",
-      icon: "🔍",
-      color: "from-blue-500 to-cyan-500"
-    },
-    {
-      number: "02",
-      title: "Book a Session",
-      description: "Choose a time that works for you. Pick between Google Meet or Zoom for your online session.",
-      icon: "📅",
-      color: "from-purple-500 to-pink-500"
-    },
-    {
-      number: "03",
-      title: "Learn & Grow",
-      description: "Get personalized 1-on-1 tutoring tailored to your learning style and exam goals.",
-      icon: "📚",
-      color: "from-itutor-green to-emerald-500"
-    },
-    {
-      number: "04",
-      title: "Ace Your Exams",
-      description: "Track your progress, build confidence, and achieve the grades you deserve.",
-      icon: "🎯",
-      color: "from-orange-500 to-red-500"
-    }
-  ];
-
   return (
-    <section className="relative bg-gradient-to-b from-itutor-black via-gray-900 to-itutor-black py-20 sm:py-28 overflow-hidden">
-      {/* Circuit Pattern Background */}
-      <div className="absolute inset-0 opacity-10">
-        <div className="absolute inset-0" style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 304 304' width='304' height='304'%3E%3Cpath fill='%2310B981' fill-opacity='0.4' d='M44.1 224a5 5 0 1 1 0 2H0v-2h44.1zm160 48a5 5 0 1 1 0 2H82v-2h122.1zm57.8-46a5 5 0 1 1 0-2H304v2h-42.1zm0 16a5 5 0 1 1 0-2H304v2h-42.1zm6.2-114a5 5 0 1 1 0 2h-86.2a5 5 0 1 1 0-2h86.2zm-256-48a5 5 0 1 1 0 2H0v-2h12.1zm185.8 34a5 5 0 1 1 0-2h86.2a5 5 0 1 1 0 2h-86.2zM258 12.1a5 5 0 1 1-2 0V0h2v12.1zm-64 208a5 5 0 1 1-2 0v-54.2a5 5 0 1 1 2 0v54.2zm48-198.2V80h62v2h-64V21.9a5 5 0 1 1 2 0zm16 16V64h46v2h-48V37.9a5 5 0 1 1 2 0zm-128 96V208h16v12.1a5 5 0 1 1-2 0V210h-16v-76.1a5 5 0 1 1 2 0zm-5.9-21.9a5 5 0 1 1 0 2H114v48H85.9a5 5 0 1 1 0-2H112v-48h12.1zm-6.2 130a5 5 0 1 1 0-2H176v-74.1a5 5 0 1 1 2 0V242h-60.1zm-16-64a5 5 0 1 1 0-2H114v48h10.1a5 5 0 1 1 0 2H112v-48h-10.1zM66 284.1a5 5 0 1 1-2 0V274H50v30h-2v-32h18v12.1zM236.1 176a5 5 0 1 1 0 2H226v94h48v32h-2v-30h-48v-98h12.1zm25.8-30a5 5 0 1 1 0-2H274v44.1a5 5 0 1 1-2 0V146h-10.1zm-64 96a5 5 0 1 1 0-2H208v-80h16v-14.1a5 5 0 1 1 2 0V108h-18v82h-12.1zm86.2-210a5 5 0 1 1 0 2H272V0h2v32h10.1zM98 101.9V146H53.9a5 5 0 1 1 0-2H96v-42.1a5 5 0 1 1 2 0zM53.9 34a5 5 0 1 1 0-2H80V0h2v34H53.9zm60.1 3.9V66H82v64H69.9a5 5 0 1 1 0-2H80V64h32V37.9a5 5 0 1 1 2 0zM101.9 82a5 5 0 1 1 0-2H128V37.9a5 5 0 1 1 2 0V82h-28.1zm16-64a5 5 0 1 1 0-2H146v44.1a5 5 0 1 1-2 0V18h-26.1zm102.2 270a5 5 0 1 1 0 2H98v14h-2v-16h124.1zM242 149.9V160h16v34h-16v62h48v48h-2v-46h-48v-66h16v-30h-16v-12.1a5 5 0 1 1 2 0zM53.9 18a5 5 0 1 1 0-2H64V2H48V0h18v18H53.9zm112 32a5 5 0 1 1 0-2H192V0h50v2h-48v48h-28.1zm-48-48a5 5 0 0 1-9.8-2h2.07a3 3 0 1 0 5.66 0H178v34h-18V21.9a5 5 0 1 1 2 0V32h14V2h-58.1zm0 96a5 5 0 1 1 0-2H137l32-32h39V21.9a5 5 0 1 1 2 0V66h-40.17l-32 32H117.9z'/%3E%3C/svg%3E")`,
-        }}></div>
-      </div>
-      
-      {/* Animated Background */}
-      <div className="absolute inset-0">
-        <div className="absolute top-20 left-10 w-72 h-72 bg-itutor-green/10 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-20 right-10 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1.5s' }}></div>
-      </div>
-      
-      {/* Grid Pattern */}
-      <div className="absolute inset-0 opacity-5">
-        <div className="absolute inset-0" style={{
-          backgroundImage: `linear-gradient(#10B981 1px, transparent 1px), linear-gradient(90deg, #10B981 1px, transparent 1px)`,
-          backgroundSize: '50px 50px'
-        }}></div>
-      </div>
+    <section className="relative bg-transparent py-20 sm:py-28">
+      <div className="container relative z-10 mx-auto px-4 sm:px-6 lg:px-8">
 
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        {/* Section Header */}
-        <div className="text-center mb-16">
-          <h2 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-itutor-white mb-6">
+        {/* Header */}
+        <div className="mb-14 text-center">
+          <h2
+            className="mb-3 font-bold text-[#052e1a]"
+            style={{ fontSize: 'clamp(36px,5vw,60px)', letterSpacing: '-0.03em', lineHeight: '1.08' }}
+          >
             How It{' '}
-            <span className="text-transparent bg-gradient-to-r from-itutor-green to-emerald-400 bg-clip-text">
+            <span className="bg-gradient-to-r from-[#16a34a] to-[#22c55e] bg-clip-text text-transparent">
               Works
             </span>
           </h2>
-          <p className="text-xl text-itutor-muted max-w-2xl mx-auto">
-            Get started in minutes. Success in 4 simple steps.
+          <p className="mx-auto max-w-[520px] text-lg text-[#4b5563]">
+            From first search to final exam — a clear path to your best grades.
           </p>
         </div>
 
-        {/* Steps Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 max-w-7xl mx-auto">
+        {/* Cards */}
+        <div className="mx-auto grid max-w-6xl grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
           {steps.map((step, index) => (
-            <div
-              key={index}
-              className="relative group"
-            >
-              {/* Connector Line (hidden on mobile, shown on desktop between cards) */}
+            <div key={index} className="relative">
+
+              {/* Dashed connector */}
               {index < steps.length - 1 && (
-                <div className="hidden lg:block absolute top-20 -right-4 w-8 h-0.5 bg-gradient-to-r from-itutor-green/50 to-transparent"></div>
+                <div
+                  className="absolute -right-3 top-16 hidden w-6 lg:block"
+                  style={{ borderTop: '2px dashed #86efac', zIndex: 10 }}
+                />
               )}
 
-              <div className="bg-itutor-card border border-gray-800 rounded-2xl p-6 hover:border-itutor-green transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:shadow-itutor-green/20 h-full">
-                {/* Step Number */}
-                <div className={`inline-block px-4 py-1 rounded-full bg-gradient-to-r ${step.color} text-white font-bold text-sm mb-4`}>
+              <div className="relative h-full rounded-3xl bg-white/80 border border-gray-100 p-7 shadow-sm backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-md">
+
+                {/* Number badge */}
+                <div
+                  className="absolute -top-4 left-6 flex h-9 w-9 items-center justify-center rounded-full text-sm font-extrabold text-white shadow-md"
+                  style={{ background: 'linear-gradient(135deg,#22c55e,#16a34a)' }}
+                >
                   {step.number}
                 </div>
 
-                {/* Icon */}
-                <div className="text-6xl mb-4 group-hover:scale-110 transition-transform duration-300">
+                {/* Icon box */}
+                <div
+                  className="mb-5 mt-3 inline-flex h-16 w-16 items-center justify-center rounded-2xl"
+                  style={{ background: step.iconBg }}
+                >
                   {step.icon}
                 </div>
 
-                {/* Content */}
-                <h3 className="text-2xl font-bold text-itutor-white mb-3 group-hover:text-itutor-green transition-colors">
+                {/* Title */}
+                <h3 className="mb-2.5 text-[18px] font-extrabold tracking-tight text-[#0a0f0d]">
                   {step.title}
                 </h3>
-                <p className="text-itutor-muted leading-relaxed">
+
+                {/* Description */}
+                <p className="mb-5 text-[14px] leading-relaxed text-[#6b7280]">
                   {step.description}
                 </p>
+
+                {/* Tag */}
+                <div className="flex items-center gap-1.5 text-[13px] font-semibold text-[#16a34a]">
+                  <svg width="14" height="14" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                  {step.tag}
+                </div>
               </div>
             </div>
           ))}
-        </div>
-
-        {/* CTA */}
-        <div className="text-center mt-16">
-          <a
-            href="/signup"
-            className="inline-block px-10 py-4 bg-gradient-to-r from-itutor-green to-emerald-500 text-itutor-black font-bold rounded-xl hover:shadow-lg hover:shadow-itutor-green/50 hover:scale-105 transition-all duration-300"
-          >
-            Start Learning Today
-          </a>
         </div>
       </div>
     </section>
   );
 }
-

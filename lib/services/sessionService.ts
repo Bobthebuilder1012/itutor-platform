@@ -5,6 +5,7 @@
 // USE SERVICE ROLE CLIENT FOR SECURE OPERATIONS
 
 import { getServiceClient } from '@/lib/supabase/server';
+import { scheduleSessionReminders } from '@/lib/reminders/scheduleReminders';
 import type { Session, SessionRules } from '@/lib/types/sessions';
 import { calculateSessionRules } from '@/lib/types/sessions';
 import { calculateCommission } from '@/lib/utils/commissionCalculator';
@@ -62,11 +63,27 @@ export async function createSessionForBooking(bookingId: string): Promise<Sessio
           .eq('id', existing.id)
           .select()
           .single();
-        return (updatedSession as Session) || existing;
+        const nextSession = (updatedSession as Session) || existing;
+        try {
+          await scheduleSessionReminders(nextSession);
+        } catch (reminderError) {
+          console.error('⚠️ Failed to schedule reminders for existing session:', reminderError);
+        }
+        return nextSession;
       } catch (err) {
         console.error('❌ Retry meeting creation failed:', err);
+        try {
+          await scheduleSessionReminders(existing);
+        } catch (reminderError) {
+          console.error('⚠️ Failed to schedule reminders for existing session:', reminderError);
+        }
         return existing;
       }
+    }
+    try {
+      await scheduleSessionReminders(existing);
+    } catch (reminderError) {
+      console.error('⚠️ Failed to schedule reminders for existing session:', reminderError);
     }
     return existing;
   }
@@ -121,6 +138,12 @@ export async function createSessionForBooking(bookingId: string): Promise<Sessio
   }
   
   console.log('✅ Session inserted successfully:', session.id);
+
+  try {
+    await scheduleSessionReminders(session as Session);
+  } catch (reminderError) {
+    console.error('⚠️ Failed to schedule reminders for new session:', reminderError);
+  }
 
   // 6. Create meeting
   console.log('📹 Creating video meeting...');

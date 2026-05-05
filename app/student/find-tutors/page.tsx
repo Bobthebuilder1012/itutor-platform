@@ -8,8 +8,9 @@ import { supabase } from '@/lib/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
 import SubjectMultiSelect from '@/components/SubjectMultiSelect';
 import { getDisplayName } from '@/lib/utils/displayName';
-import { getAvatarColor } from '@/lib/utils/avatarColors';
 import VerifiedBadge from '@/components/VerifiedBadge';
+import UserAvatar from '@/components/UserAvatar';
+import { profileBannerDisplayUrl } from '@/lib/utils/profileBannerDisplayUrl';
 
 type Tutor = {
   id: string;
@@ -17,6 +18,8 @@ type Tutor = {
   username: string | null;
   display_name: string | null;
   avatar_url: string | null;
+  profile_banner_url?: string | null;
+  updated_at?: string;
   school?: string | null;
   institution_id?: string | null;
   institution_name?: string | null;
@@ -55,6 +58,10 @@ export default function FindTutorsPage() {
   const [selectedRating, setSelectedRating] = useState<string>('');
   const [selectedPrice, setSelectedPrice] = useState<string>('');
   const [selectedSchool, setSelectedSchool] = useState<string>('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [sortOrder, setSortOrder] = useState<'relevance' | 'price_low' | 'rating_high'>('relevance');
+  const TUTORS_PER_PAGE = 12;
 
   useEffect(() => {
     if (loading) return;
@@ -91,51 +98,74 @@ export default function FindTutorsPage() {
         console.error('❌ Exception fetching institutions:', err);
       }
       
-      // Fetch all tutor profiles with bio
-      const { data: tutorProfiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('id, full_name, username, display_name, avatar_url, institution_id, country, bio, tutor_verification_status')
-        .eq('role', 'tutor')
-        .order('tutor_verification_status', { ascending: false, nullsFirst: false }); // Verified tutors first
+      const tutorSelectTiers = [
+        'id, full_name, username, display_name, avatar_url, profile_banner_url, updated_at, institution_id, country, bio, tutor_verification_status, teaching_mode, tutor_type',
+        'id, full_name, username, display_name, avatar_url, updated_at, institution_id, country, bio, tutor_verification_status, teaching_mode, tutor_type',
+        'id, full_name, username, display_name, avatar_url, country, bio, tutor_verification_status, teaching_mode, tutor_type',
+        'id, full_name, username, display_name, avatar_url, country, bio, tutor_verification_status',
+        'id, full_name, username, display_name, country, bio, tutor_verification_status',
+        'id, full_name, country, bio, tutor_verification_status',
+        'id, full_name, country, tutor_verification_status',
+        'id, full_name',
+      ];
 
-      if (profilesError) {
-        console.error('❌ Error fetching tutor profiles:', profilesError);
-        alert(`Error loading tutors: ${profilesError.message}`);
-        throw profilesError;
+      let tutorProfiles: Record<string, unknown>[] | null = null;
+      let profilesError: { message: string; code?: string; details?: string } | null = null;
+      for (const cols of tutorSelectTiers) {
+        const res = await supabase.from('profiles').select(cols).eq('role', 'tutor');
+        if (!res.error) {
+          tutorProfiles = (res.data ?? []) as unknown as Record<string, unknown>[];
+          profilesError = null;
+          break;
+        }
+        profilesError = res.error;
+        console.warn('find-tutors profiles select retry:', cols, res.error.message);
       }
-      
-      console.log('✅ Fetched tutor profiles:', tutorProfiles?.length || 0);
-      console.log('Tutor profiles data:', tutorProfiles);
 
-      // TEMPORARILY DISABLED: Filter out tutors without video provider connections
-      // TODO: Re-enable once tutors have connected their video providers
-      // const { data: videoConnections, error: connectionsError } = await supabase
-      //   .from('tutor_video_provider_connections')
-      //   .select('tutor_id')
-      //   .eq('connection_status', 'connected');
+      if (profilesError || !tutorProfiles) {
+        console.error('❌ Error fetching tutor profiles:', JSON.stringify(profilesError));
+        alert(`Error loading tutors: ${profilesError?.message ?? 'Unknown error'}`);
+        throw profilesError ?? new Error('No tutor profiles');
+      }
 
-      // if (connectionsError) {
-      //   console.error('❌ Error fetching video connections:', connectionsError);
-      // }
+      const verificationRank: Record<string, number> = {
+        VERIFIED: 0,
+        PENDING: 1,
+        PROCESSING: 2,
+        UNVERIFIED: 3,
+        REJECTED: 4,
+      };
+      tutorProfiles.sort(
+        (a, b) =>
+          (verificationRank[String(a.tutor_verification_status ?? 'UNVERIFIED')] ?? 9) -
+          (verificationRank[String(b.tutor_verification_status ?? 'UNVERIFIED')] ?? 9)
+      );
 
-      // const tutorsWithVideo = new Set(videoConnections?.map(c => c.tutor_id) || []);
-      // const activeTutorProfiles = tutorProfiles?.filter(t => tutorsWithVideo.has(t.id)) || [];
-      
-      const activeTutorProfiles = tutorProfiles || []; // Show all tutors for now
-      
+      const tutorProfilesWithBanners = tutorProfiles as Array<Record<string, unknown> & { id: string }>;
+
+      console.log('✅ Fetched tutor profiles:', tutorProfilesWithBanners?.length || 0);
+      console.log('Tutor profiles data:', tutorProfilesWithBanners);
+
+      const activeTutorProfiles = tutorProfilesWithBanners;
+      const activeTutorIds = activeTutorProfiles.map((t) => t.id);
+
       console.log(`✅ Showing ${activeTutorProfiles.length} tutors (video provider filter disabled)`);
 
-      // Fetch tutor subjects separately
-      const { data: tutorSubjects, error: subjectsError } = await supabase
-        .from('tutor_subjects')
-        .select('tutor_id, price_per_hour_ttd, subject_id');
+      // Fetch subjects for all tutor profiles
+      const { data: tutorSubjects, error: subjectsError } =
+        activeTutorIds.length > 0
+          ? await supabase
+              .from('tutor_subjects')
+              .select('tutor_id, price_per_hour_ttd, subject_id')
+              .in('tutor_id', activeTutorIds)
+          : { data: [], error: null };
 
       if (subjectsError) {
         console.error('❌ Error fetching tutor subjects:', subjectsError);
         alert(`Error loading tutor subjects: ${subjectsError.message}`);
         throw subjectsError;
       }
-      
+
       console.log('✅ Fetched tutor subjects:', tutorSubjects?.length || 0);
 
       // Fetch all subjects separately
@@ -147,43 +177,41 @@ export default function FindTutorsPage() {
         console.error('Error fetching subjects:', allSubjectsError);
         throw allSubjectsError;
       }
-      
+
       console.log('Fetched subjects:', allSubjectsData?.length || 0);
 
       // Create a map for quick subject lookup
-      const subjectsMap = new Map(allSubjectsData.map(s => [s.id, s]));
-      
+      const subjectsMap = new Map(allSubjectsData.map((s) => [s.id, s]));
+
       // Create a map for quick institution lookup
       const institutionsMap = new Map<string, string>();
-      institutionsData.forEach(inst => {
+      institutionsData.forEach((inst) => {
         institutionsMap.set(inst.id, inst.name);
       });
 
-      // Fetch all ratings for averages
-      const { data: allRatings, error: allRatingsError } = await supabase
-        .from('ratings')
-        .select('tutor_id, stars');
+      // Fetch ratings only for these tutors
+      const ratingsQuery =
+        activeTutorIds.length > 0
+          ? supabase.from('ratings').select('tutor_id, stars').in('tutor_id', activeTutorIds)
+          : Promise.resolve({ data: [] as { tutor_id: string; stars: number }[], error: null });
+
+      const commentsQuery =
+        activeTutorIds.length > 0
+          ? supabase
+              .from('ratings')
+              .select(
+                `tutor_id, stars, comment, helpful_count, student:student_id (display_name, full_name, username)`
+              )
+              .in('tutor_id', activeTutorIds)
+              .not('comment', 'is', null)
+              .order('helpful_count', { ascending: false })
+              .order('stars', { ascending: false })
+          : Promise.resolve({ data: [] as any[], error: null });
+
+      const [{ data: allRatings, error: allRatingsError }, { data: ratingsWithComments, error: commentsError }] =
+        await Promise.all([ratingsQuery, commentsQuery]);
 
       if (allRatingsError) throw allRatingsError;
-
-      // Fetch ratings with comments for top comment display (sorted by popularity)
-      const { data: ratingsWithComments, error: commentsError } = await supabase
-        .from('ratings')
-        .select(`
-          tutor_id, 
-          stars, 
-          comment,
-          helpful_count,
-          student:student_id (
-            display_name,
-            full_name,
-            username
-          )
-        `)
-        .not('comment', 'is', null)
-        .order('helpful_count', { ascending: false, nullsFirst: false })
-        .order('stars', { ascending: false });
-
       if (commentsError) throw commentsError;
 
       // Process data - manually join tutor_subjects with subjects
@@ -232,7 +260,7 @@ export default function FindTutorsPage() {
         };
       });
 
-      // Filter out tutors with no subjects
+      // Only require at least one subject to be listed
       const tutorsWithSubjects = tutorsWithData.filter(t => t.subjects.length > 0);
 
       console.log('=== TUTOR LOADING SUMMARY ===');
@@ -301,31 +329,42 @@ export default function FindTutorsPage() {
       }
     }
 
-    // Sort: Prioritize tutors who teach student's subjects, then by rating
-    if (profile?.subjects_of_study && profile.subjects_of_study.length > 0) {
+    const minPrice = (t: Tutor) => {
+      const prices = t.subjects.map((s) => s.price_per_hour_ttd);
+      return prices.length ? Math.min(...prices) : Number.POSITIVE_INFINITY;
+    };
+
+    if (sortOrder === 'price_low') {
+      filtered.sort((a, b) => minPrice(a) - minPrice(b));
+    } else if (sortOrder === 'rating_high') {
+      filtered.sort((a, b) => (b.average_rating ?? -1) - (a.average_rating ?? -1));
+    } else if (profile?.subjects_of_study && profile.subjects_of_study.length > 0) {
       filtered.sort((a, b) => {
-        const aMatchesSubjects = a.subjects.some(s =>
-          profile.subjects_of_study?.includes(s.name)
-        );
-        const bMatchesSubjects = b.subjects.some(s =>
-          profile.subjects_of_study?.includes(s.name)
-        );
+        const aMatchesSubjects = a.subjects.some((s) => profile.subjects_of_study?.includes(s.name));
+        const bMatchesSubjects = b.subjects.some((s) => profile.subjects_of_study?.includes(s.name));
 
         if (aMatchesSubjects && !bMatchesSubjects) return -1;
         if (!aMatchesSubjects && bMatchesSubjects) return 1;
 
-        // If both match or both don't match, sort by rating
         const aRating = a.average_rating || 0;
         const bRating = b.average_rating || 0;
         return bRating - aRating;
       });
     } else {
-      // Just sort by rating if no student subjects
       filtered.sort((a, b) => (b.average_rating || 0) - (a.average_rating || 0));
     }
 
     return filtered;
-  }, [tutors, searchQuery, selectedSubjects, selectedRating, selectedPrice, selectedSchool, profile]);
+  }, [tutors, searchQuery, selectedSubjects, selectedRating, selectedPrice, selectedSchool, profile, sortOrder]);
+
+  // Reset to page 1 whenever filters change
+  useEffect(() => { setCurrentPage(1); }, [searchQuery, selectedSubjects, selectedRating, selectedPrice, selectedSchool, sortOrder]);
+
+  const totalPages = Math.ceil(filteredTutors.length / TUTORS_PER_PAGE);
+  const pagedTutors = filteredTutors.slice(
+    (currentPage - 1) * TUTORS_PER_PAGE,
+    currentPage * TUTORS_PER_PAGE
+  );
 
   if (loading || !profile) {
     return (
@@ -335,125 +374,189 @@ export default function FindTutorsPage() {
     );
   }
 
+  const hasActiveFilters = searchQuery || selectedSubjects.length > 0 || selectedRating || selectedPrice || selectedSchool;
+
+  const clearFilters = () => {
+    setSearchQuery('');
+    setSelectedSubjects([]);
+    setSelectedRating('');
+    setSelectedPrice('');
+    setSelectedSchool('');
+  };
+
+  const quickSubjects = ['CSEC Mathematics', 'CSEC English A', 'CSEC Biology', 'CSEC Chemistry', 'CAPE Physics', 'SEA Mathematics'];
+
   return (
     <DashboardLayout role="student" userName={getDisplayName(profile)}>
-      <div className="px-4 py-3 sm:px-0">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Find an iTutor</h1>
-          <p className="text-gray-600">Search for tutors and book your sessions</p>
+      <div className="px-1 py-2 sm:px-0">
+
+        {/* ── HERO HEADER ── */}
+        <div className="mb-5">
+          <p className="text-[11px] font-bold uppercase tracking-[1.5px] text-itutor-green mb-1">Discover</p>
+          <div className="flex items-center gap-4 flex-wrap">
+            <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">Find an iTutor</h1>
+            <span className="inline-flex items-center gap-1.5 bg-itutor-green text-black text-sm font-bold px-3 py-1 rounded-full">
+              <span className="text-base font-extrabold">100+</span> tutors available
+            </span>
+          </div>
+          <p className="text-gray-500 text-sm mt-1">Search and book from verified tutors across Trinidad &amp; Tobago</p>
         </div>
 
-        {/* Search and Filters */}
-        <div className="bg-white border-2 border-gray-200 rounded-xl p-4 mb-4 shadow-md">
-          {/* Search Bar */}
-          <div className="mb-3">
-            <div className="relative">
+        {/* ── FILTER PANEL ── */}
+        <div className="bg-white border border-gray-200 rounded-2xl shadow-sm mb-5 overflow-hidden">
+
+          {/* Search + toggle row */}
+          <div className="px-4 py-3 flex items-center gap-2">
+            <div className="relative flex-1">
+              <svg className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search tutors by name..."
-                className="w-full px-3 py-2 pl-10 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition text-sm"
+                placeholder="Search tutors by name or username..."
+                className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none focus:bg-white transition text-sm"
               />
-              <svg className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </div>
+
+            {/* Active filter count badge */}
+            {hasActiveFilters && (
+              <span className="flex-shrink-0 w-5 h-5 rounded-full bg-itutor-green text-white text-[10px] font-bold flex items-center justify-center">
+                {[selectedSubjects.length > 0, selectedSchool, selectedPrice, selectedRating].filter(Boolean).length}
+              </span>
+            )}
+
+            {/* Filter toggle */}
+            <button
+              onClick={() => setFiltersOpen(o => !o)}
+              className={`flex-shrink-0 flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border text-sm font-medium transition-all ${
+                filtersOpen
+                  ? 'bg-itutor-green/10 border-itutor-green text-itutor-green'
+                  : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z"/>
               </svg>
-            </div>
+              <span className="hidden sm:inline">Filters</span>
+              <svg className={`w-3.5 h-3.5 transition-transform duration-200 ${filtersOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/>
+              </svg>
+            </button>
+
+            {/* Search button */}
+            <button className="flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-itutor-green text-white text-sm font-semibold hover:bg-emerald-700 transition">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+              </svg>
+              <span className="hidden sm:inline">Search</span>
+            </button>
           </div>
 
-          {/* Filters */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Subjects
-              </label>
-              <SubjectMultiSelect
-                selectedSubjects={selectedSubjects}
-                onChange={setSelectedSubjects}
-                placeholder="Select subjects..."
-              />
-            </div>
+          {/* Expandable filters */}
+          {filtersOpen && (
+            <>
+              <div className="px-4 pb-4 pt-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 border-t border-gray-100">
+                {/* Subjects */}
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Subjects</p>
+                  <SubjectMultiSelect selectedSubjects={selectedSubjects} onChange={setSelectedSubjects} placeholder="Type a subject..." />
+                </div>
 
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                School/Institution
-              </label>
-              <select
-                value={selectedSchool}
-                onChange={(e) => setSelectedSchool(e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition text-sm"
-              >
-                <option value="">All Schools</option>
-                {institutions.map(institution => (
-                  <option key={institution.id} value={institution.id}>
-                    {institution.name}
-                  </option>
+                {/* School */}
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">School / Institution</p>
+                  <div className="relative">
+                    <select value={selectedSchool} onChange={(e) => setSelectedSchool(e.target.value)}
+                      className="w-full px-3 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition text-sm appearance-none pr-8">
+                      <option value="">All schools</option>
+                      {institutions.map(inst => <option key={inst.id} value={inst.id}>{inst.name}</option>)}
+                    </select>
+                    <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/></svg>
+                  </div>
+                </div>
+
+                {/* Price */}
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Price Range</p>
+                  <div className="relative">
+                    <select value={selectedPrice} onChange={(e) => setSelectedPrice(e.target.value)}
+                      className="w-full px-3 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition text-sm appearance-none pr-8">
+                      <option value="">Any price</option>
+                      <option value="free">Free Sessions</option>
+                      <option value="50">Up to $50</option>
+                      <option value="100">Up to $100</option>
+                      <option value="150">Up to $150</option>
+                      <option value="200">Up to $200</option>
+                      <option value="300">Up to $300</option>
+                    </select>
+                    <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/></svg>
+                  </div>
+                </div>
+
+                {/* Rating */}
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Rating</p>
+                  <div className="relative">
+                    <select value={selectedRating} onChange={(e) => setSelectedRating(e.target.value)}
+                      className="w-full px-3 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition text-sm appearance-none pr-8">
+                      <option value="">Any rating</option>
+                      <option value="4.5">4.5+ Stars</option>
+                      <option value="4.0">4.0+ Stars</option>
+                      <option value="3.5">3.5+ Stars</option>
+                      <option value="3.0">3.0+ Stars</option>
+                    </select>
+                    <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/></svg>
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick chips */}
+              <div className="px-4 pb-3 flex items-center gap-2 flex-wrap border-t border-gray-100 pt-3">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mr-1">Quick</span>
+                {quickSubjects.map(subj => (
+                  <button key={subj}
+                    onClick={() => setSelectedSubjects(prev => prev.includes(subj) ? prev.filter(s => s !== subj) : [...prev, subj])}
+                    className={`text-xs px-3.5 py-1.5 rounded-full border font-medium transition-all ${
+                      selectedSubjects.includes(subj)
+                        ? 'bg-itutor-green/10 text-itutor-green border-itutor-green'
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-itutor-green hover:text-itutor-green'
+                    }`}>
+                    {selectedSubjects.includes(subj) && <span className="mr-1">•</span>}{subj}
+                  </button>
                 ))}
-              </select>
-            </div>
+                {hasActiveFilters && (
+                  <button onClick={clearFilters} className="ml-auto text-xs px-3 py-1.5 rounded-full border border-red-200 text-red-400 hover:bg-red-50 transition font-medium">
+                    Clear all
+                  </button>
+                )}
+              </div>
+            </>
+          )}
 
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Price Range
-              </label>
+          {/* Results bar */}
+          <div className={`px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap ${filtersOpen ? 'border-t border-gray-100' : ''}`}>
+            <p className="text-sm font-semibold text-itutor-green">
+              {filteredTutors.length >= 100 ? '100+' : filteredTutors.length} iTutors Found
+              {totalPages > 1 && <span className="text-gray-400 font-normal ml-2 text-xs">page {currentPage} of {totalPages}</span>}
+            </p>
+            <div className="flex items-center gap-2 ml-auto">
+              <label className="text-xs text-gray-500 whitespace-nowrap">Sort</label>
               <select
-                value={selectedPrice}
-                onChange={(e) => setSelectedPrice(e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition text-sm"
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value as 'relevance' | 'price_low' | 'rating_high')}
+                className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-800 focus:ring-2 focus:ring-itutor-green focus:border-itutor-green"
               >
-                <option value="">Any Price</option>
-                <option value="free">Free Sessions</option>
-                <option value="50">Up to $50</option>
-                <option value="100">Up to $100</option>
-                <option value="150">Up to $150</option>
-                <option value="200">Up to $200</option>
-                <option value="300">Up to $300</option>
+                <option value="relevance">Best match</option>
+                <option value="price_low">Price: Low to High</option>
+                <option value="rating_high">Rating: High to Low</option>
               </select>
             </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Rating
-              </label>
-              <select
-                value={selectedRating}
-                onChange={(e) => setSelectedRating(e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition text-sm"
-              >
-                <option value="">Any Rating</option>
-                <option value="4.5">4.5+ Stars</option>
-                <option value="4.0">4.0+ Stars</option>
-                <option value="3.5">3.5+ Stars</option>
-                <option value="3.0">3.0+ Stars</option>
-              </select>
-            </div>
-
-            {/* Clear Filters Button (aligned in grid) */}
-            <div className="flex items-end">
-              {(searchQuery || selectedSubjects.length > 0 || selectedRating || selectedPrice || selectedSchool) && (
-                <button
-                  onClick={() => {
-                    setSearchQuery('');
-                    setSelectedSubjects([]);
-                    setSelectedRating('');
-                    setSelectedPrice('');
-                    setSelectedSchool('');
-                  }}
-                  className="w-full px-3 py-2 text-sm text-itutor-green hover:text-emerald-400 font-medium transition-colors border border-itutor-green/30 rounded-lg hover:border-itutor-green/60"
-                >
-                  Clear Filters
-                </button>
-              )}
-            </div>
+            {hasActiveFilters && !filtersOpen && (
+              <button onClick={clearFilters} className="text-xs text-gray-400 hover:text-red-400 transition font-medium">Clear filters</button>
+            )}
           </div>
-        </div>
-
-        {/* Results Count */}
-        <div className="mb-3">
-          <p className="text-gray-600 text-sm">
-            Showing {filteredTutors.length} {filteredTutors.length === 1 ? 'tutor' : 'tutors'}
-          </p>
         </div>
 
         {/* Tutors Grid */}
@@ -473,128 +576,146 @@ export default function FindTutorsPage() {
             <p className="text-sm text-gray-500">Try adjusting your filters</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredTutors.map(tutor => {
-              const matchesStudentSubjects = profile.subjects_of_study?.some(studentSubject =>
-                tutor.subjects.some(tutorSubject => tutorSubject.name === studentSubject)
-              );
-
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {pagedTutors.map(tutor => {
               return (
                 <div
                   key={tutor.id}
-                  className="bg-white border-2 border-gray-200 rounded-2xl p-6 hover:shadow-xl hover:border-itutor-green transition-all duration-300 hover:scale-105"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => router.push(`/student/tutors/${tutor.id}`)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      router.push(`/student/tutors/${tutor.id}`);
+                    }
+                  }}
+                  aria-label={`Open ${getDisplayName(tutor)}'s profile`}
+                  className="bg-white border border-gray-200 rounded-2xl overflow-hidden hover:shadow-lg hover:border-itutor-green transition-all duration-300 flex flex-col cursor-pointer focus:outline-none focus:ring-2 focus:ring-itutor-green focus:ring-offset-2"
                 >
-                  {/* Verified Badge - Only for verified tutors */}
-                  {matchesStudentSubjects && tutor.tutor_verification_status === 'VERIFIED' && (
-                    <div className="mb-3">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gradient-to-r from-itutor-green to-emerald-600 text-white">
-                        ✓ Verified
-                      </span>
-                    </div>
-                  )}
+                  {/* Banner — compact height */}
+                  <div className="relative h-16 shrink-0">
+                    <img
+                      src={profileBannerDisplayUrl(tutor.profile_banner_url, tutor.updated_at)}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
+                  </div>
 
-                  {/* Tutor Info */}
-                  <div className="flex items-start gap-4 mb-4">
-                    <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${getAvatarColor(tutor.id)} flex items-center justify-center text-white font-bold text-xl flex-shrink-0`}>
-                      {tutor.avatar_url ? (
-                        <img src={tutor.avatar_url} alt={getDisplayName(tutor)} className="w-full h-full rounded-full object-cover" />
-                      ) : (
-                        getDisplayName(tutor).charAt(0).toUpperCase()
-                      )}
+                  <div className="flex flex-1 flex-col p-3 gap-2">
+
+                    {/* Avatar + name row */}
+                    <div className="flex items-center gap-2.5">
+                      <UserAvatar avatarUrl={tutor.avatar_url} name={getDisplayName(tutor)} size={40} />
+                      <div className="min-w-0 flex-1">
+                        <h3 className="flex items-center gap-1.5 truncate text-sm font-bold text-gray-900 leading-tight">
+                          {getDisplayName(tutor)}
+                          {tutor.tutor_verification_status === 'VERIFIED' && <VerifiedBadge size="sm" />}
+                        </h3>
+                        {tutor.username && (
+                          <p className="text-[11px] text-gray-400 truncate leading-tight">@{tutor.username}</p>
+                        )}
+                        {tutor.institution_name && (
+                          <p className="truncate text-[11px] text-gray-500 leading-tight">{tutor.institution_name}</p>
+                        )}
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <span className="text-xs text-yellow-400">★</span>
+                          {tutor.average_rating !== null ? (
+                            <>
+                              <span className="text-[11px] font-bold text-gray-900">{tutor.average_rating.toFixed(1)}</span>
+                              <span className="text-[10px] text-gray-500">({tutor.total_reviews} {tutor.total_reviews === 1 ? 'review' : 'reviews'})</span>
+                            </>
+                          ) : (
+                            <span className="text-[10px] text-gray-400 italic">No reviews yet</span>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-lg font-bold text-gray-900 truncate flex items-center gap-2">
-                        {getDisplayName(tutor)}
-                        {tutor.tutor_verification_status === 'VERIFIED' && <VerifiedBadge size="sm" />}
-                      </h3>
-                      {tutor.username && (
-                        <p className="text-xs text-gray-500 truncate">@{tutor.username}</p>
-                      )}
-                      {tutor.institution_name && (
-                        <p className="text-sm text-gray-600 truncate">{tutor.institution_name}</p>
-                      )}
-                      {/* Always show rating */}
-                      <div className="flex items-center gap-1 mt-1">
-                        <span className="text-yellow-400 text-base">★</span>
-                        {tutor.average_rating !== null ? (
-                          <>
-                            <span className="text-sm font-bold text-gray-900">
-                              {tutor.average_rating.toFixed(1)}
-                            </span>
-                            <span className="text-xs text-gray-600">
-                              ({tutor.total_reviews} {tutor.total_reviews === 1 ? 'review' : 'reviews'})
-                            </span>
-                          </>
-                        ) : (
-                          <span className="text-xs text-gray-500 italic">No reviews yet</span>
+
+                    {/* Bio — 1 line only */}
+                    {tutor.bio && (
+                      <p className="text-[12px] text-gray-600 line-clamp-1 leading-snug">{tutor.bio}</p>
+                    )}
+
+                    {/* Top Comment — compact */}
+                    {tutor.topComment && (
+                      <div className="rounded-lg p-2 border border-green-100 bg-green-50/50">
+                        <div className="flex items-center gap-0.5 mb-0.5">
+                          {[...Array(tutor.topComment.stars)].map((_, i) => (
+                            <span key={i} className="text-yellow-400 text-[10px]">★</span>
+                          ))}
+                          <span className="text-[10px] text-gray-400 ml-1">· {tutor.topComment.student_name}</span>
+                        </div>
+                        <p className="text-[11px] text-gray-600 italic line-clamp-1">
+                          &ldquo;{tutor.topComment.comment}&rdquo;
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Subjects */}
+                    <div className="mt-auto">
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">Teaches</p>
+                      <div className="flex flex-wrap gap-1">
+                        {tutor.subjects.slice(0, 3).map(subject => (
+                          <span key={subject.id} className="text-[11px] px-2 py-0.5 rounded-full bg-gray-50 border border-gray-200 text-gray-700">
+                            {subject.name}
+                          </span>
+                        ))}
+                        {tutor.subjects.length > 3 && (
+                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 border border-gray-200 text-gray-500 font-medium">
+                            +{tutor.subjects.length - 3} more
+                          </span>
                         )}
                       </div>
                     </div>
                   </div>
-
-                  {/* Bio */}
-                  {tutor.bio && (
-                    <div className="mb-4">
-                      <p className="text-sm text-gray-700 line-clamp-2">
-                        {tutor.bio}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Top Comment */}
-                  {tutor.topComment && (
-                    <div className="mb-4 bg-white/70 rounded-lg p-3 border border-green-200">
-                      <div className="flex items-center gap-1 mb-1">
-                        {[...Array(tutor.topComment.stars)].map((_, i) => (
-                          <span key={i} className="text-yellow-400 text-sm">★</span>
-                        ))}
-                        <span className="text-xs text-gray-500 ml-1">• {tutor.topComment.student_name}</span>
-                      </div>
-                      <p className="text-xs text-gray-700 italic line-clamp-2">
-                        "{tutor.topComment.comment}"
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Subjects */}
-                  <div className="mb-4">
-                    <p className="text-xs text-gray-500 mb-2 font-medium">Teaches:</p>
-                    <div className="flex flex-wrap gap-1">
-                      {tutor.subjects.slice(0, 3).map(subject => (
-                        <span
-                          key={subject.id}
-                          className="text-xs px-2 py-1 rounded bg-white border border-gray-300 text-gray-700"
-                        >
-                          {subject.name}
-                        </span>
-                      ))}
-                      {tutor.subjects.length > 3 && (
-                        <span className="text-xs px-2 py-1 rounded bg-white border border-gray-300 text-gray-700">
-                          +{tutor.subjects.length - 3} more
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Price Range */}
-                  {tutor.subjects.length > 0 && (
-                    <p className="text-sm text-gray-600 mb-4">
-                      {process.env.NEXT_PUBLIC_ENABLE_PAID_SESSIONS === 'true' 
-                        ? `From $${Math.min(...tutor.subjects.map(s => s.price_per_hour_ttd))}/hr`
-                        : '$0.00/hr'}
-                    </p>
-                  )}
-
-                  {/* View Profile Button */}
-                  <button
-                    onClick={() => router.push(`/student/tutors/${tutor.id}`)}
-                    className="w-full bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-white py-2 px-4 rounded-lg font-semibold transition-all duration-300 shadow-lg hover:shadow-itutor-green/50"
-                  >
-                    View Profile
-                  </button>
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="mt-8 flex items-center justify-center gap-2">
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg border-2 border-gray-200 bg-white text-gray-700 font-medium text-sm transition-all hover:border-itutor-green hover:text-itutor-green disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-gray-200 disabled:hover:text-gray-700"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              Previous
+            </button>
+
+            <div className="flex items-center gap-1">
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                <button
+                  key={page}
+                  onClick={() => setCurrentPage(page)}
+                  className={`w-9 h-9 rounded-lg text-sm font-semibold transition-all ${
+                    page === currentPage
+                      ? 'bg-itutor-green text-white shadow-md'
+                      : 'border-2 border-gray-200 bg-white text-gray-600 hover:border-itutor-green hover:text-itutor-green'
+                  }`}
+                >
+                  {page}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg border-2 border-gray-200 bg-white text-gray-700 font-medium text-sm transition-all hover:border-itutor-green hover:text-itutor-green disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-gray-200 disabled:hover:text-gray-700"
+            >
+              Next
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
           </div>
         )}
       </div>

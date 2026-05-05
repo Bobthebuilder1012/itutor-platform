@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import Cropper from 'react-easy-crop';
 import { Area } from '@/lib/utils/imageCrop';
 import { validateImageFile } from '@/lib/utils/imageCrop';
@@ -10,6 +10,8 @@ type AvatarUploadModalProps = {
   onClose: () => void;
   onUpload: (imageSrc: string, croppedArea: Area) => Promise<void>;
   uploading: boolean;
+  hasAvatar?: boolean;
+  onRemovePhoto?: () => Promise<void>;
 };
 
 export default function AvatarUploadModal({
@@ -17,7 +19,10 @@ export default function AvatarUploadModal({
   onClose,
   onUpload,
   uploading,
+  hasAvatar = false,
+  onRemovePhoto,
 }: AvatarUploadModalProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
@@ -55,6 +60,17 @@ export default function AvatarUploadModal({
       handleClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed');
+    }
+  };
+
+  const handleRemovePhoto = async () => {
+    if (!onRemovePhoto || !hasAvatar) return;
+    setError(null);
+    try {
+      await onRemovePhoto();
+      handleClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove photo');
     }
   };
 
@@ -97,22 +113,23 @@ export default function AvatarUploadModal({
           )}
 
           {!imageSrc ? (
-            // File upload
             <div className="space-y-4">
               <p className="text-sm text-gray-600">
-                Choose a photo to upload. You'll be able to crop it to fit perfectly.
+                Choose a photo to upload. You&apos;ll be able to crop it to fit perfectly.
               </p>
               <label className="flex flex-col items-center justify-center w-full h-64 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition">
                 <div className="flex flex-col items-center justify-center pt-5 pb-6">
                   <svg className="w-12 h-12 mb-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                   </svg>
-                  <p className="mb-2 text-sm text-gray-500">
-                    <span className="font-semibold">Click to upload</span> or drag and drop
+                  <p className="mb-2 text-sm text-gray-600">
+                    <span className="font-semibold text-itutor-green">Click to upload</span>
+                    <span className="text-gray-500"> or drag and drop</span>
                   </p>
                   <p className="text-xs text-gray-500">PNG, JPG, or WebP (MAX. 5MB)</p>
                 </div>
                 <input
+                  ref={fileInputRef}
                   type="file"
                   className="hidden"
                   accept="image/jpeg,image/jpg,image/png,image/webp"
@@ -120,6 +137,38 @@ export default function AvatarUploadModal({
                   disabled={uploading}
                 />
               </label>
+
+              <div className="relative flex items-center justify-center py-1">
+                <div className="absolute inset-x-0 top-1/2 h-px bg-gray-200" aria-hidden />
+                <span className="relative bg-white px-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  Actions
+                </span>
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-itutor-green px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  </svg>
+                  Upload Photo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleRemovePhoto()}
+                  disabled={uploading || !hasAvatar || !onRemovePhoto}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-rose-500 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-100 disabled:text-gray-400"
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Remove Photo
+                </button>
+              </div>
             </div>
           ) : (
             // Crop interface

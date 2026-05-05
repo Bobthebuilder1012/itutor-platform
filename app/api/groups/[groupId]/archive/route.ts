@@ -26,12 +26,20 @@ export async function POST(_req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    const now = new Date().toISOString();
     const { error } = await service
       .from('groups')
-      .update({ archived_at: new Date().toISOString() })
+      .update({ archived_at: now, status: 'ARCHIVED', archived_reason: 'manual' })
       .eq('id', groupId);
 
     if (error) throw error;
+
+    await service.from('group_activity_log').insert({
+      group_id: groupId,
+      tutor_id: user.id,
+      action: 'manual_archived',
+      details: { archived_at: now },
+    });
 
     return NextResponse.json({ success: true });
   } catch (err) {
