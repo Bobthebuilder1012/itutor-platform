@@ -1,4 +1,4 @@
-const EMAIL_MANAGEMENT_ONLY_ADMIN = 'marketing.itutor@myitutor.com';
+const EMAIL_MANAGEMENT_ONLY_ADMIN = process.env.NEXT_PUBLIC_MARKETING_ADMIN_EMAIL ?? '';
 
 export type AdminAccessScope = 'full' | 'email-management';
 
