@@ -2,6 +2,7 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import { bootstrapProfileIfMissing } from '@/lib/server/bootstrapProfileIfMissing';
+import { getServiceClient } from '@/lib/supabase/server';
 import {
   getAdminHomePath,
   isEmailManagementOnlyAdmin,
@@ -75,18 +76,19 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL('/signup/complete-role', request.url));
   }
 
-  // Check if profile exists
-  const { data: profile, error: profileError } = await supabase
+  // Check if profile exists — use service client to bypass RLS timing issues after OAuth
+  const service = getServiceClient();
+  const { data: profile, error: profileError } = await service
     .from('profiles')
     .select('id, role, full_name, country, school, form_level, subjects_of_study, billing_mode, institution_id')
     .eq('id', userId)
-    .single();
+    .maybeSingle();
 
-  console.log('👤 Profile fetch result - exists:', !!profile, 'role:', profile?.role);
+  console.log('👤 Profile fetch result - exists:', !!profile, 'role:', profile?.role, 'error:', profileError?.message);
 
-  // If profile doesn't exist, create it (OAuth users)
-  if (profileError && profileError.code === 'PGRST116') {
-    console.log('📝 Creating new profile for OAuth user');
+  // If profile doesn't exist or any fetch error, bootstrap it
+  if (!profile) {
+    console.log('📝 No profile found — bootstrapping for OAuth user');
     const metadataRole = session.user.user_metadata?.role ?? null;
     const { error: bootstrapErr } = await bootstrapProfileIfMissing(session.user);
     if (bootstrapErr) {
@@ -95,23 +97,17 @@ export async function GET(request: NextRequest) {
     }
 
     if (!metadataRole && oauthProvider === 'google') {
-      console.log('✅ Profile created, redirecting to Google role selection');
+      console.log('✅ Profile bootstrapped, redirecting to Google role selection');
       return NextResponse.redirect(new URL('/?auth=complete-role&source=google', request.url));
     }
 
-    console.log('✅ Profile created, redirecting to onboarding');
+    console.log('✅ Profile bootstrapped, redirecting to onboarding');
     return NextResponse.redirect(new URL('/onboarding/student', request.url));
   }
 
-  if (profileError) {
-    console.error('❌ Error fetching profile:', profileError);
-    return NextResponse.redirect(new URL('/login?error=profile_fetch_failed', request.url));
-  }
-
   // Profile exists - determine where to redirect
-  if (profile) {
-    const role = profile.role;
-    console.log('🔀 Determining redirect for role:', role);
+  const role = profile.role;
+  console.log('🔀 Determining redirect for role:', role);
 
     // If role is null, profile is incomplete - need to complete signup
     if (!role) {
@@ -181,10 +177,5 @@ export async function GET(request: NextRequest) {
     // If role exists but didn't match any case above, send to login with error
     console.log('⚠️ Unknown role:', role, '- redirecting to login');
     return NextResponse.redirect(new URL('/login?error=unknown_role', request.url));
-  }
-
-  // Profile doesn't exist (shouldn't happen since we create it or error above)
-  console.log('⚠️ Profile null - redirecting to login');
-  return NextResponse.redirect(new URL('/login?error=no_profile', request.url));
 }
 
