@@ -98,6 +98,8 @@ function saveSessions(sessions: GradingSession[]) {
   localStorage.setItem('itutor_ai_sessions', JSON.stringify(sessions));
 }
 
+const AI_USE_LIMIT = 2;
+
 export default function ToolsAiPage() {
   const { profile, loading } = useProfile();
   const router = useRouter();
@@ -120,6 +122,7 @@ export default function ToolsAiPage() {
   const [lessonContext, setLessonContext] = useState<LessonContext | null>(null);
   const [prefillBanner, setPrefillBanner] = useState<string | null>(null);
   const [writingBack, setWritingBack] = useState(false);
+  const [aiUses, setAiUses] = useState<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const answerKeyRef = useRef<HTMLInputElement>(null);
@@ -134,6 +137,13 @@ export default function ToolsAiPage() {
   useEffect(() => {
     setSessions(loadSessions());
   }, []);
+
+  useEffect(() => {
+    if (!profile) return;
+    fetch('/api/ai/usage').then(r => r.json()).then(d => {
+      if (typeof d.uses === 'number') setAiUses(d.uses);
+    }).catch(() => {});
+  }, [profile]);
 
   // Read sessionStorage prefill from lesson assignment flow
   useEffect(() => {
@@ -169,7 +179,8 @@ export default function ToolsAiPage() {
     [students],
   );
   const uploadedCount = useMemo(() => students.filter((s) => s.paperFiles.length > 0 || !!s.preAttachedUrl).length, [students]);
-  const canGrade = !!answerKey && readyStudents.length > 0;
+  const aiLimitReached = aiUses !== null && aiUses >= AI_USE_LIMIT;
+  const canGrade = !!answerKey && readyStudents.length > 0 && !aiLimitReached;
 
   const updateStudent = useCallback((id: string, patch: Partial<Student>) => {
     setStudents((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
@@ -270,6 +281,8 @@ export default function ToolsAiPage() {
           signal: controller.signal,
         });
         const data = await res.json();
+        if (res.status === 429) { setAiUses(AI_USE_LIMIT); throw new Error('AI usage limit reached'); }
+        if (data.ai_uses !== undefined) setAiUses(data.ai_uses);
         if (data.error) throw new Error(data.error);
         console.log(`[iTutor AI] ✓ ${stu.name}: ${data.total_score}/${capturedTotalMarks}`);
         resultsMap.set(sid, { status: 'done', result: data });
@@ -699,6 +712,11 @@ export default function ToolsAiPage() {
             <span>New grading session</span>
           </div>
           <div className="flex items-center gap-2">
+            {aiUses !== null && (
+              <span className={`text-xs font-medium px-3 py-1.5 rounded-full border ${aiLimitReached ? 'bg-red-50 text-red-600 border-red-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
+                {aiLimitReached ? `Limit reached (${aiUses}/${AI_USE_LIMIT})` : `${AI_USE_LIMIT - aiUses} use${AI_USE_LIMIT - aiUses !== 1 ? 's' : ''} remaining`}
+              </span>
+            )}
             {lessonContext && (
               <button
                 onClick={() => router.push(`/lessons/${lessonContext.groupId}?tab=stream`)}
@@ -983,7 +1001,11 @@ export default function ToolsAiPage() {
                 ✦ Grade Exams
               </button>
               <p className="text-[11px] text-gray-400 text-center mt-2">
-                {canGrade ? `${readyStudents.length} student${readyStudents.length !== 1 ? 's' : ''} will be graded · Est. under 60 seconds` : 'Upload an answer key to enable grading'}
+                {aiLimitReached
+                  ? `You've used all ${AI_USE_LIMIT} AI uses. Contact support to get more.`
+                  : canGrade
+                    ? `${readyStudents.length} student${readyStudents.length !== 1 ? 's' : ''} will be graded · Est. under 60 seconds`
+                    : 'Upload an answer key to enable grading'}
               </p>
             </div>
           </div>
@@ -1002,12 +1024,20 @@ export default function ToolsAiPage() {
             <h1 className="text-xl font-semibold text-gray-900">iTutor AI</h1>
             <p className="text-sm text-gray-500">AI-powered test paper marking</p>
           </div>
-          <button
-            onClick={() => { resetSetupState(); setCurrentState(1); }}
-            className="px-4 py-2.5 text-sm font-medium rounded-lg text-white bg-itutor-green hover:opacity-90 transition-opacity"
-          >
-            + New grading session
-          </button>
+          <div className="flex items-center gap-3">
+            {aiUses !== null && (
+              <span className={`text-xs font-medium px-3 py-1.5 rounded-full border ${aiLimitReached ? 'bg-red-50 text-red-600 border-red-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
+                {aiLimitReached ? `Limit reached (${aiUses}/${AI_USE_LIMIT} uses)` : `${AI_USE_LIMIT - aiUses} use${AI_USE_LIMIT - aiUses !== 1 ? 's' : ''} remaining`}
+              </span>
+            )}
+            <button
+              disabled={aiLimitReached}
+              onClick={() => { resetSetupState(); setCurrentState(1); }}
+              className={`px-4 py-2.5 text-sm font-medium rounded-lg text-white transition-opacity ${aiLimitReached ? 'bg-gray-300 cursor-not-allowed' : 'bg-itutor-green hover:opacity-90'}`}
+            >
+              + New grading session
+            </button>
+          </div>
         </div>
 
         {/* Stats row */}
