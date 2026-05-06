@@ -3,7 +3,7 @@ import { getServerClient, getServiceClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-export const AI_USE_LIMIT = 2;
+const AI_USE_LIMIT = 2;
 
 export async function GET() {
   const supabase = await getServerClient();
