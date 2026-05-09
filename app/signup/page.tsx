@@ -314,13 +314,10 @@ export default function SignupPage() {
         <div className="flex w-full max-w-lg flex-col">
           <div className="mb-12 flex items-center gap-3 -ml-4 sm:-ml-6">
             <img
-              src="/assets/logo/itutor-mark.png"
-              alt=""
-              className="h-28 w-auto shrink-0 object-contain object-left mix-blend-screen sm:h-[9rem]"
-              aria-hidden
+              src="/assets/logo/itutor-logo-new.png"
+              alt="iTutor"
+              className="h-16 w-auto object-contain sm:h-20"
             />
-            <span className="text-7xl font-normal lowercase tracking-tight text-white sm:text-8xl">itutor</span>
-            <span className="sr-only">iTutor</span>
           </div>
           <div className="inline-flex mb-6">
             <span className="px-4 py-1.5 rounded-full text-sm font-semibold tracking-wide" style={{ color: '#5dcea0', border: '1px solid rgba(25,147,86,0.45)', backgroundColor: 'rgba(25,147,86,0.15)' }}>
@@ -337,7 +334,7 @@ export default function SignupPage() {
               { value: '100+', label: 'Expert Tutors' },
               { value: '50+', label: 'Subjects' },
               { value: '4.9★', label: 'Avg. Rating' },
-              { value: '200+', label: 'Students' },
+              { value: '1,000+', label: 'Students' },
             ].map(({ value, label }) => (
               <div key={label} className="flex flex-col items-center justify-center rounded-xl px-4 py-3 backdrop-blur-md" style={{ background: 'rgba(25,147,86,0.15)', border: '1px solid rgba(46,204,122,0.30)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(25,147,86,0.12)', minWidth: '78px' }}>
                 <span className="text-xl font-extrabold leading-none" style={{ color: '#2ecc7a' }}>{value}</span>

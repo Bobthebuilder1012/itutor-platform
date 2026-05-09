@@ -18,10 +18,32 @@ const config: Config = {
           '33%': { transform: 'translate(60px, -40px) scale(1.1)' },
           '66%': { transform: 'translate(-40px, 60px) scale(0.95)' },
         },
+        blob: {
+          '0%, 100%': { transform: 'translate(0, 0) scale(1)' },
+          '33%': { transform: 'translate(30px, -40px) scale(1.08)' },
+          '66%': { transform: 'translate(-25px, 30px) scale(0.95)' },
+        },
+        marquee: {
+          from: { transform: 'translateX(0)' },
+          to: { transform: 'translateX(-50%)' },
+        },
+        'marquee-reverse': {
+          from: { transform: 'translateX(-50%)' },
+          to: { transform: 'translateX(0)' },
+        },
+        'float-y': {
+          '0%, 100%': { transform: 'translateY(0)' },
+          '50%': { transform: 'translateY(-12px)' },
+        },
       },
       animation: {
         'logout-drift': 'logout-drift 8s ease-in-out infinite alternate',
         float: 'float 20s ease-in-out infinite',
+        blob: 'blob 18s ease-in-out infinite',
+        marquee: 'marquee 55s linear infinite',
+        'marquee-reverse': 'marquee-reverse 60s linear infinite',
+        'float-y': 'float-y 6s ease-in-out infinite',
+        'float-y-slow': 'float-y 9s ease-in-out infinite',
       },
       screens: {
         '3xl': '1920px',
@@ -39,7 +61,21 @@ const config: Config = {
           dark: 'var(--brand-dark)',
           light: 'var(--brand-light)',
           accent: 'var(--brand-accent)',
+          soft: 'var(--brand-soft)',
+          deep: 'var(--brand-deep)',
         },
+        coral: {
+          DEFAULT: 'var(--coral)',
+          soft: 'var(--coral-soft)',
+        },
+        mint: {
+          DEFAULT: 'var(--mint)',
+          deep: 'var(--mint-deep)',
+        },
+        forest: 'var(--forest)',
+        lavender: 'var(--lavender)',
+        peach: 'var(--peach)',
+        sky: 'var(--sky)',
         sidebar: {
           DEFAULT: 'var(--sidebar)',
           fg: 'var(--sidebar-fg)',
@@ -55,11 +91,12 @@ const config: Config = {
           DEFAULT: 'var(--ink)',
           muted: 'var(--ink-muted)',
         },
+        border: 'var(--border)',
       },
       fontFamily: {
-        display: ['Arial', 'Helvetica', 'sans-serif'],
-        body: ['Arial', 'Helvetica', 'sans-serif'],
-        instrument: ['Arial', 'Helvetica', 'sans-serif'],
+        sans: ['var(--font-sans)', 'Inter', 'Arial', 'sans-serif'],
+        display: ['var(--font-display)', 'Space Grotesk', 'Arial', 'sans-serif'],
+        body: ['var(--font-sans)', 'Inter', 'Arial', 'sans-serif'],
       },
       borderRadius: {
         card: '1rem',

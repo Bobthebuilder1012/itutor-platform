@@ -1,7 +1,11 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { Inter, Space_Grotesk } from 'next/font/google';
 import { AuthProvider } from '@/components/AuthProvider';
 import SuppressHydrationWarnings from '@/components/SuppressHydrationWarnings';
+
+const inter = Inter({ subsets: ['latin'], variable: '--font-sans', display: 'swap' });
+const spaceGrotesk = Space_Grotesk({ subsets: ['latin'], variable: '--font-display', display: 'swap' });
 
 export const metadata: Metadata = {
   title: 'iTutor - Caribbean Education Platform',
@@ -49,7 +53,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="scroll-smooth">
+    <html lang="en" className={`${inter.variable} ${spaceGrotesk.variable} scroll-smooth`}>
       <body>
         <SuppressHydrationWarnings />
         <AuthProvider>

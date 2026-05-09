@@ -305,13 +305,10 @@ export default function LoginPage() {
         {/* Logo: green mark + white wordmark (same as signup hero) */}
         <div className="flex items-center gap-3 -ml-4 sm:-ml-6">
           <img
-            src="/assets/logo/itutor-mark.png"
-            alt=""
-            className="h-24 w-auto shrink-0 object-contain object-left mix-blend-screen md:h-28 xl:h-[9rem]"
-            aria-hidden
+            src="/assets/logo/itutor-logo-new.png"
+            alt="iTutor"
+            className="h-16 w-auto object-contain sm:h-20"
           />
-          <span className="text-6xl font-normal lowercase tracking-tight text-white md:text-7xl xl:text-8xl">itutor</span>
-          <span className="sr-only">iTutor</span>
         </div>
 
         {/* Main copy */}
