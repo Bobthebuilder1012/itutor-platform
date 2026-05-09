@@ -2,6 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Marquee animations (legacy + new) ──────────────────────────────── */
 @keyframes marquee-left {
   0%   { transform: translateX(0); }
   100% { transform: translateX(-50%); }
@@ -10,6 +11,24 @@
   0%   { transform: translateX(-50%); }
   100% { transform: translateX(0); }
 }
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+@keyframes marquee-reverse {
+  from { transform: translateX(-50%); }
+  to   { transform: translateX(0); }
+}
+@keyframes blob {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33%      { transform: translate(30px, -40px) scale(1.08); }
+  66%      { transform: translate(-25px, 30px) scale(0.95); }
+}
+@keyframes float-y {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-12px); }
+}
+
 .animate-marquee-left  { animation: marquee-left  linear infinite; }
 .animate-marquee-right { animation: marquee-right linear infinite; }
 .marquee-track:hover .animate-marquee-left,
@@ -17,7 +36,8 @@
 
 @layer base {
   :root {
-    --brand: #16a34a;
+    /* ── Legacy dashboard tokens ───────────────────────────────────── */
+    --brand: oklch(0.74 0.19 145);
     --brand-dark: #15803d;
     --brand-light: #dcfce7;
     --brand-accent: #22c55e;
@@ -31,10 +51,22 @@
     --surface-soft: #f5faf7;
     --surface-border: #e5e7eb;
 
-    --ink: #111827;
-    --ink-muted: #6b7280;
-
     --bg: #f3f4f6;
+
+    /* ── Landing page design tokens ────────────────────────────────── */
+    --brand-soft: oklch(0.95 0.07 150);
+    --brand-deep: oklch(0.55 0.16 150);
+    --mint: oklch(0.97 0.04 150);
+    --mint-deep: oklch(0.93 0.05 150);
+    --ink: oklch(0.18 0.02 240);
+    --ink-muted: oklch(0.5 0.02 240);
+    --coral: oklch(0.74 0.18 40);
+    --coral-soft: oklch(0.94 0.06 50);
+    --lavender: oklch(0.92 0.05 295);
+    --peach: oklch(0.93 0.06 65);
+    --sky: oklch(0.92 0.05 230);
+    --forest: oklch(0.24 0.04 155);
+    --border: oklch(0.92 0.01 150);
   }
 
   html {
@@ -46,13 +78,37 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overflow-x: hidden;
-    font-family: Arial, Helvetica, sans-serif;
+    font-family: var(--font-sans, Inter, Arial, sans-serif);
     color: var(--ink);
   }
 
   h1, h2, h3, h4, h5, h6 {
-    font-family: Arial, Helvetica, sans-serif;
+    font-family: var(--font-display, 'Space Grotesk', Arial, sans-serif);
+    letter-spacing: -0.02em;
   }
+}
+
+/* ── Landing page utilities ──────────────────────────────────────────── */
+.bg-mint-wash {
+  background:
+    radial-gradient(60% 50% at 80% 0%, color-mix(in oklab, var(--brand) 18%, transparent) 0%, transparent 60%),
+    radial-gradient(50% 60% at 0% 30%, color-mix(in oklab, var(--coral) 12%, transparent) 0%, transparent 60%),
+    var(--mint);
+}
+
+.text-gradient-brand {
+  background: linear-gradient(95deg, var(--brand) 0%, var(--brand-deep) 60%, var(--coral) 120%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.shadow-pop  { box-shadow: 0 20px 50px -20px rgba(25, 147, 86, 0.4); }
+.shadow-card { box-shadow: 0 10px 30px -12px rgba(17, 24, 39, 0.18); }
+
+.marquee-mask {
+  -webkit-mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
+          mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
 }
 
 @layer utilities {

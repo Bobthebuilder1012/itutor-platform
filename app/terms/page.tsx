@@ -1,11 +1,10 @@
-import Header from '@/components/landing/Header';
+import Nav from '@/components/landing/Nav';
 import Footer from '@/components/landing/Footer';
-import Link from 'next/link';
 
 export default function TermsPage() {
   return (
     <div className="relative min-h-screen bg-white">
-      <Header />
+      <Nav />
       
       <main className="pt-32 pb-16">
         {/* Hero Section */}
@@ -16,7 +15,7 @@ export default function TermsPage() {
                 Terms and Conditions
               </h1>
               <p className="text-lg text-gray-600">
-                Last updated: January 2025
+                Last updated: May 2026
               </p>
             </div>
           </div>
