@@ -298,7 +298,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex" style={{ background: 'linear-gradient(135deg, #071a0e 0%, #0d2318 50%, #0a1e14 100%)' }}>
 
       {/* LEFT PANEL */}
-      <div className="relative hidden flex-col justify-between overflow-hidden px-16 py-14 lg:flex lg:w-[52%] lg:items-start">
+      <div className="relative hidden flex-col justify-between overflow-hidden px-12 py-12 md:flex md:w-[52%] md:items-start xl:px-16 xl:py-14">
         <div className="absolute top-[-80px] right-[-80px] w-[500px] h-[500px] rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(25,147,86,0.13) 0%, transparent 65%)' }} />
         <div className="absolute bottom-[-60px] left-[-60px] w-80 h-80 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(25,147,86,0.09) 0%, transparent 70%)' }} />
 
@@ -307,16 +307,16 @@ export default function LoginPage() {
           <img
             src="/assets/logo/itutor-mark.png"
             alt=""
-            className="h-28 w-auto shrink-0 object-contain object-left mix-blend-screen sm:h-[9rem]"
+            className="h-24 w-auto shrink-0 object-contain object-left mix-blend-screen md:h-28 xl:h-[9rem]"
             aria-hidden
           />
-          <span className="text-7xl font-normal lowercase tracking-tight text-white sm:text-8xl">itutor</span>
+          <span className="text-6xl font-normal lowercase tracking-tight text-white md:text-7xl xl:text-8xl">itutor</span>
           <span className="sr-only">iTutor</span>
         </div>
 
         {/* Main copy */}
         <div className="flex flex-col">
-          <h1 className="font-extrabold text-white leading-[1.05] mb-5" style={{ fontSize: 'clamp(3rem, 5.5vw, 4.5rem)' }}>
+          <h1 className="font-extrabold text-white leading-[1.05] mb-5" style={{ fontSize: 'clamp(2.5rem, 5vw, 4.5rem)' }}>
             Good to<br />see<br />
             <span style={{ color: '#2ecc7a' }}>you again.</span>
           </h1>
@@ -350,12 +350,23 @@ export default function LoginPage() {
       </div>
 
       {/* RIGHT PANEL */}
-      <div className="w-full lg:w-[48%] flex items-center justify-center px-8 py-10 relative z-10">
+      <div className="w-full md:w-[48%] flex items-center justify-center px-6 py-10 relative z-10">
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[400px] px-8 py-8">
+
+          {/* Mobile-only logo (left panel hidden) */}
+          <div className="flex md:hidden items-center justify-center gap-2 mb-6">
+            <img
+              src="/assets/logo/itutor-mark.png"
+              alt=""
+              className="h-10 w-auto object-contain"
+              aria-hidden
+            />
+            <span className="text-3xl font-normal lowercase tracking-tight text-gray-900">itutor</span>
+          </div>
 
           {/* Heading */}
           <div className="text-center mb-5">
-            <h2 className="text-2xl font-bold text-gray-900 mb-1">Welcome</h2>
+            <h2 className="text-2xl font-bold text-gray-900 mb-1">Welcome back</h2>
             <p className="text-sm text-gray-500">Sign in to your iTutor account</p>
           </div>
 
