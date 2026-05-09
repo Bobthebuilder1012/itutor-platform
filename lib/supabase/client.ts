@@ -47,8 +47,14 @@ export function createSupabaseClient(persistSession: boolean = false): SupabaseC
     }
   }
 
-  // Use createBrowserClient for proper SSR cookie support
-  return createBrowserClient(supabaseUrl, supabaseAnonKey);
+  return createBrowserClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      // Disable navigator.locks-based auth lock; it was emitting
+      // "AbortError: signal is aborted without reason" and aborting
+      // unrelated in-flight Supabase requests.
+      lock: async (_name, _acquireTimeout, fn) => fn(),
+    },
+  });
 }
 
 let supabaseInstance: SupabaseClient | null = null;
