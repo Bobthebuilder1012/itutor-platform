@@ -59,58 +59,35 @@ export default function SubjectMultiSelect({
   async function searchSubjects() {
     setLoading(true);
     try {
-      console.log('🔍 Searching subjects for:', searchQuery);
-      console.log('🔑 Supabase client initialized:', !!supabase);
-      
       const safe = searchQuery.trim().replace(/%/g, '').replace(/,/g, '');
-      const { data, error, count } = await supabase
+      const { data, error } = await supabase
         .from('subjects')
         .select('id, name, curriculum, level, label', { count: 'exact' })
         .or(`name.ilike.%${safe}%,label.ilike.%${safe}%`)
         .order('name', { ascending: true })
         .limit(15);
 
-      console.log('📚 Search results:', {
-        found: data?.length || 0,
-        total: count,
-        data: data,
-        error: error
-      });
-
       if (error) {
-        console.error('❌ Supabase error:', error);
-        console.error('Error details:', {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code
-        });
+        console.error('Supabase error:', error);
         setAvailableSubjects([]);
         setIsDropdownOpen(true);
         return;
       }
 
-      if (!data || data.length === 0) {
-        console.warn('⚠️ No subjects found in database for query:', searchQuery);
-      }
-
-      // Map to include a display label and filter out already selected
       const mappedData = data
         ?.map(s => ({
           id: s.id,
           name: s.name,
           curriculum: s.curriculum,
           level: s.level,
-          // Use the label from database instead of constructing it
           label: s.label || `${s.name} (${s.curriculum})`
         }))
         .filter(subject => !selectedSubjects.includes(subject.label)) || [];
 
-      console.log('✅ Mapped data:', mappedData.length, 'subjects after filtering');
       setAvailableSubjects(mappedData);
       setIsDropdownOpen(true);
     } catch (err) {
-      console.error('💥 Unexpected error:', err);
+      console.error('Unexpected error:', err);
       setAvailableSubjects([]);
       setIsDropdownOpen(true);
     } finally {

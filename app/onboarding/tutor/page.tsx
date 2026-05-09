@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase/client';
 import SubjectMultiSelect from '@/components/SubjectMultiSelect';
-import { PAID_CLASSES_DISABLED_MESSAGE } from '@/lib/featureFlags/paidClasses';
 import { ensureSchoolCommunityAndMembership } from '@/lib/actions/community';
 
 const TEACHING_LEVELS = [
@@ -261,17 +260,10 @@ export default function TutorOnboardingPage() {
         return;
       }
 
-      if (!paidEnabled) {
-        console.log(PAID_CLASSES_DISABLED_MESSAGE);
-      }
-
-      // Verify subjects were saved
       const { data: savedSubjects, error: verifyError } = await supabase
         .from('tutor_subjects')
         .select('id')
         .eq('tutor_id', userId);
-
-      console.log('Saved subjects:', savedSubjects);
 
       if (verifyError || !savedSubjects || savedSubjects.length === 0) {
         console.error('Verification failed:', verifyError);
@@ -288,7 +280,6 @@ export default function TutorOnboardingPage() {
         return;
       }
 
-      console.log('Onboarding complete, redirecting to dashboard');
       router.push('/tutor/dashboard');
     } catch (err) {
       console.error('Unexpected error:', err);

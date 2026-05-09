@@ -80,7 +80,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Only set loading to false if we didn't redirect
         setLoading(false);
       } catch (error) {
-        console.error('Error checking session:', error);
+        const isAbort =
+          error instanceof Error &&
+          (error.name === 'AbortError' || error.message.includes('signal is aborted'));
+        if (!isAbort) {
+          console.error('Error checking session:', error);
+        }
         setLoading(false);
       }
     };

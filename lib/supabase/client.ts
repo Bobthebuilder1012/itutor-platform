@@ -51,27 +51,15 @@ export function createSupabaseClient(persistSession: boolean = false): SupabaseC
   return createBrowserClient(supabaseUrl, supabaseAnonKey);
 }
 
-// Cache the client based on current storage preference
 let supabaseInstance: SupabaseClient | null = null;
-let currentStorageMode: boolean | null = null;
 
-// Don't cache the default client - always create it based on current preference
-// This ensures the client uses the correct storage (localStorage or sessionStorage)
 function getSupabaseClient(): SupabaseClient {
-  // Always check current preference
-  const rememberMe = getRememberMePreference();
-  
-  // Only recreate client if storage preference changed or no client exists
-  if (!supabaseInstance || currentStorageMode !== rememberMe) {
-    currentStorageMode = rememberMe;
-    supabaseInstance = createSupabaseClient(rememberMe);
+  if (!supabaseInstance) {
+    supabaseInstance = createSupabaseClient(getRememberMePreference());
   }
-  
   return supabaseInstance;
 }
 
-// Export as a getter to maintain backward compatibility
-// This will automatically use the right storage based on current user preference
 export const supabase = new Proxy({} as SupabaseClient, {
   get(_target, prop) {
     return getSupabaseClient()[prop as keyof SupabaseClient];

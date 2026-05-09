@@ -85,11 +85,9 @@ export async function subscribeToPushNotifications(userId: string): Promise<Push
     let registration = await navigator.serviceWorker.getRegistration('/sw.js');
     
     if (!registration) {
-      // Register service worker if not already registered
       registration = await navigator.serviceWorker.register('/sw.js', {
         scope: '/'
       });
-      console.log('📱 Service worker registered successfully');
     }
 
     // Wait for service worker to be ready
@@ -98,7 +96,6 @@ export async function subscribeToPushNotifications(userId: string): Promise<Push
     // Check if already subscribed
     const existingSubscription = await registration.pushManager.getSubscription();
     if (existingSubscription) {
-      console.log('✅ Already subscribed to push notifications');
       return existingSubscription;
     }
 
@@ -124,7 +121,6 @@ export async function subscribeToPushNotifications(userId: string): Promise<Push
       // Still return subscription even if DB save fails
     }
 
-    console.log('✅ Subscribed to push notifications');
     return subscription;
   } catch (error: any) {
     // Provide more helpful error messages
@@ -161,7 +157,6 @@ export async function unsubscribeFromPushNotifications(userId: string): Promise<
         body: JSON.stringify({ userId, platform: 'web' })
       });
 
-      console.log('✅ Unsubscribed from push notifications');
       return true;
     }
 
