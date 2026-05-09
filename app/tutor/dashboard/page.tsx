@@ -97,7 +97,7 @@ export default function TutorDashboard() {
           supabase.from('tutor_subjects').select('*').eq('tutor_id', profile.id),
           supabase.from('subjects').select('*'),
           supabase.from('ratings').select('*').eq('tutor_id', profile.id),
-          supabase.from('tutor_video_provider_connections').select('id, connection_status').eq('tutor_id', profile.id).single(),
+          supabase.from('tutor_video_provider_connections').select('id, connection_status').eq('tutor_id', profile.id).maybeSingle(),
           supabase.from('tutor_availability_rules').select('id').eq('tutor_id', profile.id).eq('is_active', true).limit(1),
         ]);
 

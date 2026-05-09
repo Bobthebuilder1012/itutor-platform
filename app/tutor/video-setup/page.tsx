@@ -83,9 +83,9 @@ export default function VideoSetupPage() {
         .from('tutor_video_provider_connections')
         .select('*')
         .eq('tutor_id', profile.id)
-        .single();
+        .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+      if (error) {
         console.error('Error loading connection:', error);
       } else if (data) {
         const now = new Date();
