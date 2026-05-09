@@ -7,7 +7,9 @@ function normalizeEmail(email?: string | null) {
 }
 
 export function isEmailManagementOnlyAdmin(email?: string | null) {
-  return normalizeEmail(email) === EMAIL_MANAGEMENT_ONLY_ADMIN;
+  const normalized = normalizeEmail(email);
+  if (!normalized || !EMAIL_MANAGEMENT_ONLY_ADMIN) return false;
+  return normalized === EMAIL_MANAGEMENT_ONLY_ADMIN;
 }
 
 export function getAdminHomePath(email?: string | null) {
