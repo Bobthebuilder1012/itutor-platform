@@ -34,7 +34,8 @@
     "**/*.ts",
     "**/*.tsx",
     "../../../.itutor-next/build/types/**/*.ts",
-    ".next/types/**/*.ts"
+    ".next/types/**/*.ts",
+    "C:\\Users\\liamd\\.itutor-next\\build/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

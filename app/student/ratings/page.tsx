@@ -1,10 +1,9 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
-import DashboardLayout from '@/components/DashboardLayout';
 import { Rating } from '@/lib/types/database';
 import { getDisplayName } from '@/lib/utils/displayName';
 
@@ -71,7 +70,7 @@ export default function StudentRatings() {
   }
 
   return (
-    <DashboardLayout role="student" userName={profile.full_name}>
+    
       <div className="px-4 py-6 sm:px-0">
         <h1 className="text-3xl font-bold text-gray-900 mb-6">My Reviews</h1>
 
@@ -123,6 +122,5 @@ export default function StudentRatings() {
           )}
         </div>
       </div>
-    </DashboardLayout>
   );
 }

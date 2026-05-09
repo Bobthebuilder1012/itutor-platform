@@ -1,8 +1,7 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import DashboardLayout from '@/components/DashboardLayout';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { getAllCurriculumGrouped } from '@/lib/services/curriculumService';
 import SyllabusCard from '@/components/curriculum/SyllabusCard';
@@ -197,10 +196,7 @@ export default function StudentCurriculumPage() {
   const displayName = getDisplayName(profile);
 
   return (
-    <DashboardLayout
-      role={profile.role as 'student' | 'tutor' | 'parent' | 'reviewer' | 'admin'}
-      userName={displayName}
-    >
+    
       <div className="px-4 py-6 sm:px-0 max-w-7xl mx-auto">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Curriculum Resources</h1>
@@ -367,6 +363,5 @@ export default function StudentCurriculumPage() {
           </p>
         </div>
       </div>
-    </DashboardLayout>
   );
 }

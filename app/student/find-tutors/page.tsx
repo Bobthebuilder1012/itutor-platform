@@ -1,11 +1,10 @@
-// @ts-nocheck
+﻿// @ts-nocheck
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
-import DashboardLayout from '@/components/DashboardLayout';
 import SubjectMultiSelect from '@/components/SubjectMultiSelect';
 import { getDisplayName } from '@/lib/utils/displayName';
 import VerifiedBadge from '@/components/VerifiedBadge';
@@ -387,7 +386,7 @@ export default function FindTutorsPage() {
   const quickSubjects = ['CSEC Mathematics', 'CSEC English A', 'CSEC Biology', 'CSEC Chemistry', 'CAPE Physics', 'SEA Mathematics'];
 
   return (
-    <DashboardLayout role="student" userName={getDisplayName(profile)}>
+    
       <div className="px-1 py-2 sm:px-0">
 
         {/* ── HERO HEADER ── */}
@@ -719,7 +718,6 @@ export default function FindTutorsPage() {
           </div>
         )}
       </div>
-    </DashboardLayout>
   );
 }
 

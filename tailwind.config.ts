@@ -92,6 +92,13 @@ const config: Config = {
           muted: 'var(--ink-muted)',
         },
         border: 'var(--border)',
+        background: 'var(--background)',
+        foreground: 'var(--foreground)',
+        muted: {
+          DEFAULT: 'var(--muted)',
+          foreground: 'var(--muted-foreground)',
+        },
+        card: 'var(--card)',
       },
       fontFamily: {
         sans: ['var(--font-sans)', 'Inter', 'Arial', 'sans-serif'],

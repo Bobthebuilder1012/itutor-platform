@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
-import DashboardLayout from '@/components/DashboardLayout';
 import { getDisplayName } from '@/lib/utils/displayName';
 import TutorCalendarWidget from '@/components/booking/TutorCalendarWidget';
 import BookingRequestModal from '@/components/booking/BookingRequestModal';
@@ -217,16 +216,16 @@ export default function TutorProfilePage() {
 
   if (!tutor) {
     return (
-      <DashboardLayout role="student" userName={getDisplayName(profile)}>
+      
         <div className="text-center py-12">
           <p className="text-gray-600">Tutor not found</p>
         </div>
-      </DashboardLayout>
+
     );
   }
 
   return (
-    <DashboardLayout role="student" userName={getDisplayName(profile)}>
+    <>
       <div className="px-4 py-6 sm:px-0 max-w-6xl mx-auto">
         {/* Back Button */}
         <button
@@ -677,7 +676,7 @@ export default function TutorProfilePage() {
         isOpen={reviewsModalOpen}
         onClose={() => setReviewsModalOpen(false)}
       />
-    </DashboardLayout>
+    </>
   );
 }
 

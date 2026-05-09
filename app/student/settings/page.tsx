@@ -4,13 +4,12 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
-import DashboardLayout from '@/components/DashboardLayout';
+import { getDisplayName } from '@/lib/utils/displayName';
+import { ensureSchoolCommunityAndMembership } from '@/lib/actions/community';
 import CountrySelect from '@/components/CountrySelect';
 import SubjectMultiSelect from '@/components/SubjectMultiSelect';
 import InstitutionAutocomplete from '@/components/InstitutionAutocomplete';
 import type { Institution } from '@/lib/hooks/useInstitutionsSearch';
-import { getDisplayName } from '@/lib/utils/displayName';
-import { ensureSchoolCommunityAndMembership } from '@/lib/actions/community';
 
 type SettingsSection = 'profile' | 'security' | 'payment' | 'reviews';
 
@@ -398,10 +397,11 @@ export default function StudentSettingsPage() {
   }
 
   return (
-    <DashboardLayout role="student" userName={getDisplayName(profile)}>
-      <div className="px-4 py-6 sm:px-0 max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Settings</h1>
-        <p className="text-gray-600 mb-8">Manage your account settings and preferences</p>
+    <div className="max-w-5xl mx-auto">
+      <div className="mb-6">
+        <h1 className="text-2xl lg:text-3xl font-bold text-ink">Settings</h1>
+        <p className="text-sm text-muted-foreground mt-1">Manage your account settings and preferences</p>
+      </div>
 
         {message && (
           <div className="bg-green-100 border-2 border-green-300 text-green-800 px-4 py-3 rounded-lg mb-6">
@@ -766,10 +766,8 @@ export default function StudentSettingsPage() {
             )}
           </div>
         )}
-
           </div>
         </div>
-      </div>
 
       {/* Email Change Password Modal */}
       {showEmailPasswordPrompt && (
@@ -874,6 +872,6 @@ export default function StudentSettingsPage() {
           </div>
         </div>
       )}
-    </DashboardLayout>
+    </div>
   );
 }

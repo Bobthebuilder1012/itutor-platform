@@ -13,7 +13,6 @@ import {
   subscribeToBookingMessages
 } from '@/lib/services/bookingService';
 import { supabase } from '@/lib/supabase/client';
-import DashboardLayout from '@/components/DashboardLayout';
 import { getDisplayName } from '@/lib/utils/displayName';
 import { Booking, BookingMessage, BookingMessageWithSender } from '@/lib/types/booking';
 import { formatDateTime, formatTimeRange, getRelativeTime } from '@/lib/utils/calendar';
@@ -268,7 +267,7 @@ export default function BookingThreadPage() {
   const paidClassesEnabled = isPaidClassesEnabled();
 
   return (
-    <DashboardLayout role="student" userName={getDisplayName(profile)}>
+    
       <div className="px-4 py-6 sm:px-0 max-w-4xl mx-auto">
         {/* Back Button */}
         <button
@@ -548,7 +547,7 @@ export default function BookingThreadPage() {
           )}
         </div>
       </div>
-    </DashboardLayout>
+
   );
 }
 
