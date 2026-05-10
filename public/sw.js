@@ -34,9 +34,9 @@ self.addEventListener('push', (event) => {
       icon: '/favicon.png',
       badge: '/favicon.png',
       data: data.data || {},
-      tag: data.tag || 'default',
+      tag: data.tag || data.data?.notification_id || (self.crypto && self.crypto.randomUUID ? self.crypto.randomUUID() : String(Date.now())),
       requireInteraction: false,
-      vibrate: [200, 100, 200], // Vibration pattern for mobile
+      vibrate: [200, 100, 200],
     };
 
     event.waitUntil(
@@ -122,12 +122,6 @@ self.addEventListener('pushsubscriptionchange', (event) => {
         console.error(`[SW ${SW_VERSION}] Error resubscribing:`, err);
       })
   );
-});
-
-// Optional: Handle fetch events for offline support (currently just pass through)
-self.addEventListener('fetch', (event) => {
-  // Pass through all requests (no caching for now)
-  event.respondWith(fetch(event.request));
 });
 
 console.log(`[SW ${SW_VERSION}] Service worker loaded`);

@@ -34,7 +34,7 @@ export async function sendWebPush(params: WebPushParams): Promise<void> {
     title,
     body,
     data: data || {},
-    tag: data?.session_id || 'notification',
+    tag: data?.tag || data?.notification_id || data?.session_id || crypto.randomUUID(),
   });
 
   try {
