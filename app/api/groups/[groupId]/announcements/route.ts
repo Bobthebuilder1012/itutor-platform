@@ -91,13 +91,16 @@ export async function POST(
     if (members?.length) {
       try {
         const { data: authorProfile } = await service.from('profiles').select('full_name').eq('id', user.id).single();
+        const { data: groupRow } = await service.from('groups').select('name').eq('id', groupId).single();
+        const groupName = (groupRow as { name?: string } | null)?.name ?? 'your class';
         const notifications = members.map((m: any) => ({
           user_id: m.user_id,
-          type: 'NEW_ANNOUNCEMENT',
-          title: 'New group announcement',
-          message: `${authorProfile?.full_name ?? 'Tutor'} posted an announcement in your group.`,
-          link: `/groups`,
+          type: 'new_stream_post',
+          title: '📢 Announcement',
+          message: `${authorProfile?.full_name ?? 'Tutor'} posted in ${groupName}.`,
+          link: `/lessons/${groupId}`,
           group_id: groupId,
+          metadata: { announcementId: announcement.id, postType: 'announcement' },
         }));
         await service.from('notifications').insert(notifications);
       } catch {
