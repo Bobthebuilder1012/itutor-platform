@@ -50,8 +50,10 @@ function isWebPushSubscriptionToken(token: string): boolean {
 }
 
 function isExpiredSubscriptionError(err: unknown): boolean {
+  const code = (err as any)?.statusCode;
+  if (code === 404 || code === 410) return true;
   const msg = err instanceof Error ? err.message : '';
-  return /\b(404|410)\b/.test(msg);
+  return /status=(404|410)\b/.test(msg);
 }
 
 Deno.serve(async (req) => {
