@@ -309,12 +309,12 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
             sidebarOpen ? (
               // Mobile overlay — navigate to dashboard as before
               <Link href={getDashboardLink()} onClick={() => setSidebarOpen(false)} title="Go to dashboard" className="flex items-center justify-center hover:opacity-80 transition-opacity">
-                <Image src="/assets/logo/itutor-mark.png" alt="iTutor" width={36} height={36} className="w-9 h-9 object-contain" />
+                <Image src="/assets/logo/itutor-logo-dark.png" alt="iTutor" width={110} height={36} className="h-7 w-auto object-contain" />
               </Link>
             ) : (
               // Desktop — click logo to expand sidebar
               <button onClick={toggleCollapsed} title="Expand sidebar" className="flex items-center justify-center hover:opacity-80 transition-opacity">
-                <Image src="/assets/logo/itutor-mark.png" alt="iTutor" width={36} height={36} className="w-9 h-9 object-contain" />
+                <Image src="/assets/logo/itutor-logo-dark.png" alt="iTutor" width={110} height={36} className="h-7 w-auto object-contain" />
               </button>
             )
           ) : (

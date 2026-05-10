@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import DashboardLayout from '@/components/DashboardLayout';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { getSyllabusById } from '@/lib/services/curriculumService';
 import type { SyllabusWithSubject } from '@/lib/types/curriculum';
@@ -76,10 +75,7 @@ export default function SyllabusViewerPage() {
   const displayName = getDisplayName(profile);
 
   return (
-    <DashboardLayout
-      role={profile.role as 'student' | 'tutor' | 'parent' | 'reviewer' | 'admin'}
-      userName={displayName}
-    >
+    
       <div className="px-4 py-6 sm:px-0 max-w-7xl mx-auto">
         {/* Loading State */}
         {loading ? (
@@ -218,6 +214,6 @@ export default function SyllabusViewerPage() {
           </div>
         ) : null}
       </div>
-    </DashboardLayout>
+
   );
 }

@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
-import DashboardLayout from '@/components/DashboardLayout';
 import ConversationView from '@/components/ConversationView';
 import { getDisplayName } from '@/lib/utils/displayName';
 
@@ -61,7 +60,7 @@ export default function StudentConversationPage() {
   }
 
   return (
-    <DashboardLayout role="student" userName={getDisplayName(profile)}>
+    
       <div className="px-4 py-6 sm:px-0 max-w-5xl mx-auto">
         <ConversationView
           conversationId={conversationId}
@@ -69,7 +68,7 @@ export default function StudentConversationPage() {
           otherUserId={otherUserId}
         />
       </div>
-    </DashboardLayout>
+
   );
 }
 

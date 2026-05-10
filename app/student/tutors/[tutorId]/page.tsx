@@ -1,20 +1,30 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useMemo, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import Link from 'next/link';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
-import DashboardLayout from '@/components/DashboardLayout';
 import { getDisplayName } from '@/lib/utils/displayName';
-import TutorCalendarWidget from '@/components/booking/TutorCalendarWidget';
 import BookingRequestModal from '@/components/booking/BookingRequestModal';
 import SuggestTimeModal from '@/components/booking/SuggestTimeModal';
-import VerifiedBadge from '@/components/VerifiedBadge';
-import VerifiedSubjectsButton from '@/components/tutor/VerifiedSubjectsButton';
-import VerifiedSubjectsModal from '@/components/tutor/VerifiedSubjectsModal';
-import TutorReviewsModal from '@/components/tutor/TutorReviewsModal';
-import RatingComment from '@/components/tutor/RatingComment';
-import { getAvatarColor } from '@/lib/utils/avatarColors';
+import UserAvatar from '@/components/UserAvatar';
+import { cn } from '@/lib/utils';
+import {
+  ArrowLeft, Star, Heart, MessageSquare, Award, Clock, Video,
+  BadgeCheck, ChevronLeft, ChevronRight, X, Check, MapPin,
+  ThumbsUp, ThumbsDown,
+} from 'lucide-react';
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+type Review = {
+  id: string;
+  stars: number;
+  comment: string | null;
+  created_at: string;
+  student: { full_name: string; username: string };
+};
 
 type TutorProfile = {
   id: string;
@@ -39,38 +49,247 @@ type TutorProfile = {
   total_reviews: number;
 };
 
+// ── Availability helpers ──────────────────────────────────────────────────────
+
+type Window = { start: number; end: number };
+type DayAvail = { date: Date; windows: Window[]; booked: Window[] };
+
+const SLOT_STEP = 0.5;
+const DURATION_OPTIONS = [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5];
+
+function fmtTime(h: number) {
+  const hr = Math.floor(h);
+  const m = Math.round((h - hr) * 60);
+  const ampm = hr >= 12 ? 'PM' : 'AM';
+  const h12 = ((hr + 11) % 12) + 1;
+  return `${h12}:${m.toString().padStart(2, '0')} ${ampm}`;
+}
+
+function effectiveWindows(windows: Window[], booked: Window[]): Window[] {
+  let out = windows.map((w) => ({ ...w }));
+  for (const b of booked) {
+    const next: Window[] = [];
+    for (const w of out) {
+      if (b.end <= w.start || b.start >= w.end) { next.push(w); continue; }
+      if (b.start > w.start) next.push({ start: w.start, end: b.start });
+      if (b.end < w.end) next.push({ start: b.end, end: w.end });
+    }
+    out = next;
+  }
+  return out.filter((w) => w.end - w.start >= SLOT_STEP);
+}
+
+function startsForDuration(eff: Window[], duration: number): number[] {
+  const out: number[] = [];
+  for (const w of eff) {
+    let t = Math.ceil(w.start / SLOT_STEP) * SLOT_STEP;
+    while (t + duration <= w.end + 1e-9) {
+      out.push(Number(t.toFixed(2)));
+      t += SLOT_STEP;
+    }
+  }
+  return out;
+}
+
+function buildSlots(days = 30): DayAvail[] {
+  const out: DayAvail[] = [];
+  const start = new Date(); start.setHours(0, 0, 0, 0);
+  for (let i = 0; i < days; i++) {
+    const d = new Date(start); d.setDate(start.getDate() + i);
+    const dow = d.getDay();
+    let windows: Window[] = [];
+    if (dow === 0) windows = [{ start: 15.5, end: 18 }];
+    else if (dow === 6) windows = [{ start: 10, end: 13 }, { start: 14, end: 18 }];
+    else if (i % 7 === 4) windows = [];
+    else windows = [{ start: 15.5, end: 21 }];
+    const booked: Window[] = [];
+    if (dow === 2) booked.push({ start: 17, end: 18 });
+    if (dow === 4) booked.push({ start: 16, end: 17.5 });
+    out.push({ date: d, windows, booked });
+  }
+  return out;
+}
+
+function slotToISO(date: Date, startHour: number, duration: number) {
+  const startH = Math.floor(startHour);
+  const startM = Math.round((startHour - startH) * 60);
+  const start = new Date(date); start.setHours(startH, startM, 0, 0);
+  const endHour = startHour + duration;
+  const endH = Math.floor(endHour);
+  const endM = Math.round((endHour - endH) * 60);
+  const end = new Date(date); end.setHours(endH, endM, 0, 0);
+  return { start: start.toISOString(), end: end.toISOString() };
+}
+
+// ── BookingCard ───────────────────────────────────────────────────────────────
+
+function BookingCard({
+  priceLabel, subjects, pickedSubject, setPickedSubject,
+  slots, pickedDay, setPickedDay, pickedTime, setPickedTime,
+  duration, setDuration, scrollRef, scrollDays, embedded, onContinue,
+}: {
+  priceLabel: string;
+  subjects: TutorProfile['subjects'];
+  pickedSubject: TutorProfile['subjects'][0] | null;
+  setPickedSubject: (s: TutorProfile['subjects'][0]) => void;
+  slots: DayAvail[];
+  pickedDay: number;
+  setPickedDay: (n: number) => void;
+  pickedTime: number | null;
+  setPickedTime: (n: number | null) => void;
+  duration: number;
+  setDuration: (n: number) => void;
+  scrollRef: React.RefObject<HTMLDivElement>;
+  scrollDays: (dir: 1 | -1) => void;
+  embedded?: boolean;
+  onContinue?: () => void;
+}) {
+  const day = slots[pickedDay];
+  const eff = effectiveWindows(day.windows, day.booked);
+  const longestWindow = eff.reduce((m, w) => Math.max(m, w.end - w.start), 0);
+  const starts = startsForDuration(eff, duration);
+
+  useEffect(() => {
+    if (pickedTime != null && !starts.includes(pickedTime)) setPickedTime(null);
+  }, [pickedTime, starts, setPickedTime]);
+
+  return (
+    <div className={cn(!embedded && 'rounded-3xl bg-background border border-border p-5')}>
+      {!embedded && (
+        <div className="flex items-baseline justify-between mb-4">
+          <div><span className="text-2xl font-bold text-ink">{priceLabel}</span><span className="text-sm text-muted-foreground">/hr</span></div>
+          <span className="text-xs px-2 py-1 rounded-full bg-brand-soft text-forest font-semibold">Available</span>
+        </div>
+      )}
+
+      {subjects.length > 1 && (
+        <>
+          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Subject</div>
+          <div className="flex flex-wrap gap-1.5 mb-4">
+            {subjects.map((s) => (
+              <button key={s.id} onClick={() => setPickedSubject(s)} className={cn('px-3 py-1.5 rounded-full text-xs font-semibold border transition', pickedSubject?.id === s.id ? 'bg-ink text-white border-ink' : 'border-border text-muted-foreground hover:border-ink/30')}>
+                {s.name}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Pick a day</div>
+        <div className="flex gap-1">
+          <button onClick={() => scrollDays(-1)} className="size-6 grid place-items-center rounded-full hover:bg-muted"><ChevronLeft className="size-3.5" /></button>
+          <button onClick={() => scrollDays(1)} className="size-6 grid place-items-center rounded-full hover:bg-muted"><ChevronRight className="size-3.5" /></button>
+        </div>
+      </div>
+      <div ref={scrollRef} className="flex gap-1.5 overflow-x-auto pb-2 mb-4 -mx-1 px-1 snap-x">
+        {slots.map((s, i) => {
+          const dayEff = effectiveWindows(s.windows, s.booked);
+          const disabled = dayEff.length === 0;
+          return (
+            <button key={i} onClick={() => { setPickedDay(i); setPickedTime(null); }} disabled={disabled} className={cn('shrink-0 w-14 py-2 rounded-xl text-center transition snap-start disabled:opacity-30 border', pickedDay === i ? 'bg-ink text-white border-ink' : 'border-border hover:border-brand')}>
+              <div className="text-[10px] font-semibold opacity-70 uppercase">{i === 0 ? 'Today' : s.date.toLocaleDateString('en', { weekday: 'short' })}</div>
+              <div className="text-base font-bold mt-0.5">{s.date.getDate()}</div>
+              <div className="text-[9px] opacity-60 mt-0.5">{s.date.toLocaleDateString('en', { month: 'short' })}</div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Duration</div>
+        <div className="text-[11px] text-muted-foreground">{pickedSubject ? `TT$${(pickedSubject.price_per_hour_ttd * duration).toFixed(0)} total` : ''}</div>
+      </div>
+      <div className="flex gap-1.5 overflow-x-auto pb-2 mb-4 -mx-1 px-1">
+        {DURATION_OPTIONS.map((d) => {
+          const fits = longestWindow >= d - 1e-9;
+          return (
+            <button key={d} onClick={() => setDuration(d)} disabled={!fits} className={cn('shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition disabled:opacity-30', duration === d ? 'bg-ink text-white border-ink' : 'border-border text-muted-foreground hover:border-ink/30')}>
+              {d % 1 === 0 ? `${d} hr` : `${d} hrs`}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+        Start times · {day.date.toLocaleDateString('en', { weekday: 'long', month: 'short', day: 'numeric' })}
+      </div>
+      {eff.length === 0 ? (
+        <div className="text-sm text-muted-foreground py-4 text-center mb-4">Tutor isn&apos;t available on this day</div>
+      ) : starts.length === 0 ? (
+        <div className="text-sm text-muted-foreground py-4 text-center mb-4">No {duration} hr slot fits. Try a shorter duration or another day.</div>
+      ) : (
+        <div className="space-y-3 mb-4">
+          {eff.map((w, wi) => {
+            const winStarts = starts.filter((t) => t >= w.start - 1e-9 && t + duration <= w.end + 1e-9);
+            if (winStarts.length === 0) return null;
+            return (
+              <div key={wi}>
+                <div className="text-[10px] text-muted-foreground mb-1.5">Free {fmtTime(w.start)} – {fmtTime(w.end)}</div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {winStarts.map((t) => (
+                    <button key={t} onClick={() => setPickedTime(t)} className={cn('py-2 rounded-xl text-xs font-medium border transition', pickedTime === t ? 'bg-brand text-white border-brand' : 'border-border hover:border-brand')}>
+                      {fmtTime(t)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <button
+        disabled={pickedTime == null || pickedSubject == null}
+        onClick={onContinue}
+        className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-brand text-white font-semibold hover:bg-brand-deep transition disabled:opacity-50"
+      >
+        <Video className="size-4" />
+        {pickedTime != null && pickedSubject != null
+          ? (embedded
+            ? `Continue · ${fmtTime(pickedTime)} – ${fmtTime(pickedTime + duration)}`
+            : `Book ${duration} hr${duration === 1 ? '' : 's'} · ${fmtTime(pickedTime)}`)
+          : 'Select a subject & time'}
+      </button>
+      {!embedded && <p className="text-xs text-muted-foreground text-center mt-3">Free cancellation up to 24h before</p>}
+    </div>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
+
 export default function TutorProfilePage() {
   const { profile, loading: profileLoading } = useProfile();
   const router = useRouter();
   const params = useParams();
   const tutorId = params.tutorId as string;
-  
+
   const [tutor, setTutor] = useState<TutorProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedSubject, setSelectedSubject] = useState<TutorProfile['subjects'][0] | null>(null);
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
   const [suggestTimeModalOpen, setSuggestTimeModalOpen] = useState(false);
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<{ start: string; end: string } | null>(null);
-  const [verifiedSubjectsModalOpen, setVerifiedSubjectsModalOpen] = useState(false);
-  const [verifiedSubjects, setVerifiedSubjects] = useState<any[]>([]);
-  const [csecSubjects, setCsecSubjects] = useState<any[]>([]);
-  const [capeSubjects, setCapeSubjects] = useState<any[]>([]);
-  const [paidClassesEnabled, setPaidClassesEnabled] = useState<boolean>(false);
-  const [reviewsModalOpen, setReviewsModalOpen] = useState(false);
+  const [paidClassesEnabled, setPaidClassesEnabled] = useState(false);
   const [completedSessions, setCompletedSessions] = useState(0);
-  const [showAboutMenu, setShowAboutMenu] = useState(false);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [voted, setVoted] = useState<Record<string, 'up' | 'down' | undefined>>({});
+  const [saved, setSaved] = useState(false);
+  const [showBookingSheet, setShowBookingSheet] = useState(false);
+  const [bookingStep, setBookingStep] = useState<1 | 2 | 3>(1);
+  const [pickedTime, setPickedTime] = useState<number | null>(null);
+  const [pickedDay, setPickedDay] = useState(0);
+  const [duration, setDuration] = useState(1);
+  const slots = useMemo(() => buildSlots(30), []);
+  const dayScrollRef = useRef<HTMLDivElement>(null);
+  const scrollDays = (dir: 1 | -1) => dayScrollRef.current?.scrollBy({ left: dir * 280, behavior: 'smooth' });
 
   useEffect(() => {
     if (profileLoading) return;
-    
-    if (!profile || profile.role !== 'student') {
-      router.push('/login');
-      return;
-    }
-
+    if (!profile || profile.role !== 'student') { router.push('/login'); return; }
     fetchPaidClassesFlag();
     fetchTutorProfile();
-    fetchVerifiedSubjects();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile, profileLoading, router, tutorId]);
 
   async function fetchPaidClassesFlag() {
@@ -78,101 +297,55 @@ export default function TutorProfilePage() {
       const res = await fetch('/api/feature-flags', { cache: 'no-store' });
       const data = await res.json();
       setPaidClassesEnabled(Boolean(data?.paidClassesEnabled));
-    } catch {
-      setPaidClassesEnabled(false);
-    }
-  }
-
-  async function fetchVerifiedSubjects() {
-    try {
-      const res = await fetch(`/api/public/tutors/${tutorId}/verified-subjects`);
-      const data = await res.json();
-      
-      if (data.is_verified) {
-        setVerifiedSubjects(data.subjects || []);
-        setCsecSubjects(data.grouped?.CSEC || []);
-        setCapeSubjects(data.grouped?.CAPE || []);
-      }
-    } catch (err) {
-      console.error('Error fetching verified subjects:', err);
-    }
+    } catch { setPaidClassesEnabled(false); }
   }
 
   async function fetchTutorProfile() {
     try {
-      console.log('Fetching tutor profile:', tutorId);
-
-      // Fetch tutor profile
       const { data: tutorData, error: tutorError } = await supabase
         .from('profiles')
         .select('id, full_name, username, display_name, avatar_url, school, institution_id, country, bio, tutor_verification_status, created_at')
-        .eq('id', tutorId)
-        .eq('role', 'tutor')
-        .single();
-
+        .eq('id', tutorId).eq('role', 'tutor').single();
       if (tutorError) throw tutorError;
-      if (!tutorData) {
-        alert('Tutor not found');
-        router.push('/student/find-tutors');
-        return;
-      }
+      if (!tutorData) { alert('Tutor not found'); router.push('/student/find-tutors'); return; }
 
-      // Fetch tutor subjects
       const { data: tutorSubjects, error: subjectsError } = await supabase
-        .from('tutor_subjects')
-        .select('subject_id, price_per_hour_ttd')
-        .eq('tutor_id', tutorId);
-
+        .from('tutor_subjects').select('subject_id, price_per_hour_ttd').eq('tutor_id', tutorId);
       if (subjectsError) throw subjectsError;
 
-      // Fetch subjects details
       const { data: allSubjects, error: allSubjectsError } = await supabase
-        .from('subjects')
-        .select('id, name, label, curriculum, level');
-
+        .from('subjects').select('id, name, label, curriculum, level');
       if (allSubjectsError) throw allSubjectsError;
 
-      const subjectsMap = new Map(allSubjects.map(s => [s.id, s]));
-
+      const subjectsMap = new Map(allSubjects.map((s) => [s.id, s]));
       const subjects = tutorSubjects
-        .map(ts => {
+        .map((ts) => {
           const subject = subjectsMap.get(ts.subject_id);
           return subject ? {
             id: subject.id,
             name: subject.label || subject.name,
             curriculum: subject.curriculum || subject.level || '',
             level: subject.level || '',
-            price_per_hour_ttd: paidClassesEnabled ? ts.price_per_hour_ttd : 0
+            price_per_hour_ttd: paidClassesEnabled ? ts.price_per_hour_ttd : 0,
           } : null;
         })
         .filter((s): s is NonNullable<typeof s> => s !== null);
 
-      const summaryRes = await fetch(`/api/public/tutors/${tutorId}/reviews?limit=0&offset=0`, {
-        cache: 'no-store',
-      });
+      const summaryRes = await fetch(`/api/public/tutors/${tutorId}/reviews?limit=5&offset=0`, { cache: 'no-store' });
       const summary = await summaryRes.json().catch(() => ({}));
-      const avgRaw = summary?.averageRating;
-      const avgNum = avgRaw == null ? null : Number(avgRaw);
+      const avgNum = summary?.averageRating == null ? null : Number(summary.averageRating);
       const avgRating = Number.isFinite(avgNum) ? avgNum : null;
       const totalReviews = typeof summary?.ratingCount === 'number' ? summary.ratingCount : 0;
+      setReviews(summary?.reviews || []);
 
-      // Fetch completed sessions count
-      const { count, error: sessionsError } = await supabase
-        .from('sessions')
-        .select('*', { count: 'exact', head: true })
-        .eq('tutor_id', tutorId)
-        .eq('status', 'COMPLETED_ASSUMED');
+      const { count } = await supabase
+        .from('sessions').select('*', { count: 'exact', head: true })
+        .eq('tutor_id', tutorId).eq('status', 'COMPLETED_ASSUMED');
+      if (count !== null) setCompletedSessions(count);
 
-      if (!sessionsError && count !== null) {
-        setCompletedSessions(count);
-      }
-
-      setTutor({
-        ...tutorData,
-        subjects,
-        average_rating: avgRating,
-        total_reviews: totalReviews,
-      });
+      const fetchedTutor = { ...tutorData, subjects, average_rating: avgRating, total_reviews: totalReviews };
+      setTutor(fetchedTutor);
+      if (subjects.length === 1) setSelectedSubject(subjects[0]);
     } catch (error) {
       console.error('Error fetching tutor profile:', error);
       alert('Failed to load tutor profile');
@@ -186,458 +359,293 @@ export default function TutorProfilePage() {
     setBookingModalOpen(true);
   };
 
-  const handleBookingSuccess = (result: {
-    bookingId: string;
-    requiresPayment?: boolean;
-    status?: string;
-  }) => {
+  const handleBookingSuccess = (result: { bookingId: string; requiresPayment?: boolean }) => {
     setBookingModalOpen(false);
     setSelectedTimeSlot(null);
-    if (result.requiresPayment) {
-      router.push(`/payments/checkout?bookingId=${result.bookingId}`);
-      return;
-    }
-
+    if (result.requiresPayment) { router.push(`/payments/checkout?bookingId=${result.bookingId}`); return; }
     alert('Booking request sent successfully! The tutor will respond soon.');
     router.push('/student/bookings');
   };
 
-  const handleSubjectClick = (subject: TutorProfile['subjects'][0]) => {
-    setSelectedSubject(subject);
-    setSelectedTimeSlot(null); // Reset time slot when changing subject
+  const vote = (id: string, dir: 'up' | 'down') => {
+    setVoted((v) => ({ ...v, [id]: v[id] === dir ? undefined : dir }));
   };
+
+  const openBookingSheet = () => { setBookingStep(1); setPickedTime(null); setShowBookingSheet(true); };
+  const minPrice = tutor?.subjects.length ? Math.min(...tutor.subjects.map((s) => s.price_per_hour_ttd)) : 0;
+  const priceLabel = paidClassesEnabled ? `TT$${minPrice}` : 'Free';
 
   if (profileLoading || loading || !profile) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-itutor-green"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-itutor-green" />
       </div>
     );
   }
 
   if (!tutor) {
-    return (
-      <DashboardLayout role="student" userName={getDisplayName(profile)}>
-        <div className="text-center py-12">
-          <p className="text-gray-600">Tutor not found</p>
-        </div>
-      </DashboardLayout>
-    );
+    return <div className="text-center py-12"><p className="text-gray-600">Tutor not found</p></div>;
   }
 
   return (
-    <DashboardLayout role="student" userName={getDisplayName(profile)}>
-      <div className="px-4 py-6 sm:px-0 max-w-6xl mx-auto">
-        {/* Back Button */}
-        <button
-          onClick={() => router.back()}
-          className="mb-6 text-itutor-green hover:text-emerald-600 flex items-center gap-2 transition-colors font-medium"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-          </svg>
-          Back to Search
-        </button>
+    <>
+      <div className="max-w-5xl mx-auto space-y-6">
+        <Link href="/student/find-tutors" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-ink">
+          <ArrowLeft className="size-4" /> Back to Explore
+        </Link>
 
-        {/* Tutor Header */}
-        <div className="bg-white border-2 border-indigo-200 shadow-xl rounded-2xl p-8 mb-6 hover:shadow-indigo-300/50 transition-all duration-300">
-          <div className="flex flex-col md:flex-row gap-6 items-start">
-            {/* Avatar */}
-            <div className={`w-32 h-32 rounded-full bg-gradient-to-br ${getAvatarColor(tutor.id)} flex items-center justify-center text-white font-bold text-4xl flex-shrink-0 shadow-lg`}>
-              {tutor.avatar_url ? (
-                <img src={tutor.avatar_url} alt={getDisplayName(tutor)} className="w-full h-full rounded-full object-cover" />
-              ) : (
-                getDisplayName(tutor).charAt(0).toUpperCase()
-              )}
+        {/* Header */}
+        <div className="rounded-3xl bg-background border border-border overflow-hidden">
+          <div className="h-32 sm:h-40 bg-gradient-to-br from-brand to-brand-deep" />
+          <div className="px-5 sm:px-6 pb-6">
+            <div className="flex items-end justify-between -mt-12 sm:-mt-14">
+              <UserAvatar avatarUrl={tutor.avatar_url} name={getDisplayName(tutor)} size={96} className="ring-4 ring-background rounded-full" />
+              <div className="flex gap-2 mb-1">
+                <button onClick={() => setSaved((s) => !s)} className="size-10 rounded-full border border-border bg-background grid place-items-center hover:bg-muted">
+                  <Heart className={cn('size-4', saved && 'fill-coral text-coral')} />
+                </button>
+                <button onClick={() => router.push('/student/messages')} className="hidden sm:inline-flex items-center gap-2 px-4 py-2.5 rounded-full border border-border font-semibold text-sm hover:bg-muted">
+                  <MessageSquare className="size-4" /> Message
+                </button>
+              </div>
             </div>
 
-            {/* Info */}
-            <div className="flex-1">
-              <div className="flex items-start justify-between mb-2">
-                <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
-                  {getDisplayName(tutor)}
-                  {tutor.tutor_verification_status === 'VERIFIED' && <VerifiedBadge size="lg" />}
-                </h1>
-                
-                {/* Three-dots menu */}
-                <div className="relative">
-                  <button
-                    onClick={() => setShowAboutMenu(!showAboutMenu)}
-                    className="p-2 hover:bg-gray-100 rounded-full transition"
-                  >
-                    <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                    </svg>
-                  </button>
-
-                  {/* Dropdown menu */}
-                  {showAboutMenu && (
-                    <>
-                      <div 
-                        className="fixed inset-0 z-10" 
-                        onClick={() => setShowAboutMenu(false)}
-                      />
-                      <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-20">
-                        <button
-                          onClick={() => {
-                            setShowAboutMenu(false);
-                            const aboutSection = document.getElementById('about-section');
-                            aboutSection?.scrollIntoView({ behavior: 'smooth' });
-                          }}
-                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          About
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-              {tutor.username && (
-                <p className="text-gray-600 mb-2">@{tutor.username}</p>
-              )}
-
-              <div className="mb-4">
-                <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">
-                  {completedSessions} Completed {completedSessions === 1 ? 'Session' : 'Sessions'}
-                </span>
-              </div>
-              
-              <div className="flex flex-wrap gap-4 text-sm text-gray-600 mb-4">
-                {tutor.school && (
-                  <span className="flex items-center gap-1">
-                    <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                    </svg>
-                    {tutor.school}
+            <div className="mt-4">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-2xl font-bold text-ink">{getDisplayName(tutor)}</h1>
+                {tutor.tutor_verification_status === 'VERIFIED' && (
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-brand-deep bg-brand-soft px-2 py-0.5 rounded-full">
+                    <BadgeCheck className="size-3.5" /> Verified
                   </span>
                 )}
-                <span className="flex items-center gap-1">
-                  <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  {tutor.country}
-                </span>
               </div>
-
-              {tutor.average_rating !== null ? (
-                <button
-                  type="button"
-                  onClick={() => setReviewsModalOpen(true)}
-                  className="flex items-center gap-2 mb-4 group"
-                  aria-label="View student reviews"
-                >
-                  <div className="flex text-2xl">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <span
-                        key={star}
-                        className={star <= Math.round(tutor.average_rating!) ? 'text-yellow-400' : 'text-gray-300'}
-                      >
-                        ★
-                      </span>
-                    ))}
-                  </div>
-                  <span className="text-lg font-semibold text-gray-900 group-hover:underline">
-                    {tutor.average_rating.toFixed(1)}
+              <p className="text-sm text-muted-foreground mt-0.5">{tutor.subjects.map((s) => s.name).join(' · ')}</p>
+              <div className="flex items-center gap-3 mt-2 text-sm flex-wrap">
+                {tutor.average_rating !== null ? (
+                  <span className="inline-flex items-center gap-1">
+                    <Star className="size-4 fill-coral text-coral" />
+                    <span className="font-semibold">{tutor.average_rating.toFixed(1)}</span>
+                    <span className="text-muted-foreground">({tutor.total_reviews} reviews)</span>
                   </span>
-                  <span className="text-sm text-gray-600 group-hover:underline">
-                    ({tutor.total_reviews} {tutor.total_reviews === 1 ? 'review' : 'reviews'})
-                  </span>
-                </button>
-              ) : (
-                <div className="text-sm text-gray-600 mb-4">No reviews yet</div>
-              )}
-
-              {/* Biography */}
-              {tutor.bio && (
-                <div className="mt-4 pt-4 border-t border-gray-200">
-                  <div className="flex items-start gap-2">
-                    <svg className="h-4 w-4 text-itutor-green flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
-                    <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-                      {tutor.bio}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Verified Subjects Button */}
-              {tutor.tutor_verification_status === 'VERIFIED' && (
-                <div className="mt-4 pt-4 border-t border-gray-200">
-                  <VerifiedSubjectsButton 
-                    onClick={() => setVerifiedSubjectsModalOpen(true)}
-                    variant="secondary"
-                  />
-                </div>
-              )}
+                ) : (
+                  <span className="text-muted-foreground text-sm">No reviews yet</span>
+                )}
+                <span className="text-muted-foreground">•</span>
+                <span className="inline-flex items-center gap-1 text-muted-foreground"><MapPin className="size-3.5" />{tutor.country}</span>
+                <span className="text-muted-foreground">•</span>
+                <span className="inline-flex items-center gap-1 text-muted-foreground"><Check className="size-3.5" />{completedSessions} sessions</span>
+              </div>
             </div>
+
+            <div className="grid grid-cols-3 gap-2 sm:gap-3 mt-5">
+              {[
+                { icon: Award, label: 'Sessions', value: `${completedSessions}` },
+                { icon: Clock, label: 'Hourly rate', value: priceLabel },
+                { icon: Star, label: 'Reviews', value: tutor.total_reviews > 0 ? `${tutor.total_reviews}` : 'None yet' },
+              ].map((m) => (
+                <div key={m.label} className="rounded-2xl bg-mint p-3">
+                  <m.icon className="size-4 text-brand-deep mb-1" />
+                  <div className="text-[11px] text-muted-foreground">{m.label}</div>
+                  <div className="text-sm font-semibold text-ink">{m.value}</div>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={openBookingSheet} className="mt-4 w-full sm:hidden inline-flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-brand text-white font-semibold">
+              <Video className="size-4" /> Book a 1:1{paidClassesEnabled && minPrice > 0 ? ` — TT$${minPrice}/hr` : ''}
+            </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Booking Calendar */}
-          <div className="lg:col-span-2">
-            {/* Verified CXC Results Section */}
-            {tutor.tutor_verification_status === 'VERIFIED' && verifiedSubjects.length > 0 && (
-              <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-300 shadow-xl rounded-2xl p-6 mb-6 hover:shadow-green-300/50 transition-all duration-300">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center">
-                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
-                    </svg>
-                  </div>
-                  <h2 className="text-2xl font-bold text-gray-900">Verified CXC Results</h2>
-                </div>
-                
-                <div className="space-y-6">
-                  {/* CSEC Subjects */}
-                  {csecSubjects.length > 0 && (
-                    <div>
-                      <div className="flex items-center gap-2 mb-3">
-                        <h3 className="text-lg font-bold text-gray-900">CSEC</h3>
-                        <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-1 rounded">
-                          {csecSubjects.length} {csecSubjects.length === 1 ? 'subject' : 'subjects'}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {csecSubjects.map((subject: any) => (
-                          <div key={subject.id} className="bg-white border-2 border-gray-200 rounded-lg p-4 hover:border-green-400 hover:shadow-md transition-all">
-                            <h4 className="font-semibold text-gray-900 mb-2">{subject.subjects.name}</h4>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="inline-flex items-center gap-1 text-sm font-bold text-green-700">
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-                                </svg>
-                                Grade {subject.grade}
-                              </span>
-                              {subject.year && (
-                                <span className="text-xs text-gray-600 bg-gray-100 px-2 py-1 rounded">
-                                  {subject.year}
-                                </span>
-                              )}
-                              {subject.session && (
-                                <span className="text-xs text-gray-600 bg-gray-100 px-2 py-1 rounded">
-                                  {subject.session}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* CAPE Subjects */}
-                  {capeSubjects.length > 0 && (
-                    <div>
-                      <div className="flex items-center gap-2 mb-3">
-                        <h3 className="text-lg font-bold text-gray-900">CAPE</h3>
-                        <span className="bg-purple-100 text-purple-800 text-xs font-semibold px-2 py-1 rounded">
-                          {capeSubjects.length} {capeSubjects.length === 1 ? 'subject' : 'subjects'}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {capeSubjects.map((subject: any) => (
-                          <div key={subject.id} className="bg-white border-2 border-gray-200 rounded-lg p-4 hover:border-green-400 hover:shadow-md transition-all">
-                            <h4 className="font-semibold text-gray-900 mb-2">{subject.subjects.name}</h4>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="inline-flex items-center gap-1 text-sm font-bold text-green-700">
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-                                </svg>
-                                Grade {subject.grade}
-                              </span>
-                              {subject.year && (
-                                <span className="text-xs text-gray-600 bg-gray-100 px-2 py-1 rounded">
-                                  {subject.year}
-                                </span>
-                              )}
-                              {subject.session && (
-                                <span className="text-xs text-gray-600 bg-gray-100 px-2 py-1 rounded">
-                                  {subject.session}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-4 pt-4 border-t border-green-200">
-                  <p className="text-xs text-gray-600 text-center">
-                    Results verified by iTutor. CXC is a trademark of the Caribbean Examinations Council.
-                  </p>
-                </div>
-              </div>
+        <div className="grid lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-6">
+            {tutor.bio && (
+              <section className="rounded-3xl bg-background border border-border p-6">
+                <h2 className="font-semibold text-ink mb-2">About</h2>
+                <p className="text-sm text-muted-foreground leading-relaxed">{tutor.bio}</p>
+              </section>
             )}
 
-            {/* Subjects Overview */}
-            <div className="bg-white border-2 border-blue-200 shadow-xl rounded-2xl p-6 mb-6 hover:shadow-blue-300/50 transition-all duration-300">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">Select a Subject to Book</h2>
-              
+            <section className="rounded-3xl bg-background border border-border p-6">
+              <h2 className="font-semibold text-ink mb-3">Subjects</h2>
               {tutor.subjects.length === 0 ? (
-                <p className="text-gray-600">No subjects listed</p>
+                <p className="text-sm text-muted-foreground">No subjects listed</p>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {tutor.subjects.map(subject => (
-                    <button
-                      key={subject.id}
-                      onClick={() => handleSubjectClick(subject)}
-                      className={`
-                        p-4 rounded-xl border-2 transition-all duration-200 text-left shadow-md
-                        ${selectedSubject?.id === subject.id
-                          ? 'border-itutor-green bg-gradient-to-br from-green-50 to-emerald-50 shadow-lg shadow-itutor-green/30 scale-105'
-                          : 'border-gray-300 bg-white hover:border-itutor-green hover:shadow-lg hover:scale-102'
-                        }
-                      `}
-                    >
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <h3 className="font-bold text-gray-900 mb-1">{subject.name}</h3>
-                          <p className="text-sm text-gray-600">{subject.curriculum}</p>
+                <ul className="divide-y divide-border">
+                  {tutor.subjects.map((s) => (
+                    <li key={s.id} className="py-3 flex items-center gap-3">
+                      {tutor.tutor_verification_status === 'VERIFIED' && <BadgeCheck className="size-4 text-brand-deep shrink-0" />}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold text-ink">{s.name}</div>
+                        <div className="text-xs text-muted-foreground">{s.curriculum}</div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="text-sm font-bold text-ink">{paidClassesEnabled ? `TT$${s.price_per_hour_ttd}` : 'Free'}</span>
+                        <span className="text-xs text-muted-foreground">/hr</span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            {/* Reviews */}
+            <section className="rounded-3xl bg-background border border-border p-6">
+              <div className="flex items-center justify-between mb-1">
+                <h2 className="font-semibold text-ink">Reviews · {tutor.total_reviews}</h2>
+                {tutor.average_rating !== null && (
+                  <span className="text-sm font-semibold inline-flex items-center gap-1">
+                    <Star className="size-4 fill-coral text-coral" /> {tutor.average_rating.toFixed(1)}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mb-4">Only students who&apos;ve completed a class can leave a review.</p>
+              {reviews.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">No reviews yet.</p>
+              ) : (
+                <div className="space-y-4">
+                  {reviews.map((r) => (
+                    <div key={r.id} className="border-t border-border pt-4 first:border-0 first:pt-0">
+                      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                        <div className="size-7 rounded-full bg-brand-soft text-forest grid place-items-center text-xs font-bold shrink-0">
+                          {r.student.full_name.charAt(0).toUpperCase()}
                         </div>
-                        <div className="text-right ml-2">
-                          <p className="text-lg font-bold text-itutor-green">
-                            ${paidClassesEnabled ? subject.price_per_hour_ttd : 0}
-                          </p>
-                          <p className="text-xs text-gray-600">per hour</p>
+                        <span className="text-sm font-semibold text-ink">{r.student.full_name}</span>
+                        <div className="flex">
+                          {Array.from({ length: r.stars }).map((_, i) => <Star key={i} className="size-3 fill-coral text-coral" />)}
                         </div>
                       </div>
-                      {selectedSubject?.id === subject.id && (
-                        <div className="mt-2 flex items-center gap-1 text-xs text-itutor-green font-semibold">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                          Selected
-                        </div>
-                      )}
+                      {r.comment && <p className="text-sm text-muted-foreground">{r.comment}</p>}
+                      <div className="flex items-center gap-2 mt-2.5">
+                        <button onClick={() => vote(r.id, 'up')} className={cn('inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border transition', voted[r.id] === 'up' ? 'border-brand bg-brand-soft text-brand-deep' : 'border-border text-muted-foreground hover:border-brand/50')}>
+                          <ThumbsUp className="size-3" /> Helpful
+                        </button>
+                        <button onClick={() => vote(r.id, 'down')} className={cn('inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border transition', voted[r.id] === 'down' ? 'border-coral bg-coral-soft text-coral' : 'border-border text-muted-foreground hover:border-coral/50')}>
+                          <ThumbsDown className="size-3" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+
+          {/* Desktop booking sidebar */}
+          <aside className="hidden lg:block lg:sticky lg:top-20 self-start">
+            <BookingCard
+              priceLabel={priceLabel}
+              subjects={tutor.subjects}
+              pickedSubject={selectedSubject}
+              setPickedSubject={setSelectedSubject}
+              slots={slots}
+              pickedDay={pickedDay}
+              setPickedDay={setPickedDay}
+              pickedTime={pickedTime}
+              setPickedTime={setPickedTime}
+              duration={duration}
+              setDuration={setDuration}
+              scrollRef={dayScrollRef}
+              scrollDays={scrollDays}
+              onContinue={() => { setBookingStep(3); setShowBookingSheet(true); }}
+            />
+          </aside>
+        </div>
+      </div>
+
+      {/* Mobile booking sheet */}
+      {showBookingSheet && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40" onClick={() => setShowBookingSheet(false)}>
+          <div className="bg-background w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="sticky top-0 bg-background border-b border-border px-5 py-3 flex items-center justify-between">
+              <div>
+                <div className="text-xs text-muted-foreground">Step {bookingStep} of 3</div>
+                <div className="font-semibold text-ink text-sm">
+                  {bookingStep === 1 ? 'Pick a subject' : bookingStep === 2 ? 'Pick a date & time' : 'Confirm booking'}
+                </div>
+              </div>
+              <button onClick={() => setShowBookingSheet(false)} className="size-8 rounded-full hover:bg-muted grid place-items-center"><X className="size-4" /></button>
+            </div>
+            <div className="p-5">
+              {bookingStep === 1 && (
+                <div className="space-y-2">
+                  {tutor.subjects.map((s) => (
+                    <button key={s.id} onClick={() => { setSelectedSubject(s); setBookingStep(2); }} className={cn('w-full text-left px-4 py-3 rounded-2xl border flex items-center justify-between transition', selectedSubject?.id === s.id ? 'border-brand bg-brand-soft' : 'border-border hover:border-brand/50')}>
+                      <div>
+                        <div className="font-semibold text-ink text-sm">{s.name}</div>
+                        <div className="text-xs text-muted-foreground">{s.curriculum} · {paidClassesEnabled ? `TT$${s.price_per_hour_ttd}/hr` : 'Free'}</div>
+                      </div>
+                      {tutor.tutor_verification_status === 'VERIFIED' && <BadgeCheck className="size-5 text-brand-deep" />}
                     </button>
                   ))}
                 </div>
               )}
-            </div>
-
-            {/* Calendar Widget */}
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">Available Times</h2>
-              
-              {!selectedSubject ? (
-                <div className="bg-white border-2 border-purple-200 shadow-xl rounded-2xl p-12 text-center hover:shadow-purple-300/50 transition-all duration-300">
-                  <svg className="w-16 h-16 text-purple-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                  </svg>
-                  <p className="text-gray-700 mb-2 text-lg font-semibold">Select a subject above to view available times</p>
-                  <p className="text-gray-600 text-sm">Choose what you'd like to learn</p>
-                </div>
-              ) : (
-                <>
-                  <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-itutor-green rounded-xl p-4 mb-4 shadow-md">
-                    <div className="flex items-center gap-2 text-itutor-green text-sm font-semibold">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      Booking: {selectedSubject.name} • ${paidClassesEnabled ? selectedSubject.price_per_hour_ttd : 0}/hour
+              {bookingStep === 2 && (
+                <BookingCard
+                  priceLabel={priceLabel}
+                  subjects={tutor.subjects}
+                  pickedSubject={selectedSubject}
+                  setPickedSubject={setSelectedSubject}
+                  slots={slots}
+                  pickedDay={pickedDay}
+                  setPickedDay={setPickedDay}
+                  pickedTime={pickedTime}
+                  setPickedTime={setPickedTime}
+                  duration={duration}
+                  setDuration={setDuration}
+                  scrollRef={dayScrollRef}
+                  scrollDays={scrollDays}
+                  embedded
+                  onContinue={() => setBookingStep(3)}
+                />
+              )}
+              {bookingStep === 3 && selectedSubject && pickedTime != null && (
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-border p-4 space-y-2 text-sm">
+                    {[
+                      { label: 'Tutor', value: getDisplayName(tutor) },
+                      { label: 'Subject', value: selectedSubject.name },
+                      { label: 'Date', value: slots[pickedDay].date.toLocaleDateString('en', { weekday: 'long', month: 'short', day: 'numeric' }) },
+                      { label: 'Time', value: `${fmtTime(pickedTime)} – ${fmtTime(pickedTime + duration)}` },
+                      { label: 'Duration', value: `${duration} hr${duration === 1 ? '' : 's'}` },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="flex justify-between">
+                        <span className="text-muted-foreground">{label}</span>
+                        <span className="text-ink font-medium">{value}</span>
+                      </div>
+                    ))}
+                    <div className="border-t border-border pt-2 flex justify-between font-semibold text-ink">
+                      <span>Total</span>
+                      <span>{paidClassesEnabled ? `TT$${(selectedSubject.price_per_hour_ttd * duration).toFixed(0)}` : 'Free'}</span>
                     </div>
                   </div>
-                  <TutorCalendarWidget
-                    tutorId={tutorId}
-                    onSlotSelect={handleSlotSelect}
-                  />
-                  <div className="mt-4 flex justify-center">
-                    <button
-                      type="button"
-                      onClick={() => setSuggestTimeModalOpen(true)}
-                      className="rounded-xl border-2 border-itutor-green bg-white px-4 py-2 text-sm font-semibold text-itutor-green transition hover:bg-green-50"
-                    >
-                      Suggest a time outside availability
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Reviews */}
-          <div className="lg:col-span-1">
-            <div className="bg-white border-2 border-yellow-200 shadow-xl rounded-2xl p-6 hover:shadow-yellow-300/50 transition-all duration-300">
-              <div className="flex items-center gap-2 mb-4">
-                <svg className="w-6 h-6 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                </svg>
-                <h2 className="text-xl font-bold text-gray-900">Reviews</h2>
-              </div>
-              
-              {tutor.total_reviews === 0 ? (
-                <div className="text-center py-8">
-                  <svg className="w-12 h-12 text-gray-300 mx-auto mb-2" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                  </svg>
-                  <p className="text-gray-600 text-sm">No reviews yet</p>
+                  <p className="text-xs text-muted-foreground">Free cancellation up to 24h before the session.</p>
+                  <button
+                    onClick={() => {
+                      const { start, end } = slotToISO(slots[pickedDay].date, pickedTime, duration);
+                      handleSlotSelect(start, end);
+                      setShowBookingSheet(false);
+                    }}
+                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-brand text-white font-semibold hover:bg-brand-deep"
+                  >
+                    <Check className="size-4" /> Confirm booking
+                  </button>
                 </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setReviewsModalOpen(true)}
-                  className="w-full rounded-xl px-4 py-3 font-semibold text-white bg-itutor-green hover:bg-itutor-green/90 transition-all"
-                >
-                  View reviews
-                </button>
               )}
             </div>
+            {bookingStep > 1 && bookingStep < 3 && (
+              <div className="sticky bottom-0 bg-background border-t border-border p-4">
+                <button onClick={() => setBookingStep((s) => (s - 1) as 1 | 2 | 3)} className="text-sm text-muted-foreground">← Back</button>
+              </div>
+            )}
           </div>
         </div>
+      )}
 
-        {/* About Section */}
-        <div id="about-section" className="bg-white rounded-2xl shadow-lg border-2 border-gray-200 p-6 mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <svg className="w-6 h-6 text-itutor-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            About
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-lg">
-              <div className="w-10 h-10 bg-itutor-green/10 rounded-full flex items-center justify-center flex-shrink-0">
-                <svg className="w-5 h-5 text-itutor-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 mb-1">Member Since</p>
-                <p className="text-sm font-semibold text-gray-900">
-                  {tutor.created_at ? new Date(tutor.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 'N/A'}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-lg">
-              <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
-                <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 mb-1">Completed Sessions</p>
-                <p className="text-sm font-semibold text-gray-900">{completedSessions}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Booking Request Modal */}
       {selectedTimeSlot && selectedSubject && (
         <BookingRequestModal
           isOpen={bookingModalOpen}
-          onClose={() => {
-            setBookingModalOpen(false);
-            setSelectedTimeSlot(null);
-          }}
+          onClose={() => { setBookingModalOpen(false); setSelectedTimeSlot(null); }}
           tutorId={tutorId}
           tutorName={getDisplayName(tutor)}
           studentId={profile!.id}
@@ -663,21 +671,6 @@ export default function TutorProfilePage() {
           pricePerHour={selectedSubject.price_per_hour_ttd}
         />
       )}
-
-      {/* Verified Subjects Modal */}
-      <VerifiedSubjectsModal
-        isOpen={verifiedSubjectsModalOpen}
-        onClose={() => setVerifiedSubjectsModalOpen(false)}
-        tutorId={tutorId}
-        tutorName={getDisplayName(tutor)}
-      />
-
-      <TutorReviewsModal
-        tutorId={tutorId}
-        isOpen={reviewsModalOpen}
-        onClose={() => setReviewsModalOpen(false)}
-      />
-    </DashboardLayout>
+    </>
   );
 }
-

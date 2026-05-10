@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -7,7 +7,6 @@ import { supabase } from '@/lib/supabase/client';
 import { Profile } from '@/lib/types/database';
 import { getDisplayName } from '@/lib/utils/displayName';
 import { profileBannerDisplayUrl } from '@/lib/utils/profileBannerDisplayUrl';
-import DashboardLayout from '@/components/DashboardLayout';
 import UserAvatar from '@/components/UserAvatar';
 import VerifiedBadge from '@/components/VerifiedBadge';
 
@@ -237,7 +236,7 @@ export default function StudentSearchResultsPage() {
 
   if (!subject || mode !== 'subject') {
     return (
-      <DashboardLayout role="student" userName={getDisplayName(profile)}>
+      
         <div className="text-center py-12">
           <p className="text-gray-600">No search query provided</p>
           <button
@@ -247,12 +246,11 @@ export default function StudentSearchResultsPage() {
             Go back
           </button>
         </div>
-      </DashboardLayout>
     );
   }
 
   return (
-    <DashboardLayout role="student" userName={getDisplayName(profile)}>
+    
       <div className="px-4 py-6 sm:px-0 max-w-7xl mx-auto bg-gradient-to-br from-transparent via-green-50/20 to-blue-50/20 rounded-3xl">
         {/* Back Button */}
         <button
@@ -488,7 +486,6 @@ export default function StudentSearchResultsPage() {
           </div>
         )}
       </div>
-    </DashboardLayout>
   );
 }
 
