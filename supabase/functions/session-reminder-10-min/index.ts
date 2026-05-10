@@ -203,8 +203,13 @@ Deno.serve(async () => {
 
     const sessionById = new Map(eligibleSessions.map((s) => [s.id, s] as const));
 
-    // Get FCM access token for mobile notifications
-    const { accessToken, projectId } = await getFcmAccessToken(FCM_SERVICE_ACCOUNT_JSON);
+    // Get FCM access token. Failure must NOT block Web Push sends.
+    let fcmAuth: { accessToken: string; projectId: string } | null = null;
+    try {
+      fcmAuth = await getFcmAccessToken(FCM_SERVICE_ACCOUNT_JSON);
+    } catch (err) {
+      console.error('[session-reminder] FCM auth failed, FCM sends will be skipped:', (err as Error).message);
+    }
 
     // Fanout: for each (user, session) that was newly logged, notify all tokens for that user.
     const sends: Array<{
@@ -255,10 +260,10 @@ Deno.serve(async () => {
                 vapidSubject: VAPID_SUBJECT
               });
             } else {
-              // Send via FCM for mobile and web FCM tokens
+              if (!fcmAuth) return;
               await sendFcmMessage({
-                accessToken,
-                projectId,
+                accessToken: fcmAuth.accessToken,
+                projectId: fcmAuth.projectId,
                 token: tokenRow.token,
                 title: SESSION_REMINDER_10_MIN.title,
                 body: SESSION_REMINDER_10_MIN.body,
