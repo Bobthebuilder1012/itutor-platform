@@ -1,6 +1,5 @@
-import { redirect } from 'next/navigation';
+﻿import { redirect } from 'next/navigation';
 import { getServerClient } from '@/lib/supabase/server';
-import DashboardLayout from '@/components/DashboardLayout';
 import StudentTutorsBrowseClient from '@/app/(student)/tutors/StudentTutorsBrowseClient';
 import { isGroupsFeatureEnabled } from '@/lib/featureFlags/groupsFeature';
 
@@ -24,7 +23,7 @@ export default async function StudentGroupsPage() {
     profile?.display_name || profile?.full_name || profile?.username || 'Student';
 
   return (
-    <DashboardLayout role="student" userName={userName}>
+    
       <div className="mx-auto max-w-7xl">
         <h1 className="text-2xl font-bold text-gray-900">Discover Lesson Sessions</h1>
         <p className="mt-1 text-sm text-gray-600">
@@ -34,6 +33,5 @@ export default async function StudentGroupsPage() {
           <StudentTutorsBrowseClient />
         </div>
       </div>
-    </DashboardLayout>
   );
 }

@@ -67,6 +67,23 @@
     --sky: oklch(0.92 0.05 230);
     --forest: oklch(0.24 0.04 155);
     --border: oklch(0.92 0.01 150);
+
+    /* ── shadcn/ui-compatible semantic tokens (used by StudentShell) ── */
+    --background: #ffffff;
+    --foreground: var(--ink);
+    --muted: oklch(0.96 0.005 150);
+    --muted-foreground: var(--ink-muted);
+    --card: #ffffff;
+  }
+
+  /* Dark variant — used by the dark student sidebar (<aside class="dark">) */
+  .dark {
+    --background: oklch(0.15 0.01 240);
+    --foreground: oklch(0.95 0.01 240);
+    --muted: oklch(0.22 0.01 240);
+    --muted-foreground: oklch(0.6 0.01 240);
+    --border: oklch(0.28 0.01 240);
+    --card: oklch(0.18 0.01 240);
   }
 
   html {

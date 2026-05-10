@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation';
 import GroupDetailClient from '@/app/(student)/tutors/[tutorId]/GroupDetailClient';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
-import DashboardLayout from '@/components/DashboardLayout';
 import { isGroupsFeatureEnabled } from '@/lib/featureFlags/groupsFeature';
 
 async function getGroup(groupId: string) {
@@ -91,22 +90,22 @@ export default async function StudentGroupDetailPage({
 
   if (!group) {
     return (
-      <DashboardLayout role="student" userName={userName}>
+      
         <div className="mx-auto max-w-4xl">
           <p className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-700">
             Lesson not found.
           </p>
         </div>
-      </DashboardLayout>
+
     );
   }
 
   return (
-    <DashboardLayout role="student" userName={userName}>
+    
       <div className="mx-auto max-w-6xl">
         <GroupDetailClient group={group} />
       </div>
-    </DashboardLayout>
+
   );
 }
 
