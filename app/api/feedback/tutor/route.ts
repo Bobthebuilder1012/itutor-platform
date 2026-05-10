@@ -168,6 +168,26 @@ export async function POST(request: NextRequest) {
     
     console.log('✅ Conversation updated:', conversation);
 
+    try {
+      const { data: tutorProfile } = await admin
+        .from('profiles')
+        .select('full_name, display_name')
+        .eq('id', user.id)
+        .maybeSingle();
+      const tutorName =
+        tutorProfile?.display_name || tutorProfile?.full_name || 'Your tutor';
+      await admin.from('notifications').insert({
+        user_id: session.student_id,
+        type: 'new_feedback',
+        title: 'New Feedback',
+        message: `${tutorName} left feedback for your recent session.`,
+        link: `/student/dashboard`,
+        metadata: { sessionId, conversationId, messageId: insertedMessage.id },
+      });
+    } catch (err) {
+      console.error('[feedback/tutor] notify failed', err);
+    }
+
     return NextResponse.json({ 
       ok: true, 
       messageId: insertedMessage.id,

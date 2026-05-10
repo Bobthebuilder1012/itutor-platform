@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     const admin = getServiceClient();
     const { data: session, error: sessionError } = await admin
       .from('sessions')
-      .select('id, tutor_id')
+      .select('id, tutor_id, student_id, scheduled_start_at')
       .eq('id', body.sessionId)
       .single();
 
@@ -61,6 +61,29 @@ export async function POST(request: NextRequest) {
     }
 
     await cancelSessionReminders(body.sessionId);
+
+    try {
+      const { data: tutorProfile } = await admin
+        .from('profiles')
+        .select('full_name, display_name')
+        .eq('id', user.id)
+        .maybeSingle();
+      const tutorName =
+        tutorProfile?.display_name || tutorProfile?.full_name || 'Your tutor';
+      const startsAt = session.scheduled_start_at
+        ? new Date(session.scheduled_start_at).toLocaleString()
+        : 'the scheduled time';
+      await admin.from('notifications').insert({
+        user_id: session.student_id,
+        type: 'tutor_cancelled_session',
+        title: 'Session Cancelled',
+        message: `${tutorName} cancelled the session on ${startsAt}.`,
+        link: `/student/bookings`,
+        metadata: { sessionId: body.sessionId, reason: body.cancellationReason },
+      });
+    } catch (err) {
+      console.error('[tutor-cancel session] notify failed', err);
+    }
 
     return NextResponse.json(data ?? { success: true });
   } catch (error) {
