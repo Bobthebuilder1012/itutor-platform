@@ -12,15 +12,15 @@ import {
   Settings,
   Bell,
   MessageSquare,
+  GraduationCap,
+  Wrench,
   PanelLeftClose,
   PanelLeftOpen,
-  X,
   LogOut,
   ChevronUp,
-  Plus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { StudentStoreProvider, useStudentStore, ALL_LESSONS } from '@/lib/student-store';
+import { StudentStoreProvider } from '@/lib/student-store';
 import { CalendarPopup } from './CalendarPanel';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
@@ -38,107 +38,22 @@ type NavItem = {
 
 const nav: NavItem[] = [
   { to: '/student/dashboard', label: 'Home', icon: LayoutDashboard, exact: true, tint: 'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-400/30' },
-  { to: '/student/find-tutors', label: 'Find tutors', icon: Search, tint: 'bg-rose-500/20 text-rose-300 ring-1 ring-rose-400/30' },
+  { to: '/student/find-tutors', label: 'Explore', icon: Search, tint: 'bg-rose-500/20 text-rose-300 ring-1 ring-rose-400/30' },
+  { to: '/student/my-lessons', label: 'My Lessons', icon: GraduationCap, tint: 'bg-sky-500/20 text-sky-300 ring-1 ring-sky-400/30' },
   { to: '/student/bookings', label: 'My Bookings', icon: CalendarDays, tint: 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-400/30' },
-  { to: '/student/curriculum', label: 'Curriculum', icon: BookOpen, tint: 'bg-violet-500/20 text-violet-300 ring-1 ring-violet-400/30' },
+  { to: '/student/tools', label: 'Tools', icon: Wrench, tint: 'bg-violet-500/20 text-violet-300 ring-1 ring-violet-400/30' },
   { to: '/student/messages', label: 'Messages', icon: MessageSquare, tint: 'bg-teal-500/20 text-teal-300 ring-1 ring-teal-400/30' },
 ];
 
 const COLLAPSE_KEY = 'itutor.sidebarCollapsed';
 
-function MyLessonsSection({ collapsed }: { collapsed: boolean }) {
-  const { pinnedLessons, togglePin } = useStudentStore();
-  const [showAdd, setShowAdd] = useState(false);
-  const visible = ALL_LESSONS.filter((l) => pinnedLessons.includes(l.id));
-  const hidden = ALL_LESSONS.filter((l) => !pinnedLessons.includes(l.id));
 
-  if (collapsed) {
-    return (
-      <div className="px-2 mt-3 space-y-1">
-        {visible.slice(0, 4).map((l) => (
-          <Link
-            key={l.id}
-            href={`/student/curriculum`}
-            title={l.title}
-            className="size-9 mx-auto rounded-xl grid place-items-center text-base hover:scale-105 transition"
-            style={{ background: `color-mix(in oklab, var(--${l.color}) 25%, white)` }}
-          >
-            {l.emoji}
-          </Link>
-        ))}
-      </div>
-    );
-  }
-
-  return (
-    <div className="px-3 mt-5">
-      <div className="h-px bg-border mx-2 mb-3" />
-      <div className="flex items-center justify-between px-2 mb-2">
-        <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">My Lessons</div>
-        <button
-          onClick={() => setShowAdd((s) => !s)}
-          className="inline-flex items-center gap-1 text-[11px] font-semibold text-brand-deep hover:bg-brand-soft px-2 py-1 rounded-md"
-          title="Add lesson"
-        >
-          <Plus className="size-3.5" /> Add
-        </button>
-      </div>
-      <div className="space-y-0.5">
-        {visible.length === 0 && (
-          <div className="text-[11px] text-muted-foreground px-2 py-2 italic">No lessons pinned. Click Add to pin one.</div>
-        )}
-        {visible.map((l) => (
-          <div key={l.id} className="group flex items-center gap-2 pr-1 rounded-lg hover:bg-muted">
-            <Link
-              href="/student/curriculum"
-              className="flex-1 flex items-center gap-2 px-2 py-1.5 text-sm min-w-0"
-            >
-              <span
-                className="size-6 rounded-md grid place-items-center text-xs flex-shrink-0"
-                style={{ background: `color-mix(in oklab, var(--${l.color}) 30%, white)` }}
-              >
-                {l.emoji}
-              </span>
-              <span className="truncate text-foreground">{l.title}</span>
-            </Link>
-            <button
-              onClick={() => togglePin(l.id)}
-              className="opacity-0 group-hover:opacity-100 size-5 grid place-items-center rounded hover:bg-background text-muted-foreground"
-              title="Hide from sidebar"
-            >
-              <X className="size-3" />
-            </button>
-          </div>
-        ))}
-      </div>
-      {showAdd && hidden.length > 0 && (
-        <div className="mt-2 p-2 rounded-xl bg-muted/60 space-y-1">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground px-1">Add back</div>
-          {hidden.map((l) => (
-            <button
-              key={l.id}
-              onClick={() => togglePin(l.id)}
-              className="w-full flex items-center gap-2 px-2 py-1 text-xs rounded hover:bg-background"
-            >
-              <span>{l.emoji}</span>
-              <span className="truncate flex-1 text-left">{l.title}</span>
-              <Plus className="size-3" />
-            </button>
-          ))}
-        </div>
-      )}
-      {showAdd && hidden.length === 0 && (
-        <div className="text-[11px] text-muted-foreground px-2 py-1">All lessons shown</div>
-      )}
-    </div>
-  );
-}
-
-function ProfileMenu({ collapsed, displayName, initials, roleLabel }: {
+function ProfileMenu({ collapsed, displayName, initials, roleLabel, avatarUrl }: {
   collapsed: boolean;
   displayName: string;
   initials: string;
   roleLabel: string;
+  avatarUrl?: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
@@ -156,9 +71,20 @@ function ProfileMenu({ collapsed, displayName, initials, roleLabel }: {
         onClick={() => setOpen((o) => !o)}
         className={cn('w-full flex items-center gap-3 rounded-xl hover:bg-muted transition px-2 py-2', collapsed && 'justify-center px-0')}
       >
-        <div className="size-9 rounded-full bg-gradient-to-br from-coral to-peach grid place-items-center text-white text-sm font-semibold shadow-sm flex-shrink-0">
-          {initials}
-        </div>
+        {avatarUrl ? (
+          <Image
+            src={avatarUrl}
+            alt={displayName}
+            width={36}
+            height={36}
+            className="size-9 rounded-full object-cover flex-shrink-0"
+            unoptimized
+          />
+        ) : (
+          <div className="size-9 rounded-full bg-gradient-to-br from-coral to-peach grid place-items-center text-white text-sm font-semibold shadow-sm flex-shrink-0">
+            {initials}
+          </div>
+        )}
         {!collapsed && (
           <>
             <div className="min-w-0 flex-1 text-left">
@@ -229,21 +155,23 @@ function ShellInner({ children }: { children: ReactNode }) {
   };
 
   return (
-    <div className="min-h-screen bg-mint flex">
+    <div className="h-screen bg-background flex overflow-hidden">
       {profile?.id && <PushTokenRegistrar />}
 
       {/* Desktop sidebar */}
       <aside className={cn(
-        'dark hidden lg:flex shrink-0 flex-col border-r border-border bg-ink text-foreground transition-all duration-200 sticky top-0 h-screen',
+        'dark hidden lg:flex shrink-0 flex-col border-r border-border bg-ink text-foreground transition-all duration-200',
         collapsed ? 'w-16' : 'w-64'
       )}>
         <div className={cn('px-3 py-4 border-b border-border flex items-center gap-2', collapsed && 'justify-center')}>
           {!collapsed ? (
             <Link href="/" className="flex-1" title="Back to home">
-              <Image src="/assets/logo/itutor-logo-new.png" alt="iTutor" width={120} height={32} className="h-8 w-auto object-contain brightness-200" />
+              <Image src="/assets/logo/itutor-logo-dark.png" alt="iTutor" width={120} height={32} className="h-8 w-auto object-contain" />
             </Link>
           ) : (
-            <Link href="/" title="Back to home" className="size-8 grid place-items-center rounded-lg bg-brand text-white font-bold text-sm">i</Link>
+            <Link href="/" title="Back to home" className="size-10 grid place-items-center">
+              <Image src="/assets/logo/itutor-mark.png" alt="iTutor" width={40} height={40} className="h-10 w-10 object-contain" />
+            </Link>
           )}
           <button
             onClick={() => setCollapsed((c) => !c)}
@@ -279,18 +207,17 @@ function ShellInner({ children }: { children: ReactNode }) {
             })}
           </div>
 
-          <MyLessonsSection collapsed={collapsed} />
         </nav>
 
-        <ProfileMenu collapsed={collapsed} displayName={displayName} initials={initials} roleLabel={roleLabel} />
+        <ProfileMenu collapsed={collapsed} displayName={displayName} initials={initials} roleLabel={roleLabel} avatarUrl={profile?.avatar_url} />
       </aside>
 
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
         {/* Top bar */}
         <header className="sticky top-0 z-30 bg-background/90 backdrop-blur border-b border-border">
           <div className="flex items-center gap-3 px-4 lg:px-6 h-14">
             <Link href="/" className="lg:hidden">
-              <Image src="/assets/logo/itutor-logo-new.png" alt="iTutor" width={90} height={24} className="h-7 w-auto object-contain" />
+              <Image src="/assets/logo/itutor-logo-light.png" alt="iTutor" width={90} height={24} className="h-7 w-auto object-contain" />
             </Link>
 
             <form onSubmit={onSearch} className="flex-1 max-w-xl">
@@ -329,7 +256,7 @@ function ShellInner({ children }: { children: ReactNode }) {
         {/* Mobile bottom nav */}
         <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-border bg-background/95 backdrop-blur">
           <div className="grid grid-cols-5">
-            {nav.map((item) => {
+            {nav.slice(0, 5).map((item) => {
               const active = item.exact ? pathname === item.to : pathname.startsWith(item.to);
               const Icon = item.icon;
               return (

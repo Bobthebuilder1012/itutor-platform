@@ -37,9 +37,10 @@ export default function StudentNotificationsPage() {
   const [filter, setFilter] = useState<'All' | 'Unread'>('All');
 
   useEffect(() => {
-    if (!profileLoading && !profile) { router.push('/login'); return; }
-    if (profile?.role !== 'student') { router.push('/'); return; }
-    if (profile) loadNotifications();
+    if (profileLoading) return;
+    if (!profile) { router.push('/login'); return; }
+    if (profile.role !== 'student') { router.push('/student/dashboard'); return; }
+    loadNotifications();
   }, [profile, profileLoading, router]);
 
   async function loadNotifications() {

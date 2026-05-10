@@ -17,6 +17,7 @@ export interface Profile {
   institution_id?: string;
   form_level?: string;
   subjects_of_study?: string[];
+  notification_preferences?: { lessons: boolean; reminders: boolean; marketing: boolean; sms: boolean } | null;
   tutor_subjects?: string[];
   teaching_levels?: string[];
   billing_mode?: 'parent_required' | 'self_allowed';

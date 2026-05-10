@@ -11,9 +11,10 @@ import type { BookingWithDetails } from '@/lib/types/booking';
 import { getBookingStatusLabel } from '@/lib/types/booking';
 import { formatDateTime } from '@/lib/utils/calendar';
 import { Calendar, Video, MoreHorizontal, RotateCcw, Star, Clock } from 'lucide-react';
+import OffersReceivedList from '@/components/offers/OffersReceivedList';
 import { cn } from '@/lib/utils';
 
-type TabType = 'upcoming' | 'past' | 'all';
+type TabType = 'upcoming' | 'past' | 'offers';
 
 export default function StudentBookingsPage() {
   const { profile, loading: profileLoading } = useProfile();
@@ -21,6 +22,7 @@ export default function StudentBookingsPage() {
   const [bookings, setBookings] = useState<BookingWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('upcoming');
+  const [offersCount, setOffersCount] = useState(0);
   const [paidClassesEnabled, setPaidClassesEnabled] = useState(false);
 
   useEffect(() => {
@@ -47,7 +49,7 @@ export default function StudentBookingsPage() {
         const [tutorRes, subjectRes, sessionRes] = await Promise.all([
           supabase.from('profiles').select('username, display_name, full_name').eq('id', booking.tutor_id).single(),
           supabase.from('subjects').select('name, label').eq('id', booking.subject_id).single(),
-          supabase.from('sessions').select('id, status, scheduled_start_at, scheduled_end_at, duration_minutes').eq('booking_id', booking.id).single(),
+          supabase.from('sessions').select('id, status, join_url, scheduled_start_at, scheduled_end_at, duration_minutes').eq('booking_id', booking.id).single(),
         ]);
         return {
           ...booking,
@@ -84,7 +86,7 @@ export default function StudentBookingsPage() {
   const upcoming = bookings.filter(b => !isBookingPast(b) && b.status !== 'CANCELLED');
   const past = bookings.filter(b => isBookingPast(b));
 
-  const displayed = activeTab === 'upcoming' ? upcoming : activeTab === 'past' ? past : bookings;
+  const displayed = activeTab === 'upcoming' ? upcoming : past;
 
   const getStatusConfig = (booking: any) => {
     if (booking.status === 'CANCELLED') return { label: 'Cancelled', cls: 'bg-muted text-muted-foreground' };
@@ -98,7 +100,7 @@ export default function StudentBookingsPage() {
   const tabs: { key: TabType; label: string; count: number }[] = [
     { key: 'upcoming', label: 'Upcoming', count: upcoming.length },
     { key: 'past', label: 'Past', count: past.length },
-    { key: 'all', label: 'All', count: bookings.length },
+    { key: 'offers', label: 'Offers', count: offersCount },
   ];
 
   if (profileLoading || !profile) {
@@ -137,8 +139,13 @@ export default function StudentBookingsPage() {
         ))}
       </div>
 
-      {/* Content */}
-      {loading ? (
+      {/* Offers tab */}
+      {activeTab === 'offers' && profile && (
+        <OffersReceivedList studentId={profile.id} />
+      )}
+
+      {/* Upcoming / Past content */}
+      {activeTab !== 'offers' && (loading ? (
         <div className="space-y-3">
           {[1, 2, 3].map(i => <div key={i} className="h-32 rounded-2xl bg-muted animate-pulse" />)}
         </div>
@@ -193,9 +200,20 @@ export default function StudentBookingsPage() {
                 </div>
                 <div className="flex gap-2 mt-4">
                   {!past && soon && (
-                    <button className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-brand text-white font-semibold text-sm hover:bg-brand-deep">
-                      <Video className="size-4" /> Join now
-                    </button>
+                    (booking as any).session?.join_url ? (
+                      <a
+                        href={(booking as any).session.join_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-brand text-white font-semibold text-sm hover:bg-brand-deep"
+                      >
+                        <Video className="size-4" /> Join now
+                      </a>
+                    ) : (
+                      <span className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-muted text-muted-foreground font-semibold text-sm cursor-default">
+                        <Video className="size-4" /> Link generating…
+                      </span>
+                    )
                   )}
                   {!past && !soon && booking.status === 'CONFIRMED' && (
                     <Link href={`/student/bookings/${booking.id}`} className="flex-1 inline-flex items-center justify-center px-4 py-2.5 rounded-xl border border-border font-semibold text-sm hover:bg-muted">
@@ -204,10 +222,19 @@ export default function StudentBookingsPage() {
                   )}
                   {past && ((booking.status as string) === 'COMPLETED' || (booking.status as string) === 'COMPLETED_ASSUMED') && (
                     <>
-                      <button className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-coral-soft text-coral font-semibold text-sm hover:bg-coral hover:text-white">
-                        <Star className="size-4" /> Rate session
-                      </button>
-                      <Link href="/student/find-tutors" className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-border font-semibold text-sm hover:bg-muted">
+                      {(booking as any).session?.id ? (
+                        <Link
+                          href={`/feedback/student/${(booking as any).session.id}`}
+                          className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-coral-soft text-coral font-semibold text-sm hover:bg-coral hover:text-white"
+                        >
+                          <Star className="size-4" /> Rate session
+                        </Link>
+                      ) : (
+                        <button className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-coral-soft text-coral font-semibold text-sm opacity-50 cursor-default">
+                          <Star className="size-4" /> Rate session
+                        </button>
+                      )}
+                      <Link href={`/student/find-tutors`} className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-border font-semibold text-sm hover:bg-muted">
                         <RotateCcw className="size-4" /> Rebook
                       </Link>
                     </>
@@ -222,7 +249,7 @@ export default function StudentBookingsPage() {
             );
           })}
         </div>
-      )}
+      ))}
     </div>
   );
 }
