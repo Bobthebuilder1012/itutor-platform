@@ -297,8 +297,8 @@ export default function StudentSettingsPage() {
                   <label className="text-sm font-medium text-ink mb-1.5 block">Education level</label>
                   <select
                     value={profile.form_level || ''}
-                    className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand"
-                    readOnly
+                    onChange={() => {}}
+                    className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand pointer-events-none opacity-60"
                   >
                     {['Primary (SEA)', 'Form 1-3', 'Form 4-5 (CSEC)', 'Form 6 (CAPE)'].map((o) => <option key={o}>{o}</option>)}
                   </select>
