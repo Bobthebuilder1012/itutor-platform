@@ -119,6 +119,7 @@ Deno.serve(async (req) => {
     const data: Record<string, string> = {
       notification_id: notif.id,
       type: notif.type,
+      tag: notif.id,
       ...(notif.link ? { url: notif.link, deep_link: notif.link } : {}),
     };
 
