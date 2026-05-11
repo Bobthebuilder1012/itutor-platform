@@ -108,15 +108,28 @@ export default function CompleteRolePage() {
     TUTOR_SUBJECT_LIST.filter((s) => s.toLowerCase().includes(tQuery.toLowerCase()) && !tSubjects.includes(s)).slice(0, 8),
     [tQuery, tSubjects]);
 
+  const saveProfile = async (body: Record<string, unknown>) => {
+    const res = await fetch('/api/auth/complete-profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to save profile');
+    return data;
+  };
+
   const handleRoleContinue = async () => {
     if (!role) { setError('Select a role to continue.'); return; }
     setError('');
     setLoading(true);
-    const { error: updateError } = await supabase.from('profiles').update({ role }).eq('id', userId);
-    setLoading(false);
-    if (updateError) { setError('Failed to save role. Please try again.'); return; }
-    if (role === 'parent') { router.push('/parent/dashboard'); return; }
-    setStep('profile');
+    try {
+      await saveProfile({ role: 'set-role', newRole: role });
+      if (role === 'parent') { router.push('/parent/dashboard'); return; }
+      setStep('profile');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save role. Please try again.');
+    } finally { setLoading(false); }
   };
 
   const handleStudentProfile = async () => {
@@ -126,11 +139,12 @@ export default function CompleteRolePage() {
     setLoading(true);
     try {
       const showSchool = affiliation === 'attend' || affiliation === 'teach';
-      await supabase.from('profiles').update({
+      await saveProfile({
+        role: 'student',
+        form_level: year,
         school: showSchool && studentInstitution ? studentInstitution.name : null,
         institution_id: showSchool && studentInstitution ? studentInstitution.id : null,
-        form_level: year,
-      }).eq('id', userId);
+      });
       if (showSchool && studentInstitution) await ensureSchoolCommunityAndMembership(userId!);
       router.push('/student/dashboard');
     } catch (err) {
@@ -145,7 +159,7 @@ export default function CompleteRolePage() {
     setError('');
     setLoading(true);
     try {
-      await supabase.from('profiles').update({ teaching_levels: tLevels }).eq('id', userId);
+      await saveProfile({ role: 'tutor', teaching_levels: tLevels });
       if (tSubjects.length > 0) await setUserSubjects(userId!, tSubjects);
       router.push('/tutor/dashboard');
     } catch (err) {
