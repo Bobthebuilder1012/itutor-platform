@@ -10,10 +10,8 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const USERNAME_RE = /^[a-zA-Z0-9_]+$/;
 
 function validate(body: Record<string, unknown>): string | null {
-  const { name, username, email, country, password, role, verificationCode } = body;
+  const { username, email, country, password, role, verificationCode } = body;
 
-  if (!name || typeof name !== 'string' || name.length < 2 || name.length > 50)
-    return 'Name must be 2-50 characters';
   if (!username || typeof username !== 'string' || username.length < 3 || username.length > 30 || !USERNAME_RE.test(username))
     return 'Username must be 3-30 alphanumeric/underscore characters';
   if (RESERVED.has((username as string).toLowerCase()))
@@ -35,7 +33,10 @@ function validate(body: Record<string, unknown>): string | null {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { name, username, email, country, password, role, verificationCode } = body;
+    const { username, email, country, password, role, verificationCode } = body;
+    const name: string = (typeof body.name === 'string' && body.name.trim().length >= 2)
+      ? body.name.trim()
+      : username;
 
     const validationError = validate(body);
     if (validationError) {
