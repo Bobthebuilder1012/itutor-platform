@@ -94,6 +94,8 @@ export default function StudentSettingsPage() {
   const [savingNotif, setSavingNotif] = useState(false);
   const [changingPw, setChangingPw] = useState(false);
   const [changingEmail, setChangingEmail] = useState(false);
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [showAvatarModal, setShowAvatarModal] = useState(false);
@@ -180,6 +182,24 @@ export default function StudentSettingsPage() {
       setTimeout(() => setMessage(''), 3000);
     } catch { setError('An unexpected error occurred'); }
     finally { setChangingPw(false); }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!profile || deleteConfirmInput !== (profile.username || '')) return;
+    setDeletingAccount(true);
+    setError('');
+    try {
+      const res = await fetch('/api/delete-account', { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || 'Failed to delete account'); return; }
+      localStorage.clear();
+      sessionStorage.clear();
+      window.location.href = '/login';
+    } catch {
+      setError('An unexpected error occurred');
+    } finally {
+      setDeletingAccount(false);
+    }
   };
 
   const handleLogout = async () => {
@@ -386,6 +406,36 @@ export default function StudentSettingsPage() {
                   </div>
                 </div>
                 <SaveBar onSave={handleChangePassword} saving={changingPw} label="Update password" />
+
+                {/* Danger zone */}
+                <div className="mt-2 rounded-2xl border border-coral/40 bg-coral-soft p-5 space-y-4">
+                  <div>
+                    <div className="font-semibold text-coral text-sm">Delete account</div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      This permanently deletes your account and all associated data. This action cannot be undone.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-ink mb-1.5 block">
+                      Type your username <span className="font-bold text-ink">@{profile.username}</span> to confirm
+                    </label>
+                    <input
+                      type="text"
+                      value={deleteConfirmInput}
+                      onChange={(e) => setDeleteConfirmInput(e.target.value)}
+                      placeholder={profile.username || ''}
+                      className="w-full px-3 py-2.5 rounded-xl border border-coral/30 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-coral"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleDeleteAccount}
+                    disabled={deletingAccount || deleteConfirmInput !== (profile.username || '')}
+                    className="w-full px-4 py-2.5 rounded-xl bg-coral text-white text-sm font-semibold hover:bg-coral/90 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {deletingAccount ? 'Deleting…' : 'Permanently delete my account'}
+                  </button>
+                </div>
               </>
             )}
 
