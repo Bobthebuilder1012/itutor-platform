@@ -307,14 +307,14 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         <div className={`h-16 flex items-center border-b border-white/10 flex-shrink-0 ${collapsed ? 'justify-center px-3' : 'px-5 justify-between'}`}>
           {collapsed ? (
             sidebarOpen ? (
-              // Mobile overlay — navigate to dashboard as before
+              // Mobile overlay — show icon mark only
               <Link href={getDashboardLink()} onClick={() => setSidebarOpen(false)} title="Go to dashboard" className="flex items-center justify-center hover:opacity-80 transition-opacity">
-                <Image src="/assets/logo/itutor-logo-dark.png" alt="iTutor" width={110} height={36} className="h-7 w-auto object-contain" />
+                <Image src="/assets/logo/itutor-mark.png" alt="iTutor" width={32} height={32} className="h-8 w-8 object-contain" />
               </Link>
             ) : (
-              // Desktop — click logo to expand sidebar
+              // Desktop collapsed — show icon mark, click to expand
               <button onClick={toggleCollapsed} title="Expand sidebar" className="flex items-center justify-center hover:opacity-80 transition-opacity">
-                <Image src="/assets/logo/itutor-logo-dark.png" alt="iTutor" width={110} height={36} className="h-7 w-auto object-contain" />
+                <Image src="/assets/logo/itutor-mark.png" alt="iTutor" width={32} height={32} className="h-8 w-8 object-contain" />
               </button>
             )
           ) : (
