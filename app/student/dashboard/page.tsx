@@ -122,10 +122,7 @@ export default function StudentDashboard() {
     if (!loading && profile && profile.role !== 'student') { router.push('/login'); return; }
     if (!profile || profile.role !== 'student') return;
     if (profile.billing_mode !== 'parent_required') {
-      const isProfileComplete =
-        Boolean(profile.form_level) &&
-        Boolean(profile.subjects_of_study && profile.subjects_of_study.length > 0);
-      if (!isProfileComplete) { router.push('/onboarding/student'); return; }
+      if (!profile.form_level) { router.push('/signup/complete-role'); return; }
     }
     fetchStudentData();
   }, [profile, loading, router, testMode]);

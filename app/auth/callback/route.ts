@@ -2,6 +2,7 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import { bootstrapProfileIfMissing } from '@/lib/server/bootstrapProfileIfMissing';
+import { getServiceClient } from '@/lib/supabase/server';
 import {
   getAdminHomePath,
   isEmailManagementOnlyAdmin,
@@ -78,7 +79,7 @@ export async function GET(request: NextRequest) {
   // Check if profile exists
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
-    .select('id, role, full_name, country, school, form_level, subjects_of_study, billing_mode, institution_id')
+    .select('id, role, full_name, country, school, form_level, subjects_of_study, billing_mode, institution_id, teaching_levels')
     .eq('id', userId)
     .single();
 
@@ -86,7 +87,42 @@ export async function GET(request: NextRequest) {
 
   // If profile doesn't exist, create it (OAuth users)
   if (profileError && profileError.code === 'PGRST116') {
-    console.log('📝 Creating new profile for OAuth user');
+    console.log('📝 No profile found for user ID — checking by email first');
+
+    // Check if there is already a profile with this email (existing email/password account)
+    // Must use service client — the new OAuth user's session can't read another user's row
+    if (userEmail) {
+      const serviceClient = getServiceClient();
+      const { data: existingProfileByEmail } = await serviceClient
+        .from('profiles')
+        .select('id, role, form_level, subjects_of_study, billing_mode')
+        .eq('email', userEmail)
+        .maybeSingle();
+
+      if (existingProfileByEmail?.role) {
+        console.log('✅ Found existing profile by email with role:', existingProfileByEmail.role, '— copying role to current session user');
+        // Copy the role (and key fields) onto the NEW OAuth user's profile so their session works
+        await bootstrapProfileIfMissing(session.user);
+        await serviceClient
+          .from('profiles')
+          .update({
+            role: existingProfileByEmail.role,
+            form_level: existingProfileByEmail.form_level ?? null,
+            subjects_of_study: existingProfileByEmail.subjects_of_study ?? null,
+            billing_mode: existingProfileByEmail.billing_mode ?? null,
+          })
+          .eq('id', userId);
+
+        const role = existingProfileByEmail.role as string;
+        if (role === 'student') {
+          return NextResponse.redirect(new URL(existingProfileByEmail.form_level ? '/student/dashboard' : '/signup/complete-role', request.url));
+        }
+        if (role === 'tutor') return NextResponse.redirect(new URL('/tutor/dashboard', request.url));
+        if (role === 'parent') return NextResponse.redirect(new URL('/parent/dashboard', request.url));
+        if (role === 'admin') return NextResponse.redirect(new URL(getAdminHomePath(userEmail!), request.url));
+      }
+    }
+
     const metadataRole = session.user.user_metadata?.role ?? null;
     const { error: bootstrapErr } = await bootstrapProfileIfMissing(session.user);
     if (bootstrapErr) {
@@ -95,12 +131,12 @@ export async function GET(request: NextRequest) {
     }
 
     if (!metadataRole && oauthProvider === 'google') {
-      console.log('✅ Profile created, redirecting to Google role selection');
-      return NextResponse.redirect(new URL('/?auth=complete-role&source=google', request.url));
+      console.log('✅ New Google user — redirecting to role selection');
+      return NextResponse.redirect(new URL('/signup/complete-role', request.url));
     }
 
-    console.log('✅ Profile created, redirecting to onboarding');
-    return NextResponse.redirect(new URL('/onboarding/student', request.url));
+    console.log('✅ Profile created, redirecting to role selection');
+    return NextResponse.redirect(new URL('/signup/complete-role', request.url));
   }
 
   if (profileError) {
@@ -113,11 +149,38 @@ export async function GET(request: NextRequest) {
     const role = profile.role;
     console.log('🔀 Determining redirect for role:', role);
 
-    // If role is null, profile is incomplete - need to complete signup
+    // If role is null, profile is incomplete
     if (!role) {
-      if (oauthProvider === 'google') {
-        console.log('➡️ Redirecting to Google role selection');
-        return NextResponse.redirect(new URL('/?auth=complete-role&source=google', request.url));
+      // For Google users, check if there's another profile with the same email that has a role
+      // (handles case where the same person has both email/password and Google accounts)
+      if (oauthProvider === 'google' && userEmail) {
+        const serviceClient = getServiceClient();
+        const { data: emailProfile } = await serviceClient
+          .from('profiles')
+          .select('role, form_level, subjects_of_study, billing_mode')
+          .eq('email', userEmail)
+          .neq('id', userId)
+          .maybeSingle();
+
+        if (emailProfile?.role) {
+          console.log('✅ Found role via email match on linked account:', emailProfile.role);
+          await serviceClient.from('profiles').update({
+            role: emailProfile.role,
+            form_level: emailProfile.form_level ?? null,
+            subjects_of_study: emailProfile.subjects_of_study ?? null,
+            billing_mode: emailProfile.billing_mode ?? null,
+          }).eq('id', userId);
+
+          const r = emailProfile.role as string;
+          if (r === 'student') {
+            return NextResponse.redirect(new URL(emailProfile.form_level ? '/student/dashboard' : '/signup/complete-role', request.url));
+          }
+          if (r === 'tutor') return NextResponse.redirect(new URL('/tutor/dashboard', request.url));
+          if (r === 'parent') return NextResponse.redirect(new URL('/parent/dashboard', request.url));
+          if (r === 'admin') return NextResponse.redirect(new URL(getAdminHomePath(userEmail), request.url));
+        }
+        console.log('➡️ No linked account found — redirecting to role selection');
+        return NextResponse.redirect(new URL('/signup/complete-role', request.url));
       }
       console.log('⚠️ No role set, checking user metadata');
       // Try to determine role from user metadata
@@ -125,16 +188,16 @@ export async function GET(request: NextRequest) {
       console.log('📋 User metadata role:', metadataRole);
       
       if (metadataRole === 'tutor') {
-        console.log('➡️ Redirecting to tutor onboarding');
-        return NextResponse.redirect(new URL('/onboarding/tutor', request.url));
+        console.log('➡️ Redirecting to tutor role completion');
+        return NextResponse.redirect(new URL('/signup/complete-role', request.url));
       }
       if (metadataRole === 'parent') {
         console.log('➡️ Redirecting to parent dashboard');
         return NextResponse.redirect(new URL('/parent/dashboard', request.url));
       }
       if (metadataRole === 'student') {
-        console.log('➡️ Redirecting to student onboarding');
-        return NextResponse.redirect(new URL('/onboarding/student', request.url));
+        console.log('➡️ Redirecting to student role selection');
+        return NextResponse.redirect(new URL('/signup/complete-role', request.url));
       }
       console.log('➡️ Redirecting to role selection');
       return NextResponse.redirect(new URL('/signup/complete-role', request.url));
@@ -147,12 +210,9 @@ export async function GET(request: NextRequest) {
 
     // Check if profile is complete based on role
     if (role === 'student') {
-      const hasBasicInfo = Boolean(profile.form_level);
-      const hasSubjects = profile.subjects_of_study && profile.subjects_of_study.length > 0;
-
-      if (!hasBasicInfo || !hasSubjects) {
-        console.log('➡️ Student profile incomplete, redirecting to onboarding');
-        return NextResponse.redirect(new URL('/onboarding/student', request.url));
+      if (!profile.form_level) {
+        console.log('➡️ Student profile incomplete (no form_level), redirecting to complete-role');
+        return NextResponse.redirect(new URL('/signup/complete-role', request.url));
       }
 
       console.log('➡️ Redirecting to student dashboard');
@@ -161,14 +221,10 @@ export async function GET(request: NextRequest) {
       console.log('➡️ Redirecting to parent dashboard');
       return NextResponse.redirect(new URL('/parent/dashboard', request.url));
     } else if (role === 'tutor') {
-      const { count: tutorSubjectCount, error: tutorSubjectsError } = await supabase
-        .from('tutor_subjects')
-        .select('id', { count: 'exact', head: true })
-        .eq('tutor_id', userId);
-
-      if (tutorSubjectsError || !tutorSubjectCount) {
-        console.log('➡️ Tutor profile incomplete (no subjects), redirecting to onboarding');
-        return NextResponse.redirect(new URL('/onboarding/tutor', request.url));
+      const hasLevels = profile.teaching_levels && profile.teaching_levels.length > 0;
+      if (!hasLevels) {
+        console.log('➡️ Tutor profile incomplete (no teaching levels), redirecting to complete-role');
+        return NextResponse.redirect(new URL('/signup/complete-role', request.url));
       }
       console.log('➡️ Redirecting to tutor dashboard');
       return NextResponse.redirect(new URL('/tutor/dashboard', request.url));
