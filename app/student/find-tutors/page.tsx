@@ -600,7 +600,7 @@ export default function FindTutorsPage() {
         </div>
 
         {/* Subject chips */}
-        <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+        <div className="flex gap-2 overflow-x-auto pb-1">
           {SUBJECT_CHIPS.map((c) => (
             <button
               key={c}
@@ -763,7 +763,7 @@ export default function FindTutorsPage() {
                     tabIndex={0}
                     onClick={() => router.push(`/student/tutors/${tutor.id}`)}
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); router.push(`/student/tutors/${tutor.id}`); } }}
-                    className="group rounded-2xl bg-background border border-border p-4 hover:shadow-card hover:border-brand/40 transition-all flex gap-3 items-start cursor-pointer"
+                    className="group rounded-2xl bg-background border border-border p-4 hover:shadow-card hover:border-brand/40 transition-all flex gap-3 items-start cursor-pointer w-full min-w-0"
                   >
                     <UserAvatar avatarUrl={tutor.avatar_url} name={getDisplayName(tutor)} size={56} />
                     <div className="flex-1 min-w-0">
@@ -779,7 +779,7 @@ export default function FindTutorsPage() {
                         </div>
                         <button
                           onClick={(e) => { e.stopPropagation(); toggleSave(tutor.id); }}
-                          className="size-8 rounded-full hover:bg-muted grid place-items-center shrink-0 -mr-1 -mt-1"
+                          className="size-8 rounded-full hover:bg-muted grid place-items-center shrink-0"
                         >
                           <Heart className={cn('size-4', savedItems.has(tutor.id) ? 'fill-coral text-coral' : 'text-muted-foreground')} />
                         </button>
