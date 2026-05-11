@@ -28,8 +28,7 @@ export default function ParentSettingsPage() {
   const [showEmailPasswordPrompt, setShowEmailPasswordPrompt] = useState(false);
   const [pendingEmail, setPendingEmail] = useState('');
   
-  const [deleteAccountPassword, setDeleteAccountPassword] = useState('');
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState('');
   const [deleting, setDeleting] = useState(false);
   
   const [saving, setSaving] = useState(false);
@@ -185,49 +184,19 @@ export default function ParentSettingsPage() {
   };
 
   const handleDeleteAccount = async () => {
-    setError('');
-    setMessage('');
-
-    if (!deleteAccountPassword) {
-      setError('Password is required to delete account');
-      return;
-    }
-
+    if (!profile || deleteConfirmInput !== (profile.username || '')) return;
     setDeleting(true);
-
+    setError('');
     try {
-      // Verify password
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: profile?.email || '',
-        password: deleteAccountPassword
-      });
-
-      if (signInError) {
-        setError('Incorrect password');
-        setDeleting(false);
-        return;
-      }
-
-      // Call delete account API
-      const response = await fetch('/api/delete-account', {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        setError(data.error || 'Failed to delete account');
-        setDeleting(false);
-        return;
-      }
-
-      // Sign out and redirect
-      await supabase.auth.signOut();
-      router.push('/');
-    } catch (err) {
+      const res = await fetch('/api/delete-account', { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || 'Failed to delete account'); return; }
+      localStorage.clear();
+      sessionStorage.clear();
+      window.location.href = '/login';
+    } catch {
       setError('An unexpected error occurred');
+    } finally {
       setDeleting(false);
     }
   };
@@ -568,14 +537,34 @@ export default function ParentSettingsPage() {
 
           {/* Delete Account */}
           <div className="mt-8 pt-8 border-t-2 border-gray-200">
-            <h3 className="text-lg font-bold text-gray-900 mb-2">Danger Zone</h3>
-            <p className="text-sm text-gray-600 mb-4">Permanently delete your account and all associated data</p>
-            <button
-              onClick={() => setShowDeleteConfirm(true)}
-              className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-all"
-            >
-              Delete Account
-            </button>
+            <div className="rounded-2xl border-2 border-red-200 bg-red-50 p-5 space-y-4">
+              <div>
+                <h3 className="text-base font-semibold text-red-600">Delete account</h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  This permanently deletes your account and all associated data. This action cannot be undone.
+                </p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                  Type your username <span className="font-bold text-gray-900">@{profile.username}</span> to confirm
+                </label>
+                <input
+                  type="text"
+                  value={deleteConfirmInput}
+                  onChange={(e) => setDeleteConfirmInput(e.target.value)}
+                  placeholder={profile.username || ''}
+                  className="w-full px-3 py-2.5 rounded-xl border-2 border-red-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleDeleteAccount}
+                disabled={deleting || deleteConfirmInput !== (profile.username || '')}
+                className="w-full px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {deleting ? 'Deleting…' : 'Permanently delete my account'}
+              </button>
+            </div>
           </div>
         </div>
         )}
@@ -659,62 +648,6 @@ export default function ParentSettingsPage() {
         </div>
       )}
 
-      {/* Delete Account Confirmation Modal */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-3 bg-red-100 rounded-full">
-                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-bold text-gray-900">Delete Account</h3>
-            </div>
-            
-            <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4 mb-4">
-              <p className="text-sm text-red-800 font-semibold mb-2">⚠️ This action cannot be undone</p>
-              <p className="text-sm text-red-700">
-                All your data, sessions, and messages will be permanently deleted.
-              </p>
-            </div>
-
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Enter your password to confirm <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="password"
-                value={deleteAccountPassword}
-                onChange={(e) => setDeleteAccountPassword(e.target.value)}
-                placeholder="Enter your password"
-                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 focus:outline-none"
-                onKeyPress={(e) => e.key === 'Enter' && handleDeleteAccount()}
-              />
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={handleDeleteAccount}
-                disabled={deleting || !deleteAccountPassword}
-                className="flex-1 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {deleting ? 'Deleting...' : 'Delete Forever'}
-              </button>
-              <button
-                onClick={() => {
-                  setShowDeleteConfirm(false);
-                  setDeleteAccountPassword('');
-                }}
-                disabled={deleting}
-                className="flex-1 px-6 py-3 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition-all disabled:opacity-50"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </DashboardLayout>
   );
 }
