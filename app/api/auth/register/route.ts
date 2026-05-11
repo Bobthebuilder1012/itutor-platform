@@ -24,8 +24,8 @@ function validate(body: Record<string, unknown>): string | null {
     return 'Password must be 8-128 characters';
   if (!role || !VALID_ROLES.has(role as string))
     return 'Role must be student, tutor, or parent';
-  if (!verificationCode || typeof verificationCode !== 'string' || !/^\d{8}$/.test(verificationCode))
-    return 'Verification code must be 8 digits';
+  if (!verificationCode || typeof verificationCode !== 'string' || !/^\d{6}$/.test(verificationCode))
+    return 'Verification code must be 6 digits';
 
   return null;
 }

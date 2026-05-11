@@ -65,15 +65,11 @@ export default function TutorDashboard() {
     if (!loading && profile && profile.role !== 'tutor') { router.push('/login'); return; }
     if (!profile || profile.role !== 'tutor') return;
 
-    async function checkOnboardingComplete() {
-      if (!profile) return;
-      const { data: subjects } = await supabase
-        .from('tutor_subjects').select('id').eq('tutor_id', profile.id).limit(1);
-      if (!subjects || subjects.length === 0) { router.push('/onboarding/tutor'); return; }
-      fetchTutorData();
+    if (!profile.teaching_levels || profile.teaching_levels.length === 0) {
+      router.push('/signup/complete-role');
+      return;
     }
-
-    checkOnboardingComplete();
+    fetchTutorData();
     fetchPaidClassesFlag();
   }, [profile, loading, router, testMode]);
 

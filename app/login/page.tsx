@@ -2,26 +2,16 @@
 
 import { FormEvent, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
+import { motion } from 'framer-motion';
+import { Eye, EyeOff, Check } from 'lucide-react';
 import { supabase, setRememberMePreference, createSupabaseClient } from '@/lib/supabase/client';
-import SocialLoginButton from '@/components/SocialLoginButton';
-import {
-  getAdminHomePath,
-  isEmailManagementOnlyAdmin,
-} from '@/lib/auth/adminAccess';
+import { getAdminHomePath, isEmailManagementOnlyAdmin } from '@/lib/auth/adminAccess';
 
-// Helper function to detect network errors
 function isNetworkError(error: unknown): boolean {
-  if (error instanceof TypeError && error.message === 'Failed to fetch') {
-    return true;
-  }
-  if (error instanceof Error && (
-    error.message.includes('network') ||
-    error.message.includes('Network') ||
-    error.message.includes('fetch')
-  )) {
-    return true;
-  }
-  return !navigator.onLine;
+  if (error instanceof TypeError && error.message === 'Failed to fetch') return true;
+  if (error instanceof Error && (error.message.includes('network') || error.message.includes('fetch'))) return true;
+  return typeof navigator !== 'undefined' ? !navigator.onLine : false;
 }
 
 export default function LoginPage() {
@@ -30,19 +20,12 @@ export default function LoginPage() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPw, setShowPw] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [showEmailSent, setShowEmailSent] = useState(false);
-  const [emailConfirmed, setEmailConfirmed] = useState(false);
-  const [resendEmail, setResendEmail] = useState('');
-  const [resendLoading, setResendLoading] = useState(false);
-  const [resendSuccess, setResendSuccess] = useState('');
-  const [resendError, setResendError] = useState('');
-  const [resendCooldown, setResendCooldown] = useState(0);
-  const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
+  const [banner, setBanner] = useState<{ type: 'success' | 'info'; message: string } | null>(null);
 
-  // Check for email sent parameter, confirmation, and error messages
   useEffect(() => {
     const emailSent = searchParams.get('emailSent');
     const confirmed = searchParams.get('confirmed');
@@ -51,430 +34,265 @@ export default function LoginPage() {
     const messageParam = searchParams.get('message');
     const reasonParam = searchParams.get('reason');
 
-    // Handle email confirmation success
     if (confirmed === 'true') {
-      setEmailConfirmed(true);
-      if (userEmail) {
-        setEmail(userEmail);
-      }
-      // Don't show the emailSent banner if email is already confirmed
-      setShowEmailSent(false);
+      setBanner({ type: 'success', message: 'Email confirmed! You can now sign in.' });
+      if (userEmail) setEmail(userEmail);
       return;
     }
 
-    // Email exists (redirected from signup)
     if (reasonParam === 'email_in_use') {
       if (userEmail) setEmail(userEmail);
-      setShowEmailSent(false);
       setError('This email is already in use. Please sign in instead.');
     }
 
-    // Handle email sent (awaiting confirmation)
     if (emailSent === 'true' && userEmail) {
-      setShowEmailSent(true);
-      setResendEmail(userEmail);
+      setBanner({ type: 'info', message: 'Account created! Check your email to verify before signing in.' });
       setEmail(userEmail);
-      // Start 60-second cooldown
-      setResendCooldown(60);
     }
 
-    // Handle callback errors
     if (errorParam) {
-      let errorMessage = '';
-      switch (errorParam) {
-        case 'oauth_failed':
-          errorMessage = messageParam ? decodeURIComponent(messageParam) : 'Authentication failed. Please try again.';
-          break;
-        case 'no_session':
-          errorMessage = 'Unable to establish session. Please log in manually below.';
-          break;
-        case 'invalid_callback':
-        case 'missing_code':
-          errorMessage = 'Invalid authentication link. Please try logging in.';
-          break;
-        case 'profile_fetch_failed':
-          errorMessage = 'Unable to load your profile. Please contact support if this persists.';
-          break;
-        case 'profile_creation_failed':
-          errorMessage = 'Unable to create your profile. Please try again.';
-          break;
-        default:
-          errorMessage = 'An error occurred. Please try logging in.';
-      }
-      setError(errorMessage);
+      const msgs: Record<string, string> = {
+        oauth_failed: messageParam ? decodeURIComponent(messageParam) : 'Authentication failed. Please try again.',
+        no_session: 'Unable to establish session. Please log in manually.',
+        invalid_callback: 'Invalid authentication link. Please try logging in.',
+        missing_code: 'Invalid authentication link. Please try logging in.',
+        profile_fetch_failed: 'Unable to load your profile. Please contact support.',
+        profile_creation_failed: 'Unable to create your profile. Please try again.',
+      };
+      setError(msgs[errorParam] || 'An error occurred. Please try logging in.');
     }
   }, [searchParams]);
 
-  // Countdown timer
-  useEffect(() => {
-    if (resendCooldown > 0) {
-      const timer = setTimeout(() => {
-        setResendCooldown(resendCooldown - 1);
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [resendCooldown]);
-
-  const handleResendEmail = async () => {
-    if (resendCooldown > 0) return;
-
-    setResendLoading(true);
-    setResendError('');
-    setResendSuccess('');
-
-    try {
-      const { error } = await supabase.auth.resend({
-        type: 'signup',
-        email: resendEmail,
-      });
-
-      if (error) {
-        setResendError(error.message);
-      } else {
-        setResendSuccess('Verification email sent! Please check your inbox.');
-        setResendCooldown(60); // Reset cooldown
-      }
-    } catch (err) {
-      setResendError('Failed to resend email. Please try again.');
-    } finally {
-      setResendLoading(false);
-    }
-  };
-
-  const handleLogin = async (e: FormEvent<HTMLFormElement>) => {
+  const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
     try {
-      // Store the "Keep me signed in" preference FIRST
       setRememberMePreference(rememberMe);
-
-      // Now create client with the correct storage based on preference
       const supabaseClient = createSupabaseClient(rememberMe);
 
-      const { data: authData, error: signInError } = await supabaseClient.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const { data: authData, error: signInError } = await supabaseClient.auth.signInWithPassword({ email, password });
 
       if (signInError) {
-        // Check if error is due to unverified email
-        if (signInError.message.includes('Email not confirmed') ||
-            signInError.message.includes('not confirmed') ||
-            signInError.message.includes('verify your email')) {
-          // Redirect to code verification page with email
+        if (signInError.message.includes('Email not confirmed') || signInError.message.includes('not confirmed') || signInError.message.includes('verify your email')) {
           router.push(`/verify-code?email=${encodeURIComponent(email)}`);
           return;
         }
-        // Show user-friendly error message
-        if (signInError.message.includes('Invalid login credentials') ||
-            signInError.message.includes('Invalid') ||
-            signInError.message.includes('credentials')) {
-          setError('Incorrect email or password');
-        } else {
-          setError(signInError.message);
-        }
+        setError(
+          signInError.message.includes('Invalid login credentials') || signInError.message.includes('credentials')
+            ? 'Incorrect email or password'
+            : signInError.message
+        );
         setLoading(false);
         return;
       }
 
-      if (!authData.user) {
-        setError('Unable to log in. Please try again.');
-        setLoading(false);
-        return;
-      }
+      if (!authData.user) { setError('Unable to log in. Please try again.'); setLoading(false); return; }
 
       const { data: profile, error: profileError } = await supabaseClient
-        .from('profiles')
-        .select('*')
-        .eq('id', authData.user.id)
-        .maybeSingle();
+        .from('profiles').select('*').eq('id', authData.user.id).maybeSingle();
 
       let profileData = profile;
-
       if (profileError || !profileData) {
         await fetch('/api/profile/ensure', { method: 'POST' }).catch(() => {});
-        const { data: ensuredProfile, error: ensuredError } = await supabaseClient
-          .from('profiles')
-          .select('*')
-          .eq('id', authData.user.id)
-          .maybeSingle();
-
-        if (ensuredError || !ensuredProfile) {
-          setError('Unable to fetch user profile.');
-          setLoading(false);
-          return;
-        }
-
-        profileData = ensuredProfile;
+        const { data: ensured, error: ensuredError } = await supabaseClient
+          .from('profiles').select('*').eq('id', authData.user.id).maybeSingle();
+        if (ensuredError || !ensured) { setError('Unable to fetch user profile.'); setLoading(false); return; }
+        profileData = ensured;
       }
 
-      if (!profileData.role) {
-        router.push('/signup/complete-role');
-        return;
-      }
+      if (!profileData.role) { router.push('/signup/complete-role'); return; }
 
-      // Check for redirect parameter
       const redirectUrl = searchParams.get('redirect');
 
-      if (isEmailManagementOnlyAdmin(profileData.email)) {
-        router.push('/admin/emails');
-        return;
-      }
-
-      // If there's a redirect URL, go there instead of dashboard
-      if (redirectUrl) {
-        router.push(decodeURIComponent(redirectUrl));
-        return;
-      }
-
-      // Check if user is an admin first
-      if (profileData.role === 'admin') {
-        router.push(getAdminHomePath(profileData.email));
-        return;
-      }
-
-      // Check if user is a reviewer
-      if (profileData.is_reviewer) {
-        router.push('/reviewer/dashboard');
-        return;
-      }
+      if (isEmailManagementOnlyAdmin(profileData.email)) { router.push('/admin/emails'); return; }
+      if (redirectUrl) { router.push(decodeURIComponent(redirectUrl)); return; }
+      if (profileData.role === 'admin') { router.push(getAdminHomePath(profileData.email)); return; }
+      if (profileData.is_reviewer) { router.push('/reviewer/dashboard'); return; }
 
       switch (profileData.role) {
-        case 'student':
-          // If this is a child account created by a parent, skip profile check
-          if (profileData.billing_mode === 'parent_required') {
-            router.push('/student/dashboard');
-            break;
-          }
-
-          // For regular students, check if profile is complete
-          const hasBasicInfo = Boolean(profileData.form_level);
-
-          // Check for subjects in user_subjects table
-          const { data: userSubjects } = await supabaseClient
-            .from('user_subjects')
-            .select('subject_id')
-            .eq('user_id', authData.user.id)
-            .limit(1);
-
-          const hasSubjects =
-            (profileData.subjects_of_study && profileData.subjects_of_study.length > 0) ||
-            (userSubjects && userSubjects.length > 0);
-
-          const isStudentProfileComplete = hasBasicInfo && hasSubjects;
-
-          if (isStudentProfileComplete) {
-            router.push('/student/dashboard');
-          } else {
-            router.push('/onboarding/student');
-          }
+        case 'student': {
+          if (profileData.billing_mode === 'parent_required') { router.push('/student/dashboard'); break; }
+          router.push(profileData.form_level ? '/student/dashboard' : '/signup/complete-role');
           break;
-        case 'parent':
-          router.push('/parent/dashboard');
-          break;
-        case 'tutor':
-          router.push('/tutor/dashboard');
-          break;
-        default:
-          setError('Invalid user role.');
-          setLoading(false);
+        }
+        case 'parent': router.push('/parent/dashboard'); break;
+        case 'tutor': router.push('/tutor/dashboard'); break;
+        default: setError('Invalid user role.'); setLoading(false);
       }
     } catch (err) {
-      if (isNetworkError(err)) {
-        setError('Connect to the Internet');
-      } else {
-        setError('An unexpected error occurred. Please try again.');
-      }
+      setError(isNetworkError(err) ? 'Connect to the Internet' : 'An unexpected error occurred. Please try again.');
       setLoading(false);
     }
   };
 
-  const inputBase = "w-full bg-white border border-gray-200 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-400 text-sm py-3 px-4";
-  const inputWithIcon = "w-full bg-white border border-gray-200 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-400 text-sm py-3 pl-10 pr-4";
+  return (
+    <main className="min-h-screen text-white" style={{ background: 'linear-gradient(135deg, #071a0e 0%, #0d2318 50%, #0a1e14 100%)' }}>
+      <div className="mx-auto flex min-h-screen max-w-7xl flex-col gap-6 p-4 sm:p-6 lg:flex-row lg:items-stretch lg:p-8">
+
+        {/* LEFT — brand panel */}
+        <aside className="hidden flex-col justify-between rounded-3xl p-10 lg:flex lg:w-[55%]" style={{ backgroundColor: 'oklch(0.16 0.04 155)' }}>
+          <Link href="/">
+            <img src="/assets/logo/itutor-logo-new.png" alt="iTutor" className="h-14 w-auto object-contain" />
+          </Link>
+
+          <div className="space-y-6">
+            <h1 className="font-display text-5xl font-bold leading-tight tracking-tight">
+              Welcome back.<br />
+              <span className="text-itutor-green">Let&apos;s keep learning.</span>
+            </h1>
+            <p className="max-w-md text-white/70">
+              Pick up where you left off — your tutors, lessons and bookings are right here.
+            </p>
+            <ul className="space-y-3 text-sm text-white/80">
+              {['Manage your 1:1 sessions and group lessons', 'Message your iTutors directly', 'Track progress across every subject'].map((b) => (
+                <li key={b} className="flex items-start gap-3">
+                  <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(25,147,86,0.2)' }}>
+                    <Check className="h-3 w-3 text-itutor-green" />
+                  </span>
+                  {b}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <p className="text-xs text-white/40">© iTutor 2026</p>
+        </aside>
+
+        {/* RIGHT — card */}
+        <section className="flex-1 lg:w-[45%]">
+          <div className="mx-auto flex h-full max-w-xl flex-col rounded-3xl bg-white text-gray-900 shadow-2xl">
+
+            {/* Mobile header */}
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4 lg:hidden">
+              <Link href="/">
+                <img src="/assets/logo/itutor-logo-new.png" alt="iTutor" className="h-8 w-auto object-contain" />
+              </Link>
+              <Link href="/" className="text-xs font-medium text-gray-500">Back to site</Link>
+            </div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2 }}
+              className="flex-1 px-6 pb-8 pt-10 sm:px-10"
+            >
+              <h2 className="font-display text-2xl font-bold tracking-tight sm:text-3xl">Log in</h2>
+              <p className="mt-1.5 text-sm text-gray-500">Welcome back to iTutor.</p>
+
+              {/* Banners */}
+              {banner && (
+                <div className={`mt-5 flex items-start gap-3 rounded-xl border px-4 py-3 ${banner.type === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-blue-200 bg-blue-50 text-blue-700'}`}>
+                  <p className="text-sm">{banner.message}</p>
+                  <button onClick={() => setBanner(null)} className="ml-auto shrink-0 opacity-60 hover:opacity-100">✕</button>
+                </div>
+              )}
+
+              {error && (
+                <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+                  <p className="text-sm text-red-600">{error}</p>
+                </div>
+              )}
+
+              {/* Google */}
+              <GoogleOAuthButton className="mt-6" />
+
+              <div className="relative my-5">
+                <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-gray-200" /></div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-white px-2 text-gray-400">or</span>
+                </div>
+              </div>
+
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="block text-sm font-medium text-gray-700">Email</label>
+                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com" autoComplete="email" required disabled={loading}
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm outline-none transition focus:border-itutor-green focus:ring-2 focus:ring-green-100" />
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-sm font-medium text-gray-700">Password</label>
+                    <Link href="/forgot-password" className="text-xs font-medium text-itutor-green hover:underline">Forgot password?</Link>
+                  </div>
+                  <div className="relative">
+                    <input type={showPw ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Your password" autoComplete="current-password" required disabled={loading}
+                      className="w-full rounded-lg border border-gray-200 px-3 py-2.5 pr-10 text-sm outline-none transition focus:border-itutor-green focus:ring-2 focus:ring-green-100" />
+                    <button type="button" onClick={() => setShowPw((s) => !s)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600" tabIndex={-1}>
+                      {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" id="rememberMe" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-itutor-green focus:ring-itutor-green" disabled={loading} />
+                  <label htmlFor="rememberMe" className="cursor-pointer text-sm text-gray-500">Keep me signed in</label>
+                </div>
+
+                <button type="submit" disabled={loading || !email || !password}
+                  className="w-full rounded-xl bg-itutor-green py-3 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:opacity-40">
+                  {loading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Signing in…
+                    </span>
+                  ) : 'Log in'}
+                </button>
+              </form>
+
+              <p className="mt-6 text-center text-sm text-gray-500">
+                New to iTutor?{' '}
+                <Link href="/signup" className="font-medium text-itutor-green underline">Create an account</Link>
+              </p>
+            </motion.div>
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function GoogleOAuthButton({ className }: { className?: string }) {
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [googleError, setGoogleError] = useState('');
+
+  const handleGoogleLogin = async () => {
+    setGoogleLoading(true);
+    setGoogleError('');
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+        queryParams: { access_type: 'offline', prompt: 'consent' },
+      },
+    });
+    if (error) { setGoogleError('Failed to connect with Google. Please try again.'); setGoogleLoading(false); }
+  };
 
   return (
-    <div className="min-h-screen flex" style={{ background: 'linear-gradient(135deg, #071a0e 0%, #0d2318 50%, #0a1e14 100%)' }}>
-
-      {/* LEFT PANEL */}
-      <div className="relative hidden flex-col justify-between overflow-hidden px-12 py-12 md:flex md:w-[52%] md:items-start xl:px-16 xl:py-14">
-        <div className="absolute top-[-80px] right-[-80px] w-[500px] h-[500px] rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(25,147,86,0.13) 0%, transparent 65%)' }} />
-        <div className="absolute bottom-[-60px] left-[-60px] w-80 h-80 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(25,147,86,0.09) 0%, transparent 70%)' }} />
-
-        {/* Logo: green mark + white wordmark (same as signup hero) */}
-        <div className="flex items-center gap-3 -ml-4 sm:-ml-6">
-          <img
-            src="/assets/logo/itutor-logo-new.png"
-            alt="iTutor"
-            className="h-16 w-auto object-contain sm:h-20"
-          />
-        </div>
-
-        {/* Main copy */}
-        <div className="flex flex-col">
-          <h1 className="font-extrabold text-white leading-[1.05] mb-5" style={{ fontSize: 'clamp(2.5rem, 5vw, 4.5rem)' }}>
-            Good to<br />see<br />
-            <span style={{ color: '#2ecc7a' }}>you again.</span>
-          </h1>
-
-          <p className="text-base mb-8 max-w-xs leading-relaxed" style={{ color: 'rgba(180,230,200,0.65)' }}>
-            Your tutors are ready. Pick up right<br />where you left off.
-          </p>
-
-          {/* Pill tags */}
-          <div className="flex flex-wrap gap-2">
-            {['📚 Study', '✏️ Practice', '⭐ Achieve', '🔬 Explore', '🚀 Grow'].map((tag) => (
-              <span
-                key={tag}
-                className="px-4 py-1.5 rounded-full text-sm font-medium"
-                style={{
-                  background: 'rgba(25,147,86,0.15)',
-                  border: '1px solid rgba(46,204,122,0.25)',
-                  color: 'rgba(180,230,200,0.80)',
-                }}
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {/* Bottom tagline */}
-        <p className="text-xs tracking-widest font-semibold uppercase" style={{ color: 'rgba(46,204,122,0.45)' }}>
-          Caribbean&apos;s #1 Tutoring Platform
-        </p>
-      </div>
-
-      {/* RIGHT PANEL */}
-      <div className="w-full md:w-[48%] flex items-center justify-center px-6 py-10 relative z-10">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[400px] px-8 py-8">
-
-          {/* Mobile-only logo (left panel hidden) */}
-          <div className="flex md:hidden items-center justify-center gap-2 mb-6">
-            <img
-              src="/assets/logo/itutor-mark.png"
-              alt=""
-              className="h-10 w-auto object-contain"
-              aria-hidden
-            />
-            <span className="text-3xl font-normal lowercase tracking-tight text-gray-900">itutor</span>
-          </div>
-
-          {/* Heading */}
-          <div className="text-center mb-5">
-            <h2 className="text-2xl font-bold text-gray-900 mb-1">Welcome back</h2>
-            <p className="text-sm text-gray-500">Sign in to your iTutor account</p>
-          </div>
-
-          {/* Status banners */}
-          {emailConfirmed && (
-            <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-4 relative">
-              <button onClick={() => setEmailConfirmed(false)} type="button" className="absolute top-2 right-2 text-green-500 hover:text-green-700">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
-              </button>
-              <p className="text-sm font-semibold">Email confirmed! You can now sign in.</p>
-            </div>
-          )}
-
-          {showEmailSent && (
-            <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-4 relative">
-              <button onClick={() => setShowEmailSent(false)} type="button" className="absolute top-2 right-2 text-green-500 hover:text-green-700">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
-              </button>
-              <p className="text-sm font-semibold mb-1">Account created! Check your email to verify.</p>
-              {resendSuccess && <p className="text-xs text-green-600 mt-1">{resendSuccess}</p>}
-              {resendError && <p className="text-xs text-red-500 mt-1">{resendError}</p>}
-              <button type="button" onClick={handleResendEmail} disabled={resendCooldown > 0 || resendLoading}
-                className="mt-2 text-xs font-medium text-itutor-green hover:underline disabled:opacity-50">
-                {resendLoading ? 'Sending...' : resendCooldown > 0 ? `Resend (${resendCooldown}s)` : 'Resend verification email'}
-              </button>
-            </div>
-          )}
-
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-2.5 rounded-lg mb-4">
-              <p className="text-sm">{error}</p>
-            </div>
-          )}
-
-          <form onSubmit={handleLogin} className="space-y-3.5">
-            {/* Email */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                  </svg>
-                </span>
-                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                  className={inputWithIcon} placeholder="you@example.com" required disabled={loading} />
-              </div>
-            </div>
-
-            {/* Password */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-sm font-medium text-gray-700">Password</label>
-                <a href="/forgot-password" className="text-sm text-itutor-green font-medium hover:underline">Forgot password?</a>
-              </div>
-              <div className="relative">
-                <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)}
-                  className={`${inputBase} pr-14`} placeholder="Enter your password" required disabled={loading} />
-                <button type="button" onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500 hover:text-gray-700 font-medium" tabIndex={-1}>
-                  {showPassword ? 'Hide' : 'Show'}
-                </button>
-              </div>
-            </div>
-
-            {/* Remember me */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <input type="checkbox" id="rememberMe" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300 text-itutor-green focus:ring-itutor-green cursor-pointer" disabled={loading} />
-                <label htmlFor="rememberMe" className="text-sm text-gray-600 cursor-pointer">Keep me signed in</label>
-              </div>
-            </div>
-
-            <button type="submit" disabled={loading}
-              className="w-full bg-itutor-green hover:bg-emerald-700 text-white py-3 rounded-lg font-bold text-base transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-              {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
-                  </svg>
-                  Signing in...
-                </span>
-              ) : 'Sign in'}
-            </button>
-          </form>
-
-          <div className="mt-4 text-center space-y-3">
-            <p className="text-sm text-gray-600">
-              Don&apos;t have an account?{' '}
-              <a href="/signup" className="font-bold text-gray-900 hover:text-itutor-green transition-colors">Sign up</a>
-            </p>
-
-            <div className="flex items-center gap-2">
-              <div className="flex-1 h-px bg-gray-200" />
-              <span className="text-xs text-gray-400">or</span>
-              <div className="flex-1 h-px bg-gray-200" />
-            </div>
-
-            <SocialLoginButton provider="google" mode="login" />
-
-            {showEmailSent && (
-              <p className="text-xs text-gray-400">
-                Haven&apos;t verified?{' '}
-                <a href={`/verify-code${resendEmail ? `?email=${encodeURIComponent(resendEmail)}` : ''}`} className="text-itutor-green font-medium hover:underline">Enter code</a>
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
+    <div className={className}>
+      <button type="button" onClick={handleGoogleLogin} disabled={googleLoading}
+        className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:opacity-50">
+        {googleLoading
+          ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-700" />
+          : <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden>
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.99.66-2.25 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z" />
+              <path fill="#FBBC05" d="M5.84 14.1A6.6 6.6 0 0 1 5.49 12c0-.73.13-1.44.35-2.1V7.07H2.18a11 11 0 0 0 0 9.87l3.66-2.84z" />
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z" />
+            </svg>}
+        {googleLoading ? 'Connecting…' : 'Continue with Google'}
+      </button>
+      {googleError && <p className="mt-1.5 text-center text-xs text-red-500">{googleError}</p>}
     </div>
   );
 }

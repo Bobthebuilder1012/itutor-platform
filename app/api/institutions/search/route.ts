@@ -23,6 +23,10 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error('Institutions search error:', error);
+      // Table may not exist yet — return empty rather than crashing the UI
+      if (error.code === '42P01') {
+        return NextResponse.json({ institutions: [] });
+      }
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
