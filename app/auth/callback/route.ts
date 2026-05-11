@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
   // Check if profile exists
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
-    .select('id, role, full_name, country, school, form_level, subjects_of_study, billing_mode, institution_id, teaching_levels')
+    .select('id, role, full_name, country, school, form_level, subjects_of_study, billing_mode, institution_id')
     .eq('id', userId)
     .single();
 
@@ -221,11 +221,6 @@ export async function GET(request: NextRequest) {
       console.log('➡️ Redirecting to parent dashboard');
       return NextResponse.redirect(new URL('/parent/dashboard', request.url));
     } else if (role === 'tutor') {
-      const hasLevels = profile.teaching_levels && profile.teaching_levels.length > 0;
-      if (!hasLevels) {
-        console.log('➡️ Tutor profile incomplete (no teaching levels), redirecting to complete-role');
-        return NextResponse.redirect(new URL('/signup/complete-role', request.url));
-      }
       console.log('➡️ Redirecting to tutor dashboard');
       return NextResponse.redirect(new URL('/tutor/dashboard', request.url));
     } else if (role === 'admin') {
