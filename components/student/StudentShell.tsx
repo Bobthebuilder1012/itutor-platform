@@ -212,7 +212,7 @@ function ShellInner({ children }: { children: ReactNode }) {
         <ProfileMenu collapsed={collapsed} displayName={displayName} initials={initials} roleLabel={roleLabel} avatarUrl={profile?.avatar_url} />
       </aside>
 
-      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto overflow-x-hidden">
         {/* Top bar */}
         <header className="sticky top-0 z-30 bg-background/90 backdrop-blur border-b border-border">
           <div className="flex items-center gap-3 px-4 lg:px-6 h-14">

@@ -62,8 +62,10 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
   return (
     <button
       type="button"
+      role="switch"
+      aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className={cn('relative w-11 h-6 rounded-full transition-colors', checked ? 'bg-brand' : 'bg-border')}
+      className={cn('relative w-11 h-6 rounded-full transition-colors flex-shrink-0', checked ? 'bg-brand' : 'bg-gray-300')}
     >
       <span className={cn('absolute top-1 size-4 rounded-full bg-white shadow transition-transform', checked ? 'translate-x-6' : 'translate-x-1')} />
     </button>
@@ -325,7 +327,7 @@ export default function StudentSettingsPage() {
                       <div className="font-medium text-ink text-sm">{n.label}</div>
                       <div className="text-xs text-muted-foreground mt-0.5">{n.desc}</div>
                     </div>
-                    <Toggle checked={notif[n.key]} onChange={(v) => setNotif({ ...notif, [n.key]: v })} />
+                    <Toggle checked={notif[n.key]} onChange={(v) => setNotif((prev) => ({ ...prev, [n.key]: v }))} />
                   </div>
                 ))}
                 <SaveBar onSave={handleSaveNotifications} saving={savingNotif} label="Save preferences" />
