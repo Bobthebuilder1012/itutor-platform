@@ -1,8 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-    // In development, write output outside OneDrive to avoid file-lock + symlink issues.
-    // In production/staging use the standard .next directory.
-    distDir: process.env.NODE_ENV === 'production' ? '.next' : '../../../.itutor-next/build',
     // Don't try to prerender API routes
     generateBuildId: async () => {
       return 'build-' + Date.now()
