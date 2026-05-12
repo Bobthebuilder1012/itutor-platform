@@ -1,7 +1,7 @@
 // Service Worker for Push Notifications (Web Push API)
-// Version: 1.1.0
+// Version: 1.1.1
 
-const SW_VERSION = '1.1.0';
+const SW_VERSION = '1.1.1';
 const CACHE_NAME = 'itutor-push-v1';
 
 // Install event
@@ -115,6 +115,7 @@ self.addEventListener('pushsubscriptionchange', (event) => {
         fetch('/api/push-notifications/subscribe', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ subscription: newSubscription.toJSON(), platform: 'web' }),
         })
       )

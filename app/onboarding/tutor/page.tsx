@@ -272,6 +272,19 @@ export default function TutorOnboardingPage() {
         return;
       }
 
+      const teachingLevelsToSave = TEACHING_LEVELS.filter((level) => selectedLevels.includes(level));
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ teaching_levels: teachingLevelsToSave })
+        .eq('id', userId);
+
+      if (profileError) {
+        console.error('Profile save error:', profileError);
+        setError(`Profile save failed: ${profileError.message}`);
+        setSubmitting(false);
+        return;
+      }
+
       const ensure = await ensureSchoolCommunityAndMembership(userId!);
       if (!ensure.success) {
         console.error('Ensure school community:', ensure.error);
@@ -436,4 +449,3 @@ export default function TutorOnboardingPage() {
     </div>
   );
 }
-

@@ -500,7 +500,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
                 <MessagesIcon userId={effectiveUserId} role={role} variant="light" />
               </>
             )}
-            {effectiveUserId && <NotificationBell userId={effectiveUserId} />}
+            {effectiveUserId && <NotificationBell userId={effectiveUserId} notificationsHref={`/${role}/notifications`} />}
             <Link
               href={`/${role}/settings`}
               className="w-9 h-9 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-500 hover:border-itutor-green hover:text-itutor-green transition-colors"
