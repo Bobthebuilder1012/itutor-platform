@@ -5,8 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
-import DashboardLayout from '@/components/DashboardLayout';
-import { getDisplayName } from '@/lib/utils/displayName';
+import TutorShell from '@/components/tutor/TutorShell';
 
 type VideoProvider = 'google_meet' | 'zoom';
 
@@ -187,7 +186,7 @@ export default function VideoSetupPage() {
   }
 
   return (
-    <DashboardLayout role="tutor" userName={getDisplayName(profile)}>
+    <TutorShell>
       <div className="px-4 py-6 sm:px-0 max-w-4xl mx-auto">
         {/* Header */}
         <div className="mb-8">
@@ -407,7 +406,7 @@ export default function VideoSetupPage() {
         </div>
 
       </div>
-    </DashboardLayout>
+    </TutorShell>
   );
 }
 

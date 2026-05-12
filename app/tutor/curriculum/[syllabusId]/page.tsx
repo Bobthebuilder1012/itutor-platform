@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import DashboardLayout from '@/components/DashboardLayout';
+import TutorShell from '@/components/tutor/TutorShell';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { getSyllabusById } from '@/lib/services/curriculumService';
 import type { SyllabusWithSubject } from '@/lib/types/curriculum';
@@ -63,10 +63,8 @@ export default function SyllabusViewerPage() {
     );
   }
 
-  const displayName = profile.full_name || profile.email?.split('@')[0] || 'Tutor';
-
   return (
-    <DashboardLayout role="tutor" userName={displayName}>
+    <TutorShell>
       <div className="px-4 py-6 sm:px-0 max-w-7xl mx-auto">
         {/* Loading State */}
         {loading ? (
@@ -185,7 +183,7 @@ export default function SyllabusViewerPage() {
           </div>
         ) : null}
       </div>
-    </DashboardLayout>
+    </TutorShell>
   );
 }
 

@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { getTutorBookings } from '@/lib/services/bookingService';
 import { supabase } from '@/lib/supabase/client';
-import DashboardLayout from '@/components/DashboardLayout';
+import TutorShell from '@/components/tutor/TutorShell';
 import { getDisplayName } from '@/lib/utils/displayName';
 import { Booking, BookingStatus, BookingWithDetails } from '@/lib/types/booking';
 import { formatDateTime, getRelativeTime } from '@/lib/utils/calendar';
@@ -161,7 +161,7 @@ export default function TutorBookingsPage() {
   const pendingCount = bookings.filter(b => b.status === 'PENDING' || b.status === 'COUNTER_PROPOSED').length;
 
   return (
-    <DashboardLayout role="tutor" userName={getDisplayName(profile)}>
+    <TutorShell>
       <div className="px-4 py-6 sm:px-0 max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-6">
@@ -378,7 +378,7 @@ export default function TutorBookingsPage() {
           </div>
         )}
       </div>
-    </DashboardLayout>
+    </TutorShell>
   );
 }
 

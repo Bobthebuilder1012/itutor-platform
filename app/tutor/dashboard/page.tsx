@@ -1,817 +1,324 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useEffect, useState, ComponentType } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import {
+  Users, CalendarDays, DollarSign, Eye, Lock, Plus, Clock, BookOpen,
+  UserCircle, ArrowRight, Video, MessageSquare, Star, Wallet,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
+import { useTutorCompletion } from '@/lib/hooks/useTutorCompletion';
 import { supabase } from '@/lib/supabase/client';
-import DashboardLayout from '@/components/DashboardLayout';
-import AvatarUploadModal from '@/components/AvatarUploadModal';
-import ProfileBannerUploadModal from '@/components/ProfileBannerUploadModal';
-import AddSubjectModal from '@/components/tutor/AddSubjectModal';
-import EditSubjectModal from '@/components/tutor/EditSubjectModal';
-import EditProfileModal from '@/components/EditProfileModal';
-import SentOffersList from '@/components/offers/SentOffersList';
-import AvailabilityRequiredModal from '@/components/AvailabilityRequiredModal';
-import ShareProfileModal from '@/components/ShareProfileModal';
-import { useAvatarUpload } from '@/lib/hooks/useAvatarUpload';
-import { useProfileBannerUpload } from '@/lib/hooks/useProfileBannerUpload';
-import { Session, TutorSubject, Subject, Rating } from '@/lib/types/database';
-import { Area } from '@/lib/utils/imageCrop';
-import { getDisplayName } from '@/lib/utils/displayName';
-import { profileBannerDisplayUrl } from '@/lib/utils/profileBannerDisplayUrl';
-import TutorReviewsModal from '@/components/tutor/TutorReviewsModal';
-import UserAvatar from '@/components/UserAvatar';
+import TutorShell from '@/components/tutor/TutorShell';
 
-type TutorSubjectWithSubject = TutorSubject & {
-  subjects?: Subject;
+type DashboardStats = {
+  activeStudents: number;
+  upcomingSessions: number;
+  monthEarnings: number;
+  profileViews: number;
 };
 
-type EnrichedSession = Session & {
-  student_name?: string;
-  subject_name?: string;
+type UpcomingSession = {
+  id: string;
+  date: string;
+  subject: string;
+  studentName: string;
+  durationMin: number;
+  type: string;
+  joinUrl: string | null;
 };
 
-export default function TutorDashboard() {
+type ActivityItem = {
+  id: string;
+  kind: 'inquiry' | 'review' | 'payout' | 'booking';
+  text: string;
+  at: string;
+};
+
+export default function TutorDashboardPage() {
+  return (
+    <TutorShell>
+      <DashboardContent />
+    </TutorShell>
+  );
+}
+
+function DashboardContent() {
   const { profile, loading } = useProfile();
+  const completion = useTutorCompletion(profile);
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const testMode = searchParams.get('test') === 'true';
-  const [sessions, setSessions] = useState<EnrichedSession[]>([]);
-  const [tutorSubjects, setTutorSubjects] = useState<TutorSubjectWithSubject[]>([]);
-  const [ratings, setRatings] = useState<Rating[]>([]);
-  const [averageRating, setAverageRating] = useState(0);
-  const [sessionsTaught, setSessionsTaught] = useState(0);
-  const [loadingData, setLoadingData] = useState(true);
-  const [reviewsModalOpen, setReviewsModalOpen] = useState(false);
-  const [avatarModalOpen, setAvatarModalOpen] = useState(false);
-  const [bannerModalOpen, setBannerModalOpen] = useState(false);
-  const [addSubjectModalOpen, setAddSubjectModalOpen] = useState(false);
-  const [editSubjectModalOpen, setEditSubjectModalOpen] = useState(false);
-  const [editProfileModalOpen, setEditProfileModalOpen] = useState(false);
-  const [shareModalOpen, setShareModalOpen] = useState(false);
-  const [selectedSubject, setSelectedSubject] = useState<TutorSubjectWithSubject | null>(null);
-  const [hasVideoProvider, setHasVideoProvider] = useState<boolean | null>(null);
-  const [hasAvailability, setHasAvailability] = useState<boolean | null>(null);
-  const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
-  const { uploadAvatar, deleteAvatar, uploading } = useAvatarUpload(profile?.id || '');
-  const { uploadBanner, deleteBanner, uploading: bannerUploading } = useProfileBannerUpload(profile?.id || '');
-  const [paidClassesEnabled, setPaidClassesEnabled] = useState<boolean>(false);
+  const [stats, setStats] = useState<DashboardStats>({ activeStudents: 0, upcomingSessions: 0, monthEarnings: 0, profileViews: 0 });
+  const [upcoming, setUpcoming] = useState<UpcomingSession[]>([]);
+  const [activity, setActivity] = useState<ActivityItem[]>([]);
+  const [dataLoading, setDataLoading] = useState(true);
 
   useEffect(() => {
-    if (testMode) { setLoadingData(false); return; }
-    if (loading) return;
-    if (!loading && !profile) { router.push('/login'); return; }
-    if (!loading && profile && profile.role !== 'tutor') { router.push('/login'); return; }
-    if (!profile || profile.role !== 'tutor') return;
+    if (!loading && !profile) router.push('/login');
+    if (!loading && profile && profile.role !== 'tutor') router.push('/login');
+  }, [loading, profile, router]);
 
-    if (!profile.teaching_levels || profile.teaching_levels.length === 0) {
-      router.push('/signup/complete-role');
-      return;
-    }
-    fetchTutorData();
-    fetchPaidClassesFlag();
-  }, [profile, loading, router, testMode]);
+  useEffect(() => {
+    if (!profile?.id) return;
+    fetchDashboardData(profile.id);
+  }, [profile?.id]);
 
-  async function fetchPaidClassesFlag() {
+  async function fetchDashboardData(tutorId: string) {
+    setDataLoading(true);
     try {
-      const res = await fetch('/api/feature-flags', { cache: 'no-store' });
-      const data = await res.json();
-      setPaidClassesEnabled(Boolean(data?.paidClassesEnabled));
-    } catch { setPaidClassesEnabled(false); }
-  }
+      const now = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
-  async function fetchTutorData() {
-    if (!profile) return;
-    try {
-      const now = new Date().toISOString();
-      const [sessionsRes, tutorSubjectsRes, allSubjectsRes, ratingsRes, videoProviderRes, availabilityRes] =
-        await Promise.all([
-          supabase.from('sessions').select('*, bookings(subject_id, status)')
-            .eq('tutor_id', profile.id).gte('scheduled_start_at', now)
-            .in('status', ['SCHEDULED', 'JOIN_OPEN']).order('scheduled_start_at', { ascending: true }).limit(10),
-          supabase.from('tutor_subjects').select('*').eq('tutor_id', profile.id),
-          supabase.from('subjects').select('*'),
-          supabase.from('ratings').select('*').eq('tutor_id', profile.id),
-          supabase.from('tutor_video_provider_connections').select('id, connection_status').eq('tutor_id', profile.id).single(),
-          supabase.from('tutor_availability_rules').select('id').eq('tutor_id', profile.id).eq('is_active', true).limit(1),
-        ]);
+      const [
+        { data: upcomingData },
+        { data: monthSessions },
+        { count: studentCount },
+      ] = await Promise.all([
+        supabase
+          .from('sessions')
+          .select('id, scheduled_start, duration_minutes, join_url, booking:bookings(student_id, subject_id, profiles:profiles!bookings_student_id_fkey(full_name, display_name), subjects(label, name))')
+          .eq('tutor_id', tutorId)
+          .in('status', ['scheduled', 'in_progress'])
+          .gte('scheduled_start', now.toISOString())
+          .order('scheduled_start', { ascending: true })
+          .limit(5),
+        supabase
+          .from('sessions')
+          .select('payout_amount_ttd')
+          .eq('tutor_id', tutorId)
+          .eq('status', 'completed')
+          .gte('scheduled_start', monthStart),
+        supabase
+          .from('bookings')
+          .select('student_id', { count: 'exact', head: true })
+          .eq('tutor_id', tutorId)
+          .eq('status', 'confirmed'),
+      ]);
 
-      if (sessionsRes.data) {
-        const activeSessions = sessionsRes.data.filter(
-          (s: any) => s.bookings?.status !== 'CANCELLED' && s.bookings?.status !== 'DECLINED'
-        );
-        const enrichedSessions = await Promise.all(
-          activeSessions.slice(0, 5).map(async (session: any) => {
-            const subjectId = session.bookings?.subject_id;
-            const [studentRes, subjectRes] = await Promise.all([
-              supabase.from('profiles').select('full_name, display_name').eq('id', session.student_id).single(),
-              subjectId
-                ? supabase.from('subjects').select('name, label, curriculum, level').eq('id', subjectId).single()
-                : Promise.resolve({ data: null, error: null }),
-            ]);
-            return {
-              ...session,
-              student_name: studentRes.data ? getDisplayName(studentRes.data) : 'Unknown Student',
-              subject_name: subjectRes.data ? (subjectRes.data.label || subjectRes.data.name || 'Unknown Subject') : 'Unknown Subject',
-            };
-          })
-        );
-        setSessions(enrichedSessions);
-        const { count } = await supabase.from('sessions').select('*', { count: 'exact', head: true })
-          .eq('tutor_id', profile.id).eq('status', 'COMPLETED_ASSUMED');
-        setSessionsTaught(count || 0);
-      }
+      const monthTotal = (monthSessions ?? []).reduce((sum, s) => sum + (s.payout_amount_ttd ?? 0), 0);
 
-      if (tutorSubjectsRes.data && allSubjectsRes.data) {
-        const subjectsMap = new Map(allSubjectsRes.data.map((s: any) => [s.id, s]));
-        setTutorSubjects(tutorSubjectsRes.data.map((ts: any) => ({ ...ts, subjects: subjectsMap.get(ts.subject_id) })));
-      }
+      const upcomingMapped: UpcomingSession[] = (upcomingData ?? []).map((s: any) => {
+        const booking = Array.isArray(s.booking) ? s.booking[0] : s.booking;
+        const studentProfile = booking?.profiles ? (Array.isArray(booking.profiles) ? booking.profiles[0] : booking.profiles) : null;
+        const subject = booking?.subjects ? (Array.isArray(booking.subjects) ? booking.subjects[0] : booking.subjects) : null;
+        return {
+          id: s.id,
+          date: s.scheduled_start,
+          subject: subject?.label || subject?.name || 'Session',
+          studentName: studentProfile?.display_name || studentProfile?.full_name || 'Student',
+          durationMin: s.duration_minutes ?? 60,
+          type: '1-on-1',
+          joinUrl: s.join_url ?? null,
+        };
+      });
+      setUpcoming(upcomingMapped);
 
-      if (ratingsRes.data) {
-        const sorted = [...ratingsRes.data].sort((a: any, b: any) =>
-          new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
-        );
-        const seenStudents = new Set<string>();
-        const unique = sorted.filter((r: any) => {
-          if (!r?.student_id || seenStudents.has(r.student_id)) return false;
-          seenStudents.add(r.student_id); return true;
-        });
-        setRatings(unique);
-        if (unique.length > 0) {
-          setAverageRating(Math.round(unique.reduce((s: number, r: any) => s + Number(r.stars || 0), 0) / unique.length * 10) / 10);
-        }
-      }
+      setStats({
+        activeStudents: studentCount ?? 0,
+        upcomingSessions: upcomingMapped.length,
+        monthEarnings: monthTotal,
+        profileViews: 0,
+      });
 
-      setHasVideoProvider(
-        !videoProviderRes.error && videoProviderRes.data?.connection_status === 'connected'
-      );
-      const noAvail = (availabilityRes.error?.code === 'PGRST116') || !availabilityRes.data?.length;
-      setHasAvailability(!noAvail);
-      setShowAvailabilityModal(noAvail);
+      const { data: recentRatings } = await supabase
+        .from('ratings')
+        .select('id, stars, comment, created_at, student:profiles!ratings_student_id_fkey(full_name, display_name)')
+        .eq('tutor_id', tutorId)
+        .order('created_at', { ascending: false })
+        .limit(3);
+
+      const { data: recentBookings } = await supabase
+        .from('bookings')
+        .select('id, status, created_at, student:profiles!bookings_student_id_fkey(full_name, display_name)')
+        .eq('tutor_id', tutorId)
+        .order('created_at', { ascending: false })
+        .limit(3);
+
+      const acts: ActivityItem[] = [];
+      (recentRatings ?? []).forEach((r: any) => {
+        const studentProfile = Array.isArray(r.student) ? r.student[0] : r.student;
+        const name = studentProfile?.display_name || studentProfile?.full_name || 'A student';
+        acts.push({ id: `r-${r.id}`, kind: 'review', text: `${name} left a ${r.stars}-star review${r.comment ? `: "${r.comment.slice(0, 60)}${r.comment.length > 60 ? '…' : ''}"` : '.'}`, at: relTime(r.created_at) });
+      });
+      (recentBookings ?? []).forEach((b: any) => {
+        const studentProfile = Array.isArray(b.student) ? b.student[0] : b.student;
+        const name = studentProfile?.display_name || studentProfile?.full_name || 'A student';
+        acts.push({ id: `b-${b.id}`, kind: 'booking', text: `${name} ${b.status === 'confirmed' ? 'confirmed a booking' : b.status === 'pending' ? 'requested a booking' : 'cancelled a booking'}.`, at: relTime(b.created_at) });
+      });
+      acts.sort((a, b) => 0);
+      setActivity(acts.slice(0, 6));
     } catch (err) {
-      console.error('Error fetching tutor data:', err);
+      console.error('Failed to load dashboard data:', err);
     } finally {
-      setLoadingData(false);
+      setDataLoading(false);
     }
   }
 
-  const handleAvatarUpload = async (imageSrc: string, croppedArea: Area) => {
-    if (!profile) return;
-    const result = await uploadAvatar(imageSrc, croppedArea);
-    if (result.success) window.location.reload();
-  };
-
-  const handleRemoveAvatar = async () => {
-    if (!profile) return;
-    const result = await deleteAvatar();
-    if (!result.success) throw new Error(result.error || 'Failed to remove photo');
-    setAvatarModalOpen(false);
-    window.location.reload();
-  };
-
-  const handleBannerUpload = async (imageSrc: string, croppedArea: Area) => {
-    if (!profile) return;
-    const result = await uploadBanner(imageSrc, croppedArea);
-    if (result.success) window.location.reload();
-  };
-
-  const handleRemoveBanner = async () => {
-    if (!profile) return;
-    const result = await deleteBanner();
-    if (result.success) window.location.reload();
-  };
-
-  if (!testMode && (loading || !profile)) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-itutor-green" />
-      </div>
-    );
-  }
-
-  const displayName = testMode ? 'Test Tutor' : (profile ? getDisplayName(profile) : 'Tutor');
-  const initials = displayName.slice(0, 2).toUpperCase();
-  const subjectsLine = tutorSubjects.map(ts => ts.subjects?.name).filter(Boolean).join(' · ') || null;
-
-  // Profile strength calculation
-  const strengthItems = [
-    { label: 'Profile created', done: true },
-    { label: 'Profile photo uploaded', done: Boolean(profile?.avatar_url) },
-    { label: 'Bio added', done: Boolean(profile?.bio?.trim()) },
-    { label: 'Subjects added', done: tutorSubjects.length > 0 },
-    { label: 'Availability set', done: Boolean(hasAvailability) },
-    {
-      label: 'Verification complete',
-      done: profile?.tutor_verification_status === 'VERIFIED',
-      warn: profile?.tutor_verification_status !== 'VERIFIED',
-    },
-  ];
-  const strengthPct = Math.round((strengthItems.filter(i => i.done).length / strengthItems.length) * 100);
+  const listed = completion.listed;
+  const firstName = (profile?.display_name || profile?.full_name || 'there').split(' ')[0];
 
   return (
-    <DashboardLayout role="tutor" userName={displayName}>
-      <div className="max-w-7xl mx-auto space-y-5">
+    <div className="space-y-8 max-w-7xl">
+      <header>
+        <h1 className="text-2xl lg:text-3xl font-bold text-ink">Welcome back, {firstName}.</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          {listed ? "Here's what's happening with your students today." : 'Finish setting up your profile to unlock teaching tools.'}
+        </p>
+      </header>
 
-        {/* ── PROFILE BANNER (only avatar overlaps banner, LinkedIn-style) ── */}
-        <div className="overflow-visible rounded-2xl border border-gray-100 bg-white shadow-sm">
-          {testMode ? (
-            <div
-              className="relative h-28 shrink-0 overflow-hidden rounded-t-2xl bg-gradient-to-br from-gray-200 to-gray-300 sm:h-36"
-              aria-hidden
-            />
-          ) : profile ? (
-            <div className="relative h-28 shrink-0 overflow-hidden rounded-t-2xl sm:h-36">
-              <img
-                src={profileBannerDisplayUrl(profile.profile_banner_url, profile.updated_at)}
-                alt=""
-                className="h-full w-full object-cover"
-              />
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
-              <button
-                type="button"
-                onClick={() => setBannerModalOpen(true)}
-                className="absolute bottom-2 right-2 z-[1] rounded-lg bg-white/90 px-3 py-1.5 text-xs font-semibold text-gray-800 shadow-sm ring-1 ring-gray-200/80 backdrop-blur-sm transition hover:bg-white"
-              >
-                {profile.profile_banner_url ? 'Change banner' : 'Add banner'}
-              </button>
-            </div>
-          ) : null}
-
-          <div className="relative px-6 pb-6 pt-0">
-            <div className="mb-5 flex items-start gap-5">
-              <div className="relative z-10 -mt-14 shrink-0">
-                <button
-                  type="button"
-                  className="relative flex h-28 w-28 cursor-pointer items-center justify-center overflow-hidden rounded-full border-4 border-white bg-white p-0 shadow-[0_10px_40px_rgba(0,0,0,0.15)] transition hover:brightness-[1.02]"
-                  onClick={() => !testMode && setAvatarModalOpen(true)}
-                  aria-label="Change profile photo"
-                >
-                  <UserAvatar
-                    avatarUrl={profile?.avatar_url}
-                    name={displayName}
-                    size={104}
-                    rounded="full"
-                    className="!rounded-full"
-                  />
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (!testMode) setAvatarModalOpen(true);
-                  }}
-                  className="absolute bottom-0 right-0 z-20 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-itutor-green text-white shadow-md transition hover:bg-emerald-600"
-                  aria-label="Change profile photo"
-                >
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                    <circle cx="12" cy="13" r="4" />
-                  </svg>
-                </button>
-              </div>
-
-              <div className="min-w-0 flex-1 pt-3">
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <h1 className="text-xl font-bold leading-tight text-gray-900">{displayName}</h1>
-                  <span className="rounded-lg border border-itutor-green/30 bg-itutor-green/10 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-itutor-green">
-                    Tutor
-                  </span>
-                  {profile?.tutor_verification_status === 'VERIFIED' && (
-                    <span className="rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-blue-600">
-                      Verified
-                    </span>
-                  )}
-                </div>
-                <div className="mt-1.5 flex flex-wrap items-center gap-4">
-                  {profile?.school && (
-                    <span className="flex items-center gap-1.5 text-[13px] text-gray-500">
-                      <svg className="h-3.5 w-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path
-                          d="M19 21V5a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v5m-4 0h4"
-                          strokeWidth="1.8"
-                        />
-                      </svg>
-                      {profile.school}
-                    </span>
-                  )}
-                  {subjectsLine && (
-                    <span className="max-w-[340px] truncate text-[13px] text-gray-400">{subjectsLine}</span>
-                  )}
-                </div>
-              </div>
-
-              <div className="hidden shrink-0 flex-col items-end pb-1 pt-3 sm:flex">
-                <div className="flex items-center gap-1.5">
-                  <svg className="h-5 w-5 fill-amber-400 text-amber-400" viewBox="0 0 24 24">
-                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                  </svg>
-                  <span className="text-2xl font-bold text-amber-500">
-                    {averageRating > 0 ? averageRating.toFixed(1) : '0.0'}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => ratings.length > 0 && setReviewsModalOpen(true)}
-                  className="mt-0.5 text-[12px] text-gray-400 transition-colors hover:text-itutor-green"
-                >
-                  {ratings.length} review{ratings.length !== 1 ? 's' : ''}
-                </button>
-              </div>
-            </div>
-
-            {/* Footer row */}
-            <div className="flex items-center gap-3 flex-wrap pt-4 border-t border-gray-100">
-              {/* Notice strip */}
-              {!paidClassesEnabled && (
-                <div className="flex-1 min-w-[220px] flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
-                  <svg className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" strokeWidth="1.8" />
-                  </svg>
-                  <div>
-                    <p className="text-[12px] font-semibold text-amber-700">Paid classes launching soon</p>
-                    <p className="text-[11px] text-amber-600">During our initial launch period, tutors can host free classes only.</p>
-                  </div>
-                </div>
-              )}
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <button
-                  onClick={() => !testMode && setEditProfileModalOpen(true)}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-white border border-gray-200 hover:border-itutor-green hover:text-itutor-green text-gray-600 text-[13px] font-semibold rounded-xl transition-colors"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" strokeWidth="2" />
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" strokeWidth="2" />
-                  </svg>
-                  Edit Profile
-                </button>
-                <button
-                  onClick={() => !testMode && setAddSubjectModalOpen(true)}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-white border border-gray-200 hover:border-itutor-green hover:text-itutor-green text-gray-600 text-[13px] font-semibold rounded-xl transition-colors"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <line x1="12" y1="5" x2="12" y2="19" strokeWidth="2" />
-                    <line x1="5" y1="12" x2="19" y2="12" strokeWidth="2" />
-                  </svg>
-                  Add Subject
-                </button>
-                <button
-                  onClick={() => !testMode && setShareModalOpen(true)}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-itutor-green hover:bg-emerald-500 text-black text-[13px] font-semibold rounded-xl transition-colors shadow-sm"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" strokeWidth="2" />
-                    <polyline points="16 6 12 2 8 6" strokeWidth="2" />
-                    <line x1="12" y1="2" x2="12" y2="15" strokeWidth="2" />
-                  </svg>
-                  Share Profile
-                </button>
-              </div>
-            </div>
-          </div>
+      <section>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
+          <StatCard icon={Users} label="Active students" value={String(stats.activeStudents)} locked={!listed} />
+          <StatCard icon={CalendarDays} label="Upcoming sessions" value={String(stats.upcomingSessions)} locked={!listed} />
+          <StatCard icon={DollarSign} label="This month (TTD)" value={stats.monthEarnings.toLocaleString()} locked={!listed} />
+          <StatCard icon={Eye} label="Profile views" value={String(stats.profileViews)} locked={!listed} />
         </div>
+      </section>
 
-        {/* ── STATS ROW ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {/* Sessions Taught */}
-          <div className="bg-white border border-gray-100 rounded-2xl p-5 flex items-center gap-4 shadow-sm">
-            <div className="w-12 h-12 rounded-xl bg-itutor-green/10 flex items-center justify-center flex-shrink-0">
-              <svg className="w-5 h-5 text-itutor-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 0 0 1.946-.806 3.42 3.42 0 0 1 4.438 0 3.42 3.42 0 0 0 1.946.806 3.42 3.42 0 0 1 3.138 3.138 3.42 3.42 0 0 0 .806 1.946 3.42 3.42 0 0 1 0 4.438 3.42 3.42 0 0 0-.806 1.946 3.42 3.42 0 0 1-3.138 3.138 3.42 3.42 0 0 0-1.946.806 3.42 3.42 0 0 1-4.438 0 3.42 3.42 0 0 0-1.946-.806 3.42 3.42 0 0 1-3.138-3.138 3.42 3.42 0 0 0-.806-1.946 3.42 3.42 0 0 1 0-4.438 3.42 3.42 0 0 0 .806-1.946 3.42 3.42 0 0 1 3.138-3.138z" strokeWidth="1.8" />
-              </svg>
-            </div>
+      <section className="grid lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 rounded-2xl border border-border bg-card overflow-hidden">
+          <div className="px-5 py-4 border-b border-border flex items-center justify-between">
             <div>
-              <p className="text-3xl font-bold text-itutor-green">{loadingData ? '—' : sessionsTaught}</p>
-              <p className="text-[12px] text-gray-400 font-medium mt-0.5">Sessions Taught</p>
+              <h2 className="font-semibold text-ink">Upcoming sessions</h2>
+              <p className="text-xs text-muted-foreground">Next 5 confirmed bookings</p>
             </div>
+            <Link href="/tutor/sessions" className="text-xs font-semibold text-brand-deep hover:underline inline-flex items-center gap-1">
+              View all <ArrowRight className="size-3" />
+            </Link>
           </div>
-
-          {/* Subjects Teaching */}
-          <div className="bg-white border border-gray-100 rounded-2xl p-5 flex items-center gap-4 shadow-sm">
-            <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0">
-              <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" strokeWidth="1.8" />
-              </svg>
+          {dataLoading ? (
+            <div className="px-5 py-8 text-center text-sm text-muted-foreground">Loading…</div>
+          ) : upcoming.length === 0 ? (
+            <div className="px-5 py-12 text-center">
+              <CalendarDays className="size-8 mx-auto text-muted-foreground/40" />
+              <p className="mt-2 text-sm text-muted-foreground">No upcoming sessions yet.</p>
             </div>
-            <div>
-              <p className="text-3xl font-bold text-blue-500">{loadingData ? '—' : tutorSubjects.length}</p>
-              <p className="text-[12px] text-gray-400 font-medium mt-0.5">Subjects Teaching</p>
-            </div>
-          </div>
-
-          {/* Total Reviews */}
-          <button
-            onClick={() => ratings.length > 0 && setReviewsModalOpen(true)}
-            className="bg-white border border-gray-100 rounded-2xl p-5 flex items-center gap-4 shadow-sm hover:border-amber-200 transition-colors text-left"
-          >
-            <div className="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center flex-shrink-0">
-              <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5z" strokeWidth="1.8" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-3xl font-bold text-amber-500">{loadingData ? '—' : ratings.length}</p>
-              <p className="text-[12px] text-gray-400 font-medium mt-0.5">Total Reviews</p>
-            </div>
-          </button>
-        </div>
-
-        {/* ── MAIN GRID ── */}
-        <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-5 items-start">
-
-          {/* LEFT COLUMN */}
-          <div className="space-y-5">
-
-            {/* Sent Offers */}
-            {!testMode && profile && <SentOffersList tutorId={profile.id} />}
-
-            {/* Subjects You Teach */}
-            <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-5">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-blue-50 flex items-center justify-center">
-                    <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" strokeWidth="1.8" />
-                    </svg>
-                  </div>
-                  <h2 className="text-[15px] font-bold text-gray-900">Subjects You Teach</h2>
-                </div>
-                <button
-                  onClick={() => !testMode && setAddSubjectModalOpen(true)}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-itutor-green text-black text-[12px] font-bold rounded-xl hover:bg-emerald-500 transition-colors"
-                >
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <line x1="12" y1="5" x2="12" y2="19" strokeWidth="2.5" />
-                    <line x1="5" y1="12" x2="19" y2="12" strokeWidth="2.5" />
-                  </svg>
-                  Add Subject
-                </button>
-              </div>
-
-              {loadingData ? (
-                <p className="text-sm text-gray-400">Loading subjects…</p>
-              ) : tutorSubjects.length > 0 ? (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
-                  {tutorSubjects.map((ts) => (
-                    <button
-                      key={ts.id}
-                      onClick={() => { setSelectedSubject(ts); setEditSubjectModalOpen(true); }}
-                      className="group relative bg-gray-50 border border-gray-100 hover:border-itutor-green rounded-xl p-3 text-left transition-all hover:shadow-sm overflow-hidden"
-                    >
-                      <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-itutor-green to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                      <div className="flex items-start justify-between gap-1 mb-2">
-                        <p className="text-[13px] font-bold text-gray-900 group-hover:text-itutor-green transition-colors leading-tight">
-                          {ts.subjects?.name || 'Unknown Subject'}
-                        </p>
-                        <svg className="w-3 h-3 text-gray-300 group-hover:text-itutor-green flex-shrink-0 mt-0.5 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path d="M9 18l6-6-6-6" strokeWidth="2.5" strokeLinecap="round" />
-                        </svg>
-                      </div>
-                      <div className="flex gap-1 mb-2 flex-wrap">
-                        {ts.subjects?.curriculum && (
-                          <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 bg-white border border-gray-200 rounded text-gray-500">
-                            {ts.subjects.curriculum}
-                          </span>
-                        )}
-                        {ts.subjects?.level && ts.subjects?.level !== ts.subjects?.curriculum && (
-                          <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 bg-white border border-gray-200 rounded text-gray-500">
-                            {ts.subjects.level}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[13px] font-bold text-itutor-green">
-                          TT${paidClassesEnabled ? ts.price_per_hour_ttd : 0}
-                        </span>
-                        {!paidClassesEnabled && (
-                          <span className="px-1 py-0.5 bg-itutor-green/10 text-itutor-green text-[9px] font-bold rounded">FREE</span>
-                        )}
-                        <span className="text-[10px] text-gray-400">/hr</span>
-                      </div>
-                    </button>
-                  ))}
-
-                  {/* Add new placeholder */}
-                  <button
-                    onClick={() => !testMode && setAddSubjectModalOpen(true)}
-                    className="border border-dashed border-itutor-green/30 hover:border-itutor-green hover:bg-itutor-green/5 rounded-xl p-3 flex flex-col items-center justify-center gap-1.5 min-h-[80px] transition-all group"
-                  >
-                    <svg className="w-4 h-4 text-gray-400 group-hover:text-itutor-green transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <line x1="12" y1="5" x2="12" y2="19" strokeWidth="2" />
-                      <line x1="5" y1="12" x2="19" y2="12" strokeWidth="2" />
-                    </svg>
-                    <span className="text-[12px] font-semibold text-gray-400 group-hover:text-itutor-green transition-colors">Add Subject</span>
-                  </button>
-                </div>
-              ) : (
-                <div className="text-center py-10">
-                  <div className="w-14 h-14 bg-gray-50 border border-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
-                    <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" strokeWidth="1.8" />
-                    </svg>
-                  </div>
-                  <p className="text-[14px] font-semibold text-gray-700 mb-1">No subjects added yet</p>
-                  <p className="text-[12px] text-gray-400 mb-4">Add the subjects you teach to attract students.</p>
-                  <button
-                    onClick={() => !testMode && setAddSubjectModalOpen(true)}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-itutor-green text-black text-[13px] font-bold rounded-xl hover:bg-emerald-500 transition-colors"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <line x1="12" y1="5" x2="12" y2="19" strokeWidth="2.5" />
-                      <line x1="5" y1="12" x2="19" y2="12" strokeWidth="2.5" />
-                    </svg>
-                    Add Your First Subject
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Upcoming Sessions */}
-            <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-5">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-itutor-green/10 flex items-center justify-center">
-                    <svg className="w-4 h-4 text-itutor-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <rect x="3" y="4" width="18" height="18" rx="2" strokeWidth="1.8" />
-                      <path d="M16 2v4M8 2v4M3 10h18" strokeWidth="1.8" strokeLinecap="round" />
-                    </svg>
-                  </div>
-                  <h2 className="text-[15px] font-bold text-gray-900">Upcoming Sessions</h2>
-                </div>
-                <Link href="/tutor/bookings" className="text-[13px] text-blue-500 font-semibold hover:text-blue-600 transition-colors">
-                  View all →
-                </Link>
-              </div>
-
-              {loadingData ? (
-                <p className="text-sm text-gray-400">Loading sessions…</p>
-              ) : sessions.length > 0 ? (
-                <div className="space-y-3">
-                  {sessions.map((session) => {
-                    const status = session.status?.toUpperCase();
-                    let label = 'Upcoming';
-                    let labelClass = 'bg-blue-50 text-blue-600';
-                    if (status === 'JOIN_OPEN' || status === 'IN_PROGRESS') { label = 'In Progress'; labelClass = 'bg-purple-50 text-purple-600'; }
-                    else if (status === 'COMPLETED' || status === 'COMPLETED_ASSUMED') { label = 'Completed'; labelClass = 'bg-itutor-green/10 text-itutor-green'; }
-                    else if (status === 'CANCELLED') { label = 'Cancelled'; labelClass = 'bg-red-50 text-red-500'; }
-
-                    return (
-                      <div key={session.id} className="flex items-center gap-4 p-4 bg-gray-50 border border-gray-100 rounded-xl">
-                        <div className="w-10 h-10 rounded-xl bg-white border border-gray-100 flex items-center justify-center flex-shrink-0">
-                          <svg className="w-4.5 h-4.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <rect x="3" y="4" width="18" height="18" rx="2" strokeWidth="1.8" />
-                            <path d="M16 2v4M8 2v4M3 10h18" strokeWidth="1.8" strokeLinecap="round" />
-                          </svg>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-0.5">
-                            <p className="text-[14px] font-semibold text-gray-900 truncate">{session.subject_name}</p>
-                            <span className={`flex-shrink-0 px-2 py-0.5 text-[10px] font-bold rounded-md ${labelClass}`}>{label}</span>
-                          </div>
-                          <p className="text-[12px] text-gray-400">
-                            with <span className="text-itutor-green font-semibold">{session.student_name}</span>
-                            {' · '}
-                            {new Date(session.scheduled_start_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                            {' · '}
-                            {new Date(session.scheduled_start_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center py-4 text-center">
-                  <div className="w-14 h-14 bg-gray-50 border border-gray-100 rounded-2xl flex items-center justify-center mb-3">
-                    <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <rect x="3" y="4" width="18" height="18" rx="2" strokeWidth="1.8" />
-                      <path d="M16 2v4M8 2v4M3 10h18" strokeWidth="1.8" strokeLinecap="round" />
-                    </svg>
-                  </div>
-                  <p className="text-[14px] font-semibold text-gray-700 mb-1">No sessions yet</p>
-                  <p className="text-[12px] text-gray-400">Once a student books with you, it&apos;ll appear here.</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* RIGHT COLUMN */}
-          <div className="space-y-5">
-
-            {/* Quick Actions */}
-            <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
-              <div className="flex items-center gap-2.5 mb-5">
-                <div className="w-8 h-8 rounded-xl bg-amber-50 flex items-center justify-center">
-                  <svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path d="M13 10V3L4 14h7v7l9-11h-7z" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </div>
-                <h2 className="text-[15px] font-bold text-gray-900">Quick Actions</h2>
-              </div>
-
-              <div className="space-y-2.5">
-                {[
-                  {
-                    href: '/tutor/availability',
-                    icon: (
-                      <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <circle cx="12" cy="12" r="10" strokeWidth="1.8" />
-                        <path d="M12 6v6l4 2" strokeWidth="1.8" strokeLinecap="round" />
-                      </svg>
-                    ),
-                    iconBg: 'bg-purple-50 text-purple-500',
-                    title: 'Set Availability',
-                    desc: 'Set your available hours',
-                  },
-                  {
-                    href: '/tutor/curriculum',
-                    icon: (
-                      <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5z" strokeWidth="1.8" />
-                        <path d="M8 7h8M8 11h5" strokeWidth="1.8" strokeLinecap="round" />
-                      </svg>
-                    ),
-                    iconBg: 'bg-blue-50 text-blue-500',
-                    title: 'Curriculum',
-                    desc: 'Browse CSEC subjects',
-                  },
-                  {
-                    href: '/tutor/verification',
-                    icon: (
-                      <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0 1 12 2.944a11.955 11.955 0 0 1-8.618 3.04A12.02 12.02 0 0 0 3 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" strokeWidth="1.8" />
-                      </svg>
-                    ),
-                    iconBg: 'bg-orange-50 text-orange-500',
-                    title: 'Verification',
-                    desc: (
-                      <>
-                        Upload certificates{' '}
-                        {profile?.tutor_verification_status !== 'VERIFIED' && (
-                          <span className="text-orange-500 font-semibold">· Action needed</span>
-                        )}
-                      </>
-                    ),
-                    highlight: profile?.tutor_verification_status !== 'VERIFIED',
-                  },
-                ].map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`flex items-center gap-3.5 p-3.5 rounded-xl border transition-all hover:translate-x-0.5 ${
-                      item.highlight
-                        ? 'border-orange-100 hover:border-orange-200'
-                        : 'border-gray-100 hover:border-gray-200'
-                    } group`}
-                  >
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${item.iconBg}`}>
-                      {item.icon}
+          ) : (
+            <ul className="divide-y divide-border">
+              {upcoming.map((s) => {
+                const d = new Date(s.date);
+                return (
+                  <li key={s.id} className="px-5 py-3 flex items-center gap-3 hover:bg-muted/40 transition">
+                    <div className="size-9 rounded-lg bg-brand/10 text-brand-deep grid place-items-center text-xs font-bold tabular-nums shrink-0">
+                      {d.getDate()}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-[13.5px] font-semibold text-gray-900">{item.title}</p>
-                      <p className="text-[12px] text-gray-400">{item.desc}</p>
+                      <div className="text-sm font-semibold text-ink truncate">{s.subject}</div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {s.studentName} · {d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · {d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · {s.durationMin}m
+                      </div>
                     </div>
-                    <svg className="w-4 h-4 text-gray-300 group-hover:text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path d="M9 18l6-6-6-6" strokeWidth="2" strokeLinecap="round" />
-                    </svg>
-                  </Link>
-                ))}
-              </div>
-            </div>
+                    <span className="hidden sm:inline-flex text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{s.type}</span>
+                    {s.joinUrl ? (
+                      <a href={s.joinUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90">
+                        <Video className="size-3" /> Join
+                      </a>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">No link</span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
 
-            {/* Profile Strength */}
-            <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
-              <div className="flex items-center gap-2.5 mb-4">
-                <div className="w-8 h-8 rounded-xl bg-itutor-green/10 flex items-center justify-center">
-                  <svg className="w-4 h-4 text-itutor-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path d="M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0zM12 14a7 7 0 0 0-7 7h14a7 7 0 0 0-7-7z" strokeWidth="1.8" />
-                  </svg>
-                </div>
-                <h2 className="text-[15px] font-bold text-gray-900">Profile Strength</h2>
-              </div>
-
-              <div className="flex justify-between text-[12px] mb-2">
-                <span className="text-gray-400">
-                  {strengthPct < 50 ? 'Getting there…' : strengthPct < 100 ? 'Almost there!' : 'Complete!'}
-                </span>
-                <span className="text-itutor-green font-bold">{strengthPct}%</span>
-              </div>
-              <div className="h-2 bg-gray-100 rounded-full overflow-hidden mb-5">
-                <div
-                  className="h-full bg-gradient-to-r from-itutor-green to-emerald-400 rounded-full transition-all duration-700"
-                  style={{ width: `${strengthPct}%` }}
-                />
-              </div>
-
-              <div className="space-y-2.5">
-                {strengthItems.map((item) => (
-                  <div key={item.label} className="flex items-center gap-2.5 text-[12px]">
-                    <div
-                      className={`w-4.5 h-4.5 rounded-full flex items-center justify-center flex-shrink-0 ${
-                        item.done
-                          ? 'bg-itutor-green/10 border border-itutor-green/40'
-                          : item.warn
-                          ? 'bg-orange-50 border border-orange-300'
-                          : 'bg-gray-50 border border-gray-200'
-                      }`}
-                    >
-                      {item.done ? (
-                        <svg className="w-2.5 h-2.5 text-itutor-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path d="M5 13l4 4L19 7" strokeWidth="3" strokeLinecap="round" />
-                        </svg>
-                      ) : item.warn ? (
-                        <span className="text-[8px] font-bold text-orange-500">!</span>
-                      ) : null}
-                    </div>
-                    <span className={item.done ? 'text-gray-700' : 'text-gray-400'}>{item.label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Getting Started */}
-            <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
-              <div className="flex items-center gap-2.5 mb-4">
-                <div className="w-8 h-8 rounded-xl bg-itutor-green/10 flex items-center justify-center">
-                  <svg className="w-4 h-4 text-itutor-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 1 1 7.072 0l-.548.547A3.374 3.374 0 0 0 14 18.469V19a2 2 0 1 1-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" strokeWidth="1.8" />
-                  </svg>
-                </div>
-                <h2 className="text-[15px] font-bold text-gray-900">Getting Started</h2>
-              </div>
-
-              <div className="space-y-0">
-                {[
-                  { n: 1, text: <><strong className="text-gray-900">Complete verification</strong> — Upload your certificates to build trust with students.</> },
-                  { n: 2, text: <><strong className="text-gray-900">Set your availability</strong> — Tell students when you&apos;re free to teach.</> },
-                  { n: 3, text: <><strong className="text-gray-900">Share your profile</strong> — Send your profile link to attract your first students.</> },
-                  { n: 4, text: <><strong className="text-gray-900">Earn reviews</strong> — Your first review will unlock the rating badge. 🌟</> },
-                ].map((tip, i, arr) => (
-                  <div key={tip.n} className={`flex gap-3 py-3 ${i < arr.length - 1 ? 'border-b border-gray-50' : ''}`}>
-                    <div className="w-6 h-6 rounded-lg bg-itutor-green/10 text-itutor-green text-[11px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
-                      {tip.n}
-                    </div>
-                    <p className="text-[13px] text-gray-500 leading-relaxed">{tip.text}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
+        <div className="rounded-2xl border border-border bg-card p-5">
+          <h2 className="font-semibold text-ink">Quick actions</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">Jump into common tasks</p>
+          <div className="mt-4 space-y-2">
+            <QuickAction to="/tutor/lessons" icon={Plus} label="Create a lesson" gated={!listed} />
+            <QuickAction to="/tutor/availability" icon={Clock} label="Manage availability" />
+            <QuickAction to="/tutor/wallet" icon={Wallet} label="My Wallet" />
+            <QuickAction to="/tutor/students" icon={UserCircle} label="My Students" />
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* ── MODALS ── */}
-      <AvatarUploadModal
-        isOpen={avatarModalOpen}
-        onClose={() => setAvatarModalOpen(false)}
-        onUpload={handleAvatarUpload}
-        uploading={uploading}
-        hasAvatar={Boolean(profile?.avatar_url)}
-        onRemovePhoto={!testMode && profile ? handleRemoveAvatar : undefined}
-      />
-      <ProfileBannerUploadModal
-        isOpen={bannerModalOpen}
-        onClose={() => setBannerModalOpen(false)}
-        onUpload={handleBannerUpload}
-        uploading={bannerUploading}
-        currentBannerUrl={profile?.profile_banner_url}
-        onRemove={handleRemoveBanner}
-      />
-
-      {!testMode && profile && (
-        <>
-          <AddSubjectModal
-            isOpen={addSubjectModalOpen}
-            onClose={() => setAddSubjectModalOpen(false)}
-            tutorId={profile.id}
-            existingSubjectIds={tutorSubjects.map(ts => ts.subject_id)}
-            onSubjectAdded={() => { setAddSubjectModalOpen(false); fetchTutorData(); }}
-          />
-          <EditSubjectModal
-            isOpen={editSubjectModalOpen}
-            onClose={() => setEditSubjectModalOpen(false)}
-            tutorSubject={selectedSubject}
-            onSubjectUpdated={() => { setEditSubjectModalOpen(false); fetchTutorData(); }}
-            onSubjectDeleted={() => { setEditSubjectModalOpen(false); fetchTutorData(); }}
-          />
-          <EditProfileModal
-            isOpen={editProfileModalOpen}
-            onClose={() => setEditProfileModalOpen(false)}
-            profile={profile}
-            onSuccess={() => window.location.reload()}
-          />
-          <ShareProfileModal
-            isOpen={shareModalOpen}
-            onClose={() => setShareModalOpen(false)}
-            profileUrl={`${typeof window !== 'undefined' ? window.location.origin : ''}/tutors/${profile.id}`}
-            profileName={getDisplayName(profile)}
-          />
-          {hasVideoProvider === true && hasAvailability === false && showAvailabilityModal && (
-            <AvailabilityRequiredModal isOpen={true} onClose={() => setShowAvailabilityModal(false)} />
+      <section className="grid lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 rounded-2xl border border-border bg-card p-5">
+          <h2 className="font-semibold text-ink">Recent activity</h2>
+          {activity.length === 0 ? (
+            <p className="mt-3 text-sm text-muted-foreground">No recent activity.</p>
+          ) : (
+            <ul className="mt-3 space-y-3">
+              {activity.map((a) => (
+                <li key={a.id} className="flex items-start gap-3 text-sm">
+                  <span className="size-7 rounded-full bg-muted text-muted-foreground grid place-items-center mt-0.5 shrink-0">
+                    {a.kind === 'inquiry' && <MessageSquare className="size-3.5" />}
+                    {a.kind === 'review' && <Star className="size-3.5" />}
+                    {a.kind === 'payout' && <Wallet className="size-3.5" />}
+                    {a.kind === 'booking' && <CalendarDays className="size-3.5" />}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-ink">{a.text}</div>
+                    <div className="text-xs text-muted-foreground">{a.at}</div>
+                  </div>
+                </li>
+              ))}
+            </ul>
           )}
-          <TutorReviewsModal tutorId={profile.id} isOpen={reviewsModalOpen} onClose={() => setReviewsModalOpen(false)} />
-        </>
-      )}
-    </DashboardLayout>
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-5">
+          <h2 className="font-semibold text-ink">Tools</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">Always available</p>
+          <Link href="/tutor/tools" className="mt-4 block text-center text-sm font-semibold px-3 py-2 rounded-lg bg-muted hover:bg-muted/70 text-ink">
+            Open tools
+          </Link>
+        </div>
+      </section>
+    </div>
   );
+}
+
+function StatCard({ icon: Icon, label, value, locked }: { icon: ComponentType<{ className?: string }>; label: string; value: string; locked: boolean }) {
+  return (
+    <div className={cn('rounded-xl border border-border bg-card p-4 relative', locked && 'opacity-60')}>
+      <div className="flex items-center justify-between">
+        <div className="size-9 rounded-lg bg-brand/10 text-brand-deep grid place-items-center">
+          <Icon className="size-4" />
+        </div>
+        {locked && (
+          <span title="Available once your profile is complete." className="text-muted-foreground">
+            <Lock className="size-3.5" />
+          </span>
+        )}
+      </div>
+      <div className="mt-3 text-2xl font-bold tracking-tight text-ink tabular-nums">{locked ? '—' : value}</div>
+      <div className="text-xs text-muted-foreground mt-0.5">{label}</div>
+    </div>
+  );
+}
+
+function QuickAction({ to, icon: Icon, label, gated }: { to: string; icon: ComponentType<{ className?: string }>; label: string; gated?: boolean }) {
+  if (gated) {
+    return (
+      <button title="Available once your profile is complete." disabled
+        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border border-dashed border-border text-sm font-medium text-muted-foreground cursor-not-allowed">
+        <Icon className="size-4" />
+        <span className="flex-1 text-left">{label}</span>
+        <Lock className="size-3.5" />
+      </button>
+    );
+  }
+  return (
+    <Link href={to} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border text-sm font-medium text-ink hover:bg-muted transition">
+      <Icon className="size-4 text-brand-deep" />
+      <span className="flex-1 text-left">{label}</span>
+      <ArrowRight className="size-3.5 text-muted-foreground" />
+    </Link>
+  );
+}
+
+function relTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}d ago`;
+  return new Date(iso).toLocaleDateString();
 }

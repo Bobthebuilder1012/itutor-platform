@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import DashboardLayout from '@/components/DashboardLayout';
+import TutorShell from '@/components/tutor/TutorShell';
 import { useProfile } from '@/lib/hooks/useProfile';
 
 type VerifiedSubject = {
@@ -81,12 +81,11 @@ export default function ManageVerifiedSubjectsPage() {
     );
   }
 
-  const displayName = profile.full_name || profile.email?.split('@')[0] || 'Tutor';
   const publicSubjects = subjects.filter(s => s.is_public);
   const hiddenSubjects = subjects.filter(s => !s.is_public);
 
   return (
-    <DashboardLayout role="tutor" userName={displayName}>
+    <TutorShell>
       <div className="max-w-5xl mx-auto">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Manage Verified Subjects</h1>
         <p className="text-gray-600 mb-8">
@@ -179,7 +178,7 @@ export default function ManageVerifiedSubjectsPage() {
           </div>
         )}
       </div>
-    </DashboardLayout>
+    </TutorShell>
   );
 }
 

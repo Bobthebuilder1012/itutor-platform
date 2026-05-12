@@ -4,9 +4,8 @@ import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
-import DashboardLayout from '@/components/DashboardLayout';
+import TutorShell from '@/components/tutor/TutorShell';
 import ConversationView from '@/components/ConversationView';
-import { getDisplayName } from '@/lib/utils/displayName';
 
 export default function TutorConversationPage() {
   const { profile, loading: profileLoading } = useProfile();
@@ -61,7 +60,7 @@ export default function TutorConversationPage() {
   }
 
   return (
-    <DashboardLayout role="tutor" userName={getDisplayName(profile)}>
+    <TutorShell>
       <div className="px-4 py-6 sm:px-0 max-w-5xl mx-auto">
         <ConversationView
           conversationId={conversationId}
@@ -69,6 +68,6 @@ export default function TutorConversationPage() {
           otherUserId={otherUserId}
         />
       </div>
-    </DashboardLayout>
+    </TutorShell>
   );
 }

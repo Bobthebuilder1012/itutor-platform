@@ -11,8 +11,7 @@ import {
   upsertUnavailabilityBlock,
   deleteUnavailabilityBlock
 } from '@/lib/services/bookingService';
-import DashboardLayout from '@/components/DashboardLayout';
-import { getDisplayName } from '@/lib/utils/displayName';
+import TutorShell from '@/components/tutor/TutorShell';
 import { TutorAvailabilityRule, TutorUnavailabilityBlock, DAYS_OF_WEEK } from '@/lib/types/booking';
 import { formatDate, formatTime, toISOString } from '@/lib/utils/calendar';
 
@@ -175,7 +174,7 @@ export default function TutorAvailabilityPage() {
   }
 
   return (
-    <DashboardLayout role="tutor" userName={getDisplayName(profile)}>
+    <TutorShell>
       <div className="px-4 py-6 sm:px-0 max-w-6xl mx-auto">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Manage Availability</h1>
         <p className="text-gray-600 mb-6">Set your teaching hours and unavailable periods</p>
@@ -566,7 +565,7 @@ export default function TutorAvailabilityPage() {
           </div>
         </div>
       </div>
-    </DashboardLayout>
+    </TutorShell>
   );
 }
 

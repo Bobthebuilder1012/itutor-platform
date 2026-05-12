@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
-import DashboardLayout from '@/components/DashboardLayout';
+import TutorShell from '@/components/tutor/TutorShell';
 import SendOfferModal from '@/components/offers/SendOfferModal';
 import { getDisplayName } from '@/lib/utils/displayName';
 import { getAvatarColor } from '@/lib/utils/avatarColors';
@@ -151,7 +151,7 @@ export default function StudentProfilePage() {
 
   if (error || !student) {
     return (
-      <DashboardLayout role="tutor" userName={getDisplayName(profile!)}>
+      <TutorShell>
         <div className="px-4 py-6 sm:px-0 max-w-5xl mx-auto">
           <button
             onClick={() => router.back()}
@@ -171,7 +171,7 @@ export default function StudentProfilePage() {
             <p className="text-sm text-gray-600">You may not have permission to view this profile</p>
           </div>
         </div>
-      </DashboardLayout>
+      </TutorShell>
     );
   }
 
@@ -184,7 +184,7 @@ export default function StudentProfilePage() {
   };
 
   return (
-    <DashboardLayout role="tutor" userName={getDisplayName(profile!)}>
+    <TutorShell>
       <div className="px-4 py-6 sm:px-0 max-w-6xl mx-auto">
         {/* Back Button */}
         <button
@@ -382,7 +382,7 @@ export default function StudentProfilePage() {
         studentId={student.id}
         studentName={getDisplayName(student)}
       />
-    </DashboardLayout>
+    </TutorShell>
   );
 }
 

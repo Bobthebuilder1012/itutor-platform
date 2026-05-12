@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import DashboardLayout from '@/components/DashboardLayout';
+import TutorShell from '@/components/tutor/TutorShell';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { getTutorCurriculumGrouped, getAllCurriculumGrouped } from '@/lib/services/curriculumService';
 import SyllabusCard from '@/components/curriculum/SyllabusCard';
@@ -82,10 +82,8 @@ export default function TutorCurriculumPage() {
     );
   }
 
-  const displayName = profile.full_name || profile.email?.split('@')[0] || 'Tutor';
-
   return (
-    <DashboardLayout role="tutor" userName={displayName}>
+    <TutorShell>
       <div className="px-4 py-6 sm:px-0 max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
@@ -257,7 +255,7 @@ export default function TutorCurriculumPage() {
           </p>
         </div>
       </div>
-    </DashboardLayout>
+    </TutorShell>
   );
 }
 
