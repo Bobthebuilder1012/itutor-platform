@@ -3,7 +3,6 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { isPaidClassesEnabled } from '@/lib/featureFlags/paidClasses';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { calculateCommission } from '@/lib/utils/commissionCalculator';
-import { sendPushToUsers } from '@/lib/services/serverPushService';
 
 type Body = {
   studentId?: string;
@@ -179,12 +178,6 @@ async function createParentBooking(
       created_at: new Date().toISOString(),
     });
 
-    sendPushToUsers(
-      [body.tutorId],
-      'New Booking Request',
-      `${childProfile?.full_name || 'A student'} has sent you a booking request`,
-      { booking_id: booking.id, type: 'booking_request' }
-    ).catch(() => {});
   }
 
   return {
@@ -299,24 +292,6 @@ export async function POST(request: NextRequest) {
           updated_at: new Date().toISOString(),
         })
         .eq('id', data.booking_id);
-    }
-
-    // Send push notification to tutor about the new booking request
-    if (!isPaidClassesEnabled() && data?.booking_id) {
-      const bookingId = data.booking_id as string;
-      (async () => {
-        const { data: studentProfile } = await admin
-          .from('profiles')
-          .select('full_name')
-          .eq('id', user.id)
-          .maybeSingle();
-        await sendPushToUsers(
-          [body.tutorId],
-          'New Booking Request',
-          `${studentProfile?.full_name || 'A student'} has sent you a booking request`,
-          { booking_id: bookingId, type: 'booking_request' }
-        );
-      })().catch(() => {});
     }
 
     return NextResponse.json(data);
