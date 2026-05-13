@@ -52,9 +52,7 @@ export default function TutorShell({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!loading && profile && profile.role !== 'tutor') {
-      router.replace('/login');
-    }
+    if (!loading && profile && profile.role !== 'tutor') router.replace('/login');
   }, [loading, profile, router]);
 
   useEffect(() => {
@@ -87,78 +85,41 @@ export default function TutorShell({ children }: { children: ReactNode }) {
   };
 
   const initials = (profile?.full_name || profile?.email || 'T').split(' ').map((s) => s[0]).join('').slice(0, 2).toUpperCase();
+  const profileMenuProps = {
+    collapsed,
+    initials,
+    name: profile?.full_name || profile?.email || 'Tutor',
+    avatarUrl: profile?.avatar_url || null,
+    onLogout: () => setLogoutOpen(true),
+  };
 
   return (
-    <div className="min-h-screen bg-mint flex">
-      {/* Mobile overlay */}
+    <div className="flex h-screen overflow-hidden bg-background">
+      {/* ── Desktop sidebar — fixed height, never scrolls ── */}
+      <aside className={cn(
+        'hidden lg:flex h-full shrink-0 flex-col border-r border-white/10 bg-ink text-white transition-all duration-200',
+        collapsed ? 'w-16' : 'w-60',
+      )}>
+        <SidebarHeader collapsed={collapsed} onToggle={toggleCollapsed} />
+        <SidebarNav collapsed={collapsed} pathname={pathname} completion={completion} onNavClick={() => {}} />
+        <ProfileMenu {...profileMenuProps} />
+      </aside>
+
+      {/* ── Mobile drawer + overlay ── */}
       {mobileOpen && (
         <div className="fixed inset-0 bg-black/40 z-40 lg:hidden" onClick={() => setMobileOpen(false)} />
       )}
-
-      {/* Sidebar (desktop sticky, mobile drawer) */}
       <aside className={cn(
-        'fixed lg:sticky top-0 left-0 z-50 h-screen shrink-0 flex flex-col border-r border-white/10 bg-ink text-white transition-all duration-200',
-        collapsed ? 'w-16' : 'w-60',
-        mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
+        'fixed top-0 left-0 z-50 h-screen w-60 flex flex-col border-r border-white/10 bg-ink text-white transition-transform duration-200 lg:hidden',
+        mobileOpen ? 'translate-x-0' : '-translate-x-full',
       )}>
-        <div className={cn('px-3 py-4 border-b border-white/10 flex items-center gap-2', collapsed && 'justify-center')}>
-          {!collapsed ? (
-            <Link href="/tutor/dashboard" className="flex-1 flex items-center">
-              <Image src="/assets/logo/itutor-logo-dark.png" alt="iTutor" width={100} height={28} className="h-7 w-auto object-contain" />
-            </Link>
-          ) : (
-            <Link href="/tutor/dashboard" className="size-8 grid place-items-center">
-              <Image src="/assets/logo/itutor-mark.png" alt="iTutor" width={28} height={28} className="h-7 w-7 object-contain" />
-            </Link>
-          )}
-          <button onClick={toggleCollapsed} className="hidden lg:grid size-8 place-items-center rounded-lg hover:bg-white/10 text-white/60">
-            {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
-          </button>
-          <button onClick={() => setMobileOpen(false)} className="lg:hidden size-8 grid place-items-center rounded-lg hover:bg-white/10 text-white/60">
-            <X className="size-4" />
-          </button>
-        </div>
-
-        <nav className="flex-1 overflow-y-auto py-3">
-          <div className={cn('space-y-0.5', collapsed ? 'px-2' : 'px-3')}>
-            {nav.map((item) => {
-              const active = item.exact ? pathname === item.to : pathname.startsWith(item.to);
-              const Icon = item.icon;
-              const locked = item.gated && !completion.listed;
-              return (
-                <Link key={item.to} href={item.to}
-                  onClick={() => setMobileOpen(false)}
-                  title={collapsed ? item.label : (locked ? 'Available once your profile is complete.' : undefined)}
-                  className={cn(
-                    'flex items-center rounded-lg text-sm font-medium transition-colors',
-                    collapsed ? 'justify-center p-2' : 'gap-3 px-3 py-2',
-                    active ? 'bg-white/10 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white',
-                    locked && 'opacity-60',
-                  )}>
-                  <Icon className="size-4 shrink-0" />
-                  {!collapsed && (<><span className="flex-1">{item.label}</span>{locked && <Lock className="size-3 text-white/40" />}</>)}
-                </Link>
-              );
-            })}
-          </div>
-
-          {!completion.listed && !collapsed && (
-            <div className="mx-3 mt-4 p-3 rounded-xl bg-brand/15 border border-brand/30">
-              <div className="text-xs font-semibold text-white">Get listed</div>
-              <div className="mt-1 text-[11px] text-white/70 leading-snug">
-                Finish {completion.total - completion.completed} more step{completion.total - completion.completed === 1 ? '' : 's'} to start teaching.
-              </div>
-              <Link href="/tutor/get-listed" onClick={() => setMobileOpen(false)} className="mt-2 block text-center text-xs font-semibold px-2 py-1.5 rounded-md bg-brand text-white hover:bg-brand/90">
-                Continue
-              </Link>
-            </div>
-          )}
-        </nav>
-
-        <ProfileMenu collapsed={collapsed} initials={initials} name={profile?.full_name || profile?.email || 'Tutor'} avatarUrl={profile?.avatar_url || null} onLogout={() => setLogoutOpen(true)} />
+        <SidebarHeader collapsed={false} onToggle={() => {}} onClose={() => setMobileOpen(false)} />
+        <SidebarNav collapsed={false} pathname={pathname} completion={completion} onNavClick={() => setMobileOpen(false)} />
+        <ProfileMenu {...profileMenuProps} />
       </aside>
 
-      <div className="flex-1 flex flex-col min-w-0">
+      {/* ── Main column — this is the scroll container ── */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
         <header className="sticky top-0 z-30 bg-background/90 backdrop-blur border-b border-border">
           <div className="flex items-center gap-3 px-4 lg:px-8 h-14">
             <button onClick={() => setMobileOpen(true)} className="lg:hidden size-9 grid place-items-center rounded-lg hover:bg-muted text-muted-foreground">
@@ -217,6 +178,70 @@ export default function TutorShell({ children }: { children: ReactNode }) {
 
       <LogoutConfirmModal open={logoutOpen} onClose={() => setLogoutOpen(false)} onConfirm={handleLogout} />
     </div>
+  );
+}
+
+function SidebarHeader({ collapsed, onToggle, onClose }: { collapsed: boolean; onToggle: () => void; onClose?: () => void }) {
+  return (
+    <div className={cn('px-3 py-4 border-b border-white/10 flex items-center gap-2', collapsed && 'justify-center')}>
+      {!collapsed ? (
+        <Link href="/tutor/dashboard" className="flex-1 flex items-center">
+          <Image src="/assets/logo/itutor-logo-dark.png" alt="iTutor" width={100} height={28} className="h-7 w-auto object-contain" />
+        </Link>
+      ) : (
+        <Link href="/tutor/dashboard" className="size-8 grid place-items-center">
+          <Image src="/assets/logo/itutor-mark.png" alt="iTutor" width={28} height={28} className="h-7 w-7 object-contain" />
+        </Link>
+      )}
+      {onClose ? (
+        <button onClick={onClose} className="size-8 grid place-items-center rounded-lg hover:bg-white/10 text-white/60">
+          <X className="size-4" />
+        </button>
+      ) : (
+        <button onClick={onToggle} className="size-8 grid place-items-center rounded-lg hover:bg-white/10 text-white/60">
+          {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function SidebarNav({ collapsed, pathname, completion, onNavClick }: { collapsed: boolean; pathname: string; completion: ReturnType<typeof useTutorCompletion>; onNavClick: () => void }) {
+  return (
+    <nav className="flex-1 overflow-y-auto py-3">
+      <div className={cn('space-y-0.5', collapsed ? 'px-2' : 'px-3')}>
+        {nav.map((item) => {
+          const active = item.exact ? pathname === item.to : pathname.startsWith(item.to);
+          const Icon = item.icon;
+          const locked = item.gated && !completion.listed;
+          return (
+            <Link key={item.to} href={item.to} onClick={onNavClick}
+              title={collapsed ? item.label : (locked ? 'Available once your profile is complete.' : undefined)}
+              className={cn(
+                'flex items-center rounded-lg text-sm font-medium transition-colors',
+                collapsed ? 'justify-center p-2' : 'gap-3 px-3 py-2',
+                active ? 'bg-white/10 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white',
+                locked && 'opacity-60',
+              )}>
+              <Icon className="size-4 shrink-0" />
+              {!collapsed && (<><span className="flex-1">{item.label}</span>{locked && <Lock className="size-3 text-white/40" />}</>)}
+            </Link>
+          );
+        })}
+      </div>
+
+      {!completion.listed && !collapsed && (
+        <div className="mx-3 mt-4 p-3 rounded-xl bg-brand/15 border border-brand/30">
+          <div className="text-xs font-semibold text-white">Get listed</div>
+          <div className="mt-1 text-[11px] text-white/70 leading-snug">
+            Finish {completion.total - completion.completed} more step{completion.total - completion.completed === 1 ? '' : 's'} to start teaching.
+          </div>
+          <Link href="/tutor/get-listed" onClick={onNavClick} className="mt-2 block text-center text-xs font-semibold px-2 py-1.5 rounded-md bg-brand text-white hover:bg-brand/90">
+            Continue
+          </Link>
+        </div>
+      )}
+    </nav>
   );
 }
 

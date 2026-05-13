@@ -12,51 +12,56 @@ export function useProfile() {
   const [error, setError] = useState<string | null>(null);
   const hasFetched = useRef(false);
 
-  useEffect(() => {
-    // Prevent multiple fetches
-    if (hasFetched.current) return;
-    hasFetched.current = true;
+  async function fetchProfile() {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
 
-    async function fetchProfile() {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        
-        if (!user) {
-          setLoading(false);
-          return;
-        }
+      if (!user) {
+        setLoading(false);
+        return;
+      }
 
-        setUser(user);
+      setUser(user);
 
-        const { data, error } = await supabase
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (!data) {
+        await fetch('/api/profile/ensure', { method: 'POST' }).catch(() => {});
+        const { data: ensured, error: ensuredError } = await supabase
           .from('profiles')
           .select('*')
           .eq('id', user.id)
           .maybeSingle();
-
-        if (error) throw error;
-
-        if (!data) {
-          await fetch('/api/profile/ensure', { method: 'POST' }).catch(() => {});
-          const { data: ensured, error: ensuredError } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', user.id)
-            .maybeSingle();
-          if (ensuredError) throw ensuredError;
-          setProfile(ensured || null);
-        } else {
-          setProfile(data);
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch profile');
-      } finally {
-        setLoading(false);
+        if (ensuredError) throw ensuredError;
+        setProfile(ensured || null);
+      } else {
+        setProfile(data);
       }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch profile');
+    } finally {
+      setLoading(false);
     }
+  }
 
+  useEffect(() => {
+    if (hasFetched.current) return;
+    hasFetched.current = true;
     fetchProfile();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { profile, user, loading, error };
+  async function refresh() {
+    hasFetched.current = false;
+    setLoading(true);
+    await fetchProfile();
+  }
+
+  return { profile, user, loading, error, refresh };
 }

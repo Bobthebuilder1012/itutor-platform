@@ -69,12 +69,15 @@ export async function GET(request: Request) {
   fetch('http://127.0.0.1:7242/ingest/96e0dc54-0d29-41a7-8439-97ee7ad5934e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/auth/zoom/connect/route.ts:65',message:'ENV vars loaded',data:{clientId,redirectUri,userId:user.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,C,E'})}).catch(()=>{});
   // #endregion
 
+  const from = new URL(request.url).searchParams.get('from') || '';
+  const state = from ? `${user.id}|${from}` : user.id;
+
   // Build OAuth URL
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: 'code',
-    state: user.id // Pass user ID to callback
+    state,
   });
 
   const authUrl = `https://zoom.us/oauth/authorize?${params.toString()}`;

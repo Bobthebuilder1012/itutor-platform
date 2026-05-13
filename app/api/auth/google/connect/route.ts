@@ -61,6 +61,10 @@ export async function GET(request: Request) {
     }, { status: 500 });
   }
 
+  const from = new URL(request.url).searchParams.get('from') || '';
+  // State = "userId|returnPath" — pipe is safe since UUIDs don't contain it
+  const state = from ? `${user.id}|${from}` : user.id;
+
   // Build OAuth URL
   const params = new URLSearchParams({
     client_id: clientId,
@@ -69,7 +73,7 @@ export async function GET(request: Request) {
     scope: 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/userinfo.email',
     access_type: 'offline',
     prompt: 'consent',
-    state: user.id // Pass user ID to callback
+    state,
   });
 
   const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
