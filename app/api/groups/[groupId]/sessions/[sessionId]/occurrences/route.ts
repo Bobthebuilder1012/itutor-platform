@@ -95,6 +95,35 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     if (occError) throw occError;
 
+    // Notify all approved members (non-critical)
+    try {
+      const [{ data: members }, { data: groupRow }, { data: tutorProfile }] = await Promise.all([
+        service.from('group_members').select('user_id').eq('group_id', groupId).eq('status', 'approved'),
+        service.from('groups').select('name').eq('id', groupId).single(),
+        service.from('profiles').select('full_name').eq('id', user.id).single(),
+      ]);
+      const groupName = (groupRow as { name?: string } | null)?.name ?? 'your class';
+      const tutorName = (tutorProfile as { full_name?: string } | null)?.full_name ?? 'Tutor';
+      const occRow = occurrence as { id?: string; scheduled_start_at?: string };
+      const startsAt = occRow?.scheduled_start_at
+        ? new Date(occRow.scheduled_start_at).toLocaleString()
+        : 'a new time';
+      if ((members?.length ?? 0) > 0) {
+        const rows = (members as Array<{ user_id: string }>).map((m) => ({
+          user_id: m.user_id,
+          type: 'tutor_added_session',
+          title: 'New Session Added',
+          message: `${tutorName} scheduled a new ${groupName} session for ${startsAt}.`,
+          link: `/lessons/${groupId}`,
+          group_id: groupId,
+          metadata: { occurrenceId: occRow?.id, sessionId },
+        }));
+        await service.from('notifications').insert(rows);
+      }
+    } catch (err) {
+      console.error('[POST occurrence] notify failed', err);
+    }
+
     return NextResponse.json({ occurrence }, { status: 201 });
   } catch (err) {
     console.error('[POST occurrence]', err);

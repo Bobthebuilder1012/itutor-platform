@@ -78,8 +78,6 @@ export default function PushTokenRegistrar() {
         const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
           scope: '/'
         });
-        
-        console.log('📱 Firebase service worker registered');
 
         // Send Firebase config to service worker
         if (swReg.active) {
@@ -127,7 +125,6 @@ export default function PushTokenRegistrar() {
           return;
         }
 
-        console.log('✅ FCM token obtained (iOS + Android + Desktop notifications enabled)');
 
         // Check if token already registered
         const prev = window.localStorage.getItem(TOKEN_STORAGE_KEY);
@@ -155,7 +152,6 @@ export default function PushTokenRegistrar() {
 
         // Save token to localStorage
         window.localStorage.setItem(TOKEN_STORAGE_KEY, fcmToken);
-        console.log('✅ Push notifications registered successfully');
         
       } catch (error: any) {
         // Provide helpful error messages

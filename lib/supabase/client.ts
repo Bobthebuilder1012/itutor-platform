@@ -47,31 +47,25 @@ export function createSupabaseClient(persistSession: boolean = false): SupabaseC
     }
   }
 
-  // Use createBrowserClient for proper SSR cookie support
-  return createBrowserClient(supabaseUrl, supabaseAnonKey);
+  return createBrowserClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      // Disable navigator.locks-based auth lock; it was emitting
+      // "AbortError: signal is aborted without reason" and aborting
+      // unrelated in-flight Supabase requests.
+      lock: async (_name, _acquireTimeout, fn) => fn(),
+    },
+  });
 }
 
-// Cache the client based on current storage preference
 let supabaseInstance: SupabaseClient | null = null;
-let currentStorageMode: boolean | null = null;
 
-// Don't cache the default client - always create it based on current preference
-// This ensures the client uses the correct storage (localStorage or sessionStorage)
 function getSupabaseClient(): SupabaseClient {
-  // Always check current preference
-  const rememberMe = getRememberMePreference();
-  
-  // Only recreate client if storage preference changed or no client exists
-  if (!supabaseInstance || currentStorageMode !== rememberMe) {
-    currentStorageMode = rememberMe;
-    supabaseInstance = createSupabaseClient(rememberMe);
+  if (!supabaseInstance) {
+    supabaseInstance = createSupabaseClient(getRememberMePreference());
   }
-  
   return supabaseInstance;
 }
 
-// Export as a getter to maintain backward compatibility
-// This will automatically use the right storage based on current user preference
 export const supabase = new Proxy({} as SupabaseClient, {
   get(_target, prop) {
     return getSupabaseClient()[prop as keyof SupabaseClient];

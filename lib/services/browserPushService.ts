@@ -4,6 +4,8 @@
 // Handles web push notifications for desktop browsers
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || '';
+const PUSH_SERVICE_WORKER_PATH = '/sw.js';
+const PUSH_SERVICE_WORKER_SCOPE = '/';
 
 if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development' && !VAPID_PUBLIC_KEY) {
   console.warn(
@@ -27,6 +29,60 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
     outputArray[i] = rawData.charCodeAt(i);
   }
   return outputArray as Uint8Array<ArrayBuffer>;
+}
+
+function getRegistrationScriptUrl(registration: ServiceWorkerRegistration): string {
+  return (
+    registration.active?.scriptURL ||
+    registration.waiting?.scriptURL ||
+    registration.installing?.scriptURL ||
+    ''
+  );
+}
+
+async function getPushServiceWorkerRegistration(): Promise<ServiceWorkerRegistration> {
+  let registration = await navigator.serviceWorker.getRegistration(PUSH_SERVICE_WORKER_SCOPE);
+
+  if (registration) {
+    const scriptUrl = getRegistrationScriptUrl(registration);
+    const ownsPushScope = scriptUrl.endsWith(PUSH_SERVICE_WORKER_PATH);
+
+    if (!ownsPushScope) {
+      const existingSubscription = await registration.pushManager.getSubscription().catch(() => null);
+      if (existingSubscription) {
+        await existingSubscription.unsubscribe().catch(() => {});
+      }
+      await registration.unregister();
+      registration = undefined;
+    }
+  }
+
+  if (!registration) {
+    registration = await navigator.serviceWorker.register(PUSH_SERVICE_WORKER_PATH, {
+      scope: PUSH_SERVICE_WORKER_SCOPE,
+    });
+  }
+
+  return registration;
+}
+
+async function savePushSubscription(
+  userId: string,
+  subscription: PushSubscription
+): Promise<void> {
+  const response = await fetch('/api/push-notifications/subscribe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      userId,
+      subscription: subscription.toJSON(),
+      platform: 'web',
+    }),
+  });
+
+  if (!response.ok) {
+    console.error('Failed to save push subscription to database');
+  }
 }
 
 /**
@@ -81,16 +137,7 @@ export async function subscribeToPushNotifications(userId: string): Promise<Push
   }
 
   try {
-    // Check if service worker is already registered
-    let registration = await navigator.serviceWorker.getRegistration('/sw.js');
-    
-    if (!registration) {
-      // Register service worker if not already registered
-      registration = await navigator.serviceWorker.register('/sw.js', {
-        scope: '/'
-      });
-      console.log('📱 Service worker registered successfully');
-    }
+    const registration = await getPushServiceWorkerRegistration();
 
     // Wait for service worker to be ready
     await navigator.serviceWorker.ready;
@@ -98,7 +145,7 @@ export async function subscribeToPushNotifications(userId: string): Promise<Push
     // Check if already subscribed
     const existingSubscription = await registration.pushManager.getSubscription();
     if (existingSubscription) {
-      console.log('✅ Already subscribed to push notifications');
+      await savePushSubscription(userId, existingSubscription);
       return existingSubscription;
     }
 
@@ -108,23 +155,8 @@ export async function subscribeToPushNotifications(userId: string): Promise<Push
       applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
     });
 
-    // Save subscription to database
-    const response = await fetch('/api/push-notifications/subscribe', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId,
-        subscription: subscription.toJSON(),
-        platform: 'web'
-      })
-    });
+    await savePushSubscription(userId, subscription);
 
-    if (!response.ok) {
-      console.error('Failed to save push subscription to database');
-      // Still return subscription even if DB save fails
-    }
-
-    console.log('✅ Subscribed to push notifications');
     return subscription;
   } catch (error: any) {
     // Provide more helpful error messages
@@ -161,7 +193,6 @@ export async function unsubscribeFromPushNotifications(userId: string): Promise<
         body: JSON.stringify({ userId, platform: 'web' })
       });
 
-      console.log('✅ Unsubscribed from push notifications');
       return true;
     }
 
@@ -179,7 +210,7 @@ export async function isPushSubscribed(): Promise<boolean> {
   if (!isPushNotificationSupported()) return false;
 
   try {
-    const registration = await navigator.serviceWorker.ready;
+    const registration = await getPushServiceWorkerRegistration();
     const subscription = await registration.pushManager.getSubscription();
     return subscription !== null;
   } catch {
@@ -197,11 +228,8 @@ export async function initializePushNotifications(userId: string): Promise<void>
   if (!VAPID_PUBLIC_KEY) return; // Fail silently if not configured
 
   try {
-    // Check if already subscribed
-    const isSubscribed = await isPushSubscribed();
-    
-    if (!isSubscribed && hasNotificationPermission()) {
-      // Auto-subscribe if permission already granted
+    if (hasNotificationPermission()) {
+      // Also repairs stale service workers and re-syncs existing subscriptions.
       await subscribeToPushNotifications(userId);
     }
   } catch (error) {

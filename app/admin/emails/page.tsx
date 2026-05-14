@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
+import { supabase } from '@/lib/supabase/client';
 import {
   htmlToPlainTextForEditor,
   plainTextToEmailHtml,
@@ -26,6 +28,8 @@ interface EmailTemplate {
 }
 
 export default function AdminEmailsPage() {
+  const router = useRouter();
+  const [authChecked, setAuthChecked] = useState(false);
   const [activeTab, setActiveTab] = useState<'send' | 'templates' | 'mailing-list'>('send');
   const [users, setUsers] = useState<User[]>([]);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
@@ -53,6 +57,16 @@ export default function AdminEmailsPage() {
   // Preview
   const [previewTemplate, setPreviewTemplate] = useState<EmailTemplate | null>(null);
   const [previewName, setPreviewName] = useState('Alex');
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) { router.push('/login'); return; }
+      supabase.from('profiles').select('role').eq('id', user.id).single().then(({ data }) => {
+        if (data?.role !== 'admin') { router.push('/login'); return; }
+        setAuthChecked(true);
+      });
+    });
+  }, [router]);
 
   const ensureUtf8Meta = (html: string) => {
     if (/<meta[^>]+charset=/i.test(html)) return html;
@@ -268,6 +282,14 @@ export default function AdminEmailsPage() {
     
     return { html: personalizedHtml, subject: personalizedSubject };
   };
+
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900" />
+      </div>
+    );
+  }
 
   return (
     <DashboardLayout role="admin" userName="Admin">

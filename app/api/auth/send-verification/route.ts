@@ -21,14 +21,24 @@ export async function POST(req: Request) {
 
     const supabase = getServiceClient();
 
-    await supabase.from('verification_codes').delete().eq('email', email);
+    const { error: deleteError } = await supabase
+      .from('verification_codes')
+      .delete()
+      .eq('email', email);
+    if (deleteError) {
+      console.error('[send-verification] delete error:', deleteError);
+    }
 
     const { error: insertError } = await supabase
       .from('verification_codes')
       .insert({ email, code_hash: codeHash, expires_at: expiresAt });
 
     if (insertError) {
-      return NextResponse.json({ error: 'Failed to store verification code' }, { status: 500 });
+      console.error('[send-verification] insert error:', insertError);
+      return NextResponse.json(
+        { error: 'Failed to store verification code', detail: insertError.message, code: insertError.code },
+        { status: 500 }
+      );
     }
 
     const { error: emailError } = await resend.emails.send({
@@ -39,11 +49,19 @@ export async function POST(req: Request) {
     });
 
     if (emailError) {
-      return NextResponse.json({ error: 'Failed to send verification email' }, { status: 500 });
+      console.error('[send-verification] email error:', emailError);
+      return NextResponse.json(
+        { error: 'Failed to send verification email', detail: emailError.message },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({ sent: true, expiresIn: 600 });
-  } catch {
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  } catch (err) {
+    console.error('[send-verification] unexpected error:', err);
+    return NextResponse.json(
+      { error: 'Internal server error', detail: err instanceof Error ? err.message : String(err) },
+      { status: 500 }
+    );
   }
 }

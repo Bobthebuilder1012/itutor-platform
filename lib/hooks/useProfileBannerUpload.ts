@@ -2,10 +2,13 @@
 
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
-import { getCroppedImg, resizeImage, type Area } from '@/lib/utils/imageCrop';
+import { getCroppedImg, type Area } from '@/lib/utils/imageCrop';
 
-const BANNER_MAX_W = 1200;
-const BANNER_MAX_H = 400;
+// Banner is rendered at up to ~1200 CSS px wide; on a 2x/3x DPR display that's
+// 2400-3600 device px. We output at 2400x800 (3:1, matches the cropper aspect)
+// to stay crisp on retina without shipping an oversized JPEG.
+const BANNER_MAX_W = 2400;
+const BANNER_MAX_H = 800;
 
 export function useProfileBannerUpload(userId: string) {
   const [uploading, setUploading] = useState(false);
@@ -29,13 +32,14 @@ export function useProfileBannerUpload(userId: string) {
     try {
       if (!userId) throw new Error('Not signed in');
 
+      // Single crop+downscale pass. Re-encoding through resizeImage on top of
+      // this would compound JPEG artifacts without adding any detail.
       const croppedBlob = await getCroppedImg(imageSrc, croppedArea, BANNER_MAX_W, BANNER_MAX_H);
-      const resizedBlob = await resizeImage(croppedBlob, BANNER_MAX_W, BANNER_MAX_H);
 
       const path = `${userId}/profile-banner.jpg`;
       await supabase.storage.from('avatars').remove([path]);
 
-      const { error: uploadError } = await supabase.storage.from('avatars').upload(path, resizedBlob, {
+      const { error: uploadError } = await supabase.storage.from('avatars').upload(path, croppedBlob, {
         contentType: 'image/jpeg',
         upsert: true,
       });

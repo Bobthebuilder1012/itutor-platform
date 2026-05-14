@@ -86,6 +86,32 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
     if (error) throw error;
 
+    // Notify tutor of RSVP (non-critical)
+    try {
+      const [{ data: groupRow }, { data: studentProfile }] = await Promise.all([
+        service.from('groups').select('tutor_id, name').eq('id', groupId).single(),
+        service.from('profiles').select('full_name').eq('id', user.id).single(),
+      ]);
+      const tutorId = (groupRow as { tutor_id?: string } | null)?.tutor_id;
+      const groupName = (groupRow as { name?: string } | null)?.name ?? 'your class';
+      const studentName = (studentProfile as { full_name?: string } | null)?.full_name ?? 'A student';
+      if (tutorId) {
+        const verb = status === 'attending' ? 'is attending' : "can't attend";
+        const reasonSuffix = reason ? ` — "${reason}"` : '';
+        await service.from('notifications').insert({
+          user_id: tutorId,
+          type: 'rsvp_received',
+          title: 'RSVP Update',
+          message: `${studentName} ${verb} ${groupName}${reasonSuffix}.`,
+          link: `/lessons/${groupId}`,
+          group_id: groupId,
+          metadata: { occurrenceId, status, reason },
+        });
+      }
+    } catch (err) {
+      console.error('[PUT rsvp] notify failed', err);
+    }
+
     return NextResponse.json({ rsvp: data });
   } catch (err: any) {
     console.error('[PUT rsvp]', err);

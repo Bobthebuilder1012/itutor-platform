@@ -25,7 +25,16 @@ export default function CountrySelect({
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function fetchCountries() {
+    let cancelled = false;
+    const MAX_ATTEMPTS = 5;
+
+    function isAbortLike(err: unknown): boolean {
+      if (err instanceof Error && err.name === 'AbortError') return true;
+      const msg = (err as { message?: string } | null)?.message || '';
+      return msg.includes('AbortError') || msg.includes('signal is aborted');
+    }
+
+    async function fetchCountries(attempt = 0): Promise<void> {
       try {
         const { data, error: queryError } = await supabase
           .from('countries')
@@ -33,7 +42,14 @@ export default function CountrySelect({
           .eq('is_active', true)
           .order('sort_order', { ascending: true });
 
+        if (cancelled) return;
+
         if (queryError) {
+          if (isAbortLike(queryError) && attempt + 1 < MAX_ATTEMPTS) {
+            await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
+            if (cancelled) return;
+            return fetchCountries(attempt + 1);
+          }
           console.error('Error fetching countries:', queryError);
           setFetchError(queryError.message);
           setLoading(false);
@@ -45,15 +61,25 @@ export default function CountrySelect({
         } else {
           setFetchError('No countries available');
         }
+        setLoading(false);
       } catch (err) {
+        if (cancelled) return;
+        if (isAbortLike(err) && attempt + 1 < MAX_ATTEMPTS) {
+          await new Promise(r => setTimeout(r, 200 * (attempt + 1)));
+          if (cancelled) return;
+          return fetchCountries(attempt + 1);
+        }
         console.error('Failed to fetch countries:', err);
         setFetchError('Failed to load countries');
-      } finally {
         setLoading(false);
       }
     }
 
     fetchCountries();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   if (loading) {

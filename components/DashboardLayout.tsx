@@ -20,7 +20,10 @@ import dynamic from 'next/dynamic';
 import UniversalSearchBar from '@/components/UniversalSearchBar';
 import LogoutConfirmModal from '@/components/LogoutConfirmModal';
 
-const PushTokenRegistrar = dynamic(() => import('@/components/push/PushTokenRegistrar'), { ssr: false });
+// Firebase-based push registrar disabled — it conflicts with the Web Push API
+// path in browserPushService.ts (both register a service worker at scope '/').
+// Web Push via /sw.js is the single source of truth for browser push.
+// const PushTokenRegistrar = dynamic(() => import('@/components/push/PushTokenRegistrar'), { ssr: false });
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -292,8 +295,6 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
-      <PushTokenRegistrar />
-
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 bg-black/60 z-[99] lg:hidden" onClick={() => setSidebarOpen(false)} />
@@ -499,7 +500,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
                 <MessagesIcon userId={effectiveUserId} role={role} variant="light" />
               </>
             )}
-            {effectiveUserId && <NotificationBell userId={effectiveUserId} />}
+            {effectiveUserId && <NotificationBell userId={effectiveUserId} notificationsHref={`/${role}/notifications`} />}
             <Link
               href={`/${role}/settings`}
               className="w-9 h-9 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-500 hover:border-itutor-green hover:text-itutor-green transition-colors"

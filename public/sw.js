@@ -1,7 +1,7 @@
 // Service Worker for Push Notifications (Web Push API)
-// Version: 1.1.0
+// Version: 1.1.1
 
-const SW_VERSION = '1.1.0';
+const SW_VERSION = '1.1.1';
 const CACHE_NAME = 'itutor-push-v1';
 
 // Install event
@@ -34,9 +34,9 @@ self.addEventListener('push', (event) => {
       icon: '/favicon.png',
       badge: '/favicon.png',
       data: data.data || {},
-      tag: data.tag || 'default',
+      tag: data.tag || data.data?.notification_id || (self.crypto && self.crypto.randomUUID ? self.crypto.randomUUID() : String(Date.now())),
       requireInteraction: false,
-      vibrate: [200, 100, 200], // Vibration pattern for mobile
+      vibrate: [200, 100, 200],
     };
 
     event.waitUntil(
@@ -90,24 +90,39 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
-// Handle push subscription changes
+// VAPID public key — must match the server's VAPID_PUBLIC_KEY env var.
+// Service workers cannot read Next.js env vars, so this is hardcoded.
+const VAPID_PUBLIC_KEY = 'BOxsTrBsvkz8LZpQItbAK0_WVyj4aQbNhCVj1CcULKVkE5PDd4gKKFU0Xgb37g2SP2I97pn7O7dlI0bFcFxnxFM';
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+  return outputArray;
+}
+
 self.addEventListener('pushsubscriptionchange', (event) => {
   console.log(`[SW ${SW_VERSION}] Push subscription changed`);
-  // Handle subscription renewal if needed
   event.waitUntil(
-    self.registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      // applicationServerKey would need to be passed here
-    }).catch((err) => {
-      console.error(`[SW ${SW_VERSION}] Error resubscribing:`, err);
-    })
+    self.registration.pushManager
+      .subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      })
+      .then((newSubscription) =>
+        fetch('/api/push-notifications/subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ subscription: newSubscription.toJSON(), platform: 'web' }),
+        })
+      )
+      .catch((err) => {
+        console.error(`[SW ${SW_VERSION}] Error resubscribing:`, err);
+      })
   );
-});
-
-// Optional: Handle fetch events for offline support (currently just pass through)
-self.addEventListener('fetch', (event) => {
-  // Pass through all requests (no caching for now)
-  event.respondWith(fetch(event.request));
 });
 
 console.log(`[SW ${SW_VERSION}] Service worker loaded`);

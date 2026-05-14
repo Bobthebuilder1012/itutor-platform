@@ -12,13 +12,29 @@ import {
 } from '@/lib/services/notificationService';
 import type { Notification } from '@/lib/types/notifications';
 import { getNotificationIcon, getNotificationColor } from '@/lib/types/notifications';
-import { getRelativeTime } from '@/lib/utils/calendar';
 
 interface NotificationBellProps {
   userId: string;
+  notificationsHref?: string;
 }
 
-export default function NotificationBell({ userId }: NotificationBellProps) {
+function formatNotificationTimestamp(date: Date | string): string {
+  const parsedDate = typeof date === 'string' ? new Date(date) : date;
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return '';
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(parsedDate);
+}
+
+export default function NotificationBell({ userId, notificationsHref = '/notifications' }: NotificationBellProps) {
   const router = useRouter();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -221,7 +237,7 @@ export default function NotificationBell({ userId }: NotificationBellProps) {
                           {notification.message}
                         </p>
                         <p className="text-xs text-gray-500 mt-1">
-                          {getRelativeTime(notification.created_at)}
+                          {formatNotificationTimestamp(notification.created_at)}
                         </p>
                       </div>
 
@@ -240,7 +256,7 @@ export default function NotificationBell({ userId }: NotificationBellProps) {
           {notifications.length > 0 && (
             <div className="border-t border-gray-700 p-2">
               <Link
-                href="/notifications"
+                href={notificationsHref}
                 className="block text-center text-sm text-itutor-green hover:text-emerald-400 py-2 font-medium"
                 onClick={() => setIsOpen(false)}
               >

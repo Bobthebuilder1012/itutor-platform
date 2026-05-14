@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { createSessionForBooking } from '@/lib/services/sessionService';
 import { healthCheckTutorVideoProvider } from '@/lib/services/videoProviders';
+import { sendPushToUsers } from '@/lib/services/serverPushService';
+
+const SESSION_REMINDER_TYPE = 'session_reminder_10_min';
+const SESSION_REMINDER_TITLE = 'Session Reminder';
+const SESSION_REMINDER_BODY = 'Remember, you have a scheduled iTutor session starting in 10 minutes.';
 
 type ConfirmBody = {
   bookingId?: string;
@@ -9,6 +14,47 @@ type ConfirmBody = {
 };
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * If a session starts within 10 minutes, send push reminders immediately.
+ * Uses notifications_log for idempotency — safe to call even if the Edge Function
+ * cron already fired (it will detect the existing log entry and skip).
+ */
+async function maybeSendImmediateReminder(
+  session: { id: string; student_id: string; tutor_id: string; scheduled_start_at: string },
+  supabase: ReturnType<typeof getServiceClient>
+): Promise<void> {
+  const msUntilStart = new Date(session.scheduled_start_at).getTime() - Date.now();
+  if (msUntilStart <= 0 || msUntilStart > 10 * 60 * 1000) return;
+
+  // Determine which users haven't been notified yet
+  const candidateUserIds = [session.student_id, session.tutor_id];
+  const { data: existingLogs } = await supabase
+    .from('notifications_log')
+    .select('user_id')
+    .in('user_id', candidateUserIds)
+    .eq('session_id', session.id)
+    .eq('type', SESSION_REMINDER_TYPE);
+
+  const alreadyNotified = new Set((existingLogs ?? []).map((l: { user_id: string }) => l.user_id));
+  const userIdsToNotify = candidateUserIds.filter(id => !alreadyNotified.has(id));
+  if (userIdsToNotify.length === 0) return;
+
+  await supabase.from('notifications_log').insert(
+    userIdsToNotify.map(userId => ({
+      user_id: userId,
+      session_id: session.id,
+      type: SESSION_REMINDER_TYPE,
+    }))
+  );
+
+  sendPushToUsers(
+    userIdsToNotify,
+    SESSION_REMINDER_TITLE,
+    SESSION_REMINDER_BODY,
+    { session_id: session.id, type: SESSION_REMINDER_TYPE }
+  ).catch(() => {});
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -49,7 +95,8 @@ export async function POST(request: NextRequest) {
       console.log('✅ [booking-confirm] Booking already confirmed; ensuring session', { bookingId });
       let sessionCreationWarning: string | null = null;
       try {
-        await createSessionForBooking(bookingId);
+        const existingSession = await createSessionForBooking(bookingId);
+        await maybeSendImmediateReminder(existingSession, admin);
       } catch (sessionError: any) {
         sessionCreationWarning = sessionError?.message || 'Failed to create session';
         console.error('⚠️ [booking-confirm] Existing confirmed booking session sync failed', {
@@ -126,7 +173,8 @@ export async function POST(request: NextRequest) {
 
     let sessionCreationWarning: string | null = null;
     try {
-      await createSessionForBooking(bookingId);
+      const newSession = await createSessionForBooking(bookingId);
+      await maybeSendImmediateReminder(newSession, admin);
     } catch (sessionError: any) {
       sessionCreationWarning = sessionError?.message || 'Failed to create session';
       console.error('⚠️ [booking-confirm] Booking confirmed but session creation failed', {

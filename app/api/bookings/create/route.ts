@@ -177,6 +177,7 @@ async function createParentBooking(
       link: `/tutor/bookings/${booking.id}`,
       created_at: new Date().toISOString(),
     });
+
   }
 
   return {
@@ -278,8 +279,8 @@ export async function POST(request: NextRequest) {
 
     // Temporary launch behavior: force ALL bookings to be free when paid classes are disabled.
     // This does not remove paid logic; it overrides the created booking's pricing fields.
+    const admin = getServiceClient();
     if (!isPaidClassesEnabled() && data?.booking_id) {
-      const admin = getServiceClient();
       await admin
         .from('bookings')
         .update({

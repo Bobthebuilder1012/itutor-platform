@@ -138,12 +138,14 @@ export async function POST(_req: NextRequest, { params }: Params) {
     // Notify tutor of new join request (non-critical)
     try {
       const groupName = (group as { name?: string }).name ?? 'your class';
+      const { data: studentProfile } = await service.from('profiles').select('full_name').eq('id', user.id).single();
+      const studentName = (studentProfile as { full_name?: string } | null)?.full_name ?? 'A student';
       await service.from('notifications').insert({
         user_id: group.tutor_id,
-        type: 'booking_request',
-        title: 'New join request',
-        message: `A student requested to join "${groupName}".`,
-        link: `/groups/${groupId}`,
+        type: 'new_class_member',
+        title: 'New Student',
+        message: `${studentName} requested to join "${groupName}".`,
+        link: `/lessons/${groupId}`,
         group_id: groupId,
         metadata: { groupId, studentId: user.id },
       });

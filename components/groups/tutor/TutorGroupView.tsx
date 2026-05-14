@@ -452,22 +452,13 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
 
       {/* ── HERO BANNER ── */}
       <div className="relative">
-        <div className="h-[200px] flex items-center justify-center relative overflow-hidden">
+        <div className="relative h-28 shrink-0 overflow-hidden sm:h-36">
           {hasCustomImage ? (
-            <img src={coverImage} alt={group.name} className="absolute inset-0 w-full h-full object-cover" />
+            <img src={coverImage} alt={group.name} className="h-full w-full object-cover" />
           ) : (
             <div className="absolute inset-0" style={{ background: thumbnail.gradient }} />
           )}
-          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/25" />
-          <div className="w-[72px] h-[72px] rounded-[18px] bg-white/30 backdrop-blur-[10px] flex items-center justify-center z-[1] shadow-[0_4px_20px_rgba(0,0,0,0.1)]">
-            {hasCustomImage ? (
-              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 19.5A2.5 2.5 0 016.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
-              </svg>
-            ) : (
-              <div className="[&_svg]:w-9 [&_svg]:h-9"><thumbnail.Icon /></div>
-            )}
-          </div>
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
         </div>
 
         {/* Floating hero card */}

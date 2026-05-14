@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createServerClient } from '@supabase/ssr';
+
+const PROTECTED_ADMIN_PATHS = ['/admin'];
+const PROTECTED_REVIEWER_PATHS = ['/reviewer'];
 
 function isPublicAssetPath(pathname: string) {
   return (
@@ -22,6 +26,13 @@ function isApiPath(pathname: string) {
   return pathname.startsWith('/api/');
 }
 
+function isProtectedPath(pathname: string) {
+  return (
+    PROTECTED_ADMIN_PATHS.some(p => pathname.startsWith(p)) ||
+    PROTECTED_REVIEWER_PATHS.some(p => pathname.startsWith(p))
+  );
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -29,7 +40,38 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Middleware runs on Edge; avoid Supabase client here. Delegate to a server API.
+  // Block unauthenticated access to admin/reviewer routes at the server level
+  if (isProtectedPath(pathname)) {
+    const response = NextResponse.next();
+
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name) {
+            return request.cookies.get(name)?.value;
+          },
+          set(name, value, options) {
+            response.cookies.set({ name, value, ...options });
+          },
+          remove(name, options) {
+            response.cookies.set({ name, value: '', ...options });
+          },
+        },
+      }
+    );
+
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      const loginUrl = new URL('/login', request.url);
+      loginUrl.searchParams.set('next', pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+  }
+
+  // Feedback redirect check for authenticated pages
   try {
     const pendingUrl = new URL('/api/feedback/pending', request.url);
     const res = await fetch(pendingUrl, {

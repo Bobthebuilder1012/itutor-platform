@@ -1,16 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServiceClient } from '@/lib/supabase/server';
+import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
     const { userId, subscription, platform } = await request.json();
+    const authClient = await getServerClient();
+    const {
+      data: { user },
+    } = await authClient.auth.getUser();
+    const effectiveUserId = user?.id || userId;
     
-    if (!userId || !subscription) {
+    if (!effectiveUserId || !subscription) {
       return NextResponse.json(
-        { error: 'Missing userId or subscription' },
+        { error: 'Missing authenticated user or subscription' },
         { status: 400 }
+      );
+    }
+
+    if (user && userId && userId !== user.id) {
+      return NextResponse.json(
+        { error: 'Cannot register a subscription for another user' },
+        { status: 403 }
       );
     }
 
@@ -21,7 +33,7 @@ export async function POST(request: NextRequest) {
     const { error } = await supabase
       .from('push_tokens')
       .upsert({
-        user_id: userId,
+        user_id: effectiveUserId,
         token: JSON.stringify(subscription),
         platform: platform || 'web',
         last_used_at: new Date().toISOString()

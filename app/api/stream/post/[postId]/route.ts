@@ -18,7 +18,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
     const { data: post, error: fetchError } = await service
       .from('stream_posts')
-      .select('id, group_id')
+      .select('id, group_id, author_id')
       .eq('id', postId)
       .single();
 
@@ -27,21 +27,44 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
 
     const { data: group } = await service.from('groups').select('tutor_id').eq('id', post.group_id).single();
-    if (group?.tutor_id !== user.id) {
-      return NextResponse.json({ error: 'Only the tutor can pin posts' }, { status: 403 });
+    const isClassTutor = group?.tutor_id === user.id;
+    const isAuthor = post.author_id === user.id;
+
+    const body = await req.json();
+    const { pinned, pin_duration_hours, message_body } = body ?? {};
+
+    const update: Record<string, any> = {};
+
+    if (typeof pinned === 'boolean') {
+      if (!isClassTutor) {
+        return NextResponse.json({ error: 'Only the tutor can pin posts' }, { status: 403 });
+      }
+      let pinExpiresAt: string | null = null;
+      if (pinned && typeof pin_duration_hours === 'number' && pin_duration_hours > 0) {
+        pinExpiresAt = new Date(Date.now() + pin_duration_hours * 60 * 60 * 1000).toISOString();
+      }
+      update.pinned_at = pinned ? new Date().toISOString() : null;
+      update.pin_expires_at = pinned ? pinExpiresAt : null;
     }
 
-    const { pinned, pin_duration_hours } = await req.json();
-    let pinExpiresAt: string | null = null;
-    if (pinned && typeof pin_duration_hours === 'number' && pin_duration_hours > 0) {
-      pinExpiresAt = new Date(Date.now() + pin_duration_hours * 60 * 60 * 1000).toISOString();
+    if (typeof message_body === 'string') {
+      if (!isAuthor) {
+        return NextResponse.json({ error: 'Only the author can edit this post' }, { status: 403 });
+      }
+      const trimmed = message_body.trim();
+      if (trimmed.length === 0) {
+        return NextResponse.json({ error: 'Message cannot be empty' }, { status: 400 });
+      }
+      update.message_body = trimmed;
     }
+
+    if (Object.keys(update).length === 0) {
+      return NextResponse.json({ error: 'No supported fields provided' }, { status: 400 });
+    }
+
     const { error: updateError } = await service
       .from('stream_posts')
-      .update({
-        pinned_at: pinned ? new Date().toISOString() : null,
-        pin_expires_at: pinned ? pinExpiresAt : null,
-      })
+      .update(update)
       .eq('id', postId);
 
     if (updateError) throw updateError;

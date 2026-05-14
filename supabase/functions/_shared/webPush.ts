@@ -34,9 +34,20 @@ export async function sendWebPush(params: WebPushParams): Promise<void> {
     title,
     body,
     data: data || {},
-    tag: data?.session_id || 'notification',
+    tag: data?.tag || data?.notification_id || data?.session_id || crypto.randomUUID(),
   });
 
-  // Send notification
-  await webpush.default.sendNotification(subscription, payload);
+  try {
+    await webpush.default.sendNotification(subscription, payload);
+  } catch (err: any) {
+    const statusCode = err?.statusCode;
+    const body = err?.body;
+    const headers = err?.headers ? JSON.stringify(err.headers) : undefined;
+    const endpoint = subscription?.endpoint;
+    const enriched = new Error(
+      `WebPush failed status=${statusCode ?? 'unknown'} body=${body ?? 'n/a'} endpoint=${endpoint ?? 'n/a'} headers=${headers ?? 'n/a'} original=${err?.message ?? String(err)}`
+    );
+    (enriched as any).statusCode = statusCode;
+    throw enriched;
+  }
 }

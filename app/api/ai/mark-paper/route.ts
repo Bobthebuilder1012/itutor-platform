@@ -1,7 +1,10 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextRequest, NextResponse } from "next/server";
+import { getServerClient, getServiceClient } from "@/lib/supabase/server";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+
+const AI_USE_LIMIT = 2;
 
 function buildPrompt(totalMarks: number) {
   return `You are an experienced languages examiner marking a CSEC Spanish structured test.
@@ -62,6 +65,31 @@ function capMarks(parsed: Record<string, unknown>, totalMarks: number) {
 
 export async function POST(req: NextRequest) {
   try {
+    const supabase = await getServerClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const service = getServiceClient();
+    const { data: profile, error: profileError } = await service
+      .from("profiles")
+      .select("ai_uses_count")
+      .eq("id", user.id)
+      .single();
+
+    if (profileError || !profile) {
+      return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+    }
+
+    const usesCount = profile.ai_uses_count ?? 0;
+    if (usesCount >= AI_USE_LIMIT) {
+      return NextResponse.json(
+        { error: "AI usage limit reached", limit: AI_USE_LIMIT, uses: usesCount },
+        { status: 429 }
+      );
+    }
+
     const formData = await req.formData();
     const answerKey = formData.get("answer_key") as File;
     const studentPaper = formData.get("student_paper") as File;
@@ -119,7 +147,12 @@ export async function POST(req: NextRequest) {
       parsed.student_name = studentName;
     }
 
-    return NextResponse.json(parsed);
+    await service
+      .from("profiles")
+      .update({ ai_uses_count: usesCount + 1 })
+      .eq("id", user.id);
+
+    return NextResponse.json({ ...parsed, ai_uses: usesCount + 1, ai_limit: AI_USE_LIMIT });
 
   } catch (error) {
     console.error("Marking error:", error);

@@ -103,6 +103,39 @@ export async function POST(req: NextRequest, { params }: Params) {
       .select('id, post_id, file_name, file_url, file_type, file_size_bytes, created_at')
       .eq('post_id', post.id);
 
+    // Notify approved members (not the author)
+    try {
+      const { data: members } = await service
+        .from('group_members')
+        .select('user_id')
+        .eq('group_id', groupId)
+        .eq('status', 'approved')
+        .neq('user_id', user.id);
+
+      if ((members?.length ?? 0) > 0) {
+        const { data: groupRow } = await service.from('groups').select('name').eq('id', groupId).single();
+        const groupName = (groupRow as { name?: string } | null)?.name ?? 'your class';
+        const authorName = author?.full_name ?? 'A user';
+        const typeLabel =
+          postType === 'announcement' ? '📢 Announcement' :
+          postType === 'assignment' ? '📝 Assignment' :
+          postType === 'content' ? '📄 New Content' : '💬 Discussion';
+        const preview = messageBody.length > 80 ? `${messageBody.slice(0, 77)}…` : messageBody;
+        const rows = (members as Array<{ user_id: string }>).map((m) => ({
+          user_id: m.user_id,
+          type: 'new_stream_post',
+          title: typeLabel,
+          message: `${authorName} in ${groupName}: ${preview}`,
+          link: `/lessons/${groupId}`,
+          group_id: groupId,
+          metadata: { postId: post.id, postType },
+        }));
+        await service.from('notifications').insert(rows);
+      }
+    } catch (err) {
+      console.error('[POST stream/post] notify failed', err);
+    }
+
     return NextResponse.json(
       {
         post: {
