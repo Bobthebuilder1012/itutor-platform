@@ -70,7 +70,7 @@ export default function TutorAvailabilityPage() {
 function AvailabilityContent() {
   const { profile, loading } = useProfile();
   const router = useRouter();
-
+  
   const [slots, setSlots] = useState<Slot[]>([]);
   const [existingRules, setExistingRules] = useState<TutorAvailabilityRule[]>([]);
   const [saving, setSaving] = useState(false);
@@ -149,8 +149,8 @@ function AvailabilityContent() {
         <div className="flex justify-end">
           <button onClick={copyMonToWeekdays} className="inline-flex items-center gap-1 text-xs font-semibold text-brand-deep hover:bg-brand/10 px-2 py-1 rounded">
             <Copy className="size-3" /> Copy Monday to all weekdays
-          </button>
-        </div>
+              </button>
+            </div>
 
         <div className="overflow-x-auto -mx-1">
           <div className="min-w-[520px] px-1">
@@ -165,7 +165,7 @@ function AvailabilityContent() {
                   {DAYS.map((_, d) => {
                     const on = slots.some((s) => s.day === d && s.hour === h);
                     return (
-                      <button
+                  <button
                         key={`${d}-${h}`}
                         onClick={() => toggleSlot(d, h)}
                         className={cn('h-7 rounded transition', on ? 'bg-brand hover:bg-brand/90' : 'bg-muted hover:bg-brand/20')}
@@ -175,22 +175,22 @@ function AvailabilityContent() {
                   })}
                 </Fragment>
               ))}
-            </div>
-          </div>
-        </div>
+                      </div>
+                    </div>
+                  </div>
 
         {saveError && <p className="text-sm text-red-500 pt-1">{saveError}</p>}
         <div className="flex items-center justify-between pt-2 border-t border-border">
           <span className="text-sm text-muted-foreground">{slots.length} slot{slots.length === 1 ? '' : 's'} selected</span>
           <div className="flex items-center gap-3">
             {saved && <span className="text-sm text-brand-deep font-medium">Saved!</span>}
-            <button
+                  <button
               onClick={save}
               disabled={saving}
               className="px-5 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-deep disabled:opacity-50"
             >
               {saving ? 'Saving…' : 'Save availability'}
-            </button>
+                      </button>
           </div>
         </div>
       </div>

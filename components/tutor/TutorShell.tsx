@@ -230,7 +230,7 @@ function SidebarNav({ collapsed, pathname, completion, onNavClick }: { collapsed
         })}
       </div>
 
-      {!completion.listed && !collapsed && (
+      {!completion.loading && !completion.listed && !collapsed && (
         <div className="mx-3 mt-4 p-3 rounded-xl bg-brand/15 border border-brand/30">
           <div className="text-xs font-semibold text-white">Get listed</div>
           <div className="mt-1 text-[11px] text-white/70 leading-snug">
@@ -246,7 +246,7 @@ function SidebarNav({ collapsed, pathname, completion, onNavClick }: { collapsed
 }
 
 function ListingBanner({ completion }: { completion: ReturnType<typeof useTutorCompletion> }) {
-  if (completion.listed) return null;
+  if (completion.loading || completion.listed) return null;
   const pct = Math.round((completion.completed / completion.total) * 100);
   return (
     <div className="border-b border-border bg-gradient-to-r from-[oklch(0.97_0.05_150)] to-[oklch(0.96_0.04_165)]">

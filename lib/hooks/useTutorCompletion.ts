@@ -14,19 +14,22 @@ export type TutorCompletion = {
   completed: number;
   total: number;
   listed: boolean;
+  loading: boolean;
 };
 
 const EMPTY: TutorCompletion = {
   avatar: false, bio: false, subjects: false, availability: false, rate: false, videoProvider: false,
-  completed: 0, total: 6, listed: false,
+  completed: 0, total: 5, listed: false, loading: true,
 };
 
 export function useTutorCompletion(profile: Profile | null, refreshKey = 0): TutorCompletion {
   const [extras, setExtras] = useState({ subjects: false, availability: false, rate: false, videoProvider: false });
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!profile?.id) return;
     let cancelled = false;
+    setLoading(true);
     (async () => {
       const [subjects, avail, video] = await Promise.all([
         supabase.from('tutor_subjects').select('price_per_hour_ttd').eq('tutor_id', profile.id),
@@ -41,6 +44,7 @@ export function useTutorCompletion(profile: Profile | null, refreshKey = 0): Tut
         rate: subjectRows.some((s) => (s.price_per_hour_ttd ?? 0) > 0),
         videoProvider: (video.count ?? 0) > 0,
       });
+      setLoading(false);
     })();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -50,7 +54,8 @@ export function useTutorCompletion(profile: Profile | null, refreshKey = 0): Tut
 
   const avatar = Boolean(profile.avatar_url);
   const bio = (profile.bio?.trim().length ?? 0) > 0;
-  const completed = [avatar, bio, extras.subjects, extras.availability, extras.rate, extras.videoProvider].filter(Boolean).length;
+  // videoProvider is tracked but currently optional — not counted towards listed status
+  const completed = [avatar, bio, extras.subjects, extras.availability, extras.rate].filter(Boolean).length;
 
   return {
     avatar, bio,
@@ -59,7 +64,8 @@ export function useTutorCompletion(profile: Profile | null, refreshKey = 0): Tut
     rate: extras.rate,
     videoProvider: extras.videoProvider,
     completed,
-    total: 6,
-    listed: completed === 6,
+    total: 5,
+    listed: completed === 5,
+    loading,
   };
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, Fragment } from 'react';
+import { Suspense, useEffect, useRef, useState, Fragment } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Check, Circle, Camera, Plus, X, Copy } from 'lucide-react';
@@ -19,7 +19,9 @@ import { TutorAvailabilityRule } from '@/lib/types/booking';
 export default function TutorGetListedPage() {
   return (
     <TutorShell>
-      <GetListedContent />
+      <Suspense>
+        <GetListedContent />
+      </Suspense>
     </TutorShell>
   );
 }
@@ -488,8 +490,8 @@ function GetListedContent() {
         )}
       </SectionShell>
 
-      {/* 6. Video provider */}
-      <SectionShell done={completion.videoProvider} title="Video lesson provider" subtitle="Connect Zoom or Google Meet so students get the right join link.">
+      {/* 6. Video provider (optional for now) */}
+      <SectionShell done={completion.videoProvider} title="Video lesson provider" subtitle="Connect Zoom or Google Meet so students get the right join link." optional>
         {videoMsg && (
           <p className={`mb-3 text-sm font-medium ${videoMsg.includes('success') ? 'text-brand-deep' : 'text-red-500'}`}>{videoMsg}</p>
         )}
@@ -546,7 +548,7 @@ function GetListedContent() {
 }
 
 // ── Section wrapper ────────────────────────────────────────────────────────────
-function SectionShell({ done, title, subtitle, children }: { done: boolean; title: string; subtitle: string; children: React.ReactNode }) {
+function SectionShell({ done, title, subtitle, children, optional }: { done: boolean; title: string; subtitle: string; children: React.ReactNode; optional?: boolean }) {
   return (
     <section className="rounded-2xl border border-border bg-card overflow-hidden">
       <header className="px-5 py-4 border-b border-border flex items-start gap-3">
@@ -557,9 +559,13 @@ function SectionShell({ done, title, subtitle, children }: { done: boolean; titl
           <h2 className="font-semibold text-ink">{title}</h2>
           <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>
         </div>
-        <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full shrink-0', done ? 'bg-brand/15 text-brand-deep' : 'bg-muted text-muted-foreground')}>
-          {done ? 'Complete' : 'Incomplete'}
-        </span>
+        {optional && !done ? (
+          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full shrink-0 bg-sky/20 text-sky-700">Optional</span>
+        ) : (
+          <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full shrink-0', done ? 'bg-brand/15 text-brand-deep' : 'bg-muted text-muted-foreground')}>
+            {done ? 'Complete' : 'Incomplete'}
+          </span>
+        )}
       </header>
       <div className="p-5">{children}</div>
     </section>
@@ -569,21 +575,24 @@ function SectionShell({ done, title, subtitle, children }: { done: boolean; titl
 // ── Logos ──────────────────────────────────────────────────────────────────────
 function ZoomLogo({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 32 32" className={className} aria-hidden>
-      <rect width="32" height="32" rx="6" fill="#2D8CFF" />
-      <path fill="#fff" d="M7 11.5A1.5 1.5 0 0 1 8.5 10h9A3.5 3.5 0 0 1 21 13.5v7A1.5 1.5 0 0 1 19.5 22h-9A3.5 3.5 0 0 1 7 18.5v-7Zm15 1.4a.6.6 0 0 1 .96-.48l3.04 2.28a.6.6 0 0 1 .24.48v3.64a.6.6 0 0 1-.24.48L22.96 21.58a.6.6 0 0 1-.96-.48v-8.2Z" />
+    <svg viewBox="0 0 48 48" className={className} aria-hidden fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="48" height="48" rx="10" fill="#2D8CFF"/>
+      <path d="M10 17.5C10 16.12 11.12 15 12.5 15H28C30.21 15 32 16.79 32 19V29C32 30.38 30.88 31.5 29.5 31.5H14C11.79 31.5 10 29.71 10 27.5V17.5Z" fill="white"/>
+      <path d="M33.5 20.5L40 16V32L33.5 27.5V20.5Z" fill="white"/>
     </svg>
   );
 }
 
 function MeetLogo({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 32 32" className={className} aria-hidden>
-      <rect width="32" height="32" rx="6" fill="#fff" stroke="#E5E7EB" />
-      <path fill="#00832D" d="M19 11v3l3-2.4V20.4L19 18v3a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V11a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1Z" />
-      <path fill="#FFBA00" d="m22 11.6 3-2.4v13.6l-3-2.4z" />
-      <path fill="#EA4335" d="M19 18v3a1 1 0 0 1-1 1h-3.5l4.5-4Z" />
-      <path fill="#1A73E8" d="M19 14v-3a1 1 0 0 0-1-1h-3.5l4.5 4Z" />
+    <svg viewBox="0 0 48 48" className={className} aria-hidden fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="48" height="48" rx="10" fill="white" stroke="#E5E7EB" strokeWidth="1.5"/>
+      {/* Green camera body */}
+      <path d="M30 18v4.5l7-5.25v13.5l-7-5.25V30a3 3 0 01-3 3H11a3 3 0 01-3-3V18a3 3 0 013-3h16a3 3 0 013 3z" fill="#00832D"/>
+      {/* Red bottom-right triangle */}
+      <path d="M30 28.5V30a3 3 0 01-3 3h-4.5L30 28.5z" fill="#EA4335"/>
+      {/* Blue top-right triangle */}
+      <path d="M30 19.5V18a3 3 0 00-3-3h-4.5L30 19.5z" fill="#1A73E8"/>
     </svg>
   );
 }
