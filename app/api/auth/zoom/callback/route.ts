@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
     console.log('🔄 Exchanging OAuth code for tokens...', {
       hasCode: !!code,
       redirectUri,
-      tutorId: state
+      tutorId
     });
 
     // Exchange code for tokens
