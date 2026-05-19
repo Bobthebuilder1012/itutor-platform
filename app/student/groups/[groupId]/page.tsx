@@ -6,19 +6,52 @@ import { isGroupsFeatureEnabled } from '@/lib/featureFlags/groupsFeature';
 
 async function getGroup(groupId: string) {
   const service = getServiceClient();
-  const { data: group } = await service
-    .from('groups')
-    .select(`
+  const baseSelect = `
       id, name, description, subject, timezone, content_blocks, tutor_id,
       tutor:profiles!groups_tutor_id_fkey(full_name, response_time_minutes),
       sessions:group_sessions(
         id,
         occurrences:group_session_occurrences(id, scheduled_start_at, meeting_link)
       )
-    `)
+    `;
+
+  const isSchemaMismatch = (error: any) => {
+    const code = String(error?.code ?? '');
+    const message = String(error?.message ?? '').toLowerCase();
+    return (
+      code === '42703' ||
+      code === '42P01' ||
+      code === 'PGRST204' ||
+      code === 'PGRST205' ||
+      message.includes('does not exist') ||
+      message.includes('could not find')
+    );
+  };
+
+  let { data: group, error: groupError } = await service
+    .from('groups')
+    .select(baseSelect)
     .eq('id', groupId)
-    .eq('status', 'PUBLISHED')
-    .single();
+    .is('archived_at', null)
+    .or('status.eq.PUBLISHED,status.eq.published,status.is.null')
+    .maybeSingle();
+
+  if (isSchemaMismatch(groupError)) {
+    ({ data: group, error: groupError } = await service
+      .from('groups')
+      .select(baseSelect)
+      .eq('id', groupId)
+      .is('archived_at', null)
+      .maybeSingle());
+  }
+
+  if (isSchemaMismatch(groupError)) {
+    ({ data: group, error: groupError } = await service
+      .from('groups')
+      .select(baseSelect)
+      .eq('id', groupId)
+      .maybeSingle());
+  }
 
   if (!group) return null;
 
