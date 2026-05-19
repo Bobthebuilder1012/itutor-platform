@@ -32,13 +32,51 @@ export async function POST(req: NextRequest, { params }: Params) {
     const { data: profile } = await service.from('profiles').select('role').eq('id', user.id).single();
     if (!profile || profile.role !== 'student') return fail('Student role required', 403);
 
-    const { data: group } = await service
-      .from('groups')
-      .select('id, tutor_id, status, max_students, pricing_model, name')
-      .eq('id', groupId)
-      .single();
-    if (!group) return fail('Group not found', 404);
-    if (group.status !== 'PUBLISHED') return fail('Group is not published', 400);
+    const isSchemaMismatch = (error: any) => {
+      const code = String(error?.code ?? '');
+      const message = String(error?.message ?? '').toLowerCase();
+      return (
+        code === '42703' ||
+        code === '42P01' ||
+        code === 'PGRST200' ||
+        code === 'PGRST201' ||
+        code === 'PGRST204' ||
+        code === 'PGRST205' ||
+        message.includes('does not exist') ||
+        message.includes('could not find')
+      );
+    };
+
+    const groupSelects = [
+      'id, tutor_id, status, max_students, pricing_model, name',
+      'id, tutor_id, max_students, pricing_model, name',
+      'id, tutor_id, max_students, name',
+      'id, tutor_id, name',
+    ];
+
+    let group: any = null;
+    let groupErr: any = null;
+    for (const selectStr of groupSelects) {
+      const result = await service
+        .from('groups')
+        .select(selectStr)
+        .eq('id', groupId)
+        .maybeSingle();
+      groupErr = result.error;
+      group = result.data;
+      if (group) break;
+      if (!isSchemaMismatch(groupErr)) break;
+    }
+
+    if (!group) {
+      if (groupErr) console.error('[POST /api/groups/[groupId]/enroll] group lookup failed', groupId, groupErr);
+      return fail('Group not found', 404);
+    }
+
+    const rawStatus = String((group as any).status ?? '').trim().toLowerCase();
+    if (rawStatus && rawStatus !== 'published') {
+      return fail('Group is not published', 400);
+    }
 
     const { count: existingActiveCount } = await service
       .from('group_enrollments')
