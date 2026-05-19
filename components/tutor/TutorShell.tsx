@@ -163,7 +163,7 @@ export default function TutorShell({ children }: { children: ReactNode }) {
             {nav.slice(0, 5).map((item) => {
               const active = item.exact ? pathname === item.to : pathname.startsWith(item.to);
               const Icon = item.icon;
-              const locked = item.gated && !completion.listed;
+              const locked = item.gated && !completion.loading && !completion.listed;
               return (
                 <Link key={item.to} href={item.to} className={cn('flex flex-col items-center gap-1 py-2 text-[10px] font-medium relative', active ? 'text-brand-deep' : 'text-muted-foreground')}>
                   <Icon className="size-4" />
@@ -213,7 +213,7 @@ function SidebarNav({ collapsed, pathname, completion, onNavClick }: { collapsed
         {nav.map((item) => {
           const active = item.exact ? pathname === item.to : pathname.startsWith(item.to);
           const Icon = item.icon;
-          const locked = item.gated && !completion.listed;
+          const locked = item.gated && !completion.loading && !completion.listed;
           return (
             <Link key={item.to} href={item.to} onClick={onNavClick}
               title={collapsed ? item.label : (locked ? 'Available once your profile is complete.' : undefined)}

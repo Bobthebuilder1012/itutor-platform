@@ -7,7 +7,6 @@ import {
   getBooking, 
   getBookingMessages, 
   addBookingMessage,
-  studentAcceptCounter,
   studentCancelBooking,
   subscribeToBooking,
   subscribeToBookingMessages
@@ -197,40 +196,6 @@ export default function BookingThreadPage() {
     }
   }
 
-  async function handleAcceptCounter(messageId: string) {
-    if (!confirm('Accept this proposed time? This will confirm your booking.')) return;
-
-    setActionLoading(true);
-    try {
-      await studentAcceptCounter(bookingId, messageId);
-      
-      // Automatically create session for confirmed booking
-      try {
-        const response = await fetch('/api/sessions/create-for-booking', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ booking_id: bookingId })
-        });
-        
-        if (!response.ok) {
-          console.error('Failed to create session:', await response.text());
-          // Don't fail the confirmation if session creation fails - user can still use booking
-        }
-      } catch (sessionError) {
-        console.error('Error creating session:', sessionError);
-        // Continue - session can be created later
-      }
-      
-      alert('Counter-offer accepted! Your booking is confirmed.');
-      await loadBookingData();
-    } catch (error: any) {
-      console.error('Error accepting counter:', error);
-      alert(error.message || 'Failed to accept counter-offer');
-    } finally {
-      setActionLoading(false);
-    }
-  }
-
   async function submitCancelBooking() {
     if (!cancelReason) {
       alert('Please select a reason for cancelling.');
@@ -263,7 +228,7 @@ export default function BookingThreadPage() {
   const displayStartTime = booking.confirmed_start_at || booking.requested_start_at;
   const displayEndTime = booking.confirmed_end_at || booking.requested_end_at;
   const hasSessionStarted = displayStartTime ? new Date(displayStartTime) <= new Date() : false;
-  const canCancel = (booking.status === 'PENDING' || booking.status === 'COUNTER_PROPOSED' || booking.status === 'CONFIRMED') && !hasSessionStarted;
+  const canCancel = (booking.status === 'PENDING' || booking.status === 'CONFIRMED') && !hasSessionStarted;
   const paidClassesEnabled = isPaidClassesEnabled();
 
   return (
@@ -463,43 +428,6 @@ export default function BookingThreadPage() {
                   );
                 }
 
-                if (msg.message_type === 'time_proposal') {
-                  return (
-                    <div key={msg.id} className={`flex ${msg.is_own_message ? 'justify-end' : 'justify-start'}`}>
-                      <div className="max-w-md">
-                        <div className="bg-blue-50 border border-blue-300 rounded-lg p-4">
-                          <div className="flex items-center gap-2 mb-2">
-                            <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                            </svg>
-                            <span className="font-semibold text-blue-700">Alternative Time Proposed</span>
-                          </div>
-                          <p className="text-gray-900 font-medium mb-1">
-                            {formatDateTime(msg.proposed_start_at!)}
-                          </p>
-                          <p className="text-gray-600 text-sm mb-3">
-                            {formatTimeRange(msg.proposed_start_at!, msg.proposed_end_at!)}
-                          </p>
-                          {msg.body && (
-                            <p className="text-gray-700 text-sm mb-3">{msg.body}</p>
-                          )}
-                          {!msg.is_own_message && booking.status === 'COUNTER_PROPOSED' && (
-                            <button
-                              onClick={() => handleAcceptCounter(msg.id)}
-                              disabled={actionLoading}
-                              className="w-full bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-white py-2 px-4 rounded-lg font-semibold transition disabled:opacity-50"
-                            >
-                              Accept This Time
-                            </button>
-                          )}
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1 px-2">
-                          {msg.sender_name} • {new Date(msg.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                }
 
                 // Regular text message
                 return (

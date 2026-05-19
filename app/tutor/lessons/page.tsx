@@ -7,8 +7,8 @@ import { BookOpen, Lock, Plus, Users, Clock, ArrowRight, Search } from 'lucide-r
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { useTutorCompletion } from '@/lib/hooks/useTutorCompletion';
-import { supabase } from '@/lib/supabase/client';
 import TutorShell from '@/components/tutor/TutorShell';
+import CreateGroupModal from '@/components/groups/tutor/CreateGroupModal';
 
 type Lesson = {
   id: string;
@@ -38,6 +38,7 @@ function LessonsContent() {
   const [search, setSearch] = useState('');
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
+  const [createOpen, setCreateOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && (!profile || profile.role !== 'tutor')) router.push('/login');
@@ -51,28 +52,44 @@ function LessonsContent() {
   async function fetchLessons(tutorId: string) {
     setDataLoading(true);
     try {
-      const { data: groups } = await supabase
-        .from('groups')
-        .select('id, name, subject_label, level, capacity, status, created_at, price_per_session_ttd, group_enrollments(id)')
-        .eq('owner_id', tutorId);
-      const mapped: Lesson[] = (groups ?? []).map((g: any) => ({
+      const [activeRes, archivedRes] = await Promise.all([
+        fetch('/api/groups?limit=50'),
+        fetch('/api/groups?archived=true&limit=50'),
+      ]);
+      const [activeJson, archivedJson] = await Promise.all([
+        activeRes.json(),
+        archivedRes.json(),
+      ]);
+
+      const activeGroups: any[] = (activeJson.groups ?? []).filter((g: any) => g.tutor_id === tutorId);
+      const archivedGroups: any[] = (archivedJson.groups ?? []).filter((g: any) => g.tutor_id === tutorId);
+
+      const mapGroup = (g: any, archived: boolean): Lesson => ({
         id: g.id,
-        title: g.name || 'Untitled lesson',
-        subject: g.subject_label || '—',
-        level: g.level || '—',
-        capacity: g.capacity ?? 0,
-        enrolled: (g.group_enrollments ?? []).length,
-        pricePerSession: g.price_per_session_ttd ?? null,
-        status: g.status || 'published',
+        title: g.name || g.title || 'Untitled lesson',
+        subject: g.subject || '—',
+        level: g.formLevel || g.form_level || '—',
+        capacity: g.maxStudents ?? g.max_students ?? 0,
+        enrolled: g.enrollmentCount ?? g.member_count ?? 0,
+        pricePerSession: g.pricePerSession ?? g.price_per_session ?? null,
+        status: archived ? 'archived' : 'published',
         createdAt: g.created_at,
-      }));
-      setLessons(mapped);
+      });
+
+      setLessons([
+        ...activeGroups.map((g) => mapGroup(g, false)),
+        ...archivedGroups.map((g) => mapGroup(g, true)),
+      ]);
     } catch (err) {
-      console.warn('Lessons not available yet:', err);
+      console.error('[fetchLessons] error:', err);
       setLessons([]);
     } finally {
       setDataLoading(false);
     }
+  }
+
+  if (completion.loading) {
+    return <div className="min-h-[400px] flex items-center justify-center"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand" /></div>;
   }
 
   if (!completion.listed) {
@@ -103,9 +120,9 @@ function LessonsContent() {
           <h1 className="text-2xl lg:text-3xl font-bold text-ink">Lesson Marketplace</h1>
           <p className="text-sm text-muted-foreground mt-1">Create 1:1 or group classes that students can discover and book.</p>
         </div>
-        <Link href="/lessons" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-deep">
+        <button onClick={() => setCreateOpen(true)} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-deep">
           <Plus className="size-4" /> Create a Class
-        </Link>
+        </button>
       </header>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -137,9 +154,9 @@ function LessonsContent() {
           {tab === 'mine' && (
             <>
               <p className="mt-1 text-xs text-muted-foreground">Create your first 1:1 or group class to start receiving bookings.</p>
-              <Link href="/lessons" className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-deep">
+              <button onClick={() => setCreateOpen(true)} className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-deep">
                 <Plus className="size-4" /> Create a class
-              </Link>
+              </button>
             </>
           )}
         </div>
@@ -148,13 +165,23 @@ function LessonsContent() {
           {filtered.map((l) => <LessonCard key={l.id} l={l} />)}
         </div>
       )}
+
+      {createOpen && profile && (
+        <CreateGroupModal
+          onClose={() => setCreateOpen(false)}
+          onCreated={(groupId) => {
+            setCreateOpen(false);
+            fetchLessons(profile.id);
+          }}
+        />
+      )}
     </div>
   );
 }
 
 function LessonCard({ l }: { l: Lesson }) {
   return (
-    <Link href={`/lessons/${l.id}`} className="rounded-2xl border border-border bg-card overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition">
+    <Link href={`/tutor/lessons/${l.id}`} className="rounded-2xl border border-border bg-card overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition">
       <div className="h-24 bg-gradient-to-br from-brand to-brand-deep" />
       <div className="p-4">
         <div className="text-[10px] font-bold uppercase tracking-wider text-brand-deep">{l.level}</div>

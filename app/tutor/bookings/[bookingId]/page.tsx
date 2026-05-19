@@ -10,7 +10,6 @@ import {
   tutorConfirmBooking,
   tutorHealthCheckBeforeConfirm,
   tutorDeclineBooking,
-  tutorCounterOffer,
   subscribeToBooking,
   subscribeToBookingMessages
 } from '@/lib/services/bookingService';
@@ -60,12 +59,6 @@ export default function TutorBookingThreadPage() {
     error: '',
   });
   
-  // Counter offer state
-  const [showCounterOffer, setShowCounterOffer] = useState(false);
-  const [counterDate, setCounterDate] = useState('');
-  const [counterStartTime, setCounterStartTime] = useState('');
-  const [counterEndTime, setCounterEndTime] = useState('');
-  const [counterMessage, setCounterMessage] = useState('');
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const meetingRetryAttempted = useRef(false);
@@ -401,63 +394,6 @@ export default function TutorBookingThreadPage() {
       setActionLoading(false);
     }
   }
-  function handleOpenCounterOffer() {
-    const defaults = getDefaultDateTime();
-    setCounterDate(defaults.date);
-    setCounterStartTime(defaults.time);
-    
-    // Default end time is 1 hour after start
-    const startDate = new Date(`${defaults.date}T${defaults.time}`);
-    startDate.setHours(startDate.getHours() + 1);
-    setCounterEndTime(startDate.toISOString().slice(11, 16));
-    
-    setShowCounterOffer(true);
-  }
-
-  async function handleSendCounterOffer() {
-    if (!counterDate || !counterStartTime || !counterEndTime) {
-      alert('Please fill in all time fields');
-      return;
-    }
-
-    // Validate end time is after start time
-    const startDateTime = new Date(`${counterDate}T${counterStartTime}`);
-    const endDateTime = new Date(`${counterDate}T${counterEndTime}`);
-    
-    if (endDateTime <= startDateTime) {
-      alert('End time must be after start time');
-      return;
-    }
-
-    // Check minimum notice (at least 1 hour from now)
-    const now = new Date();
-    if (startDateTime < now) {
-      alert('Cannot propose a time in the past');
-      return;
-    }
-
-    setActionLoading(true);
-    try {
-      await tutorCounterOffer(
-        bookingId,
-        startDateTime.toISOString(),
-        endDateTime.toISOString(),
-        counterMessage || undefined
-      );
-      alert('Counter-offer sent!');
-      setShowCounterOffer(false);
-      setCounterDate('');
-      setCounterStartTime('');
-      setCounterEndTime('');
-      setCounterMessage('');
-      await loadBookingData();
-    } catch (error: any) {
-      console.error('Error sending counter-offer:', error);
-      alert(error.message || 'Failed to send counter-offer. There may be a conflict with your existing bookings.');
-    } finally {
-      setActionLoading(false);
-    }
-  }
 
   if (profileLoading || loading || !profile || !booking) {
     return (
@@ -470,7 +406,7 @@ export default function TutorBookingThreadPage() {
   const displayStartTime = booking.confirmed_start_at || booking.requested_start_at;
   const displayEndTime = booking.confirmed_end_at || booking.requested_end_at;
   const hasSessionStarted = displayStartTime ? new Date(displayStartTime) <= new Date() : false;
-  const canRespond = booking.status === 'PENDING' || booking.status === 'COUNTER_PROPOSED';
+  const canRespond = booking.status === 'PENDING';
   const canCancel = booking.status === 'CONFIRMED' && !hasSessionStarted;
   const paidClassesEnabled = isPaidClassesEnabled();
   const hasOutsideAvailabilityDisclaimer =
@@ -594,13 +530,6 @@ export default function TutorBookingThreadPage() {
                     className="flex-1 min-w-[150px] bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-white py-3 px-4 rounded-lg font-semibold transition disabled:opacity-50"
                   >
                     ✓ Accept Booking Request
-                  </button>
-                  <button
-                    onClick={handleOpenCounterOffer}
-                    disabled={actionLoading}
-                    className="flex-1 min-w-[150px] bg-gray-700 hover:bg-gray-600 text-itutor-white py-3 px-4 rounded-lg font-semibold transition disabled:opacity-50"
-                  >
-                    Propose Different Time
                   </button>
                   <button
                     onClick={handleDeclineBooking}
@@ -845,85 +774,6 @@ export default function TutorBookingThreadPage() {
           </div>
         )}
 
-        {/* Counter Offer Modal */}
-        {showCounterOffer && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowCounterOffer(false)}>
-            <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-bold text-gray-900">Propose Alternative Time</h3>
-                <button onClick={() => setShowCounterOffer(false)} className="text-gray-400 hover:text-gray-600 transition">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
-              </div>
-              <p className="text-sm text-gray-500 mb-4">
-                Suggest a time that works better for you. The student will be notified and can accept or decline.
-              </p>
-
-              <div className="rounded-xl border border-gray-200 p-4 mb-4 space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">Date</label>
-                  <input
-                    type="date"
-                    value={counterDate}
-                    onChange={(e) => setCounterDate(e.target.value)}
-                    min={new Date().toISOString().slice(0, 10)}
-                    className="w-full px-3 py-2.5 bg-white border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Start Time</label>
-                    <input
-                      type="time"
-                      value={counterStartTime}
-                      onChange={(e) => setCounterStartTime(e.target.value)}
-                      className="w-full px-3 py-2.5 bg-white border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">End Time</label>
-                    <input
-                      type="time"
-                      value={counterEndTime}
-                      onChange={(e) => setCounterEndTime(e.target.value)}
-                      className="w-full px-3 py-2.5 bg-white border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="mb-4">
-                <label className="block text-sm font-semibold text-gray-800 mb-1">
-                  Message <span className="text-gray-400 font-normal">(optional)</span>
-                </label>
-                <textarea
-                  value={counterMessage}
-                  onChange={(e) => setCounterMessage(e.target.value)}
-                  placeholder="Explain why you're proposing this time..."
-                  rows={3}
-                  className="w-full px-3 py-2.5 bg-white border border-gray-200 text-gray-900 text-sm rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-400 resize-none"
-                />
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowCounterOffer(false)}
-                  disabled={actionLoading}
-                  className="flex-1 rounded-xl border border-gray-200 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSendCounterOffer}
-                  disabled={actionLoading || !counterDate || !counterStartTime || !counterEndTime}
-                  className="flex-1 rounded-xl bg-itutor-green hover:bg-emerald-700 text-white py-2.5 text-sm font-semibold transition disabled:opacity-50"
-                >
-                  {actionLoading ? 'Sending...' : 'Send Counter-Offer'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Messages Thread */}
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">

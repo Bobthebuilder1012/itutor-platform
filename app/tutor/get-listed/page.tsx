@@ -3,10 +3,10 @@
 import { Suspense, useEffect, useRef, useState, Fragment } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Check, Circle, Camera, Plus, X, Copy } from 'lucide-react';
+import { Check, Circle, Camera, Copy } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
-import { useTutorCompletion } from '@/lib/hooks/useTutorCompletion';
+import { useTutorCompletion, notifyCompletionUpdated } from '@/lib/hooks/useTutorCompletion';
 import { supabase } from '@/lib/supabase/client';
 import TutorShell from '@/components/tutor/TutorShell';
 import {
@@ -75,15 +75,13 @@ function slotsToRules(slots: Slot[]): { day_of_week: number; start_time: string;
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 type SubjectRow = { id: string; subject_id: string; subjects: { name: string; label?: string | null } | null; price_per_hour_ttd: number | null };
-type SubjectOption = { id: string; name: string; label: string | null };
 
 // ── Main content ───────────────────────────────────────────────────────────────
 function GetListedContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { profile, loading, refresh: refreshProfile } = useProfile();
-  const [completionKey, setCompletionKey] = useState(0);
-  const completion = useTutorCompletion(profile, completionKey);
+  const completion = useTutorCompletion(profile);
 
   // Bio
   const [bio, setBio] = useState('');
@@ -93,13 +91,8 @@ function GetListedContent() {
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Subjects
+  // Subjects (loaded for rate section; managed during signup)
   const [subjects, setSubjects] = useState<SubjectRow[]>([]);
-  const [subjectOptions, setSubjectOptions] = useState<SubjectOption[]>([]);
-  const [addSubjectOpen, setAddSubjectOpen] = useState(false);
-  const [pickSubjectId, setPickSubjectId] = useState('');
-  const [pickPrice, setPickPrice] = useState('');
-  const [addingSubject, setAddingSubject] = useState(false);
 
   // Rate
   const [rateInput, setRateInput] = useState('');
@@ -127,7 +120,7 @@ function GetListedContent() {
     const error = searchParams.get('error');
     if (success === 'true') {
       setVideoMsg('Video provider connected successfully!');
-      setCompletionKey((k) => k + 1);
+      notifyCompletionUpdated();
       window.history.replaceState({}, '', '/tutor/get-listed');
     } else if (error) {
       setVideoMsg('Connection failed. Please try again.');
@@ -147,17 +140,41 @@ function GetListedContent() {
   }, [profile?.id]);
 
   async function fetchData(tutorId: string) {
-    const [{ data: subjs }, { data: opts }, rules, { data: vidConn }] = await Promise.all([
+    const [{ data: subjs }, rules, { data: vidConn }] = await Promise.all([
       supabase.from('tutor_subjects').select('id, subject_id, price_per_hour_ttd, subjects(name, label)').eq('tutor_id', tutorId),
-      supabase.from('subjects').select('id, name, label').order('name'),
       getTutorAvailabilityRules(tutorId),
       supabase.from('tutor_video_provider_connections').select('provider, provider_account_email').eq('tutor_id', tutorId).maybeSingle(),
     ]);
-    setSubjects((subjs ?? []) as unknown as SubjectRow[]);
-    setSubjectOptions((opts ?? []) as unknown as SubjectOption[]);
+
+    let tutorSubjects = (subjs ?? []) as unknown as SubjectRow[];
+
+    // If no tutor_subjects exist, sync from user_subjects (written by the complete-role signup flow)
+    if (tutorSubjects.length === 0) {
+      const { data: userSubjs } = await supabase
+        .from('user_subjects')
+        .select('subject_id')
+        .eq('user_id', tutorId);
+
+      if (userSubjs && userSubjs.length > 0) {
+          await Promise.all(
+            userSubjs.map(({ subject_id }) =>
+              supabase.from('tutor_subjects').upsert(
+                { tutor_id: tutorId, subject_id, price_per_hour_ttd: null, mode: 'either' },
+                { onConflict: 'tutor_id,subject_id' }
+              )
+            )
+          );
+        const { data: synced } = await supabase
+          .from('tutor_subjects')
+          .select('id, subject_id, price_per_hour_ttd, subjects(name, label)')
+          .eq('tutor_id', tutorId);
+        tutorSubjects = (synced ?? []) as unknown as SubjectRow[];
+      }
+    }
+
+    setSubjects(tutorSubjects);
     setAvailRules(rules);
     setSlots(rulesToSlots(rules));
-    if (!pickSubjectId && opts && opts.length > 0) setPickSubjectId(opts[0].id);
     setVideoConnection(vidConn ? { provider: vidConn.provider, email: vidConn.provider_account_email } : null);
   }
 
@@ -185,49 +202,52 @@ function GetListedContent() {
     try {
       await supabase.from('profiles').update({ bio: bio.trim() || null }).eq('id', profile.id);
       await refreshProfile();
+      notifyCompletionUpdated();
     } finally {
       setSavingBio(false);
     }
   }
 
-  async function addSubject() {
-    if (!profile || !pickSubjectId) return;
-    setAddingSubject(true);
-    try {
-      const price = parseFloat(pickPrice) || null;
-      await supabase.from('tutor_subjects').upsert(
-        { tutor_id: profile.id, subject_id: pickSubjectId, price_per_hour_ttd: price },
-        { onConflict: 'tutor_id,subject_id' }
-      );
-      setAddSubjectOpen(false);
-      setPickPrice('');
-      await fetchData(profile.id);
-      setCompletionKey((k) => k + 1);
-    } finally {
-      setAddingSubject(false);
-    }
-  }
-
-  async function removeSubject(id: string) {
-    await supabase.from('tutor_subjects').delete().eq('id', id);
-    setSubjects((prev) => prev.filter((s) => s.id !== id));
-    setCompletionKey((k) => k + 1);
-  }
-
   async function saveRate() {
-    if (!profile || subjects.length === 0) return;
+    if (!profile) return;
     const price = parseFloat(rateInput);
     if (!price || price <= 0) return;
     setSavingRate(true);
     try {
-      await Promise.all(
-        subjects.map((s) =>
-          supabase.from('tutor_subjects').update({ price_per_hour_ttd: price }).eq('id', s.id)
-        )
-      );
+      // Always fetch fresh from DB — don't rely on local state
+      const { data: fresh } = await supabase
+        .from('tutor_subjects')
+        .select('id')
+        .eq('tutor_id', profile.id);
+
+      if (fresh && fresh.length > 0) {
+        await Promise.all(
+          fresh.map((s) =>
+            supabase.from('tutor_subjects').update({ price_per_hour_ttd: price }).eq('id', s.id)
+          )
+        );
+      } else {
+        // No tutor_subjects — sync from user_subjects with price already set
+        const { data: userSubjs } = await supabase
+          .from('user_subjects')
+          .select('subject_id')
+          .eq('user_id', profile.id);
+
+        if (userSubjs && userSubjs.length > 0) {
+          await Promise.all(
+            userSubjs.map(({ subject_id }) =>
+              supabase.from('tutor_subjects').upsert(
+                { tutor_id: profile.id, subject_id, price_per_hour_ttd: price, mode: 'either' },
+                { onConflict: 'tutor_id,subject_id' }
+              )
+            )
+          );
+        }
+      }
+
       await fetchData(profile.id);
       setRateInput('');
-      setCompletionKey((k) => k + 1);
+      notifyCompletionUpdated();
     } finally {
       setSavingRate(false);
     }
@@ -248,7 +268,7 @@ function GetListedContent() {
       );
       await fetchData(profile.id);
       setAvailOpen(false);
-      setCompletionKey((k) => k + 1);
+      notifyCompletionUpdated();
     } finally {
       setSavingAvail(false);
     }
@@ -340,57 +360,7 @@ function GetListedContent() {
         </div>
       </SectionShell>
 
-      {/* 3. Subjects */}
-      <SectionShell done={completion.subjects} title="Subjects you teach" subtitle="Add at least one subject you teach.">
-        <div className="flex flex-wrap gap-2 mb-3">
-          {subjects.map((s) => (
-            <span key={s.id} className="inline-flex items-center gap-2 pl-3 pr-1 py-1 rounded-full bg-brand/10 text-brand-deep text-sm font-medium">
-              {s.subjects?.label || s.subjects?.name || 'Subject'}
-              {s.price_per_hour_ttd ? <span className="text-xs opacity-70">· TT${s.price_per_hour_ttd}/hr</span> : null}
-              <button onClick={() => removeSubject(s.id)} className="size-5 grid place-items-center rounded-full hover:bg-brand/20">
-                <X className="size-3" />
-              </button>
-            </span>
-          ))}
-          <button
-            onClick={() => setAddSubjectOpen(true)}
-            className="inline-flex items-center gap-1 px-3 py-1 rounded-full border border-dashed border-border text-sm text-muted-foreground hover:border-brand hover:text-brand-deep"
-          >
-            <Plus className="size-3.5" /> Add subject
-          </button>
-        </div>
-
-        {addSubjectOpen && (
-          <div className="rounded-xl border border-border bg-muted/40 p-3 flex flex-col sm:flex-row gap-2">
-            <select
-              value={pickSubjectId}
-              onChange={(e) => setPickSubjectId(e.target.value)}
-              className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm"
-            >
-              {subjectOptions.map((o) => (
-                <option key={o.id} value={o.id}>{o.label || o.name}</option>
-              ))}
-            </select>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground">TT$</span>
-              <input
-                type="number"
-                min={0}
-                value={pickPrice}
-                onChange={(e) => setPickPrice(e.target.value)}
-                placeholder="Rate/hr (optional)"
-                className="w-44 rounded-lg border border-border bg-background pl-10 pr-3 py-2 text-sm focus:outline-none focus:border-brand"
-              />
-            </div>
-            <button onClick={addSubject} disabled={addingSubject} className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-deep disabled:opacity-50">
-              {addingSubject ? 'Adding…' : 'Add'}
-            </button>
-            <button onClick={() => setAddSubjectOpen(false)} className="px-3 py-2 rounded-lg text-sm hover:bg-muted">Cancel</button>
-          </div>
-        )}
-      </SectionShell>
-
-      {/* 4. Availability */}
+      {/* 3. Availability */}
       <SectionShell done={completion.availability} title="Weekly availability" subtitle="Set the hours you're available to teach each week.">
         {/* Summary row */}
         <div className="flex items-center justify-between">
@@ -453,44 +423,38 @@ function GetListedContent() {
         )}
       </SectionShell>
 
-      {/* 5. Rate */}
+      {/* 4. Rate */}
       <SectionShell done={completion.rate} title="Hourly rate" subtitle="Set your rate per hour (TTD). Applies to all your subjects.">
-        {subjects.length === 0 ? (
-          <p className="text-sm text-muted-foreground mb-3">Add at least one subject first, then set your rate.</p>
-        ) : (
-          <>
-            {subjects.filter((s) => (s.price_per_hour_ttd ?? 0) > 0).length > 0 && (
-              <p className="text-sm text-muted-foreground mb-3">
-                Current: {subjects.filter((s) => (s.price_per_hour_ttd ?? 0) > 0).map((s) => `TT$${s.price_per_hour_ttd}/hr (${s.subjects?.label || s.subjects?.name})`).join(', ')}
-              </p>
-            )}
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground">TTD</span>
-                <input
-                  type="number"
-                  min={0}
-                  value={rateInput}
-                  onChange={(e) => setRateInput(e.target.value)}
-                  placeholder="150"
-                  className="w-40 rounded-lg border border-border bg-background pl-12 pr-3 py-2 text-sm focus:outline-none focus:border-brand"
-                />
-              </div>
-              <span className="text-sm text-muted-foreground">/ hour</span>
-              <button
-                onClick={saveRate}
-                disabled={savingRate || !rateInput}
-                className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-deep disabled:opacity-50"
-              >
-                {savingRate ? 'Saving…' : 'Apply to all subjects'}
-              </button>
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">Average for CSEC tutors in Trinidad: <span className="font-semibold text-ink">TT$120–250 / hr</span></p>
-          </>
+        {subjects.filter((s) => (s.price_per_hour_ttd ?? 0) > 0).length > 0 && (
+          <p className="text-sm text-muted-foreground mb-3">
+            Current: {subjects.filter((s) => (s.price_per_hour_ttd ?? 0) > 0).map((s) => `TT$${s.price_per_hour_ttd}/hr (${s.subjects?.label || s.subjects?.name})`).join(', ')}
+          </p>
         )}
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground">TTD</span>
+            <input
+              type="number"
+              min={0}
+              value={rateInput}
+              onChange={(e) => setRateInput(e.target.value)}
+              placeholder="150"
+              className="w-40 rounded-lg border border-border bg-background pl-12 pr-3 py-2 text-sm focus:outline-none focus:border-brand"
+            />
+          </div>
+          <span className="text-sm text-muted-foreground">/ hour</span>
+          <button
+            onClick={saveRate}
+            disabled={savingRate || !rateInput}
+            className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-deep disabled:opacity-50"
+          >
+            {savingRate ? 'Saving…' : 'Apply to all subjects'}
+          </button>
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">Average for CSEC tutors in Trinidad: <span className="font-semibold text-ink">TT$120–250 / hr</span></p>
       </SectionShell>
 
-      {/* 6. Video provider (optional for now) */}
+      {/* 5. Video provider (optional) */}
       <SectionShell done={completion.videoProvider} title="Video lesson provider" subtitle="Connect Zoom or Google Meet so students get the right join link." optional>
         {videoMsg && (
           <p className={`mb-3 text-sm font-medium ${videoMsg.includes('success') ? 'text-brand-deep' : 'text-red-500'}`}>{videoMsg}</p>

@@ -61,32 +61,11 @@ export default function LessonsPage() {
 
   useEffect(() => {
     if (loading) return;
-    if (!isGroupsFeatureEnabled()) {
-      if (profile?.role === 'student') router.replace('/student/dashboard');
-      else if (profile?.role === 'tutor') router.replace('/tutor/dashboard');
-      else if (profile?.role === 'parent') router.replace('/parent/dashboard');
-      else router.replace('/login');
-      return;
-    }
-    if (!profile) router.push('/login');
+    if (profile?.role === 'tutor') router.replace('/tutor/lessons');
+    else if (profile?.role === 'student') router.replace('/student/dashboard');
+    else if (profile?.role === 'parent') router.replace('/parent/dashboard');
+    else router.replace('/login');
   }, [profile, loading, router]);
 
-  if (loading || !profile) {
-    return <LessonsPageSkeleton />;
-  }
-
-  const role = profile.role as 'student' | 'tutor' | 'parent';
-  const displayName = profile.username || profile.display_name || profile.full_name || 'User';
-
-  return (
-    <DashboardLayout role={role} userName={displayName}>
-      {role === 'tutor' ? (
-        <TutorLessonsHome currentUserId={profile.id} />
-      ) : role === 'student' ? (
-        <StudentLessonsClient currentUserId={profile.id} />
-      ) : (
-        <GroupsPageClient currentUserId={profile.id} userRole={role} isTutor={false} />
-      )}
-    </DashboardLayout>
-  );
+  return <LessonsPageSkeleton />;
 }

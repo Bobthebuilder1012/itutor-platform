@@ -77,23 +77,23 @@ function DashboardContent() {
       ] = await Promise.all([
         supabase
           .from('sessions')
-          .select('id, scheduled_start, duration_minutes, join_url, booking:bookings(student_id, subject_id, profiles:profiles!bookings_student_id_fkey(full_name, display_name), subjects(label, name))')
+          .select('id, scheduled_start_at, duration_minutes, join_url, booking:bookings(student_id, subject_id, profiles:profiles!bookings_student_id_fkey(full_name, display_name), subjects(label, name))')
           .eq('tutor_id', tutorId)
-          .in('status', ['scheduled', 'in_progress'])
-          .gte('scheduled_start', now.toISOString())
-          .order('scheduled_start', { ascending: true })
+          .in('status', ['SCHEDULED', 'JOIN_OPEN', 'scheduled', 'in_progress'])
+          .gte('scheduled_start_at', now.toISOString())
+          .order('scheduled_start_at', { ascending: true })
           .limit(5),
         supabase
           .from('sessions')
           .select('payout_amount_ttd')
           .eq('tutor_id', tutorId)
-          .eq('status', 'completed')
-          .gte('scheduled_start', monthStart),
+          .in('status', ['COMPLETED', 'COMPLETED_ASSUMED', 'completed'])
+          .gte('scheduled_start_at', monthStart),
         supabase
           .from('bookings')
           .select('student_id', { count: 'exact', head: true })
           .eq('tutor_id', tutorId)
-          .eq('status', 'confirmed'),
+          .in('status', ['CONFIRMED', 'confirmed']),
       ]);
 
       const monthTotal = (monthSessions ?? []).reduce((sum, s) => sum + (s.payout_amount_ttd ?? 0), 0);
@@ -104,7 +104,7 @@ function DashboardContent() {
         const subject = booking?.subjects ? (Array.isArray(booking.subjects) ? booking.subjects[0] : booking.subjects) : null;
         return {
           id: s.id,
-          date: s.scheduled_start,
+          date: s.scheduled_start_at ?? s.scheduled_start,
           subject: subject?.label || subject?.name || 'Session',
           studentName: studentProfile?.display_name || studentProfile?.full_name || 'Student',
           durationMin: s.duration_minutes ?? 60,

@@ -59,7 +59,6 @@ export function useProfile() {
 
   async function refresh() {
     hasFetched.current = false;
-    setLoading(true);
     await fetchProfile();
   }
 

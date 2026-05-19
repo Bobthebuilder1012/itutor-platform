@@ -216,6 +216,41 @@ export async function GET(request: NextRequest) {
       };
     });
 
+    // For student viewers, only show groups from fully listed tutors
+    if (!isTutor && !fetchArchived) {
+      const tutorIds = [...new Set(enriched.map((g: any) => g.tutor_id).filter(Boolean))];
+      if (tutorIds.length > 0) {
+        const [
+          { data: withAvailability },
+          { data: withVideoProvider },
+          { data: withPricedSubjects },
+          { data: listedProfiles },
+        ] = await Promise.all([
+          service.from('tutor_availability_rules').select('tutor_id').in('tutor_id', tutorIds),
+          service.from('tutor_video_provider_connections').select('tutor_id').in('tutor_id', tutorIds),
+          service.from('tutor_subjects').select('tutor_id').gt('price_per_hour_ttd', 0).in('tutor_id', tutorIds),
+          service.from('profiles').select('id, avatar_url, bio').in('id', tutorIds),
+        ]);
+
+        const availSet = new Set((withAvailability ?? []).map((r: any) => r.tutor_id));
+        const videoSet = new Set((withVideoProvider ?? []).map((r: any) => r.tutor_id));
+        const priceSet = new Set((withPricedSubjects ?? []).map((r: any) => r.tutor_id));
+        const profileMap = new Map((listedProfiles ?? []).map((p: any) => [p.id, p]));
+
+        enriched = enriched.filter((g: any) => {
+          const tid = g.tutor_id;
+          const p = profileMap.get(tid);
+          return (
+            p?.avatar_url &&
+            p?.bio?.trim()?.length > 0 &&
+            availSet.has(tid) &&
+            videoSet.has(tid) &&
+            priceSet.has(tid)
+          );
+        });
+      }
+    }
+
     if (availability) {
       const now = new Date();
       const end = new Date(now);

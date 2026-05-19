@@ -100,6 +100,10 @@ function AnalyticsContent() {
     });
   }
 
+  if (completion.loading) {
+    return <div className="min-h-[400px] flex items-center justify-center"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand" /></div>;
+  }
+
   if (!completion.listed) {
     return (
       <div className="max-w-7xl">

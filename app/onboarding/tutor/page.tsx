@@ -93,6 +93,7 @@ async function resolveSubjectRowsForOnboarding(client: SupabaseClient, labels: s
 
 export default function TutorOnboardingPage() {
   const router = useRouter();
+
   const [userId, setUserId] = useState<string | null>(null);
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
   const [selectedSeaSubjects, setSelectedSeaSubjects] = useState<string[]>([]);
@@ -314,7 +315,6 @@ export default function TutorOnboardingPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 via-teal-50 to-blue-50 px-4 py-8 relative overflow-hidden">
-      {/* Decorative background elements */}
       <div className="absolute top-0 left-0 w-96 h-96 bg-gradient-to-br from-emerald-300/30 to-teal-200/30 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2"></div>
       <div className="absolute bottom-0 right-0 w-96 h-96 bg-gradient-to-br from-blue-200/30 to-cyan-200/30 rounded-full blur-3xl translate-x-1/2 translate-y-1/2"></div>
       

@@ -5,7 +5,6 @@ import { useRouter, useParams } from 'next/navigation';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import TutorShell from '@/components/tutor/TutorShell';
-import SendOfferModal from '@/components/offers/SendOfferModal';
 import { getDisplayName } from '@/lib/utils/displayName';
 import { getAvatarColor } from '@/lib/utils/avatarColors';
 
@@ -41,7 +40,6 @@ export default function StudentProfilePage() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [offerModalOpen, setOfferModalOpen] = useState(false);
   const [completedSessions, setCompletedSessions] = useState(0);
   const [showAboutMenu, setShowAboutMenu] = useState(false);
 
@@ -288,16 +286,6 @@ export default function StudentProfilePage() {
                     </div>
                   </div>
 
-                  {/* Send Offer Button */}
-                  <button
-                    onClick={() => setOfferModalOpen(true)}
-                    className="px-6 py-3 bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-white rounded-xl font-semibold shadow-lg hover:shadow-itutor-green/50 transition-all duration-300 flex items-center gap-2 whitespace-nowrap"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
-                    </svg>
-                    Send Lesson Offer
-                  </button>
                 </div>
 
                 {/* Biography - Just the text */}
@@ -375,13 +363,6 @@ export default function StudentProfilePage() {
         </div>
       </div>
 
-      {/* Send Offer Modal */}
-      <SendOfferModal
-        isOpen={offerModalOpen}
-        onClose={() => setOfferModalOpen(false)}
-        studentId={student.id}
-        studentName={getDisplayName(student)}
-      />
     </TutorShell>
   );
 }

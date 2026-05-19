@@ -1,12 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import { getDisplayName } from '@/lib/utils/displayName';
-import BookingRequestModal from '@/components/booking/BookingRequestModal';
 import SuggestTimeModal from '@/components/booking/SuggestTimeModal';
 import UserAvatar from '@/components/UserAvatar';
 import { cn } from '@/lib/utils';
@@ -15,6 +14,7 @@ import {
   BadgeCheck, ChevronLeft, ChevronRight, X, Check, MapPin,
   ThumbsUp, ThumbsDown,
 } from 'lucide-react';
+import { getTutorPublicCalendar } from '@/lib/services/bookingService';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -91,23 +91,50 @@ function startsForDuration(eff: Window[], duration: number): number[] {
   return out;
 }
 
-function buildSlots(days = 30): DayAvail[] {
+function emptySlots(days = 30): DayAvail[] {
   const out: DayAvail[] = [];
   const start = new Date(); start.setHours(0, 0, 0, 0);
   for (let i = 0; i < days; i++) {
     const d = new Date(start); d.setDate(start.getDate() + i);
-    const dow = d.getDay();
-    let windows: Window[] = [];
-    if (dow === 0) windows = [{ start: 15.5, end: 18 }];
-    else if (dow === 6) windows = [{ start: 10, end: 13 }, { start: 14, end: 18 }];
-    else if (i % 7 === 4) windows = [];
-    else windows = [{ start: 15.5, end: 21 }];
-    const booked: Window[] = [];
-    if (dow === 2) booked.push({ start: 17, end: 18 });
-    if (dow === 4) booked.push({ start: 16, end: 17.5 });
-    out.push({ date: d, windows, booked });
+    out.push({ date: d, windows: [], booked: [] });
   }
   return out;
+}
+
+function isoToHour(iso: string): number {
+  const d = new Date(iso);
+  return d.getHours() + d.getMinutes() / 60;
+}
+
+async function loadCalendar(tutorId: string, days = 30): Promise<DayAvail[]> {
+  const rangeStart = new Date(); rangeStart.setHours(0, 0, 0, 0);
+  const rangeEnd = new Date(rangeStart); rangeEnd.setDate(rangeStart.getDate() + days);
+
+  const cal = await getTutorPublicCalendar(tutorId, rangeStart.toISOString(), rangeEnd.toISOString());
+
+  return Array.from({ length: days }, (_, i) => {
+    const d = new Date(rangeStart); d.setDate(rangeStart.getDate() + i);
+    const dayStart = new Date(d); dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(d); dayEnd.setHours(23, 59, 59, 999);
+
+    const windows: Window[] = [];
+    for (const w of cal.availability_windows ?? []) {
+      const ws = new Date(w.start_at); const we = new Date(w.end_at);
+      if (we <= dayStart || ws >= dayEnd) continue;
+      const start = isoToHour(w.start_at);
+      const end = isoToHour(w.end_at);
+      if (end > start) windows.push({ start, end });
+    }
+
+    const booked: Window[] = [];
+    for (const b of cal.busy_blocks ?? []) {
+      const bs = new Date(b.start_at); const be = new Date(b.end_at);
+      if (be <= dayStart || bs >= dayEnd) continue;
+      booked.push({ start: isoToHour(b.start_at), end: isoToHour(b.end_at) });
+    }
+
+    return { date: d, windows, booked };
+  });
 }
 
 function slotToISO(date: Date, startHour: number, duration: number) {
@@ -267,9 +294,10 @@ export default function TutorProfilePage() {
   const [tutor, setTutor] = useState<TutorProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedSubject, setSelectedSubject] = useState<TutorProfile['subjects'][0] | null>(null);
-  const [bookingModalOpen, setBookingModalOpen] = useState(false);
   const [suggestTimeModalOpen, setSuggestTimeModalOpen] = useState(false);
-  const [selectedTimeSlot, setSelectedTimeSlot] = useState<{ start: string; end: string } | null>(null);
+  const [bookingNotes, setBookingNotes] = useState('');
+  const [confirmLoading, setConfirmLoading] = useState(false);
+  const [confirmError, setConfirmError] = useState('');
   const [paidClassesEnabled, setPaidClassesEnabled] = useState(false);
   const [completedSessions, setCompletedSessions] = useState(0);
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -280,7 +308,8 @@ export default function TutorProfilePage() {
   const [pickedTime, setPickedTime] = useState<number | null>(null);
   const [pickedDay, setPickedDay] = useState(0);
   const [duration, setDuration] = useState(1);
-  const slots = useMemo(() => buildSlots(30), []);
+  const [slots, setSlots] = useState<DayAvail[]>(() => emptySlots(30));
+  const [calendarLoading, setCalendarLoading] = useState(true);
   const dayScrollRef = useRef<HTMLDivElement>(null);
   const scrollDays = (dir: 1 | -1) => dayScrollRef.current?.scrollBy({ left: dir * 280, behavior: 'smooth' });
 
@@ -346,25 +375,51 @@ export default function TutorProfilePage() {
       const fetchedTutor = { ...tutorData, subjects, average_rating: avgRating, total_reviews: totalReviews };
       setTutor(fetchedTutor);
       if (subjects.length === 1) setSelectedSubject(subjects[0]);
+
+      // Load real tutor availability
+      loadCalendar(tutorId)
+        .then(setSlots)
+        .catch((err) => console.error('Failed to load calendar:', err))
+        .finally(() => setCalendarLoading(false));
     } catch (error) {
       console.error('Error fetching tutor profile:', error);
       alert('Failed to load tutor profile');
+      setCalendarLoading(false);
     } finally {
       setLoading(false);
     }
   }
 
-  const handleSlotSelect = (startAt: string, endAt: string) => {
-    setSelectedTimeSlot({ start: startAt, end: endAt });
-    setBookingModalOpen(true);
-  };
-
-  const handleBookingSuccess = (result: { bookingId: string; requiresPayment?: boolean }) => {
-    setBookingModalOpen(false);
-    setSelectedTimeSlot(null);
-    if (result.requiresPayment) { router.push(`/payments/checkout?bookingId=${result.bookingId}`); return; }
-    alert('Booking request sent successfully! The tutor will respond soon.');
-    router.push('/student/bookings');
+  const confirmBooking = async (startAt: string, endAt: string) => {
+    if (!selectedSubject || !profile) return;
+    setConfirmLoading(true);
+    setConfirmError('');
+    try {
+      const durationMinutes = Math.round((new Date(endAt).getTime() - new Date(startAt).getTime()) / 60000);
+      const res = await fetch('/api/bookings/direct-book', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tutorId,
+          subjectId: selectedSubject.id,
+          requestedStartAt: startAt,
+          requestedEndAt: endAt,
+          studentNotes: bookingNotes.trim() || undefined,
+          durationMinutes,
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result?.error || 'Failed to book session');
+      setShowBookingSheet(false);
+      setBookingNotes('');
+      if (result.requires_payment) { router.push(`/payments/checkout?bookingId=${result.booking_id}`); return; }
+      alert('Session booked! You\'ll receive a confirmation shortly.');
+      router.push('/student/bookings');
+    } catch (err: any) {
+      setConfirmError(err.message || 'Failed to book session');
+    } finally {
+      setConfirmLoading(false);
+    }
   };
 
   const vote = (id: string, dir: 'up' | 'down') => {
@@ -533,6 +588,11 @@ export default function TutorProfilePage() {
 
           {/* Desktop booking sidebar */}
           <aside className="hidden lg:block lg:sticky lg:top-20 self-start">
+            {calendarLoading ? (
+              <div className="rounded-2xl border border-border bg-card p-8 flex items-center justify-center min-h-[200px]">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand" />
+              </div>
+            ) : (
             <BookingCard
               priceLabel={priceLabel}
               subjects={tutor.subjects}
@@ -549,6 +609,7 @@ export default function TutorProfilePage() {
               scrollDays={scrollDays}
               onContinue={() => { setBookingStep(3); setShowBookingSheet(true); }}
             />
+            )}
           </aside>
         </div>
       </div>
@@ -581,6 +642,11 @@ export default function TutorProfilePage() {
                 </div>
               )}
               {bookingStep === 2 && (
+                calendarLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand" />
+                  </div>
+                ) : (
                 <BookingCard
                   priceLabel={priceLabel}
                   subjects={tutor.subjects}
@@ -598,6 +664,7 @@ export default function TutorProfilePage() {
                   embedded
                   onContinue={() => setBookingStep(3)}
                 />
+                )
               )}
               {bookingStep === 3 && selectedSubject && pickedTime != null && (
                 <div className="space-y-4">
@@ -619,16 +686,28 @@ export default function TutorProfilePage() {
                       <span>{paidClassesEnabled ? `TT$${(selectedSubject.price_per_hour_ttd * duration).toFixed(0)}` : 'Free'}</span>
                     </div>
                   </div>
+                  <div>
+                    <label className="block text-xs font-medium text-muted-foreground mb-1">Notes for tutor <span className="font-normal">(optional)</span></label>
+                    <textarea
+                      value={bookingNotes}
+                      onChange={(e) => setBookingNotes(e.target.value)}
+                      placeholder="Any specific topics or questions you'd like to cover?"
+                      rows={3}
+                      className="w-full rounded-xl border border-border bg-muted/40 px-3 py-2 text-sm text-ink placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand resize-none"
+                    />
+                  </div>
+                  {confirmError && <p className="text-xs text-red-500">{confirmError}</p>}
                   <p className="text-xs text-muted-foreground">Free cancellation up to 24h before the session.</p>
                   <button
+                    disabled={confirmLoading}
                     onClick={() => {
                       const { start, end } = slotToISO(slots[pickedDay].date, pickedTime, duration);
-                      handleSlotSelect(start, end);
-                      setShowBookingSheet(false);
+                      confirmBooking(start, end);
                     }}
-                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-brand text-white font-semibold hover:bg-brand-deep"
+                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-brand text-white font-semibold hover:bg-brand-deep disabled:opacity-60"
                   >
-                    <Check className="size-4" /> Confirm booking
+                    {confirmLoading ? <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> : <Check className="size-4" />}
+                    {confirmLoading ? 'Booking…' : 'Book session'}
                   </button>
                 </div>
               )}
@@ -640,22 +719,6 @@ export default function TutorProfilePage() {
             )}
           </div>
         </div>
-      )}
-
-      {selectedTimeSlot && selectedSubject && (
-        <BookingRequestModal
-          isOpen={bookingModalOpen}
-          onClose={() => { setBookingModalOpen(false); setSelectedTimeSlot(null); }}
-          tutorId={tutorId}
-          tutorName={getDisplayName(tutor)}
-          studentId={profile!.id}
-          subjectId={selectedSubject.id}
-          subjectName={selectedSubject.name}
-          pricePerHour={selectedSubject.price_per_hour_ttd}
-          selectedStartAt={selectedTimeSlot.start}
-          selectedEndAt={selectedTimeSlot.end}
-          onSuccess={handleBookingSuccess}
-        />
       )}
 
       {selectedSubject && (

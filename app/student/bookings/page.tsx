@@ -11,10 +11,9 @@ import type { BookingWithDetails } from '@/lib/types/booking';
 import { getBookingStatusLabel } from '@/lib/types/booking';
 import { formatDateTime } from '@/lib/utils/calendar';
 import { Calendar, Video, MoreHorizontal, RotateCcw, Star, Clock } from 'lucide-react';
-import OffersReceivedList from '@/components/offers/OffersReceivedList';
 import { cn } from '@/lib/utils';
 
-type TabType = 'upcoming' | 'past' | 'offers';
+type TabType = 'upcoming' | 'past';
 
 export default function StudentBookingsPage() {
   const { profile, loading: profileLoading } = useProfile();
@@ -22,7 +21,6 @@ export default function StudentBookingsPage() {
   const [bookings, setBookings] = useState<BookingWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('upcoming');
-  const [offersCount, setOffersCount] = useState(0);
   const [paidClassesEnabled, setPaidClassesEnabled] = useState(false);
 
   useEffect(() => {
@@ -100,7 +98,6 @@ export default function StudentBookingsPage() {
   const tabs: { key: TabType; label: string; count: number }[] = [
     { key: 'upcoming', label: 'Upcoming', count: upcoming.length },
     { key: 'past', label: 'Past', count: past.length },
-    { key: 'offers', label: 'Offers', count: offersCount },
   ];
 
   if (profileLoading || !profile) {
@@ -139,13 +136,8 @@ export default function StudentBookingsPage() {
         ))}
       </div>
 
-      {/* Offers tab */}
-      {activeTab === 'offers' && profile && (
-        <OffersReceivedList studentId={profile.id} />
-      )}
-
       {/* Upcoming / Past content */}
-      {activeTab !== 'offers' && (loading ? (
+      {(loading ? (
         <div className="space-y-3">
           {[1, 2, 3].map(i => <div key={i} className="h-32 rounded-2xl bg-muted animate-pulse" />)}
         </div>
@@ -241,7 +233,7 @@ export default function StudentBookingsPage() {
                   )}
                   {booking.status === 'PENDING' && (
                     <Link href={`/student/bookings/${booking.id}`} className="flex-1 inline-flex items-center justify-center px-4 py-2.5 rounded-xl border border-border font-semibold text-sm hover:bg-muted">
-                      View offer
+                      View request
                     </Link>
                   )}
                 </div>

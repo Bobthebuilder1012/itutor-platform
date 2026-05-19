@@ -7,7 +7,6 @@ import { supabase } from '@/lib/supabase/client';
 import AvatarUploadModal from '@/components/AvatarUploadModal';
 import EditSubjectsModal from '@/components/student/EditSubjectsModal';
 import EditProfileModal from '@/components/EditProfileModal';
-import OffersCard from '@/components/student/OffersCard';
 import type { SessionAttendanceState } from '@/components/student/StudentSessionAttendance';
 import { useAvatarUpload } from '@/lib/hooks/useAvatarUpload';
 import { Session } from '@/lib/types/database';
@@ -442,13 +441,6 @@ export default function StudentDashboard() {
         </div>
       </div>
 
-      {/* Offers */}
-      {profile && (
-        <div className="rounded-3xl bg-background border border-border p-5 lg:p-6">
-          <h3 className="font-semibold text-ink mb-4">Special offers</h3>
-          <OffersCard studentId={profile.id} />
-        </div>
-      )}
 
       {/* Modals */}
       <AvatarUploadModal

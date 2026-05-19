@@ -199,13 +199,15 @@ export default function FindTutorsPage() {
 
       const tutorProfilesWithBanners = tutorProfiles as Array<Record<string, unknown> & { id: string }>;
 
-      console.log('✅ Fetched tutor profiles:', tutorProfilesWithBanners?.length || 0);
-      console.log('Tutor profiles data:', tutorProfilesWithBanners);
+      // Fetch listed tutor IDs from server API (bypasses RLS on protected tables)
+      const listedRes = await fetch('/api/tutors/listed-ids', { cache: 'no-store' });
+      const listedJson = listedRes.ok ? await listedRes.json() : { ids: [] };
+      const listedSet = new Set<string>(listedJson.ids ?? []);
 
-      const activeTutorProfiles = tutorProfilesWithBanners;
+      const activeTutorProfiles = tutorProfilesWithBanners.filter(t => listedSet.has(t.id));
       const activeTutorIds = activeTutorProfiles.map((t) => t.id);
 
-      console.log(`✅ Showing ${activeTutorProfiles.length} tutors (video provider filter disabled)`);
+      console.log(`✅ Showing ${activeTutorProfiles.length} listed tutors (of ${tutorProfilesWithBanners.length} total)`);
 
       // Fetch subjects for all tutor profiles
       const { data: tutorSubjects, error: subjectsError } =

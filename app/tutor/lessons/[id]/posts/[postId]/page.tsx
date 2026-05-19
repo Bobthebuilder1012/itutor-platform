@@ -4,27 +4,28 @@ import { useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useProfile } from '@/lib/hooks/useProfile';
 import TutorShell from '@/components/tutor/TutorShell';
-import GroupDetailPanel from '@/components/groups/GroupDetailPanel';
+import AssignmentDetailPage from '@/components/groups/stream/AssignmentDetailPage';
 
-export default function TutorLessonDetailPage() {
+export default function TutorLessonPostPage() {
   return (
     <TutorShell>
-      <LessonDetailContent />
+      <PostDetailContent />
     </TutorShell>
   );
 }
 
-function LessonDetailContent() {
+function PostDetailContent() {
   const router = useRouter();
   const params = useParams();
-  const id = params?.id as string | undefined;
+  const id = params?.id as string;
+  const postId = params?.postId as string;
   const { profile, loading } = useProfile();
 
   useEffect(() => {
     if (!loading && (!profile || profile.role !== 'tutor')) router.replace('/login');
   }, [loading, profile, router]);
 
-  if (loading || !profile || !id) {
+  if (loading || !profile) {
     return (
       <div className="min-h-[400px] flex items-center justify-center">
         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand" />
@@ -33,13 +34,13 @@ function LessonDetailContent() {
   }
 
   return (
-    <div className="h-full min-h-0 flex flex-col">
-      <GroupDetailPanel
-        groupId={id}
-        currentUserId={profile.id}
-        userRole="tutor"
-        onGroupUpdated={() => {}}
-      />
-    </div>
+    <AssignmentDetailPage
+      lessonId={id}
+      postId={postId}
+      currentUserId={profile.id}
+      currentUserName={profile.full_name ?? profile.email ?? 'Tutor'}
+      currentUserAvatar={profile.avatar_url ?? null}
+      isTutor={true}
+    />
   );
 }

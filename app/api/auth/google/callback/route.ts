@@ -5,6 +5,12 @@ import { migrateSessionsToNewProvider } from '@/lib/services/migrateSessionsToNe
 
 export const dynamic = 'force-dynamic';
 
+function redirect(returnTo: string, baseUrl: string, params: Record<string, string>) {
+  const url = new URL(returnTo, baseUrl);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  return NextResponse.redirect(url);
+}
+
 export async function GET(request: NextRequest) {
   // Use service role for callback (user context in state parameter)
   const supabase = createClient(
@@ -22,7 +28,7 @@ export async function GET(request: NextRequest) {
   const returnTo = stateParts[1] || '/tutor/video-setup';
 
   if (error || !code || !tutorId) {
-    return NextResponse.redirect(new URL(`${returnTo}?error=auth_failed`, request.url));
+    return redirect(returnTo, request.url, { error: 'auth_failed' });
   }
 
   try {
@@ -37,7 +43,7 @@ export async function GET(request: NextRequest) {
         hasClientSecret: !!clientSecret,
         hasRedirectUri: !!redirectUri
       });
-      return NextResponse.redirect(new URL(`${returnTo}?error=server_config`, request.url));
+      return redirect(returnTo, request.url, { error: 'server_config' });
     }
 
     console.log('🔄 Exchanging OAuth code for tokens...', {
@@ -68,9 +74,7 @@ export async function GET(request: NextRequest) {
         redirectUri,
         clientIdPrefix: clientId.slice(0, 12) + '...',
       });
-      return NextResponse.redirect(
-        new URL(`${returnTo}?error=connection_failed&detail=${encodeURIComponent(`Token exchange ${tokenResponse.status}: ${errorData}`)}`, request.url)
-      );
+      return redirect(returnTo, request.url, { error: 'connection_failed', detail: `Token exchange ${tokenResponse.status}: ${errorData}` });
     }
 
     const tokens = await tokenResponse.json();
@@ -119,9 +123,7 @@ export async function GET(request: NextRequest) {
 
     if (dbError) {
       console.error('❌ Database upsert error:', JSON.stringify(dbError, null, 2));
-      return NextResponse.redirect(
-        new URL(`${returnTo}?error=connection_failed&detail=${encodeURIComponent(dbError.message ?? dbError.code ?? 'unknown')}`, request.url)
-      );
+      return redirect(returnTo, request.url, { error: 'connection_failed', detail: dbError.message ?? dbError.code ?? 'unknown' });
     }
 
     // If switching from another provider, migrate all future sessions
@@ -132,24 +134,17 @@ export async function GET(request: NextRequest) {
       
       if (migrationResult.success) {
         console.log(`✅ Successfully migrated ${migrationResult.migratedCount} sessions to Google Meet`);
-        return NextResponse.redirect(
-          new URL(`${returnTo}?success=true&migrated=${migrationResult.migratedCount}`, request.url)
-        );
+        return redirect(returnTo, request.url, { success: 'true', migrated: String(migrationResult.migratedCount) });
       } else {
         console.warn(`⚠️ Session migration completed with issues: ${migrationResult.error}`);
-        return NextResponse.redirect(
-          new URL(`${returnTo}?success=true&migration_warning=true`, request.url)
-        );
+        return redirect(returnTo, request.url, { success: 'true', migration_warning: 'true' });
       }
     }
 
-    return NextResponse.redirect(new URL(`${returnTo}?success=true`, request.url));
+    return redirect(returnTo, request.url, { success: 'true' });
   } catch (error: any) {
     console.error('❌ OAuth callback error:', error);
-    const detail = error?.message ?? 'unknown';
-    return NextResponse.redirect(
-      new URL(`${returnTo}?error=connection_failed&detail=${encodeURIComponent(detail)}`, request.url)
-    );
+    return redirect(returnTo, request.url, { error: 'connection_failed', detail: error?.message ?? 'unknown' });
   }
 }
 
