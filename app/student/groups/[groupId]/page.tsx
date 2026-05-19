@@ -5,14 +5,6 @@ import { isGroupsFeatureEnabled } from '@/lib/featureFlags/groupsFeature';
 
 async function getGroup(groupId: string) {
   const service = getServiceClient();
-  const baseSelect = `
-      id, name, description, subject, timezone, content_blocks, tutor_id,
-      tutor:profiles!groups_tutor_id_fkey(full_name, response_time_minutes),
-      sessions:group_sessions(
-        id,
-        occurrences:group_session_occurrences(id, scheduled_start_at, meeting_link)
-      )
-    `;
 
   const isSchemaMismatch = (error: any) => {
     const code = String(error?.code ?? '');
@@ -20,36 +12,69 @@ async function getGroup(groupId: string) {
     return (
       code === '42703' ||
       code === '42P01' ||
+      code === 'PGRST200' ||
+      code === 'PGRST201' ||
       code === 'PGRST204' ||
       code === 'PGRST205' ||
       message.includes('does not exist') ||
-      message.includes('could not find')
+      message.includes('could not find') ||
+      message.includes('could not embed') ||
+      message.includes('more than one relationship')
     );
   };
 
-  let { data: group, error: groupError } = await service
-    .from('groups')
-    .select(baseSelect)
-    .eq('id', groupId)
-    .is('archived_at', null)
-    .or('status.eq.PUBLISHED,status.eq.published,status.is.null')
-    .maybeSingle();
+  const fullSelect = `
+      id, name, description, subject, timezone, content_blocks, tutor_id,
+      tutor:profiles!groups_tutor_id_fkey(full_name, response_time_minutes),
+      sessions:group_sessions(
+        id,
+        occurrences:group_session_occurrences(id, scheduled_start_at, meeting_link)
+      )
+    `;
+  const noSessionsSelect = `
+      id, name, description, subject, timezone, content_blocks, tutor_id,
+      tutor:profiles!groups_tutor_id_fkey(full_name, response_time_minutes)
+    `;
+  const tutorOnlySelect = `
+      id, name, description, subject, tutor_id,
+      tutor:profiles!groups_tutor_id_fkey(full_name)
+    `;
+  const bareSelect = `id, name, description, subject, tutor_id`;
 
-  if (isSchemaMismatch(groupError)) {
-    ({ data: group, error: groupError } = await service
-      .from('groups')
-      .select(baseSelect)
-      .eq('id', groupId)
-      .is('archived_at', null)
-      .maybeSingle());
+  const runQuery = async (
+    selectStr: string,
+    opts: { withArchived: boolean; withStatus: boolean }
+  ) => {
+    let q = service.from('groups').select(selectStr).eq('id', groupId);
+    if (opts.withArchived) q = q.is('archived_at', null);
+    if (opts.withStatus) q = q.or('status.eq.PUBLISHED,status.eq.published,status.is.null');
+    return q.maybeSingle();
+  };
+
+  const attempts: Array<{ select: string; withArchived: boolean; withStatus: boolean }> = [
+    { select: fullSelect, withArchived: true, withStatus: true },
+    { select: fullSelect, withArchived: true, withStatus: false },
+    { select: noSessionsSelect, withArchived: true, withStatus: false },
+    { select: tutorOnlySelect, withArchived: true, withStatus: false },
+    { select: bareSelect, withArchived: true, withStatus: false },
+    { select: bareSelect, withArchived: false, withStatus: false },
+  ];
+
+  let group: any = null;
+  let groupError: any = null;
+  for (const attempt of attempts) {
+    const result = await runQuery(attempt.select, {
+      withArchived: attempt.withArchived,
+      withStatus: attempt.withStatus,
+    });
+    groupError = result.error;
+    group = result.data;
+    if (group) break;
+    if (!isSchemaMismatch(groupError)) break;
   }
 
-  if (isSchemaMismatch(groupError)) {
-    ({ data: group, error: groupError } = await service
-      .from('groups')
-      .select(baseSelect)
-      .eq('id', groupId)
-      .maybeSingle());
+  if (groupError && !group) {
+    console.error('[student/groups/[groupId]] failed to load group', groupId, groupError);
   }
 
   if (!group) return null;
