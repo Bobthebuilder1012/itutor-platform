@@ -36,14 +36,24 @@ export async function POST(request: NextRequest) {
     // 1. Check for duplicate (this student already booked this exact slot)
     const { data: existing } = await admin
       .from('bookings')
-      .select('id')
+      .select('id, payment_required, payment_status, payer_id')
       .eq('student_id', user.id)
       .eq('tutor_id', tutorId)
       .eq('requested_start_at', requestedStartAt)
       .in('status', ['PENDING', 'CONFIRMED'])
       .maybeSingle();
     if (existing) {
-      return NextResponse.json({ success: true, booking_id: existing.id, status: 'CONFIRMED' });
+      if (!existing.payer_id) {
+        await admin.from('bookings').update({ payer_id: user.id }).eq('id', existing.id);
+      }
+      const needsPayment =
+        existing.payment_required === true && existing.payment_status !== 'paid';
+      return NextResponse.json({
+        success: true,
+        booking_id: existing.id,
+        status: 'CONFIRMED',
+        requires_payment: needsPayment,
+      });
     }
 
     // 2. Check for conflicts — any CONFIRMED booking for this tutor overlapping the requested window
@@ -134,6 +144,7 @@ export async function POST(request: NextRequest) {
         last_action_by: 'student',
         student_notes: studentNotes || null,
         price_ttd: priceTtd,
+        payer_id: user.id,
         payment_required: paidClassesEnabled,
         payment_status: 'unpaid',
         currency: 'TTD',
