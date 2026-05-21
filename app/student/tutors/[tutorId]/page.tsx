@@ -412,7 +412,10 @@ export default function TutorProfilePage() {
       if (!res.ok) throw new Error(result?.error || 'Failed to book session');
       setShowBookingSheet(false);
       setBookingNotes('');
-      if (result.requires_payment) { router.push(`/payments/checkout?bookingId=${result.booking_id}`); return; }
+      // Paid path: server returns a LuniPay hosted-checkout URL and no
+      // booking has been created yet. Send the user straight to LuniPay
+      // — the booking is materialised by the webhook on payment success.
+      if (result.paymentUrl) { window.location.href = result.paymentUrl; return; }
       alert('Session booked! You\'ll receive a confirmation shortly.');
       router.push('/student/bookings');
     } catch (err: any) {
