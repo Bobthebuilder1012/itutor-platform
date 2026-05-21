@@ -45,9 +45,9 @@ export default function StudentBookingsPage() {
       const data = await getStudentBookings(profile.id);
       const enriched = await Promise.all(data.map(async (booking) => {
         const [tutorRes, subjectRes, sessionRes] = await Promise.all([
-          supabase.from('profiles').select('username, display_name, full_name').eq('id', booking.tutor_id).single(),
-          supabase.from('subjects').select('name, label').eq('id', booking.subject_id).single(),
-          supabase.from('sessions').select('id, status, join_url, scheduled_start_at, scheduled_end_at, duration_minutes').eq('booking_id', booking.id).single(),
+          supabase.from('profiles').select('username, display_name, full_name').eq('id', booking.tutor_id).maybeSingle(),
+          supabase.from('subjects').select('name, label').eq('id', booking.subject_id).maybeSingle(),
+          supabase.from('sessions').select('id, status, join_url, scheduled_start_at, scheduled_end_at, duration_minutes').eq('booking_id', booking.id).maybeSingle(),
         ]);
         return {
           ...booking,

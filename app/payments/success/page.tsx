@@ -61,9 +61,11 @@ export default function PaymentSuccess() {
   async function fetchReceipt() {
     // The new pre-payment flow lands here with only ?session_id=... — the
     // booking + payment rows are written by the webhook AFTER the redirect.
-    // Poll for up to ~20s waiting for the webhook to materialise them.
+    // Poll briefly for the webhook; if it's slow / not registered, fall
+    // back to /api/payments/lunipay/finalize which runs the same logic
+    // synchronously off the LuniPay session itself.
     const start = Date.now();
-    const TIMEOUT_MS = 20_000;
+    const POLL_MS = 8_000;
     const RETRY_MS = 1_500;
 
     try {
@@ -72,7 +74,6 @@ export default function PaymentSuccess() {
 
         if (payment) {
           if (!payment.booking_id) {
-            // Slot conflict refund case — payment exists but booking doesn't.
             throw new Error(
               'Your payment went through, but the time slot was no longer available. We will refund you shortly.'
             );
@@ -81,15 +82,37 @@ export default function PaymentSuccess() {
           return;
         }
 
-        if (Date.now() - start > TIMEOUT_MS) {
-          throw new Error(
-            'Payment confirmation is taking longer than expected. Please check your bookings in a minute.'
-          );
-        }
+        if (Date.now() - start > POLL_MS) break;
 
         if (!waitingOnWebhook) setWaitingOnWebhook(true);
         await new Promise((r) => setTimeout(r, RETRY_MS));
       }
+
+      // Webhook hasn't fired (or hasn't fired yet). Hit finalize as a
+      // synchronous fallback so the user isn't stuck.
+      if (sessionId) {
+        const res = await fetch(`/api/payments/lunipay/finalize?session_id=${encodeURIComponent(sessionId)}`);
+        const result = await res.json();
+        if (!res.ok) {
+          throw new Error(result?.error || 'Failed to confirm payment');
+        }
+        if (result.status === 'slot_conflict_needs_refund') {
+          throw new Error(
+            'Your payment went through, but the time slot was no longer available. We will refund you shortly.'
+          );
+        }
+        if (result.status === 'not_paid') {
+          throw new Error('Payment was not completed.');
+        }
+        const payment = await loadPayment();
+        if (payment?.booking_id) {
+          await loadBookingAndSet(payment);
+          return;
+        }
+        throw new Error('Booking was not created.');
+      }
+
+      throw new Error('Payment confirmation is taking longer than expected. Please check your bookings in a minute.');
     } catch (err: any) {
       console.error('Error fetching receipt:', err);
       setError(err.message || 'Failed to load receipt');
