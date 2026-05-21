@@ -87,7 +87,7 @@ export default function PaymentCheckout() {
     setError('');
 
     try {
-      const response = await fetch('/api/payments/wipay/initiate', {
+      const response = await fetch('/api/payments/lunipay/initiate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bookingId }),
@@ -99,7 +99,6 @@ export default function PaymentCheckout() {
         throw new Error(result.error || 'Failed to initiate payment');
       }
 
-      // Redirect to WiPay payment page
       window.location.href = result.paymentUrl;
     } catch (err: any) {
       console.error('Payment initiation error:', err);
