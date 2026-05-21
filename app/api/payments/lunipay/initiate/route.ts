@@ -293,12 +293,16 @@ export async function POST(request: NextRequest) {
           success_url: successUrl,
           cancel_url: cancelUrl,
           customer_email: customerEmail,
+          // The SDK's `CheckoutSessionLineItem` type calls this field
+          // `amount_cents`, but the live API actually expects `amount`
+          // (in cents) — see scripts/test-lunipay-sandbox.ts. Cast through
+          // `any` so the SDK accepts the shape the real endpoint wants.
           line_items: [
             {
               name: description,
               quantity: 1,
-              amount_cents: amountCents,
-            },
+              amount: amountCents,
+            } as any,
           ],
           metadata: {
             booking_id: bookingId,
