@@ -27,6 +27,10 @@ yarn-error.log*
 .env*.local
 .env
 
+# transient log/dump scratch files
+vercel-*.txt
+*_dump.sql
+
 # vercel
 .vercel
 
