@@ -409,7 +409,12 @@ export default function TutorProfilePage() {
         }),
       });
       const result = await res.json();
-      if (!res.ok) throw new Error(result?.error || 'Failed to book session');
+      if (!res.ok) {
+        const msg = result?.details
+          ? `${result.error || 'Failed to book session'}: ${result.details}`
+          : result?.error || 'Failed to book session';
+        throw new Error(msg);
+      }
       setShowBookingSheet(false);
       setBookingNotes('');
       // Paid path: server returns a LuniPay hosted-checkout URL and no
