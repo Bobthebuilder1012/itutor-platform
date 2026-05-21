@@ -13,7 +13,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { LuniPayError } from 'lunipay';
 import { getLunipayClient, ttdToCents } from '@/lib/payments/lunipayClient';
@@ -39,8 +39,14 @@ type ReusablePayment = {
  * index on (booking_id) WHERE status IN ('initiated','requires_action')
  * stops blocking subsequent inserts.
  */
+// Use the permissive (any-Database) SupabaseClient so .update() / .insert()
+// accept arbitrary column shapes — we don't generate Database types in this
+// project, so the strict default in @supabase/supabase-js >=2.89 narrows the
+// parameter to `never`.
+type AdminClient = SupabaseClient<any, 'public', 'public', any, any>;
+
 async function findReusableActivePayment(
-  admin: ReturnType<typeof createClient>,
+  admin: AdminClient,
   bookingId: string
 ): Promise<ReusablePayment | null> {
   const { data: rows } = await admin
