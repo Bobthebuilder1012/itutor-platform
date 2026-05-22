@@ -56,16 +56,17 @@ export async function GET(request: NextRequest) {
   // current state.
   const { data: existing } = await admin
     .from('payments')
-    .select('id, booking_id, status')
+    .select('id, booking_id, status, amount_ttd, currency, provider_reference, created_at')
     .eq('lunipay_checkout_session_id', sessionId)
     .maybeSingle();
 
   if (existing) {
     return NextResponse.json({
-      status: 'already_processed',
+      status: existing.booking_id ? 'already_processed' : 'slot_conflict_needs_refund',
       paymentId: existing.id,
       bookingId: existing.booking_id,
       paymentStatus: existing.status,
+      payment: existing,
     });
   }
 
@@ -215,7 +216,7 @@ export async function GET(request: NextRequest) {
       paid_at: new Date().toISOString(),
       raw_provider_payload: { source: 'finalize', session },
     })
-    .select('id')
+    .select('id, booking_id, status, amount_ttd, currency, provider_reference, created_at')
     .single();
 
   try {
@@ -247,5 +248,6 @@ export async function GET(request: NextRequest) {
     status: 'created',
     paymentId: payment?.id ?? null,
     bookingId: booking.id,
+    payment,
   });
 }

@@ -104,7 +104,11 @@ export default function PaymentSuccess() {
         if (result.status === 'not_paid') {
           throw new Error('Payment was not completed.');
         }
-        const payment = await loadPayment();
+
+        // Trust the finalize response. We have the bookingId regardless
+        // of whether the client-side RLS query can see the freshly-
+        // inserted row yet.
+        const payment = result.payment ?? (await loadPaymentByBookingId(result.bookingId));
         if (payment?.booking_id) {
           await loadBookingAndSet(payment);
           return;
@@ -136,6 +140,18 @@ export default function PaymentSuccess() {
     }
 
     const { data, error } = await q;
+    if (error) throw error;
+    return data && data.length > 0 ? data[0] : null;
+  }
+
+  async function loadPaymentByBookingId(bid: string | null | undefined) {
+    if (!bid) return null;
+    const { data, error } = await supabase
+      .from('payments')
+      .select('*')
+      .eq('booking_id', bid)
+      .order('created_at', { ascending: false })
+      .limit(1);
     if (error) throw error;
     return data && data.length > 0 ? data[0] : null;
   }
