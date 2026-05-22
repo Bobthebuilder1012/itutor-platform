@@ -581,6 +581,21 @@ export default function AdminDashboardPage() {
                 <p className="text-sm text-gray-600">View all verified tutors</p>
               </div>
             </Link>
+
+            <Link
+              href="/admin/payouts"
+              className="flex items-center gap-4 p-6 border-2 border-gray-200 rounded-xl hover:border-emerald-500 hover:bg-emerald-50 transition-all group hover:shadow-lg"
+            >
+              <div className="bg-emerald-100 rounded-lg p-4 group-hover:bg-emerald-200 transition-colors">
+                <svg className="w-8 h-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h.01M12 15h.01M17 15h.01M3 6h18a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V7a1 1 0 011-1z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900 text-lg">Payouts</h3>
+                <p className="text-sm text-gray-600">Generate bank CSV & reconcile transfers</p>
+              </div>
+            </Link>
           </div>
 
           <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">

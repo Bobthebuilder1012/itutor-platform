@@ -368,22 +368,7 @@ function SettingsContent() {
             </>
           )}
 
-          {section === 'payouts' && (
-            <>
-              <div className="rounded-2xl bg-mint p-4 flex items-center justify-between">
-                <div>
-                  <div className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Payouts</div>
-                  <div className="font-semibold text-ink mt-1">No payout method connected yet</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">Set up your bank account to receive automatic payouts.</div>
-                </div>
-              </div>
-              <div className="rounded-xl border border-border p-5 text-center">
-                <Wallet className="size-8 mx-auto text-muted-foreground/40" />
-                <p className="text-sm font-medium text-ink mt-3">Payout management coming soon</p>
-                <p className="text-xs text-muted-foreground mt-1">Bank account, payout frequency, and tax documents will be configurable here.</p>
-              </div>
-            </>
-          )}
+          {section === 'payouts' && <PayoutAccountForm />}
         </div>
       </div>
 
@@ -447,5 +432,128 @@ function SaveBar({ onSave, saving, label = 'Save changes' }: { onSave: () => voi
         {saving ? 'Saving…' : label}
       </button>
     </div>
+  );
+}
+
+function PayoutAccountForm() {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const [hasAccount, setHasAccount] = useState(false);
+  const [verified, setVerified] = useState(false);
+  const [payoutName, setPayoutName] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [branch, setBranch] = useState('');
+  const [accountType, setAccountType] = useState('chequing');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/tutor/payout-account');
+        const json = await res.json();
+        if (cancelled) return;
+        if (json.account) {
+          setHasAccount(true);
+          setVerified(!!json.account.verified_at);
+          setPayoutName(json.account.payout_name ?? '');
+          setAccountNumber(json.account.payout_account_identifier ?? '');
+          setBankName(json.account.bank_name ?? '');
+          setBranch(json.account.branch ?? '');
+          setAccountType(json.account.account_type ?? 'chequing');
+        }
+      } catch (err: any) {
+        setError(err.message || 'Failed to load payout account');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  async function save() {
+    setSaving(true); setError(''); setMessage('');
+    try {
+      const res = await fetch('/api/tutor/payout-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          payout_name: payoutName,
+          payout_account_identifier: accountNumber,
+          bank_name: bankName,
+          branch,
+          account_type: accountType,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Failed to save');
+      setHasAccount(true);
+      setVerified(false);
+      setMessage('Bank details saved. Payouts will use this account.');
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
+    return <div className="text-sm text-muted-foreground">Loading payout details…</div>;
+  }
+
+  return (
+    <>
+      <div className="rounded-2xl bg-mint p-4">
+        <div className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Payouts</div>
+        <div className="font-semibold text-ink mt-1">
+          {hasAccount ? (verified ? 'Bank account verified' : 'Bank account on file') : 'No payout method connected yet'}
+        </div>
+        <div className="text-xs text-muted-foreground mt-0.5">
+          iTutor pays out tutor earnings via bulk bank transfer. Your earnings accumulate as you teach paid sessions and are released on the next payout cycle.
+        </div>
+      </div>
+
+      {error && <div className="rounded-xl bg-coral/10 border border-coral/30 p-3 text-sm text-coral">{error}</div>}
+      {message && <div className="rounded-xl bg-mint border border-brand/30 p-3 text-sm text-ink">{message}</div>}
+
+      <div className="space-y-4">
+        <div>
+          <label className="block text-xs font-medium text-ink mb-1.5">Account holder name</label>
+          <input type="text" value={payoutName} onChange={(e) => setPayoutName(e.target.value)}
+            placeholder="As it appears on your bank statement"
+            className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-ink mb-1.5">Bank name</label>
+          <input type="text" value={bankName} onChange={(e) => setBankName(e.target.value)}
+            placeholder="e.g. Republic Bank"
+            className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-ink mb-1.5">Branch</label>
+          <input type="text" value={branch} onChange={(e) => setBranch(e.target.value)}
+            placeholder="e.g. Maraval"
+            className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-ink mb-1.5">Account number</label>
+          <input type="text" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)}
+            inputMode="numeric"
+            className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-ink mb-1.5">Account type</label>
+          <select value={accountType} onChange={(e) => setAccountType(e.target.value)}
+            className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand">
+            <option value="chequing">Chequing</option>
+            <option value="savings">Savings</option>
+          </select>
+        </div>
+      </div>
+
+      <SaveBar onSave={save} saving={saving} label={hasAccount ? 'Update bank details' : 'Save bank details'} />
+    </>
   );
 }
