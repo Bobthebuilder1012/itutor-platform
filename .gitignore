@@ -29,6 +29,7 @@ yarn-error.log*
 
 # transient log/dump scratch files
 vercel-*.txt
+vercel-*.json
 *_dump.sql
 
 # vercel
