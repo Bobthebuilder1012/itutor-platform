@@ -72,19 +72,12 @@ you flip the merchant account. Don't reuse the test endpoint.
 Run before live: `npx supabase db push` against the production project
 (separate `--project-ref` from staging).
 
-### 1.5 RLS on `tutor_payout_accounts` writes
+### 1.5 RLS on `tutor_payout_accounts` writes — **SHIPPED**
 
-Mig 147 added admin SELECT, but the original mig 020 didn't define INSERT/
-UPDATE policies. Tutors hit the API route (service-role), so it works today,
-but if anyone later switches the form to direct-Supabase writes it'll fail
-silently. Consider adding a tutor-write policy now to be safe:
-
-```sql
-CREATE POLICY "Tutors can upsert their payout account"
-ON tutor_payout_accounts FOR ALL TO authenticated
-USING  (tutor_id = auth.uid())
-WITH CHECK (tutor_id = auth.uid());
-```
+Migration 149 adds the missing tutor-owned `FOR ALL` policy on
+`tutor_payout_accounts`. Service-role still has full access; any future
+direct-Supabase writes from the bank-details form will now succeed
+RLS-correctly without going through the service-role API route.
 
 ### 1.6 No payout history visible to tutors
 
