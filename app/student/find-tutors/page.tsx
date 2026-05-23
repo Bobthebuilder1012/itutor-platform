@@ -102,8 +102,9 @@ export default function FindTutorsPage() {
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
-  const [selectedRating, setSelectedRating] = useState<string>('');
-  const [selectedPrice, setSelectedPrice] = useState<string>('');
+  const [selectedRating, setSelectedRating] = useState<number | null>(null);
+  const [priceMin, setPriceMin] = useState<string>('');
+  const [priceMax, setPriceMax] = useState<string>('');
   const [selectedSchool, setSelectedSchool] = useState<string>('');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -468,26 +469,24 @@ export default function FindTutorsPage() {
     }
 
     // Filter by rating
-    if (selectedRating) {
-      const minRating = parseFloat(selectedRating);
+    if (selectedRating !== null) {
       filtered = filtered.filter(tutor =>
-        tutor.average_rating !== null && tutor.average_rating >= minRating
+        tutor.average_rating !== null && tutor.average_rating >= selectedRating
       );
     }
 
-    // Filter by price
-    if (selectedPrice) {
-      if (selectedPrice === 'free') {
-        // Only show tutors with at least one free subject
-        filtered = filtered.filter(tutor =>
-          tutor.subjects.some(s => s.price_per_hour_ttd === 0)
-        );
-      } else {
-        const maxPrice = parseFloat(selectedPrice);
-        filtered = filtered.filter(tutor =>
-          tutor.subjects.some(s => s.price_per_hour_ttd <= maxPrice)
-        );
-      }
+    // Filter by price range
+    const min = priceMin ? parseFloat(priceMin) : null;
+    const max = priceMax ? parseFloat(priceMax) : null;
+    if (min !== null || max !== null) {
+      filtered = filtered.filter(tutor =>
+        tutor.subjects.some(s => {
+          const p = s.price_per_hour_ttd;
+          if (min !== null && p < min) return false;
+          if (max !== null && p > max) return false;
+          return true;
+        })
+      );
     }
 
     const minPrice = (t: Tutor) => {
@@ -516,10 +515,10 @@ export default function FindTutorsPage() {
     }
 
     return filtered;
-  }, [tutors, searchQuery, selectedSubjects, selectedRating, selectedPrice, selectedSchool, profile, sortOrder]);
+  }, [tutors, searchQuery, selectedSubjects, selectedRating, priceMin, priceMax, selectedSchool, profile, sortOrder]);
 
   // Reset to page 1 whenever filters change
-  useEffect(() => { setCurrentPage(1); }, [searchQuery, selectedSubjects, selectedRating, selectedPrice, selectedSchool, sortOrder]);
+  useEffect(() => { setCurrentPage(1); }, [searchQuery, selectedSubjects, selectedRating, priceMin, priceMax, selectedSchool, sortOrder]);
 
   const totalPages = Math.ceil(filteredTutors.length / TUTORS_PER_PAGE);
   const pagedTutors = filteredTutors.slice(
@@ -535,13 +534,15 @@ export default function FindTutorsPage() {
     );
   }
 
-  const hasActiveFilters = searchQuery || selectedSubjects.length > 0 || selectedRating || selectedPrice || selectedSchool;
+  const hasActiveFilters = searchQuery || selectedSubjects.length > 0 || selectedRating !== null || priceMin || priceMax || selectedSchool;
+  const activeFilterCount = [selectedRating !== null, !!(priceMin || priceMax), !!selectedSchool].filter(Boolean).length;
 
   const clearFilters = () => {
     setSearchQuery('');
     setSelectedSubjects([]);
-    setSelectedRating('');
-    setSelectedPrice('');
+    setSelectedRating(null);
+    setPriceMin('');
+    setPriceMax('');
     setSelectedSchool('');
   };
 
@@ -596,10 +597,99 @@ export default function FindTutorsPage() {
               className="flex-1 bg-transparent outline-none text-sm py-2 min-w-0"
             />
           </div>
-          <button className="hidden md:inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted rounded-xl">
-            <SlidersHorizontal className="size-4" /> Filters
+          <button
+            onClick={() => setFiltersOpen((o) => !o)}
+            className={cn(
+              'inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-xl transition',
+              filtersOpen || activeFilterCount > 0
+                ? 'bg-brand text-white'
+                : 'text-muted-foreground hover:bg-muted'
+            )}
+          >
+            <SlidersHorizontal className="size-4" />
+            Filters
+            {activeFilterCount > 0 && (
+              <span className="size-5 rounded-full bg-white text-brand text-xs font-bold grid place-items-center">{activeFilterCount}</span>
+            )}
           </button>
         </div>
+
+        {/* Filters panel */}
+        {filtersOpen && (
+          <div className="rounded-2xl border border-border bg-background p-4 space-y-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-ink text-sm">Filters</h3>
+              {hasActiveFilters && (
+                <button onClick={clearFilters} className="text-xs text-brand-deep font-semibold hover:underline">
+                  Clear all
+                </button>
+              )}
+            </div>
+
+            {/* Price range */}
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Price range (TT$/hr)</label>
+              <div className="flex items-center gap-2 mt-2">
+                <input
+                  type="number"
+                  min={0}
+                  placeholder="Min"
+                  value={priceMin}
+                  onChange={(e) => setPriceMin(e.target.value)}
+                  className="w-24 px-3 py-2 rounded-xl border border-border bg-background text-sm tabular-nums"
+                />
+                <span className="text-muted-foreground text-sm">—</span>
+                <input
+                  type="number"
+                  min={0}
+                  placeholder="Max"
+                  value={priceMax}
+                  onChange={(e) => setPriceMax(e.target.value)}
+                  className="w-24 px-3 py-2 rounded-xl border border-border bg-background text-sm tabular-nums"
+                />
+              </div>
+            </div>
+
+            {/* Star rating */}
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Minimum rating</label>
+              <div className="flex items-center gap-1.5 mt-2">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    onClick={() => setSelectedRating(selectedRating === star ? null : star)}
+                    className={cn(
+                      'inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium border transition',
+                      selectedRating === star
+                        ? 'bg-coral/10 border-coral text-coral'
+                        : 'border-border text-muted-foreground hover:border-coral/40'
+                    )}
+                  >
+                    <Star className={cn('size-3.5', selectedRating !== null && star <= selectedRating ? 'fill-coral text-coral' : 'text-current')} />
+                    {star}+
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* School filter */}
+            {institutions.length > 0 && (
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">School / Institution</label>
+                <select
+                  value={selectedSchool}
+                  onChange={(e) => setSelectedSchool(e.target.value)}
+                  className="mt-2 w-full px-3 py-2 rounded-xl border border-border bg-background text-sm"
+                >
+                  <option value="">All schools</option>
+                  {institutions.map((inst) => (
+                    <option key={inst.id} value={inst.id}>{inst.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Subject chips */}
         <div className="flex gap-2 overflow-x-auto pb-1">
