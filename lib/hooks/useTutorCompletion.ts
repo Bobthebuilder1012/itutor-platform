@@ -74,7 +74,9 @@ export function useTutorCompletion(profile: Profile | null, refreshKey = 0): Tut
   const bio = (profile.bio?.trim().length ?? 0) > 0;
   // subjects is tracked for reference but not counted — captured during signup
   // video provider is the 5th required step
-  const completed = [avatar, bio, extras.availability, extras.rate, extras.videoProvider].filter(Boolean).length;
+  const requiredSteps = [avatar, bio, extras.availability, extras.rate];
+  const allSteps = [...requiredSteps, extras.videoProvider];
+  const completed = allSteps.filter(Boolean).length;
 
   return {
     avatar, bio,
@@ -84,7 +86,7 @@ export function useTutorCompletion(profile: Profile | null, refreshKey = 0): Tut
     videoProvider: extras.videoProvider,
     completed,
     total: 5,
-    listed: completed === 5,
+    listed: requiredSteps.every(Boolean),
     loading,
   };
 }

@@ -3,14 +3,18 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Lock, TrendingUp, Users, DollarSign, Star, Calendar } from 'lucide-react';
+import { Lock, TrendingUp, TrendingDown, Users, DollarSign, Star, Calendar, AlertTriangle } from 'lucide-react';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { useTutorCompletion } from '@/lib/hooks/useTutorCompletion';
 import { supabase } from '@/lib/supabase/client';
 import TutorShell from '@/components/tutor/TutorShell';
 
+type MonthData = { month: string; actual: number; projected: number; isCurrentMonth: boolean };
+
 type Stats = {
-  monthlyEarnings: { month: string; amount: number }[];
+  monthlyEarnings: MonthData[];
+  projectedThisMonth: number;
+  earnedThisMonth: number;
   totalSessions: number;
   totalEarnings: number;
   totalStudents: number;
@@ -48,7 +52,10 @@ function AnalyticsContent() {
     sixMonthsAgo.setDate(1);
     sixMonthsAgo.setHours(0, 0, 0, 0);
 
-    const [{ data: sessions }, { data: ratings }] = await Promise.all([
+    const now = new Date();
+    const nextMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+    const [{ data: sessions }, { data: ratings }, { data: upcoming }] = await Promise.all([
       supabase
         .from('sessions')
         .select('id, scheduled_start, status, payout_amount_ttd, booking:bookings(student_id)')
@@ -58,9 +65,19 @@ function AnalyticsContent() {
         .from('ratings')
         .select('stars')
         .eq('tutor_id', tutorId),
+      supabase
+        .from('sessions')
+        .select('id, scheduled_start, payout_amount_ttd')
+        .eq('tutor_id', tutorId)
+        .in('status', ['scheduled', 'confirmed'])
+        .gte('scheduled_start', now.toISOString())
+        .lt('scheduled_start', nextMonthEnd.toISOString()),
     ]);
 
-    const months: { month: string; amount: number }[] = [];
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    const currentMonthEnd = nextMonthEnd.getTime();
+
+    const months: MonthData[] = [];
     for (let i = 5; i >= 0; i--) {
       const d = new Date();
       d.setMonth(d.getMonth() - i);
@@ -68,11 +85,24 @@ function AnalyticsContent() {
       const label = d.toLocaleString(undefined, { month: 'short' });
       const monthStart = d.getTime();
       const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime();
-      const amt = (sessions ?? [])
+      const isCurrent = monthStart === currentMonthStart;
+
+      const actual = (sessions ?? [])
         .filter((s: any) => s.status === 'completed' && new Date(s.scheduled_start).getTime() >= monthStart && new Date(s.scheduled_start).getTime() < monthEnd)
         .reduce((sum: number, s: any) => sum + (s.payout_amount_ttd ?? 0), 0);
-      months.push({ month: label, amount: amt });
+
+      let projected = 0;
+      if (isCurrent) {
+        projected = (upcoming ?? [])
+          .reduce((sum: number, s: any) => sum + (s.payout_amount_ttd ?? 0), 0);
+      }
+
+      months.push({ month: label, actual, projected, isCurrentMonth: isCurrent });
     }
+
+    const currentMonth = months.find((m) => m.isCurrentMonth);
+    const earnedThisMonth = currentMonth?.actual ?? 0;
+    const projectedThisMonth = earnedThisMonth + (currentMonth?.projected ?? 0);
 
     const completed = (sessions ?? []).filter((s: any) => s.status === 'completed');
     const totalSessions = completed.length;
@@ -91,6 +121,8 @@ function AnalyticsContent() {
 
     setStats({
       monthlyEarnings: months,
+      projectedThisMonth,
+      earnedThisMonth,
       totalSessions,
       totalEarnings,
       totalStudents: studentSet.size,
@@ -123,7 +155,11 @@ function AnalyticsContent() {
     return <div className="min-h-[400px] flex items-center justify-center"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand" /></div>;
   }
 
-  const maxEarning = Math.max(...stats.monthlyEarnings.map((m) => m.amount), 1);
+  const maxEarning = Math.max(...stats.monthlyEarnings.map((m) => m.actual + m.projected), 1);
+
+  const pastMonths = stats.monthlyEarnings.filter((m) => !m.isCurrentMonth && m.actual > 0);
+  const avgPastMonthly = pastMonths.length ? pastMonths.reduce((s, m) => s + m.actual, 0) / pastMonths.length : 0;
+  const isWeakMonth = avgPastMonthly > 0 && stats.projectedThisMonth < avgPastMonthly * 0.7;
 
   return (
     <div className="max-w-7xl space-y-6">
@@ -132,31 +168,56 @@ function AnalyticsContent() {
         <p className="text-sm text-muted-foreground mt-1">Track your performance over the last 6 months.</p>
       </header>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <Card label="Total earnings" value={`TT$ ${stats.totalEarnings.toLocaleString()}`} icon={DollarSign} />
+        <Card label="Earned this month" value={`TT$ ${stats.earnedThisMonth.toLocaleString()}`} icon={DollarSign} />
+        <Card label="Projected this month" value={`TT$ ${stats.projectedThisMonth.toLocaleString()}`} icon={TrendingUp} accent={isWeakMonth ? 'warn' : undefined} />
         <Card label="Sessions completed" value={String(stats.totalSessions)} icon={Calendar} />
-        <Card label="Active students" value={String(stats.totalStudents)} icon={Users} />
         <Card label="Avg rating" value={stats.ratingCount > 0 ? `${stats.avgRating.toFixed(1)} (${stats.ratingCount})` : '—'} icon={Star} />
       </div>
+
+      {isWeakMonth && (
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4">
+          <AlertTriangle className="size-5 text-amber-600 mt-0.5 shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-amber-900">This month is tracking below your average</p>
+            <p className="text-xs text-amber-700 mt-0.5">
+              Projected TT$ {stats.projectedThisMonth.toLocaleString()} vs your {pastMonths.length}-month avg of TT$ {Math.round(avgPastMonthly).toLocaleString()}.
+              Consider sharing your profile or reaching out to past students to book more sessions.
+            </p>
+          </div>
+        </div>
+      )}
 
       <section className="rounded-2xl border border-border bg-card p-5">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="font-semibold text-ink">Earnings — last 6 months</h3>
-            <p className="text-xs text-muted-foreground">Completed session payouts (TTD)</p>
+            <p className="text-xs text-muted-foreground">Actual payouts + projected from booked sessions (TTD)</p>
           </div>
           <TrendingUp className="size-5 text-brand-deep" />
         </div>
+        <div className="flex items-center gap-4 mb-3 text-[11px]">
+          <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-gradient-to-t from-emerald-500 to-emerald-600" /> Actual</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-blue-400/30 border border-blue-400/60 border-dashed" /> Projected</span>
+        </div>
         <div className="grid grid-cols-6 gap-3 items-end h-48">
           {stats.monthlyEarnings.map((m, idx) => {
-            const h = (m.amount / maxEarning) * 100;
+            const totalHeight = ((m.actual + m.projected) / maxEarning) * 100;
+            const actualHeight = totalHeight > 0 ? (m.actual / (m.actual + m.projected)) * 100 : 0;
+            const total = m.actual + m.projected;
             return (
               <div key={idx} className="flex flex-col items-center justify-end gap-2 h-full">
-                <div className="text-[10px] font-semibold tabular-nums text-muted-foreground">{m.amount > 0 ? `TT$ ${m.amount.toLocaleString()}` : ''}</div>
-                <div className="w-full bg-brand/20 rounded-t-lg" style={{ height: `${h}%` }}>
-                  <div className="w-full h-full bg-gradient-to-t from-brand to-brand-deep rounded-t-lg" />
+                <div className="text-[10px] font-semibold tabular-nums text-muted-foreground">
+                  {total > 0 ? `TT$ ${total.toLocaleString()}` : ''}
                 </div>
-                <div className="text-xs text-muted-foreground font-semibold">{m.month}</div>
+                <div className="w-full rounded-t-lg overflow-hidden" style={{ height: `${totalHeight}%` }}>
+                  {m.projected > 0 && (
+                    <div className="w-full bg-blue-400/20 border border-dashed border-blue-400/50" style={{ height: `${100 - actualHeight}%` }} />
+                  )}
+                  <div className="w-full bg-gradient-to-t from-emerald-500 to-emerald-600" style={{ height: `${actualHeight}%` }} />
+                </div>
+                <div className={`text-xs font-semibold ${m.isCurrentMonth ? 'text-brand-deep' : 'text-muted-foreground'}`}>{m.month}{m.isCurrentMonth ? '*' : ''}</div>
               </div>
             );
           })}
@@ -192,16 +253,18 @@ function AnalyticsContent() {
   );
 }
 
-function Card({ label, value, icon: Icon }: { label: string; value: string; icon: typeof DollarSign }) {
+function Card({ label, value, icon: Icon, accent }: { label: string; value: string; icon: typeof DollarSign; accent?: 'warn' }) {
+  const isWarn = accent === 'warn';
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
+    <div className={`rounded-xl border p-4 ${isWarn ? 'border-amber-300 bg-amber-50' : 'border-border bg-card'}`}>
       <div className="flex items-center justify-between">
-        <div className="size-9 rounded-lg bg-brand/10 text-brand-deep grid place-items-center">
+        <div className={`size-9 rounded-lg grid place-items-center ${isWarn ? 'bg-amber-100 text-amber-600' : 'bg-brand/10 text-brand-deep'}`}>
           <Icon className="size-4" />
         </div>
+        {isWarn && <TrendingDown className="size-4 text-amber-500" />}
       </div>
-      <div className="mt-3 text-2xl font-bold tracking-tight text-ink tabular-nums">{value}</div>
-      <div className="text-xs text-muted-foreground mt-0.5">{label}</div>
+      <div className={`mt-3 text-2xl font-bold tracking-tight tabular-nums ${isWarn ? 'text-amber-900' : 'text-ink'}`}>{value}</div>
+      <div className={`text-xs mt-0.5 ${isWarn ? 'text-amber-700' : 'text-muted-foreground'}`}>{label}</div>
     </div>
   );
 }
