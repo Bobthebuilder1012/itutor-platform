@@ -305,8 +305,11 @@ export default function PaymentsPage() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-itutor-green"
               >
                 <option value="all">All Statuses</option>
-                <option value="COMPLETED">Completed</option>
-                <option value="CONFIRMED">Confirmed</option>
+                <option value="SCHEDULED">Scheduled</option>
+                <option value="JOIN_OPEN">Join Open</option>
+                <option value="COMPLETED_ASSUMED">Completed</option>
+                <option value="EARLY_END_SHORT">Ended Early</option>
+                <option value="NO_SHOW_STUDENT">No Show</option>
                 <option value="CANCELLED">Cancelled</option>
               </select>
             </div>
