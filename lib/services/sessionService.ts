@@ -273,16 +273,29 @@ export async function processScheduledCharges(): Promise<void> {
 
   for (const session of sessions) {
     try {
-      // Check for early end override
-      const meetingState = await getMeetingState(session as Session);
-      
+      // Early-end detection is a BONUS — if the video provider call
+      // fails (token expired, provider unreachable, no real meeting was
+      // ever held in test environments) we proceed with COMPLETED_ASSUMED
+      // at the full charge. Previously a single getMeetingState throw
+      // would skip the whole iteration and leave the session permanently
+      // un-charged.
+      let meetingState: { meeting_started_at?: string | null; meeting_ended_at?: string | null } = {};
+      try {
+        meetingState = await getMeetingState(session as Session);
+      } catch (mErr) {
+        console.warn(
+          `[process-charges] getMeetingState failed for ${session.id}; proceeding with COMPLETED_ASSUMED:`,
+          (mErr as Error)?.message ?? mErr
+        );
+      }
+
       const scheduledEnd = new Date(session.scheduled_end_at);
       let status = 'COMPLETED_ASSUMED';
       let chargeAmount = session.charge_amount_ttd;
       let platformFee = 0;
       let payoutAmount = 0;
 
-      // Early end detection
+      // Early end detection (only when meetingState was retrievable)
       if (meetingState.meeting_ended_at) {
         const meetingEnd = new Date(meetingState.meeting_ended_at);
         if (meetingEnd < scheduledEnd) {
