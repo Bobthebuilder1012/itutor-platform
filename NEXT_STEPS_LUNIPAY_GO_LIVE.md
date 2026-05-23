@@ -24,28 +24,22 @@ and the sequence to flip from sandbox to live.
 
 ## 1. Known gaps (must fix before live)
 
-### 1.1 Release-window automation MISSING
+### 1.1 Release-window automation — **SHIPPED**
 
-The existing `release_payout(p_session_id)` RPC (migration 136) flips
-`payout_ledger.status` from `owed` → `released` directly. It is only called by
-`/api/payments/lunipay/release`, which is **not invoked by any cron**.
+~~The existing `release_payout(p_session_id)` RPC flips `owed → released`
+directly. Admin Payouts page filters `release_ready`, so zero rows appear.~~
 
-The admin Payouts page (migration 147) filters `status = 'release_ready'`,
-which nothing currently produces. **Result**: zero rows show up for the admin
-to export, even after sessions complete.
+**Implemented in migration 148 + cron:**
+- RPC `flip_owed_to_release_ready(p_grace_hours)` — single-statement chained
+  CTEs flip ledger rows older than the cutoff and shift each tutor's
+  `pending_ttd → available_ttd`. Idempotent (status guard).
+- Cron `GET /api/cron/flip-payouts-release-ready` — runs daily at 04:00 UTC
+  (`vercel.json`), reads `PAYOUT_GRACE_HOURS` env var (default 168).
+- Smoke-tested against staging RPC: returns `{cutoff, grace_hours,
+  lines_flipped, tutors_updated, total_amount_ttd}`.
 
-**Fix (small migration + cron):**
-1. New migration `148_payout_release_window.sql`:
-   - RPC `flip_owed_to_release_ready(p_grace_hours int)` that, in one
-     transaction:
-     - selects `payout_ledger` rows with `status='owed'` whose
-       `sessions.charged_at < now() - p_grace_hours * interval '1 hour'`
-     - flips them to `release_ready`
-     - shifts each tutor's `pending_ttd → available_ttd`.
-2. New cron `/api/cron/flip-payouts-release-ready` calling the RPC daily
-   (`vercel.json` schedule `0 4 * * *`).
-3. Make grace hours configurable via env (`PAYOUT_GRACE_HOURS`, default
-   `168` = 7 days, the LuniPay settlement floor).
+**Action item before live:** add `PAYOUT_GRACE_HOURS=168` to Vercel
+production env (Preview/Development can stay unset → defaults to 168).
 
 ### 1.2 Tutor wallet UI is not surfacing the new flow
 
