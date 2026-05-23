@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { User, Bell, Lock, Wallet, GraduationCap, ChevronRight, Camera, Video, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -30,10 +30,12 @@ export default function TutorSettingsPage() {
 
 function SettingsContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialSection = (searchParams.get('section') as Section | null) ?? 'profile';
   const { profile, loading: profileLoading } = useProfile();
   const [uploading, setUploading] = useState(false);
 
-  const [section, setSection] = useState<Section>('profile');
+  const [section, setSection] = useState<Section>(initialSection);
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');

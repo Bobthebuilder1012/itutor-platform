@@ -41,17 +41,25 @@ directly. Admin Payouts page filters `release_ready`, so zero rows appear.~~
 **Action item before live:** add `PAYOUT_GRACE_HOURS=168` to Vercel
 production env (Preview/Development can stay unset → defaults to 168).
 
-### 1.2 Tutor wallet UI is not surfacing the new flow
+### 1.2 Tutor wallet UI — **SHIPPED**
 
-`/tutor/wallet` (if it exists) should render `tutor_balances` with three lines:
+~~`/tutor/wallet` was deriving from `sessions` directly, not from the
+authoritative `tutor_balances` + `payout_ledger`.~~
 
-| Label                  | Source                                    |
-|------------------------|-------------------------------------------|
-| Pending (in escrow)    | `tutor_balances.pending_ttd`              |
-| Awaiting bank transfer | `tutor_balances.available_ttd`            |
-| Lifetime paid          | `SUM(payout_ledger.amount_ttd) WHERE status='released'` |
-
-If there's no wallet page, scope a small one before launch — tutors will ask.
+**Implemented:**
+- New `GET /api/tutor/wallet` endpoint returns the canonical view:
+  `{ balances: { pending_ttd, available_ttd, lifetime_paid_ttd, last_updated },
+     history: WalletHistoryRow[] }`. Status mapping: `owed → in_escrow`,
+  `release_ready → awaiting_transfer`, `released → paid`, `reversed →
+  reversed`.
+- `/tutor/wallet` rewired to consume it:
+  - Hero card highlights **Awaiting bank transfer** (the number tutors care
+    about most).
+  - Three-line summary: Pending (escrow) / Awaiting transfer / Lifetime paid.
+  - "Manage bank details" deep-link to `/tutor/settings?section=payouts`
+    (settings page now honours that param).
+  - Transaction list shows per-session ledger rows with status pill, batch
+    ID + paid date for released ones.
 
 ### 1.3 LuniPay webhook URL hard-coupled to the preview alias
 
