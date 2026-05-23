@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - 'feat/**'
+      - 'fix/**'
+  pull_request:
+    branches:
+      - main
+      - 'feat/ratings-comments-v2'
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run lint
+
+  unit:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Run unit + integration tests
+        run: npx vitest run --coverage
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
+          SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
+          CRON_SECRET: test-cron-secret
+      - name: Enforce 100% coverage on lib/eligibility.ts
+        run: |
+          npx vitest run --coverage --reporter=json 2>&1 | \
+            node -e "
+              const fs = require('fs');
+              const raw = fs.readFileSync('coverage/coverage-summary.json', 'utf8');
+              const cov = JSON.parse(raw);
+              const file = cov['lib/eligibility.ts'];
+              if (!file) { console.error('No coverage data for lib/eligibility.ts'); process.exit(1); }
+              const metrics = ['lines','functions','branches','statements'];
+              for (const m of metrics) {
+                const pct = file[m].pct;
+                if (pct < 100) {
+                  console.error(\`lib/eligibility.ts \${m} coverage: \${pct}% (required: 100%)\`);
+                  process.exit(1);
+                }
+              }
+              console.log('lib/eligibility.ts: 100% coverage on all metrics');
+            "
+        continue-on-error: false
+
+  migration-tests:
+    name: Migration Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Run migration tests
+        run: npx vitest run tests/migrations.test.ts
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
+          SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
+          CRON_SECRET: test-cron-secret
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [unit, migration-tests]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Build Next.js app
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+          RESEND_API_KEY: placeholder
+          RESEND_FROM_EMAIL: noreply@example.com
+          CRON_SECRET: test-cron-secret
+          TOKEN_ENCRYPTION_KEY: ${{ secrets.TOKEN_ENCRYPTION_KEY }}
+          NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${{ secrets.NEXT_PUBLIC_VAPID_PUBLIC_KEY }}
