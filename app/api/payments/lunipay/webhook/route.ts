@@ -101,14 +101,42 @@ export async function POST(request: NextRequest) {
     event.type === 'checkout.session.completed'
   ) {
     const result = await materialiseBookingFromCheckout(admin, event, session);
-    await admin.from('lunipay_webhook_events').insert({
-      event_id: event.id,
-      event_type: event.type,
-      livemode: event.livemode,
-      payment_id: result.paymentId,
-      raw_payload: event,
-    });
-    return NextResponse.json({ received: true, ...result });
+
+    // Only mark the event as processed when materialisation reached a
+    // terminal state. `booking_insert_failed` is treated as transient
+    // so LuniPay retries deliver another webhook and we get another
+    // chance to insert the booking. `metadata_incomplete` is permanent
+    // (retrying with the same payload won't change the metadata) so we
+    // record it to stop the retry storm.
+    const terminalStatuses = new Set([
+      'already_processed',
+      'created',
+      'slot_conflict_needs_refund',
+      'metadata_incomplete',
+    ]);
+
+    if (terminalStatuses.has(result.status)) {
+      await admin.from('lunipay_webhook_events').insert({
+        event_id: event.id,
+        event_type: event.type,
+        livemode: event.livemode,
+        payment_id: result.paymentId,
+        raw_payload: event,
+      });
+      return NextResponse.json({ received: true, ...result });
+    }
+
+    // Transient failure (DB error on insert). Return 5xx so LuniPay
+    // retries — DO NOT insert into lunipay_webhook_events or the
+    // retry will be deduped and we'll permanently lose this booking.
+    console.error(
+      '[lunipay/webhook] Transient materialisation failure — leaving event un-deduped for retry',
+      { event_id: event.id, status: result.status }
+    );
+    return NextResponse.json(
+      { received: false, status: result.status, retry: true },
+      { status: 503 }
+    );
   }
 
   // expired/cancelled events for the create_booking flow are a
@@ -173,17 +201,11 @@ export async function POST(request: NextRequest) {
     if (payment.status === 'succeeded') {
       console.log(`[lunipay/webhook] Payment ${payment.id} already succeeded`);
     } else {
-      await admin
-        .from('payments')
-        .update({
-          status: 'succeeded',
-          paid_at: new Date().toISOString(),
-          lunipay_payment_id: session.payment_id,
-          lunipay_payment_intent_id: session.payment_intent_id,
-          raw_provider_payload: { event_id: event.id, session },
-        })
-        .eq('id', payment.id);
-
+      // Atomic: complete_booking_payment sets payment.status='succeeded'
+      // AND bookings.payment_status='paid' in a single transaction. If it
+      // fails we leave the payment row in its prior state and tell LuniPay
+      // to retry — this avoids the previous bug where payment was marked
+      // succeeded but the booking stayed unpaid.
       const { error: rpcError } = await admin.rpc('complete_booking_payment', {
         p_booking_id: payment.booking_id,
         p_payment_id: payment.id,
@@ -191,10 +213,28 @@ export async function POST(request: NextRequest) {
       });
       if (rpcError) {
         console.error(
-          '[lunipay/webhook] complete_booking_payment RPC failed:',
+          '[lunipay/webhook] complete_booking_payment RPC failed — leaving event un-deduped for retry:',
           rpcError
         );
+        return NextResponse.json(
+          { received: false, status: 'rpc_failed', retry: true },
+          { status: 503 }
+        );
       }
+
+      // RPC succeeded. Layer on the LuniPay-specific provider fields that
+      // the RPC doesn't know about. A failure here is non-fatal: the
+      // payment is already marked succeeded with a provider_reference;
+      // we can backfill from the polled session if needed.
+      await admin
+        .from('payments')
+        .update({
+          paid_at: new Date().toISOString(),
+          lunipay_payment_id: session.payment_id,
+          lunipay_payment_intent_id: session.payment_intent_id,
+          raw_provider_payload: { event_id: event.id, session },
+        })
+        .eq('id', payment.id);
 
       const { data: bookingRow } = await admin
         .from('bookings')
@@ -347,6 +387,16 @@ async function materialiseBookingFromCheckout(
     return { status: 'metadata_incomplete', paymentId: null };
   }
 
+  // Trust the payer_id baked into metadata at checkout time. Fall back to
+  // re-resolving via RPC for older sessions that predate the metadata field.
+  let payerId = md.payer_id;
+  if (!payerId) {
+    const { data: rpcPayer } = await admin.rpc('get_payer_for_student', {
+      p_student_id: studentId,
+    });
+    payerId = (typeof rpcPayer === 'string' && rpcPayer) || studentId;
+  }
+
   const sessionTypeId = md.session_type_id || null;
   const durationMinutes = parseInt(md.duration_minutes ?? '60', 10);
   const priceTtd = Number(md.price_ttd ?? '0');
@@ -373,11 +423,13 @@ async function materialiseBookingFromCheckout(
     );
 
     // Record the payment so an operator can issue a refund. No booking row.
+    // Mig 150 dropped NOT NULL on payments.booking_id; the orphan-check
+    // constraint requires cancel_reason to be set, which we do below.
     const { data: refundPayment } = await admin
       .from('payments')
       .insert({
         booking_id: null,
-        payer_id: studentId,
+        payer_id: payerId,
         provider: 'lunipay',
         amount_ttd: priceTtd > 0 ? priceTtd : centsToTtd((session as any).amount ?? 0),
         status: 'succeeded',
@@ -393,7 +445,7 @@ async function materialiseBookingFromCheckout(
       .single();
 
     await admin.from('notifications').insert({
-      user_id: studentId,
+      user_id: payerId,
       type: 'payment_failed',
       title: 'Booking unavailable — refund pending',
       message:
@@ -408,71 +460,61 @@ async function materialiseBookingFromCheckout(
     };
   }
 
-  // ---- Create booking + payment atomically-ish ----
-  const { data: booking, error: bookingError } = await admin
-    .from('bookings')
-    .insert({
-      student_id: studentId,
-      tutor_id: tutorId,
-      subject_id: subjectId,
-      session_type_id: sessionTypeId,
-      requested_start_at: requestedStartAt,
-      requested_end_at: requestedEndAt,
-      confirmed_start_at: requestedStartAt,
-      confirmed_end_at: requestedEndAt,
-      duration_minutes: durationMinutes,
-      status: 'CONFIRMED',
-      last_action_by: 'student',
-      student_notes: studentNotes,
-      price_ttd: priceTtd,
-      payer_id: studentId,
-      payment_required: true,
-      payment_status: 'paid',
-      currency: 'TTD',
-      platform_fee_pct: platformFeePct,
-      platform_fee_ttd: platformFeeTtd,
-      tutor_payout_ttd: tutorPayoutTtd,
-    })
-    .select('id, duration_minutes')
-    .single();
+  // ---- Atomic booking + payment insert via RPC ----
+  // materialize_paid_booking (mig 151) wraps both inserts in a single
+  // PL/pgSQL transaction. If either insert fails the whole RPC rolls
+  // back and we return booking_insert_failed, which the caller treats
+  // as transient (LuniPay retries).
+  const { data: rpcResult, error: rpcError } = await admin.rpc(
+    'materialize_paid_booking',
+    {
+      p_student_id: studentId,
+      p_tutor_id: tutorId,
+      p_subject_id: subjectId,
+      p_session_type_id: sessionTypeId,
+      p_payer_id: payerId,
+      p_requested_start_at: requestedStartAt,
+      p_requested_end_at: requestedEndAt,
+      p_duration_minutes: durationMinutes,
+      p_price_ttd: priceTtd,
+      p_platform_fee_pct: platformFeePct,
+      p_platform_fee_ttd: platformFeeTtd,
+      p_tutor_payout_ttd: tutorPayoutTtd,
+      p_student_notes: studentNotes,
+      p_lunipay_session_id: session.id,
+      p_lunipay_payment_id: (session as any).payment_id,
+      p_lunipay_payment_intent_id: (session as any).payment_intent_id,
+      p_provider_reference: session.id,
+      p_amount_ttd: priceTtd,
+      p_raw_payload: { event_id: event.id, session } as any,
+    }
+  );
 
-  if (bookingError || !booking) {
-    console.error('[lunipay/webhook] Failed to create booking:', bookingError);
+  if (rpcError || !rpcResult) {
+    console.error('[lunipay/webhook] materialize_paid_booking failed:', rpcError);
     return { status: 'booking_insert_failed', paymentId: null };
   }
 
-  const { data: payment } = await admin
-    .from('payments')
-    .insert({
-      booking_id: booking.id,
-      payer_id: studentId,
-      provider: 'lunipay',
-      amount_ttd: priceTtd,
-      status: 'succeeded',
-      lunipay_checkout_session_id: session.id,
-      lunipay_payment_id: (session as any).payment_id,
-      lunipay_payment_intent_id: (session as any).payment_intent_id,
-      provider_reference: session.id,
-      paid_at: new Date().toISOString(),
-      raw_provider_payload: { event_id: event.id, session },
-    })
-    .select('id')
-    .single();
+  const bookingId = (rpcResult as any).booking_id as string;
+  const paymentId = (rpcResult as any).payment_id as string;
 
   // Provision meeting link (Google Meet / Zoom). Best-effort; a
   // failure here does NOT void the booking.
   try {
-    await createSessionForBooking(booking.id);
+    await createSessionForBooking(bookingId);
   } catch (err) {
     console.error('[lunipay/webhook] createSessionForBooking failed:', err);
   }
 
-  await admin.from('notifications').insert([
+  // Notify the payer (could be a parent for parent_required students).
+  // If the payer isn't the student, also notify the student so the kid
+  // knows their session is booked.
+  const notifications: Array<Record<string, unknown>> = [
     {
-      user_id: studentId,
+      user_id: payerId,
       type: 'payment_succeeded',
       title: 'Booking confirmed',
-      message: `Your payment of $${priceTtd} TTD was successful and your session is booked.`,
+      message: `Payment of $${priceTtd} TTD was successful and the session is booked.`,
       link: `/student/bookings`,
       created_at: new Date().toISOString(),
     },
@@ -480,15 +522,26 @@ async function materialiseBookingFromCheckout(
       user_id: tutorId,
       type: 'booking_confirmed',
       title: 'New paid booking',
-      message: `You have a new paid booking (${booking.duration_minutes} minutes).`,
+      message: `You have a new paid booking (${durationMinutes} minutes).`,
       link: `/tutor/sessions`,
       created_at: new Date().toISOString(),
     },
-  ]);
+  ];
+  if (payerId !== studentId) {
+    notifications.push({
+      user_id: studentId,
+      type: 'booking_confirmed',
+      title: 'Your session is booked',
+      message: `Your parent paid for a ${durationMinutes}-minute session — see you soon!`,
+      link: `/student/bookings`,
+      created_at: new Date().toISOString(),
+    });
+  }
+  await admin.from('notifications').insert(notifications);
 
   return {
     status: 'created',
-    paymentId: payment?.id ?? null,
-    bookingId: booking.id,
+    paymentId,
+    bookingId,
   };
 }

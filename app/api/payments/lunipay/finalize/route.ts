@@ -54,9 +54,12 @@ export async function GET(request: NextRequest) {
   // Idempotency: if a payment already exists for this session, the
   // webhook (or a prior finalize call) already ran. Just return the
   // current state.
+  // Note: `currency` is not a column on payments — payments are TTD-only.
+  // We tack 'TTD' onto the response so the success page receipt renders
+  // without a separate query.
   const { data: existing } = await admin
     .from('payments')
-    .select('id, booking_id, status, amount_ttd, currency, provider_reference, created_at')
+    .select('id, booking_id, status, amount_ttd, provider_reference, created_at')
     .eq('lunipay_checkout_session_id', sessionId)
     .maybeSingle();
 
@@ -66,7 +69,7 @@ export async function GET(request: NextRequest) {
       paymentId: existing.id,
       bookingId: existing.booking_id,
       paymentStatus: existing.status,
-      payment: existing,
+      payment: { ...existing, currency: 'TTD' },
     });
   }
 
@@ -101,12 +104,19 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  if (md.student_id !== user.id) {
+  // Auth: must be the student or the resolved payer (parent for
+  // parent_required billing). Older sessions don't carry payer_id in
+  // metadata; fall back to comparing against student_id only.
+  const studentId = md.student_id;
+  const metadataPayerId = md.payer_id;
+  const allowedUserIds = new Set<string>();
+  if (studentId) allowedUserIds.add(studentId);
+  if (metadataPayerId) allowedUserIds.add(metadataPayerId);
+  if (!allowedUserIds.has(user.id)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   // Same logic as webhook's materialiseBookingFromCheckout.
-  const studentId = md.student_id;
   const tutorId = md.tutor_id;
   const subjectId = md.subject_id;
   const requestedStartAt = md.requested_start_at;
@@ -118,6 +128,15 @@ export async function GET(request: NextRequest) {
       { error: 'Checkout metadata incomplete' },
       { status: 500 }
     );
+  }
+
+  // Resolve payer (prefer metadata, fall back to RPC for older sessions)
+  let payerId = metadataPayerId;
+  if (!payerId) {
+    const { data: rpcPayer } = await admin.rpc('get_payer_for_student', {
+      p_student_id: studentId,
+    });
+    payerId = (typeof rpcPayer === 'string' && rpcPayer) || studentId;
   }
 
   const sessionTypeId = md.session_type_id || null;
@@ -145,7 +164,7 @@ export async function GET(request: NextRequest) {
       .from('payments')
       .insert({
         booking_id: null,
-        payer_id: studentId,
+        payer_id: payerId,
         provider: 'lunipay',
         amount_ttd: priceTtd > 0 ? priceTtd : centsToTtd(session.amount ?? 0),
         status: 'succeeded',
@@ -166,71 +185,55 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  const { data: booking, error: bookingError } = await admin
-    .from('bookings')
-    .insert({
-      student_id: studentId,
-      tutor_id: tutorId,
-      subject_id: subjectId,
-      session_type_id: sessionTypeId,
-      requested_start_at: requestedStartAt,
-      requested_end_at: requestedEndAt,
-      confirmed_start_at: requestedStartAt,
-      confirmed_end_at: requestedEndAt,
-      duration_minutes: durationMinutes,
-      status: 'CONFIRMED',
-      last_action_by: 'student',
-      student_notes: studentNotes,
-      price_ttd: priceTtd,
-      payer_id: studentId,
-      payment_required: true,
-      payment_status: 'paid',
-      currency: 'TTD',
-      platform_fee_pct: platformFeePct,
-      platform_fee_ttd: platformFeeTtd,
-      tutor_payout_ttd: tutorPayoutTtd,
-    })
-    .select('id, duration_minutes')
-    .single();
+  // Atomic booking + payment insert via materialize_paid_booking RPC
+  const { data: rpcResult, error: rpcError } = await admin.rpc(
+    'materialize_paid_booking',
+    {
+      p_student_id: studentId,
+      p_tutor_id: tutorId,
+      p_subject_id: subjectId,
+      p_session_type_id: sessionTypeId,
+      p_payer_id: payerId,
+      p_requested_start_at: requestedStartAt,
+      p_requested_end_at: requestedEndAt,
+      p_duration_minutes: durationMinutes,
+      p_price_ttd: priceTtd,
+      p_platform_fee_pct: platformFeePct,
+      p_platform_fee_ttd: platformFeeTtd,
+      p_tutor_payout_ttd: tutorPayoutTtd,
+      p_student_notes: studentNotes,
+      p_lunipay_session_id: session.id,
+      p_lunipay_payment_id: session.payment_id,
+      p_lunipay_payment_intent_id: session.payment_intent_id,
+      p_provider_reference: session.id,
+      p_amount_ttd: priceTtd,
+      p_raw_payload: { source: 'finalize', session } as any,
+    }
+  );
 
-  if (bookingError || !booking) {
-    console.error('[lunipay/finalize] Failed to create booking:', bookingError);
+  if (rpcError || !rpcResult) {
+    console.error('[lunipay/finalize] materialize_paid_booking failed:', rpcError);
     return NextResponse.json(
-      { error: 'Failed to create booking', details: bookingError?.message },
+      { error: 'Failed to create booking', details: rpcError?.message },
       { status: 500 }
     );
   }
 
-  const { data: payment } = await admin
-    .from('payments')
-    .insert({
-      booking_id: booking.id,
-      payer_id: studentId,
-      provider: 'lunipay',
-      amount_ttd: priceTtd,
-      status: 'succeeded',
-      lunipay_checkout_session_id: session.id,
-      lunipay_payment_id: session.payment_id,
-      lunipay_payment_intent_id: session.payment_intent_id,
-      provider_reference: session.id,
-      paid_at: new Date().toISOString(),
-      raw_provider_payload: { source: 'finalize', session },
-    })
-    .select('id, booking_id, status, amount_ttd, currency, provider_reference, created_at')
-    .single();
+  const bookingId = (rpcResult as any).booking_id as string;
+  const paymentId = (rpcResult as any).payment_id as string;
 
   try {
-    await createSessionForBooking(booking.id);
+    await createSessionForBooking(bookingId);
   } catch (err) {
     console.error('[lunipay/finalize] createSessionForBooking failed:', err);
   }
 
-  await admin.from('notifications').insert([
+  const notifications: Array<Record<string, unknown>> = [
     {
-      user_id: studentId,
+      user_id: payerId,
       type: 'payment_succeeded',
       title: 'Booking confirmed',
-      message: `Your payment of $${priceTtd} TTD was successful and your session is booked.`,
+      message: `Payment of $${priceTtd} TTD was successful and the session is booked.`,
       link: `/student/bookings`,
       created_at: new Date().toISOString(),
     },
@@ -238,16 +241,35 @@ export async function GET(request: NextRequest) {
       user_id: tutorId,
       type: 'booking_confirmed',
       title: 'New paid booking',
-      message: `You have a new paid booking (${booking.duration_minutes} minutes).`,
+      message: `You have a new paid booking (${durationMinutes} minutes).`,
       link: `/tutor/sessions`,
       created_at: new Date().toISOString(),
     },
-  ]);
+  ];
+  if (payerId !== studentId) {
+    notifications.push({
+      user_id: studentId,
+      type: 'booking_confirmed',
+      title: 'Your session is booked',
+      message: `Your parent paid for a ${durationMinutes}-minute session — see you soon!`,
+      link: `/student/bookings`,
+      created_at: new Date().toISOString(),
+    });
+  }
+  await admin.from('notifications').insert(notifications);
 
   return NextResponse.json({
     status: 'created',
-    paymentId: payment?.id ?? null,
-    bookingId: booking.id,
-    payment,
+    paymentId,
+    bookingId,
+    payment: {
+      id: paymentId,
+      booking_id: bookingId,
+      status: 'succeeded',
+      amount_ttd: priceTtd,
+      provider_reference: session.id,
+      created_at: new Date().toISOString(),
+      currency: 'TTD',
+    },
   });
 }

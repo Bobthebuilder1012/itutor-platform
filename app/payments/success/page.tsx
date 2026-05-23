@@ -176,7 +176,7 @@ export default function PaymentSuccess() {
     if (bookingError) throw bookingError;
 
     setReceipt({
-      payment,
+      payment: { ...payment, currency: payment.currency ?? 'TTD' },
       booking: booking as any,
       payer: (booking as any).payer,
       tutor: (booking as any).tutor,

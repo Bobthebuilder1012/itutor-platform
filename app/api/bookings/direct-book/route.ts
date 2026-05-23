@@ -5,6 +5,7 @@ import { createSessionForBooking } from '@/lib/services/sessionService';
 import { isPaidClassesEnabled } from '@/lib/featureFlags/paidClasses';
 import { calculateCommission } from '@/lib/utils/commissionCalculator';
 import { getLunipayClient, ttdToCents } from '@/lib/payments/lunipayClient';
+import { resolvePayer } from '@/lib/payments/resolvePayer';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -145,10 +146,17 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const customerEmail = user.email;
+      // Resolve who the cardholder is. For billing_mode='parent_required',
+      // this is the linked parent, not the student.
+      const payer = await resolvePayer(admin, user.id, user.email ?? null);
+      const customerEmail = payer.email;
       if (!customerEmail) {
         return NextResponse.json(
-          { error: 'Your account is missing an email address' },
+          {
+            error: payer.isProxy
+              ? "The parent listed for this student doesn't have an email on file"
+              : 'Your account is missing an email address',
+          },
           { status: 400 }
         );
       }
@@ -180,6 +188,7 @@ export async function POST(request: NextRequest) {
             metadata: {
               kind: 'create_booking',
               student_id: user.id,
+              payer_id: payer.payerId,
               tutor_id: tutorId,
               subject_id: subjectId,
               session_type_id: sessionTypeId ?? '',
@@ -223,7 +232,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 6. Free path: insert booking directly as CONFIRMED, setting confirmed times so the calendar RPC sees it as busy
+    // 6. Free path: insert booking directly as CONFIRMED, setting confirmed times so the calendar RPC sees it as busy.
+    // Even free bookings record the canonical payer_id so future payments
+    // can use the right cardholder.
+    const freePayer = await resolvePayer(admin, user.id, user.email ?? null);
     const { data: booking, error: insertError } = await admin
       .from('bookings')
       .insert({
@@ -240,7 +252,7 @@ export async function POST(request: NextRequest) {
         last_action_by: 'student',
         student_notes: studentNotes || null,
         price_ttd: priceTtd,
-        payer_id: user.id,
+        payer_id: freePayer.payerId,
         payment_required: paidClassesEnabled,
         payment_status: 'unpaid',
         currency: 'TTD',

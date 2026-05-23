@@ -95,23 +95,13 @@ export async function GET(
         const mapped = mapCheckoutSessionToDbStatus(session);
 
         if (mapped !== currentStatus) {
-          const update: Record<string, unknown> = {
-            status: mapped,
-            raw_provider_payload: { polled: session },
-          };
-
-          if (mapped === 'succeeded') {
-            update.paid_at = new Date().toISOString();
-            update.lunipay_payment_id = session.payment_id;
-            update.lunipay_payment_intent_id = session.payment_intent_id;
-            paidAt = update.paid_at as string;
-          } else if (mapped === 'cancelled') {
-            update.cancelled_at = new Date().toISOString();
-            update.cancel_reason = 'session_expired';
-          }
-
-          await admin.from('payments').update(update).eq('id', payment.id);
-
+          // For the success path, run complete_booking_payment FIRST so the
+          // payment.status='succeeded' and bookings.payment_status='paid'
+          // updates land in a single transaction. If the RPC fails, leave
+          // the row in its prior state — the next poll (or the webhook)
+          // will retry. Previously the local payments row was flipped to
+          // succeeded before the RPC ran, so an RPC failure left the
+          // booking permanently unpaid.
           if (mapped === 'succeeded') {
             const { error: rpcError } = await admin.rpc('complete_booking_payment', {
               p_booking_id: payment.booking_id,
@@ -120,13 +110,44 @@ export async function GET(
             });
             if (rpcError) {
               console.warn(
-                '[lunipay/status] complete_booking_payment RPC failed:',
+                '[lunipay/status] complete_booking_payment RPC failed; not updating local status:',
                 rpcError
               );
+              // Surface the un-flipped state to the caller; they'll retry.
+              return NextResponse.json({
+                payment_id: payment.id,
+                booking_id: payment.booking_id,
+                amount: payment.amount_ttd,
+                currency: booking?.currency || 'TTD',
+                status: currentStatus,
+                paid_at: paidAt,
+                expires_at: payment.expires_at,
+                created_at: payment.created_at,
+              });
             }
-          }
 
-          currentStatus = mapped;
+            // RPC succeeded; layer on LuniPay-specific provider fields.
+            const update: Record<string, unknown> = {
+              raw_provider_payload: { polled: session },
+              paid_at: new Date().toISOString(),
+              lunipay_payment_id: session.payment_id,
+              lunipay_payment_intent_id: session.payment_intent_id,
+            };
+            paidAt = update.paid_at as string;
+            await admin.from('payments').update(update).eq('id', payment.id);
+            currentStatus = mapped;
+          } else {
+            const update: Record<string, unknown> = {
+              status: mapped,
+              raw_provider_payload: { polled: session },
+            };
+            if (mapped === 'cancelled') {
+              update.cancelled_at = new Date().toISOString();
+              update.cancel_reason = 'session_expired';
+            }
+            await admin.from('payments').update(update).eq('id', payment.id);
+            currentStatus = mapped;
+          }
         }
       } catch (err) {
         console.warn('[lunipay/status] LuniPay retrieve failed:', err);

@@ -25,10 +25,12 @@ export async function GET() {
   //   - carry an explicit cancel_reason
   // and haven't already been refunded, with a LuniPay payment id we
   // can call refund against.
+  // Note: `currency` is not a column on payments — payments are TTD-only
+  // by design. The UI defaults to 'TTD' below.
   const { data: payments, error } = await admin
     .from('payments')
     .select(
-      'id, payer_id, amount_ttd, currency, status, cancel_reason, paid_at, ' +
+      'id, payer_id, amount_ttd, status, cancel_reason, paid_at, ' +
         'lunipay_payment_id, lunipay_checkout_session_id, booking_id, raw_provider_payload'
     )
     .eq('status', 'succeeded')
@@ -60,7 +62,7 @@ export async function GET() {
     payer_name: profileById.get(p.payer_id)?.full_name ?? null,
     payer_email: profileById.get(p.payer_id)?.email ?? null,
     amount_ttd: Number(p.amount_ttd ?? 0),
-    currency: p.currency ?? 'TTD',
+    currency: 'TTD',
     cancel_reason: p.cancel_reason,
     paid_at: p.paid_at,
     lunipay_payment_id: p.lunipay_payment_id,
