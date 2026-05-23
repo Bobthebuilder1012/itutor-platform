@@ -94,14 +94,23 @@ Republic, First Citizens) use proprietary columns and fixed-width formats.
 Confirm the **specific** bank format before first real payout and update
 `app/api/admin/payouts/export/route.ts`.
 
-### 1.8 Refund path for `slot_conflict_needs_refund` is manual
+### 1.8 Refund pipeline — **SHIPPED**
 
-The webhook + finalize correctly mark the payment with
-`cancel_reason='slot_taken_after_payment_needs_refund'` and notify the student,
-but **no refund is issued**. Either:
-- add `/api/admin/payments/[paymentId]/refund` calling
-  `lunipay.refunds.create(...)`, or
-- handle manually from the LuniPay dashboard for now and document that.
+- `GET /api/admin/payments/refundable` — lists succeeded payments that
+  either have no booking (slot-conflict) or carry a `cancel_reason`, with
+  payer name/email inlined.
+- `POST /api/admin/payments/[paymentId]/refund` — calls
+  `lunipay.payments.refund(lunipay_payment_id, { reason, metadata })` with an
+  idempotency key (`refund-<paymentId>`). Updates local payment status to
+  `refunded` (full refund) or appends to `raw_provider_payload.refunds`
+  (partial), notifies the payer, surfaces the refund object back. Defends
+  against the LuniPay-succeeded-but-DB-failed case by returning a 200 with
+  a `warning` field rather than 5xx-ing.
+- `/admin/refunds` page — table of refundable payments with one-click
+  "Refund full amount". Linked from the admin dashboard tile.
+
+Partial refunds: API supports `amount_ttd` in body but the page only
+exposes full refunds for now. Easy to add a partial refund modal later.
 
 ---
 

@@ -596,6 +596,21 @@ export default function AdminDashboardPage() {
                 <p className="text-sm text-gray-600">Generate bank CSV & reconcile transfers</p>
               </div>
             </Link>
+
+            <Link
+              href="/admin/refunds"
+              className="flex items-center gap-4 p-6 border-2 border-gray-200 rounded-xl hover:border-rose-500 hover:bg-rose-50 transition-all group hover:shadow-lg"
+            >
+              <div className="bg-rose-100 rounded-lg p-4 group-hover:bg-rose-200 transition-colors">
+                <svg className="w-8 h-8 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900 text-lg">Refunds</h3>
+                <p className="text-sm text-gray-600">Issue refunds for stuck payments</p>
+              </div>
+            </Link>
           </div>
 
           <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
