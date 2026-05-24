@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Wallet, ArrowDownToLine, TrendingUp, Search, Receipt, Banknote, Clock } from 'lucide-react';
+import { Wallet, ArrowDownToLine, TrendingUp, Search, Banknote, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
+import { supabase } from '@/lib/supabase/client';
 import TutorShell from '@/components/tutor/TutorShell';
 
 type Tab = 'overview' | 'transactions';
@@ -38,6 +39,26 @@ interface WalletPayload {
   history: WalletHistoryRow[];
 }
 
+interface StudentBreakdownRow {
+  studentId: string;
+  name: string;
+  avatarUrl: string | null;
+  completedCount: number;
+  earned: number;
+  upcomingCount: number;
+  projected: number;
+}
+
+interface ProjectedSummary {
+  projectedThisMonth: number;
+  totalCompleted: number;
+  upcomingThisMonthCount: number;
+  breakdown: StudentBreakdownRow[];
+}
+
+const COMPLETED_STATUSES = ['COMPLETED_ASSUMED'];
+const UPCOMING_STATUSES = ['SCHEDULED', 'JOIN_OPEN'];
+
 function fmtTTD(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -57,6 +78,7 @@ function WalletContent() {
   const [data, setData] = useState<WalletPayload | null>(null);
   const [dataLoading, setDataLoading] = useState(true);
   const [error, setError] = useState('');
+  const [projected, setProjected] = useState<ProjectedSummary | null>(null);
 
   useEffect(() => {
     if (!loading && (!profile || profile.role !== 'tutor')) router.push('/login');
@@ -65,6 +87,7 @@ function WalletContent() {
   useEffect(() => {
     if (!profile?.id) return;
     fetchWallet();
+    fetchProjected(profile.id);
   }, [profile?.id]);
 
   async function fetchWallet() {
@@ -80,6 +103,78 @@ function WalletContent() {
     } finally {
       setDataLoading(false);
     }
+  }
+
+  async function fetchProjected(tutorId: string) {
+    const now = new Date();
+    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+    const nextMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+    const [{ data: completedSessions }, { data: upcomingSessions }] = await Promise.all([
+      supabase
+        .from('sessions')
+        .select('id, payout_amount_ttd, student_id, status, scheduled_start_at')
+        .eq('tutor_id', tutorId)
+        .in('status', COMPLETED_STATUSES)
+        .gte('scheduled_start_at', sixMonthsAgo.toISOString()),
+      supabase
+        .from('sessions')
+        .select('id, payout_amount_ttd, student_id, status, scheduled_start_at')
+        .eq('tutor_id', tutorId)
+        .in('status', UPCOMING_STATUSES)
+        .gte('scheduled_start_at', now.toISOString())
+        .lt('scheduled_start_at', nextMonthEnd.toISOString()),
+    ]);
+
+    const studentMap = new Map<string, StudentBreakdownRow>();
+    const ensureRow = (studentId: string): StudentBreakdownRow => {
+      let row = studentMap.get(studentId);
+      if (!row) {
+        row = { studentId, name: 'Student', avatarUrl: null, completedCount: 0, earned: 0, upcomingCount: 0, projected: 0 };
+        studentMap.set(studentId, row);
+      }
+      return row;
+    };
+
+    (completedSessions ?? []).forEach((s: any) => {
+      if (!s.student_id) return;
+      const row = ensureRow(s.student_id);
+      row.completedCount += 1;
+      row.earned += Number(s.payout_amount_ttd ?? 0);
+    });
+    (upcomingSessions ?? []).forEach((s: any) => {
+      if (!s.student_id) return;
+      const row = ensureRow(s.student_id);
+      row.upcomingCount += 1;
+      row.projected += Number(s.payout_amount_ttd ?? 0);
+    });
+
+    const studentIds = Array.from(studentMap.keys());
+    if (studentIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, full_name, display_name, avatar_url')
+        .in('id', studentIds);
+      (profiles ?? []).forEach((p: any) => {
+        const row = studentMap.get(p.id);
+        if (!row) return;
+        row.name = p.display_name || p.full_name || 'Student';
+        row.avatarUrl = p.avatar_url ?? null;
+      });
+    }
+
+    const breakdown = Array.from(studentMap.values())
+      .filter((r) => r.completedCount > 0 || r.upcomingCount > 0)
+      .sort((a, b) => b.projected + b.earned - (a.projected + a.earned));
+
+    const projectedThisMonth = (upcomingSessions ?? []).reduce(
+      (sum: number, s: any) => sum + Number(s.payout_amount_ttd ?? 0),
+      0
+    );
+    const totalCompleted = (completedSessions ?? []).length;
+    const upcomingThisMonthCount = (upcomingSessions ?? []).length;
+
+    setProjected({ projectedThisMonth, totalCompleted, upcomingThisMonthCount, breakdown });
   }
 
   const balances = data?.balances;
@@ -135,13 +230,14 @@ function WalletContent() {
             </div>
           </div>
 
-          {/* Three-line summary */}
+          {/* Three-line summary — future money → pending money → received money */}
           <div className="grid sm:grid-cols-3 gap-4">
             <Stat
-              label="Pending (in escrow)"
-              value={`TT$ ${fmtTTD(balances?.pending_ttd ?? 0)}`}
-              icon={Clock}
-              hint="Recently completed — held for 7 days"
+              label="Projected"
+              value={`TT$ ${fmtTTD(projected?.projectedThisMonth ?? 0)}`}
+              icon={TrendingUp}
+              hint="Based on upcoming sessions"
+              valueClass="text-brand-deep"
             />
             <Stat
               label="Awaiting bank transfer"
@@ -174,6 +270,9 @@ function WalletContent() {
             </Link>
           </div>
 
+          {/* Student breakdown */}
+          <StudentBreakdown summary={projected} />
+
           {/* Recent activity */}
           <div className="rounded-2xl border border-border bg-card p-5">
             <h3 className="font-semibold text-ink">Recent activity</h3>
@@ -203,15 +302,87 @@ function WalletContent() {
   );
 }
 
-function Stat({ label, value, icon: Icon, hint }: { label: string; value: string; icon: typeof Wallet; hint?: string }) {
+function Stat({ label, value, icon: Icon, hint, valueClass }: { label: string; value: string; icon: typeof Wallet; hint?: string; valueClass?: string }) {
   return (
     <div className="rounded-2xl border border-border bg-card p-5">
       <div className="flex items-center justify-between">
         <div className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">{label}</div>
         <Icon className="size-4 text-brand-deep" />
       </div>
-      <div className="mt-2 text-2xl font-bold text-ink tabular-nums">{value}</div>
+      <div className={cn('mt-2 text-2xl font-bold tabular-nums', valueClass ?? 'text-ink')}>{value}</div>
       {hint && <div className="mt-1 text-xs text-muted-foreground">{hint}</div>}
+    </div>
+  );
+}
+
+function StudentBreakdown({ summary }: { summary: ProjectedSummary | null }) {
+  const breakdown = summary?.breakdown ?? [];
+  const hasRows = breakdown.length > 0;
+
+  return (
+    <div className="rounded-2xl border border-border bg-card overflow-hidden">
+      <div className="flex items-center gap-3 p-5">
+        <div className="size-10 rounded-xl bg-brand-soft flex items-center justify-center">
+          <Users className="size-5 text-brand-deep" />
+        </div>
+        <div>
+          <div className="font-semibold text-ink">Student breakdown</div>
+          <div className="text-xs text-muted-foreground">
+            {!summary
+              ? 'Loading…'
+              : !hasRows
+                ? 'No students yet'
+                : `${breakdown.length} student${breakdown.length === 1 ? '' : 's'} \u00b7 ${summary.totalCompleted} completed \u00b7 ${summary.upcomingThisMonthCount} upcoming this month`}
+          </div>
+        </div>
+      </div>
+
+      {hasRows && (
+        <div className="border-t border-border">
+          <div className="hidden sm:grid grid-cols-12 gap-3 px-5 py-2 bg-muted/30 text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
+            <div className="col-span-4">Student</div>
+            <div className="col-span-2 text-right">Completed</div>
+            <div className="col-span-2 text-right">Earned</div>
+            <div className="col-span-2 text-right">Upcoming</div>
+            <div className="col-span-2 text-right">Projected</div>
+          </div>
+          <ul className="divide-y divide-border">
+            {breakdown.map((row) => (
+              <li key={row.studentId} className="grid grid-cols-12 gap-3 px-5 py-3 text-sm items-center">
+                <div className="col-span-12 sm:col-span-4 flex items-center gap-3 min-w-0">
+                  <div className="size-8 rounded-full bg-muted grid place-items-center overflow-hidden shrink-0">
+                    {row.avatarUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={row.avatarUrl} alt={row.name} className="size-8 object-cover" />
+                    ) : (
+                      <span className="text-xs font-semibold text-muted-foreground">
+                        {row.name.charAt(0).toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <span className="font-medium text-ink truncate">{row.name}</span>
+                </div>
+                <div className="col-span-3 sm:col-span-2 text-right tabular-nums text-ink">
+                  <span className="sm:hidden text-xs text-muted-foreground mr-1">Done</span>
+                  {row.completedCount}
+                </div>
+                <div className="col-span-3 sm:col-span-2 text-right tabular-nums font-semibold text-ink">
+                  <span className="sm:hidden text-xs text-muted-foreground mr-1">Earned</span>
+                  TT$ {fmtTTD(row.earned)}
+                </div>
+                <div className="col-span-3 sm:col-span-2 text-right tabular-nums text-ink">
+                  <span className="sm:hidden text-xs text-muted-foreground mr-1">Upcoming</span>
+                  {row.upcomingCount}
+                </div>
+                <div className="col-span-3 sm:col-span-2 text-right tabular-nums font-bold text-brand-deep">
+                  <span className="sm:hidden text-xs text-muted-foreground mr-1">Proj</span>
+                  TT$ {fmtTTD(row.projected)}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
