@@ -13,6 +13,7 @@ import AuthPromptModal from '@/components/AuthPromptModal';
 import { useAuthPrompt } from '@/hooks/useAuthPrompt';
 import { getAvatarColor } from '@/lib/utils/avatarColors';
 import Link from 'next/link';
+import { RatingBreakdown, type RatingDistribution } from '@/components/ratings/RatingBreakdown';
 
 type TutorProfile = {
   id: string;
@@ -35,6 +36,7 @@ type TutorProfile = {
   }>;
   average_rating: number | null;
   total_reviews: number;
+  tutor_format_preference?: 'both' | 'classes_only' | 'one_on_one_only' | null;
   ratings: Array<{
     id: string;
     stars: number;
@@ -63,11 +65,17 @@ export default function PublicTutorProfilePage() {
   const [showBookingPrompt, setShowBookingPrompt] = useState(false);
   const [completedSessions, setCompletedSessions] = useState(0);
   const [showAboutMenu, setShowAboutMenu] = useState(false);
+  const [ratingDist, setRatingDist] = useState<{ average: number; count: number; distribution: RatingDistribution } | null>(null);
+  const [activeFilter, setActiveFilter] = useState<number | null>(null);
 
   useEffect(() => {
     fetchTutorProfile();
     fetchVerifiedSubjects();
     checkAuth();
+    fetch(`/api/tutor/${tutorId}/rating-distribution`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => d && setRatingDist(d))
+      .catch(() => {});
   }, [tutorId]);
 
   async function checkAuth() {
@@ -95,7 +103,7 @@ export default function PublicTutorProfilePage() {
       // Fetch tutor profile
       const { data: tutorData, error: tutorError } = await supabase
         .from('profiles')
-        .select('id, full_name, username, display_name, avatar_url, institution_id, country, bio, tutor_verification_status, created_at')
+        .select('id, full_name, username, display_name, avatar_url, institution_id, country, bio, tutor_verification_status, created_at, tutor_format_preference')
         .eq('id', tutorId)
         .eq('role', 'tutor')
         .single();
@@ -376,24 +384,15 @@ export default function PublicTutorProfilePage() {
                 </span>
               </div>
 
-              {tutor.average_rating !== null && (
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="flex text-2xl">
-                    {[1, 2, 3, 4, 5].map(star => (
-                      <span
-                        key={star}
-                        className={star <= Math.round(tutor.average_rating!) ? 'text-yellow-400' : 'text-gray-300'}
-                      >
-                        ★
-                      </span>
-                    ))}
-                  </div>
-                  <span className="text-lg font-semibold text-gray-900">
-                    {tutor.average_rating.toFixed(1)}
-                  </span>
-                  <span className="text-sm text-gray-600">
-                    ({tutor.total_reviews} {tutor.total_reviews === 1 ? 'review' : 'reviews'})
-                  </span>
+              {ratingDist && (
+                <div className="mb-4">
+                  <RatingBreakdown
+                    rating={ratingDist.average}
+                    count={ratingDist.count}
+                    distribution={ratingDist.distribution}
+                    activeFilter={activeFilter}
+                    onFilterChange={setActiveFilter}
+                  />
                 </div>
               )}
 
@@ -534,7 +533,8 @@ export default function PublicTutorProfilePage() {
           </div>
         </div>
 
-        {/* Select a Subject to Book */}
+        {/* Select a Subject to Book — hidden for classes-only tutors */}
+        {tutor.tutor_format_preference !== 'classes_only' && (
         <div className="bg-white border-2 border-indigo-200 shadow-xl rounded-2xl p-8 mb-6">
           <h2 className="text-3xl font-bold text-gray-900 mb-6">Select a Subject to Book</h2>
           
@@ -571,6 +571,7 @@ export default function PublicTutorProfilePage() {
         {/* Available Times */}
         <div className="bg-white border-2 border-indigo-200 shadow-xl rounded-2xl p-8">
           <h2 className="text-3xl font-bold text-gray-900 mb-6">Available Times</h2>
+          
           
           {!selectedSubject ? (
             <div className="text-center py-12">
@@ -611,6 +612,7 @@ export default function PublicTutorProfilePage() {
             </>
           )}
         </div>
+        )}
 
         {/* About Section */}
         <div id="about-section" className="bg-white rounded-2xl shadow-lg border-2 border-gray-200 p-6 mb-6">

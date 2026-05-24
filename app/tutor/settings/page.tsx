@@ -9,7 +9,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import CountrySelect from '@/components/CountrySelect';
 import { getDisplayName } from '@/lib/utils/displayName';
 
-type SettingsSection = 'profile' | 'video' | 'security' | 'payment';
+type SettingsSection = 'profile' | 'video' | 'security' | 'payment' | 'preferences';
 
 export default function TutorSettingsPage() {
   const { profile, loading: profileLoading } = useProfile();
@@ -35,6 +35,9 @@ export default function TutorSettingsPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   
+  const [formatPreference, setFormatPreference] = useState<'both' | 'classes_only' | 'one_on_one_only'>('both');
+  const [savingPreference, setSavingPreference] = useState(false);
+
   const [saving, setSaving] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
   const [sendingResetEmail, setSendingResetEmail] = useState(false);
@@ -58,6 +61,7 @@ export default function TutorSettingsPage() {
     if (profile.email === 'jovangoodluck@myitutor.com') {
       setAllowSameDayBookings(profile.allow_same_day_bookings || false);
     }
+    setFormatPreference((profile as { tutor_format_preference?: 'both' | 'classes_only' | 'one_on_one_only' }).tutor_format_preference || 'both');
   }, [profile, profileLoading, router]);
 
   const handleSaveProfile = async () => {
@@ -337,11 +341,36 @@ export default function TutorSettingsPage() {
     );
   }
 
+  const handleSavePreference = async () => {
+    setSavingPreference(true);
+    setMessage('');
+    setError('');
+    try {
+      const res = await fetch('/api/tutor/format-preference', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tutor_format_preference: formatPreference }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data?.error || 'Failed to save preference.');
+      } else {
+        setMessage('Tutoring preferences saved.');
+        setTimeout(() => setMessage(''), 3000);
+      }
+    } catch {
+      setError('Failed to save preference.');
+    } finally {
+      setSavingPreference(false);
+    }
+  };
+
   const sections = [
     { id: 'profile' as SettingsSection, label: 'Profile Information', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z' },
     { id: 'video' as SettingsSection, label: 'Video Provider', icon: 'M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z' },
     { id: 'security' as SettingsSection, label: 'Security & Password', icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z' },
-    { id: 'payment' as SettingsSection, label: 'Payment Settings', icon: 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z' }
+    { id: 'payment' as SettingsSection, label: 'Payment Settings', icon: 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z' },
+    { id: 'preferences' as SettingsSection, label: 'Tutoring Preferences', icon: 'M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z' },
   ];
 
   return (
@@ -709,6 +738,84 @@ export default function TutorSettingsPage() {
             </div>
           </div>
         </div>
+        )}
+
+        {/* Tutoring Preferences */}
+        {activeSection === 'preferences' && (
+          <div className="bg-white border-2 border-gray-200 rounded-2xl p-6">
+            <h2 className="text-xl font-bold text-gray-900 mb-1">Tutoring Preferences</h2>
+            <p className="text-sm text-gray-600 mb-6">Choose how students can book you.</p>
+
+            <div className="space-y-3">
+              {(
+                [
+                  {
+                    value: 'both',
+                    title: 'Both classes and 1-on-1 sessions',
+                    description: "You'll appear in 1-on-1 search and can create classes.",
+                  },
+                  {
+                    value: 'classes_only',
+                    title: 'Classes only',
+                    description: "You won't appear in 1-on-1 search. Only your classes will be listed.",
+                  },
+                  {
+                    value: 'one_on_one_only',
+                    title: '1-on-1 sessions only',
+                    description: "You can't create new classes. You'll appear in 1-on-1 search only.",
+                  },
+                ] as const
+              ).map((opt) => {
+                const selected = formatPreference === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setFormatPreference(opt.value)}
+                    className={`w-full flex items-start gap-4 p-4 rounded-xl border-2 text-left transition-all ${
+                      selected
+                        ? 'border-[#32CC6F] bg-[#e6f9ee]'
+                        : 'border-gray-200 bg-white hover:border-gray-300'
+                    }`}
+                  >
+                    <div className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                      selected ? 'border-[#32CC6F]' : 'border-gray-400'
+                    }`}>
+                      {selected && <div className="w-2.5 h-2.5 rounded-full bg-[#32CC6F]" />}
+                    </div>
+                    <div className="flex-1">
+                      <div className={`text-sm font-semibold ${selected ? 'text-[#1fa855]' : 'text-gray-900'}`}>
+                        {opt.title}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-0.5">{opt.description}</div>
+                    </div>
+                    {selected && (
+                      <svg className="w-5 h-5 text-[#32CC6F] shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            <p className="mt-4 text-xs text-gray-500">
+              You can change this at any time. Existing bookings and active classes are honoured.
+            </p>
+
+            <button
+              type="button"
+              onClick={handleSavePreference}
+              disabled={
+                savingPreference ||
+                formatPreference ===
+                  ((profile as { tutor_format_preference?: string }).tutor_format_preference || 'both')
+              }
+              className="mt-6 px-6 py-3 bg-[#32CC6F] hover:bg-[#1fa855] text-white rounded-xl font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {savingPreference ? 'Saving…' : 'Save Preferences'}
+            </button>
+          </div>
         )}
 
           </div>

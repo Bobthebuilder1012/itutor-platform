@@ -21,6 +21,14 @@ const PushTokenRegistrar = dynamic(() => import('@/components/push/PushTokenRegi
   ssr: false,
 });
 
+const RatingCenterDropdown = dynamic(
+  () =>
+    import('@/components/ratings/RatingCenterDropdown').then(
+      (m) => m.RatingCenterDropdown,
+    ),
+  { ssr: false },
+);
+
 interface DashboardLayoutProps {
   children: ReactNode;
   role: 'student' | 'tutor' | 'parent' | 'reviewer' | 'admin';
@@ -296,6 +304,8 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
             <div className="flex items-center gap-2 lg:gap-3">
               {/* Action Icons */}
               <div className="flex items-center gap-1 lg:gap-2">
+                {/* Rating Centre — students only */}
+                {role === 'student' && <RatingCenterDropdown />}
                 {profile?.id && role !== 'reviewer' && role !== 'admin' && <CalendarIcon userId={profile.id} role={role} />}
                 {profile?.id && role !== 'reviewer' && role !== 'admin' && <MessagesIcon userId={profile.id} role={role} />}
                 {profile?.id && <NotificationBell userId={profile.id} />}

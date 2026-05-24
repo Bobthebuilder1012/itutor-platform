@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { createServerClient } from '@supabase/ssr';
-import StudentSessionRatingForm from '@/components/feedback/StudentSessionRatingForm';
+import OneOnOneRatingLockout from '@/components/ratings/OneOnOneRatingLockout';
 import { getServiceClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
@@ -72,7 +72,7 @@ export default async function StudentSessionFeedbackPage({
     .single();
 
   return (
-    <StudentSessionRatingForm
+    <OneOnOneRatingLockout
       sessionId={sessionId}
       tutorName={displayName(tutor || {})}
       scheduledStartAt={session.scheduled_start_at}

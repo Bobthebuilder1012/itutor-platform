@@ -20,6 +20,7 @@ import { useAvatarUpload } from '@/lib/hooks/useAvatarUpload';
 import { Session } from '@/lib/types/database';
 import { Area } from '@/lib/utils/imageCrop';
 import { getDisplayName } from '@/lib/utils/displayName';
+import { RatingPromptContainer } from '@/components/ratings/RatingPromptContainer';
 
 type EnrichedSession = Session & {
   tutor?: {
@@ -238,6 +239,9 @@ export default function StudentDashboard() {
 
         {!testMode && profile && (
           <>
+            {/* Rating prompt banner — soft, non-blocking */}
+            <RatingPromptContainer />
+
             {/* Welcome Header */}
             <WelcomeHeader displayName={greetingName} />
 

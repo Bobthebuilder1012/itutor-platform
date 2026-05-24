@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import GroupDetailClient from '@/app/(student)/tutors/[tutorId]/GroupDetailClient';
 import { getServiceClient } from '@/lib/supabase/server';
 import { isGroupsFeatureEnabled } from '@/lib/featureFlags/groupsFeature';
+import { ClassRatingSection } from '@/components/ratings/ClassRatingSection';
 
 async function getGroup(groupId: string) {
   const service = getServiceClient();
@@ -85,6 +86,7 @@ export default async function StudentGroupDetailPage({
 
   return (
     <main className="mx-auto max-w-6xl p-4 md:p-8">
+      <ClassRatingSection classId={groupId} />
       <GroupDetailClient group={group} />
     </main>
   );
