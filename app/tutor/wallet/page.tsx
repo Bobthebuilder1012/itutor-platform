@@ -268,7 +268,7 @@ function WalletContent() {
               valueClass="text-brand-deep"
             />
             <Stat
-              label="At risk"
+              label="Tentative"
               value={`TT$ ${fmtTTD(atRiskThisMonth)}`}
               icon={AlertCircle}
               hint="Projected − earned this month. Could still cancel."
