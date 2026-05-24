@@ -21,6 +21,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/middleware/adminAuth';
 import { getServiceClient } from '@/lib/supabase/server';
 import { refundPayment, type RefundReason } from '@/lib/payments/refundService';
+import { writeTutorStrike, writeSystemRating } from '@/lib/reliability';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -29,6 +30,8 @@ type Outcome = 'student_noshow' | 'tutor_noshow' | 'tie';
 
 interface ResolveBody {
   outcome?: Outcome;
+  claimId?: string;
+  adminNotes?: string;
 }
 
 const VALID_OUTCOMES: ReadonlySet<Outcome> = new Set([
@@ -57,7 +60,7 @@ export async function POST(
 
   const { data: session, error: sessionError } = await admin
     .from('sessions')
-    .select('id, booking_id, status, charge_amount_ttd')
+    .select('id, booking_id, status, charge_amount_ttd, tutor_id, student_id')
     .eq('id', params.sessionId)
     .maybeSingle();
 
@@ -143,6 +146,60 @@ export async function POST(
       { error: result.message, code: result.code, details: result.details },
       { status: result.status }
     );
+  }
+
+  // Side-effects beyond the refund pipeline:
+  // - Tutor no-show: strike + auto 1-star system rating.
+  // - Student no-show: no strike (it's the student's penalty).
+  // - Tie: nothing.
+  if (outcome === 'tutor_noshow') {
+    await writeTutorStrike(admin, {
+      tutorId: session.tutor_id,
+      reason: 'tutor_noshow',
+      bookingId: session.booking_id,
+      sessionId: session.id,
+      notes: 'No-show claim resolved against tutor',
+    });
+    await writeSystemRating(admin, {
+      tutorId: session.tutor_id,
+      studentId: session.student_id,
+      sessionId: session.id,
+      reason: 'tutor_noshow',
+    });
+  }
+
+  // Resolve the claim row.
+  const claimUpdate: Record<string, unknown> = {
+    status: 'resolved',
+    admin_verdict: outcome,
+    admin_id: auth.user!.id,
+    admin_decided_at: new Date().toISOString(),
+  };
+  if (body.adminNotes && typeof body.adminNotes === 'string') {
+    claimUpdate.admin_notes = body.adminNotes.trim();
+  }
+  if (body.claimId) {
+    await admin.from('noshow_claims').update(claimUpdate).eq('id', body.claimId);
+  } else {
+    await admin.from('noshow_claims').update(claimUpdate).eq('session_id', session.id);
+  }
+
+  // Flip the booking row so it stops appearing as CONFIRMED.
+  if (session.booking_id) {
+    await admin
+      .from('bookings')
+      .update({
+        status: 'CANCELLED',
+        cancelled_at: new Date().toISOString(),
+        cancel_reason:
+          outcome === 'tutor_noshow'
+            ? 'Tutor no-show (admin verdict)'
+            : outcome === 'student_noshow'
+              ? 'Student no-show (admin verdict)'
+              : 'No-show dispute inconclusive (admin verdict)',
+        last_action_by: 'admin',
+      })
+      .eq('id', session.booking_id);
   }
 
   return NextResponse.json({
