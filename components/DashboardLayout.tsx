@@ -114,7 +114,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
       case 'student':
         return '/student/dashboard';
       case 'tutor':
-        return '/tutor/dashboard';
+        return '/tutor/classes';
       case 'parent':
         return '/parent/dashboard';
       case 'reviewer':
@@ -150,6 +150,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         ]);
       case 'tutor':
         return filterNav([
+          { href: '/tutor/classes', label: 'My Classes' },
           { href: '/tutor/find-students', label: 'Find Students' },
           { href: '/tutor/bookings', label: 'Booking Requests' },
           { href: '/communities', label: 'Communities' },

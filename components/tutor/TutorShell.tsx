@@ -29,11 +29,11 @@ type NavItem = {
 };
 
 const nav: NavItem[] = [
-  { to: '/tutor/dashboard', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { to: '/tutor/classes', label: 'My Classes', icon: BookOpen },
   { to: '/tutor/lessons', label: 'Schedule', icon: Calendar },
   { to: '/tutor/dashboard/ratings', label: 'My Ratings', icon: Star },
   { to: '/tutor/growth', label: 'Growth', icon: BarChart2 },
+  { to: '/tutor/dashboard', label: 'Profile', icon: LayoutDashboard, exact: true },
   { to: '/tutor/settings', label: 'Settings', icon: Settings },
 ];
 

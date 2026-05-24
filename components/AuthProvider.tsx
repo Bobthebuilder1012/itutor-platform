@@ -50,7 +50,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 router.push('/reviewer/dashboard');
                 return;
               } else if (profile.role === 'tutor') {
-                router.push('/tutor/dashboard');
+                router.push('/tutor/classes');
                 return;
               } else if (profile.role === 'student') {
                 router.push('/student/dashboard');
