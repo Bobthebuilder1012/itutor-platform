@@ -1,10 +1,14 @@
 // =====================================================
-// LIST REFUNDABLE PAYMENTS (ADMIN)
+// LIST REFUNDABLE + RECENTLY REFUNDED PAYMENTS (ADMIN)
 // =====================================================
 // GET /api/admin/payments/refundable
-// Returns payments that are succeeded but flagged for refund — most
-// commonly slot-conflict cases where the student paid but their
-// booking couldn't be created.
+// Returns two lists:
+//   - awaiting:  orphan payments (status='succeeded' AND booking_id IS NULL)
+//                where the student paid but no booking was created. These
+//                need a manual admin refund click.
+//   - processed: payments already refunded or partially refunded, sorted
+//                newest first. Audit view for flows that refund themselves
+//                (cancellations, tutor no-shows, admin clicks, etc.).
 // =====================================================
 
 import { NextResponse } from 'next/server';
@@ -14,68 +18,94 @@ import { getServiceClient } from '@/lib/supabase/server';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+const PROCESSED_LIMIT = 50;
+
 export async function GET() {
   const auth = await requireAdmin('full');
   if (auth.error) return auth.error;
 
   const admin = getServiceClient();
 
-  // The list surfaces ONLY orphan payments — succeeded charges where
-  // the booking couldn't be materialised (slot conflict, materialise
-  // RPC failed, etc.). Those rows have booking_id IS NULL and need an
-  // explicit admin click to refund.
-  //
-  // The previous filter also matched any succeeded payment whose
-  // cancel_reason was non-null, which over-fetched: e.g. partially
-  // refunded payments (status='partially_refunded' but the migration
-  // chain occasionally leaves them in 'succeeded' if a manual SQL
-  // touch happened) and any future use of cancel_reason on healthy
-  // bookings would all show up here.
-  //
-  // Note: `currency` is not a column on payments — payments are TTD-only
-  // by design. The UI defaults to 'TTD' below.
-  const { data: payments, error } = await admin
-    .from('payments')
-    .select(
-      'id, payer_id, amount_ttd, status, cancel_reason, paid_at, ' +
-        'lunipay_payment_id, lunipay_checkout_session_id, booking_id, raw_provider_payload'
-    )
-    .eq('status', 'succeeded')
-    .is('booking_id', null)
-    .not('lunipay_payment_id', 'is', null)
-    .order('paid_at', { ascending: false })
-    .limit(100);
+  const [awaitingRes, processedRes] = await Promise.all([
+    // Orphan payments — succeeded but no booking row.
+    admin
+      .from('payments')
+      .select(
+        'id, payer_id, amount_ttd, total_refunded_ttd, status, cancel_reason, paid_at, refunded_at, ' +
+          'lunipay_payment_id, lunipay_checkout_session_id, booking_id'
+      )
+      .eq('status', 'succeeded')
+      .is('booking_id', null)
+      .not('lunipay_payment_id', 'is', null)
+      .order('paid_at', { ascending: false })
+      .limit(100),
+    // Refunds that have already been processed (audit view).
+    admin
+      .from('payments')
+      .select(
+        'id, payer_id, amount_ttd, total_refunded_ttd, status, cancel_reason, paid_at, refunded_at, ' +
+          'lunipay_payment_id, lunipay_checkout_session_id, booking_id'
+      )
+      .in('status', ['refunded', 'partially_refunded'])
+      .order('refunded_at', { ascending: false, nullsFirst: false })
+      .limit(PROCESSED_LIMIT),
+  ]);
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (awaitingRes.error) {
+    return NextResponse.json({ error: awaitingRes.error.message }, { status: 500 });
+  }
+  if (processedRes.error) {
+    return NextResponse.json({ error: processedRes.error.message }, { status: 500 });
   }
 
-  if (!payments || payments.length === 0) {
-    return NextResponse.json({ payments: [] });
-  }
+  const awaiting = awaitingRes.data ?? [];
+  const processed = processedRes.data ?? [];
+  const bookingIds = Array.from(
+    new Set(processed.map((p: any) => p.booking_id).filter(Boolean))
+  );
 
   const payerIds = Array.from(
-    new Set(payments.map((p: any) => p.payer_id).filter(Boolean))
+    new Set([...awaiting, ...processed].map((p: any) => p.payer_id).filter(Boolean))
   );
-  const { data: profiles } = payerIds.length
-    ? await admin.from('profiles').select('id, full_name, email').in('id', payerIds)
-    : { data: [] };
+
+  const [{ data: profiles }, { data: sessions }] = await Promise.all([
+    payerIds.length
+      ? admin.from('profiles').select('id, full_name, email').in('id', payerIds)
+      : Promise.resolve({ data: [] as any[] }),
+    bookingIds.length
+      ? admin
+          .from('sessions')
+          .select('booking_id, status')
+          .in('booking_id', bookingIds)
+      : Promise.resolve({ data: [] as any[] }),
+  ]);
 
   const profileById = new Map((profiles ?? []).map((p: any) => [p.id, p]));
+  const sessionStatusByBookingId = new Map(
+    (sessions ?? []).map((s: any) => [s.booking_id, s.status])
+  );
 
-  const enriched = payments.map((p: any) => ({
+  const enrich = (p: any) => ({
     id: p.id,
     payer_id: p.payer_id,
     payer_name: profileById.get(p.payer_id)?.full_name ?? null,
     payer_email: profileById.get(p.payer_id)?.email ?? null,
     amount_ttd: Number(p.amount_ttd ?? 0),
+    refunded_amount_ttd: Number(p.total_refunded_ttd ?? 0),
     currency: 'TTD',
+    status: p.status,
     cancel_reason: p.cancel_reason,
     paid_at: p.paid_at,
+    refunded_at: p.refunded_at ?? null,
     lunipay_payment_id: p.lunipay_payment_id,
     lunipay_checkout_session_id: p.lunipay_checkout_session_id,
     booking_id: p.booking_id,
-  }));
+    session_status: p.booking_id ? sessionStatusByBookingId.get(p.booking_id) ?? null : null,
+  });
 
-  return NextResponse.json({ payments: enriched });
+  return NextResponse.json({
+    payments: awaiting.map(enrich), // kept for backwards compatibility
+    awaiting: awaiting.map(enrich),
+    processed: processed.map(enrich),
+  });
 }

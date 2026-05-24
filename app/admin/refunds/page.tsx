@@ -13,18 +13,23 @@ interface RefundablePayment {
   payer_name: string | null;
   payer_email: string | null;
   amount_ttd: number;
+  refunded_amount_ttd: number;
   currency: string;
+  status: string;
   cancel_reason: string | null;
   paid_at: string | null;
+  refunded_at: string | null;
   lunipay_payment_id: string | null;
   lunipay_checkout_session_id: string | null;
   booking_id: string | null;
+  session_status: string | null;
 }
 
 export default function AdminRefundsPage() {
   const router = useRouter();
   const [authLoading, setAuthLoading] = useState(true);
-  const [payments, setPayments] = useState<RefundablePayment[]>([]);
+  const [awaiting, setAwaiting] = useState<RefundablePayment[]>([]);
+  const [processed, setProcessed] = useState<RefundablePayment[]>([]);
   const [working, setWorking] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -52,7 +57,8 @@ export default function AdminRefundsPage() {
       setError(json.error || 'Failed to load refundable payments');
       return;
     }
-    setPayments(json.payments);
+    setAwaiting(json.awaiting ?? json.payments ?? []);
+    setProcessed(json.processed ?? []);
   }
 
   async function refund(paymentId: string) {
@@ -101,7 +107,11 @@ export default function AdminRefundsPage() {
         {message && <div className="rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-800 p-3 text-sm">{message}</div>}
 
         <section className="rounded-2xl border border-border bg-card p-6 space-y-4">
-          {payments.length === 0 ? (
+          <div>
+            <h2 className="text-base font-semibold text-ink">Awaiting refund</h2>
+            <p className="text-xs text-muted-foreground">Orphan payments that need an admin click. Automatic refunds (cancellations, tutor no-shows) don't appear here — see "Recent refunds" below.</p>
+          </div>
+          {awaiting.length === 0 ? (
             <p className="text-sm text-muted-foreground">No payments awaiting refund.</p>
           ) : (
             <div className="overflow-x-auto">
@@ -117,7 +127,7 @@ export default function AdminRefundsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {payments.map((p) => (
+                  {awaiting.map((p) => (
                     <tr key={p.id} className="border-b border-border/50">
                       <td className="py-2 pr-4 font-mono text-xs">
                         <div>{p.id.slice(0, 8)}</div>
@@ -149,6 +159,69 @@ export default function AdminRefundsPage() {
                         >
                           {working === p.id ? 'Refunding…' : 'Refund full amount'}
                         </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-2xl border border-border bg-card p-6 space-y-4">
+          <div>
+            <h2 className="text-base font-semibold text-ink">Recent refunds</h2>
+            <p className="text-xs text-muted-foreground">Last 50 payments where money has already been returned to the payer — automatic flows (cancellations, tutor no-shows, admin clicks) all surface here.</p>
+          </div>
+          {processed.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No refunds processed yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-xs text-muted-foreground uppercase">
+                    <th className="py-2 pr-4">Payment</th>
+                    <th className="py-2 pr-4">Payer</th>
+                    <th className="py-2 pr-4">Reason</th>
+                    <th className="py-2 pr-4">Refunded</th>
+                    <th className="py-2 pr-4 text-right">Refunded / Charged</th>
+                    <th className="py-2 pr-0 text-right">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {processed.map((p) => (
+                    <tr key={p.id} className="border-b border-border/50">
+                      <td className="py-2 pr-4 font-mono text-xs">
+                        <div>{p.id.slice(0, 8)}</div>
+                        <div className="text-muted-foreground">{p.lunipay_payment_id?.slice(0, 12) ?? '—'}</div>
+                      </td>
+                      <td className="py-2 pr-4">
+                        <div className="font-medium text-ink">{p.payer_name ?? '—'}</div>
+                        <div className="text-xs text-muted-foreground">{p.payer_email}</div>
+                      </td>
+                      <td className="py-2 pr-4 text-xs">
+                        {p.cancel_reason && (
+                          <div className="text-ink">{p.cancel_reason.replace(/_/g, ' ')}</div>
+                        )}
+                        {p.session_status && (
+                          <div className="text-muted-foreground">session: {p.session_status}</div>
+                        )}
+                      </td>
+                      <td className="py-2 pr-4 text-xs">
+                        {p.refunded_at ? new Date(p.refunded_at).toLocaleString() : '—'}
+                      </td>
+                      <td className="py-2 pr-4 text-right text-xs">
+                        <div className="font-semibold text-ink">${p.refunded_amount_ttd.toFixed(2)}</div>
+                        <div className="text-muted-foreground">of ${p.amount_ttd.toFixed(2)}</div>
+                      </td>
+                      <td className="py-2 pr-0 text-right">
+                        <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                          p.status === 'refunded'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : 'bg-amber-100 text-amber-800'
+                        }`}>
+                          {p.status === 'refunded' ? 'Full refund' : 'Partial refund'}
+                        </span>
                       </td>
                     </tr>
                   ))}
