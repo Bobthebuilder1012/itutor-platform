@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerClient } from '@/lib/supabase/server';
-import { markStudentNoShow } from '@/lib/services/sessionService';
+import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { markStudentNoShow, markTutorNoShow } from '@/lib/services/sessionService';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
@@ -16,9 +16,29 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const session = await markStudentNoShow(params.id, user.id);
+    // Look up the session once and dispatch based on whether the caller is
+    // the tutor (marking student no-show) or the student (reporting tutor).
+    const admin = getServiceClient();
+    const { data: session, error: sessionError } = await admin
+      .from('sessions')
+      .select('id, tutor_id, student_id')
+      .eq('id', params.id)
+      .maybeSingle();
 
-    return NextResponse.json({ session }, { status: 200 });
+    if (sessionError || !session) {
+      return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+    }
+
+    let updated;
+    if (session.tutor_id === user.id) {
+      updated = await markStudentNoShow(params.id, user.id);
+    } else if (session.student_id === user.id) {
+      updated = await markTutorNoShow(params.id, user.id);
+    } else {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    }
+
+    return NextResponse.json({ session: updated }, { status: 200 });
   } catch (error) {
     console.error('Error marking no-show:', error);
     return NextResponse.json(

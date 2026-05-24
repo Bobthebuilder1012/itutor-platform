@@ -23,7 +23,7 @@ type Stats = {
 };
 
 const COMPLETED_STATUSES = ['COMPLETED_ASSUMED'];
-const FINAL_STATUSES = ['COMPLETED_ASSUMED', 'NO_SHOW_STUDENT', 'EARLY_END_SHORT', 'CANCELLED'];
+const FINAL_STATUSES = ['COMPLETED_ASSUMED', 'NO_SHOW_STUDENT', 'NO_SHOW_TUTOR', 'EARLY_END_SHORT', 'CANCELLED'];
 
 export default function TutorAnalyticsPage() {
   return (

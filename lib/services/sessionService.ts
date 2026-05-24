@@ -9,7 +9,11 @@ import { scheduleSessionReminders } from '@/lib/reminders/scheduleReminders';
 import type { Session, SessionRules } from '@/lib/types/sessions';
 import { calculateSessionRules } from '@/lib/types/sessions';
 import { calculateCommission } from '@/lib/utils/commissionCalculator';
+import { refundPayment } from '@/lib/payments/refundService';
 import { ensureTutorConnected, createMeeting, getMeetingState } from './videoProviders';
+
+// Wait window before a no-show can be reported (matches the modal copy).
+export const NO_SHOW_WAIT_MINUTES = 15;
 
 /**
  * Create session for a confirmed booking
@@ -211,12 +215,12 @@ export async function markStudentNoShow(
   const now = new Date();
   const scheduledStart = new Date(session.scheduled_start_at);
   const noShowDeadline = new Date(
-    scheduledStart.getTime() + session.no_show_wait_minutes * 60000
+    scheduledStart.getTime() + NO_SHOW_WAIT_MINUTES * 60000
   );
 
   if (now < noShowDeadline) {
     throw new Error(
-      `Must wait ${session.no_show_wait_minutes} minutes before marking no-show`
+      `Must wait ${NO_SHOW_WAIT_MINUTES} minutes before marking no-show`
     );
   }
 
@@ -259,6 +263,96 @@ export async function markStudentNoShow(
   // await capturePayment(sessionId);
 
   return updatedSession as Session;
+}
+
+/**
+ * Mark tutor as no-show (initiated by the student).
+ * Issues a full refund to the student via refundService, which also moves the
+ * session to NO_SHOW_TUTOR and reverts the tutor's pending payout ledger row.
+ */
+export async function markTutorNoShow(
+  sessionId: string,
+  studentId: string
+): Promise<Session> {
+  const supabase = getServiceClient();
+
+  const { data: session, error } = await supabase
+    .from('sessions')
+    .select('*')
+    .eq('id', sessionId)
+    .single();
+
+  if (error || !session) {
+    throw new Error('Session not found');
+  }
+
+  if (session.student_id !== studentId) {
+    throw new Error('Unauthorized');
+  }
+
+  const now = new Date();
+  const scheduledStart = new Date(session.scheduled_start_at);
+  const noShowDeadline = new Date(scheduledStart.getTime() + NO_SHOW_WAIT_MINUTES * 60000);
+
+  if (now < noShowDeadline) {
+    throw new Error(`Must wait ${NO_SHOW_WAIT_MINUTES} minutes before marking no-show`);
+  }
+
+  if (!['SCHEDULED', 'JOIN_OPEN'].includes(session.status)) {
+    throw new Error('Session already resolved');
+  }
+
+  // Find the refundable payment for this booking, if any.
+  const { data: payment } = await supabase
+    .from('payments')
+    .select('id, status')
+    .eq('booking_id', session.booking_id)
+    .in('status', ['succeeded', 'partially_refunded'])
+    .maybeSingle();
+
+  if (payment?.id) {
+    const result = await refundPayment({
+      paymentId: payment.id,
+      reason: 'tutor_noshow',
+      actorId: studentId,
+      sessionStatusOverride: 'NO_SHOW_TUTOR',
+      client: supabase,
+    });
+
+    if (!result.ok) {
+      throw new Error(result.message);
+    }
+  } else {
+    // No captured payment — just zero out the session so the cron skips it.
+    const { error: updateError } = await supabase
+      .from('sessions')
+      .update({
+        status: 'NO_SHOW_TUTOR',
+        meeting_ended_at: now.toISOString(),
+        charge_amount_ttd: 0,
+        platform_fee_ttd: 0,
+        payout_amount_ttd: 0,
+        notes: {
+          ...session.notes,
+          no_show_reason: 'Tutor did not join within wait period',
+          no_show_marked_by: studentId,
+          no_show_marked_at: now.toISOString(),
+        },
+      })
+      .eq('id', sessionId);
+
+    if (updateError) {
+      throw new Error('Failed to mark no-show');
+    }
+  }
+
+  const { data: updated } = await supabase
+    .from('sessions')
+    .select('*')
+    .eq('id', sessionId)
+    .single();
+
+  return updated as Session;
 }
 
 /**
