@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Wallet, ArrowDownToLine, TrendingUp, Search, Banknote, Users } from 'lucide-react';
+import { Wallet, TrendingUp, Search, Banknote, Users, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
@@ -191,9 +191,22 @@ function WalletContent() {
       .sort((a, b) => b.earned + b.projected - (a.earned + a.projected));
   }, [history, upcoming, upcomingStudents]);
 
+  const monthEarned = useMemo(() => {
+    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
+    return history
+      .filter((h) => h.status === 'paid' && h.released_at && new Date(h.released_at).getTime() >= monthStart)
+      .reduce((s, h) => s + h.amount_ttd, 0);
+  }, [history]);
+
   const projectedThisMonth = useMemo(
     () => (upcoming ?? []).reduce((sum, u) => sum + u.payout, 0),
     [upcoming]
+  );
+  // "At risk" — projected for the month minus what's already been paid out.
+  // Captures the tentative / unconfirmed / could-still-cancel portion of the forecast.
+  const atRiskThisMonth = useMemo(
+    () => Math.max(0, projectedThisMonth - monthEarned),
+    [projectedThisMonth, monthEarned]
   );
   const totalCompletedCount = useMemo(
     () => breakdown.reduce((sum, r) => sum + r.completedCount, 0),
@@ -201,13 +214,6 @@ function WalletContent() {
   );
   const upcomingCount = upcoming?.length ?? 0;
   const summaryLoading = !data || upcoming === null;
-
-  const monthEarned = useMemo(() => {
-    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
-    return history
-      .filter((h) => h.status === 'paid' && h.released_at && new Date(h.released_at).getTime() >= monthStart)
-      .reduce((s, h) => s + h.amount_ttd, 0);
-  }, [history]);
 
   return (
     <div className="max-w-7xl space-y-6">
@@ -262,10 +268,11 @@ function WalletContent() {
               valueClass="text-brand-deep"
             />
             <Stat
-              label="Awaiting bank transfer"
-              value={`TT$ ${fmtTTD(balances?.available_ttd ?? 0)}`}
-              icon={ArrowDownToLine}
-              hint="Queued for the next payout batch"
+              label="At risk"
+              value={`TT$ ${fmtTTD(atRiskThisMonth)}`}
+              icon={AlertCircle}
+              hint="Projected − earned this month. Could still cancel."
+              valueClass="text-amber-600"
             />
             <Stat
               label="Lifetime paid"
