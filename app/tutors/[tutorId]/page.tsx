@@ -14,6 +14,7 @@ import { useAuthPrompt } from '@/hooks/useAuthPrompt';
 import { getAvatarColor } from '@/lib/utils/avatarColors';
 import Link from 'next/link';
 import { RatingBreakdown, type RatingDistribution } from '@/components/ratings/RatingBreakdown';
+import { CommentSection } from '@/components/comments/CommentSection';
 
 type TutorProfile = {
   id: string;
@@ -613,6 +614,16 @@ export default function PublicTutorProfilePage() {
           )}
         </div>
         )}
+
+        {/* Comment Section */}
+        <div className="bg-white rounded-2xl shadow-card border border-border p-6 mb-6">
+          <CommentSection
+            targetType="tutor_profile"
+            targetId={tutorId}
+            starFilter={activeFilter}
+            onClearFilter={() => setActiveFilter(null)}
+          />
+        </div>
 
         {/* About Section */}
         <div id="about-section" className="bg-white rounded-2xl shadow-lg border-2 border-gray-200 p-6 mb-6">
