@@ -3,13 +3,23 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Lock, TrendingUp, TrendingDown, Users, DollarSign, Star, Calendar, AlertTriangle } from 'lucide-react';
+import { Lock, TrendingUp, TrendingDown, Users, DollarSign, Star, Calendar, AlertTriangle, ChevronDown } from 'lucide-react';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { useTutorCompletion } from '@/lib/hooks/useTutorCompletion';
 import { supabase } from '@/lib/supabase/client';
 import TutorShell from '@/components/tutor/TutorShell';
 
 type MonthData = { month: string; actual: number; projected: number; isCurrentMonth: boolean };
+
+type StudentBreakdownRow = {
+  studentId: string;
+  name: string;
+  avatarUrl: string | null;
+  completedCount: number;
+  earned: number;
+  upcomingCount: number;
+  projected: number;
+};
 
 type Stats = {
   monthlyEarnings: MonthData[];
@@ -21,7 +31,13 @@ type Stats = {
   avgRating: number;
   ratingCount: number;
   completionRate: number;
+  studentBreakdown: StudentBreakdownRow[];
+  upcomingThisMonthCount: number;
 };
+
+const COMPLETED_STATUSES = ['COMPLETED_ASSUMED'];
+const UPCOMING_STATUSES = ['SCHEDULED', 'JOIN_OPEN'];
+const FINAL_STATUSES = ['COMPLETED_ASSUMED', 'NO_SHOW_STUDENT', 'EARLY_END_SHORT', 'CANCELLED'];
 
 export default function TutorAnalyticsPage() {
   return (
@@ -36,6 +52,7 @@ function AnalyticsContent() {
   const { profile, loading } = useProfile();
   const completion = useTutorCompletion(profile);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && (!profile || profile.role !== 'tutor')) router.push('/login');
@@ -58,24 +75,23 @@ function AnalyticsContent() {
     const [{ data: sessions }, { data: ratings }, { data: upcoming }] = await Promise.all([
       supabase
         .from('sessions')
-        .select('id, scheduled_start, status, payout_amount_ttd, booking:bookings(student_id)')
+        .select('id, scheduled_start_at, status, payout_amount_ttd, student_id')
         .eq('tutor_id', tutorId)
-        .gte('scheduled_start', sixMonthsAgo.toISOString()),
+        .gte('scheduled_start_at', sixMonthsAgo.toISOString()),
       supabase
         .from('ratings')
         .select('stars')
         .eq('tutor_id', tutorId),
       supabase
         .from('sessions')
-        .select('id, scheduled_start, payout_amount_ttd')
+        .select('id, scheduled_start_at, status, payout_amount_ttd, student_id')
         .eq('tutor_id', tutorId)
-        .in('status', ['scheduled', 'confirmed'])
-        .gte('scheduled_start', now.toISOString())
-        .lt('scheduled_start', nextMonthEnd.toISOString()),
+        .in('status', UPCOMING_STATUSES)
+        .gte('scheduled_start_at', now.toISOString())
+        .lt('scheduled_start_at', nextMonthEnd.toISOString()),
     ]);
 
     const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-    const currentMonthEnd = nextMonthEnd.getTime();
 
     const months: MonthData[] = [];
     for (let i = 5; i >= 0; i--) {
@@ -88,13 +104,13 @@ function AnalyticsContent() {
       const isCurrent = monthStart === currentMonthStart;
 
       const actual = (sessions ?? [])
-        .filter((s: any) => s.status === 'completed' && new Date(s.scheduled_start).getTime() >= monthStart && new Date(s.scheduled_start).getTime() < monthEnd)
-        .reduce((sum: number, s: any) => sum + (s.payout_amount_ttd ?? 0), 0);
+        .filter((s: any) => COMPLETED_STATUSES.includes(s.status) && new Date(s.scheduled_start_at).getTime() >= monthStart && new Date(s.scheduled_start_at).getTime() < monthEnd)
+        .reduce((sum: number, s: any) => sum + Number(s.payout_amount_ttd ?? 0), 0);
 
       let projected = 0;
       if (isCurrent) {
         projected = (upcoming ?? [])
-          .reduce((sum: number, s: any) => sum + (s.payout_amount_ttd ?? 0), 0);
+          .reduce((sum: number, s: any) => sum + Number(s.payout_amount_ttd ?? 0), 0);
       }
 
       months.push({ month: label, actual, projected, isCurrentMonth: isCurrent });
@@ -104,20 +120,55 @@ function AnalyticsContent() {
     const earnedThisMonth = currentMonth?.actual ?? 0;
     const projectedThisMonth = earnedThisMonth + (currentMonth?.projected ?? 0);
 
-    const completed = (sessions ?? []).filter((s: any) => s.status === 'completed');
+    const completed = (sessions ?? []).filter((s: any) => COMPLETED_STATUSES.includes(s.status));
     const totalSessions = completed.length;
-    const totalEarnings = completed.reduce((sum: number, s: any) => sum + (s.payout_amount_ttd ?? 0), 0);
-    const studentSet = new Set();
+    const totalEarnings = completed.reduce((sum: number, s: any) => sum + Number(s.payout_amount_ttd ?? 0), 0);
+
+    const studentMap = new Map<string, StudentBreakdownRow>();
+    const ensureRow = (studentId: string): StudentBreakdownRow => {
+      let row = studentMap.get(studentId);
+      if (!row) {
+        row = { studentId, name: 'Student', avatarUrl: null, completedCount: 0, earned: 0, upcomingCount: 0, projected: 0 };
+        studentMap.set(studentId, row);
+      }
+      return row;
+    };
     completed.forEach((s: any) => {
-      const b = Array.isArray(s.booking) ? s.booking[0] : s.booking;
-      if (b?.student_id) studentSet.add(b.student_id);
+      if (!s.student_id) return;
+      const row = ensureRow(s.student_id);
+      row.completedCount += 1;
+      row.earned += Number(s.payout_amount_ttd ?? 0);
     });
+    (upcoming ?? []).forEach((s: any) => {
+      if (!s.student_id) return;
+      const row = ensureRow(s.student_id);
+      row.upcomingCount += 1;
+      row.projected += Number(s.payout_amount_ttd ?? 0);
+    });
+
+    const studentIds = Array.from(studentMap.keys());
+    if (studentIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, full_name, display_name, avatar_url')
+        .in('id', studentIds);
+      (profiles ?? []).forEach((p: any) => {
+        const row = studentMap.get(p.id);
+        if (!row) return;
+        row.name = p.display_name || p.full_name || 'Student';
+        row.avatarUrl = p.avatar_url ?? null;
+      });
+    }
+
+    const studentBreakdown = Array.from(studentMap.values()).sort(
+      (a, b) => b.earned + b.projected - (a.earned + a.projected)
+    );
 
     const stars = (ratings ?? []).map((r: any) => r.stars);
     const avgRating = stars.length ? stars.reduce((a: number, b: number) => a + b, 0) / stars.length : 0;
 
-    const totalScheduled = (sessions ?? []).filter((s: any) => ['completed', 'no_show', 'cancelled'].includes(s.status)).length;
-    const completionRate = totalScheduled ? (totalSessions / totalScheduled) * 100 : 0;
+    const totalFinal = (sessions ?? []).filter((s: any) => FINAL_STATUSES.includes(s.status)).length;
+    const completionRate = totalFinal ? (totalSessions / totalFinal) * 100 : 0;
 
     setStats({
       monthlyEarnings: months,
@@ -125,10 +176,12 @@ function AnalyticsContent() {
       earnedThisMonth,
       totalSessions,
       totalEarnings,
-      totalStudents: studentSet.size,
+      totalStudents: studentBreakdown.length,
       avgRating,
       ratingCount: stars.length,
       completionRate,
+      studentBreakdown,
+      upcomingThisMonthCount: (upcoming ?? []).length,
     });
   }
 
@@ -248,6 +301,79 @@ function AnalyticsContent() {
             <div className="flex justify-between"><span className="text-muted-foreground">Sessions per student</span><span className="font-semibold tabular-nums text-ink">{stats.totalStudents > 0 ? (stats.totalSessions / stats.totalStudents).toFixed(1) : 0}</span></div>
           </div>
         </div>
+      </section>
+
+      <section className="rounded-2xl border border-border bg-card overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setBreakdownOpen((open) => !open)}
+          className="w-full flex items-center justify-between gap-3 p-5 text-left hover:bg-muted/50 transition"
+          aria-expanded={breakdownOpen}
+        >
+          <div className="flex items-center gap-3">
+            <div className="size-9 rounded-lg bg-brand/10 text-brand-deep grid place-items-center">
+              <Users className="size-4" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-ink">Student breakdown</h3>
+              <p className="text-xs text-muted-foreground">
+                {stats.studentBreakdown.length === 0
+                  ? 'No students yet'
+                  : `${stats.studentBreakdown.length} student${stats.studentBreakdown.length === 1 ? '' : 's'} \u00b7 ${stats.totalSessions} completed \u00b7 ${stats.upcomingThisMonthCount} upcoming this month`}
+              </p>
+            </div>
+          </div>
+          <ChevronDown
+            className={`size-5 text-muted-foreground transition-transform ${breakdownOpen ? 'rotate-180' : ''}`}
+          />
+        </button>
+
+        {breakdownOpen && stats.studentBreakdown.length > 0 && (
+          <div className="border-t border-border">
+            <div className="hidden sm:grid grid-cols-12 gap-3 px-5 py-2 bg-muted/30 text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
+              <div className="col-span-4">Student</div>
+              <div className="col-span-2 text-right">Completed</div>
+              <div className="col-span-2 text-right">Earned</div>
+              <div className="col-span-2 text-right">Upcoming</div>
+              <div className="col-span-2 text-right">Projected</div>
+            </div>
+            <ul className="divide-y divide-border">
+              {stats.studentBreakdown.map((row) => (
+                <li key={row.studentId} className="grid grid-cols-12 gap-3 px-5 py-3 text-sm items-center">
+                  <div className="col-span-12 sm:col-span-4 flex items-center gap-3 min-w-0">
+                    <div className="size-8 rounded-full bg-muted grid place-items-center overflow-hidden shrink-0">
+                      {row.avatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={row.avatarUrl} alt={row.name} className="size-8 object-cover" />
+                      ) : (
+                        <span className="text-xs font-semibold text-muted-foreground">
+                          {row.name.charAt(0).toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-medium text-ink truncate">{row.name}</span>
+                  </div>
+                  <div className="col-span-3 sm:col-span-2 text-right tabular-nums text-ink">
+                    <span className="sm:hidden text-xs text-muted-foreground mr-1">Done</span>
+                    {row.completedCount}
+                  </div>
+                  <div className="col-span-3 sm:col-span-2 text-right tabular-nums font-semibold text-ink">
+                    <span className="sm:hidden text-xs text-muted-foreground mr-1">Earned</span>
+                    TT$ {row.earned.toLocaleString()}
+                  </div>
+                  <div className="col-span-3 sm:col-span-2 text-right tabular-nums text-ink">
+                    <span className="sm:hidden text-xs text-muted-foreground mr-1">Upcoming</span>
+                    {row.upcomingCount}
+                  </div>
+                  <div className="col-span-3 sm:col-span-2 text-right tabular-nums font-semibold text-brand-deep">
+                    <span className="sm:hidden text-xs text-muted-foreground mr-1">Proj</span>
+                    TT$ {row.projected.toLocaleString()}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </section>
     </div>
   );
