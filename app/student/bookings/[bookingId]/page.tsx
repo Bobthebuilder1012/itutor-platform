@@ -7,7 +7,6 @@ import {
   getBooking, 
   getBookingMessages, 
   addBookingMessage,
-  studentCancelBooking,
   subscribeToBooking,
   subscribeToBookingMessages
 } from '@/lib/services/bookingService';
@@ -17,11 +16,11 @@ import { Booking, BookingMessage, BookingMessageWithSender } from '@/lib/types/b
 import { formatDateTime, formatTimeRange, getRelativeTime } from '@/lib/utils/calendar';
 import { getBookingStatusColor, getBookingStatusLabel } from '@/lib/types/booking';
 import SessionJoinButton from '@/components/sessions/SessionJoinButton';
-import MarkNoShowButtonEnhanced from '@/components/sessions/MarkNoShowButtonEnhanced';
+import ReportNoShowFlow from '@/components/sessions/ReportNoShowFlow';
 import { Session } from '@/lib/types/sessions';
 import { isPaidClassesEnabled } from '@/lib/featureFlags/paidClasses';
 import StudentSessionAttendance, { type SessionAttendanceState } from '@/components/student/StudentSessionAttendance';
-import { BOOKING_CANCELLATION_REASON_LABELS } from '@/lib/constants/bookingCancellationReasons';
+import CancelBookingModal from '@/components/cancellation/CancelBookingModal';
 
 export default function BookingThreadPage() {
   const { profile, loading: profileLoading } = useProfile();
@@ -40,8 +39,7 @@ export default function BookingThreadPage() {
   const [sending, setSending] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
-  const [cancelReason, setCancelReason] = useState('');
-  
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -196,26 +194,6 @@ export default function BookingThreadPage() {
     }
   }
 
-  async function submitCancelBooking() {
-    if (!cancelReason) {
-      alert('Please select a reason for cancelling.');
-      return;
-    }
-
-    setActionLoading(true);
-    try {
-      await studentCancelBooking(bookingId, cancelReason);
-      alert('Booking cancelled');
-      setCancelOpen(false);
-      setCancelReason('');
-      await loadBookingData();
-    } catch (error) {
-      console.error('Error cancelling booking:', error);
-      alert('Failed to cancel booking');
-    } finally {
-      setActionLoading(false);
-    }
-  }
 
   if (profileLoading || loading || !profile || !booking) {
     return (
@@ -323,10 +301,7 @@ export default function BookingThreadPage() {
             <div className="mt-4 pt-4 border-t border-blue-200">
               <button
                 type="button"
-                onClick={() => {
-                  setCancelReason('');
-                  setCancelOpen(true);
-                }}
+                onClick={() => setCancelOpen(true)}
                 disabled={actionLoading}
                 className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium text-sm transition disabled:opacity-50"
               >
@@ -336,61 +311,22 @@ export default function BookingThreadPage() {
           )}
         </div>
 
-        {/* Session Join Button */}
-        {cancelOpen && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-            onClick={() => !actionLoading && setCancelOpen(false)}
-          >
-            <div
-              className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl border border-gray-200"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h3 className="text-lg font-bold text-gray-900 mb-2">Cancel booking</h3>
-              <p className="text-sm text-gray-600 mb-4">Select a reason. Your tutor will be notified.</p>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Reason</label>
-              <select
-                value={cancelReason}
-                onChange={(e) => setCancelReason(e.target.value)}
-                className="w-full mb-4 rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
-              >
-                <option value="">Choose a reason…</option>
-                {BOOKING_CANCELLATION_REASON_LABELS.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
-              <div className="flex gap-2 justify-end">
-                <button
-                  type="button"
-                  disabled={actionLoading}
-                  onClick={() => setCancelOpen(false)}
-                  className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                >
-                  Back
-                </button>
-                <button
-                  type="button"
-                  disabled={actionLoading || !cancelReason}
-                  onClick={() => void submitCancelBooking()}
-                  className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-50"
-                >
-                  {actionLoading ? 'Cancelling…' : 'Confirm cancel'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        <CancelBookingModal
+          open={cancelOpen}
+          bookingId={bookingId}
+          role="student"
+          onClose={() => setCancelOpen(false)}
+          onCancelled={() => loadBookingData()}
+        />
 
         {session && booking.status === 'CONFIRMED' && (
           <div className="mb-6 space-y-4">
             <SessionJoinButton session={session} userRole="student" />
             
-            {/* Mark No Show Button for Student */}
-            <MarkNoShowButtonEnhanced 
-              session={session} 
-              userRole="student" 
+            {/* No-show dispute report */}
+            <ReportNoShowFlow
+              session={session}
+              userRole="student"
               onSuccess={() => loadBookingData()}
             />
 
