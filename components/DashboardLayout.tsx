@@ -282,6 +282,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/reviewer/payments', label: 'Payments & Revenue', icon: icons.creditCard },
           { href: '/admin/payouts', label: 'Payouts', icon: icons.banknote },
           { href: '/admin/refunds', label: 'Refunds', icon: icons.refund },
+          { href: '/admin/disputes', label: 'Disputes & Reliability', icon: icons.shield },
         ]},
         { label: 'System', items: [
           { href: '/admin/emails', label: 'Email Management', icon: icons.mail },
