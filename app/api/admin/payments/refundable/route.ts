@@ -20,11 +20,18 @@ export async function GET() {
 
   const admin = getServiceClient();
 
-  // succeeded payments that either:
-  //   - have no booking (slot-conflict refund case), or
-  //   - carry an explicit cancel_reason
-  // and haven't already been refunded, with a LuniPay payment id we
-  // can call refund against.
+  // The list surfaces ONLY orphan payments — succeeded charges where
+  // the booking couldn't be materialised (slot conflict, materialise
+  // RPC failed, etc.). Those rows have booking_id IS NULL and need an
+  // explicit admin click to refund.
+  //
+  // The previous filter also matched any succeeded payment whose
+  // cancel_reason was non-null, which over-fetched: e.g. partially
+  // refunded payments (status='partially_refunded' but the migration
+  // chain occasionally leaves them in 'succeeded' if a manual SQL
+  // touch happened) and any future use of cancel_reason on healthy
+  // bookings would all show up here.
+  //
   // Note: `currency` is not a column on payments — payments are TTD-only
   // by design. The UI defaults to 'TTD' below.
   const { data: payments, error } = await admin
@@ -34,8 +41,8 @@ export async function GET() {
         'lunipay_payment_id, lunipay_checkout_session_id, booking_id, raw_provider_payload'
     )
     .eq('status', 'succeeded')
+    .is('booking_id', null)
     .not('lunipay_payment_id', 'is', null)
-    .or('booking_id.is.null,cancel_reason.not.is.null')
     .order('paid_at', { ascending: false })
     .limit(100);
 

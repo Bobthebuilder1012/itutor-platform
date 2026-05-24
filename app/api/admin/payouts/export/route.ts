@@ -111,42 +111,57 @@ export async function POST() {
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
   const filename = `itutor-payouts-${ts}.csv`;
 
-  // --- Create the batch row ---
-  const { data: batch, error: batchError } = await admin
-    .from('payout_batches')
-    .insert({
-      generated_by: auth.user!.id,
-      total_amount_ttd: Math.round(totalAmount * 100) / 100,
-      line_count: lineCount,
-      status: 'exported',
-      csv_filename: filename,
-    })
-    .select('id, generated_at, total_amount_ttd, line_count, status, csv_filename')
-    .single();
+  // --- Atomic: insert batch + stamp ledger rows in one RPC ---
+  // create_payout_batch_atomic (mig 154) wraps both writes in a
+  // single transaction so a crash between them can't leave an
+  // empty batch behind, and the ledger update guards on
+  // (status='release_ready' AND batch_id IS NULL) so a row
+  // already claimed by a concurrent export can't be re-batched.
+  const { data: rpcResult, error: rpcError } = await admin.rpc(
+    'create_payout_batch_atomic',
+    {
+      p_generated_by: auth.user!.id,
+      p_total_amount_ttd: Math.round(totalAmount * 100) / 100,
+      p_line_count: lineCount,
+      p_csv_filename: filename,
+      p_ledger_ids: eligibleLedgerIds,
+    }
+  );
 
-  if (batchError || !batch) {
-    return NextResponse.json(
-      { error: batchError?.message ?? 'Failed to create batch' },
-      { status: 500 }
-    );
+  if (rpcError || !rpcResult) {
+    const msg = rpcError?.message ?? 'Failed to create batch';
+    const status = msg.includes('no_eligible_lines') ? 409 : 500;
+    return NextResponse.json({ error: msg }, { status });
   }
 
-  // --- Stamp the ledger items with the batch id ---
-  const { error: stampError } = await admin
-    .from('payout_ledger')
-    .update({ batch_id: batch.id, updated_at: new Date().toISOString() })
-    .in('id', eligibleLedgerIds);
+  const rpc = rpcResult as Record<string, any>;
+  const batch = {
+    id: rpc.batch_id,
+    generated_at: rpc.generated_at,
+    total_amount_ttd: rpc.total_amount_ttd,
+    line_count: rpc.line_count,
+    status: rpc.status,
+    csv_filename: rpc.csv_filename,
+  };
+  const stampedIds = new Set<string>(
+    Array.isArray(rpc.stamped_ledger_ids) ? rpc.stamped_ledger_ids : []
+  );
 
-  if (stampError) {
-    // Roll back the batch row so the next export attempt isn't poisoned.
-    await admin.from('payout_batches').delete().eq('id', batch.id);
-    return NextResponse.json({ error: stampError.message }, { status: 500 });
+  // --- Rebuild lineByTutor against rows that actually got stamped ---
+  // (a concurrent batch may have claimed some of our candidates).
+  const finalByTutor = new Map<string, number>();
+  for (const row of ledger as any[]) {
+    if (!stampedIds.has(row.id)) continue;
+    finalByTutor.set(
+      row.tutor_id,
+      (finalByTutor.get(row.tutor_id) ?? 0) + Number(row.amount_ttd)
+    );
   }
 
   // --- Build CSV ---
   const rows: string[] = [];
   rows.push(CSV_HEADER.join(','));
-  for (const [tutorId, agg] of lineByTutor) {
+  for (const [tutorId, amount] of finalByTutor) {
     const account = accountByTutor.get(tutorId);
     const profile = profileById.get(tutorId);
     rows.push(
@@ -157,7 +172,7 @@ export async function POST() {
         csvCell(account?.branch),
         csvCell(account?.payout_account_identifier),
         csvCell(account?.account_type),
-        csvCell((Math.round(agg.amount * 100) / 100).toFixed(2)),
+        csvCell((Math.round(amount * 100) / 100).toFixed(2)),
         csvCell(`ITUTOR-${batch.id.slice(0, 8)}`),
       ].join(',')
     );

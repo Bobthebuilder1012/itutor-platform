@@ -55,6 +55,9 @@ const MIGRATIONS = [
   '150_payments_critical_fixes.sql',
   '151_atomic_paid_booking_and_payer.sql',
   '152_partial_refunds.sql',
+  '153_materialise_uses_complete_payment.sql',
+  '154_payout_batch_atomic.sql',
+  '155_booking_slot_exclusion.sql',
 ];
 
 async function tryConnect(password: string): Promise<Client | null> {

@@ -213,6 +213,44 @@ export async function GET(request: NextRequest) {
 
   if (rpcError || !rpcResult) {
     console.error('[lunipay/finalize] materialize_paid_booking failed:', rpcError);
+
+    // EXCLUDE constraint (mig 155) hit: someone else booked this slot
+    // between the soft re-check above and the RPC. Convert to a slot-
+    // conflict refund stub instead of failing — the LuniPay payment
+    // already cleared.
+    const code = (rpcError as any)?.code as string | undefined;
+    const msg = rpcError?.message ?? '';
+    const isExclusion =
+      code === '23P01' ||
+      msg.includes('bookings_tutor_no_overlap') ||
+      msg.includes('exclusion constraint');
+
+    if (isExclusion) {
+      const { data: refundPayment } = await admin
+        .from('payments')
+        .insert({
+          booking_id: null,
+          payer_id: payerId,
+          provider: 'lunipay',
+          amount_ttd: priceTtd > 0 ? priceTtd : centsToTtd(session.amount ?? 0),
+          status: 'succeeded',
+          lunipay_checkout_session_id: session.id,
+          lunipay_payment_id: session.payment_id,
+          lunipay_payment_intent_id: session.payment_intent_id,
+          provider_reference: session.id,
+          paid_at: new Date().toISOString(),
+          cancel_reason: 'slot_taken_after_payment_needs_refund',
+          raw_provider_payload: { source: 'finalize', session, exclusion: true },
+        })
+        .select('id')
+        .single();
+
+      return NextResponse.json({
+        status: 'slot_conflict_needs_refund',
+        paymentId: refundPayment?.id ?? null,
+      });
+    }
+
     return NextResponse.json(
       { error: 'Failed to create booking', details: rpcError?.message },
       { status: 500 }

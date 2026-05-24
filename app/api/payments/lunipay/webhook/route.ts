@@ -10,9 +10,16 @@
 // Idempotent on the `lunipay_webhook_events` table — duplicate
 // deliveries (LuniPay retries identical bodies) are short-circuited.
 //
-// Events handled:
+// Events handled (legacy "pay for existing booking" flow):
 //   - checkout.session.completed → mark succeeded, fire complete_booking_payment RPC
 //   - checkout.session.expired   → mark cancelled, reset booking to unpaid
+//   - payment_intent.*           → ack + log only (we act on the matching
+//                                  checkout.session event)
+//   - charge.refunded            → log warning if our DB doesn't already
+//                                  reflect the refund (means it was issued
+//                                  out-of-band via the LuniPay dashboard)
+//   - charge.dispute.*           → flag payment with cancel_reason so the
+//                                  admin sees it on the refund queue
 // =====================================================
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -248,7 +255,7 @@ export async function POST(request: NextRequest) {
           type: 'payment_succeeded',
           title: 'Payment confirmed',
           message: `Your payment of $${payment.amount_ttd} TTD was successful. Your booking is now being sent to the tutor.`,
-          link: `/payments/${payment.id}/receipt`,
+          link: '/student/bookings',
           created_at: new Date().toISOString(),
         },
       ];
@@ -302,6 +309,44 @@ export async function POST(request: NextRequest) {
         created_at: new Date().toISOString(),
       });
     }
+  } else if (event.type.startsWith('payment_intent.')) {
+    // payment_intent events fire alongside checkout.session events for the
+    // same payment. We act on the session events (they're more semantically
+    // useful — payment_status, line_items, metadata are richer there).
+    // Acknowledge without doing any state work so LuniPay stops retrying.
+    console.log(
+      `[lunipay/webhook] Acknowledging payment_intent event ${event.type} for payment ${payment.id}`
+    );
+  } else if (event.type === 'charge.refunded') {
+    // If we initiated this refund via /api/admin/payments/[id]/refund, the
+    // payment is already in 'refunded' or 'partially_refunded'. If it's not,
+    // this is an out-of-band refund (operator hit refund directly in the
+    // LuniPay dashboard) and we need to surface that for manual reconciliation.
+    if (payment.status !== 'refunded' && payment.status !== 'partially_refunded') {
+      console.warn(
+        `[lunipay/webhook] Out-of-band refund detected on payment ${payment.id}; flagging for admin reconciliation`
+      );
+      await admin
+        .from('payments')
+        .update({
+          cancel_reason: 'refunded_out_of_band',
+          refunded_at: new Date().toISOString(),
+        })
+        .eq('id', payment.id);
+    } else {
+      console.log(
+        `[lunipay/webhook] charge.refunded already reflected for payment ${payment.id}`
+      );
+    }
+  } else if (event.type.startsWith('charge.dispute.')) {
+    const phase = event.type.slice('charge.dispute.'.length); // created | closed | funds_withdrawn | etc.
+    console.warn(
+      `[lunipay/webhook] Dispute event ${event.type} on payment ${payment.id}`
+    );
+    await admin
+      .from('payments')
+      .update({ cancel_reason: `dispute_${phase}` })
+      .eq('id', payment.id);
   } else {
     console.log(`[lunipay/webhook] Ignoring unhandled event type: ${event.type}`);
   }
@@ -492,6 +537,59 @@ async function materialiseBookingFromCheckout(
 
   if (rpcError || !rpcResult) {
     console.error('[lunipay/webhook] materialize_paid_booking failed:', rpcError);
+
+    // Mig 155 added an EXCLUDE constraint on bookings against double-
+    // booked CONFIRMED slots. If two webhooks raced past the soft
+    // SELECT above and one lost on the constraint, treat that as a
+    // terminal slot conflict (insert an orphan payment for refund)
+    // rather than telling LuniPay to retry — the retry would lose
+    // again the same way.
+    const code = (rpcError as any)?.code as string | undefined;
+    const msg = rpcError?.message ?? '';
+    const isExclusion =
+      code === '23P01' ||
+      msg.includes('bookings_tutor_no_overlap') ||
+      msg.includes('exclusion constraint');
+
+    if (isExclusion) {
+      console.warn(
+        `[lunipay/webhook] EXCLUDE constraint hit on session ${session.id}; converting to slot-conflict refund`
+      );
+      const { data: refundPayment } = await admin
+        .from('payments')
+        .insert({
+          booking_id: null,
+          payer_id: payerId,
+          provider: 'lunipay',
+          amount_ttd: priceTtd > 0 ? priceTtd : centsToTtd((session as any).amount ?? 0),
+          status: 'succeeded',
+          lunipay_checkout_session_id: session.id,
+          lunipay_payment_id: (session as any).payment_id,
+          lunipay_payment_intent_id: (session as any).payment_intent_id,
+          provider_reference: session.id,
+          paid_at: new Date().toISOString(),
+          cancel_reason: 'slot_taken_after_payment_needs_refund',
+          raw_provider_payload: { event_id: event.id, session, exclusion: true },
+        })
+        .select('id')
+        .single();
+
+      await admin.from('notifications').insert({
+        user_id: payerId,
+        type: 'payment_failed',
+        title: 'Booking unavailable — refund pending',
+        message:
+          'Your payment went through, but the time slot was taken before we could confirm your booking. We will refund you shortly.',
+        link: '/student/bookings',
+        created_at: new Date().toISOString(),
+      });
+
+      return {
+        status: 'slot_conflict_needs_refund',
+        paymentId: refundPayment?.id ?? null,
+      };
+    }
+
     return { status: 'booking_insert_failed', paymentId: null };
   }
 

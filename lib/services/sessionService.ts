@@ -105,10 +105,21 @@ export async function createSessionForBooking(bookingId: string): Promise<Sessio
 
   // 5. Insert session
   console.log('💾 Inserting session into database...');
-  
-  // Calculate financials using tiered commission structure
-  const chargeAmount = booking.price_ttd || 0;
-  const { platformFee, payoutAmount } = calculateCommission(chargeAmount);
+
+  // Pin financials to what we quoted at checkout time. The booking
+  // captured price_ttd / platform_fee_ttd / tutor_payout_ttd via
+  // direct-book or materialize_paid_booking (mig 153); reusing those
+  // means a commission-tier change deployed after checkout but before
+  // session creation can't drift the tutor's payout away from what
+  // they were promised.
+  const chargeAmount = Number(booking.price_ttd ?? 0);
+  const bookingPlatformFee = Number(booking.platform_fee_ttd ?? 0);
+  const bookingPayout = Number(booking.tutor_payout_ttd ?? 0);
+  const hasStoredCommission = bookingPlatformFee + bookingPayout > 0;
+  const recomputed = calculateCommission(chargeAmount);
+  const platformFee = hasStoredCommission ? bookingPlatformFee : recomputed.platformFee;
+  const payoutAmount = hasStoredCommission ? bookingPayout : recomputed.payoutAmount;
+
   
   const { data: session, error: sessionError } = await supabase
     .from('sessions')
@@ -305,11 +316,21 @@ export async function processScheduledCharges(): Promise<void> {
         }
       }
 
-      // Calculate financials for completed session using tiered commission
+      // Pin financials to whatever sessionService stored at session-create
+      // so a commission-tier change shipped between session creation and
+      // the cron run can't shift what the tutor was promised. We only fall
+      // back to recomputing if the session row is missing those values.
       if (status === 'COMPLETED_ASSUMED') {
-        const commission = calculateCommission(chargeAmount);
-        platformFee = commission.platformFee;
-        payoutAmount = commission.payoutAmount;
+        const storedPlatformFee = Number(session.platform_fee_ttd ?? 0);
+        const storedPayout = Number(session.payout_amount_ttd ?? 0);
+        if (storedPlatformFee + storedPayout > 0) {
+          platformFee = storedPlatformFee;
+          payoutAmount = storedPayout;
+        } else {
+          const commission = calculateCommission(chargeAmount);
+          platformFee = commission.platformFee;
+          payoutAmount = commission.payoutAmount;
+        }
       }
 
       // Update session
