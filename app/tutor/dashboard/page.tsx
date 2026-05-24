@@ -68,12 +68,12 @@ function DashboardContent() {
     setDataLoading(true);
     try {
       const now = new Date();
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      const monthStartMs = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
 
       const [
         { data: upcomingData },
-        { data: monthSessions },
         { count: studentCount },
+        walletRes,
       ] = await Promise.all([
         supabase
           .from('sessions')
@@ -84,19 +84,18 @@ function DashboardContent() {
           .order('scheduled_start_at', { ascending: true })
           .limit(5),
         supabase
-          .from('sessions')
-          .select('payout_amount_ttd')
-          .eq('tutor_id', tutorId)
-          .in('status', ['COMPLETED', 'COMPLETED_ASSUMED', 'completed'])
-          .gte('scheduled_start_at', monthStart),
-        supabase
           .from('bookings')
           .select('student_id', { count: 'exact', head: true })
           .eq('tutor_id', tutorId)
           .in('status', ['CONFIRMED', 'confirmed']),
+        fetch('/api/tutor/wallet').then((r) => (r.ok ? r.json() : null)).catch(() => null),
       ]);
 
-      const monthTotal = (monthSessions ?? []).reduce((sum, s) => sum + (s.payout_amount_ttd ?? 0), 0);
+      // Source of truth: payout_ledger via /api/tutor/wallet — matches the wallet's
+      // "This month: TT$X" hint exactly.
+      const monthTotal = ((walletRes?.history ?? []) as any[])
+        .filter((h) => h.status === 'paid' && h.released_at && new Date(h.released_at).getTime() >= monthStartMs)
+        .reduce((sum: number, h: any) => sum + Number(h.amount_ttd ?? 0), 0);
 
       const upcomingMapped: UpcomingSession[] = (upcomingData ?? []).map((s: any) => {
         const booking = Array.isArray(s.booking) ? s.booking[0] : s.booking;
