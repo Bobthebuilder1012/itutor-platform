@@ -25,7 +25,9 @@ interface WalletHistoryRow {
   scheduled_start_at: string | null;
   charge_amount_ttd: number | null;
   platform_fee_ttd: number | null;
+  student_id: string | null;
   student_name: string | null;
+  student_avatar_url: string | null;
   subject_name: string | null;
 }
 
@@ -49,15 +51,15 @@ interface StudentBreakdownRow {
   projected: number;
 }
 
-interface ProjectedSummary {
-  projectedThisMonth: number;
-  totalCompleted: number;
-  upcomingThisMonthCount: number;
-  breakdown: StudentBreakdownRow[];
+interface UpcomingSession {
+  studentId: string;
+  payout: number;
 }
 
-const COMPLETED_STATUSES = ['COMPLETED_ASSUMED'];
 const UPCOMING_STATUSES = ['SCHEDULED', 'JOIN_OPEN'];
+// Ledger statuses that represent money the tutor has earned (work done, not refunded).
+// Used so per-student "Earned" reconciles with `lifetime_paid_ttd` (+ pending + awaiting).
+const EARNED_LEDGER_STATUSES: HistoryStatus[] = ['in_escrow', 'awaiting_transfer', 'paid'];
 
 function fmtTTD(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -78,7 +80,8 @@ function WalletContent() {
   const [data, setData] = useState<WalletPayload | null>(null);
   const [dataLoading, setDataLoading] = useState(true);
   const [error, setError] = useState('');
-  const [projected, setProjected] = useState<ProjectedSummary | null>(null);
+  const [upcoming, setUpcoming] = useState<UpcomingSession[] | null>(null);
+  const [upcomingStudents, setUpcomingStudents] = useState<Map<string, { name: string; avatarUrl: string | null }>>(new Map());
 
   useEffect(() => {
     if (!loading && (!profile || profile.role !== 'tutor')) router.push('/login');
@@ -87,7 +90,7 @@ function WalletContent() {
   useEffect(() => {
     if (!profile?.id) return;
     fetchWallet();
-    fetchProjected(profile.id);
+    fetchUpcoming(profile.id);
   }, [profile?.id]);
 
   async function fetchWallet() {
@@ -105,80 +108,99 @@ function WalletContent() {
     }
   }
 
-  async function fetchProjected(tutorId: string) {
+  async function fetchUpcoming(tutorId: string) {
     const now = new Date();
-    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
     const nextMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
-    const [{ data: completedSessions }, { data: upcomingSessions }] = await Promise.all([
-      supabase
-        .from('sessions')
-        .select('id, payout_amount_ttd, student_id, status, scheduled_start_at')
-        .eq('tutor_id', tutorId)
-        .in('status', COMPLETED_STATUSES)
-        .gte('scheduled_start_at', sixMonthsAgo.toISOString()),
-      supabase
-        .from('sessions')
-        .select('id, payout_amount_ttd, student_id, status, scheduled_start_at')
-        .eq('tutor_id', tutorId)
-        .in('status', UPCOMING_STATUSES)
-        .gte('scheduled_start_at', now.toISOString())
-        .lt('scheduled_start_at', nextMonthEnd.toISOString()),
-    ]);
+    const { data: upcomingSessions } = await supabase
+      .from('sessions')
+      .select('id, payout_amount_ttd, student_id')
+      .eq('tutor_id', tutorId)
+      .in('status', UPCOMING_STATUSES)
+      .gte('scheduled_start_at', now.toISOString())
+      .lt('scheduled_start_at', nextMonthEnd.toISOString());
 
-    const studentMap = new Map<string, StudentBreakdownRow>();
-    const ensureRow = (studentId: string): StudentBreakdownRow => {
-      let row = studentMap.get(studentId);
-      if (!row) {
-        row = { studentId, name: 'Student', avatarUrl: null, completedCount: 0, earned: 0, upcomingCount: 0, projected: 0 };
-        studentMap.set(studentId, row);
-      }
-      return row;
-    };
+    const rows: UpcomingSession[] = (upcomingSessions ?? [])
+      .filter((s: any) => s.student_id)
+      .map((s: any) => ({ studentId: s.student_id, payout: Number(s.payout_amount_ttd ?? 0) }));
+    setUpcoming(rows);
 
-    (completedSessions ?? []).forEach((s: any) => {
-      if (!s.student_id) return;
-      const row = ensureRow(s.student_id);
-      row.completedCount += 1;
-      row.earned += Number(s.payout_amount_ttd ?? 0);
-    });
-    (upcomingSessions ?? []).forEach((s: any) => {
-      if (!s.student_id) return;
-      const row = ensureRow(s.student_id);
-      row.upcomingCount += 1;
-      row.projected += Number(s.payout_amount_ttd ?? 0);
-    });
-
-    const studentIds = Array.from(studentMap.keys());
+    const studentIds = Array.from(new Set(rows.map((r) => r.studentId)));
     if (studentIds.length > 0) {
       const { data: profiles } = await supabase
         .from('profiles')
         .select('id, full_name, display_name, avatar_url')
         .in('id', studentIds);
+      const map = new Map<string, { name: string; avatarUrl: string | null }>();
       (profiles ?? []).forEach((p: any) => {
-        const row = studentMap.get(p.id);
-        if (!row) return;
-        row.name = p.display_name || p.full_name || 'Student';
-        row.avatarUrl = p.avatar_url ?? null;
+        map.set(p.id, {
+          name: p.display_name || p.full_name || 'Student',
+          avatarUrl: p.avatar_url ?? null,
+        });
       });
+      setUpcomingStudents(map);
+    } else {
+      setUpcomingStudents(new Map());
     }
-
-    const breakdown = Array.from(studentMap.values())
-      .filter((r) => r.completedCount > 0 || r.upcomingCount > 0)
-      .sort((a, b) => b.projected + b.earned - (a.projected + a.earned));
-
-    const projectedThisMonth = (upcomingSessions ?? []).reduce(
-      (sum: number, s: any) => sum + Number(s.payout_amount_ttd ?? 0),
-      0
-    );
-    const totalCompleted = (completedSessions ?? []).length;
-    const upcomingThisMonthCount = (upcomingSessions ?? []).length;
-
-    setProjected({ projectedThisMonth, totalCompleted, upcomingThisMonthCount, breakdown });
   }
 
   const balances = data?.balances;
   const history = data?.history ?? [];
+
+  // Source of truth: payment ledger (same as `lifetime_paid_ttd`). This guarantees
+  // the breakdown's "Earned" total reconciles with the Lifetime Paid card.
+  const breakdown = useMemo<StudentBreakdownRow[]>(() => {
+    const map = new Map<string, StudentBreakdownRow>();
+    const ensure = (studentId: string, name: string | null, avatarUrl: string | null): StudentBreakdownRow => {
+      let row = map.get(studentId);
+      if (!row) {
+        row = {
+          studentId,
+          name: name || 'Student',
+          avatarUrl,
+          completedCount: 0,
+          earned: 0,
+          upcomingCount: 0,
+          projected: 0,
+        };
+        map.set(studentId, row);
+      } else if (name && row.name === 'Student') {
+        row.name = name;
+      }
+      if (avatarUrl && !row.avatarUrl) row.avatarUrl = avatarUrl;
+      return row;
+    };
+
+    for (const h of history) {
+      if (!h.student_id) continue;
+      if (!EARNED_LEDGER_STATUSES.includes(h.status)) continue;
+      const row = ensure(h.student_id, h.student_name, h.student_avatar_url);
+      row.completedCount += 1;
+      row.earned += h.amount_ttd;
+    }
+
+    for (const u of upcoming ?? []) {
+      const meta = upcomingStudents.get(u.studentId);
+      const row = ensure(u.studentId, meta?.name ?? null, meta?.avatarUrl ?? null);
+      row.upcomingCount += 1;
+      row.projected += u.payout;
+    }
+
+    return Array.from(map.values())
+      .filter((r) => r.completedCount > 0 || r.upcomingCount > 0)
+      .sort((a, b) => b.earned + b.projected - (a.earned + a.projected));
+  }, [history, upcoming, upcomingStudents]);
+
+  const projectedThisMonth = useMemo(
+    () => (upcoming ?? []).reduce((sum, u) => sum + u.payout, 0),
+    [upcoming]
+  );
+  const totalCompletedCount = useMemo(
+    () => breakdown.reduce((sum, r) => sum + r.completedCount, 0),
+    [breakdown]
+  );
+  const upcomingCount = upcoming?.length ?? 0;
+  const summaryLoading = !data || upcoming === null;
 
   const monthEarned = useMemo(() => {
     const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
@@ -234,7 +256,7 @@ function WalletContent() {
           <div className="grid sm:grid-cols-3 gap-4">
             <Stat
               label="Projected"
-              value={`TT$ ${fmtTTD(projected?.projectedThisMonth ?? 0)}`}
+              value={`TT$ ${fmtTTD(projectedThisMonth)}`}
               icon={TrendingUp}
               hint="Based on upcoming sessions"
               valueClass="text-brand-deep"
@@ -271,7 +293,12 @@ function WalletContent() {
           </div>
 
           {/* Student breakdown */}
-          <StudentBreakdown summary={projected} />
+          <StudentBreakdown
+            breakdown={breakdown}
+            completedCount={totalCompletedCount}
+            upcomingCount={upcomingCount}
+            loading={summaryLoading}
+          />
 
           {/* Recent activity */}
           <div className="rounded-2xl border border-border bg-card p-5">
@@ -315,8 +342,17 @@ function Stat({ label, value, icon: Icon, hint, valueClass }: { label: string; v
   );
 }
 
-function StudentBreakdown({ summary }: { summary: ProjectedSummary | null }) {
-  const breakdown = summary?.breakdown ?? [];
+function StudentBreakdown({
+  breakdown,
+  completedCount,
+  upcomingCount,
+  loading,
+}: {
+  breakdown: StudentBreakdownRow[];
+  completedCount: number;
+  upcomingCount: number;
+  loading: boolean;
+}) {
   const hasRows = breakdown.length > 0;
 
   return (
@@ -328,11 +364,11 @@ function StudentBreakdown({ summary }: { summary: ProjectedSummary | null }) {
         <div>
           <div className="font-semibold text-ink">Student breakdown</div>
           <div className="text-xs text-muted-foreground">
-            {!summary
+            {loading
               ? 'Loading…'
               : !hasRows
                 ? 'No students yet'
-                : `${breakdown.length} student${breakdown.length === 1 ? '' : 's'} \u00b7 ${summary.totalCompleted} completed \u00b7 ${summary.upcomingThisMonthCount} upcoming this month`}
+                : `${breakdown.length} student${breakdown.length === 1 ? '' : 's'} \u00b7 ${completedCount} completed \u00b7 ${upcomingCount} upcoming this month`}
           </div>
         </div>
       </div>

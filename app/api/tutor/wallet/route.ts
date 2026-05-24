@@ -35,7 +35,9 @@ interface WalletHistoryRow {
   scheduled_start_at: string | null;
   charge_amount_ttd: number | null;
   platform_fee_ttd: number | null;
+  student_id: string | null;
   student_name: string | null;
+  student_avatar_url: string | null;
   subject_name: string | null;
 }
 
@@ -126,7 +128,7 @@ export async function GET() {
 
     const [{ data: students }, { data: subjects }] = await Promise.all([
       studentIds.length
-        ? admin.from('profiles').select('id, full_name, display_name').in('id', studentIds)
+        ? admin.from('profiles').select('id, full_name, display_name, avatar_url').in('id', studentIds)
         : Promise.resolve({ data: [] as any[] }),
       subjectIds.length
         ? admin.from('subjects').select('id, name, label').in('id', subjectIds)
@@ -139,7 +141,8 @@ export async function GET() {
     history = ledger.map((row: any) => {
       const sess = sessionById.get(row.session_id);
       const booking = sess?.booking_id ? bookingById.get(sess.booking_id) : null;
-      const student = booking?.student_id ? studentById.get(booking.student_id) : null;
+      const studentId = booking?.student_id ?? null;
+      const student = studentId ? studentById.get(studentId) : null;
       const subject = booking?.subject_id ? subjectById.get(booking.subject_id) : null;
       return {
         ledger_id: row.id,
@@ -153,7 +156,9 @@ export async function GET() {
         scheduled_start_at: sess?.scheduled_start_at ?? null,
         charge_amount_ttd: sess?.charge_amount_ttd ?? null,
         platform_fee_ttd: sess?.platform_fee_ttd ?? null,
+        student_id: studentId,
         student_name: student?.display_name ?? student?.full_name ?? null,
+        student_avatar_url: student?.avatar_url ?? null,
         subject_name: subject?.label ?? subject?.name ?? null,
       };
     });
