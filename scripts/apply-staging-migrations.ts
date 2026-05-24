@@ -51,7 +51,11 @@ if (!PROJECT_REF || candidatePasswords.length === 0) {
   process.exit(1);
 }
 
-const MIGRATIONS = ['150_payments_critical_fixes.sql', '151_atomic_paid_booking_and_payer.sql'];
+const MIGRATIONS = [
+  '150_payments_critical_fixes.sql',
+  '151_atomic_paid_booking_and_payer.sql',
+  '152_partial_refunds.sql',
+];
 
 async function tryConnect(password: string): Promise<Client | null> {
   const url = `postgresql://postgres:${encodeURIComponent(password)}@db.${PROJECT_REF}.supabase.co:5432/postgres`;
@@ -109,10 +113,17 @@ async function main() {
       (SELECT EXISTS (
         SELECT 1 FROM pg_proc WHERE proname = 'materialize_paid_booking'
       )) AS materialize_rpc_exists,
+      (SELECT EXISTS (
+        SELECT 1 FROM pg_proc WHERE proname = 'apply_refund_side_effects'
+      )) AS apply_refund_rpc_exists,
+      (SELECT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name='payments' AND column_name='total_refunded_ttd'
+      )) AS payments_total_refunded_column,
       (SELECT pg_get_constraintdef(c.oid)
          FROM pg_constraint c
          JOIN pg_class t ON t.oid = c.conrelid
-        WHERE t.relname='notifications' AND c.conname='notifications_type_check') AS notifications_check;
+        WHERE t.relname='payments' AND c.conname='payments_status_check') AS payments_status_check;
   `);
 
   console.log('\n=== Verification ===');
