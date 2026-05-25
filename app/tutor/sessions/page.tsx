@@ -58,11 +58,15 @@ function SessionsContent() {
   }
 
   const filtered = useMemo(() => {
-    return rows.filter((r) => r.status === tab).sort((a, b) =>
-      tab === 'past'
-        ? new Date(b.date).getTime() - new Date(a.date).getTime()
-        : new Date(a.date).getTime() - new Date(b.date).getTime()
-    );
+    return rows
+      .filter((r) => r.status === tab)
+      .sort((a, b) => {
+        // Cancelled rows always sink to the bottom, regardless of date.
+        if (a.cancelled !== b.cancelled) return a.cancelled ? 1 : -1;
+        return tab === 'past'
+          ? new Date(b.date).getTime() - new Date(a.date).getTime()
+          : new Date(a.date).getTime() - new Date(b.date).getTime();
+      });
   }, [rows, tab]);
 
   const counts = {
