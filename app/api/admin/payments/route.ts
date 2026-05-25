@@ -41,6 +41,9 @@ export async function GET(request: NextRequest) {
     // NOTE: the legacy `session_date` and `subject_id` columns no longer exist
     // on the sessions table. Use `scheduled_start_at` and pull the subject from
     // the parent booking via `booking_id`.
+    // payout_amount_ttd is the canonical column (mig 018 / 129). The legacy
+    // tutor_payout_ttd from mig 020 is still on the table but nothing writes
+    // to it any more, so summing it gave $0 in the totals card.
     let query = supabase
       .from('sessions')
       .select(`
@@ -52,6 +55,7 @@ export async function GET(request: NextRequest) {
         duration_minutes,
         charge_amount_ttd,
         platform_fee_ttd,
+        payout_amount_ttd,
         tutor_payout_ttd,
         status,
         payment_status,
@@ -123,7 +127,7 @@ export async function GET(request: NextRequest) {
         ? supabase.from('profiles').select('id, full_name, email').in('id', tutorIds)
         : Promise.resolve({ data: [], error: null }),
       subjectIds.length > 0
-        ? supabase.from('subjects').select('id, label').in('id', subjectIds)
+        ? supabase.from('subjects').select('id, label, name').in('id', subjectIds)
         : Promise.resolve({ data: [], error: null }),
     ]);
 
@@ -135,12 +139,17 @@ export async function GET(request: NextRequest) {
     // reads `session_date`, so we expose `scheduled_start_at` under that key.
     const enrichedSessions = (sessions ?? []).map((session: any) => {
       const subjectId = bookingSubjectMap.get(session.booking_id) ?? null;
+      const subjectRow: any = subjectId ? subjectsMap.get(subjectId) || null : null;
       return {
         ...session,
         session_date: session.scheduled_start_at,
+        tutor_payout_ttd:
+          session.payout_amount_ttd ?? session.tutor_payout_ttd ?? 0,
         student: studentsMap.get(session.student_id) || null,
         tutor: tutorsMap.get(session.tutor_id) || null,
-        subject: subjectId ? subjectsMap.get(subjectId) || null : null,
+        subject: subjectRow
+          ? { ...subjectRow, label: subjectRow.label || subjectRow.name }
+          : null,
       };
     });
 
