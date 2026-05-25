@@ -112,12 +112,15 @@ function WalletContent() {
     const now = new Date();
     const nextMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
+    // Anything whose scheduled_end_at is still in the future stays
+    // tentative — including in-progress sessions, because a no-show
+    // claim can still be filed before the meeting ends.
     const { data: upcomingSessions } = await supabase
       .from('sessions')
-      .select('id, payout_amount_ttd, student_id')
+      .select('id, payout_amount_ttd, student_id, scheduled_start_at')
       .eq('tutor_id', tutorId)
       .in('status', UPCOMING_STATUSES)
-      .gte('scheduled_start_at', now.toISOString())
+      .gt('scheduled_end_at', now.toISOString())
       .lt('scheduled_start_at', nextMonthEnd.toISOString());
 
     const rows: UpcomingSession[] = (upcomingSessions ?? [])

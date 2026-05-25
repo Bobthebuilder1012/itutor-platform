@@ -12,14 +12,12 @@
 //
 // Primary source is payout_ledger + tutor_balances. We also surface
 // "unprocessed" sessions — any non-cancelled session whose scheduled
-// start has already passed (so the meeting is happening or has
-// happened) but where no payout_ledger row exists yet. This covers:
-//   - in-progress sessions (started but not yet ended)
-//   - completed sessions whose process-charges cron + ledger trigger
-//     hasn't fired yet.
-// They map to status='in_escrow' and add to pending_ttd so the wallet
-// honestly reflects work the tutor has done. Once the cron catches
-// up, the real ledger row replaces the synthetic one on next fetch.
+// END time has already passed but where no payout_ledger row exists
+// yet (process-charges cron + ledger trigger hasn't fired). Until
+// scheduled_end_at passes the money is still tentative because a
+// no-show claim can still be filed mid-session; in-progress sessions
+// therefore stay in the upcoming/tentative bucket via fetchUpcoming
+// and only flip to in_escrow once the meeting time is over.
 //
 // Status mapping back to UI:
 //   owed          → 'in_escrow'
@@ -175,22 +173,21 @@ export async function GET() {
     });
   }
 
-  // ---- Self-heal: surface in-progress + past sessions missing from the ledger ----
-  // Once a session's scheduled_start_at has passed the money is reasonably
-  // committed — the student is sitting in the meeting. We treat any such
-  // session that doesn't yet have a payout_ledger row as 'in_escrow' so it
-  // shows up in Recent activity + Student breakdown right away, instead of
-  // disappearing into a void between "upcoming" and "completed".
+  // ---- Self-heal: surface ended-but-not-yet-charged sessions ----
+  // We only promote a session to in_escrow once its scheduled_end_at has
+  // passed. Before that the tutor's earnings are still at risk (the
+  // student can file a no-show mid-session), so those rows stay in the
+  // tentative bucket via fetchUpcoming on the page.
   const sessionIdsInLedger = new Set(history.map((h) => h.session_id));
   const nowIso = new Date().toISOString();
   const { data: orphanSessions } = await admin
     .from('sessions')
     .select(
-      'id, booking_id, status, charged_at, scheduled_start_at, charge_amount_ttd, payout_amount_ttd, platform_fee_ttd'
+      'id, booking_id, status, charged_at, scheduled_start_at, scheduled_end_at, charge_amount_ttd, payout_amount_ttd, platform_fee_ttd'
     )
     .eq('tutor_id', user.id)
     .not('status', 'in', '(CANCELLED,cancelled)')
-    .lte('scheduled_start_at', nowIso)
+    .lte('scheduled_end_at', nowIso)
     .order('scheduled_start_at', { ascending: false })
     .limit(200);
 
