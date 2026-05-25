@@ -73,13 +73,20 @@ export async function GET(request: NextRequest) {
       .limit(1)
       .maybeSingle();
 
+    // session_price_ttd is the *listed* price (informational, shown next to
+    // "Session price" in the modal). refundableTtd is the amount actually
+    // available to refund — i.e. money that was really captured. If no
+    // succeeded payment exists for this booking, we promise $0 refund so
+    // the preview matches what the cancel route can actually do.
     const sessionPrice = Number(payment?.amount_ttd ?? booking.price_ttd ?? 0);
+    const refundableBase = Number(payment?.amount_ttd ?? 0);
     const alreadyRefunded = Number(payment?.total_refunded_ttd ?? 0);
-    const remaining = +(sessionPrice - alreadyRefunded).toFixed(2);
+    const remaining = +(refundableBase - alreadyRefunded).toFixed(2);
+    const hasCapturedPayment = !!payment && remaining > 0;
 
     if (role === 'student') {
       const state = await getStudentCancelState(admin, user.id);
-      const chargeFee = timing.isLate && state.late_cancel_fee_applies;
+      const chargeFee = timing.isLate && state.late_cancel_fee_applies && hasCapturedPayment;
       let refundTtd = remaining;
       let retainedTtd = 0;
       if (chargeFee && remaining > 0) {
@@ -88,10 +95,15 @@ export async function GET(request: NextRequest) {
       }
       const split = retainedTtd > 0 ? calculateCommission(retainedTtd) : null;
 
+      const standardPolicy = hasCapturedPayment
+        ? 'Standard cancellation — full refund applies.'
+        : 'No payment was captured for this booking — nothing to refund.';
+
       return NextResponse.json({
         role,
         session_price_ttd: sessionPrice,
         remaining_ttd: remaining,
+        has_captured_payment: hasCapturedPayment,
         hours_before: timing.hoursBefore,
         is_late: timing.isLate,
         late_cutoff_hours: LATE_CANCEL_WINDOW_HOURS,
@@ -106,7 +118,7 @@ export async function GET(request: NextRequest) {
             ? 'Late cancellation while under reliability warning — 50% retention applies.'
             : timing.isLate
               ? `Cancelling within ${LATE_CANCEL_WINDOW_HOURS}h of start. Full refund this time. After ${state.count_30d >= 2 ? 'one more' : 'three'} cancellations within 30 days you may receive a warning, after which late cancellations incur a 50% fee.`
-              : 'Standard cancellation — full refund applies.',
+              : standardPolicy,
       });
     }
 
@@ -116,6 +128,7 @@ export async function GET(request: NextRequest) {
       role,
       session_price_ttd: sessionPrice,
       remaining_ttd: remaining,
+      has_captured_payment: hasCapturedPayment,
       hours_before: timing.hoursBefore,
       is_super_late: timing.isSuperLate,
       super_late_cutoff_minutes: TUTOR_SUPER_LATE_CANCEL_WINDOW_MINUTES,
@@ -127,7 +140,9 @@ export async function GET(request: NextRequest) {
       system_rating_stars: timing.isSuperLate ? 2 : null,
       policy: timing.isSuperLate
         ? `Cancelling within ${TUTOR_SUPER_LATE_CANCEL_WINDOW_MINUTES} minutes of start records an automatic 2-star system rating in addition to a strike.`
-        : 'Cancelling will issue a full refund to the student and record a strike on your 90-day reliability record.',
+        : hasCapturedPayment
+          ? 'Cancelling will issue a full refund to the student and record a strike on your 90-day reliability record.'
+          : 'No payment was captured, so no refund is needed. A strike will still be recorded on your 90-day reliability record.',
     });
   } catch (error) {
     return NextResponse.json(
