@@ -11,13 +11,15 @@
 //                         sessions whose ledger row is still missing)
 //
 // Primary source is payout_ledger + tutor_balances. We also surface
-// "unprocessed" sessions — past sessions in COMPLETED_ASSUMED/
-// COMPLETED status whose booking is paid but where the
-// fn_create_earning_on_charge trigger did not fire (e.g. cron is
-// behind or trigger raised). They map to status='in_escrow' and add
-// to pending_ttd so the wallet honestly reflects work the tutor has
-// done. Once the cron catches up, the ledger row replaces the
-// synthetic row on the next fetch.
+// "unprocessed" sessions — any non-cancelled session whose scheduled
+// start has already passed (so the meeting is happening or has
+// happened) but where no payout_ledger row exists yet. This covers:
+//   - in-progress sessions (started but not yet ended)
+//   - completed sessions whose process-charges cron + ledger trigger
+//     hasn't fired yet.
+// They map to status='in_escrow' and add to pending_ttd so the wallet
+// honestly reflects work the tutor has done. Once the cron catches
+// up, the real ledger row replaces the synthetic one on next fetch.
 //
 // Status mapping back to UI:
 //   owed          → 'in_escrow'
@@ -173,16 +175,22 @@ export async function GET() {
     });
   }
 
-  // ---- Self-heal: surface past completed sessions missing from the ledger ----
+  // ---- Self-heal: surface in-progress + past sessions missing from the ledger ----
+  // Once a session's scheduled_start_at has passed the money is reasonably
+  // committed — the student is sitting in the meeting. We treat any such
+  // session that doesn't yet have a payout_ledger row as 'in_escrow' so it
+  // shows up in Recent activity + Student breakdown right away, instead of
+  // disappearing into a void between "upcoming" and "completed".
   const sessionIdsInLedger = new Set(history.map((h) => h.session_id));
-  const ledgerCompletedStatuses = ['COMPLETED', 'COMPLETED_ASSUMED'];
+  const nowIso = new Date().toISOString();
   const { data: orphanSessions } = await admin
     .from('sessions')
     .select(
       'id, booking_id, status, charged_at, scheduled_start_at, charge_amount_ttd, payout_amount_ttd, platform_fee_ttd'
     )
     .eq('tutor_id', user.id)
-    .in('status', ledgerCompletedStatuses)
+    .not('status', 'in', '(CANCELLED,cancelled)')
+    .lte('scheduled_start_at', nowIso)
     .order('scheduled_start_at', { ascending: false })
     .limit(200);
 
