@@ -5,9 +5,9 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import {
-  LayoutDashboard, BookOpen, CalendarDays, Users, Wallet, BarChart3,
+  LayoutDashboard, BookOpen, CalendarDays, Users, Wallet,
   Sparkles, Settings, Bell, Search, LogOut, ChevronUp, PanelLeftClose, PanelLeftOpen, Lock,
-  Calendar as CalendarIcon, MessageSquare, FolderOpen, Star, Rocket, Menu, X,
+  Calendar as CalendarIcon, Star, Rocket, Menu, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -21,15 +21,12 @@ type NavItem = { to: string; label: string; icon: ComponentType<{ className?: st
 
 const nav: NavItem[] = [
   { to: '/tutor/dashboard', label: 'Dashboard', icon: LayoutDashboard, exact: true },
-  { to: '/tutor/lessons', label: 'Lessons', icon: BookOpen, gated: true },
+  { to: '/tutor/classes', label: 'My Classes', icon: BookOpen },
   { to: '/tutor/sessions', label: 'Sessions', icon: CalendarDays },
   { to: '/tutor/students', label: 'My Students', icon: Users },
-  { to: '/tutor/messages', label: 'Messages', icon: MessageSquare },
   { to: '/tutor/wallet', label: 'My Wallet', icon: Wallet },
-  { to: '/tutor/analytics', label: 'Analytics', icon: BarChart3, gated: true },
-  { to: '/tutor/resources', label: 'Resources', icon: FolderOpen },
   { to: '/tutor/reviews', label: 'Reviews', icon: Star },
-  { to: '/tutor/growth', label: 'Growth', icon: Rocket, gated: true },
+  { to: '/tutor/growth', label: 'My Business', icon: Rocket, gated: true },
   { to: '/tutor/tools', label: 'iTutor AI', icon: Sparkles },
 ];
 

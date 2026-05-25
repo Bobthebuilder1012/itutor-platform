@@ -14,7 +14,7 @@ export default function PostDetailPage() {
   useEffect(() => {
     if (loading) return;
     if (!profile) { router.replace('/login'); return; }
-    if (profile.role === 'tutor') router.replace(`/tutor/lessons/${lessonId}/posts/${postId}`);
+    if (profile.role === 'tutor') router.replace(`/tutor/classes/${lessonId}/posts/${postId}`);
     else if (profile.role === 'student') router.replace(`/student/lessons/${lessonId}/posts/${postId}`);
     else router.replace('/login');
   }, [profile, loading, router, lessonId, postId]);

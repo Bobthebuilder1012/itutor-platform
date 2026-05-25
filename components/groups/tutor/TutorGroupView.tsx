@@ -293,7 +293,7 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
       const res = await fetch(`/api/groups/${group.id}`, { method: 'DELETE' });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload?.error || 'Failed to delete class');
-      router.push('/tutor/lessons');
+      router.push('/tutor/classes');
     } catch (err: any) {
       alert(err?.message || 'Failed to delete class');
       setDeleting(false);

@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 import { User, Bell, Lock, Wallet, GraduationCap, ChevronRight, Camera, Video, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
+import { useUnsavedGuard } from '@/lib/hooks/useUnsavedGuard';
+import { UnsavedBar } from '@/components/UnsavedBar';
 import { supabase } from '@/lib/supabase/client';
 import CountrySelect from '@/components/CountrySelect';
 import TutorShell from '@/components/tutor/TutorShell';
@@ -53,6 +55,14 @@ function SettingsContent() {
   const [deleteConfirmInput, setDeleteConfirmInput] = useState('');
   const [deleting, setDeleting] = useState(false);
 
+  const [saved, setSaved] = useState({ username: '', displayName: '', email: '', school: '', country: '', bio: '' });
+  const dirty = section === 'profile'
+    ? (username !== saved.username || displayName !== saved.displayName || email !== saved.email || school !== saved.school || country !== saved.country)
+    : section === 'teaching'
+    ? bio !== saved.bio
+    : false;
+  useUnsavedGuard(dirty);
+
   const [saving, setSaving] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
   const [sendingResetEmail, setSendingResetEmail] = useState(false);
@@ -62,12 +72,14 @@ function SettingsContent() {
   useEffect(() => {
     if (profileLoading) return;
     if (!profile || profile.role !== 'tutor') { router.push('/login'); return; }
-    setUsername(profile.username || '');
-    setDisplayName(profile.display_name || profile.full_name || '');
-    setEmail(profile.email || '');
-    setSchool(profile.school || '');
-    setCountry(profile.country || '');
-    setBio(profile.bio || '');
+    const u = profile.username || '';
+    const dn = profile.display_name || profile.full_name || '';
+    const em = profile.email || '';
+    const sc = profile.school || '';
+    const co = profile.country || '';
+    const bi = profile.bio || '';
+    setUsername(u); setDisplayName(dn); setEmail(em); setSchool(sc); setCountry(co); setBio(bi);
+    setSaved({ username: u, displayName: dn, email: em, school: sc, country: co, bio: bi });
     if (profile.email === 'jovangoodluck@myitutor.com') {
       setAllowSameDay(profile.allow_same_day_bookings || false);
     }
@@ -92,6 +104,7 @@ function SettingsContent() {
       if (profile?.email === 'jovangoodluck@myitutor.com') updates.allow_same_day_bookings = allowSameDay;
       const { error: updateError } = await supabase.from('profiles').update(updates).eq('id', profile!.id);
       if (updateError) throw new Error(updateError.code === '23505' ? 'This username is already taken' : updateError.message);
+      setSaved((s) => ({ ...s, username: username.trim(), displayName: displayName.trim(), email, school, country }));
       setMessage('Profile updated successfully!');
       setTimeout(() => window.location.reload(), 800);
     } catch (e) {
@@ -107,6 +120,7 @@ function SettingsContent() {
     try {
       const { error: updErr } = await supabase.from('profiles').update({ bio: bio.trim() || null }).eq('id', profile!.id);
       if (updErr) throw new Error(updErr.message);
+      setSaved((s) => ({ ...s, bio: bio.trim() }));
       setMessage('Teaching info updated!');
     } catch (e) {
       setError((e as Error).message);
@@ -230,7 +244,10 @@ function SettingsContent() {
             const Icon = s.icon;
             const active = section === s.id;
             return (
-              <button key={s.id} onClick={() => setSection(s.id)}
+              <button key={s.id} onClick={() => {
+                if (dirty && !confirm('You have unsaved changes. Discard them and switch?')) return;
+                setSection(s.id);
+              }}
                 className={cn('w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition group',
                   active ? 'bg-background border border-border text-ink shadow-sm' : 'text-muted-foreground hover:bg-background')}>
                 <Icon className="size-4" />
@@ -411,6 +428,17 @@ function SettingsContent() {
           </div>
         </div>
       )}
+
+      <UnsavedBar
+        dirty={dirty}
+        saving={saving}
+        onSave={section === 'teaching' ? handleSaveTeaching : handleSaveProfile}
+        onDiscard={() => {
+          setUsername(saved.username); setDisplayName(saved.displayName);
+          setEmail(saved.email); setSchool(saved.school); setCountry(saved.country); setBio(saved.bio);
+        }}
+        saveLabel="Save account settings"
+      />
     </div>
   );
 }

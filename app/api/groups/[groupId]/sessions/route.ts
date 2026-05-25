@@ -6,7 +6,11 @@ type Params = { params: Promise<{ groupId: string }> };
 function isSchemaMismatch(error: any): boolean {
   const code = String(error?.code ?? '');
   const msg = String(error?.message ?? '').toLowerCase();
-  return code === '42703' || code === '42P01' || code === 'PGRST205' || msg.includes('does not exist');
+  return (
+    code === '42703' || code === '42P01' || code === 'PGRST200' ||
+    code === 'PGRST204' || code === 'PGRST205' ||
+    msg.includes('does not exist') || msg.includes('could not find a relationship')
+  );
 }
 
 // GET /api/groups/[groupId]/sessions — list sessions with occurrences
@@ -50,6 +54,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
             status, cancelled_at, cancellation_note
           )
         `)
+        .eq('group_id', groupId)
+        .order('starts_on', { ascending: true }));
+    }
+
+    if (error && isSchemaMismatch(error)) {
+      ({ data: sessions, error } = await service
+        .from('group_sessions')
+        .select('id, group_id, title, recurrence_type, recurrence_days, start_time, duration_minutes, starts_on, ends_on, created_at')
         .eq('group_id', groupId)
         .order('starts_on', { ascending: true }));
     }
