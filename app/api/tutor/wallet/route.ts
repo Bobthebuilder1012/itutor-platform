@@ -7,9 +7,18 @@
 //   - pending_ttd        (in escrow, ledger 'owed')
 //   - available_ttd      (awaiting bank transfer, ledger 'release_ready')
 //   - lifetime_paid_ttd  (ledger 'released')
-//   - history            (per-session ledger rows, newest first)
+//   - history            (per-session ledger rows + unprocessed past
+//                         sessions whose ledger row is still missing)
 //
-// Source of truth is payout_ledger + tutor_balances, NOT sessions.
+// Primary source is payout_ledger + tutor_balances. We also surface
+// "unprocessed" sessions — past sessions in COMPLETED_ASSUMED/
+// COMPLETED status whose booking is paid but where the
+// fn_create_earning_on_charge trigger did not fire (e.g. cron is
+// behind or trigger raised). They map to status='in_escrow' and add
+// to pending_ttd so the wallet honestly reflects work the tutor has
+// done. Once the cron catches up, the ledger row replaces the
+// synthetic row on the next fetch.
+//
 // Status mapping back to UI:
 //   owed          → 'in_escrow'
 //   release_ready → 'awaiting_transfer'
@@ -164,9 +173,112 @@ export async function GET() {
     });
   }
 
+  // ---- Self-heal: surface past completed sessions missing from the ledger ----
+  const sessionIdsInLedger = new Set(history.map((h) => h.session_id));
+  const ledgerCompletedStatuses = ['COMPLETED', 'COMPLETED_ASSUMED'];
+  const { data: orphanSessions } = await admin
+    .from('sessions')
+    .select(
+      'id, booking_id, status, charged_at, scheduled_start_at, charge_amount_ttd, payout_amount_ttd, platform_fee_ttd'
+    )
+    .eq('tutor_id', user.id)
+    .in('status', ledgerCompletedStatuses)
+    .order('scheduled_start_at', { ascending: false })
+    .limit(200);
+
+  const orphans = (orphanSessions ?? []).filter(
+    (s: any) =>
+      !sessionIdsInLedger.has(s.id) && Number(s.payout_amount_ttd ?? 0) > 0
+  );
+
+  let unprocessedPending = 0;
+  if (orphans.length > 0) {
+    const orphanBookingIds = Array.from(
+      new Set(orphans.map((s: any) => s.booking_id).filter(Boolean))
+    );
+
+    const { data: paidBookings } = orphanBookingIds.length
+      ? await admin
+          .from('bookings')
+          .select('id, student_id, subject_id, payment_status, payment_required, price_ttd')
+          .in('id', orphanBookingIds)
+      : { data: [] as any[] };
+
+    const orphanBookingById = new Map((paidBookings ?? []).map((b: any) => [b.id, b]));
+
+    const orphanStudentIds = Array.from(
+      new Set((paidBookings ?? []).map((b: any) => b.student_id).filter(Boolean))
+    );
+    const orphanSubjectIds = Array.from(
+      new Set((paidBookings ?? []).map((b: any) => b.subject_id).filter(Boolean))
+    );
+
+    const [{ data: orphanStudents }, { data: orphanSubjects }] = await Promise.all([
+      orphanStudentIds.length
+        ? admin
+            .from('profiles')
+            .select('id, full_name, display_name, avatar_url')
+            .in('id', orphanStudentIds)
+        : Promise.resolve({ data: [] as any[] }),
+      orphanSubjectIds.length
+        ? admin.from('subjects').select('id, name, label').in('id', orphanSubjectIds)
+        : Promise.resolve({ data: [] as any[] }),
+    ]);
+
+    const orphanStudentById = new Map(
+      (orphanStudents ?? []).map((p: any) => [p.id, p])
+    );
+    const orphanSubjectById = new Map(
+      (orphanSubjects ?? []).map((s: any) => [s.id, s])
+    );
+
+    const orphanRows: WalletHistoryRow[] = [];
+    for (const s of orphans) {
+      const booking = s.booking_id ? orphanBookingById.get(s.booking_id) : null;
+      // Only count earnings whose booking was actually paid. Otherwise the
+      // money the tutor is "owed" isn't real yet.
+      const isPaid =
+        booking?.payment_status === 'paid' ||
+        booking?.payment_required === false ||
+        Number(booking?.price_ttd ?? 0) === 0;
+      if (!isPaid) continue;
+
+      const studentId = booking?.student_id ?? null;
+      const student = studentId ? orphanStudentById.get(studentId) : null;
+      const subject = booking?.subject_id
+        ? orphanSubjectById.get(booking.subject_id)
+        : null;
+      const amount = Number(s.payout_amount_ttd ?? 0);
+      unprocessedPending += amount;
+      orphanRows.push({
+        ledger_id: `unprocessed-${s.id}`,
+        session_id: s.id,
+        amount_ttd: amount,
+        status: 'in_escrow',
+        ledger_status: 'unprocessed',
+        created_at: s.charged_at ?? s.scheduled_start_at ?? new Date().toISOString(),
+        released_at: null,
+        batch_id: null,
+        scheduled_start_at: s.scheduled_start_at ?? null,
+        charge_amount_ttd: s.charge_amount_ttd ?? null,
+        platform_fee_ttd: s.platform_fee_ttd ?? null,
+        student_id: studentId,
+        student_name: student?.display_name ?? student?.full_name ?? null,
+        student_avatar_url: student?.avatar_url ?? null,
+        subject_name: subject?.label ?? subject?.name ?? null,
+      });
+    }
+
+    history = [...history, ...orphanRows].sort(
+      (a, b) =>
+        new Date(b.scheduled_start_at ?? b.created_at).getTime() -
+        new Date(a.scheduled_start_at ?? a.created_at).getTime()
+    );
+  }
+
   return NextResponse.json({
     balances: {
-      pending_ttd: pending,
+      pending_ttd: Math.round((pending + unprocessedPending) * 100) / 100,
       available_ttd: available,
       lifetime_paid_ttd: Math.round(lifetimePaid * 100) / 100,
       last_updated: balanceRow?.last_updated ?? null,
