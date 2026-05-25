@@ -198,15 +198,32 @@ function WalletContent() {
       .reduce((s, h) => s + h.amount_ttd, 0);
   }, [history]);
 
-  const projectedThisMonth = useMemo(
+  // Sessions scheduled in the current calendar month that are already earned (any ledger state).
+  const completedThisMonth = useMemo(() => {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
+    return history
+      .filter(
+        (h) =>
+          EARNED_LEDGER_STATUSES.includes(h.status) &&
+          h.scheduled_start_at &&
+          new Date(h.scheduled_start_at).getTime() >= monthStart &&
+          new Date(h.scheduled_start_at).getTime() < monthEnd,
+      )
+      .reduce((s, h) => s + h.amount_ttd, 0);
+  }, [history]);
+
+  // Upcoming sessions remaining this month — the cancellable/tentative portion.
+  const tentativeThisMonth = useMemo(
     () => (upcoming ?? []).reduce((sum, u) => sum + u.payout, 0),
-    [upcoming]
+    [upcoming],
   );
-  // "At risk" — projected for the month minus what's already been paid out.
-  // Captures the tentative / unconfirmed / could-still-cancel portion of the forecast.
-  const atRiskThisMonth = useMemo(
-    () => Math.max(0, projectedThisMonth - monthEarned),
-    [projectedThisMonth, monthEarned]
+
+  // Full month projection: already earned this month + upcoming sessions this month.
+  const projectedThisMonth = useMemo(
+    () => completedThisMonth + tentativeThisMonth,
+    [completedThisMonth, tentativeThisMonth],
   );
   const totalCompletedCount = useMemo(
     () => breakdown.reduce((sum, r) => sum + r.completedCount, 0),
@@ -246,12 +263,16 @@ function WalletContent() {
               <Banknote className="size-3.5" /> Awaiting bank transfer
             </div>
             <div className="mt-2 text-4xl font-bold tabular-nums">
-              TT$ {fmtTTD(balances?.available_ttd ?? 0)}
+              TT$ {fmtTTD((balances?.available_ttd ?? 0) + (balances?.pending_ttd ?? 0))}
             </div>
             <div className="mt-1 text-sm text-white/70">
-              {(balances?.pending_ttd ?? 0) > 0
-                ? `+ TT$ ${fmtTTD(balances?.pending_ttd ?? 0)} still in escrow`
-                : 'No earnings still in escrow'}
+              {(balances?.available_ttd ?? 0) > 0 && (balances?.pending_ttd ?? 0) > 0
+                ? `TT$ ${fmtTTD(balances?.available_ttd ?? 0)} ready · TT$ ${fmtTTD(balances?.pending_ttd ?? 0)} in escrow`
+                : (balances?.available_ttd ?? 0) > 0
+                  ? 'Ready for next transfer cycle'
+                  : (balances?.pending_ttd ?? 0) > 0
+                    ? `TT$ ${fmtTTD(balances?.pending_ttd ?? 0)} in escrow — releases after 7 days`
+                    : 'No pending earnings'}
             </div>
             <div className="mt-3 text-xs text-white/60">
               iTutor pays out via bulk bank transfer on the next payout cycle. Earnings move from escrow to bank-transfer queue 7 days after each session completes.
@@ -264,14 +285,14 @@ function WalletContent() {
               label="Projected"
               value={`TT$ ${fmtTTD(projectedThisMonth)}`}
               icon={TrendingUp}
-              hint="Based on upcoming sessions"
+              hint="Completed + upcoming sessions this month"
               valueClass="text-brand-deep"
             />
             <Stat
               label="Tentative"
-              value={`TT$ ${fmtTTD(atRiskThisMonth)}`}
+              value={`TT$ ${fmtTTD(tentativeThisMonth)}`}
               icon={AlertCircle}
-              hint="Projected − earned this month. Could still cancel."
+              hint="Upcoming sessions this month. Could still cancel."
               valueClass="text-amber-600"
             />
             <Stat

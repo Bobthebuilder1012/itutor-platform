@@ -12,6 +12,7 @@ import { useProfile } from '@/lib/hooks/useProfile';
 import { useTutorCompletion } from '@/lib/hooks/useTutorCompletion';
 import { supabase } from '@/lib/supabase/client';
 import TutorShell from '@/components/tutor/TutorShell';
+import ReliabilityPanel from '@/components/reliability/ReliabilityPanel';
 
 type DashboardStats = {
   activeStudents: number;
@@ -173,6 +174,10 @@ function DashboardContent() {
           <StatCard icon={DollarSign} label="This month (TTD)" value={stats.monthEarnings.toLocaleString()} locked={!listed} />
           <StatCard icon={Eye} label="Profile views" value={String(stats.profileViews)} locked={!listed} />
         </div>
+      </section>
+
+      <section>
+        <ReliabilityPanel role="tutor" />
       </section>
 
       <section className="grid lg:grid-cols-3 gap-6">

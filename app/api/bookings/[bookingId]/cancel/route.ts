@@ -1,5 +1,5 @@
 // =====================================================
-// CANCEL BOOKING (payment-layer cancellation policy)
+// CANCEL BOOKING — LEGACY / ADMIN FALLBACK
 // =====================================================
 // POST /api/bookings/:bookingId/cancel
 // Body: {
@@ -8,11 +8,14 @@
 //   reason?: string        // optional free-form note (logged on payment)
 // }
 //
-// Decides the refund shape, calls lib/payments/refundService, and
-// flips bookings.status to 'CANCELLED'. Cancellation counters,
-// late-cancel auto-rating, strikes and the cancellation_events
-// audit table are explicitly out of scope here — they layer on
-// top of the refund primitive once we build them.
+// DEPRECATED for user-facing flows. The UI now hits
+// /api/bookings/student-cancel and /api/bookings/tutor-cancel which
+// both wire through lib/reliability + lib/payments/refundService and
+// also write cancellation_events / strikes / system ratings.
+//
+// This route stays as a thin admin fallback that performs the refund
+// only (no reliability side effects). Do not call from new product
+// surfaces.
 // =====================================================
 
 import { NextRequest, NextResponse } from 'next/server';

@@ -206,6 +206,17 @@ export default function AdminRefundsPage() {
                         {p.session_status && (
                           <div className="text-muted-foreground">session: {p.session_status}</div>
                         )}
+                        {p.session_status &&
+                          ['NO_SHOW_TUTOR', 'NO_SHOW_STUDENT', 'MUTUAL_NON_COMPLETION'].includes(
+                            p.session_status
+                          ) && (
+                            <Link
+                              href="/admin/disputes"
+                              className="text-xs text-blue-600 hover:underline"
+                            >
+                              View dispute -&gt;
+                            </Link>
+                          )}
                       </td>
                       <td className="py-2 pr-4 text-xs">
                         {p.refunded_at ? new Date(p.refunded_at).toLocaleString() : '—'}

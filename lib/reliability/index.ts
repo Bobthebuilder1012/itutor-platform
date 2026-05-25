@@ -92,6 +92,71 @@ export async function getTutorStrikeState(
 }
 
 export type StrikeReason = 'tutor_cancelled' | 'tutor_super_late_cancel' | 'tutor_noshow' | 'admin_manual';
+export type StudentStrikeReason = 'student_noshow' | 'admin_manual';
+
+export interface StudentStrikeState {
+  active_strikes: number;
+  warning_threshold: number;
+  suspension_threshold: number;
+  is_warned_candidate: boolean;
+  is_suspension_candidate: boolean;
+}
+
+export async function getStudentStrikeState(
+  admin: AnyClient,
+  studentId: string
+): Promise<StudentStrikeState> {
+  const { data, error } = await admin.rpc('current_student_strike_state', {
+    p_student_id: studentId,
+  });
+  if (error || !data) {
+    return {
+      active_strikes: 0,
+      warning_threshold: TUTOR_STRIKE_WARNING_THRESHOLD,
+      suspension_threshold: TUTOR_STRIKE_SUSPENSION_THRESHOLD,
+      is_warned_candidate: false,
+      is_suspension_candidate: false,
+    };
+  }
+  return data as StudentStrikeState;
+}
+
+export async function writeStudentStrike(
+  admin: AnyClient,
+  args: {
+    studentId: string;
+    reason: StudentStrikeReason;
+    bookingId?: string | null;
+    sessionId?: string | null;
+    notes?: string | null;
+  }
+): Promise<string | null> {
+  const { data, error } = await admin
+    .from('student_strikes')
+    .insert({
+      student_id: args.studentId,
+      reason: args.reason,
+      booking_id: args.bookingId ?? null,
+      session_id: args.sessionId ?? null,
+      notes: args.notes ?? null,
+    })
+    .select('id')
+    .single();
+
+  if (error) {
+    console.warn('[reliability] writeStudentStrike failed:', error.message);
+    return null;
+  }
+
+  const state = await getStudentStrikeState(admin, args.studentId);
+  if (state.is_suspension_candidate) {
+    await flagWarning(admin, args.studentId, 'student', 'student_noshow_repeat', state.active_strikes);
+  } else if (state.is_warned_candidate) {
+    await flagWarning(admin, args.studentId, 'student', 'student_noshow_repeat', state.active_strikes);
+  }
+
+  return (data as any)?.id ?? null;
+}
 
 export async function writeTutorStrike(
   admin: AnyClient,

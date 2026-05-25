@@ -54,12 +54,29 @@ interface SuspensionCandidate {
   tutor: any | null;
 }
 
+interface StrikeAppeal {
+  id: string;
+  reason: string;
+  issued_at: string;
+  expires_at: string;
+  appeal_text: string;
+  appealed_at: string;
+  session_id: string | null;
+  booking_id: string | null;
+  tutor_id?: string;
+  student_id?: string;
+  tutor?: any | null;
+  student?: any | null;
+}
+
 export default function AdminDisputesPage() {
   const router = useRouter();
   const [authLoading, setAuthLoading] = useState(true);
   const [claims, setClaims] = useState<NoshowClaim[]>([]);
   const [warnings, setWarnings] = useState<Warning[]>([]);
   const [appeals, setAppeals] = useState<Appeal[]>([]);
+  const [tutorStrikeAppeals, setTutorStrikeAppeals] = useState<StrikeAppeal[]>([]);
+  const [studentStrikeAppeals, setStudentStrikeAppeals] = useState<StrikeAppeal[]>([]);
   const [suspensionCandidates, setSuspensionCandidates] = useState<SuspensionCandidate[]>([]);
   const [working, setWorking] = useState<string | null>(null);
   const [message, setMessage] = useState('');
@@ -106,6 +123,8 @@ export default function AdminDisputesPage() {
       setClaims(data.noshow_claims || []);
       setWarnings(data.warnings || []);
       setAppeals(data.appeals || []);
+      setTutorStrikeAppeals(data.tutor_strike_appeals || []);
+      setStudentStrikeAppeals(data.student_strike_appeals || []);
       setSuspensionCandidates(data.suspension_candidates || []);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load disputes');
@@ -174,6 +193,32 @@ export default function AdminDisputesPage() {
         return;
       }
       setMessage(`Appeal ${decision}`);
+      await load();
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  async function decideStrikeAppeal(
+    s: StrikeAppeal,
+    kind: 'tutor' | 'student',
+    decision: 'upheld' | 'overturned'
+  ) {
+    if (!confirm(`Decide strike appeal as: ${decision}?`)) return;
+    setWorking(s.id);
+    setError('');
+    try {
+      const res = await fetch(`/api/admin/strikes/${s.id}/decide-appeal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision, kind }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data?.error || 'Failed');
+        return;
+      }
+      setMessage(`Strike appeal ${decision}`);
       await load();
     } finally {
       setWorking(null);
@@ -493,9 +538,130 @@ export default function AdminDisputesPage() {
             </div>
           )}
         </section>
+
+        {/* Tutor strike appeals */}
+        <section>
+          <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <ShieldAlert className="w-5 h-5 text-orange-500" />
+            Tutor strike appeals
+            <span className="text-xs font-normal text-gray-500 ml-1">({tutorStrikeAppeals.length})</span>
+          </h2>
+          {tutorStrikeAppeals.length === 0 ? (
+            <p className="text-sm text-gray-500">No pending tutor strike appeals.</p>
+          ) : (
+            <div className="space-y-2">
+              {tutorStrikeAppeals.map((s) => (
+                <div key={s.id} className="bg-white border border-gray-200 rounded-xl p-3 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-sm">
+                      <span className="font-semibold">
+                        {s.tutor?.display_name || s.tutor?.full_name || s.tutor?.email}
+                      </span>{' '}
+                      — {labelForStrike(s.reason)}{' '}
+                      <span className="text-xs text-gray-500">
+                        (issued {new Date(s.issued_at).toLocaleDateString()})
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      Appealed {new Date(s.appealed_at).toLocaleString()}
+                    </div>
+                  </div>
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap rounded-lg bg-gray-50 border p-3">
+                    {s.appeal_text}
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      disabled={working === s.id}
+                      onClick={() => decideStrikeAppeal(s, 'tutor', 'overturned')}
+                      className="px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-semibold disabled:opacity-50"
+                    >
+                      Overturn (clear strike)
+                    </button>
+                    <button
+                      disabled={working === s.id}
+                      onClick={() => decideStrikeAppeal(s, 'tutor', 'upheld')}
+                      className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Uphold (strike stays)
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* Student strike appeals */}
+        <section>
+          <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <ShieldAlert className="w-5 h-5 text-orange-500" />
+            Student strike appeals
+            <span className="text-xs font-normal text-gray-500 ml-1">({studentStrikeAppeals.length})</span>
+          </h2>
+          {studentStrikeAppeals.length === 0 ? (
+            <p className="text-sm text-gray-500">No pending student strike appeals.</p>
+          ) : (
+            <div className="space-y-2">
+              {studentStrikeAppeals.map((s) => (
+                <div key={s.id} className="bg-white border border-gray-200 rounded-xl p-3 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-sm">
+                      <span className="font-semibold">
+                        {s.student?.display_name || s.student?.full_name || s.student?.email}
+                      </span>{' '}
+                      — {labelForStrike(s.reason)}{' '}
+                      <span className="text-xs text-gray-500">
+                        (issued {new Date(s.issued_at).toLocaleDateString()})
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      Appealed {new Date(s.appealed_at).toLocaleString()}
+                    </div>
+                  </div>
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap rounded-lg bg-gray-50 border p-3">
+                    {s.appeal_text}
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      disabled={working === s.id}
+                      onClick={() => decideStrikeAppeal(s, 'student', 'overturned')}
+                      className="px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-semibold disabled:opacity-50"
+                    >
+                      Overturn (clear strike)
+                    </button>
+                    <button
+                      disabled={working === s.id}
+                      onClick={() => decideStrikeAppeal(s, 'student', 'upheld')}
+                      className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Uphold (strike stays)
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       </div>
     </DashboardLayout>
   );
+}
+
+function labelForStrike(reason: string): string {
+  switch (reason) {
+    case 'tutor_cancelled':
+      return 'Tutor cancellation';
+    case 'tutor_super_late_cancel':
+      return 'Tutor cancellation under 15 min before start';
+    case 'tutor_noshow':
+      return 'Tutor no-show';
+    case 'student_noshow':
+      return 'Student no-show';
+    case 'admin_manual':
+      return 'Admin-issued';
+    default:
+      return reason;
+  }
 }
 
 function labelForWarning(flag: string): string {

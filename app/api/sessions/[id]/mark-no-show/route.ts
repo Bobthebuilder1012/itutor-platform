@@ -1,3 +1,9 @@
+// DEPRECATED — superseded by the no-show claim dispute flow.
+// New product surfaces should hit POST /api/noshow-claims/file which
+// opens a 12-hour response window and routes to admin review via
+// /api/admin/noshow/[sessionId]/resolve. This route is retained for
+// any one-off scripted or admin-driven instant resolutions.
+
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { markStudentNoShow, markTutorNoShow } from '@/lib/services/sessionService';

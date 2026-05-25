@@ -4,21 +4,21 @@
 // POST /api/bookings/student-cancel
 // Body: { bookingId: string, reason: string }
 //
-// Policy (per UX mockups):
-//   - On-time cancel (>= 12 h before start): full refund.
-//   - Late cancel (< 12 h before start) BEFORE a warning has been
-//     issued: still full refund, but logged as `was_late` so the
-//     30-day counter ticks toward the warning threshold.
-//   - Late cancel (< 12 h before start) AFTER a warning has been
-//     issued: 50 % retention. The retained share is split via
-//     calculateCommission so the tutor still earns commission off
-//     the retained portion (40 / 10 at 20 % tier).
+// Policy:
+//   - Default: full refund to the student. Tutor payout reverted.
+//   - If the student has an issued reliability warning AND this is
+//     a "late" cancellation (under LATE_CANCEL_WINDOW_HOURS before
+//     session start): apply STUDENT_LATE_CANCEL_RETENTION_PCT (50%)
+//     retention. Refund the rest, retained share splits per
+//     calculateCommission so the tutor still earns their normal cut.
+//   - A cancellation_events row is always written. The helper auto-
+//     flags a reliability_warning candidate at threshold.
 // =====================================================
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { cancelSessionReminders } from '@/lib/reminders/scheduleReminders';
-import { refundPayment, type RefundReason } from '@/lib/payments/refundService';
+import { refundPayment } from '@/lib/payments/refundService';
 import {
   classifyCancelTiming,
   getStudentCancelState,
@@ -26,17 +26,17 @@ import {
   STUDENT_LATE_CANCEL_RETENTION_PCT,
 } from '@/lib/reliability';
 
-type CancelBody = {
-  bookingId?: string;
-  reason?: string;
-};
-
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+interface StudentCancelBody {
+  bookingId?: string;
+  reason?: string;
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const { bookingId, reason } = (await request.json()) as CancelBody;
+    const { bookingId, reason } = (await request.json()) as StudentCancelBody;
     if (!bookingId) {
       return NextResponse.json({ error: 'bookingId is required' }, { status: 400 });
     }
@@ -54,17 +54,13 @@ export async function POST(request: NextRequest) {
     }
 
     const admin = getServiceClient();
-
     const { data: booking, error: bookingError } = await admin
       .from('bookings')
-      .select('id, student_id, tutor_id, status, confirmed_start_at, confirmed_end_at, requested_start_at')
+      .select('id, student_id, tutor_id, status, confirmed_start_at, requested_start_at')
       .eq('id', bookingId)
       .maybeSingle();
 
-    if (bookingError) {
-      return NextResponse.json({ error: bookingError.message }, { status: 500 });
-    }
-    if (!booking) {
+    if (bookingError || !booking) {
       return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
     }
     if (booking.student_id !== user.id) {
@@ -85,7 +81,7 @@ export async function POST(request: NextRequest) {
       : { hoursBefore: 0, isLate: false, isSuperLate: false };
 
     const cancelState = await getStudentCancelState(admin, user.id);
-    const chargeFee = timing.isLate && cancelState.late_cancel_fee_applies;
+    const lateFeeApplies = cancelState.is_warned && timing.isLate;
 
     const { data: payment } = await admin
       .from('payments')
@@ -111,9 +107,9 @@ export async function POST(request: NextRequest) {
       if (remaining > 0) {
         let refundAmountTtd: number;
         let retainedAmountTtd: number;
-        let refundReason: RefundReason;
+        let refundReason: 'student_cancelled' | 'student_late_cancel';
 
-        if (chargeFee) {
+        if (lateFeeApplies) {
           retainedAmountTtd = +(remaining * STUDENT_LATE_CANCEL_RETENTION_PCT).toFixed(2);
           refundAmountTtd = +(remaining - retainedAmountTtd).toFixed(2);
           refundReason = 'student_late_cancel';
@@ -148,41 +144,33 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // If no payment row existed (free booking, pre-payment, parent flow),
-    // flip the booking + session ourselves. apply_refund_side_effects already
-    // handles the flip when a refund fires.
-    if (!payment) {
-      await admin
-        .from('bookings')
-        .update({
-          status: 'CANCELLED',
-          cancelled_at: new Date().toISOString(),
-          cancel_reason: reason.trim(),
-          last_action_by: 'student',
-        })
-        .eq('id', booking.id);
+    const { error: bookingUpdateError } = await admin
+      .from('bookings')
+      .update({
+        status: 'CANCELLED',
+        cancelled_at: new Date().toISOString(),
+        cancel_reason: reason.trim(),
+        last_action_by: 'student',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', booking.id);
 
+    if (bookingUpdateError) {
+      console.error('student-cancel: booking update failed', bookingUpdateError);
+    }
+
+    if (!payment) {
+      // Free booking — RPC didn't move the session; do it ourselves.
       await admin
         .from('sessions')
         .update({ status: 'CANCELLED', updated_at: new Date().toISOString() })
         .eq('booking_id', booking.id);
-    } else {
-      // Refund pipeline updates the session via the RPC; still finalise booking.
-      await admin
-        .from('bookings')
-        .update({
-          status: 'CANCELLED',
-          cancelled_at: new Date().toISOString(),
-          cancel_reason: reason.trim(),
-          last_action_by: 'student',
-        })
-        .eq('id', booking.id);
     }
 
     const { data: session } = await admin
       .from('sessions')
       .select('id')
-      .eq('booking_id', bookingId)
+      .eq('booking_id', booking.id)
       .maybeSingle();
 
     if (session?.id) {
@@ -197,11 +185,28 @@ export async function POST(request: NextRequest) {
       scheduledStartAt,
       hoursBefore: timing.hoursBefore,
       wasLate: timing.isLate,
-      feeApplied: chargeFee,
+      feeApplied: feeAmountTtd > 0,
       feeAmountTtd,
       reason: reason.trim(),
       source: 'student_cancel',
     });
+
+    try {
+      await admin.from('booking_messages').insert({
+        booking_id: bookingId,
+        sender_id: user.id,
+        message_type: 'text',
+        body: reason.trim(),
+      });
+      await admin.from('booking_messages').insert({
+        booking_id: bookingId,
+        sender_id: user.id,
+        message_type: 'system',
+        body: 'Booking cancelled by student',
+      });
+    } catch (e) {
+      console.error('student-cancel: message insert failed', e);
+    }
 
     const { data: studentProfile } = await admin
       .from('profiles')
@@ -219,9 +224,7 @@ export async function POST(request: NextRequest) {
         user_id: booking.tutor_id,
         type: 'booking_cancelled',
         title: 'Booking cancelled',
-        message: `A booking from ${studentLabel} has been cancelled${
-          chargeFee ? ' (late cancellation — you keep your share of the 50% retention).' : '.'
-        }`,
+        message: `A booking from ${studentLabel} has been cancelled.`,
         link: `/tutor/bookings/${bookingId}`,
         related_booking_id: bookingId,
       });
@@ -233,12 +236,13 @@ export async function POST(request: NextRequest) {
       success: true,
       status: 'CANCELLED',
       was_late: timing.isLate,
-      fee_applied: chargeFee,
       hours_before: timing.hoursBefore,
+      fee_applied: feeAmountTtd > 0,
+      fee_amount_ttd: feeAmountTtd,
       refund: refundOutcome,
-      cancel_state: {
+      cancel_state_after: {
+        ...cancelState,
         count_30d: cancelState.count_30d + 1,
-        is_warned: cancelState.is_warned,
       },
     });
   } catch (error) {

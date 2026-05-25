@@ -114,7 +114,8 @@ export default function ReportNoShowFlow({ session, userRole, onSuccess }: Props
         return;
       }
       onSuccess();
-      router.push(`/student/disputes/${data.claim_id}/submitted`);
+      const basePath = userRole === 'tutor' ? '/tutor' : '/student';
+      router.push(`${basePath}/disputes/${data.claim_id}/submitted`);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to submit claim');
     } finally {

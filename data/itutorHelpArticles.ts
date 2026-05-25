@@ -493,7 +493,7 @@ If you receive multiple requests:
 
 ## What If a Student Doesn't Show Up?
 
-If a student fails to join the session within 33% of the scheduled time, you can mark it as a student no-show. You'll receive 50% of the session fee.
+If a student fails to join within 15 minutes of the scheduled start, you can file a no-show claim. The claim opens a 12-hour response window for the student, after which an admin reviews both sides. If confirmed, you keep the full session payment and a strike is recorded on the student's reliability record.
 
 Need help managing requests? Contact support@myitutor.com
 `
@@ -530,9 +530,18 @@ Cancel a session if:
 
 ## Cancellation Policy
 
-- **24+ hours before**: Full refund to student, no penalty to you
-- **Less than 24 hours**: May affect your iTutor rating
-- **Repeated cancellations**: Can lead to account review
+### For tutors
+- **Any time before start**: Student receives a full refund, no payout to you, and a strike is recorded on your 90-day reliability record.
+- **Within 15 minutes of start**: All of the above, plus an automatic 2-star system rating is added to your profile. Both the strike and the rating are appealable from your dashboard.
+- **5+ active strikes**: Account is flagged for an admin suspension review.
+
+### For students
+- **12+ hours before start**: Full refund, no penalty.
+- **Less than 12 hours before start**: Full refund unless you're under a reliability warning. Warned students forfeit 50% on late cancellations.
+- **3+ cancellations in 30 days**: Triggers a reliability warning candidate for admin review.
+
+### Reschedules
+Use a counter-offer to suggest a new time instead of cancelling. If either party rejects the counter, the booking is cancelled under the normal policy.
 
 ## Best Practices
 
@@ -700,10 +709,13 @@ Here's what happens automatically:
 
 ## Student No-Shows
 
-If the student doesn't join within 33% of the session time:
-- You can mark the session as a "student no-show"
-- You'll receive 50% of the session fee
-- Document the situation if needed
+If the student doesn't join within 15 minutes of the scheduled start:
+- File a no-show claim from the session card. Upload any evidence you have (screenshot of the meeting room, attendance report, etc.).
+- The student has 12 hours to respond with their account.
+- An admin reviews both sides and renders a verdict.
+- If confirmed in your favour, you keep the full session payment and a strike is recorded on the student's reliability record.
+- If the evidence is inconclusive, both sides receive a neutral outcome (full refund to the student, no payout to you, no penalties).
+- False claims will result in account suspension.
 
 ## Recording Sessions
 

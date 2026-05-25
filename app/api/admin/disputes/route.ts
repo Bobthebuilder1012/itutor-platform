@@ -23,38 +23,59 @@ export async function GET(_request: NextRequest) {
 
   const admin = getServiceClient();
 
-  const [claims, warnings, appeals, strikeRows] = await Promise.all([
-    admin
-      .from('noshow_claims')
-      .select(
-        'id, session_id, booking_id, claimant_id, claimant_role, defendant_id, evidence_files, evidence_type, written_explanation, defendant_response, defendant_evidence_files, defendant_responded_at, response_deadline, status, created_at'
-      )
-      .eq('status', 'pending_admin')
-      .order('created_at', { ascending: true })
-      .limit(100),
+  const [claims, warnings, appeals, tutorStrikeAppeals, studentStrikeAppeals, strikeRows] =
+    await Promise.all([
+      admin
+        .from('noshow_claims')
+        .select(
+          'id, session_id, booking_id, claimant_id, claimant_role, defendant_id, evidence_files, evidence_type, written_explanation, defendant_response, defendant_evidence_files, defendant_responded_at, response_deadline, status, created_at'
+        )
+        .eq('status', 'pending_admin')
+        .order('created_at', { ascending: true })
+        .limit(100),
 
-    admin
-      .from('reliability_warnings')
-      .select('id, user_id, user_role, flag_reason, trigger_count, flagged_at, status, created_at')
-      .eq('status', 'pending_admin')
-      .order('flagged_at', { ascending: true })
-      .limit(100),
+      admin
+        .from('reliability_warnings')
+        .select('id, user_id, user_role, flag_reason, trigger_count, flagged_at, status, created_at')
+        .eq('status', 'pending_admin')
+        .order('flagged_at', { ascending: true })
+        .limit(100),
 
-    admin
-      .from('ratings')
-      .select('id, tutor_id, stars, system_issued, system_reason, appeal_status, appeal_text, appealed_at, session_id, created_at')
-      .eq('system_issued', true)
-      .eq('appeal_status', 'pending')
-      .order('appealed_at', { ascending: true })
-      .limit(100),
+      admin
+        .from('ratings')
+        .select(
+          'id, tutor_id, stars, system_issued, system_reason, appeal_status, appeal_text, appealed_at, session_id, created_at'
+        )
+        .eq('system_issued', true)
+        .eq('appeal_status', 'pending')
+        .order('appealed_at', { ascending: true })
+        .limit(100),
 
-    admin
-      .from('tutor_strikes')
-      .select('tutor_id')
-      .is('cleared_at', null)
-      .gt('expires_at', new Date().toISOString())
-      .limit(5000),
-  ]);
+      admin
+        .from('tutor_strikes')
+        .select(
+          'id, tutor_id, reason, issued_at, expires_at, session_id, booking_id, appeal_status, appeal_text, appealed_at'
+        )
+        .eq('appeal_status', 'pending')
+        .order('appealed_at', { ascending: true })
+        .limit(100),
+
+      admin
+        .from('student_strikes')
+        .select(
+          'id, student_id, reason, issued_at, expires_at, session_id, booking_id, appeal_status, appeal_text, appealed_at'
+        )
+        .eq('appeal_status', 'pending')
+        .order('appealed_at', { ascending: true })
+        .limit(100),
+
+      admin
+        .from('tutor_strikes')
+        .select('tutor_id')
+        .is('cleared_at', null)
+        .gt('expires_at', new Date().toISOString())
+        .limit(5000),
+    ]);
 
   // Aggregate strike counts client-side from the raw rows; the query
   // would otherwise need a HAVING clause that Postgrest doesn't expose.
@@ -75,6 +96,8 @@ export async function GET(_request: NextRequest) {
   }
   for (const w of warnings.data || []) userIds.add((w as any).user_id);
   for (const a of appeals.data || []) userIds.add((a as any).tutor_id);
+  for (const s of tutorStrikeAppeals.data || []) userIds.add((s as any).tutor_id);
+  for (const s of studentStrikeAppeals.data || []) userIds.add((s as any).student_id);
   for (const s of suspensionCandidates) userIds.add(s.tutor_id);
 
   const profiles =
@@ -114,6 +137,14 @@ export async function GET(_request: NextRequest) {
     appeals: (appeals.data || []).map((a: any) => ({
       ...a,
       tutor: profileMap.get(a.tutor_id) || null,
+    })),
+    tutor_strike_appeals: (tutorStrikeAppeals.data || []).map((s: any) => ({
+      ...s,
+      tutor: profileMap.get(s.tutor_id) || null,
+    })),
+    student_strike_appeals: (studentStrikeAppeals.data || []).map((s: any) => ({
+      ...s,
+      student: profileMap.get(s.student_id) || null,
     })),
     suspension_candidates: suspensionCandidates.map((s) => ({
       ...s,

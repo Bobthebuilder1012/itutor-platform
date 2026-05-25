@@ -32,15 +32,14 @@ export default function DisputeResponseView({ claimId, rolePath }: Props) {
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase
-        .from('noshow_claims')
-        .select(
-          'id, status, response_deadline, claimant_role, written_explanation, evidence_files, evidence_type, defendant_response, defendant_responded_at, admin_verdict, admin_decided_at, admin_notes, session_id, created_at'
-        )
-        .eq('id', claimId)
-        .maybeSingle();
-      setClaim(data);
-      setLoading(false);
+      try {
+        const res = await fetch(`/api/noshow-claims/${claimId}`);
+        if (res.ok) {
+          setClaim(await res.json());
+        }
+      } finally {
+        setLoading(false);
+      }
     })();
   }, [claimId]);
 
@@ -142,8 +141,18 @@ export default function DisputeResponseView({ claimId, rolePath }: Props) {
               <div className="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-1">Their evidence</div>
               <ul className="text-xs space-y-1">
                 {claim.evidence_files.map((f: any, i: number) => (
-                  <li key={i} className="rounded-lg bg-gray-100 px-3 py-2 truncate">
-                    {f.original_name || f.path}
+                  <li key={i} className="rounded-lg bg-gray-100 px-3 py-2 flex items-center justify-between gap-2">
+                    <span className="truncate">{f.original_name || f.path}</span>
+                    {f.signed_url && (
+                      <a
+                        href={f.signed_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline flex-shrink-0"
+                      >
+                        View
+                      </a>
+                    )}
                   </li>
                 ))}
               </ul>

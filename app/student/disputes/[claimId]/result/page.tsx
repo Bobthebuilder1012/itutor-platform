@@ -156,8 +156,7 @@ function TutorNoShowResolved({ claim, refund }: { claim: any; refund: any }) {
   );
 }
 
-function StudentNoShowResolved({ claim, refund }: { claim: any; refund: any }) {
-  const total = (refund?.refund_amount_ttd ?? 0) + (refund?.retained_amount_ttd ?? 0);
+function StudentNoShowResolved({ claim }: { claim: any; refund: any }) {
   return (
     <div className="max-w-2xl mx-auto px-4 py-10">
       <div className="bg-white border border-red-200 rounded-2xl shadow-sm overflow-hidden">
@@ -171,28 +170,20 @@ function StudentNoShowResolved({ claim, refund }: { claim: any; refund: any }) {
           </div>
         </div>
         <div className="p-6 space-y-5">
-          <div className="rounded-xl bg-amber-50 border border-amber-300 p-5 space-y-2 text-sm">
-            <div className="flex justify-between text-gray-700">
-              <span>Session price</span>
-              <span className="font-medium">TTD {total.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-red-700">
-              <span>No-show charge (50%)</span>
-              <span className="font-medium">− TTD {(refund?.retained_amount_ttd ?? 0).toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between border-t border-amber-300 pt-2 mt-2">
-              <span className="font-semibold">Refunded to you</span>
-              <span className="text-2xl font-bold text-amber-700">
-                TTD {(refund?.refund_amount_ttd ?? 0).toFixed(2)}
-              </span>
+          <div className="rounded-xl bg-red-50 border border-red-200 p-5 text-sm">
+            <div className="text-xs text-red-700 font-semibold uppercase tracking-wide">Outcome</div>
+            <div className="text-lg font-bold text-red-700 mt-1">Full session fee charged</div>
+            <div className="text-xs text-gray-600 mt-2">
+              You will not receive a refund. Payment to the tutor proceeds as normal.
             </div>
           </div>
 
           <div className="rounded-xl border bg-gray-50 p-4 text-sm space-y-1">
             <div className="font-semibold text-gray-900 mb-2">Penalties applied</div>
             <ul className="list-disc list-inside text-gray-700 space-y-1 text-xs">
-              <li>50% of the session fee has been retained.</li>
-              <li>This is recorded in your no-show history.</li>
+              <li>A strike has been recorded on your 90-day reliability record.</li>
+              <li>Three active strikes will trigger an admin reliability warning.</li>
+              <li>You can appeal this strike from your dashboard.</li>
             </ul>
           </div>
 
@@ -203,8 +194,8 @@ function StudentNoShowResolved({ claim, refund }: { claim: any; refund: any }) {
             </div>
           )}
 
-          <Link href="/student/bookings" className="block text-center px-4 py-3 rounded-xl border border-gray-300 text-gray-700 font-semibold hover:bg-gray-50">
-            My bookings
+          <Link href="/student/dashboard" className="block text-center px-4 py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-semibold">
+            Appeal from my dashboard
           </Link>
         </div>
       </div>
