@@ -9,7 +9,6 @@ import {
   Clock, Check, X, ShieldAlert, Ban, CreditCard,
 } from 'lucide-react';
 import { useProfile } from '@/lib/hooks/useProfile';
-import { supabase } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
 
 /* ─── Types ──────────────────────────────────────────── */
@@ -135,22 +134,13 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
   async function load() {
     setLoading(true);
     try {
-      const { data: grp } = await supabase
-        .from('groups')
-        .select('id, name, subject, tutor_id, primary_channel, meeting_link, tutor:profiles!groups_tutor_id_fkey(full_name, display_name)')
-        .eq('id', groupId)
-        .is('archived_at', null)
-        .maybeSingle();
-
+      const res = await fetch(`/api/groups/${groupId}`, { cache: 'no-store' });
+      if (!res.ok) { setLoading(false); return; }
+      const payload = await res.json();
+      const grp = payload?.group ?? payload?.data?.group;
       if (!grp) { setLoading(false); return; }
 
-      const { data: membership } = await supabase
-        .from('group_members')
-        .select('status')
-        .eq('group_id', groupId)
-        .eq('user_id', profile!.id)
-        .maybeSingle();
-
+      const membership = grp.current_user_membership;
       const s = membership?.status ?? 'active';
       setMemberState(
         s === 'suspended' || s === 'suspended_payment' ? 'suspended'
@@ -158,33 +148,32 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
         : 'active'
       );
 
-      const { count } = await supabase
-        .from('group_members')
-        .select('*', { count: 'exact', head: true })
-        .eq('group_id', groupId)
-        .in('status', ['active', 'approved']);
-
-      const { data: ratingRows } = await supabase
-        .from('ratings').select('stars').eq('tutor_id', grp.tutor_id);
-      const ratings = (ratingRows ?? []).map((r: any) => Number(r.stars));
-      const avgRating = ratings.length
-        ? ratings.reduce((a: number, b: number) => a + b, 0) / ratings.length
+      const enrollmentCount = grp.enrollment_count ?? grp.member_count ?? 0;
+      const avgRating = typeof grp.average_rating === 'number' && grp.average_rating > 0
+        ? grp.average_rating
         : null;
 
-      const { data: nextOcc } = await supabase
-        .from('group_session_occurrences')
-        .select('id, scheduled_start_at, group_session_id')
-        .gte('scheduled_start_at', new Date().toISOString())
-        .order('scheduled_start_at', { ascending: true })
-        .limit(1);
-
-      const hasNext = (nextOcc?.length ?? 0) > 0;
-      setHasNextSession(hasNext);
-      // Use the group's static meeting link (Google Meet / Zoom) set by the tutor
-      setNextMeetingLink((grp as any).meeting_link ?? null);
+      setHasNextSession(Boolean(grp.next_occurrence));
+      setNextMeetingLink(grp.meeting_link ?? grp.next_occurrence?.meeting_link ?? null);
 
       const tutorObj = Array.isArray(grp.tutor) ? grp.tutor[0] : grp.tutor;
-      setGroup({ ...grp, tutor: tutorObj, enrollment_count: count ?? 0, tutor_rating: avgRating });
+      const tutor = tutorObj
+        ? {
+            full_name: tutorObj.full_name ?? null,
+            display_name: tutorObj.display_name ?? tutorObj.full_name ?? null,
+          }
+        : null;
+
+      setGroup({
+        id: grp.id,
+        name: grp.name,
+        subject: grp.subject ?? null,
+        tutor_id: grp.tutor_id,
+        tutor,
+        primary_channel: grp.primary_channel ?? null,
+        enrollment_count: enrollmentCount,
+        tutor_rating: avgRating,
+      });
     } catch (err) {
       console.error('[EnrolledClassPage]', err);
     } finally {
