@@ -9,6 +9,7 @@ import {
   Clock, Check, X, ShieldAlert, Ban, CreditCard,
 } from 'lucide-react';
 import { useProfile } from '@/lib/hooks/useProfile';
+import { supabase } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
 
 /* ─── Types ──────────────────────────────────────────── */
