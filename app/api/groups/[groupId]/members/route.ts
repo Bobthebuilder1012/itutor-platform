@@ -38,7 +38,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       .order('joined_at', { ascending: true });
 
     if (!isTutor) {
-      query = query.eq('status', 'approved');
+      query = query.in('status', ['approved', 'active', 'invited']);
     }
 
     let { data: members, error } = await query;
@@ -93,28 +93,6 @@ export async function POST(_req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Tutor cannot join their own group' }, { status: 400 });
     }
 
-    // Require at least one configured session before students can request access.
-    const { count: sessionCount, error: sessionsError } = await service
-      .from('group_sessions')
-      .select('id', { count: 'exact', head: true })
-      .eq('group_id', groupId);
-
-    if (sessionsError && !isSchemaMismatch(sessionsError)) {
-      throw sessionsError;
-    }
-    if (sessionsError && isSchemaMismatch(sessionsError)) {
-      return NextResponse.json(
-        { error: 'This group is not accepting requests yet. Tutor must add at least one session first.' },
-        { status: 400 }
-      );
-    }
-    if ((sessionCount ?? 0) < 1) {
-      return NextResponse.json(
-        { error: 'This group is not accepting requests yet. Tutor must add at least one session first.' },
-        { status: 400 }
-      );
-    }
-
     // Check for existing membership
     const { data: existing } = await service
       .from('group_members')
@@ -127,9 +105,18 @@ export async function POST(_req: NextRequest, { params }: Params) {
       return NextResponse.json({ member: existing, already_exists: true });
     }
 
+    // Determine initial status based on group's join-request setting
+    const { data: groupSettings } = await service
+      .from('groups')
+      .select('require_join_requests')
+      .eq('id', groupId)
+      .single();
+
+    const initialStatus = groupSettings?.require_join_requests ? 'pending' : 'approved';
+
     const { data: member, error } = await service
       .from('group_members')
-      .insert({ group_id: groupId, user_id: user.id, status: 'pending' })
+      .insert({ group_id: groupId, user_id: user.id, status: initialStatus })
       .select()
       .single();
 

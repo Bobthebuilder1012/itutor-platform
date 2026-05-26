@@ -86,27 +86,19 @@ export async function GET(request: NextRequest) {
 
     const isTutor = profile?.role === 'tutor';
 
-    const runGroupsQuery = async (withStatus: boolean, legacySchema: boolean, includeHeaderImage: boolean = true, bare: boolean = false) => {
-      let selectStr: string;
-      if (bare) {
-        selectStr = `
-          id, name, description, tutor_id, subject, pricing, created_at,
-          tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, rating_average, rating_count),
-          group_members(id, user_id, status, profile:profiles(id, full_name, avatar_url))
-        `;
-      } else {
-        selectStr = `
-          id, name, description, tutor_id, subject, pricing, created_at, ${withStatus ? 'status,' : ''}${legacySchema ? '' : 'difficulty, form_level, topic, session_length_minutes, session_frequency,'}
-          ${
-            legacySchema
-              ? 'cover_image, header_image, whatsapp_link,'
-              : `pricing_model, pricing_mode, price_per_session, price_per_course, price_monthly, recurrence_type, max_students, cover_image, ${includeHeaderImage ? 'header_image, ' : ''}availability_window,`
-          }
-          tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, rating_average, rating_count),
-          group_members(id, user_id, status, profile:profiles(id, full_name, avatar_url))
-        `;
-      }
+    // Select only columns confirmed to exist in the DB schema.
+    // Note: group_members profile sub-join omitted — multiple FK paths cause a 300 ambiguity.
+    const selectStr = `
+      id, name, description, tutor_id, subject, pricing, pricing_model, created_at,
+      visibility, primary_channel, whatsapp_url, google_classroom_link,
+      max_students, parent_feedback_mode, parent_feedback_price,
+      require_join_requests, auto_suspend_missed_payment, grace_period_days,
+      archived_at, archived_reason,
+      tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, rating_average, rating_count),
+      group_members(id, user_id, status)
+    `;
 
+    const runGroupsQuery = async () => {
       let query = service
         .from('groups')
         .select(selectStr)
@@ -116,53 +108,28 @@ export async function GET(request: NextRequest) {
         query = query.not('archived_at', 'is', null).eq('tutor_id', user.id);
       } else {
         query = query.is('archived_at', null);
-        if (withStatus) {
-          if (isTutor) query = query.or(`status.eq.PUBLISHED,tutor_id.eq.${user.id}`);
-          else query = query.or('status.eq.PUBLISHED,status.eq.published,status.is.null');
+        if (isTutor) {
+          // Tutors always see their own classes
+          query = query.or(`tutor_id.eq.${user.id},visibility.eq.public,visibility.is.null`);
+        } else {
+          // Students see classes that are not explicitly private
+          query = query.or('visibility.eq.public,visibility.is.null');
         }
       }
 
       return query;
     };
 
-    const applyFilters = (query: any, legacySchema: boolean) => {
+    const applyFilters = (query: any) => {
       let q = query;
       if (subject) q = q.ilike('subject', `%${subject}%`);
-      if (!legacySchema) {
-        if (formLevel) q = q.eq('form_level', formLevel);
-        if (difficulty) q = q.eq('difficulty', difficulty);
-        if (recurrenceType) q = q.eq('recurrence_type', recurrenceType);
-        if (sessionFrequency) q = q.ilike('session_frequency', `%${sessionFrequency}%`);
-        if (minPrice !== undefined) q = q.gte('price_per_session', minPrice);
-        if (maxPrice !== undefined) q = q.lte('price_per_session', maxPrice);
-      }
       if (search) q = q.or(`name.ilike.%${search}%,subject.ilike.%${search}%`);
       return q;
     };
 
     let groups: any[] | null = null;
     let error: any = null;
-    ({ data: groups, error } = await applyFilters(await runGroupsQuery(true, false, true), false));
-    if (isSchemaMismatch(error)) {
-      ({ data: groups, error } = await applyFilters(await runGroupsQuery(true, false, false), false));
-      if (isSchemaMismatch(error)) {
-        ({ data: groups, error } = await applyFilters(await runGroupsQuery(false, true, false), true));
-        if (isSchemaMismatch(error)) {
-          ({ data: groups, error } = await applyFilters(await runGroupsQuery(false, false, false, true), false));
-        }
-      }
-    } else if (!error && !isTutor && (groups?.length ?? 0) === 0) {
-      ({ data: groups, error } = await applyFilters(await runGroupsQuery(false, false, true), false));
-      if (isSchemaMismatch(error)) {
-        ({ data: groups, error } = await applyFilters(await runGroupsQuery(false, false, false), false));
-        if (isSchemaMismatch(error)) {
-          ({ data: groups, error } = await applyFilters(await runGroupsQuery(false, true, false), true));
-          if (isSchemaMismatch(error)) {
-            ({ data: groups, error } = await applyFilters(await runGroupsQuery(false, false, false, true), false));
-          }
-        }
-      }
-    }
+    ({ data: groups, error } = await applyFilters(await runGroupsQuery()));
     if (error) throw error;
 
     const groupRows = groups ?? [];
@@ -203,53 +170,22 @@ export async function GET(request: NextRequest) {
 
     // Attach current user membership, member previews, and next occurrence
     let enriched = groupRows.map((g: any) => {
-      const approvedMembers = (g.group_members ?? []).filter((m: any) => m.status === 'approved');
+      const approvedMembers = (g.group_members ?? []).filter((m: any) => m.status === 'approved' || m.status === 'active');
       const currentUserMembership = (g.group_members ?? []).find((m: any) => m.user_id === user.id) ?? null;
 
       return {
         ...g,
         group_members: undefined,
         member_count: approvedMembers.length,
-        member_previews: approvedMembers.slice(0, 3).map((m: any) => m.profile).filter(Boolean),
+        member_previews: [],
         current_user_membership: currentUserMembership,
         next_occurrence: nextOccurrenceByGroupId.get(g.id) ?? null,
       };
     });
 
-    // For student viewers, only show groups from fully listed tutors
-    if (!isTutor && !fetchArchived) {
-      const tutorIds = [...new Set(enriched.map((g: any) => g.tutor_id).filter(Boolean))];
-      if (tutorIds.length > 0) {
-        const [
-          { data: withAvailability },
-          { data: withVideoProvider },
-          { data: withPricedSubjects },
-          { data: listedProfiles },
-        ] = await Promise.all([
-          service.from('tutor_availability_rules').select('tutor_id').in('tutor_id', tutorIds),
-          service.from('tutor_video_provider_connections').select('tutor_id').in('tutor_id', tutorIds),
-          service.from('tutor_subjects').select('tutor_id').gt('price_per_hour_ttd', 0).in('tutor_id', tutorIds),
-          service.from('profiles').select('id, avatar_url, bio').in('id', tutorIds),
-        ]);
-
-        const availSet = new Set((withAvailability ?? []).map((r: any) => r.tutor_id));
-        const videoSet = new Set((withVideoProvider ?? []).map((r: any) => r.tutor_id));
-        const priceSet = new Set((withPricedSubjects ?? []).map((r: any) => r.tutor_id));
-        const profileMap = new Map((listedProfiles ?? []).map((p: any) => [p.id, p]));
-
-        enriched = enriched.filter((g: any) => {
-          const tid = g.tutor_id;
-          const p = profileMap.get(tid);
-          return (
-            p?.avatar_url &&
-            p?.bio?.trim()?.length > 0 &&
-            availSet.has(tid) &&
-            videoSet.has(tid) &&
-            priceSet.has(tid)
-          );
-        });
-      }
-    }
+    // No profile-completeness gate for group classes — visibility (public/private) and
+    // archived_at are the sole gating mechanisms. Tutor profile quality checks apply to
+    // the 1:1 tutor search (/api/tutors/listed-ids), not here.
 
     if (availability) {
       const now = new Date();
@@ -306,32 +242,13 @@ export async function GET(request: NextRequest) {
     const total = sorted.length;
     const from = (page - 1) * limit;
     const paginated = sorted.slice(from, from + limit).map((g: any) => ({
-      ...(function () {
-        const perSession = Number(g.price_per_session ?? 0);
-        const perCourse = Number(g.price_per_course ?? 0);
-        const enrolled = Number(g.member_count ?? 0);
-        const estimatedEarnings =
-          perSession > 0 ? perSession * enrolled : perCourse > 0 ? perCourse * enrolled : 0;
-        return { estimated_earnings: estimatedEarnings };
-      })(),
       ...g,
       title: g.name,
-      topic: g.topic ?? null,
-      formLevel: g.form_level ?? null,
-      sessionLengthMinutes: g.session_length_minutes ?? null,
-      sessionFrequency: g.session_frequency ?? g.recurrence_type ?? null,
       pricingModel: g.pricing_model ?? 'FREE',
-      pricingMode: g.pricing_mode ?? g.pricing_model ?? 'FREE',
-      pricePerSession: g.price_per_session,
-      pricePerCourse: g.price_per_course ?? null,
-      priceMonthly: g.price_monthly,
-      recurrenceType: g.recurrence_type,
-      availabilityWindow: g.availability_window ?? null,
       maxStudents: g.max_students,
-      coverImage: g.cover_image,
-      headerImage: g.header_image ?? null,
       enrollmentCount: g.member_count,
       nextSession: g.next_occurrence ? { scheduledAt: g.next_occurrence.scheduled_start_at } : null,
+      estimated_earnings: 0,
     }));
 
     return NextResponse.json({

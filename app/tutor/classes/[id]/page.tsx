@@ -8,7 +8,7 @@ import {
   Bell, X, Plus, ExternalLink, Trash2, Globe, Eye,
   Video, MoreVertical, Pin, Sparkles, Link as LinkIcon, Paperclip, AlertTriangle, ShieldAlert,
   Mail, MessageSquare, DollarSign, BarChart3, ArrowUp, ArrowDown, Lock,
-  Calendar as CalendarIcon, BookOpen, Ban, Repeat, Clock,
+  Calendar as CalendarIcon, BookOpen, Ban, Repeat, Clock, Info, Image as ImageIcon, ArrowUpRight, ChevronRight,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -72,8 +72,18 @@ type GroupDetail = {
   capacity: number;
   enrolled: number;
   pricePerSession: number | null;
+  memberServiceFee: number;
+  billingModel: 'per-session' | 'per-month' | 'prepaid';
   status: string;
+  visibility: 'public' | 'private';
   isPublic: boolean;
+  requireJoinRequests: boolean;
+  autoSuspendMissedPayment: boolean;
+  gracePeriodDays: number;
+  primaryChannel: 'native' | 'whatsapp' | 'classroom';
+  googleClassroomLink: string;
+  feedbackMode: 'off' | 'included_free' | 'paid_addon';
+  parentFeedbackPrice: number;
   thumbnailGradient?: string;
   recurrenceRule?: string;
   videoProvider?: string;
@@ -82,6 +92,7 @@ type GroupDetail = {
   rating?: number | null;
   reviewCount?: number;
   whatsappLink?: string;
+  meetingLink?: string;
 };
 
 export default function TutorLessonDetailPage() {
@@ -129,54 +140,63 @@ function ClassHubContent() {
       // Fetch group directly — more reliable than API route
       const { data: g } = await supabase.from('groups').select('*').eq('id', groupId).single();
       if (g) {
+        const pricingModel = g.pricing_model ?? 'FREE';
+        const billingModel: GroupDetail['billingModel'] =
+          pricingModel === 'PER_SESSION' ? 'per-session' :
+          pricingModel === 'MONTHLY' ? 'per-month' : 'prepaid';
+        const visibilityVal: GroupDetail['visibility'] =
+          g.visibility === 'private' ? 'private' : 'public';
+
         setGroup({
           id: g.id,
           title: g.name || 'Untitled class',
           subject: g.subject || '—',
           level: g.form_level || '—',
-          description: g.description || '',
+          description: g.description || g.bio || '',
           capacity: g.max_students ?? 20,
           enrolled: 0,
           pricePerSession: g.price_per_session ?? null,
+          memberServiceFee: g.member_service_fee ?? 0,
+          billingModel,
           status: g.status ?? 'DRAFT',
-          isPublic: ['PUBLISHED', 'published'].includes(g.status ?? ''),
+          visibility: visibilityVal,
+          isPublic: visibilityVal === 'public',
+          requireJoinRequests: g.require_join_requests ?? false,
+          autoSuspendMissedPayment: g.auto_suspend_missed_payment ?? false,
+          gracePeriodDays: g.grace_period_days ?? 7,
+          primaryChannel: (g.primary_channel ?? 'native') as GroupDetail['primaryChannel'],
+          googleClassroomLink: g.google_classroom_link ?? '',
+          feedbackMode: (g.parent_feedback_mode ?? 'off') as GroupDetail['feedbackMode'],
+          parentFeedbackPrice: g.parent_feedback_price ?? 0,
           recurrenceRule: g.recurrence_rule,
           earningsTtd: 0,
           totalSessionsRun: 0,
-          whatsappLink: g.whatsapp_link ?? '',
+          whatsappLink: g.whatsapp_url ?? g.whatsapp_link ?? '',
+          meetingLink: g.meeting_link ?? '',
           rating: null,
           reviewCount: 0,
         });
       }
 
-      // Fetch members — no embed to avoid PostgREST relationship ambiguity
+      // Fetch members via API (uses service client, bypasses RLS)
       let rawMembers: any[] = [];
-      const { data: mBare } = await supabase
-        .from('group_members')
-        .select('id, user_id, status, joined_at')
-        .eq('group_id', groupId);
-      rawMembers = mBare ?? [];
-      // Fetch display names for members
-      const userIds = rawMembers.map((m: any) => m.user_id).filter(Boolean);
-      const nameMap: Record<string, string> = {};
-      if (userIds.length > 0) {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, full_name, display_name')
-          .in('id', userIds);
-        for (const p of profiles ?? []) {
-          nameMap[p.id] = p.full_name || p.display_name || 'Student';
+      try {
+        const mRes = await fetch(`/api/groups/${groupId}/members`);
+        if (mRes.ok) {
+          const mJson = await mRes.json();
+          rawMembers = mJson.members ?? [];
         }
-      }
+      } catch { /* leave empty */ }
+
       setMembers(rawMembers.map((m: any): GroupMember => ({
         id: m.id,
         studentId: m.user_id,
-        name: (m.profile as any)?.full_name ?? nameMap[m.user_id] ?? 'Student',
+        name: m.profile?.full_name || m.profile?.display_name || 'Student',
         paymentStatus: 'pending',
-        status: m.status === 'approved' ? 'active' : (m.status ?? 'active'),
+        status: m.status ?? 'active',
         joinedAt: m.joined_at ?? null,
       })));
-      if (g) setGroup((prev) => prev ? { ...prev, enrolled: rawMembers.filter((m: any) => m.status === 'approved').length } : prev);
+      if (g) setGroup((prev) => prev ? { ...prev, enrolled: rawMembers.filter((m: any) => ['approved', 'active'].includes(m.status)).length } : prev);
 
       // Fetch sessions via API (it handles occurrences)
       try {
@@ -221,17 +241,23 @@ function ClassHubContent() {
         const pRes = await fetch(`/api/groups/${groupId}/stream`);
         if (pRes.ok) {
           const pJson = await pRes.json();
-          setPosts((pJson.posts ?? []).map((p: any): StreamPost => ({
-            id: p.id,
-            kind: p.kind ?? p.type ?? 'announcement',
-            title: p.title ?? p.content?.slice(0, 60) ?? '',
-            body: p.body ?? p.content ?? '',
-            at: formatRelative(p.created_at),
-            pinned: p.is_pinned ?? p.pinned ?? false,
-            pendingApproval: p.pending_approval ?? false,
-            attachmentName: p.attachment_name,
-            linkUrl: p.link_url,
-          })));
+          setPosts((pJson.posts ?? []).map((p: any): StreamPost => {
+            const msgBody: string = p.message_body ?? p.body ?? p.content ?? '';
+            const lines = msgBody.split('\n');
+            const derivedTitle = lines[0]?.slice(0, 80) ?? '';
+            const derivedBody = lines.slice(1).join('\n').trim();
+            return {
+              id: p.id,
+              kind: (p.post_type ?? p.kind ?? 'announcement') as StreamPost['kind'],
+              title: derivedTitle,
+              body: derivedBody,
+              at: formatRelative(p.created_at),
+              pinned: p.is_pinned ?? p.pinned ?? false,
+              pendingApproval: p.pending_approval ?? false,
+              attachmentName: p.attachment_name,
+              linkUrl: p.link_url,
+            };
+          }));
         }
       } catch { /* stream non-critical */ }
 
@@ -335,17 +361,36 @@ function StreamTab({ group, posts, setPosts }: { group: GroupDetail; posts: Stre
 
   const submit = async () => {
     if (!title.trim()) return;
+    // Combine title + body into message_body (title on first line)
+    const message_body = body.trim() ? `${title.trim()}\n${body.trim()}` : title.trim();
+    // Map UI kind → DB post_type
+    const postTypeMap: Record<string, string> = {
+      announcement: 'announcement',
+      attachment: 'content',
+      link: 'content',
+      'ai-recap': 'content',
+    };
+    const post_type = postTypeMap[composer ?? ''] ?? 'announcement';
     try {
-      const res = await fetch(`/api/groups/${group.id}/stream`, {
+      const res = await fetch(`/api/groups/${group.id}/stream/post`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kind: composer, title, body }),
+        body: JSON.stringify({ post_type, message_body }),
       });
       const json = await res.json();
-      const p = json.post ?? { id: `tmp-${Date.now()}`, kind: composer!, title, body, at: 'Just now' };
-      setPosts([{ ...p, at: 'Just now' }, ...posts]);
-    } catch {
-      setPosts([{ id: `tmp-${Date.now()}`, kind: composer!, title, body, at: 'Just now' }, ...posts]);
+      if (!res.ok) throw new Error(json?.error ?? 'Failed to post');
+      const p = json.post;
+      setPosts([{
+        id: p?.id ?? `tmp-${Date.now()}`,
+        kind: composer!,
+        title: title.trim(),
+        body: body.trim(),
+        at: 'Just now',
+        pinned: false,
+        pendingApproval: false,
+      }, ...posts]);
+    } catch (e: any) {
+      alert(e?.message ?? 'Failed to create post');
     }
     setTitle(''); setBody(''); setComposer(null);
   };
@@ -890,11 +935,13 @@ function RosterRow({ m, onUpdate }: { m: GroupMember; onUpdate: (p: Partial<Grou
   const [menu, setMenu] = useState(false);
   const [confirm, setConfirm] = useState<null | 'suspend' | 'ban' | 'remove'>(null);
   const statusMeta: Record<string, { label: string; chip: string }> = {
-    invited:   { label: 'Invited',   chip: 'bg-sky-100 text-sky-700 border-sky-200' },
-    active:    { label: 'Active',    chip: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
-    suspended: { label: 'Suspended', chip: 'bg-amber-100 text-amber-800 border-amber-200' },
-    banned:    { label: 'Banned',    chip: 'bg-rose-100 text-rose-700 border-rose-200' },
-    removed:   { label: 'Removed',   chip: 'bg-muted text-muted-foreground border-border' },
+    pending_approval: { label: 'Pending',   chip: 'bg-amber-100 text-amber-800 border-amber-200' },
+    invited:          { label: 'Invited',   chip: 'bg-sky-100 text-sky-700 border-sky-200' },
+    active:           { label: 'Active',    chip: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+    approved:         { label: 'Active',    chip: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+    suspended:        { label: 'Suspended', chip: 'bg-amber-100 text-amber-800 border-amber-200' },
+    banned:           { label: 'Banned',    chip: 'bg-rose-100 text-rose-700 border-rose-200' },
+    removed:          { label: 'Removed',   chip: 'bg-muted text-muted-foreground border-border' },
   };
   const sm = statusMeta[m.status] ?? statusMeta.active;
 
@@ -1062,6 +1109,17 @@ function PaymentsTab({ members, group }: { members: GroupMember[]; group: GroupD
 }
 
 /* ----------- Settings ----------- */
+const SETTINGS_SECTIONS = [
+  { id: 'basics',    label: 'Basics',            icon: Info },
+  { id: 'capacity',  label: 'Capacity',          icon: Users },
+  { id: 'billing',   label: 'Billing',           icon: DollarSign },
+  { id: 'access',    label: 'Access & policies', icon: Lock },
+  { id: 'channels',  label: 'Communication',     icon: MessageSquare },
+  { id: 'feedback',  label: 'Parent feedback',   icon: Mail },
+  { id: 'danger',    label: 'Danger zone',        icon: AlertTriangle },
+] as const;
+type SettingsSectionId = (typeof SETTINGS_SECTIONS)[number]['id'];
+
 function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange }: {
   group: GroupDetail;
   setGroup: React.Dispatch<React.SetStateAction<GroupDetail | null>>;
@@ -1086,23 +1144,30 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange }: {
   useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
   useUnsavedGuard(dirty);
 
+  const [section, setSection] = useState<SettingsSectionId>('basics');
+  const tryChangeSection = (id: SettingsSectionId) => {
+    if (dirty && !window.confirm('You have unsaved changes. Discard them and switch sections?')) return;
+    if (dirty) setDraft({ ...group });
+    setSection(id);
+  };
+  // Remember join-requests value from when class was public so we can restore it on public→private→public round-trip
+  const lastPublicJoinReq = useRef<boolean>(
+    group.visibility === 'public' ? group.requireJoinRequests : false
+  );
+
   // Subject search
   const [allSubjects, setAllSubjects] = useState<DbSubject[]>([]);
   const [subjectSearch, setSubjectSearch] = useState(group.subject && group.subject !== '—' ? group.subject : '');
   const [subjectOpen, setSubjectOpen] = useState(false);
   const subjectRef = useRef<HTMLDivElement>(null);
 
-  // Extra local settings
-  const [billingModel, setBillingModel] = useState<'per-session' | 'per-month' | 'prepaid'>('per-session');
-  const [joinRequests, setJoinRequests] = useState(false);
-  const [autoSuspend, setAutoSuspend] = useState(true);
-  const [graceDays, setGraceDays] = useState(7);
-  // whatsappLink is stored in draft.whatsappLink
-  const [classroom, setClassroom] = useState('');
-  const [feedback, setFeedback] = useState<'off' | 'included' | 'paid'>('off');
-  const [feedbackPrice, setFeedbackPrice] = useState(50);
-
+  const router = useRouter();
   const [saving, setSaving] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteReason, setDeleteReason] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const [saveError, setSaveError] = useState('');
   const [saveOk, setSaveOk] = useState(false);
 
@@ -1138,7 +1203,14 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange }: {
     setSaveError('');
     setSaveOk(false);
     try {
-      const res = await fetch(`/api/groups/${draft.id}`, {
+      const pricingModelMap: Record<string, string> = {
+        'per-session': 'PER_SESSION',
+        'per-month': 'MONTHLY',
+        'prepaid': 'FREE',
+      };
+
+      // Basics + capacity/billing → existing groups PATCH (name, description, subject, level, capacity, price, billing model)
+      const basicRes = await fetch(`/api/groups/${draft.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1148,12 +1220,36 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange }: {
           form_level: draft.level && draft.level !== '—' ? draft.level : null,
           max_students: draft.capacity > 0 ? draft.capacity : 20,
           price_per_session: draft.pricePerSession ?? null,
-          status: draft.isPublic ? 'PUBLISHED' : 'DRAFT',
-          whatsapp_link: draft.whatsappLink || null,
+          member_service_fee: draft.memberServiceFee ?? 0,
+          pricing_model: pricingModelMap[draft.billingModel] ?? 'FREE',
+          status: draft.visibility === 'private' ? 'DRAFT' : 'PUBLISHED',
         }),
       });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error ?? `Save failed (${res.status})`);
+      const basicJson = await basicRes.json().catch(() => ({}));
+      if (!basicRes.ok) throw new Error(basicJson?.error ?? `Save failed (${basicRes.status})`);
+
+      // Access, comms, feedback → new canonical settings endpoint
+      const settingsRes = await fetch(`/api/classes/${draft.id}/settings`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          visibility: draft.visibility,
+          require_join_requests: draft.requireJoinRequests,
+          auto_suspend_missed_payment: draft.autoSuspendMissedPayment,
+          grace_period_days: draft.gracePeriodDays,
+          primary_channel: draft.primaryChannel,
+          whatsapp_url: draft.whatsappLink || null,
+          google_classroom_link: draft.googleClassroomLink || null,
+          meeting_link: draft.meetingLink || null,
+          parent_feedback_mode: draft.feedbackMode,
+          parent_feedback_price: draft.feedbackMode === 'paid_addon' ? (draft.parentFeedbackPrice ?? 0) : null,
+        }),
+      });
+      const settingsJson = await settingsRes.json().catch(() => ({}));
+      if (!settingsRes.ok) {
+        const detail = settingsJson?.details?.[0]?.message ?? settingsJson?.error ?? `Save failed (${settingsRes.status})`;
+        throw new Error(detail);
+      }
 
       setGroup((g) => g ? { ...g, ...draft } : g);
       savedRef.current = JSON.stringify(draft);
@@ -1172,8 +1268,34 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange }: {
     setSubjectSearch(parsed.subject && parsed.subject !== '—' ? parsed.subject : '');
   };
 
+  const handleDelete = async () => {
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      const res = await fetch(`/api/classes/${group.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: deleteReason || null }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok) {
+        router.replace('/tutor/classes');
+        return;
+      }
+      if (res.status === 409) {
+        setDeleteError(json.message ?? 'Cannot delete class — resolve outstanding items first.');
+      } else {
+        setDeleteError(json.error ?? 'Failed to delete. Please try again.');
+      }
+    } catch {
+      setDeleteError('Network error. Please try again.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="max-w-5xl space-y-4">
       {saveOk && (
         <div className="flex items-center gap-2 rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-2.5 text-sm font-semibold text-emerald-700">
           <Check className="size-4" /> Changes saved successfully.
@@ -1182,189 +1304,338 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange }: {
       {saveError && (
         <div className="rounded-xl bg-rose-50 border border-rose-200 px-4 py-2.5 text-sm text-rose-700">{saveError}</div>
       )}
-      <SettCard title="Basics">
-        <SetField label="Class title">
-          <input value={draft.title} onChange={(e) => d('title', e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
-        </SetField>
-        <div className="grid grid-cols-2 gap-3">
-          <SetField label="Subject">
-            <div className="relative" ref={subjectRef}>
-              <input
-                value={subjectSearch}
-                onChange={(e) => { setSubjectSearch(e.target.value); setSubjectOpen(true); d('subject', ''); }}
-                onFocus={() => setSubjectOpen(true)}
-                placeholder="Search subjects…"
-                className="w-full px-3 py-2 pr-7 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand"
-              />
-              {draft.subject && draft.subject !== '—' && (
-                <button type="button" onClick={() => { d('subject', ''); setSubjectSearch(''); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-ink">
-                  <X className="size-3.5" />
-                </button>
-              )}
-              {subjectOpen && filteredSubjects.length > 0 && (
-                <div className="absolute z-20 mt-1 w-full bg-background border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                  {filteredSubjects.map((s) => (
-                    <button key={s.id} type="button" onClick={() => selectSubject(s.label)}
-                      className={cn('w-full text-left px-3 py-2 text-sm hover:bg-muted transition-colors',
-                        draft.subject === s.label && 'bg-brand/10 text-brand-deep font-medium')}>
-                      <span className="font-medium">{s.label}</span>
-                      {s.curriculum && <span className="text-xs text-muted-foreground ml-1.5">· {s.curriculum}</span>}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </SetField>
-          <SetField label="Level">
-            <select
-              value={draft.level && draft.level !== '—' ? draft.level : ''}
-              onChange={(e) => d('level', e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand appearance-none"
-            >
-              <option value="">Select level…</option>
-              {LEVEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </SetField>
-        </div>
-        <SetField label="Description">
-          <textarea value={draft.description} onChange={(e) => d('description', e.target.value)}
-            className="w-full min-h-24 px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
-        </SetField>
-      </SettCard>
 
-      <SettCard title="Thumbnail">
-        <div className={cn('h-24 rounded-xl bg-gradient-to-br grid place-items-center', draft.thumbnailGradient ?? 'from-brand to-emerald-400')}>
-          <BookOpen className="size-8 text-white/80" />
-        </div>
-        <div className="mt-3 grid grid-cols-8 gap-2">
-          {gradients.map((g) => (
-            <button key={g} onClick={() => d('thumbnailGradient', g)}
-              className={cn('h-8 rounded-md bg-gradient-to-br', g, draft.thumbnailGradient === g && 'ring-2 ring-brand ring-offset-2')} />
-          ))}
-        </div>
-      </SettCard>
-
-      {!isOneOnOne && (
-        <SettCard title="Capacity & billing">
-          <SetField label="Student limit" hint="Min 2 · Max 500.">
-            <div className="inline-flex items-center gap-2">
-              <button onClick={() => d('capacity', Math.max(2, draft.capacity - 1))}
-                className="size-9 grid place-items-center rounded-lg border border-border hover:bg-muted text-lg font-semibold">−</button>
-              <input
-                type="number"
-                value={draft.capacity}
-                min={2}
-                max={500}
-                onChange={(e) => d('capacity', Math.max(2, Math.min(500, Number(e.target.value))))}
-                className="w-20 text-center px-3 py-2 rounded-lg border border-border bg-background text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-brand"
-              />
-              <button onClick={() => d('capacity', Math.min(500, draft.capacity + 1))}
-                className="size-9 grid place-items-center rounded-lg border border-border hover:bg-muted text-lg font-semibold">+</button>
-            </div>
-          </SetField>
-          <SetField label="Billing model">
-            <div className="flex gap-2">
-              {(['per-session', 'per-month', 'prepaid'] as const).map((m) => (
-                <button key={m} onClick={() => setBillingModel(m)}
-                  className={cn('flex-1 py-2 rounded-lg text-xs font-semibold border transition-colors capitalize',
-                    billingModel === m ? 'bg-brand text-white border-brand' : 'bg-background text-muted-foreground border-border hover:border-brand/50')}>
-                  {m === 'per-session' ? 'Per session' : m === 'per-month' ? 'Monthly' : 'Prepaid'}
-                </button>
-              ))}
-            </div>
-          </SetField>
-          <SetField label="Price per session (TTD)">
-            <input type="number" value={draft.pricePerSession ?? 0} onChange={(e) => d('pricePerSession', Number(e.target.value))}
-              className="w-32 px-3 py-2 rounded-lg border border-border bg-background text-sm" />
-          </SetField>
-        </SettCard>
-      )}
-
-      <SettCard title="Visibility & access">
-        <Toggle label="Public listing" desc="Visible in the marketplace for students to discover." value={draft.isPublic} onChange={(v) => d('isPublic', v)} />
-        <Toggle label="Require join requests" desc="Students must request to join; you approve or deny." value={joinRequests} onChange={setJoinRequests} />
-      </SettCard>
-
-      <SettCard title="Payment enforcement">
-        <Toggle label="Auto-suspend on missed payment" desc="Automatically suspend access after the grace period." value={autoSuspend} onChange={setAutoSuspend} />
-        {autoSuspend && (
-          <SetField label="Grace period (days)">
-            <div className="inline-flex items-center gap-2">
-              <button onClick={() => setGraceDays(Math.max(1, graceDays - 1))} className="size-9 grid place-items-center rounded-lg border border-border hover:bg-muted">−</button>
-              <span className="w-12 text-center font-bold">{graceDays}</span>
-              <button onClick={() => setGraceDays(graceDays + 1)} className="size-9 grid place-items-center rounded-lg border border-border hover:bg-muted">+</button>
-            </div>
-          </SetField>
-        )}
-      </SettCard>
-
-      <SettCard title="Communication channel">
-        <div className="flex gap-2">
-          {(['native', 'whatsapp', 'classroom'] as const).map((ch) => {
-            const active = ch === 'native' ? !draft.whatsappLink && !classroom : ch === 'whatsapp' ? !!draft.whatsappLink : !!classroom;
+      <div className="grid lg:grid-cols-[220px_1fr] gap-6">
+        {/* Sidebar nav */}
+        <nav className="space-y-1">
+          {SETTINGS_SECTIONS.map((s) => {
+            const Icon = s.icon;
+            const active = section === s.id;
+            const danger = s.id === 'danger';
             return (
-              <button key={ch} onClick={() => { if (ch === 'native') { d('whatsappLink', ''); setClassroom(''); } }}
-                className={cn('flex-1 py-2 rounded-lg text-xs font-semibold border capitalize transition-colors',
-                  active ? 'bg-brand text-white border-brand' : 'bg-background text-muted-foreground border-border hover:border-brand/50')}>
-                {ch === 'native' ? 'iTutor stream' : ch === 'whatsapp' ? 'WhatsApp' : 'Google Classroom'}
+              <button key={s.id} onClick={() => tryChangeSection(s.id)}
+                className={cn('w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition',
+                  active
+                    ? danger ? 'bg-rose-50 border border-rose-200 text-rose-700' : 'bg-background border border-border text-ink shadow-sm'
+                    : danger ? 'text-rose-600 hover:bg-rose-50/60' : 'text-muted-foreground hover:bg-background')}>
+                <Icon className="size-4 shrink-0" />
+                <span className="flex-1 text-left">{s.label}</span>
+                <ChevronRight className={cn('size-3.5 transition', active && !danger && 'text-brand-deep', active && danger && 'text-rose-600')} />
               </button>
             );
           })}
-        </div>
-        <SetField label="WhatsApp group link (optional)">
-          <input value={draft.whatsappLink ?? ''} onChange={(e) => d('whatsappLink', e.target.value)} placeholder="https://chat.whatsapp.com/..."
-            className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
-        </SetField>
-        <SetField label="Google Classroom link (optional)">
-          <input value={classroom} onChange={(e) => setClassroom(e.target.value)} placeholder="https://classroom.google.com/..."
-            className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
-        </SetField>
-      </SettCard>
+        </nav>
 
-      <SettCard title="Feedback & parent reports">
-        <div className="flex gap-2">
-          {(['off', 'included', 'paid'] as const).map((f) => (
-            <button key={f} onClick={() => setFeedback(f)}
-              className={cn('flex-1 py-2 rounded-lg text-xs font-semibold border capitalize transition-colors',
-                feedback === f ? 'bg-brand text-white border-brand' : 'bg-background text-muted-foreground border-border hover:border-brand/50')}>
-              {f === 'off' ? 'Off' : f === 'included' ? 'Included' : 'Paid add-on'}
-            </button>
-          ))}
-        </div>
-        {feedback === 'paid' && (
-          <SetField label="Feedback price (TTD)">
-            <input type="number" value={feedbackPrice} onChange={(e) => setFeedbackPrice(Number(e.target.value))}
-              className="w-32 px-3 py-2 rounded-lg border border-border bg-background text-sm" />
-          </SetField>
-        )}
-      </SettCard>
+        {/* Content panel */}
+        <div className="rounded-2xl bg-background border border-border p-6 space-y-6">
+          {section === 'basics' && (
+            <>
+              <SettingsHead title="Basics" desc="Core details students see in your class listing." />
+              <SetField label="Class title">
+                <input value={draft.title} onChange={(e) => d('title', e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+              </SetField>
+              <div className="grid grid-cols-2 gap-3">
+                <SetField label="Subject">
+                  <div className="relative" ref={subjectRef}>
+                    <input
+                      value={subjectSearch}
+                      onChange={(e) => { setSubjectSearch(e.target.value); setSubjectOpen(true); d('subject', ''); }}
+                      onFocus={() => setSubjectOpen(true)}
+                      placeholder="Search subjects…"
+                      className="w-full px-3 py-2 pr-7 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand"
+                    />
+                    {draft.subject && draft.subject !== '—' && (
+                      <button type="button" onClick={() => { d('subject', ''); setSubjectSearch(''); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-ink">
+                        <X className="size-3.5" />
+                      </button>
+                    )}
+                    {subjectOpen && filteredSubjects.length > 0 && (
+                      <div className="absolute z-20 mt-1 w-full bg-background border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                        {filteredSubjects.map((s) => (
+                          <button key={s.id} type="button" onClick={() => selectSubject(s.label)}
+                            className={cn('w-full text-left px-3 py-2 text-sm hover:bg-muted transition-colors',
+                              draft.subject === s.label && 'bg-brand/10 text-brand-deep font-medium')}>
+                            <span className="font-medium">{s.label}</span>
+                            {s.curriculum && <span className="text-xs text-muted-foreground ml-1.5">· {s.curriculum}</span>}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </SetField>
+                <SetField label="Level">
+                  <select
+                    value={draft.level && draft.level !== '—' ? draft.level : ''}
+                    onChange={(e) => d('level', e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand appearance-none"
+                  >
+                    <option value="">Select level…</option>
+                    {LEVEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </SetField>
+              </div>
+              <SetField label="Description" hint="Shown on your public listing and marketplace card.">
+                <textarea value={draft.description} onChange={(e) => d('description', e.target.value)}
+                  className="w-full min-h-24 px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+              </SetField>
+              <div className="pt-2 border-t border-border space-y-3">
+                <div className="text-sm font-semibold text-ink">Thumbnail</div>
+                <div className={cn('h-20 rounded-xl bg-gradient-to-br grid place-items-center', draft.thumbnailGradient ?? 'from-brand to-emerald-400')}>
+                  <ImageIcon className="size-7 text-white/80" />
+                </div>
+                <div className="grid grid-cols-8 gap-2">
+                  {gradients.map((g) => (
+                    <button key={g} onClick={() => d('thumbnailGradient', g)}
+                      className={cn('h-7 rounded-md bg-gradient-to-br', g, draft.thumbnailGradient === g && 'ring-2 ring-brand ring-offset-2')} />
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
 
-      <div className="rounded-2xl border border-rose-200 bg-rose-50/50 p-5 space-y-3">
-        <h3 className="text-sm font-bold text-rose-700">Danger zone</h3>
-        <button className="w-full flex items-start gap-3 rounded-xl border border-rose-200 bg-background px-4 py-3 text-left hover:bg-muted/40">
-          <Trash2 className="size-4 mt-0.5 text-rose-600" />
-          <div>
-            <div className="text-sm font-semibold text-rose-700">Delete class</div>
-            <div className="text-xs text-muted-foreground">Permanently remove this class and its data.</div>
-          </div>
-        </button>
+          {section === 'capacity' && (
+            <>
+              <SettingsHead title="Capacity" desc="Control how many students can be in this class." />
+              {isOneOnOne ? (
+                <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                  This is a 1-on-1 class — capacity is fixed at 1.
+                </div>
+              ) : (
+                <SetField label="Student limit" hint="Min 2 · Max 500.">
+                  <div className="inline-flex items-center gap-2">
+                    <button onClick={() => d('capacity', Math.max(2, draft.capacity - 1))}
+                      className="size-9 grid place-items-center rounded-lg border border-border hover:bg-muted text-lg font-semibold">−</button>
+                    <input
+                      type="number" value={draft.capacity} min={2} max={500}
+                      onChange={(e) => d('capacity', Math.max(2, Math.min(500, Number(e.target.value))))}
+                      className="w-20 text-center px-3 py-2 rounded-lg border border-border bg-background text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-brand"
+                    />
+                    <button onClick={() => d('capacity', Math.min(500, draft.capacity + 1))}
+                      className="size-9 grid place-items-center rounded-lg border border-border hover:bg-muted text-lg font-semibold">+</button>
+                  </div>
+                </SetField>
+              )}
+            </>
+          )}
+
+          {section === 'billing' && (
+            <>
+              <SettingsHead title="Billing" desc="How members are charged for this class." />
+              <SetField label="Billing model" infoTitle="Billing model" infoBlurb="Per-session: charged after each class. Per-month: a flat monthly fee. Prepaid: students pay upfront for a block of sessions.">
+                <div className="grid grid-cols-3 gap-2">
+                  {(['per-session', 'per-month', 'prepaid'] as const).map((m) => (
+                    <button key={m} onClick={() => d('billingModel', m)}
+                      className={cn('px-3 py-2 rounded-lg border text-xs font-semibold capitalize transition-colors',
+                        draft.billingModel === m ? 'bg-brand-soft border-brand text-brand-deep' : 'bg-background text-muted-foreground border-border hover:text-ink')}>
+                      {m === 'per-session' ? 'Per session' : m === 'per-month' ? 'Monthly' : 'Prepaid'}
+                    </button>
+                  ))}
+                </div>
+              </SetField>
+              <div className="grid grid-cols-2 gap-3">
+                <SetField label="Price per session (TTD)">
+                  <input type="number" value={draft.pricePerSession ?? 0} onChange={(e) => d('pricePerSession', Number(e.target.value))}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm" />
+                </SetField>
+                <SetField label="Per-member service fee (TTD)" infoTitle="Service fee" infoBlurb="A small flat fee added to each member's bill — useful to cover materials, platform costs, or admin overhead.">
+                  <input type="number" value={draft.memberServiceFee} onChange={(e) => d('memberServiceFee', Number(e.target.value))}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm" />
+                </SetField>
+              </div>
+            </>
+          )}
+
+          {section === 'access' && (
+            <>
+              <SettingsHead title="Access & policies" desc="Who can join and what happens when payments fall behind." />
+              <SetField label="Visibility" hint="Public classes appear in the marketplace. Private classes don't, and always require approval to join.">
+                <div className="grid grid-cols-2 gap-2">
+                  {(['public', 'private'] as const).map((v) => (
+                    <button key={v} onClick={() => {
+                      if (v === draft.visibility) return;
+                      if (v === 'private') {
+                        lastPublicJoinReq.current = draft.requireJoinRequests;
+                        setDraft((prev) => ({ ...prev, visibility: 'private', isPublic: false, requireJoinRequests: true }));
+                      } else {
+                        setDraft((prev) => ({ ...prev, visibility: 'public', isPublic: true, requireJoinRequests: lastPublicJoinReq.current }));
+                      }
+                    }}
+                      className={cn('px-3 py-2 rounded-lg border text-xs font-semibold capitalize inline-flex items-center justify-center gap-1.5 transition-colors',
+                        draft.visibility === v ? 'bg-brand-soft border-brand text-brand-deep' : 'bg-background text-muted-foreground border-border hover:text-ink')}>
+                      {v === 'public' ? <Globe className="size-3.5" /> : <Lock className="size-3.5" />}
+                      {v}
+                    </button>
+                  ))}
+                </div>
+              </SetField>
+              <Toggle
+                label="Enable join requests"
+                hint={draft.visibility === 'private' ? 'Private classes always require approval to join.' : 'Members must request approval before joining.'}
+                value={draft.requireJoinRequests}
+                onChange={(v) => d('requireJoinRequests', v)}
+                disabled={draft.visibility === 'private'}
+              />
+              <Toggle label="Auto-suspend on overdue payment" hint="When a payment goes overdue past the grace window, the member is suspended until they pay." value={draft.autoSuspendMissedPayment} onChange={(v) => d('autoSuspendMissedPayment', v)} />
+              {draft.autoSuspendMissedPayment && (
+                <SetField label="Grace window (days)" infoTitle="Grace window" infoBlurb="How many days after a missed payment before the member is auto-suspended. Set to 0 to suspend immediately.">
+                  <input type="number" value={draft.gracePeriodDays} onChange={(e) => d('gracePeriodDays', Number(e.target.value))}
+                    className="w-32 px-3 py-2 rounded-lg border border-border bg-background text-sm" />
+                </SetField>
+              )}
+            </>
+          )}
+
+          {section === 'channels' && (
+            <>
+              <SettingsHead title="Communication channels" desc="Where members go for class chatter outside of sessions." />
+              <SetField label="WhatsApp group link">
+                <input value={draft.whatsappLink ?? ''} onChange={(e) => d('whatsappLink', e.target.value)} placeholder="https://chat.whatsapp.com/…"
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+              </SetField>
+              <SetField label="Google Classroom link">
+                <input value={draft.googleClassroomLink ?? ''} onChange={(e) => d('googleClassroomLink', e.target.value)} placeholder="https://classroom.google.com/c/…"
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+              </SetField>
+              <SetField label="Primary channel" infoTitle="Primary channel" infoBlurb="Where members are pointed for class chatter. iTutor native keeps everything in-app; WhatsApp/Classroom hands chat off to your existing group.">
+                <div className="grid grid-cols-3 gap-2">
+                  {(['native', 'whatsapp', 'classroom'] as const).map((ch) => {
+                    const disabled =
+                      (ch === 'whatsapp' && !draft.whatsappLink?.trim()) ||
+                      (ch === 'classroom' && !draft.googleClassroomLink?.trim());
+                    return (
+                      <button key={ch}
+                        disabled={disabled}
+                        title={disabled ? 'Add the link above to use this channel.' : undefined}
+                        onClick={() => !disabled && d('primaryChannel', ch)}
+                        className={cn('px-3 py-2 rounded-lg border text-xs font-semibold capitalize inline-flex items-center justify-center gap-1.5 transition-colors',
+                          draft.primaryChannel === ch ? 'bg-brand-soft border-brand text-brand-deep' : 'bg-background text-muted-foreground border-border hover:text-ink',
+                          disabled && 'opacity-40 cursor-not-allowed hover:text-muted-foreground')}>
+                        {ch === 'whatsapp' ? <MessageSquare className="size-3.5" /> : ch === 'classroom' ? <Globe className="size-3.5" /> : <Sparkles className="size-3.5" />}
+                        {ch === 'native' ? 'iTutor native' : ch}
+                      </button>
+                    );
+                  })}
+                </div>
+                {(!draft.whatsappLink?.trim() || !draft.googleClassroomLink?.trim()) && (
+                  <div className="text-[11px] text-muted-foreground mt-1.5">Add a link above to enable that channel.</div>
+                )}
+              </SetField>
+              <SetField label="Meeting link" infoTitle="Meeting link" infoBlurb="Paste your recurring Google Meet or Zoom link here. Students will use this to join every live session.">
+                <input
+                  value={draft.meetingLink ?? ''}
+                  onChange={(e) => d('meetingLink', e.target.value)}
+                  placeholder="https://meet.google.com/xxx-xxxx-xxx or https://zoom.us/j/…"
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand"
+                />
+              </SetField>
+            </>
+          )}
+
+          {section === 'feedback' && (
+            <>
+              <SettingsHead title="Parent feedback" desc="Optional monthly reports you send to each student's parent." />
+              <SetField label="Mode" infoTitle="Parent feedback" infoBlurb="A short monthly report you write for each student's parent. AI can optionally polish your wording. Charge for it as a paid add-on or include it free.">
+                <div className="grid grid-cols-3 gap-2">
+                  {(['off', 'included_free', 'paid_addon'] as const).map((f) => (
+                    <button key={f} onClick={() => d('feedbackMode', f)}
+                      className={cn('px-3 py-2 rounded-lg border text-xs font-semibold capitalize transition-colors',
+                        draft.feedbackMode === f ? 'bg-brand-soft border-brand text-brand-deep' : 'bg-background text-muted-foreground border-border hover:text-ink')}>
+                      {f === 'off' ? 'Off' : f === 'included_free' ? 'Included free' : 'Paid add-on'}
+                    </button>
+                  ))}
+                </div>
+              </SetField>
+              {draft.feedbackMode === 'paid_addon' && (
+                <SetField label="Price per report (TTD)" hint="Required before save — must be greater than 0.">
+                  <input type="number" min={0} required value={draft.parentFeedbackPrice} onChange={(e) => d('parentFeedbackPrice', Number(e.target.value))}
+                    className="w-32 px-3 py-2 rounded-lg border border-border bg-background text-sm" />
+                </SetField>
+              )}
+            </>
+          )}
+
+          {section === 'danger' && (
+            <>
+              <SettingsHead title="Danger zone" desc="Irreversible actions. Double-check before confirming." tone="danger" />
+              <div className="space-y-3">
+                <button onClick={() => { setDeleteOpen(true); setDeleteConfirmText(''); setDeleteReason(''); setDeleteError(''); }}
+                  className="w-full flex items-start gap-3 rounded-xl border border-rose-200 bg-background px-4 py-3 text-left hover:bg-rose-50 transition-colors">
+                  <Trash2 className="size-4 mt-0.5 text-rose-600" />
+                  <div>
+                    <div className="text-sm font-semibold text-rose-700">Delete class</div>
+                    <div className="text-xs text-muted-foreground">Permanently archive this class and all its data.</div>
+                  </div>
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
+
+      {/* Delete confirmation modal */}
+      {deleteOpen && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-ink/40 backdrop-blur-sm p-4" onClick={() => setDeleteOpen(false)}>
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl bg-background border border-border shadow-pop p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="size-10 rounded-full bg-rose-100 grid place-items-center"><Trash2 className="size-5 text-rose-600" /></div>
+              <div>
+                <div className="font-bold text-ink">Delete &ldquo;{group.title}&rdquo;?</div>
+                <div className="text-xs text-muted-foreground mt-0.5">This action cannot be undone.</div>
+              </div>
+            </div>
+            <div className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-xs text-rose-800">
+              All sessions, roster data, and stream posts will be archived. Past earnings and payment records are preserved.
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-ink">Type <span className="font-bold">{group.title}</span> to confirm</label>
+              <input value={deleteConfirmText} onChange={(e) => setDeleteConfirmText(e.target.value)} placeholder={group.title}
+                className="mt-1.5 w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-rose-400" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-ink">Reason <span className="font-normal text-muted-foreground">(optional)</span></label>
+              <input value={deleteReason} onChange={(e) => setDeleteReason(e.target.value)} placeholder="e.g. Course completed, consolidating classes…"
+                className="mt-1.5 w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+            </div>
+            {deleteError && <div className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-sm text-rose-700">{deleteError}</div>}
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setDeleteOpen(false)} className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted">Cancel</button>
+              <button onClick={handleDelete} disabled={deleteConfirmText !== group.title || deleting}
+                className="px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
+                {deleting ? <><span className="size-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />Deleting…</> : 'Delete class'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <UnsavedBar dirty={dirty} onSave={handleSave} onDiscard={handleDiscard} saveLabel="Save class settings" saving={saving} />
     </div>
   );
 }
 
-function Toggle({ label, desc, value, onChange }: { label: string; desc: string; value: boolean; onChange: (v: boolean) => void }) {
+function SettingsHead({ title, desc, tone }: { title: string; desc?: string; tone?: 'danger' }) {
   return (
-    <div className="flex items-start justify-between gap-4 rounded-xl border border-border p-4">
-      <div>
+    <div className="pb-4 border-b border-border">
+      <div className={cn('text-base font-bold', tone === 'danger' ? 'text-rose-700' : 'text-ink')}>{title}</div>
+      {desc && <div className="text-xs text-muted-foreground mt-0.5">{desc}</div>}
+    </div>
+  );
+}
+
+function Toggle({ label, hint, value, onChange, disabled }: { label: string; hint?: string; value: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+  return (
+    <div className={cn('flex items-start justify-between gap-4 rounded-xl border border-border p-4', disabled && 'opacity-70')}>
+      <div className="flex-1">
         <div className="text-sm font-semibold text-ink">{label}</div>
-        {desc && <div className="text-xs text-muted-foreground mt-0.5">{desc}</div>}
+        {hint && <div className="text-xs text-muted-foreground mt-0.5">{hint}</div>}
       </div>
-      <button onClick={() => onChange(!value)}
-        className={cn('w-11 h-6 rounded-full p-0.5 transition shrink-0', value ? 'bg-brand' : 'bg-muted')}>
+      <button
+        type="button"
+        disabled={disabled}
+        title={disabled ? hint : undefined}
+        onClick={() => !disabled && onChange(!value)}
+        className={cn('w-11 h-6 rounded-full p-0.5 transition shrink-0', value ? 'bg-brand' : 'bg-muted', disabled && 'cursor-not-allowed')}>
         <span className={cn('block size-5 rounded-full bg-white shadow transition', value && 'translate-x-5')} />
       </button>
     </div>
@@ -1465,13 +1736,39 @@ function SettCard({ title, children }: { title: string; children: React.ReactNod
   );
 }
 
-function SetField({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function SetField({ label, hint, infoTitle, infoBlurb, children }: { label: string; hint?: string; infoTitle?: string; infoBlurb?: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="text-sm font-semibold text-ink mb-1">{label}</div>
+      <div className="text-sm font-semibold text-ink inline-flex items-center gap-1.5 mb-1">
+        {label}
+        {infoTitle && infoBlurb && <InfoPop title={infoTitle} blurb={infoBlurb} />}
+      </div>
       {hint && <div className="text-xs text-muted-foreground mb-2">{hint}</div>}
       {children}
     </div>
+  );
+}
+
+function InfoPop({ title, blurb }: { title: string; blurb: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative inline-flex">
+      <button
+        type="button"
+        onClick={(e) => { e.preventDefault(); setOpen((o) => !o); }}
+        onBlur={() => setTimeout(() => setOpen(false), 120)}
+        className="size-4 grid place-items-center rounded-full text-muted-foreground hover:text-brand-deep"
+        aria-label={`About ${title}`}
+      >
+        <Info className="size-3.5" />
+      </button>
+      {open && (
+        <span className="absolute z-20 left-1/2 -translate-x-1/2 top-6 w-56 rounded-lg border border-border bg-background shadow-pop p-3 text-left">
+          <span className="block text-[11px] font-bold uppercase tracking-wider text-ink">{title}</span>
+          <span className="block text-xs text-muted-foreground mt-1 font-normal normal-case">{blurb}</span>
+        </span>
+      )}
+    </span>
   );
 }
 

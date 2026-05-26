@@ -129,7 +129,18 @@ export default function FindTutorsPage() {
 
     fetchTutors();
     fetchGroupLessons();
+    fetchEnrolled();
   }, [profile, loading, router]);
+
+  async function fetchEnrolled() {
+    try {
+      const res = await fetch('/api/student/my-groups', { cache: 'no-store' });
+      if (!res.ok) return;
+      const data = await res.json();
+      const ids = (data.groups ?? []).map((g: any) => g.id);
+      if (ids.length > 0) setEnrolledLessonIds(new Set(ids));
+    } catch { /* ignore */ }
+  }
 
   async function fetchTutors() {
     setLoadingTutors(true);
@@ -415,7 +426,7 @@ export default function FindTutorsPage() {
     if (!joinLesson || !profile) return;
     if (enrolledLessonIds.has(joinLesson.id)) {
       setJoinLesson(null);
-      router.push(`/student/groups/${joinLesson.id}`);
+      router.push('/student/my-lessons');
       return;
     }
     setJoiningLesson(true);
@@ -428,7 +439,13 @@ export default function FindTutorsPage() {
       if (!res.ok) throw new Error(data.error || 'Failed to join lesson');
       setEnrolledLessonIds((s) => new Set([...s, joinLesson.id]));
       setJoinLesson(null);
-      router.push(`/student/groups/${joinLesson.id}`);
+      const status = data.member?.status;
+      if (status === 'pending_approval' || status === 'pending') {
+        alert('Your join request has been sent. The tutor will approve it shortly.');
+        router.push('/student/my-lessons');
+      } else {
+        router.push('/student/my-lessons');
+      }
     } catch (err: any) {
       console.error('Error joining lesson:', err);
       alert(err.message || 'Failed to join lesson. Please try again.');
@@ -555,6 +572,7 @@ export default function FindTutorsPage() {
   };
 
   const filteredGroupLessons = groupLessons
+    .filter((l) => !enrolledLessonIds.has(l.id))
     .filter((l) => matchChip(l.subject))
     .filter((l) => !searchQuery || l.title.toLowerCase().includes(searchQuery.toLowerCase()) || l.tutor.toLowerCase().includes(searchQuery.toLowerCase()) || l.subject.toLowerCase().includes(searchQuery.toLowerCase()));
 

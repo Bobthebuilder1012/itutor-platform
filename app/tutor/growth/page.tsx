@@ -11,6 +11,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { useTutorCompletion } from '@/lib/hooks/useTutorCompletion';
+import { supabase } from '@/lib/supabase/client';
 import TutorShell from '@/components/tutor/TutorShell';
 
 type Tab = 'overview' | 'classes' | 'promotions' | 'analytics' | 'feedback';
@@ -43,9 +44,14 @@ function MyBusinessContent() {
 
   async function fetchClasses(tutorId: string) {
     try {
-      const res = await fetch('/api/groups?limit=100');
-      const json = await res.json();
-      setClasses((json.groups ?? []).filter((g: any) => g.tutor_id === tutorId));
+      const { data, error } = await supabase
+        .from('groups')
+        .select('id, name, subject, tutor_id, pricing_model, max_students, visibility, archived_at, created_at')
+        .eq('tutor_id', tutorId)
+        .is('archived_at', null)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      setClasses(data ?? []);
     } catch {
       setClasses([]);
     } finally {
@@ -76,12 +82,14 @@ function MyBusinessContent() {
   const totalRevenue = activeClasses.reduce((s: number, c: any) => s + (c.earnings_ttd ?? 0), 0);
   const totalStudents = new Set(activeClasses.flatMap((c: any) => [])).size || activeClasses.reduce((s: number, c: any) => s + (c.member_count ?? c.enrollmentCount ?? 0), 0);
 
-  const tabs: { key: Tab; label: string; icon: any }[] = [
+  const pendingFeedbackCount = activeClasses.length > 0 ? 3 : 0;
+
+  const tabs: { key: Tab; label: string; icon: any; badge?: number }[] = [
     { key: 'overview',   label: 'Overview',        icon: Briefcase },
-    { key: 'classes',    label: 'Classes',          icon: BookOpen },
+    { key: 'classes',    label: 'Classes',          icon: BookOpen,  badge: activeClasses.length },
     { key: 'promotions', label: 'Promotions',       icon: Tag },
     { key: 'analytics',  label: 'Analytics',        icon: BarChart3 },
-    { key: 'feedback',   label: 'Parent feedback',  icon: FileText },
+    { key: 'feedback',   label: 'Parent feedback',  icon: FileText,  badge: pendingFeedbackCount },
   ];
 
   return (
@@ -102,6 +110,11 @@ function MyBusinessContent() {
               className={cn('relative pb-3 text-sm font-semibold whitespace-nowrap inline-flex items-center gap-2',
                 tab === t.key ? 'text-brand-deep' : 'text-muted-foreground hover:text-ink')}>
               <Icon className="size-4" /> {t.label}
+              {t.badge != null && t.badge > 0 && (
+                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-brand/15 text-brand-deep text-[10px] font-bold">
+                  {t.badge}
+                </span>
+              )}
               {tab === t.key && <span className="absolute -bottom-px left-0 right-0 h-0.5 rounded-full bg-brand" />}
             </button>
           );
@@ -112,7 +125,7 @@ function MyBusinessContent() {
       {tab === 'classes'    && <ClassesTab activeClasses={activeClasses} />}
       {tab === 'promotions' && <PromotionsTab classes={activeClasses} />}
       {tab === 'analytics'  && <BusinessAnalyticsTab classes={activeClasses} totalRevenue={totalRevenue} />}
-      {tab === 'feedback'   && <FeedbackTab />}
+      {tab === 'feedback'   && <FeedbackTab classes={activeClasses} tutorId={profile?.id ?? ''} />}
     </div>
   );
 }
@@ -226,23 +239,98 @@ type PromoKind = 'early-bird' | 'time-limited' | 'open-ended';
 
 const PROMO_INFO: Record<PromoKind, { title: string; blurb: string }> = {
   'early-bird':   { title: 'Early-bird',   blurb: 'The first N students to join pay a reduced price. Once that cap is hit, the price returns to normal.' },
-  'time-limited': { title: 'Time-limited', blurb: 'Everyone who joins before the end date gets the discounted price.' },
-  'open-ended':   { title: 'Open-ended',   blurb: 'An ongoing discount with no end date. Stays active until you remove it manually.' },
+  'time-limited': { title: 'Time-limited', blurb: 'Everyone who joins within the set number of days gets the discounted price.' },
+  'open-ended':   { title: 'Open-ended',   blurb: 'An ongoing flat discount with no expiry. Stays active until you remove it manually.' },
 };
+
+function promoSummary(p: any): string {
+  const cap = p.studentCap ?? p.student_cap;
+  const days = p.durationDays ?? p.duration_days;
+  if (p.kind === 'early-bird') return `First ${cap} students · ${p.discount}% off`;
+  if (p.kind === 'time-limited') return `${days} days · ${p.discount}% off`;
+  return `${p.discount}% off`;
+}
 
 function PromotionsTab({ classes }: { classes: any[] }) {
   const [creating, setCreating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [kind, setKind] = useState<PromoKind>('early-bird');
-  const [originalPrice, setOriginalPrice] = useState(150);
-  const [discountedPrice, setDiscountedPrice] = useState(120);
+  const [discount, setDiscount] = useState('');
+  const [studentCap, setStudentCap] = useState('');
+  const [durationDays, setDurationDays] = useState('');
   const [selectedClass, setSelectedClass] = useState('');
   const [promos, setPromos] = useState<any[]>([]);
+  const [loadedFor, setLoadedFor] = useState<string>('');
 
-  const create = () => {
-    if (!selectedClass) return;
-    setPromos([...promos, { id: Date.now(), kind, originalPrice, discountedPrice, classId: selectedClass, className: classes.find((c) => c.id === selectedClass)?.name ?? '' }]);
+  // Load promotions whenever selected class changes
+  useEffect(() => {
+    if (!selectedClass || selectedClass === loadedFor) return;
+    fetch(`/api/groups/${selectedClass}/promotions`)
+      .then((r) => r.ok ? r.json() : { promotions: [] })
+      .then((j) => {
+        setPromos((j.promotions ?? []).map((p: any) => ({
+          ...p,
+          classId: selectedClass,
+          className: classes.find((c) => c.id === selectedClass)?.name ?? '',
+        })));
+        setLoadedFor(selectedClass);
+      })
+      .catch(() => {});
+  }, [selectedClass, loadedFor, classes]);
+
+  const resetForm = () => {
+    setKind('early-bird');
+    setDiscount('');
+    setStudentCap('');
+    setDurationDays('');
     setCreating(false);
+    setSaveError('');
   };
+
+  const isValid = () => {
+    if (!selectedClass || !discount) return false;
+    if (kind === 'early-bird' && !studentCap) return false;
+    if (kind === 'time-limited' && !durationDays) return false;
+    return true;
+  };
+
+  const create = async () => {
+    if (!isValid() || saving) return;
+    setSaving(true);
+    setSaveError('');
+    try {
+      const res = await fetch(`/api/groups/${selectedClass}/promotions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind,
+          discount: Number(discount),
+          student_cap: kind === 'early-bird' ? Number(studentCap) : undefined,
+          duration_days: kind === 'time-limited' ? Number(durationDays) : undefined,
+        }),
+      });
+      const json = await res.json();
+      if (res.status === 503) throw new Error('Schema cache needs refresh. Run: NOTIFY pgrst, \'reload schema\'; in the Supabase SQL editor, then try again.');
+      if (!res.ok) throw new Error(json.error ?? 'Save failed');
+      const className = classes.find((c) => c.id === selectedClass)?.name ?? '';
+      setPromos((prev) => [{ ...json.promotion, classId: selectedClass, className }, ...prev]);
+      resetForm();
+    } catch (e: any) {
+      setSaveError(e.message ?? 'Failed to save promotion');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async (p: any) => {
+    try {
+      await fetch(`/api/groups/${p.classId ?? p.group_id}/promotions?id=${p.id}`, { method: 'DELETE' });
+      setPromos((prev) => prev.filter((x) => x.id !== p.id));
+    } catch { /* ignore */ }
+  };
+
+  const fieldClass = 'w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand';
 
   return (
     <div className="space-y-4">
@@ -256,14 +344,17 @@ function PromotionsTab({ classes }: { classes: any[] }) {
       {creating && (
         <div className="rounded-2xl bg-card border border-border p-5 space-y-4">
           <div className="font-bold text-ink">New promotion</div>
+
+          {/* Class selector */}
           <div>
             <div className="text-sm font-semibold text-ink mb-2">Class</div>
-            <select value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm">
+            <select value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)} className={fieldClass}>
               <option value="">Select a class…</option>
               {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
+
+          {/* Type selector */}
           <div>
             <div className="text-sm font-semibold text-ink mb-2">Type</div>
             <div className="grid grid-cols-3 gap-2">
@@ -277,23 +368,54 @@ function PromotionsTab({ classes }: { classes: any[] }) {
             </div>
             <p className="mt-2 text-xs text-muted-foreground">{PROMO_INFO[kind].blurb}</p>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <div className="text-sm font-semibold text-ink mb-2">Original price (TTD)</div>
-              <input type="number" value={originalPrice} onChange={(e) => setOriginalPrice(Number(e.target.value))}
-                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm" />
+
+          {/* Conditional fields */}
+          {kind === 'early-bird' && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className="text-sm font-semibold text-ink mb-2">Student cap</div>
+                <input type="number" min={1} placeholder="e.g. 10" value={studentCap}
+                  onChange={(e) => setStudentCap(e.target.value)} className={fieldClass} />
+                <p className="text-[11px] text-muted-foreground mt-1">Max students who get the deal</p>
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-ink mb-2">Discount (%)</div>
+                <input type="number" min={1} max={100} placeholder="e.g. 20" value={discount}
+                  onChange={(e) => setDiscount(e.target.value)} className={fieldClass} />
+              </div>
             </div>
-            <div>
-              <div className="text-sm font-semibold text-ink mb-2">Discounted price (TTD)</div>
-              <input type="number" value={discountedPrice} onChange={(e) => setDiscountedPrice(Number(e.target.value))}
-                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm" />
+          )}
+
+          {kind === 'time-limited' && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className="text-sm font-semibold text-ink mb-2">Duration (days)</div>
+                <input type="number" min={1} placeholder="e.g. 7" value={durationDays}
+                  onChange={(e) => setDurationDays(e.target.value)} className={fieldClass} />
+                <p className="text-[11px] text-muted-foreground mt-1">How long the deal runs</p>
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-ink mb-2">Discount (%)</div>
+                <input type="number" min={1} max={100} placeholder="e.g. 20" value={discount}
+                  onChange={(e) => setDiscount(e.target.value)} className={fieldClass} />
+              </div>
             </div>
-          </div>
+          )}
+
+          {kind === 'open-ended' && (
+            <div className="max-w-xs">
+              <div className="text-sm font-semibold text-ink mb-2">Discount (%)</div>
+              <input type="number" min={1} max={100} placeholder="e.g. 20" value={discount}
+                onChange={(e) => setDiscount(e.target.value)} className={fieldClass} />
+            </div>
+          )}
+
+          {saveError && <p className="text-xs text-red-500">{saveError}</p>}
           <div className="flex justify-end gap-2">
-            <button onClick={() => setCreating(false)} className="px-4 py-2 rounded-lg border border-border text-sm font-semibold hover:bg-muted">Cancel</button>
-            <button onClick={create} disabled={!selectedClass}
+            <button onClick={resetForm} className="px-4 py-2 rounded-lg border border-border text-sm font-semibold hover:bg-muted">Cancel</button>
+            <button onClick={create} disabled={!isValid() || saving}
               className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand/90 disabled:opacity-50">
-              Create promotion
+              {saving ? 'Saving…' : 'Create promotion'}
             </button>
           </div>
         </div>
@@ -311,9 +433,15 @@ function PromotionsTab({ classes }: { classes: any[] }) {
             <div key={p.id} className="rounded-2xl bg-card border border-border p-4 flex items-center justify-between gap-4">
               <div>
                 <div className="font-semibold text-ink">{p.className}</div>
-                <div className="text-xs text-muted-foreground mt-0.5">{PROMO_INFO[p.kind as PromoKind].title} · TTD {p.discountedPrice} <span className="line-through">TTD {p.originalPrice}</span></div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  {(p.className || classes.find((c: any) => c.id === (p.classId ?? p.group_id))?.name) && (
+                    <span className="font-medium text-ink">{p.className || classes.find((c: any) => c.id === (p.classId ?? p.group_id))?.name} · </span>
+                  )}
+                  {PROMO_INFO[p.kind as PromoKind]?.title} · {promoSummary(p)}
+                </div>
               </div>
-              <button onClick={() => setPromos(promos.filter((x) => x.id !== p.id))} className="size-8 grid place-items-center rounded-lg hover:bg-rose-50 text-rose-500">
+              <button onClick={() => remove(p)}
+                className="size-8 grid place-items-center rounded-lg hover:bg-rose-50 text-rose-500">
                 <X className="size-4" />
               </button>
             </div>
@@ -375,120 +503,256 @@ function BusinessAnalyticsTab({ classes, totalRevenue }: { classes: any[]; total
 }
 
 /* ----------- Parent Feedback ----------- */
-type FeedbackDraft = {
-  id: string;
-  studentName: string;
-  initials: string;
-  lessonName: string;
-  month: string;
-  status: 'pending' | 'approved' | 'sent';
-  stats: { attendance: string; sessionsAttended: number; sessionsScheduled: number };
-  body: string;
-  refinedByAi?: boolean;
-};
+const AVATAR_PALETTE = [
+  'bg-emerald-500', 'bg-blue-500', 'bg-violet-500',
+  'bg-amber-500', 'bg-rose-500', 'bg-teal-500',
+];
 
 const FEEDBACK_PROMPTS = [
   'What did the student work on this month?',
   'Where did they shine? (a specific strength)',
   'Where are they still struggling?',
   'How was their engagement and attitude?',
-  'What\'s your recommendation for next month?',
+  "What's your recommendation for next month?",
 ];
 
-function FeedbackTab() {
-  const [drafts, setDrafts] = useState<FeedbackDraft[]>([
-    { id: 'f1', studentName: 'Sample Student', initials: 'SS', lessonName: 'CSEC Maths', month: 'May 2026', status: 'pending', stats: { attendance: '100%', sessionsAttended: 4, sessionsScheduled: 4 }, body: '' },
-  ]);
+type FeedbackDraft = {
+  id: string;
+  studentName: string;
+  initials: string;
+  avatarColor: string;
+  className: string;
+  month: string;
+  attendance: string;
+  sessionsAttended: number;
+  sessionsTotal: number;
+  body: string;
+  status: 'draft' | 'approved' | 'sent';
+};
+
+function getInitials(name: string) {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
+
+function currentMonth() {
+  return new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
+function FeedbackTab({ classes, tutorId }: { classes: any[]; tutorId: string }) {
+  const [drafts, setDrafts] = useState<FeedbackDraft[]>([]);
+  const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<string | null>(null);
+  const [refining, setRefining] = useState(false);
+
+  useEffect(() => {
+    if (!tutorId || classes.length === 0) { setLoading(false); return; }
+    loadDrafts();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tutorId, classes.length]);
+
+  async function loadDrafts() {
+    setLoading(true);
+    const month = currentMonth();
+    const allDrafts: FeedbackDraft[] = [];
+    for (const cls of classes) {
+      try {
+        const res = await fetch(`/api/groups/${cls.id}/members`);
+        if (!res.ok) continue;
+        const { members } = await res.json();
+        const active = (members ?? []).filter((m: any) => ['active', 'approved'].includes(m.status));
+        active.forEach((m: any, idx: number) => {
+          const name = m.profile?.full_name || m.profile?.display_name || m.profile?.username || 'Student';
+          allDrafts.push({
+            id: `${cls.id}-${m.user_id ?? m.id}`,
+            studentName: name,
+            initials: getInitials(name),
+            avatarColor: AVATAR_PALETTE[(allDrafts.length + idx) % AVATAR_PALETTE.length],
+            className: cls.name,
+            month,
+            attendance: '—',
+            sessionsAttended: 0,
+            sessionsTotal: 0,
+            body: '',
+            status: 'draft',
+          });
+        });
+      } catch { /* skip */ }
+    }
+    setDrafts(allDrafts);
+    setLoading(false);
+  }
 
   const updateBody = (id: string, body: string) =>
     setDrafts((ds) => ds.map((d) => d.id === id ? { ...d, body } : d));
   const approve = (id: string) =>
     setDrafts((ds) => ds.map((d) => d.id === id ? { ...d, status: 'approved' } : d));
 
-  const pending = drafts.filter((d) => d.status === 'pending').length;
+  const toWrite = drafts.filter((d) => d.status === 'draft');
+
+  if (loading) {
+    return <div className="flex items-center justify-center py-16"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand" /></div>;
+  }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <h2 className="text-lg font-bold text-ink">Parent Feedback</h2>
-        {pending > 0 && (
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand/10 text-brand-deep">{pending} pending</span>
-        )}
+    <div className="space-y-5">
+      {/* Info banner */}
+      <div className="flex items-start gap-3 rounded-xl border border-border bg-card px-4 py-4">
+        <div className="size-9 rounded-lg bg-brand/10 text-brand-deep grid place-items-center shrink-0">
+          <FileText className="size-4" />
+        </div>
+        <div className="text-sm">
+          <p className="font-semibold text-ink">You write one short report per student. AI only polishes if you want.</p>
+          <p className="text-muted-foreground mt-0.5">
+            Attendance and session counts are filled in automatically. Suggested questions appear as guidance — you write a single narrative in your own voice, then tap{' '}
+            <span className="font-semibold text-ink">Refine with AI</span> to polish it before sending.
+          </p>
+        </div>
       </div>
 
-      <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground flex items-start gap-2">
-        <Info className="size-3.5 mt-0.5 shrink-0 text-brand-deep" />
-        Write a brief monthly narrative for each student. AI can help refine your wording once you've drafted it. Parents receive the report once you approve and send it.
-      </div>
-
-      {drafts.map((d) => (
-        <div key={d.id} className="rounded-2xl bg-card border border-border p-5 space-y-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="size-10 rounded-full bg-gradient-to-br from-brand to-emerald-400 grid place-items-center text-xs font-bold text-white">
-                {d.initials}
-              </div>
-              <div>
-                <div className="font-semibold text-ink">{d.studentName}</div>
-                <div className="text-xs text-muted-foreground">{d.lessonName} · {d.month}</div>
-              </div>
-            </div>
-            <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border',
-              d.status === 'approved' ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
-              : d.status === 'sent' ? 'bg-sky-100 text-sky-700 border-sky-200'
-              : 'bg-amber-100 text-amber-800 border-amber-200')}>
-              {d.status}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2 rounded-xl bg-muted/40 p-3 text-center text-xs">
-            <div><div className="text-muted-foreground">Attendance</div><div className="font-bold text-ink">{d.stats.attendance}</div></div>
-            <div><div className="text-muted-foreground">Sessions</div><div className="font-bold text-ink">{d.stats.sessionsAttended}/{d.stats.sessionsScheduled}</div></div>
-            <div><div className="text-muted-foreground">Status</div><div className="font-bold text-ink capitalize">{d.status}</div></div>
-          </div>
-
-          {editing === d.id ? (
-            <div className="space-y-3">
-              <div className="text-xs text-muted-foreground space-y-1">
-                {FEEDBACK_PROMPTS.map((q, i) => <div key={i}><span className="text-brand-deep font-semibold">{i + 1}.</span> {q}</div>)}
-              </div>
-              <textarea value={d.body} onChange={(e) => updateBody(d.id, e.target.value)}
-                placeholder="Write your monthly report here…"
-                className="w-full min-h-32 px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
-              <div className="flex items-center justify-between">
-                <button className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-deep hover:underline">
-                  <Wand2 className="size-3.5" /> Refine with AI
-                </button>
-                <div className="flex gap-2">
-                  <button onClick={() => setEditing(null)} className="px-3 py-1.5 rounded-lg border border-border text-xs font-semibold hover:bg-muted">Close</button>
-                  <button onClick={() => { approve(d.id); setEditing(null); }} className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90 inline-flex items-center gap-1">
-                    <Check className="size-3" /> Approve
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center justify-between gap-3">
-              {d.body ? (
-                <p className="text-sm text-muted-foreground line-clamp-2">{d.body}</p>
-              ) : (
-                <p className="text-sm text-muted-foreground italic">No report written yet.</p>
-              )}
-              <div className="flex items-center gap-2 shrink-0">
-                <button onClick={() => setEditing(d.id)} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border text-xs font-semibold hover:bg-muted">
-                  <Edit3 className="size-3" /> {d.body ? 'Edit' : 'Write'}
-                </button>
-                {d.status === 'approved' && (
-                  <button className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90">
-                    <Send className="size-3" /> Send
-                  </button>
-                )}
+      {drafts.length === 0 ? (
+        <div className="rounded-2xl border-2 border-dashed border-border p-12 text-center">
+          <FileText className="size-10 mx-auto text-muted-foreground/40" />
+          <p className="mt-3 text-sm font-semibold text-ink">No students yet</p>
+          <p className="text-xs text-muted-foreground mt-1">Reports will appear here once students join your classes.</p>
+        </div>
+      ) : (
+        <>
+          {toWrite.length > 0 && (
+            <div>
+              <h3 className="text-sm font-bold text-ink mb-3">Reports to write · {toWrite.length}</h3>
+              <div className="grid sm:grid-cols-2 gap-3">
+                {toWrite.map((d) => (
+                  <FeedbackCard key={d.id} d={d} editing={editing === d.id} refining={refining}
+                    onEdit={() => setEditing(d.id)}
+                    onClose={() => setEditing(null)}
+                    onApprove={() => { approve(d.id); setEditing(null); }}
+                    onBodyChange={(v) => updateBody(d.id, v)}
+                    onRefine={async () => { setRefining(true); await new Promise((r) => setTimeout(r, 1200)); setRefining(false); }}
+                  />
+                ))}
               </div>
             </div>
           )}
+
+          {drafts.filter((d) => d.status !== 'draft').length > 0 && (
+            <div>
+              <h3 className="text-sm font-bold text-ink mb-3">Approved &amp; sent</h3>
+              <div className="grid sm:grid-cols-2 gap-3">
+                {drafts.filter((d) => d.status !== 'draft').map((d) => (
+                  <FeedbackCard key={d.id} d={d} editing={editing === d.id} refining={refining}
+                    onEdit={() => setEditing(d.id)}
+                    onClose={() => setEditing(null)}
+                    onApprove={() => { approve(d.id); setEditing(null); }}
+                    onBodyChange={(v) => updateBody(d.id, v)}
+                    onRefine={async () => { setRefining(true); await new Promise((r) => setTimeout(r, 1200)); setRefining(false); }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function FeedbackCard({ d, editing, refining, onEdit, onClose, onApprove, onBodyChange, onRefine }: {
+  d: FeedbackDraft;
+  editing: boolean;
+  refining: boolean;
+  onEdit: () => void;
+  onClose: () => void;
+  onApprove: () => void;
+  onBodyChange: (v: string) => void;
+  onRefine: () => void;
+}) {
+  const statusBadge = {
+    draft:    { label: 'DRAFT',    cls: 'border-amber-300 text-amber-700 bg-amber-50' },
+    approved: { label: 'APPROVED', cls: 'border-emerald-300 text-emerald-700 bg-emerald-50' },
+    sent:     { label: 'SENT',     cls: 'border-sky-300 text-sky-700 bg-sky-50' },
+  }[d.status];
+
+  return (
+    <div className="rounded-2xl bg-card border border-border p-4 space-y-3 flex flex-col">
+      {/* Header row */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-3">
+          <div className={cn('size-10 rounded-full grid place-items-center text-xs font-bold text-white shrink-0', d.avatarColor)}>
+            {d.initials}
+          </div>
+          <div>
+            <div className="font-semibold text-ink leading-tight">{d.studentName}</div>
+            <div className="text-xs text-muted-foreground">{d.className} · {d.month}</div>
+          </div>
         </div>
-      ))}
+        <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-md border shrink-0', statusBadge.cls)}>
+          {statusBadge.label}
+        </span>
+      </div>
+
+      {/* Attendance row */}
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Check className="size-3.5 text-brand shrink-0" />
+        <span>Attendance {d.attendance}</span>
+        <span className="mx-1">·</span>
+        <span>{d.sessionsAttended}/{d.sessionsTotal} sessions</span>
+      </div>
+
+      {/* Body / editor */}
+      {editing ? (
+        <div className="space-y-2 flex-1">
+          <div className="text-[11px] text-muted-foreground space-y-0.5 bg-muted/40 rounded-lg px-3 py-2">
+            {FEEDBACK_PROMPTS.map((q, i) => (
+              <div key={i}><span className="text-brand-deep font-semibold">{i + 1}.</span> {q}</div>
+            ))}
+          </div>
+          <textarea
+            value={d.body}
+            onChange={(e) => onBodyChange(e.target.value)}
+            placeholder="Write your monthly report here…"
+            className="w-full min-h-28 px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand resize-none"
+          />
+          <div className="flex items-center justify-between">
+            <button onClick={onRefine} disabled={refining || !d.body}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-deep hover:underline disabled:opacity-40">
+              <Wand2 className="size-3.5" /> {refining ? 'Refining…' : 'Refine with AI'}
+            </button>
+            <div className="flex gap-2">
+              <button onClick={onClose} className="px-3 py-1.5 rounded-lg border border-border text-xs font-semibold hover:bg-muted">Close</button>
+              <button onClick={onApprove} disabled={!d.body}
+                className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90 disabled:opacity-50 inline-flex items-center gap-1">
+                <Check className="size-3" /> Approve
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground italic flex-1">
+          {d.body || 'No report written yet.'}
+        </p>
+      )}
+
+      {/* Footer */}
+      {!editing && (
+        <div className="flex items-center justify-between pt-1 border-t border-border/60">
+          <span className="text-xs text-muted-foreground">
+            {d.status === 'draft' ? 'Not started' : d.status === 'approved' ? 'Ready to send' : 'Sent'}
+          </span>
+          <div className="flex items-center gap-2">
+            <button onClick={onEdit}
+              className="text-xs font-semibold text-brand-deep hover:underline inline-flex items-center gap-1">
+              Write report <span>›</span>
+            </button>
+            {d.status === 'approved' && (
+              <button className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90">
+                <Send className="size-3" /> Send
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

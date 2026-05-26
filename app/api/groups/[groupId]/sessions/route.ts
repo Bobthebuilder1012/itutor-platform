@@ -28,6 +28,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const service = getServiceClient();
     const nowIso = new Date().toISOString();
 
+    // Fetch the group's static meeting link (Google Meet / Zoom URL set by tutor)
+    const { data: groupData } = await service
+      .from('groups')
+      .select('meeting_link')
+      .eq('id', groupId)
+      .maybeSingle();
+    const groupMeetingLink: string | null = groupData?.meeting_link ?? null;
+
     let sessions: any[] | null = null;
     let error: any = null;
     ({ data: sessions, error } = await service
@@ -85,7 +93,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
     if (error) throw error;
 
-    return NextResponse.json({ sessions: trimmed });
+    return NextResponse.json({ sessions: trimmed, meeting_link: groupMeetingLink });
   } catch (err) {
     console.error('[GET /api/groups/[groupId]/sessions]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

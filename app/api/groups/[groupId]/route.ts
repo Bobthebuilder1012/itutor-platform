@@ -39,20 +39,25 @@ export async function GET(_req: NextRequest, { params }: Params) {
         id, name, description, tutor_id, subject, pricing, created_at, archived_at,
         difficulty, goals, price_per_session, price_monthly, pricing_model, recurrence_type, recurrence_rule,
         form_level, topic, session_length_minutes, session_frequency, price_per_course, pricing_mode, availability_window, media_gallery,
-        timezone, max_students, cover_image, header_image, content_blocks, status, updated_at, whatsapp_link,
+        timezone, max_students, cover_image, header_image, content_blocks, status, updated_at,
+        whatsapp_url, google_classroom_link, primary_channel, meeting_link,
+        require_join_requests, auto_suspend_missed_payment, grace_period_days,
+        visibility, parent_feedback_mode, parent_feedback_price, member_service_fee,
         tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, response_time_minutes),
         group_members(id, user_id, status, profile:profiles(id, full_name, avatar_url))
       `,
       `
         id, name, description, tutor_id, subject, pricing, created_at, archived_at,
         form_level, topic, session_length_minutes, session_frequency, price_per_course, pricing_mode, availability_window,
-        cover_image, header_image, whatsapp_link,
+        cover_image, header_image, whatsapp_url, google_classroom_link, primary_channel, meeting_link,
+        require_join_requests, auto_suspend_missed_payment, grace_period_days,
+        visibility, parent_feedback_mode, parent_feedback_price,
         tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url),
         group_members(id, user_id, status, profile:profiles(id, full_name, avatar_url))
       `,
       `
         id, name, description, tutor_id, subject, pricing, created_at,
-        cover_image, header_image, whatsapp_link,
+        cover_image, header_image, whatsapp_url,
         tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url),
         group_members(id, user_id, status, profile:profiles(id, full_name, avatar_url))
       `,
@@ -332,6 +337,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const updates: Record<string, any> = {};
     if (body.name !== undefined) updates.name = body.name.trim();
     if (body.description !== undefined) updates.description = body.description;
+    if ((body as any).visibility !== undefined) updates.visibility = (body as any).visibility;
+    if ((body as any).primary_channel !== undefined) updates.primary_channel = (body as any).primary_channel;
+    if ((body as any).member_service_fee !== undefined) updates.member_service_fee = (body as any).member_service_fee;
+    if ((body as any).parent_feedback_price !== undefined) updates.parent_feedback_price = (body as any).parent_feedback_price;
     if (body.subject !== undefined) updates.subject = body.subject;
     if ((body as any).topic !== undefined) updates.topic = (body as any).topic;
     if (body.difficulty !== undefined) updates.difficulty = body.difficulty;
@@ -345,7 +354,15 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (body.pricing_model !== undefined) updates.pricing_model = body.pricing_model;
     if ((body as any).pricing_mode !== undefined) updates.pricing_mode = (body as any).pricing_mode;
     if ((body as any).availability_window !== undefined) updates.availability_window = (body as any).availability_window;
-    if ((body as any).whatsapp_link !== undefined) updates.whatsapp_link = (body as any).whatsapp_link;
+    if ((body as any).whatsapp_url !== undefined) updates.whatsapp_url = (body as any).whatsapp_url;
+    if ((body as any).whatsapp_link !== undefined) updates.whatsapp_url = (body as any).whatsapp_link;
+    if ((body as any).google_classroom_link !== undefined) updates.google_classroom_link = (body as any).google_classroom_link;
+    if ((body as any).meeting_link !== undefined) updates.meeting_link = (body as any).meeting_link;
+    if ((body as any).require_join_requests !== undefined) updates.require_join_requests = (body as any).require_join_requests;
+    if ((body as any).auto_suspend_missed_payment !== undefined) updates.auto_suspend_missed_payment = (body as any).auto_suspend_missed_payment;
+    if ((body as any).grace_period_days !== undefined) updates.grace_period_days = (body as any).grace_period_days;
+    if ((body as any).parent_feedback_mode !== undefined) updates.parent_feedback_mode = (body as any).parent_feedback_mode;
+    if ((body as any).feedback_mode !== undefined) updates.parent_feedback_mode = (body as any).feedback_mode;
     if (body.recurrence_type !== undefined) updates.recurrence_type = body.recurrence_type;
     if (body.recurrence_rule !== undefined) updates.recurrence_rule = body.recurrence_rule;
     if (body.timezone !== undefined) updates.timezone = body.timezone;
@@ -375,7 +392,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       ({ data: group, error } = await runUpdate(withoutUpdatedAt));
     }
 
-    // Attempt 3: strip v2/group-marketplace metadata columns when missing
+    // Attempt 3: strip v2/group-marketplace metadata columns + newer settings columns when missing
     const {
       topic: _ignoredTopic,
       form_level: _ignoredFormLevel,
@@ -390,13 +407,27 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       pricing_mode: _ignoredPricingMode,
       availability_window: _ignoredAvailabilityWindow,
       header_image: _ignoredHeaderImage,
-      whatsapp_link: _ignoredWhatsappLink,
+      whatsapp_url: _ignoredWhatsappUrl,
       recurrence_type: _ignoredRecurrenceType,
       recurrence_rule: _ignoredRecurrenceRule,
       timezone: _ignoredTimezone,
       max_students: _ignoredMaxStudents,
       content_blocks: _ignoredContentBlocks,
       status: _ignoredStatus,
+      // migration 128
+      require_join_requests: _ignoredRequireJoinRequests,
+      auto_suspend_missed_payment: _ignoredAutoSuspend,
+      grace_period_days: _ignoredGracePeriodDays,
+      google_classroom_link: _ignoredGoogleClassroomLink,
+      feedback_mode: _ignoredFeedbackMode,
+      // migration 129
+      bio: _ignoredBio,
+      member_service_fee: _ignoredMemberServiceFee,
+      visibility: _ignoredVisibility,
+      primary_channel: _ignoredPrimaryChannel,
+      parent_feedback_price: _ignoredParentFeedbackPrice,
+      // migration 131
+      meeting_link: _ignoredMeetingLink,
       ...legacyCompatibleUpdates
     } = withoutUpdatedAt;
     if (error && isSchemaMismatch(error)) {
@@ -409,14 +440,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       description: legacyDescription,
       subject: legacySubject,
       cover_image: legacyCoverImage,
-      whatsapp_link: legacyWhatsappLink,
+      whatsapp_url: legacyWhatsappUrl,
     } = withoutUpdatedAt;
     const oldestCompatibleUpdates: Record<string, any> = {};
     if (legacyName !== undefined) oldestCompatibleUpdates.name = legacyName;
     if (legacyDescription !== undefined) oldestCompatibleUpdates.description = legacyDescription;
     if (legacySubject !== undefined) oldestCompatibleUpdates.subject = legacySubject;
     if (legacyCoverImage !== undefined) oldestCompatibleUpdates.cover_image = legacyCoverImage;
-    if (legacyWhatsappLink !== undefined) oldestCompatibleUpdates.whatsapp_link = legacyWhatsappLink;
+    if (legacyWhatsappUrl !== undefined) oldestCompatibleUpdates.whatsapp_url = legacyWhatsappUrl;
 
     if (error && isSchemaMismatch(error)) {
       ({ data: group, error } = await runUpdate(oldestCompatibleUpdates));
