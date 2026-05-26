@@ -35,6 +35,8 @@ export default function AdminPayoutsPage() {
   const [authLoading, setAuthLoading] = useState(true);
   const [pendingTutors, setPendingTutors] = useState<PendingTutor[]>([]);
   const [pendingTotal, setPendingTotal] = useState(0);
+  const [escrowTutors, setEscrowTutors] = useState<PendingTutor[]>([]);
+  const [escrowTotal, setEscrowTotal] = useState(0);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState('');
@@ -65,6 +67,8 @@ export default function AdminPayoutsPage() {
     }
     setPendingTutors(json.tutors);
     setPendingTotal(json.total_amount_ttd);
+    setEscrowTutors(json.escrow_tutors ?? []);
+    setEscrowTotal(json.escrow_total_amount_ttd ?? 0);
   }
 
   async function loadBatches() {
@@ -165,6 +169,58 @@ export default function AdminPayoutsPage() {
 
         {error && <div className="rounded-xl border border-red-300 bg-red-50 text-red-800 p-3 text-sm">{error}</div>}
         {message && <div className="rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-800 p-3 text-sm">{message}</div>}
+
+        {/* In escrow — owed ledger rows still within the 7-day release window */}
+        <section className="rounded-2xl border border-border bg-card p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-ink">In escrow</h2>
+              <p className="text-xs text-muted-foreground">
+                Tutor earnings held during the 7-day release window. These automatically advance to Pending payouts when the window passes.
+              </p>
+            </div>
+            <div className="text-right">
+              <div className="text-xs text-muted-foreground uppercase tracking-wider">Total</div>
+              <div className="text-2xl font-bold text-ink">
+                ${escrowTotal.toFixed(2)} <span className="text-sm font-normal text-muted-foreground">TTD</span>
+              </div>
+            </div>
+          </div>
+
+          {escrowTutors.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No tutors currently in escrow.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-xs text-muted-foreground uppercase">
+                    <th className="py-2 pr-4">Tutor</th>
+                    <th className="py-2 pr-4">Bank</th>
+                    <th className="py-2 pr-4 text-right">Sessions</th>
+                    <th className="py-2 pr-0 text-right">Amount (TTD)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {escrowTutors.map((t) => (
+                    <tr key={t.tutor_id} className="border-b border-border/50">
+                      <td className="py-2 pr-4">
+                        <div className="font-medium text-ink">{t.tutor_name || '—'}</div>
+                        <div className="text-xs text-muted-foreground">{t.tutor_email}</div>
+                      </td>
+                      <td className="py-2 pr-4">
+                        {t.has_payout_account
+                          ? <span className="text-ink">{t.bank_name} <span className="text-xs text-muted-foreground">/ {t.branch}</span></span>
+                          : <span className="text-amber-700 font-medium">Missing — tutor must add bank details</span>}
+                      </td>
+                      <td className="py-2 pr-4 text-right">{t.line_count}</td>
+                      <td className="py-2 text-right font-semibold text-ink">${t.total_ttd.toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
 
         {/* Pending payouts */}
         <section className="rounded-2xl border border-border bg-card p-6 space-y-4">

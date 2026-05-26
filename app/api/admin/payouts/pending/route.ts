@@ -2,8 +2,12 @@
 // LIST PENDING PAYOUTS (ADMIN)
 // =====================================================
 // GET /api/admin/payouts/pending
-// Returns all release_ready ledger items NOT yet attached to a
-// batch, grouped by tutor with their bank-account info inlined.
+// Returns the full tutor-payout pipeline grouped by tutor:
+//   - tutors           — release_ready rows NOT yet attached to a batch
+//                        (ready to add to the next CSV)
+//   - escrow_tutors    — owed rows (in escrow; release after the
+//                        7-day window) so admins can see what's
+//                        coming next, mirroring the tutor wallet hero.
 // =====================================================
 
 import { NextResponse } from 'next/server';
@@ -27,41 +31,13 @@ interface PendingTutor {
   account_type: string | null;
 }
 
-export async function GET() {
-  const auth = await requireAdmin('full');
-  if (auth.error) return auth.error;
-
-  const admin = getServiceClient();
-
-  const { data: ledger, error } = await admin
-    .from('payout_ledger')
-    .select('id, tutor_id, amount_ttd, status')
-    .eq('status', 'release_ready')
-    .is('batch_id', null);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  if (!ledger || ledger.length === 0) {
-    return NextResponse.json({ tutors: [], total_amount_ttd: 0, line_count: 0 });
-  }
-
-  const tutorIds = Array.from(new Set(ledger.map((row: any) => row.tutor_id)));
-
-  const [{ data: profiles }, { data: accounts }] = await Promise.all([
-    admin.from('profiles').select('id, full_name, email').in('id', tutorIds),
-    admin
-      .from('tutor_payout_accounts')
-      .select('tutor_id, payout_name, payout_account_identifier, bank_name, branch, account_type')
-      .in('tutor_id', tutorIds),
-  ]);
-
-  const profileById = new Map((profiles ?? []).map((p: any) => [p.id, p]));
-  const accountByTutor = new Map((accounts ?? []).map((a: any) => [a.tutor_id, a]));
-
+function buildGroup(
+  ledgerRows: any[],
+  profileById: Map<string, any>,
+  accountByTutor: Map<string, any>
+): PendingTutor[] {
   const grouped = new Map<string, PendingTutor>();
-  for (const row of ledger as any[]) {
+  for (const row of ledgerRows) {
     const profile = profileById.get(row.tutor_id);
     const account = accountByTutor.get(row.tutor_id);
     const existing = grouped.get(row.tutor_id);
@@ -84,13 +60,73 @@ export async function GET() {
       });
     }
   }
+  return Array.from(grouped.values()).sort((a, b) => b.total_ttd - a.total_ttd);
+}
 
-  const tutors = Array.from(grouped.values()).sort((a, b) => b.total_ttd - a.total_ttd);
-  const totalAmount = tutors.reduce((sum, t) => sum + t.total_ttd, 0);
+export async function GET() {
+  const auth = await requireAdmin('full');
+  if (auth.error) return auth.error;
+
+  const admin = getServiceClient();
+
+  const [{ data: ready, error: readyErr }, { data: escrow, error: escrowErr }] = await Promise.all([
+    admin
+      .from('payout_ledger')
+      .select('id, tutor_id, amount_ttd, status, created_at')
+      .eq('status', 'release_ready')
+      .is('batch_id', null),
+    admin
+      .from('payout_ledger')
+      .select('id, tutor_id, amount_ttd, status, created_at')
+      .eq('status', 'owed'),
+  ]);
+
+  if (readyErr) return NextResponse.json({ error: readyErr.message }, { status: 500 });
+  if (escrowErr) return NextResponse.json({ error: escrowErr.message }, { status: 500 });
+
+  const readyRows = ready ?? [];
+  const escrowRows = escrow ?? [];
+
+  const allTutorIds = Array.from(
+    new Set(
+      [...readyRows, ...escrowRows]
+        .map((row: any) => row.tutor_id)
+        .filter(Boolean)
+    )
+  );
+
+  if (allTutorIds.length === 0) {
+    return NextResponse.json({
+      tutors: [],
+      total_amount_ttd: 0,
+      line_count: 0,
+      escrow_tutors: [],
+      escrow_total_amount_ttd: 0,
+      escrow_line_count: 0,
+    });
+  }
+
+  const [{ data: profiles }, { data: accounts }] = await Promise.all([
+    admin.from('profiles').select('id, full_name, email').in('id', allTutorIds),
+    admin
+      .from('tutor_payout_accounts')
+      .select('tutor_id, payout_name, payout_account_identifier, bank_name, branch, account_type')
+      .in('tutor_id', allTutorIds),
+  ]);
+
+  const profileById = new Map((profiles ?? []).map((p: any) => [p.id, p]));
+  const accountByTutor = new Map((accounts ?? []).map((a: any) => [a.tutor_id, a]));
+
+  const tutors = buildGroup(readyRows, profileById, accountByTutor);
+  const escrowTutors = buildGroup(escrowRows, profileById, accountByTutor);
 
   return NextResponse.json({
     tutors,
-    total_amount_ttd: Math.round(totalAmount * 100) / 100,
-    line_count: ledger.length,
+    total_amount_ttd: Math.round(tutors.reduce((s, t) => s + t.total_ttd, 0) * 100) / 100,
+    line_count: readyRows.length,
+    escrow_tutors: escrowTutors,
+    escrow_total_amount_ttd:
+      Math.round(escrowTutors.reduce((s, t) => s + t.total_ttd, 0) * 100) / 100,
+    escrow_line_count: escrowRows.length,
   });
 }
