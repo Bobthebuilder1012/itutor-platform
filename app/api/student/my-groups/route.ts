@@ -18,7 +18,7 @@ export async function GET() {
       .from('group_members')
       .select('group_id, status')
       .eq('user_id', user.id)
-      .in('status', ['approved', 'pending']);
+      .in('status', ['active', 'approved', 'pending', 'pending_approval', 'invited']);
 
     if (memberErr) throw memberErr;
 

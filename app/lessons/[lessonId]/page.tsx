@@ -13,7 +13,7 @@ export default function LessonDetailPage() {
   useEffect(() => {
     if (loading) return;
     if (!profile) { router.replace('/login'); return; }
-    if (profile.role === 'tutor') router.replace(`/tutor/lessons/${lessonId}`);
+    if (profile.role === 'tutor') router.replace(`/tutor/classes/${lessonId}`);
     else if (profile.role === 'student') router.replace(`/student/lessons/${lessonId}`);
     else if (profile.role === 'parent') router.replace('/parent/dashboard');
     else router.replace('/login');

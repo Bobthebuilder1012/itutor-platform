@@ -232,7 +232,7 @@ function DashboardContent() {
           <h2 className="font-semibold text-ink">Quick actions</h2>
           <p className="text-xs text-muted-foreground mt-0.5">Jump into common tasks</p>
           <div className="mt-4 space-y-2">
-            <QuickAction to="/tutor/lessons" icon={Plus} label="Create a lesson" gated={!listed} />
+            <QuickAction to="/tutor/classes" icon={Plus} label="Create a lesson" gated={!listed} />
             <QuickAction to="/tutor/availability" icon={Clock} label="Manage availability" />
             <QuickAction to="/tutor/wallet" icon={Wallet} label="My Wallet" />
             <QuickAction to="/tutor/students" icon={UserCircle} label="My Students" />

@@ -6,7 +6,11 @@ type Params = { params: Promise<{ groupId: string }> };
 function isSchemaMismatch(error: any): boolean {
   const code = String(error?.code ?? '');
   const msg = String(error?.message ?? '').toLowerCase();
-  return code === '42703' || code === '42P01' || code === 'PGRST205' || msg.includes('does not exist');
+  return (
+    code === '42703' || code === '42P01' || code === 'PGRST200' ||
+    code === 'PGRST204' || code === 'PGRST205' ||
+    msg.includes('does not exist') || msg.includes('could not find a relationship')
+  );
 }
 
 // GET /api/groups/[groupId]/sessions — list sessions with occurrences
@@ -23,6 +27,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
     const service = getServiceClient();
     const nowIso = new Date().toISOString();
+
+    // Fetch the group's static meeting link (Google Meet / Zoom URL set by tutor)
+    const { data: groupData } = await service
+      .from('groups')
+      .select('meeting_link')
+      .eq('id', groupId)
+      .maybeSingle();
+    const groupMeetingLink: string | null = groupData?.meeting_link ?? null;
 
     let sessions: any[] | null = null;
     let error: any = null;
@@ -55,6 +67,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
     }
 
     if (error && isSchemaMismatch(error)) {
+      ({ data: sessions, error } = await service
+        .from('group_sessions')
+        .select('id, group_id, title, recurrence_type, recurrence_days, start_time, duration_minutes, starts_on, ends_on, created_at')
+        .eq('group_id', groupId)
+        .order('starts_on', { ascending: true }));
+    }
+
+    if (error && isSchemaMismatch(error)) {
       return NextResponse.json({ sessions: [] });
     }
 
@@ -73,7 +93,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
     if (error) throw error;
 
-    return NextResponse.json({ sessions: trimmed });
+    return NextResponse.json({ sessions: trimmed, meeting_link: groupMeetingLink });
   } catch (err) {
     console.error('[GET /api/groups/[groupId]/sessions]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

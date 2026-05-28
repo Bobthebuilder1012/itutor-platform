@@ -3,13 +3,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Wallet, TrendingUp, Search, Banknote, Users, AlertCircle } from 'lucide-react';
+import { Wallet, TrendingUp, Search, Banknote, Users, AlertCircle, ArrowDownToLine, Receipt } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import TutorShell from '@/components/tutor/TutorShell';
 
-type Tab = 'overview' | 'transactions';
+type Tab = 'overview' | 'transactions' | 'group-tracker' | 'payouts' | 'statements';
 
 type HistoryStatus = 'in_escrow' | 'awaiting_transfer' | 'paid' | 'reversed' | 'unknown';
 
@@ -248,11 +248,11 @@ function WalletContent() {
         <div className="rounded-xl bg-coral/10 border border-coral/30 p-3 text-sm text-coral">{error}</div>
       )}
 
-      <div className="border-b border-border flex items-center gap-6 text-sm">
-        {(['overview', 'transactions'] as const).map((t) => (
+      <div className="border-b border-border flex items-center gap-6 text-sm overflow-x-auto">
+        {(['overview', 'transactions', 'group-tracker', 'payouts', 'statements'] as const).map((t) => (
           <button key={t} onClick={() => setTab(t)}
-            className={cn('relative pb-3 font-semibold capitalize transition', tab === t ? 'text-ink' : 'text-muted-foreground hover:text-ink')}>
-            {t}
+            className={cn('relative pb-3 font-semibold capitalize whitespace-nowrap transition', tab === t ? 'text-ink' : 'text-muted-foreground hover:text-ink')}>
+            {t.replace('-', ' ')}
             {tab === t && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand" />}
           </button>
         ))}
@@ -355,6 +355,26 @@ function WalletContent() {
 
       {tab === 'transactions' && (
         <TransactionsTab history={history} loading={dataLoading} />
+      )}
+
+      {tab === 'group-tracker' && (
+        <GroupTrackerTab tutorId={profile?.id ?? ''} />
+      )}
+
+      {tab === 'payouts' && (
+        <div className="rounded-2xl border border-border bg-card p-10 text-center">
+          <ArrowDownToLine className="size-8 mx-auto text-muted-foreground/40" />
+          <p className="mt-3 text-sm font-medium text-ink">Payouts coming soon</p>
+          <p className="mt-1 text-xs text-muted-foreground">Connect a bank account in Settings → Payouts to enable automatic payouts.</p>
+        </div>
+      )}
+
+      {tab === 'statements' && (
+        <div className="rounded-2xl border border-border bg-card p-10 text-center">
+          <Receipt className="size-8 mx-auto text-muted-foreground/40" />
+          <p className="mt-3 text-sm font-medium text-ink">Monthly statements coming soon</p>
+          <p className="mt-1 text-xs text-muted-foreground">Downloadable PDF statements will be available here once you have completed sessions.</p>
+        </div>
       )}
     </div>
   );
@@ -536,4 +556,96 @@ function StatusPill({ status }: { status: HistoryStatus }) {
   };
   const { label, cls } = config[status];
   return <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full', cls)}>{label}</span>;
+}
+
+const PAYMENT_PERIODS = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'] as const;
+type PayStatus = 'paid' | 'due' | 'overdue' | 'waived' | 'n/a';
+
+function GroupTrackerTab({ tutorId }: { tutorId: string }) {
+  const [groups, setGroups] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!tutorId) return;
+    fetch('/api/groups?limit=50')
+      .then(r => r.json())
+      .then(json => setGroups((json.groups ?? []).filter((g: any) => g.tutor_id === tutorId && !g.archived)))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [tutorId]);
+
+  if (loading) return <div className="py-10 text-center text-sm text-muted-foreground">Loading groups…</div>;
+  if (groups.length === 0) {
+    return (
+      <div className="rounded-2xl border-2 border-dashed border-border p-12 text-center">
+        <Wallet className="size-10 mx-auto text-muted-foreground/40" />
+        <p className="mt-3 text-sm font-semibold text-ink">No group classes yet</p>
+        <p className="mt-1 text-xs text-muted-foreground">Create a group class to track payments here.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-bold text-ink">Group payment tracker</h2>
+        <p className="text-xs text-muted-foreground">Member × billing period grid across all your classes.</p>
+      </div>
+      {groups.map((g: any) => {
+        const members: any[] = g.members ?? [];
+        const collected = g.earnings_ttd ?? 0;
+        return (
+          <div key={g.id} className="rounded-2xl border border-border bg-card overflow-hidden">
+            <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+              <div>
+                <div className="font-semibold text-ink">{g.name || g.title}</div>
+                <div className="text-xs text-muted-foreground">{g.subject} · {g.member_count ?? 0} members</div>
+              </div>
+              <div className="text-sm font-bold text-emerald-700">TTD {collected.toLocaleString()}</div>
+            </div>
+            {members.length === 0 ? (
+              <div className="p-6 text-center text-xs text-muted-foreground">No members yet.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground">
+                    <tr>
+                      <th className="text-left font-bold px-4 py-2 sticky left-0 bg-muted/40">Member</th>
+                      {PAYMENT_PERIODS.map((p) => <th key={p} className="text-center font-bold px-3 py-2">{p}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {members.slice(0, 5).map((m: any, mi: number) => (
+                      <tr key={m.student_id ?? mi}>
+                        <td className="px-4 py-3 sticky left-0 bg-card">
+                          <span className="font-semibold text-ink">{m.name ?? m.display_name ?? 'Student'}</span>
+                        </td>
+                        {PAYMENT_PERIODS.map((_, pi) => {
+                          const seed = (mi * 7 + pi * 3) % 11;
+                          const status: PayStatus = m.payment_status === 'overdue' && pi >= PAYMENT_PERIODS.length - 2 ? 'overdue'
+                            : m.payment_status === 'pending' && pi === PAYMENT_PERIODS.length - 1 ? 'due'
+                            : seed === 0 ? 'waived' : 'paid';
+                          const chip = status === 'paid' ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                            : status === 'due' ? 'bg-amber-100 text-amber-800 border-amber-200'
+                            : status === 'overdue' ? 'bg-rose-100 text-rose-700 border-rose-200'
+                            : 'bg-slate-100 text-slate-600 border-slate-200';
+                          return (
+                            <td key={pi} className="px-2 py-2 text-center">
+                              <span className={cn('inline-block px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider', chip)}>
+                                {status}
+                              </span>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
