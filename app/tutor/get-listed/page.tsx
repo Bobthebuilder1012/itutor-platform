@@ -94,9 +94,11 @@ function GetListedContent() {
   // Subjects (loaded for rate section; managed during signup)
   const [subjects, setSubjects] = useState<SubjectRow[]>([]);
 
-  // Rate
-  const [rateInput, setRateInput] = useState('');
-  const [savingRate, setSavingRate] = useState(false);
+  // Rate — per-subject inputs keyed by tutor_subject row id
+  const [rateInputs, setRateInputs] = useState<Record<string, string>>({});
+  const [savingRateId, setSavingRateId] = useState<string | null>(null);
+  const [applyAllInput, setApplyAllInput] = useState('');
+  const [savingAllRate, setSavingAllRate] = useState(false);
 
   // Availability
   const [slots, setSlots] = useState<Slot[]>([]);
@@ -173,6 +175,9 @@ function GetListedContent() {
     }
 
     setSubjects(tutorSubjects);
+    const inputs: Record<string, string> = {};
+    tutorSubjects.forEach((s) => { if (s.price_per_hour_ttd) inputs[s.id] = String(s.price_per_hour_ttd); });
+    setRateInputs(inputs);
     setAvailRules(rules);
     setSlots(rulesToSlots(rules));
     setVideoConnection(vidConn ? { provider: vidConn.provider, email: vidConn.provider_account_email } : null);
@@ -208,48 +213,35 @@ function GetListedContent() {
     }
   }
 
-  async function saveRate() {
+  async function saveSubjectRate(id: string) {
     if (!profile) return;
-    const price = parseFloat(rateInput);
+    const price = parseFloat(rateInputs[id] ?? '');
     if (!price || price <= 0) return;
-    setSavingRate(true);
+    setSavingRateId(id);
     try {
-      // Always fetch fresh from DB — don't rely on local state
-      const { data: fresh } = await supabase
-        .from('tutor_subjects')
-        .select('id')
-        .eq('tutor_id', profile.id);
-
-      if (fresh && fresh.length > 0) {
-        await Promise.all(
-          fresh.map((s) =>
-            supabase.from('tutor_subjects').update({ price_per_hour_ttd: price }).eq('id', s.id)
-          )
-        );
-      } else {
-        // No tutor_subjects — sync from user_subjects with price already set
-        const { data: userSubjs } = await supabase
-          .from('user_subjects')
-          .select('subject_id')
-          .eq('user_id', profile.id);
-
-        if (userSubjs && userSubjs.length > 0) {
-          await Promise.all(
-            userSubjs.map(({ subject_id }) =>
-              supabase.from('tutor_subjects').upsert(
-                { tutor_id: profile.id, subject_id, price_per_hour_ttd: price, mode: 'either' },
-                { onConflict: 'tutor_id,subject_id' }
-              )
-            )
-          );
-        }
-      }
-
+      await supabase.from('tutor_subjects').update({ price_per_hour_ttd: price }).eq('id', id).eq('tutor_id', profile.id);
       await fetchData(profile.id);
-      setRateInput('');
       notifyCompletionUpdated();
     } finally {
-      setSavingRate(false);
+      setSavingRateId(null);
+    }
+  }
+
+  async function saveAllRates() {
+    if (!profile) return;
+    const price = parseFloat(applyAllInput);
+    if (!price || price <= 0) return;
+    setSavingAllRate(true);
+    try {
+      const { data: fresh } = await supabase.from('tutor_subjects').select('id').eq('tutor_id', profile.id);
+      if (fresh && fresh.length > 0) {
+        await Promise.all(fresh.map((s) => supabase.from('tutor_subjects').update({ price_per_hour_ttd: price }).eq('id', s.id)));
+      }
+      await fetchData(profile.id);
+      setApplyAllInput('');
+      notifyCompletionUpdated();
+    } finally {
+      setSavingAllRate(false);
     }
   }
 
@@ -424,34 +416,66 @@ function GetListedContent() {
       </SectionShell>
 
       {/* 4. Rate */}
-      <SectionShell done={completion.rate} title="Hourly rate" subtitle="Set your rate per hour (TTD). Applies to all your subjects.">
-        {subjects.filter((s) => (s.price_per_hour_ttd ?? 0) > 0).length > 0 && (
-          <p className="text-sm text-muted-foreground mb-3">
-            Current: {subjects.filter((s) => (s.price_per_hour_ttd ?? 0) > 0).map((s) => `TT$${s.price_per_hour_ttd}/hr (${s.subjects?.label || s.subjects?.name})`).join(', ')}
-          </p>
-        )}
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground">TTD</span>
-            <input
-              type="number"
-              min={0}
-              value={rateInput}
-              onChange={(e) => setRateInput(e.target.value)}
-              placeholder="150"
-              className="w-40 rounded-lg border border-border bg-background pl-12 pr-3 py-2 text-sm focus:outline-none focus:border-brand"
-            />
+      <SectionShell done={completion.rate} title="Hourly rate" subtitle="Set your rate per subject (TTD). Each subject can have a different rate.">
+        {subjects.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Add subjects first to set rates.</p>
+        ) : (
+          <div className="space-y-3">
+            {subjects.map((s) => {
+              const label = s.subjects?.label || s.subjects?.name || 'Subject';
+              const isSaving = savingRateId === s.id;
+              return (
+                <div key={s.id} className="flex items-center gap-3 flex-wrap">
+                  <span className="w-36 text-sm font-medium text-ink truncate">{label}</span>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground">TTD</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={rateInputs[s.id] ?? ''}
+                      onChange={(e) => setRateInputs((prev) => ({ ...prev, [s.id]: e.target.value }))}
+                      onKeyDown={(e) => e.key === 'Enter' && saveSubjectRate(s.id)}
+                      placeholder="150"
+                      className="w-32 rounded-lg border border-border bg-background pl-12 pr-3 py-2 text-sm focus:outline-none focus:border-brand"
+                    />
+                  </div>
+                  <span className="text-sm text-muted-foreground">/ hr</span>
+                  <button
+                    onClick={() => saveSubjectRate(s.id)}
+                    disabled={isSaving || !rateInputs[s.id]}
+                    className="px-3 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-deep disabled:opacity-50"
+                  >
+                    {isSaving ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              );
+            })}
           </div>
-          <span className="text-sm text-muted-foreground">/ hour</span>
-          <button
-            onClick={saveRate}
-            disabled={savingRate || !rateInput}
-            className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-deep disabled:opacity-50"
-          >
-            {savingRate ? 'Saving…' : 'Apply to all subjects'}
-          </button>
-        </div>
-        <p className="mt-2 text-xs text-muted-foreground">Average for CSEC tutors in Trinidad: <span className="font-semibold text-ink">TT$120–250 / hr</span></p>
+        )}
+        {subjects.length > 1 && (
+          <div className="mt-4 pt-4 border-t border-border flex items-center gap-3 flex-wrap">
+            <span className="text-xs text-muted-foreground shrink-0">Apply same rate to all:</span>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground">TTD</span>
+              <input
+                type="number"
+                min={0}
+                value={applyAllInput}
+                onChange={(e) => setApplyAllInput(e.target.value)}
+                placeholder="150"
+                className="w-32 rounded-lg border border-border bg-background pl-12 pr-3 py-2 text-sm focus:outline-none focus:border-brand"
+              />
+            </div>
+            <button
+              onClick={saveAllRates}
+              disabled={savingAllRate || !applyAllInput}
+              className="px-3 py-2 rounded-lg bg-muted text-ink text-sm font-semibold hover:bg-muted/70 disabled:opacity-50"
+            >
+              {savingAllRate ? 'Saving…' : 'Apply to all'}
+            </button>
+          </div>
+        )}
+        <p className="mt-3 text-xs text-muted-foreground">Average for CSEC tutors in Trinidad: <span className="font-semibold text-ink">TT$120–250 / hr</span></p>
       </SectionShell>
 
       {/* 5. Video provider (optional) */}
