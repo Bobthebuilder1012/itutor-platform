@@ -2,10 +2,10 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Atom, Calculator, FileText, ChevronRight, Search, Sigma } from 'lucide-react';
+import { ArrowLeft, Atom, Calculator, ChevronRight, Search, Sigma } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-type Subject = 'physics' | 'mathematics' | 'addMaths' | 'additional';
+type Subject = 'physics' | 'mathematics' | 'addMaths';
 
 type FormulaEntry = { name: string; formula: string; note?: string };
 type FormulaSection = { title: string; formulas: FormulaEntry[] };
@@ -249,66 +249,10 @@ const ADD_MATHS_SECTIONS: FormulaSection[] = [
   },
 ];
 
-const ADDITIONAL_SECTIONS: FormulaSection[] = [
-  {
-    title: 'Physical Constants',
-    formulas: [
-      { name: 'Acceleration due to Gravity', formula: 'g = 9.81 m/s² ≈ 10 m/s²' },
-      { name: 'Speed of Light', formula: 'c = 3.0 × 10⁸ m/s' },
-      { name: 'Speed of Sound (air)', formula: 'v ≈ 340 m/s' },
-      { name: 'Specific Heat (Water)', formula: 'c = 4200 J/(kg·°C)' },
-      { name: 'Latent Heat of Fusion (Water)', formula: 'Lf = 3.34 × 10⁵ J/kg' },
-      { name: 'Latent Heat of Vaporisation (Water)', formula: 'Lv = 2.26 × 10⁶ J/kg' },
-      { name: 'Density of Water', formula: 'ρ = 1000 kg/m³' },
-      { name: 'Atmospheric Pressure', formula: 'P₀ = 1.01 × 10⁵ Pa' },
-      { name: 'Pi', formula: 'π ≈ 3.14159' },
-      { name: 'Electron Charge', formula: 'e = 1.6 × 10⁻¹⁹ C' },
-    ],
-  },
-  {
-    title: 'Unit Conversions',
-    formulas: [
-      { name: 'km to m', formula: '1 km = 1000 m' },
-      { name: 'cm to m', formula: '1 cm = 0.01 m' },
-      { name: 'mm to m', formula: '1 mm = 0.001 m' },
-      { name: 'kg to g', formula: '1 kg = 1000 g' },
-      { name: 'Litres to m³', formula: '1 L = 1 × 10⁻³ m³' },
-      { name: 'kWh to J', formula: '1 kWh = 3.6 × 10⁶ J' },
-      { name: 'Hours to Seconds', formula: '1 hr = 3600 s' },
-    ],
-  },
-  {
-    title: 'SI Prefixes',
-    formulas: [
-      { name: 'Tera (T)', formula: '10¹²' },
-      { name: 'Giga (G)', formula: '10⁹' },
-      { name: 'Mega (M)', formula: '10⁶' },
-      { name: 'Kilo (k)', formula: '10³' },
-      { name: 'Centi (c)', formula: '10⁻²' },
-      { name: 'Milli (m)', formula: '10⁻³' },
-      { name: 'Micro (μ)', formula: '10⁻⁶' },
-      { name: 'Nano (n)', formula: '10⁻⁹' },
-    ],
-  },
-  {
-    title: 'Useful Math Identities',
-    formulas: [
-      { name: 'Sum of Arithmetic Series', formula: 'S = n/2 × (2a + (n−1)d)' },
-      { name: 'nth term (Arithmetic)', formula: 'Tₙ = a + (n−1)d' },
-      { name: 'Sum of Geometric Series', formula: 'S = a(rⁿ − 1) / (r − 1)', note: 'r ≠ 1' },
-      { name: 'nth term (Geometric)', formula: 'Tₙ = arⁿ⁻¹' },
-      { name: 'Simple Interest', formula: 'I = PRT / 100' },
-      { name: 'Compound Interest', formula: 'A = P(1 + r/100)ⁿ' },
-      { name: 'Percentage Change', formula: '% = ((new − old) / old) × 100' },
-    ],
-  },
-];
-
 const SUBJECTS: { id: Subject; label: string; icon: typeof Atom; tint: string; iconColor: string; desc: string; sections: FormulaSection[] }[] = [
   { id: 'physics', label: 'Physics', icon: Atom, tint: 'bg-coral-soft', iconColor: 'text-coral', desc: 'Mechanics, Waves, Electricity & more', sections: PHYSICS_SECTIONS },
   { id: 'mathematics', label: 'Mathematics', icon: Calculator, tint: 'bg-lavender', iconColor: 'text-ink', desc: 'Algebra, Geometry, Trigonometry & more', sections: MATH_SECTIONS },
   { id: 'addMaths', label: 'Additional Mathematics', icon: Sigma, tint: 'bg-peach', iconColor: 'text-ink', desc: 'Calculus, Logarithms, Series & advanced topics', sections: ADD_MATHS_SECTIONS },
-  { id: 'additional', label: 'Additional Notes', icon: FileText, tint: 'bg-brand-soft', iconColor: 'text-brand-deep', desc: 'Constants, conversions & reference material', sections: ADDITIONAL_SECTIONS },
 ];
 
 export default function FormulaSheetPage() {
