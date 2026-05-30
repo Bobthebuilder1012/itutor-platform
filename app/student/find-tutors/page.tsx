@@ -572,7 +572,6 @@ export default function FindTutorsPage() {
   };
 
   const filteredGroupLessons = groupLessons
-    .filter((l) => !enrolledLessonIds.has(l.id))
     .filter((l) => matchChip(l.subject))
     .filter((l) => !searchQuery || l.title.toLowerCase().includes(searchQuery.toLowerCase()) || l.tutor.toLowerCase().includes(searchQuery.toLowerCase()) || l.subject.toLowerCase().includes(searchQuery.toLowerCase()));
 
