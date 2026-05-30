@@ -19,7 +19,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     // Verify ownership + not archived
     const { data: existing, error: existingError } = await supabase
       .from('groups')
-      .select('tutor_id, archived_at, whatsapp_url, google_classroom_link, parent_feedback_mode, parent_feedback_price, primary_channel')
+      .select('tutor_id, archived_at, whatsapp_link, google_classroom_link, feedback_mode, parent_feedback_price, primary_channel, meeting_link')
       .eq('id', classId)
       .maybeSingle();
 
@@ -40,10 +40,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const input = parsed.data;
 
     // Resolve the final values after this update (for cross-field validation)
-    const resolvedWhatsapp = input.whatsapp_url !== undefined ? (input.whatsapp_url || '') : (existing.whatsapp_url || '');
+    const resolvedWhatsapp = input.whatsapp_url !== undefined ? (input.whatsapp_url || '') : (existing.whatsapp_link || '');
     const resolvedClassroom = input.google_classroom_link !== undefined ? (input.google_classroom_link || '') : (existing.google_classroom_link || '');
     const resolvedChannel = input.primary_channel ?? existing.primary_channel ?? 'native';
-    const resolvedFeedbackMode = input.parent_feedback_mode ?? existing.parent_feedback_mode ?? 'off';
+    const resolvedFeedbackMode = input.parent_feedback_mode ?? existing.feedback_mode ?? 'off';
     const resolvedFeedbackPrice = input.parent_feedback_price !== undefined ? input.parent_feedback_price : (existing.parent_feedback_price ?? 0);
 
     if (resolvedChannel === 'whatsapp' && !resolvedWhatsapp) {
@@ -69,11 +69,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
     if (input.auto_suspend_missed_payment !== undefined) updates.auto_suspend_missed_payment = input.auto_suspend_missed_payment;
     if (input.grace_period_days !== undefined) updates.grace_period_days = input.grace_period_days;
-    if (input.whatsapp_url !== undefined) updates.whatsapp_url = input.whatsapp_url || null;
+    if (input.whatsapp_url !== undefined) updates.whatsapp_link = input.whatsapp_url || null;
     if (input.google_classroom_link !== undefined) updates.google_classroom_link = input.google_classroom_link || null;
     if (input.primary_channel !== undefined) updates.primary_channel = input.primary_channel;
-    if (input.parent_feedback_mode !== undefined) updates.parent_feedback_mode = input.parent_feedback_mode;
+    if (input.parent_feedback_mode !== undefined) updates.feedback_mode = input.parent_feedback_mode;
     if (input.parent_feedback_price !== undefined) updates.parent_feedback_price = input.parent_feedback_price;
+    if (input.meeting_link !== undefined) updates.meeting_link = input.meeting_link || null;
 
     const { data: updated, error: updateError } = await supabase
       .from('groups')
@@ -85,7 +86,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (updateError) throw updateError;
 
     // Side effects: parent feedback mode transitions
-    const prevMode = existing.parent_feedback_mode ?? 'off';
+    const prevMode = existing.feedback_mode ?? 'off';
     const newMode = resolvedFeedbackMode;
 
     if (prevMode === 'off' && newMode !== 'off') {

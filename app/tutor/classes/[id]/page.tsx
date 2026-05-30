@@ -184,7 +184,7 @@ function ClassHubContent() {
           gracePeriodDays: g.grace_period_days ?? 7,
           primaryChannel: (g.primary_channel ?? 'native') as GroupDetail['primaryChannel'],
           googleClassroomLink: g.google_classroom_link ?? '',
-          feedbackMode: (g.parent_feedback_mode ?? 'off') as GroupDetail['feedbackMode'],
+          feedbackMode: (g.feedback_mode ?? 'off') as GroupDetail['feedbackMode'],
           parentFeedbackPrice: g.parent_feedback_price ?? 0,
           recurrenceRule: g.recurrence_rule,
           earningsTtd: 0,
