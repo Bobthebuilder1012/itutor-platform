@@ -86,38 +86,49 @@ export async function GET(request: NextRequest) {
 
     const isTutor = profile?.role === 'tutor';
 
-    // Select only columns confirmed to exist in the DB schema.
-    // Note: group_members profile sub-join omitted — multiple FK paths cause a 300 ambiguity.
-    const selectStr = `
-      id, name, description, tutor_id, subject, pricing, pricing_model, created_at,
-      visibility, primary_channel, whatsapp_url, google_classroom_link,
-      max_students, parent_feedback_mode, parent_feedback_price,
-      require_join_requests, auto_suspend_missed_payment, grace_period_days,
-      archived_at, archived_reason,
-      tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, rating_average, rating_count),
-      group_members(id, user_id, status)
-    `;
+    const SELECT_TIERS = [
+      // Tier 1: full column set (requires migrations 128-132)
+      `id, name, description, tutor_id, subject, pricing, pricing_model, created_at,
+       visibility, primary_channel, whatsapp_url, google_classroom_link,
+       max_students, parent_feedback_mode, parent_feedback_price,
+       require_join_requests, auto_suspend_missed_payment, grace_period_days,
+       archived_at, archived_reason,
+       tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, rating_average, rating_count),
+       group_members(id, user_id, status)`,
+      // Tier 2: drop columns likely missing (parent_feedback_mode → feedback_mode, no archived_reason/whatsapp_url)
+      `id, name, description, tutor_id, subject, pricing, pricing_model, created_at,
+       visibility, primary_channel, google_classroom_link,
+       max_students, parent_feedback_price,
+       require_join_requests, auto_suspend_missed_payment, grace_period_days,
+       archived_at,
+       tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, rating_average, rating_count),
+       group_members(id, user_id, status)`,
+      // Tier 3: drop rating columns from profiles (may live on tutor_profiles instead)
+      `id, name, description, tutor_id, subject, pricing, pricing_model, created_at,
+       visibility, max_students, require_join_requests, grace_period_days, archived_at,
+       tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url),
+       group_members(id, user_id, status)`,
+      // Tier 4: bare minimum
+      `id, name, description, tutor_id, subject, pricing, pricing_model, created_at, archived_at,
+       tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url),
+       group_members(id, user_id, status)`,
+    ];
 
-    const runGroupsQuery = async () => {
-      let query = service
-        .from('groups')
-        .select(selectStr)
-        .order('created_at', { ascending: false });
-
+    const buildBaseQuery = (selectStr: string, useVisibilityFilter = true) => {
+      let q = service.from('groups').select(selectStr).order('created_at', { ascending: false });
       if (fetchArchived) {
-        query = query.not('archived_at', 'is', null).eq('tutor_id', user.id);
+        q = q.not('archived_at', 'is', null).eq('tutor_id', user.id);
       } else {
-        query = query.is('archived_at', null);
-        if (isTutor) {
-          // Tutors always see their own classes
-          query = query.or(`tutor_id.eq.${user.id},visibility.eq.public,visibility.is.null`);
-        } else {
-          // Students see public and unlisted groups (not private)
-          query = query.or('visibility.eq.public,visibility.eq.unlisted,visibility.is.null');
+        q = q.is('archived_at', null);
+        if (useVisibilityFilter) {
+          if (isTutor) {
+            q = q.or(`tutor_id.eq.${user.id},visibility.eq.public,visibility.is.null`);
+          } else {
+            q = q.or('visibility.eq.public,visibility.eq.unlisted,visibility.is.null');
+          }
         }
       }
-
-      return query;
+      return q;
     };
 
     const applyFilters = (query: any) => {
@@ -127,9 +138,19 @@ export async function GET(request: NextRequest) {
       return q;
     };
 
+    const QUERY_ATTEMPTS: Array<[string, boolean]> = [
+      ...SELECT_TIERS.map((t): [string, boolean] => [t, true]),
+      [SELECT_TIERS[SELECT_TIERS.length - 1], false], // last resort: no visibility filter
+    ];
+
     let groups: any[] | null = null;
     let error: any = null;
-    ({ data: groups, error } = await applyFilters(await runGroupsQuery()));
+    for (const [tier, useVis] of QUERY_ATTEMPTS) {
+      ({ data: groups, error } = await applyFilters(buildBaseQuery(tier, useVis)));
+      if (!error) break;
+      if (!isSchemaMismatch(error)) break;
+      console.warn('[GET /api/groups] schema mismatch, trying next tier:', error.message);
+    }
     if (error) throw error;
 
     const groupRows = groups ?? [];
