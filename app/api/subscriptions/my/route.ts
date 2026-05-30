@@ -39,7 +39,38 @@ export async function GET(_req: NextRequest) {
 
     if (error) throw error;
 
-    return NextResponse.json({ subscriptions: data ?? [] });
+    const enrollments = data ?? [];
+
+    // Determine which active enrollments already have an advance renewal paid
+    // A PAID subscription_renewal payment whose created_at > current_period_start indicates the
+    // student has already paid for the next cycle while still in the current one.
+    const activeIds = enrollments
+      .filter((e) => e.status === 'ACTIVE' && e.current_period_start)
+      .map((e) => e.id);
+
+    const advancePaidSet = new Set<string>();
+    if (activeIds.length > 0) {
+      const { data: renewalPayments } = await admin
+        .from('subscription_payments')
+        .select('enrollment_id, created_at')
+        .in('enrollment_id', activeIds)
+        .eq('type', 'subscription_renewal')
+        .eq('status', 'PAID');
+
+      for (const p of (renewalPayments ?? [])) {
+        const enr = enrollments.find((e) => e.id === p.enrollment_id);
+        if (enr?.current_period_start && new Date(p.created_at) > new Date(enr.current_period_start)) {
+          advancePaidSet.add(p.enrollment_id);
+        }
+      }
+    }
+
+    const subscriptions = enrollments.map((e) => ({
+      ...e,
+      next_cycle_paid: advancePaidSet.has(e.id),
+    }));
+
+    return NextResponse.json({ subscriptions });
 
   } catch (err) {
     console.error('[GET /api/subscriptions/my]', err);

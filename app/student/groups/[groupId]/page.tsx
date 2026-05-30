@@ -24,9 +24,9 @@ type Group = {
   tutor: { full_name: string | null; display_name: string | null } | null;
   max_students: number | null;
   require_join_requests: boolean;
-  parent_feedback_mode: string | null;
+  feedback_mode: string | null;
   primary_channel: string | null;
-  whatsapp_url: string | null;
+  whatsapp_link: string | null;
   google_classroom_link: string | null;
   pricing: number | null;
   pricing_model: string | null;
@@ -187,8 +187,8 @@ export default function StudentGroupPage({ params }: { params: { groupId: string
         .from('groups')
         .select(`
           id, name, description, subject, tutor_id, max_students,
-          require_join_requests, parent_feedback_mode, primary_channel,
-          whatsapp_url, google_classroom_link, pricing, pricing_model,
+          require_join_requests, feedback_mode, primary_channel,
+          whatsapp_link, google_classroom_link, pricing, pricing_model,
           visibility, archived_at,
           tutor:profiles!groups_tutor_id_fkey(full_name, display_name)
         `)
@@ -353,9 +353,9 @@ export default function StudentGroupPage({ params }: { params: { groupId: string
   const whatsIncluded = [
     'Live interactive sessions',
     ...(nextSession?.duration_minutes ? [`${formatDuration(nextSession.duration_minutes)} per session`] : []),
-    ...(group.primary_channel === 'whatsapp' || group.whatsapp_url ? ['WhatsApp group access'] : []),
+    ...(group.primary_channel === 'whatsapp' || group.whatsapp_link ? ['WhatsApp group access'] : []),
     ...(group.primary_channel === 'classroom' || group.google_classroom_link ? ['Google Classroom access'] : []),
-    ...(group.parent_feedback_mode === 'included_free' ? ['Free parent feedback reports'] : []),
+    ...(group.feedback_mode === 'included_free' ? ['Free parent feedback reports'] : []),
     'Session recordings within 24 hours',
     'Direct messaging with tutor',
   ];
@@ -379,7 +379,7 @@ export default function StudentGroupPage({ params }: { params: { groupId: string
             </div>
           </div>
           <div className="relative mt-5 flex flex-wrap gap-2">
-            {group.parent_feedback_mode === 'included_free' && (
+            {group.feedback_mode === 'included_free' && (
               <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-white/20 backdrop-blur-sm text-white">
                 <Sparkles className="size-3.5" /> Free parent feedback
               </span>

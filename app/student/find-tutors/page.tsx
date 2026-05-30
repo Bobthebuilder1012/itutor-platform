@@ -393,12 +393,18 @@ export default function FindTutorsPage() {
       const groupIds = groups.map((g: any) => g.id);
       const tutorIds = [...new Set<string>(groups.map((g: any) => g.tutor_id).filter(Boolean))];
 
-      // Fetch tutor names and member counts in parallel
-      const [{ data: tutorProfiles }, { data: memberRows }] = await Promise.all([
+      // Fetch tutor names, member counts, and enrollment status in parallel
+      const [{ data: tutorProfiles }, { data: memberRows }, { data: subEnrollments }] = await Promise.all([
         tutorIds.length
           ? supabase.from('profiles').select('id, full_name, display_name').in('id', tutorIds)
           : Promise.resolve({ data: [] as any[] }),
         supabase.from('group_members').select('group_id, user_id, status').in('group_id', groupIds),
+        supabase
+          .from('group_enrollments')
+          .select('group_id')
+          .eq('student_id', profile.id)
+          .in('group_id', groupIds)
+          .in('status', ['ACTIVE', 'GRACE', 'SUSPENDED', 'PENDING_PAYMENT']),
       ]);
 
       const tutorMap = new Map((tutorProfiles ?? []).map((p: any) => [p.id, p]));
@@ -409,6 +415,9 @@ export default function FindTutorsPage() {
         memberCountMap.set(m.group_id, (memberCountMap.get(m.group_id) ?? 0) + 1);
         if (m.user_id === profile.id && m.status !== 'denied') enrolledSet.add(m.group_id);
       });
+
+      // Also mark subscription-enrolled groups
+      (subEnrollments ?? []).forEach((e: any) => enrolledSet.add(e.group_id));
 
       setEnrolledLessonIds(enrolledSet);
 
@@ -612,7 +621,6 @@ export default function FindTutorsPage() {
   };
 
   const filteredGroupLessons = groupLessons
-    .filter((l) => !enrolledLessonIds.has(l.id))
     .filter((l) => matchChip(l.subject))
     .filter((l) => !searchQuery || l.title.toLowerCase().includes(searchQuery.toLowerCase()) || l.tutor.toLowerCase().includes(searchQuery.toLowerCase()) || l.subject.toLowerCase().includes(searchQuery.toLowerCase()));
 
@@ -766,7 +774,15 @@ export default function FindTutorsPage() {
         {tab === 'lessons' && (
           <>
             <div className="text-sm text-muted-foreground">
-              {loadingGroupLessons ? 'Loading lessons…' : `${filteredGroupLessons.length} lesson${filteredGroupLessons.length === 1 ? '' : 's'}`}
+              {loadingGroupLessons ? 'Loading lessons…' : (() => {
+                const enrolledCount = filteredGroupLessons.filter(l => enrolledLessonIds.has(l.id)).length;
+                return (
+                  <>
+                    {filteredGroupLessons.length} lesson{filteredGroupLessons.length === 1 ? '' : 's'}
+                    {enrolledCount > 0 && <> · <span className="text-brand font-medium">{enrolledCount} enrolled</span></>}
+                  </>
+                );
+              })()}
               {!loadingGroupLessons && searchQuery && <> matching &ldquo;<span className="text-ink font-medium">{searchQuery}</span>&rdquo;</>}
             </div>
 
@@ -871,7 +887,7 @@ export default function FindTutorsPage() {
                             href={`/student/groups/${l.id}`}
                             className="px-3 py-1.5 rounded-xl bg-brand-soft text-forest text-xs font-semibold hover:bg-brand/20 transition"
                           >
-                            View lesson →
+                            Open Class
                           </Link>
                         ) : (
                           <button
