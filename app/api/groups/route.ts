@@ -122,9 +122,11 @@ export async function GET(request: NextRequest) {
         q = q.is('archived_at', null);
         if (useVisibilityFilter) {
           if (isTutor) {
-            q = q.or(`tutor_id.eq.${user.id},visibility.eq.public,visibility.is.null`);
+            // Tutors see their own classes plus any non-private group
+            q = q.or(`tutor_id.eq.${user.id},visibility.neq.private,visibility.is.null`);
           } else {
-            q = q.or('visibility.eq.public,visibility.eq.unlisted,visibility.is.null');
+            // Students see anything that isn't explicitly private
+            q = q.or('visibility.neq.private,visibility.is.null');
           }
         }
       }
