@@ -34,19 +34,21 @@ function ReceiptCard({ txn }: { txn: Transaction }) {
   const { date, time } = fmtDateTime(txn.paid_at);
   const isSubscription = txn.type === 'subscription';
   const initial = (txn.class_name?.[0] ?? txn.tutor_name?.[0] ?? '?').toUpperCase();
+  const [imgFailed, setImgFailed] = useState(false);
 
   return (
     <div className="flex items-center gap-4 px-5 py-4 bg-card rounded-2xl border border-border hover:border-border/80 transition-colors">
 
       {/* Avatar / initials */}
       <div className="shrink-0">
-        {txn.tutor_avatar ? (
+        {txn.tutor_avatar && !imgFailed ? (
           <Image
             src={txn.tutor_avatar}
             alt={txn.tutor_name ?? ''}
             width={44}
             height={44}
             className="size-11 rounded-xl object-cover"
+            onError={() => setImgFailed(true)}
           />
         ) : (
           <div className="size-11 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 grid place-items-center text-white font-bold text-base">

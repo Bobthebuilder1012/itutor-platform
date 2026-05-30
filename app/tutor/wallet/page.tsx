@@ -201,19 +201,18 @@ function WalletContent() {
       .reduce((s, h) => s + h.amount_ttd, 0);
   }, [history]);
 
-  // Sessions scheduled in the current calendar month that are already earned (any ledger state).
+  // All earned income in the current calendar month: sessions + subscription payouts.
+  // Session rows use scheduled_start_at; subscription rows (no session) use created_at.
   const completedThisMonth = useMemo(() => {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
     return history
-      .filter(
-        (h) =>
-          EARNED_LEDGER_STATUSES.includes(h.status) &&
-          h.scheduled_start_at &&
-          new Date(h.scheduled_start_at).getTime() >= monthStart &&
-          new Date(h.scheduled_start_at).getTime() < monthEnd,
-      )
+      .filter((h) => {
+        if (!EARNED_LEDGER_STATUSES.includes(h.status)) return false;
+        const t = new Date(h.scheduled_start_at ?? h.created_at).getTime();
+        return t >= monthStart && t < monthEnd;
+      })
       .reduce((s, h) => s + h.amount_ttd, 0);
   }, [history]);
 
@@ -288,7 +287,7 @@ function WalletContent() {
               label="Projected"
               value={`TT$ ${fmtTTD(projectedThisMonth)}`}
               icon={TrendingUp}
-              hint="Completed + upcoming sessions this month"
+              hint="All earnings this month (sessions + subscriptions)"
               valueClass="text-brand-deep"
             />
             <Stat

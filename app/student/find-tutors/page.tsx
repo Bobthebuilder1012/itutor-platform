@@ -393,8 +393,8 @@ export default function FindTutorsPage() {
       const groupIds = groups.map((g: any) => g.id);
       const tutorIds = [...new Set<string>(groups.map((g: any) => g.tutor_id).filter(Boolean))];
 
-      // Fetch tutor names, member counts, and enrollment status in parallel
-      const [{ data: tutorProfiles }, { data: memberRows }, { data: subEnrollments }] = await Promise.all([
+      // Fetch tutor names, enrollment status, and server-side member counts in parallel
+      const [{ data: tutorProfiles }, { data: memberRows }, { data: subEnrollments }, countsRes] = await Promise.all([
         tutorIds.length
           ? supabase.from('profiles').select('id, full_name, display_name').in('id', tutorIds)
           : Promise.resolve({ data: [] as any[] }),
@@ -405,15 +405,24 @@ export default function FindTutorsPage() {
           .eq('student_id', profile.id)
           .in('group_id', groupIds)
           .in('status', ['ACTIVE', 'GRACE', 'SUSPENDED', 'PENDING_PAYMENT']),
+        fetch(`/api/groups/member-counts?ids=${groupIds.join(',')}`).then((r) => r.json()).catch(() => ({ counts: {} })),
       ]);
 
       const tutorMap = new Map((tutorProfiles ?? []).map((p: any) => [p.id, p]));
-      const memberCountMap = new Map<string, number>();
+      // Server-side counts (service role, accurate) take priority over RLS-limited client query
+      const serverCounts: Record<string, number> = countsRes?.counts ?? {};
+      const memberCountMap = new Map<string, number>(
+        Object.entries(serverCounts).map(([k, v]) => [k, v as number])
+      );
       const enrolledSet = new Set<string>();
 
+      // group_members rows: used only for enrolled-status of non-subscription groups
       (memberRows ?? []).forEach((m: any) => {
-        memberCountMap.set(m.group_id, (memberCountMap.get(m.group_id) ?? 0) + 1);
         if (m.user_id === profile.id && m.status !== 'denied') enrolledSet.add(m.group_id);
+        // Only fall back to group_members count when server didn't return a count
+        if (!(m.group_id in serverCounts)) {
+          memberCountMap.set(m.group_id, (memberCountMap.get(m.group_id) ?? 0) + 1);
+        }
       });
 
       // Also mark subscription-enrolled groups

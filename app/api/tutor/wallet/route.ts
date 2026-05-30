@@ -101,10 +101,10 @@ export async function GET() {
     0
   );
 
-  // -- Transaction history (ledger joined with sessions) --
+  // -- Transaction history (ledger joined with sessions + subscription payments) --
   const { data: ledger } = await admin
     .from('payout_ledger')
-    .select('id, session_id, amount_ttd, status, created_at, released_at, batch_id')
+    .select('id, session_id, subscription_payment_id, amount_ttd, status, created_at, released_at, batch_id')
     .eq('tutor_id', user.id)
     .order('created_at', { ascending: false })
     .limit(200);
@@ -112,7 +112,32 @@ export async function GET() {
   let history: WalletHistoryRow[] = [];
 
   if (ledger && ledger.length > 0) {
-    const sessionIds = ledger.map((r: any) => r.session_id);
+    // Separate session-based and subscription-based rows
+    const sessionRows = ledger.filter((r: any) => r.session_id);
+    const subRows    = ledger.filter((r: any) => !r.session_id && r.subscription_payment_id);
+
+    // Fetch subscription row metadata: group name + student name
+    let subInfoById = new Map<string, { student_name: string | null; student_avatar_url: string | null; subject_name: string | null }>();
+    if (subRows.length > 0) {
+      const subPaymentIds = subRows.map((r: any) => r.subscription_payment_id);
+      const { data: subPayments } = await admin
+        .from('subscription_payments')
+        .select(`
+          id, student_id,
+          group:groups!group_id ( name ),
+          student:profiles!student_id ( full_name, display_name, avatar_url )
+        `)
+        .in('id', subPaymentIds);
+      for (const sp of subPayments ?? []) {
+        subInfoById.set(sp.id, {
+          student_name: (sp as any).student?.display_name ?? (sp as any).student?.full_name ?? null,
+          student_avatar_url: (sp as any).student?.avatar_url ?? null,
+          subject_name: (sp as any).group?.name ?? null,
+        });
+      }
+    }
+
+    const sessionIds = sessionRows.map((r: any) => r.session_id);
 
     const { data: sessions } = await admin
       .from('sessions')
@@ -148,6 +173,29 @@ export async function GET() {
     const subjectById = new Map((subjects ?? []).map((s: any) => [s.id, s]));
 
     history = ledger.map((row: any) => {
+      // Subscription payout row (no session)
+      if (!row.session_id && row.subscription_payment_id) {
+        const info = subInfoById.get(row.subscription_payment_id);
+        return {
+          ledger_id: row.id,
+          session_id: null,
+          amount_ttd: Number(row.amount_ttd ?? 0),
+          status: mapLedgerStatus(row.status),
+          ledger_status: row.status,
+          created_at: row.created_at,
+          released_at: row.released_at ?? null,
+          batch_id: row.batch_id ?? null,
+          scheduled_start_at: null,
+          charge_amount_ttd: null,
+          platform_fee_ttd: null,
+          student_id: null,
+          student_name: info?.student_name ?? null,
+          student_avatar_url: info?.student_avatar_url ?? null,
+          subject_name: info?.subject_name ?? null,
+        } as unknown as WalletHistoryRow;
+      }
+
+      // Session-based payout row
       const sess = sessionById.get(row.session_id);
       const booking = sess?.booking_id ? bookingById.get(sess.booking_id) : null;
       const studentId = booking?.student_id ?? null;
