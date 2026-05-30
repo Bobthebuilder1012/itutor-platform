@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   Users, CalendarDays, DollarSign, Eye, Lock, Plus, Clock, BookOpen,
-  UserCircle, ArrowRight, Video, MessageSquare, Star, Wallet,
+  UserCircle, ArrowRight, Video, MessageSquare, Star, Wallet, PenLine, CreditCard,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -160,11 +160,23 @@ function DashboardContent() {
 
   return (
     <div className="space-y-8 max-w-7xl">
-      <header>
-        <h1 className="text-2xl lg:text-3xl font-bold text-ink">Welcome back, {firstName}.</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {listed ? "Here's what's happening with your students today." : 'Finish setting up your profile to unlock teaching tools.'}
-        </p>
+      <header className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl lg:text-3xl font-bold text-ink">Welcome back, {firstName}.</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {listed ? "Here's what's happening with your students today." : 'Finish setting up your profile to unlock teaching tools.'}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Link href="/tutor/settings"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-border bg-background text-sm font-semibold text-ink hover:bg-muted transition">
+            <PenLine className="size-3.5" /> Edit profile
+          </Link>
+          <Link href="/tutor/settings"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-brand text-white text-sm font-semibold hover:bg-brand-deep transition">
+            <CreditCard className="size-3.5" /> Add payout settings to earn
+          </Link>
+        </div>
       </header>
 
       <section>
