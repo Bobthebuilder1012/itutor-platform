@@ -168,11 +168,11 @@ function DashboardContent() {
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <Link href="/tutor/settings"
+          <Link href="/tutor/settings?section=profile"
             className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-border bg-background text-sm font-semibold text-ink hover:bg-muted transition">
             <PenLine className="size-3.5" /> Edit profile
           </Link>
-          <Link href="/tutor/settings"
+          <Link href="/tutor/settings?section=payouts"
             className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-brand text-white text-sm font-semibold hover:bg-brand-deep transition">
             <CreditCard className="size-3.5" /> Add payout settings to earn
           </Link>

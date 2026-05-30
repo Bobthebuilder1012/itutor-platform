@@ -303,7 +303,7 @@ function SettingsContent() {
                 <div className="font-semibold text-ink">Manage availability</div>
                 <div className="text-xs text-muted-foreground mt-1">Set your weekly schedule and time-off blocks.</div>
               </Link>
-              <Link href="/tutor/dashboard" className="block rounded-xl border border-border p-4 hover:bg-muted transition">
+              <Link href="/tutor/get-listed" className="block rounded-xl border border-border p-4 hover:bg-muted transition">
                 <div className="font-semibold text-ink">Manage subjects & rates</div>
                 <div className="text-xs text-muted-foreground mt-1">Add, remove or update the subjects you teach and their pricing.</div>
               </Link>
