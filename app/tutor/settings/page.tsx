@@ -465,6 +465,92 @@ function SaveBar({ onSave, saving, label = 'Save changes' }: { onSave: () => voi
   );
 }
 
+const TT_BANKS: Record<string, { swift: string; code: string; branches: string[] }> = {
+  'Republic Bank': {
+    swift: 'RBNKTTPX', code: '004',
+    branches: [
+      'Ellerslie Court – Maraval', 'Glencoe', 'Long Circular Mall – St. James',
+      'Starlite – Diego Martin', 'West Mall – Westmoorings', 'Hilton Agency – POS',
+      'Independence Square – POS', 'Park Street – POS', 'Tragarete Road – POS', 'Woodbrook',
+      'Grand Bazaar – Valsayn', 'Shops of Arima Agency', 'Arima – Broadway',
+      'Trincity', 'Valpark – Valsayn', 'Chaguanas – Centre City', 'Couva',
+      'Sangre Grande', 'San Juan', 'St. Augustine', 'Tunapuna',
+      'Gulf View – La Romaine', 'South Park – Tarouba', 'Atlantic Plaza Agency – Point Lisas',
+      'Cipero Street – San Fernando', 'Fyzabad', 'Harris Promenade – San Fernando',
+      'High Street – San Fernando', 'Marabella', 'Mayaro', 'Penal',
+      'Princes Town', 'Point Fortin', 'Rio Claro', 'Siparia',
+    ],
+  },
+  'First Citizens Bank': {
+    swift: 'FCBLTTPS', code: '006',
+    branches: [
+      'Arima', 'Sangre Grande', 'Tunapuna',
+      'MovieTowne Financial Centre – Invaders Bay',
+      'Port of Spain – Independence Square', 'Port of Spain – Maraval',
+      'One Woodbrook Place – Tragarete Rd', 'Park Street – POS',
+      'West Vale Mall – Diego Martin', 'San Juan',
+      'Chaguanas – Market Street', 'Montrose',
+      'Couva', 'Gulf View Mall – La Romaine', 'Marabella', 'Penal',
+      'Point Fortin', 'Point Lisas', 'Princes Town', 'San Fernando', 'Siparia',
+      'Milford Road – Tobago', 'Scarborough – Tobago', 'Roxborough – Tobago',
+    ],
+  },
+  'RBC Royal Bank': {
+    swift: 'ROYCTTPS', code: '007',
+    branches: [
+      'Arima', 'Chaguanas – Royal Plaza', 'Chaguaramas', 'Couva',
+      'Diego Martin – Starlite', 'Guayaguayare', 'La Romaine – Gulf City',
+      'Maraval', 'Point Fortin', 'Point Lisas', 'Pointe-a-Pierre',
+      'Port of Spain – Independence Square', 'Port of Spain – Park Street',
+      'Princes Town', 'San Fernando – Carlton Centre', 'San Fernando – High Street',
+      'San Juan', 'Sangre Grande', 'Siparia', 'St. Augustine',
+      'St. James', 'Trincity', 'Westmoorings',
+    ],
+  },
+  'Scotiabank': {
+    swift: 'NOSCTTPS', code: '003',
+    branches: [
+      'Diego Martin', 'Maraval', 'Independence Square – POS', 'Scotia Centre – Park & Richmond',
+      'Sangre Grande', 'Trincity', 'Tunapuna', 'Arima',
+      'Couva', 'Price Plaza – Chaguanas', 'Chaguanas',
+      'Marabella', 'Princes Town', 'San Fernando', 'Penal',
+    ],
+  },
+  'ANSA Bank': {
+    swift: 'ANBATTPS', code: '015',
+    branches: [
+      'Head Office – Maraval Road, POS', 'Westmoorings – The Falls',
+      'San Fernando / La Romaine – Gulf City', 'Chaguanas – Endeavour Road',
+    ],
+  },
+  'ANSA Merchant Bank': {
+    swift: 'ANFMTTP1', code: '016',
+    branches: ['Port of Spain – Head Office'],
+  },
+  'CIBC Caribbean Bank': {
+    swift: 'CIBLTTPS', code: '019',
+    branches: [
+      'Maraval Finance Centre', 'Chaguanas Finance Centre',
+      'Corporate & Investment Banking Centre – Chaguanas',
+    ],
+  },
+  'Citibank': {
+    swift: 'CITITTPS', code: '009',
+    branches: ["Port of Spain – Queen's Park East"],
+  },
+  'JMMB Bank': {
+    swift: 'JMMBTTPS', code: '020',
+    branches: [
+      'San Fernando – SouthPark', 'Woodbrook / Port of Spain',
+      'Tunapuna', 'Chaguanas – DSM Plaza', 'Princes Town Mall',
+    ],
+  },
+  'Agricultural Development Bank': {
+    swift: 'ADEVTTP1', code: '017',
+    branches: ['Port of Spain – Head Office', 'Couva', 'Sangre Grande', 'San Fernando', 'Scarborough – Tobago'],
+  },
+};
+
 function PayoutAccountForm() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -556,16 +642,30 @@ function PayoutAccountForm() {
             className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
         </div>
         <div>
-          <label className="block text-xs font-medium text-ink mb-1.5">Bank name</label>
-          <input type="text" value={bankName} onChange={(e) => setBankName(e.target.value)}
-            placeholder="e.g. Republic Bank"
-            className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+          <label className="block text-xs font-medium text-ink mb-1.5">Bank</label>
+          <select value={bankName} onChange={(e) => { setBankName(e.target.value); setBranch(''); }}
+            className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand">
+            <option value="">Select bank…</option>
+            {Object.keys(TT_BANKS).map((name) => (
+              <option key={name} value={name}>{name}</option>
+            ))}
+          </select>
+          {bankName && TT_BANKS[bankName] && (
+            <div className="mt-1.5 text-[11px] text-muted-foreground font-mono">
+              SWIFT: {TT_BANKS[bankName].swift} · Bank code: {TT_BANKS[bankName].code}
+            </div>
+          )}
         </div>
         <div>
           <label className="block text-xs font-medium text-ink mb-1.5">Branch</label>
-          <input type="text" value={branch} onChange={(e) => setBranch(e.target.value)}
-            placeholder="e.g. Maraval"
-            className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+          <select value={branch} onChange={(e) => setBranch(e.target.value)}
+            disabled={!bankName || !TT_BANKS[bankName]}
+            className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand disabled:opacity-60">
+            <option value="">{bankName ? 'Select branch…' : 'Select bank first…'}</option>
+            {(TT_BANKS[bankName]?.branches ?? []).map((b) => (
+              <option key={b} value={b}>{b}</option>
+            ))}
+          </select>
         </div>
         <div>
           <label className="block text-xs font-medium text-ink mb-1.5">Account number</label>
