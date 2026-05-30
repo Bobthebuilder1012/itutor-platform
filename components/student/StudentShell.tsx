@@ -19,6 +19,7 @@ import {
   LogOut,
   ChevronUp,
   CreditCard,
+  ReceiptText,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { StudentStoreProvider } from '@/lib/student-store';
@@ -43,6 +44,7 @@ const nav: NavItem[] = [
   { to: '/student/my-lessons', label: 'My Lessons', icon: GraduationCap, tint: 'bg-sky-500/20 text-sky-300 ring-1 ring-sky-400/30' },
   { to: '/student/bookings', label: 'My Bookings', icon: CalendarDays, tint: 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-400/30' },
   { to: '/student/subscriptions', label: 'Subscriptions', icon: CreditCard, tint: 'bg-purple-500/20 text-purple-300 ring-1 ring-purple-400/30' },
+  { to: '/student/transactions', label: 'Transactions', icon: ReceiptText, tint: 'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-400/30' },
   { to: '/student/tools', label: 'Tools', icon: Wrench, tint: 'bg-violet-500/20 text-violet-300 ring-1 ring-violet-400/30' },
   { to: '/student/messages', label: 'Messages', icon: MessageSquare, tint: 'bg-teal-500/20 text-teal-300 ring-1 ring-teal-400/30' },
 ];
