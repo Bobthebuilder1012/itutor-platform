@@ -173,7 +173,9 @@ function ClassHubContent() {
           description: g.description || g.bio || '',
           capacity: g.max_students ?? 20,
           enrolled: 0,
-          pricePerSession: g.price_per_session ?? null,
+          pricePerSession: billingModel === 'per-month'
+            ? (g.price_monthly ?? g.price_per_session ?? null)
+            : (g.price_per_session ?? null),
           memberServiceFee: g.member_service_fee ?? 0,
           billingModel,
           status: g.status ?? 'DRAFT',
@@ -1497,7 +1499,8 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange }: {
           subject: draft.subject && draft.subject !== '—' ? draft.subject : null,
           form_level: draft.level && draft.level !== '—' ? draft.level : null,
           max_students: draft.capacity > 0 ? draft.capacity : 20,
-          price_per_session: draft.pricePerSession ?? null,
+          price_per_session: draft.billingModel !== 'per-month' ? (draft.pricePerSession ?? null) : null,
+          price_monthly: draft.billingModel === 'per-month' ? (draft.pricePerSession ?? null) : null,
           member_service_fee: draft.memberServiceFee ?? 0,
           pricing_model: pricingModelMap[draft.billingModel] ?? 'FREE',
           status: draft.visibility === 'private' ? 'DRAFT' : 'PUBLISHED',
@@ -1712,7 +1715,7 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange }: {
                 </div>
               </SetField>
               <div className="grid grid-cols-2 gap-3">
-                <SetField label="Price per session (TTD)">
+                <SetField label={draft.billingModel === 'per-month' ? 'Monthly price (TTD)' : 'Price per session (TTD)'}>
                   <input type="number" value={draft.pricePerSession ?? 0} onChange={(e) => d('pricePerSession', Number(e.target.value))}
                     className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm" />
                 </SetField>
