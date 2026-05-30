@@ -198,21 +198,40 @@ function ClassHubContent() {
         });
       }
 
-      // Fetch members via API (uses service client, bypasses RLS)
+      // Fetch members + subscribers in parallel (service client bypasses RLS)
       let rawMembers: any[] = [];
+      let subMap = new Map<string, any>(); // studentId → subscription enrollment
       try {
-        const mRes = await fetch(`/api/groups/${groupId}/members`);
-        if (mRes.ok) {
-          const mJson = await mRes.json();
-          rawMembers = mJson.members ?? [];
+        const [mRes, sRes] = await Promise.all([
+          fetch(`/api/groups/${groupId}/members`),
+          fetch(`/api/groups/${groupId}/subscribers`),
+        ]);
+        if (mRes.ok) rawMembers = (await mRes.json()).members ?? [];
+        if (sRes.ok) {
+          const subs: any[] = (await sRes.json()).subscribers ?? [];
+          for (const s of subs) subMap.set(s.student_id, s);
         }
       } catch { /* leave empty */ }
+
+      const now = new Date();
+      function derivePaymentStatus(sub: any): 'paid' | 'pending' | 'overdue' {
+        if (!sub) return 'pending';
+        const periodEnd = sub.current_period_end ? new Date(sub.current_period_end) : null;
+        if (
+          sub.status === 'ACTIVE' &&
+          sub.payment_status === 'PAID' &&
+          periodEnd && periodEnd > now
+        ) return 'paid';
+        if (sub.status === 'GRACE' || sub.payment_status === 'OVERDUE') return 'overdue';
+        if (sub.status === 'SUSPENDED') return 'overdue';
+        return 'pending';
+      }
 
       setMembers(rawMembers.map((m: any): GroupMember => ({
         id: m.id,
         studentId: m.user_id,
         name: m.profile?.full_name || m.profile?.display_name || 'Student',
-        paymentStatus: 'pending',
+        paymentStatus: derivePaymentStatus(subMap.get(m.user_id)),
         status: m.status ?? 'active',
         joinedAt: m.joined_at ?? null,
       })));
