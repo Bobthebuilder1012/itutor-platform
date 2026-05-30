@@ -168,7 +168,7 @@ function DashboardContent() {
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <Link href="/tutor/settings?section=profile"
+          <Link href="/tutor/settings?section=teaching"
             className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-border bg-background text-sm font-semibold text-ink hover:bg-muted transition">
             <PenLine className="size-3.5" /> Edit profile
           </Link>
