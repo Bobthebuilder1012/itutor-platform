@@ -112,8 +112,8 @@ export async function GET(request: NextRequest) {
           // Tutors always see their own classes
           query = query.or(`tutor_id.eq.${user.id},visibility.eq.public,visibility.is.null`);
         } else {
-          // Students see classes that are not explicitly private
-          query = query.or('visibility.eq.public,visibility.is.null');
+          // Students see public and unlisted groups (not private)
+          query = query.or('visibility.eq.public,visibility.eq.unlisted,visibility.is.null');
         }
       }
 
