@@ -14,7 +14,7 @@
 --
 -- Scope: only CONFIRMED bookings participate. Once a booking is
 -- CANCELLED / DECLINED, it stops blocking the slot. PENDING /
--- COUNTER_PROPOSED bookings don't claim the slot yet — they
+-- COUNTER_PROPOSED bookings don't claim the slot yet â€” they
 -- become CONFIRMED only after acceptance, at which point the
 -- constraint kicks in.
 --
@@ -23,7 +23,6 @@
 -- below to find them and reconcile manually before re-running.
 -- ============================================================
 
-BEGIN;
 
 -- 1. Required extension. Idempotent.
 CREATE EXTENSION IF NOT EXISTS btree_gist;
@@ -47,7 +46,6 @@ ALTER TABLE public.bookings
     AND confirmed_end_at IS NOT NULL
   );
 
-COMMIT;
 
 -- ============================================================
 -- Diagnostic for existing overlaps (run before applying if the

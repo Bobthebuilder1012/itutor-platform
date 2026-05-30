@@ -6,13 +6,12 @@
 -- Safe to run on staging or production at any time.
 -- ============================================================
 
-BEGIN;
 
 -- ============================================================
 -- STEP 1: Add tutor reply columns to ratings
 -- ============================================================
 -- Allows tutors to respond to student reviews.
--- No code reads these yet — wire the UI separately.
+-- No code reads these yet â€” wire the UI separately.
 
 ALTER TABLE IF EXISTS ratings
   ADD COLUMN IF NOT EXISTS tutor_reply text,
@@ -85,14 +84,19 @@ CREATE INDEX IF NOT EXISTS idx_rlt_active_generation
 -- RLS
 ALTER TABLE recurring_lesson_templates ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS rlt_tutor_select ON recurring_lesson_templates;
 CREATE POLICY rlt_tutor_select ON recurring_lesson_templates
   FOR SELECT USING (auth.uid() = tutor_id);
+DROP POLICY IF EXISTS rlt_student_select ON recurring_lesson_templates;
 CREATE POLICY rlt_student_select ON recurring_lesson_templates
   FOR SELECT USING (auth.uid() = student_id);
+DROP POLICY IF EXISTS rlt_parent_select ON recurring_lesson_templates;
 CREATE POLICY rlt_parent_select ON recurring_lesson_templates
   FOR SELECT USING (auth.uid() = parent_id);
+DROP POLICY IF EXISTS rlt_tutor_insert ON recurring_lesson_templates;
 CREATE POLICY rlt_tutor_insert ON recurring_lesson_templates
   FOR INSERT WITH CHECK (auth.uid() = tutor_id);
+DROP POLICY IF EXISTS rlt_tutor_update ON recurring_lesson_templates;
 CREATE POLICY rlt_tutor_update ON recurring_lesson_templates
   FOR UPDATE USING (auth.uid() = tutor_id);
 
@@ -131,4 +135,3 @@ CREATE TRIGGER trg_rlt_updated_at
 -- WHERE relname = 'recurring_lesson_templates';
 -- Expected: relrowsecurity = true
 
-COMMIT;

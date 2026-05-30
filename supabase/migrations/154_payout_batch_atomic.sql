@@ -18,7 +18,6 @@
 -- so the caller can build the CSV against exactly what landed.
 -- ============================================================
 
-BEGIN;
 
 CREATE OR REPLACE FUNCTION public.create_payout_batch_atomic(
   p_generated_by      uuid,
@@ -59,7 +58,7 @@ BEGIN
 
   -- Stamp the ledger lines, but only those still eligible. If a
   -- concurrent export already claimed some of them, those won't
-  -- update and we'll return a smaller stamped list — the caller
+  -- update and we'll return a smaller stamped list â€” the caller
   -- can decide whether the partial result is acceptable.
   WITH stamped AS (
     UPDATE public.payout_ledger
@@ -73,7 +72,7 @@ BEGIN
   SELECT array_agg(id) INTO v_stamped_ids FROM stamped;
 
   IF v_stamped_ids IS NULL OR array_length(v_stamped_ids, 1) IS NULL THEN
-    -- Nothing got stamped — concurrent batch claimed everything.
+    -- Nothing got stamped â€” concurrent batch claimed everything.
     -- Roll the transaction back by raising; the caller surfaces it.
     RAISE EXCEPTION 'no_eligible_lines';
   END IF;
@@ -92,7 +91,6 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.create_payout_batch_atomic(uuid, numeric, int, text, uuid[]) TO service_role;
 
-COMMIT;
 
 -- ============================================================
 -- Verification:

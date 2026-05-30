@@ -4,18 +4,17 @@
 -- Builds the policy layer that consumes the payment primitive
 -- shipped in mig 152 (refundService / apply_refund_side_effects):
 --
--- 1. cancellation_events     – student cancellation history, 30d rolling
--- 2. tutor_strikes           – tutor reliability strikes, 90d rolling
--- 3. reliability_warnings    – admin-issued warnings (auto-flagged at threshold)
--- 4. noshow_claims           – student no-show dispute claims with 12h tutor response window
--- 5. ratings (extended)      – system-issued auto-ratings (1*, 2*) with appeal workflow
--- 6. SQL helpers             – current_student_cancel_state / current_tutor_strike_state
+-- 1. cancellation_events     â€“ student cancellation history, 30d rolling
+-- 2. tutor_strikes           â€“ tutor reliability strikes, 90d rolling
+-- 3. reliability_warnings    â€“ admin-issued warnings (auto-flagged at threshold)
+-- 4. noshow_claims           â€“ student no-show dispute claims with 12h tutor response window
+-- 5. ratings (extended)      â€“ system-issued auto-ratings (1*, 2*) with appeal workflow
+-- 6. SQL helpers             â€“ current_student_cancel_state / current_tutor_strike_state
 --
 -- Counters are computed live via SQL functions rather than denormalised
 -- on profiles so we never serve a stale strike count after expiry.
 -- =====================================================
 
-BEGIN;
 
 -- =====================================================
 -- 1. cancellation_events
@@ -201,7 +200,7 @@ CREATE POLICY "Service role full access noshow_claims"
   USING (true) WITH CHECK (true);
 
 -- =====================================================
--- 5. ratings — system-issued + appeal columns
+-- 5. ratings â€” system-issued + appeal columns
 --    System ratings live in the same table so they fold into
 --    the same average computation used by /api/public/tutors/:id/reviews.
 -- =====================================================
@@ -287,7 +286,7 @@ $$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
 
 GRANT EXECUTE ON FUNCTION public.current_tutor_strike_state(uuid) TO authenticated, service_role;
 
--- Auto-flag a warning candidate (idempotent — no-op if one is already open).
+-- Auto-flag a warning candidate (idempotent â€” no-op if one is already open).
 CREATE OR REPLACE FUNCTION public.flag_reliability_warning(
   p_user_id      uuid,
   p_user_role    text,
@@ -336,4 +335,3 @@ CREATE TRIGGER noshow_claims_set_updated_at
   BEFORE UPDATE ON public.noshow_claims
   FOR EACH ROW EXECUTE FUNCTION public.tg_noshow_claims_set_updated_at();
 
-COMMIT;

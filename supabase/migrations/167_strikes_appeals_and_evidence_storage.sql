@@ -3,16 +3,15 @@
 -- =====================================================
 -- Extends the reliability layer shipped in mig 156:
 --
--- 1. student_strikes        – mirror of tutor_strikes, used for
+-- 1. student_strikes        â€“ mirror of tutor_strikes, used for
 --                             confirmed student no-show claims.
--- 2. tutor_strikes appeal   – appeal columns mirroring ratings.
--- 3. student_strikes appeal – appeal columns.
+-- 2. tutor_strikes appeal   â€“ appeal columns mirroring ratings.
+-- 3. student_strikes appeal â€“ appeal columns.
 -- 4. SQL helper current_student_strike_state.
--- 5. noshow-evidence bucket – private storage for claim evidence
+-- 5. noshow-evidence bucket â€“ private storage for claim evidence
 --                             screenshots + meeting reports + PDFs.
 -- =====================================================
 
-BEGIN;
 
 -- =====================================================
 -- 1. student_strikes
@@ -147,4 +146,3 @@ USING (
   AND (storage.foldername(name))[1] = auth.uid()::text
 );
 
-COMMIT;

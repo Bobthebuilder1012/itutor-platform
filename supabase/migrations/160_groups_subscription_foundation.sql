@@ -7,11 +7,10 @@
 -- so this is safe to run on any DB state.
 -- ============================================================
 
-BEGIN;
 
--- ─────────────────────────────────────────────────────────────
--- 1. EXTEND groups — price + subscription columns
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- 1. EXTEND groups â€” price + subscription columns
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 ALTER TABLE public.groups
   ADD COLUMN IF NOT EXISTS difficulty       text CHECK (difficulty IN ('BEGINNER', 'INTERMEDIATE', 'ADVANCED')),
@@ -38,7 +37,7 @@ ALTER TABLE public.groups
   ADD COLUMN IF NOT EXISTS availability_window    text,
   ADD COLUMN IF NOT EXISTS media_gallery          jsonb DEFAULT '[]'::jsonb;
 
--- columns from audit migrations 128–129
+-- columns from audit migrations 128â€“129
 ALTER TABLE public.groups
   ADD COLUMN IF NOT EXISTS visibility                 text NOT NULL DEFAULT 'public'
     CHECK (visibility IN ('public', 'unlisted', 'private')),
@@ -57,9 +56,9 @@ CREATE INDEX IF NOT EXISTS idx_groups_form_level     ON public.groups(form_level
 CREATE INDEX IF NOT EXISTS idx_groups_visibility     ON public.groups(visibility) WHERE archived_at IS NULL;
 
 
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 -- 2. CREATE group_enrollments (base schema from 094)
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS public.group_enrollments (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -127,11 +126,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_group_enrollments_student_group_active_subs
 -- RLS on group_enrollments
 ALTER TABLE public.group_enrollments ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "student_read_own_enrollments"
+DROP POLICY IF EXISTS "student_read_own_enrollments" ON public.group_enrollments;
+CREATE POLICY "student_read_own_enrollments"
   ON public.group_enrollments FOR SELECT TO authenticated
   USING (student_id = auth.uid());
 
-CREATE POLICY IF NOT EXISTS "tutor_read_group_enrollments"
+DROP POLICY IF EXISTS "tutor_read_group_enrollments" ON public.group_enrollments;
+CREATE POLICY "tutor_read_group_enrollments"
   ON public.group_enrollments FOR SELECT TO authenticated
   USING (
     EXISTS (
@@ -143,9 +144,9 @@ CREATE POLICY IF NOT EXISTS "tutor_read_group_enrollments"
 GRANT ALL ON public.group_enrollments TO service_role;
 
 
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 -- 3. CREATE group_waitlist_entries (base + lifecycle columns)
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS public.group_waitlist_entries (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -170,9 +171,9 @@ CREATE INDEX IF NOT EXISTS idx_gwl_status_offer_expires      ON public.group_wai
 GRANT ALL ON public.group_waitlist_entries TO service_role;
 
 
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 -- 4. CREATE subscription_payments
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS public.subscription_payments (
   id                          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -217,20 +218,25 @@ CREATE INDEX IF NOT EXISTS idx_sp_pending_expired     ON public.subscription_pay
   WHERE status = 'PENDING';
 
 -- FK from group_enrollments to subscription_payments
-ALTER TABLE public.group_enrollments
-  ADD CONSTRAINT IF NOT EXISTS fk_ge_activated_sp
-  FOREIGN KEY (activated_subscription_payment_id)
-  REFERENCES public.subscription_payments(id)
-  ON DELETE SET NULL
-  DEFERRABLE INITIALLY DEFERRED;
+DO $$ BEGIN
+  ALTER TABLE public.group_enrollments
+    ADD CONSTRAINT fk_ge_activated_sp
+    FOREIGN KEY (activated_subscription_payment_id)
+    REFERENCES public.subscription_payments(id)
+    ON DELETE SET NULL
+    DEFERRABLE INITIALLY DEFERRED;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 ALTER TABLE public.subscription_payments ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "student_read_own_subscription_payments"
+DROP POLICY IF EXISTS "student_read_own_subscription_payments" ON public.subscription_payments;
+CREATE POLICY "student_read_own_subscription_payments"
   ON public.subscription_payments FOR SELECT TO authenticated
   USING (student_id = auth.uid());
 
-CREATE POLICY IF NOT EXISTS "tutor_read_group_subscription_payments"
+DROP POLICY IF EXISTS "tutor_read_group_subscription_payments" ON public.subscription_payments;
+CREATE POLICY "tutor_read_group_subscription_payments"
   ON public.subscription_payments FOR SELECT TO authenticated
   USING (
     EXISTS (
@@ -242,9 +248,9 @@ CREATE POLICY IF NOT EXISTS "tutor_read_group_subscription_payments"
 GRANT ALL ON public.subscription_payments TO service_role;
 
 
--- ─────────────────────────────────────────────────────────────
--- 5. EXTEND payout_ledger — subscription payout support
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- 5. EXTEND payout_ledger â€” subscription payout support
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 ALTER TABLE public.payout_ledger
   ALTER COLUMN session_id DROP NOT NULL;
@@ -258,9 +264,9 @@ CREATE INDEX IF NOT EXISTS idx_payout_ledger_subscription_payment
   WHERE subscription_payment_id IS NOT NULL;
 
 
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 -- 6. EXTEND lunipay_webhook_events
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 ALTER TABLE public.lunipay_webhook_events
   ADD COLUMN IF NOT EXISTS subscription_payment_id uuid
@@ -271,9 +277,9 @@ ALTER TABLE public.lunipay_webhook_events
   ADD COLUMN IF NOT EXISTS processed_at timestamptz;
 
 
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 -- 7. CREATE group_removals
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS public.group_removals (
   id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -300,9 +306,9 @@ ALTER TABLE public.group_removals ENABLE ROW LEVEL SECURITY;
 GRANT ALL ON public.group_removals TO service_role;
 
 
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 -- 8. CREATE subscription_refunds
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS public.subscription_refunds (
   id                        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -322,9 +328,9 @@ ALTER TABLE public.subscription_refunds ENABLE ROW LEVEL SECURITY;
 GRANT ALL ON public.subscription_refunds TO service_role;
 
 
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 -- 9. CREATE subscription_payment_exceptions
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS public.subscription_payment_exceptions (
   id                        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -352,9 +358,9 @@ ALTER TABLE public.subscription_payment_exceptions ENABLE ROW LEVEL SECURITY;
 GRANT ALL ON public.subscription_payment_exceptions TO service_role;
 
 
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 -- 10. RPCs
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE OR REPLACE FUNCTION public.activate_subscription(p_payload jsonb)
 RETURNS jsonb
@@ -637,4 +643,3 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.expire_waitlist_offers() TO service_role;
 
-COMMIT;

@@ -1,5 +1,5 @@
 -- ============================================================
--- MIGRATION 129: LEDGER CONSOLIDATION (OPTION A) — CORRECTED
+-- MIGRATION 129: LEDGER CONSOLIDATION (OPTION A) â€” CORRECTED
 -- iTutor Database
 -- ============================================================
 --
@@ -9,9 +9,9 @@
 -- so that setting sessions.charged_at auto-creates ledger rows.
 --
 -- This version is matched against the ACTUAL schemas:
---   tutor_earnings  → mig 001 lines 215-267
---   payout_ledger   → mig 020 lines 78-87
---   tutor_balances  → mig 001 lines 272-277
+--   tutor_earnings  â†’ mig 001 lines 215-267
+--   payout_ledger   â†’ mig 020 lines 78-87
+--   tutor_balances  â†’ mig 001 lines 272-277
 --
 -- ACTUAL SCHEMAS (for reference):
 --
@@ -20,7 +20,7 @@
 --   created_at timestamptz NOT NULL DEFAULT now(),
 --   tutor_id uuid NOT NULL REFERENCES profiles(id),
 --   session_id uuid NOT NULL REFERENCES sessions(id),
---   payment_id uuid NOT NULL REFERENCES payments(id),  ← required!
+--   payment_id uuid NOT NULL REFERENCES payments(id),  â† required!
 --   gross_amount_ttd numeric(12,2) NOT NULL CHECK (> 0),
 --   tutor_share_ttd numeric(12,2) NOT NULL CHECK (> 0),
 --   commission_ttd numeric(12,2) NOT NULL CHECK (>= 0),
@@ -37,19 +37,18 @@
 --     CHECK IN ('owed', 'release_ready', 'released', 'reversed'),
 --   created_at timestamptz DEFAULT now(),
 --   updated_at timestamptz DEFAULT now()
---   — NOTE: no 'type' column exists
+--   â€” NOTE: no 'type' column exists
 -- )
 --
 -- tutor_balances (
---   tutor_id uuid PK REFERENCES profiles(id),  ← PK is tutor_id, no separate id
+--   tutor_id uuid PK REFERENCES profiles(id),  â† PK is tutor_id, no separate id
 --   available_ttd numeric(12,2) NOT NULL DEFAULT 0 CHECK (>= 0),
 --   pending_ttd numeric(12,2) NOT NULL DEFAULT 0 CHECK (>= 0),
 --   last_updated timestamptz NOT NULL DEFAULT now()
---   — NOTE: column is last_updated, not updated_at
+--   â€” NOTE: column is last_updated, not updated_at
 -- )
 -- ============================================================
 
-BEGIN;
 
 -- ============================================================
 -- STEP 1: Drop commission_ledger
@@ -60,20 +59,20 @@ BEGIN;
 DROP TABLE IF EXISTS commission_ledger CASCADE;
 
 -- ============================================================
--- STEP 2: Create the charge → ledger trigger (corrected)
+-- STEP 2: Create the charge â†’ ledger trigger (corrected)
 -- ============================================================
--- When sessions.charged_at transitions from NULL → a value:
+-- When sessions.charged_at transitions from NULL â†’ a value:
 --   1. Look up the payment_id from the payments table
 --   2. Create a tutor_earnings row (EARNED status)
 --   3. Create a payout_ledger row (owed status)
 --   4. Upsert tutor_balances (increment pending_ttd + last_updated)
 --
--- Field mapping from sessions → ledger tables:
---   sessions.charge_amount_ttd   → tutor_earnings.gross_amount_ttd
---   sessions.payout_amount_ttd   → tutor_earnings.tutor_share_ttd
---   sessions.platform_fee_ttd    → tutor_earnings.commission_ttd
---   sessions.payout_amount_ttd   → payout_ledger.amount_ttd
---   payment_id                   → looked up from payments WHERE booking_id matches
+-- Field mapping from sessions â†’ ledger tables:
+--   sessions.charge_amount_ttd   â†’ tutor_earnings.gross_amount_ttd
+--   sessions.payout_amount_ttd   â†’ tutor_earnings.tutor_share_ttd
+--   sessions.platform_fee_ttd    â†’ tutor_earnings.commission_ttd
+--   sessions.payout_amount_ttd   â†’ payout_ledger.amount_ttd
+--   payment_id                   â†’ looked up from payments WHERE booking_id matches
 
 CREATE OR REPLACE FUNCTION fn_create_earning_on_charge()
 RETURNS TRIGGER AS $$
@@ -111,10 +110,10 @@ BEGIN
     END IF;
 
     -- 1. tutor_earnings row
-    -- Maps: gross_amount_ttd ← charge_amount_ttd
-    --       tutor_share_ttd  ← payout_amount_ttd
-    --       commission_ttd   ← platform_fee_ttd
-    --       status           ← 'EARNED' (matches CHECK constraint)
+    -- Maps: gross_amount_ttd â† charge_amount_ttd
+    --       tutor_share_ttd  â† payout_amount_ttd
+    --       commission_ttd   â† platform_fee_ttd
+    --       status           â† 'EARNED' (matches CHECK constraint)
     INSERT INTO tutor_earnings (
       id,
       tutor_id,
@@ -137,11 +136,11 @@ BEGIN
       'EARNED'
     )
     ON CONFLICT (payment_id) DO NOTHING;
-    -- payment_id has UNIQUE constraint — if we somehow double-fire, skip silently
+    -- payment_id has UNIQUE constraint â€” if we somehow double-fire, skip silently
 
     -- 2. payout_ledger row
-    -- Maps: amount_ttd ← payout_amount_ttd (what the tutor is owed)
-    --       status     ← 'owed' (matches CHECK constraint, is also the DEFAULT)
+    -- Maps: amount_ttd â† payout_amount_ttd (what the tutor is owed)
+    --       status     â† 'owed' (matches CHECK constraint, is also the DEFAULT)
     -- NOTE: no 'type' column exists on payout_ledger
     INSERT INTO payout_ledger (
       id,
@@ -159,7 +158,7 @@ BEGIN
       'owed'
     )
     ON CONFLICT (session_id) DO NOTHING;
-    -- session_id has UNIQUE constraint — skip if already exists
+    -- session_id has UNIQUE constraint â€” skip if already exists
 
     -- 3. Upsert tutor_balances
     -- PK is tutor_id (no separate id column)
@@ -227,7 +226,7 @@ CREATE TRIGGER trg_create_earning_on_charge
 -- WHERE tgname = 'trg_create_earning_on_charge';
 -- Expected: 1 row, on sessions
 
--- Dry-run test (DO NOT run on production data — use a test session):
+-- Dry-run test (DO NOT run on production data â€” use a test session):
 -- To verify the trigger works, create a test payment + session,
 -- then UPDATE sessions SET charged_at = now() WHERE id = <test_session_id>;
 -- Then check:
@@ -235,4 +234,3 @@ CREATE TRIGGER trg_create_earning_on_charge
 --   SELECT * FROM payout_ledger WHERE session_id = '<test_session_id>';
 --   SELECT * FROM tutor_balances WHERE tutor_id = '<test_tutor_id>';
 
-COMMIT;

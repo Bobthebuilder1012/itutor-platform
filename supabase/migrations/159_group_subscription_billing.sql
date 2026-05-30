@@ -8,11 +8,10 @@
 -- Fixes audit gaps #4, #5, #7, #12 from the groups audit.
 -- ============================================================
 
-BEGIN;
 
--- ─────────────────────────────────────────────────────────────
--- 1. EXTEND group_enrollments — billing cycle columns
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- 1. EXTEND group_enrollments â€” billing cycle columns
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 ALTER TABLE public.group_enrollments
   ADD COLUMN IF NOT EXISTS plan_price_ttd                 numeric(12,2),
@@ -84,9 +83,9 @@ CREATE INDEX IF NOT EXISTS idx_ge_subscription_access
   WHERE enrollment_type = 'SUBSCRIPTION';
 
 
--- ─────────────────────────────────────────────────────────────
--- 2. EXTEND group_members — additional statuses
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- 2. EXTEND group_members â€” additional statuses
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 ALTER TABLE public.group_members
   DROP CONSTRAINT IF EXISTS group_members_status_check;
@@ -95,9 +94,9 @@ ALTER TABLE public.group_members
   CHECK (status IN ('pending', 'approved', 'denied', 'invited', 'removed', 'suspended', 'banned'));
 
 
--- ─────────────────────────────────────────────────────────────
--- 3. EXTEND group_waitlist_entries — offer lifecycle columns
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- 3. EXTEND group_waitlist_entries â€” offer lifecycle columns
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 ALTER TABLE public.group_waitlist_entries
   ADD COLUMN IF NOT EXISTS status        text NOT NULL DEFAULT 'waiting'
@@ -112,11 +111,11 @@ CREATE INDEX IF NOT EXISTS idx_gwl_status_offer_expires
   WHERE status = 'offered';
 
 
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 -- 4. CREATE subscription_payments
 -- Standalone payment table for group subscription charges.
 -- Does NOT reference the bookings-centric `payments` table.
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS public.subscription_payments (
   id                        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -171,10 +170,10 @@ ALTER TABLE public.group_enrollments
   DEFERRABLE INITIALLY DEFERRED;
 
 
--- ─────────────────────────────────────────────────────────────
--- 5. EXTEND payout_ledger — support subscription payouts
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- 5. EXTEND payout_ledger â€” support subscription payouts
 -- session_id made optional; subscription_payment_id added.
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 ALTER TABLE public.payout_ledger
   ALTER COLUMN session_id DROP NOT NULL;
@@ -195,9 +194,9 @@ CREATE INDEX IF NOT EXISTS idx_payout_ledger_subscription_payment
   WHERE subscription_payment_id IS NOT NULL;
 
 
--- ─────────────────────────────────────────────────────────────
--- 6. EXTEND lunipay_webhook_events — subscription tracking
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- 6. EXTEND lunipay_webhook_events â€” subscription tracking
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 ALTER TABLE public.lunipay_webhook_events
   ADD COLUMN IF NOT EXISTS subscription_payment_id uuid
@@ -212,9 +211,9 @@ CREATE INDEX IF NOT EXISTS idx_lwhe_subscription_payment
   WHERE subscription_payment_id IS NOT NULL;
 
 
--- ─────────────────────────────────────────────────────────────
--- 7. CREATE group_removals — tutor removal audit log
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- 7. CREATE group_removals â€” tutor removal audit log
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS public.group_removals (
   id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -246,9 +245,9 @@ CREATE INDEX IF NOT EXISTS idx_group_removals_student
   ON public.group_removals (student_id);
 
 
--- ─────────────────────────────────────────────────────────────
--- 8. CREATE subscription_refunds — refund attempt tracking
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- 8. CREATE subscription_refunds â€” refund attempt tracking
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS public.subscription_refunds (
   id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -270,9 +269,9 @@ CREATE INDEX IF NOT EXISTS idx_subscription_refunds_enrollment
   ON public.subscription_refunds (enrollment_id);
 
 
--- ─────────────────────────────────────────────────────────────
--- 9. CREATE subscription_payment_exceptions — admin resolution queue
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- 9. CREATE subscription_payment_exceptions â€” admin resolution queue
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE TABLE IF NOT EXISTS public.subscription_payment_exceptions (
   id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -303,9 +302,9 @@ CREATE INDEX IF NOT EXISTS idx_spe_enrollment
   ON public.subscription_payment_exceptions (enrollment_id);
 
 
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 -- 10. RLS POLICIES
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 ALTER TABLE public.subscription_payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.group_removals ENABLE ROW LEVEL SECURITY;
@@ -369,13 +368,13 @@ GRANT ALL ON public.subscription_refunds TO service_role;
 GRANT ALL ON public.subscription_payment_exceptions TO service_role;
 
 
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 -- 11. RPC: activate_subscription
 -- Called by webhook/finalize on successful payment.
 -- Atomically updates enrollment, creates subscription_payments row,
 -- creates payout_ledger row, updates tutor_balances.
 -- Idempotent on activated_subscription_payment_id.
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE OR REPLACE FUNCTION public.activate_subscription(p_payload jsonb)
 RETURNS jsonb
@@ -473,11 +472,11 @@ $$;
 GRANT EXECUTE ON FUNCTION public.activate_subscription(jsonb) TO service_role;
 
 
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 -- 12. RPC: check_subscription_access
 -- Returns access state for the group session page.
 -- Access requires PAID + valid period.
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE OR REPLACE FUNCTION public.check_subscription_access(
   p_student_id uuid,
@@ -536,12 +535,12 @@ GRANT EXECUTE ON FUNCTION public.check_subscription_access(uuid, uuid) TO authen
 GRANT EXECUTE ON FUNCTION public.check_subscription_access(uuid, uuid) TO service_role;
 
 
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 -- 13. RPC: process_subscription_removal
 -- Cancels enrollment, updates group_members, marks removal resolved.
 -- Called after a successful refund for no-cause removals,
 -- or by admin for with-cause overturns.
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE OR REPLACE FUNCTION public.process_subscription_removal(p_payload jsonb)
 RETURNS jsonb
@@ -602,11 +601,11 @@ $$;
 GRANT EXECUTE ON FUNCTION public.process_subscription_removal(jsonb) TO service_role;
 
 
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 -- 14. RPC: process_waitlist_offer
 -- Transactionally promotes the next waiting student to offered.
 -- Caller sends notifications after this returns.
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE OR REPLACE FUNCTION public.process_waitlist_offer(p_group_id uuid)
 RETURNS jsonb
@@ -674,11 +673,11 @@ $$;
 GRANT EXECUTE ON FUNCTION public.process_waitlist_offer(uuid) TO service_role;
 
 
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 -- 15. RPC: expire_waitlist_offers
 -- Marks expired offered entries and returns groups needing re-promotion.
 -- Called by cron.
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 CREATE OR REPLACE FUNCTION public.expire_waitlist_offers()
 RETURNS jsonb
@@ -708,9 +707,9 @@ $$;
 GRANT EXECUTE ON FUNCTION public.expire_waitlist_offers() TO service_role;
 
 
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 -- 16. VERIFY migration
--- ─────────────────────────────────────────────────────────────
+-- â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 DO $$
 BEGIN
@@ -748,4 +747,3 @@ BEGIN
   RAISE NOTICE 'Migration 159 verified successfully.';
 END $$;
 
-COMMIT;
