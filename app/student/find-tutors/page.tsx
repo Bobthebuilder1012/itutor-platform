@@ -11,6 +11,7 @@ import VerifiedBadge from '@/components/VerifiedBadge';
 import UserAvatar from '@/components/UserAvatar';
 import { cn } from '@/lib/utils';
 import { Search, Star, Heart, Calendar, Clock, SlidersHorizontal, Users, GraduationCap, Flame, X, Check, Video } from 'lucide-react';
+import { fmtTTD } from '@/lib/utils/formatCurrency';
 
 type Tutor = {
   id: string;
@@ -452,19 +453,37 @@ export default function FindTutorsPage() {
     }
     setJoiningLesson(true);
     try {
-      const res = await fetch(`/api/groups/${joinLesson.id}/members`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to join lesson');
-      setEnrolledLessonIds((s) => new Set([...s, joinLesson.id]));
-      setJoinLesson(null);
-      const status = data.member?.status;
-      if (status === 'pending_approval' || status === 'pending') {
-        alert('Your join request has been sent. The tutor will approve it shortly.');
-        router.push('/student/my-lessons');
+      if (joinLesson.monthlyPrice > 0) {
+        // Paid group — go through subscribe → LuniPay checkout
+        const res = await fetch(`/api/groups/${joinLesson.id}/subscribe`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        const data = await res.json();
+        if (data.waitlisted) {
+          setJoinLesson(null);
+          alert(`You've been added to the waitlist (position #${data.position ?? '?'}). We'll notify you when a spot opens.`);
+          return;
+        }
+        if (!res.ok) throw new Error(data.error || 'Failed to start checkout');
+        if (data.checkout_url) {
+          window.location.href = data.checkout_url;
+          return;
+        }
       } else {
+        // Free group — join directly
+        const res = await fetch(`/api/groups/${joinLesson.id}/members`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to join lesson');
+        setEnrolledLessonIds((s) => new Set([...s, joinLesson.id]));
+        setJoinLesson(null);
+        const status = data.member?.status;
+        if (status === 'pending_approval' || status === 'pending') {
+          alert('Your join request has been sent. The tutor will approve it shortly.');
+        }
         router.push('/student/my-lessons');
       }
     } catch (err: any) {
@@ -840,7 +859,7 @@ export default function FindTutorsPage() {
                         <div>
                           {l.monthlyPrice > 0 ? (
                             <>
-                              <span className="text-lg font-bold text-ink">TT${l.monthlyPrice}</span>
+                              <span className="text-lg font-bold text-ink">{fmtTTD(l.monthlyPrice)}</span>
                               <span className="text-xs text-muted-foreground">/month</span>
                             </>
                           ) : (
@@ -979,7 +998,7 @@ export default function FindTutorsPage() {
                   { label: 'Time', value: joinLesson.time, show: !!joinLesson.time },
                   { label: 'Session length', value: joinLesson.sessionLength ? formatDuration(joinLesson.sessionLength) : null, show: !!joinLesson.sessionLength },
                   { label: 'Enrolled', value: joinLesson.seats.total !== null ? `${joinLesson.seats.taken} / ${joinLesson.seats.total}` : `${joinLesson.seats.taken} students`, show: true },
-                  { label: 'Price', value: joinLesson.monthlyPrice > 0 ? `TT$${joinLesson.monthlyPrice}/month` : 'Free', show: true },
+                  { label: 'Price', value: joinLesson.monthlyPrice > 0 ? `${fmtTTD(joinLesson.monthlyPrice)}/month` : 'Free', show: true },
                 ].filter(r => r.show && r.value).map(({ label, value }) => (
                   <div key={label} className="flex justify-between">
                     <span className="text-muted-foreground">{label}</span>
@@ -1004,7 +1023,7 @@ export default function FindTutorsPage() {
                   className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-brand text-white font-semibold hover:bg-brand-deep transition disabled:opacity-60"
                 >
                   <Check className="size-4" />
-                  {joiningLesson ? 'Enrolling…' : `Confirm — TT$${joinLesson.monthlyPrice}/month`}
+                  {joiningLesson ? 'Enrolling…' : joinLesson.monthlyPrice > 0 ? `Subscribe — ${fmtTTD(joinLesson.monthlyPrice)}/month` : 'Join Free'}
                 </button>
               )}
             </div>
