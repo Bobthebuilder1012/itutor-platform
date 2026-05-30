@@ -217,11 +217,11 @@ function ClassHubContent() {
       function derivePaymentStatus(sub: any): 'paid' | 'pending' | 'overdue' {
         if (!sub) return 'pending';
         const periodEnd = sub.current_period_end ? new Date(sub.current_period_end) : null;
-        if (
-          sub.status === 'ACTIVE' &&
-          sub.payment_status === 'PAID' &&
-          periodEnd && periodEnd > now
-        ) return 'paid';
+        // Active subscription within a current paid period → paid.
+        // Use status='ACTIVE' as the primary signal; payment_status is a secondary
+        // check but we don't gate on it because activate_subscription sets both
+        // atomically and payment_status can be stale if DB state drifts.
+        if (sub.status === 'ACTIVE' && periodEnd && periodEnd > now) return 'paid';
         if (sub.status === 'GRACE' || sub.payment_status === 'OVERDUE') return 'overdue';
         if (sub.status === 'SUSPENDED') return 'overdue';
         return 'pending';
