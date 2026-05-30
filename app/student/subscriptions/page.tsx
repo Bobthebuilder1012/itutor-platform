@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   CreditCard, CheckCircle, AlertCircle, Ban, X, Loader2,
-  RefreshCw, CalendarCheck2, Play, Sparkles, TrendingUp, Clock, Star,
+  RefreshCw, CalendarCheck2, Play, Sparkles, TrendingUp, Clock, Star, LifeBuoy,
 } from 'lucide-react';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { cn } from '@/lib/utils';
@@ -34,9 +34,9 @@ type Subscription = {
   } | null;
 };
 
-function fmtDate(d: string | null, opts?: Intl.DateTimeFormatOptions) {
+function fmtDate(d: string | null) {
   if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-TT', opts ?? { day: 'numeric', month: 'short', year: 'numeric' });
+  return new Date(d).toLocaleDateString('en-TT', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 function fmtShort(d: string | null) {
@@ -44,16 +44,22 @@ function fmtShort(d: string | null) {
   return new Date(d).toLocaleDateString('en-TT', { day: 'numeric', month: 'short' });
 }
 
-function daysLeft(d: string | null): number {
-  if (!d) return 0;
-  const diff = new Date(d).getTime() - Date.now();
-  return Math.max(0, Math.ceil(diff / 86400000));
+function fmtShortYear(d: string | null) {
+  if (!d) return '—';
+  const dt = new Date(d);
+  return `${dt.toLocaleDateString('en-TT', { day: 'numeric', month: 'short' })} ${dt.getFullYear()}`;
 }
 
-function cycleProgress(start: string | null, end: string | null): number {
-  if (!start || !end) return 0;
-  const s = new Date(start).getTime();
-  const e = new Date(end).getTime();
+function daysLeft(d: string | null): number {
+  if (!d) return 0;
+  return Math.max(0, Math.ceil((new Date(d).getTime() - Date.now()) / 86400000));
+}
+
+// Progress is measured from last_paid_at → current_period_end
+function cycleProgress(lastPaid: string | null, periodEnd: string | null): number {
+  if (!lastPaid || !periodEnd) return 0;
+  const s = new Date(lastPaid).getTime();
+  const e = new Date(periodEnd).getTime();
   const now = Date.now();
   if (now <= s) return 0;
   if (now >= e) return 100;
@@ -61,10 +67,7 @@ function cycleProgress(start: string | null, end: string | null): number {
 }
 
 function CancelModal({ sub, onClose, onConfirm, loading }: {
-  sub: Subscription;
-  onClose: () => void;
-  onConfirm: () => void;
-  loading: boolean;
+  sub: Subscription; onClose: () => void; onConfirm: () => void; loading: boolean;
 }) {
   const groupName = sub.group?.name ?? 'this class';
   const accessUntil = fmtDate(sub.current_period_end);
@@ -86,7 +89,7 @@ function CancelModal({ sub, onClose, onConfirm, loading }: {
             <ul className="space-y-2 text-muted-foreground">
               <li className="flex items-start gap-2">
                 <CheckCircle className="size-4 text-brand shrink-0 mt-0.5" />
-                <span>You keep <strong className="text-ink">full access</strong> until <strong className="text-ink">{accessUntil}</strong> — the end of your current billing month.</span>
+                <span>You keep <strong className="text-ink">full access</strong> until <strong className="text-ink">{accessUntil}</strong>.</span>
               </li>
               <li className="flex items-start gap-2">
                 <CheckCircle className="size-4 text-brand shrink-0 mt-0.5" />
@@ -119,195 +122,183 @@ function CancelModal({ sub, onClose, onConfirm, loading }: {
 }
 
 function SubscriptionCard({ sub, onCancel, onUndo, actionLoading }: {
-  sub: Subscription;
-  onCancel: () => void;
-  onUndo: () => void;
-  actionLoading: string | null;
+  sub: Subscription; onCancel: () => void; onUndo: () => void; actionLoading: string | null;
 }) {
   const group = sub.group;
   const tutorName = group?.tutor?.full_name ?? 'Tutor';
   const initial = (group?.name?.[0] ?? '?').toUpperCase();
 
-  const isActive = sub.status === 'ACTIVE' && !sub.cancel_at_period_end;
-  const isGrace = sub.status === 'GRACE';
+  const isActive    = sub.status === 'ACTIVE' && !sub.cancel_at_period_end;
+  const isGrace     = sub.status === 'GRACE';
   const isSuspended = sub.status === 'SUSPENDED';
-  const isPending = sub.status === 'PENDING_PAYMENT';
-  const isCancelling = sub.cancel_at_period_end;
-  const isActivating = sub.status === 'ACTIVATION_FAILED';
+  const isPending   = sub.status === 'PENDING_PAYMENT';
+  const isCancelling= sub.cancel_at_period_end;
+  const isActivating= sub.status === 'ACTIVATION_FAILED';
   const isCancelled = sub.status === 'CANCELLED';
 
-  const progress = cycleProgress(sub.current_period_start, sub.current_period_end);
+  // Billing cycle starts from last paid date
+  const progress  = cycleProgress(sub.last_paid_at, sub.current_period_end);
   const remaining = daysLeft(sub.current_period_end);
 
   return (
     <div className="rounded-2xl border border-border bg-background overflow-hidden">
       {/* Alert banners */}
       {isGrace && (
-        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 text-xs text-amber-800 flex items-center gap-2">
-          <AlertCircle className="size-3.5 shrink-0" />
+        <div className="bg-amber-50 border-b border-amber-200 px-5 py-3 text-sm text-amber-800 flex items-center gap-2">
+          <AlertCircle className="size-4 shrink-0" />
           Payment overdue — grace period ends {fmtDate(sub.grace_period_ends_at)}.
         </div>
       )}
       {isSuspended && (
-        <div className="bg-red-50 border-b border-red-200 px-4 py-2.5 text-xs text-red-800 flex items-center gap-2">
-          <Ban className="size-3.5 shrink-0" />
+        <div className="bg-red-50 border-b border-red-200 px-5 py-3 text-sm text-red-800 flex items-center gap-2">
+          <Ban className="size-4 shrink-0" />
           Access suspended due to non-payment.
         </div>
       )}
       {isActivating && (
-        <div className="bg-blue-50 border-b border-blue-200 px-4 py-2.5 text-xs text-blue-800 flex items-center gap-2">
-          <Loader2 className="size-3.5 shrink-0 animate-spin" />
+        <div className="bg-blue-50 border-b border-blue-200 px-5 py-3 text-sm text-blue-800 flex items-center gap-2">
+          <Loader2 className="size-4 shrink-0 animate-spin" />
           Payment received — activation pending. Do not pay again.
         </div>
       )}
       {isCancelling && (
-        <div className="bg-zinc-50 border-b border-zinc-200 px-4 py-2.5 text-xs text-zinc-700 flex items-center gap-2">
-          <X className="size-3.5 shrink-0" />
+        <div className="bg-zinc-50 border-b border-zinc-200 px-5 py-3 text-sm text-zinc-700 flex items-center gap-2">
+          <X className="size-4 shrink-0" />
           Cancels on {fmtDate(sub.current_period_end)} — access remains until then.
         </div>
       )}
 
-      <div className="p-5 space-y-5">
+      <div className="p-6 space-y-5">
         {/* Header row */}
         <div className="flex items-start gap-4">
-          {/* Avatar */}
           <div className="relative shrink-0">
-            <div className="size-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-400 grid place-items-center text-white font-bold text-xl">
+            <div className="size-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-400 grid place-items-center text-white font-bold text-2xl">
               {initial}
             </div>
             {(isActive || isGrace) && (
-              <div className="absolute -bottom-1 -right-1 size-5 rounded-full bg-green-500 border-2 border-background grid place-items-center">
-                <CheckCircle className="size-3 text-white" strokeWidth={3} />
+              <div className="absolute -bottom-1 -right-1 size-6 rounded-full bg-green-500 border-2 border-background grid place-items-center">
+                <CheckCircle className="size-3.5 text-white" strokeWidth={3} />
               </div>
             )}
           </div>
 
-          {/* Title block */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-bold text-ink text-base leading-tight">{group?.name ?? 'Unknown Group'}</span>
-              {/* Status pill */}
+              <span className="font-bold text-ink text-lg leading-tight">{group?.name ?? 'Unknown Group'}</span>
               {sub.status === 'ACTIVE' && !isCancelling && (
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full border border-green-300 text-green-700 bg-green-50">
-                  <span className="size-1.5 rounded-full bg-green-500 inline-block" />
-                  Active
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full border border-green-300 text-green-700 bg-green-50">
+                  <span className="size-1.5 rounded-full bg-green-500 inline-block" /> Active
                 </span>
               )}
-              {isGrace && <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-700">Grace period</span>}
-              {isSuspended && <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-red-100 text-red-700">Suspended</span>}
-              {isCancelling && <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-zinc-100 text-zinc-600">Cancelling</span>}
-              {isPending && <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-700">Pending</span>}
-              {isCancelled && <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-zinc-100 text-zinc-600">Cancelled</span>}
-              {isActivating && <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-700">Activating</span>}
+              {isGrace      && <span className="text-xs font-semibold px-3 py-1 rounded-full bg-amber-100 text-amber-700">Grace period</span>}
+              {isSuspended  && <span className="text-xs font-semibold px-3 py-1 rounded-full bg-red-100 text-red-700">Suspended</span>}
+              {isCancelling && <span className="text-xs font-semibold px-3 py-1 rounded-full bg-zinc-100 text-zinc-600">Cancelling</span>}
+              {isPending    && <span className="text-xs font-semibold px-3 py-1 rounded-full bg-blue-100 text-blue-700">Pending</span>}
+              {isCancelled  && <span className="text-xs font-semibold px-3 py-1 rounded-full bg-zinc-100 text-zinc-600">Cancelled</span>}
+              {isActivating && <span className="text-xs font-semibold px-3 py-1 rounded-full bg-blue-100 text-blue-700">Activating</span>}
               {sub.next_cycle_paid && (
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
-                  <CalendarCheck2 className="size-3" /> Next month paid
+                <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700">
+                  <CalendarCheck2 className="size-3.5" /> Next month paid
                 </span>
               )}
             </div>
-            <div className="text-sm text-muted-foreground mt-0.5">
-              with <span className="font-medium text-ink">{tutorName}</span> · {group?.subject ?? 'General'}
+            <div className="text-sm text-muted-foreground mt-1">
+              with <span className="font-medium text-ink">{tutorName}</span>
             </div>
           </div>
 
-          {/* Price */}
           {sub.plan_price_ttd && (
             <div className="text-right shrink-0">
-              <div className="text-xl font-bold text-ink">{fmtTTD(sub.plan_price_ttd)}</div>
+              <div className="text-2xl font-bold text-ink">{fmtTTD(sub.plan_price_ttd)}</div>
               <div className="text-xs text-muted-foreground">per month</div>
             </div>
           )}
         </div>
 
-        {/* Billing cycle progress */}
-        {sub.current_period_start && sub.current_period_end && (
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-muted-foreground font-medium">Billing cycle</span>
-              <span className={cn(
-                'font-semibold',
-                remaining <= 5 ? 'text-amber-600' : 'text-ink'
-              )}>
+        {/* Billing cycle progress — starts from last_paid_at */}
+        {sub.last_paid_at && sub.current_period_end && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-muted-foreground">Billing cycle</span>
+              <span className={cn('text-sm font-semibold', remaining <= 5 ? 'text-amber-600' : 'text-ink')}>
                 {remaining} day{remaining !== 1 ? 's' : ''} left
               </span>
             </div>
-            <div className="h-2 rounded-full bg-muted overflow-hidden">
+            <div className="h-2.5 rounded-full bg-muted overflow-hidden">
               <div
                 className={cn(
                   'h-full rounded-full transition-all',
-                  isGrace ? 'bg-amber-400' : isSuspended ? 'bg-red-400' : 'bg-gradient-to-r from-purple-500 to-violet-400'
+                  isGrace ? 'bg-amber-400' : isSuspended ? 'bg-red-400' : 'bg-gradient-to-r from-violet-500 to-purple-400'
                 )}
                 style={{ width: `${Math.max(2, progress)}%` }}
               />
             </div>
-            <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-              <span>{fmtShort(sub.current_period_start)}</span>
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>{fmtShort(sub.last_paid_at)}</span>
               <span>{fmtShort(sub.current_period_end)}</span>
             </div>
           </div>
         )}
 
         {/* Date grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-1 border-t border-border">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-4 pt-2 border-t border-border">
           {sub.current_period_start && (
             <div>
-              <div className="text-[11px] text-muted-foreground mb-0.5">Period start</div>
-              <div className="text-sm font-semibold text-ink">{fmtShort(sub.current_period_start)} {new Date(sub.current_period_start).getFullYear()}</div>
+              <div className="text-xs text-muted-foreground mb-1">Period start</div>
+              <div className="text-sm font-semibold text-ink">{fmtShortYear(sub.current_period_start)}</div>
             </div>
           )}
           {sub.current_period_end && (
             <div>
-              <div className="text-[11px] text-muted-foreground mb-0.5">Period end</div>
-              <div className="text-sm font-semibold text-ink">{fmtShort(sub.current_period_end)} {new Date(sub.current_period_end).getFullYear()}</div>
+              <div className="text-xs text-muted-foreground mb-1">Period end</div>
+              <div className="text-sm font-semibold text-ink">{fmtShortYear(sub.current_period_end)}</div>
             </div>
           )}
           {sub.next_payment_due_at && (
             <div>
-              <div className="text-[11px] text-muted-foreground mb-0.5">Next payment</div>
-              <div className="text-sm font-semibold text-ink">{fmtShort(sub.next_payment_due_at)} {new Date(sub.next_payment_due_at).getFullYear()}</div>
+              <div className="text-xs text-muted-foreground mb-1">Next payment</div>
+              <div className="text-sm font-semibold text-ink">{fmtShortYear(sub.next_payment_due_at)}</div>
             </div>
           )}
           {sub.last_paid_at && (
             <div>
-              <div className="text-[11px] text-muted-foreground mb-0.5">Last paid</div>
-              <div className="text-sm font-semibold text-ink">{fmtShort(sub.last_paid_at)} {new Date(sub.last_paid_at).getFullYear()}</div>
+              <div className="text-xs text-muted-foreground mb-1">Last paid</div>
+              <div className="text-sm font-semibold text-ink">{fmtShortYear(sub.last_paid_at)}</div>
             </div>
           )}
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <Link
-            href={`/student/groups/${sub.group_id}`}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-ink text-white text-sm font-semibold hover:bg-ink/90 transition"
-          >
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <Link href={`/student/groups/${sub.group_id}`}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-ink text-white text-sm font-semibold hover:bg-ink/90 transition">
             <Play className="size-3.5 fill-white" /> Open Class
           </Link>
 
           {isActive && !sub.next_cycle_paid && (
             <a href={`/student/subscriptions/${sub.id}/pay`}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-border text-sm font-semibold text-ink hover:bg-muted/50 transition">
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-border text-sm font-semibold text-ink hover:bg-muted/50 transition">
               <CreditCard className="size-3.5" /> Pay next month
             </a>
           )}
 
           {(isGrace || isSuspended) && (
             <a href={`/student/subscriptions/${sub.id}/pay`}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep transition">
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep transition">
               <RefreshCw className="size-3.5" /> {isSuspended ? 'Reactivate' : 'Renew now'}
             </a>
           )}
 
           {isPending && sub.pending_payment_expires_at && new Date(sub.pending_payment_expires_at) > new Date() && (
             <a href={`/student/subscriptions/${sub.id}/pay`}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep transition">
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep transition">
               <CreditCard className="size-3.5" /> Complete payment
             </a>
           )}
 
           {isCancelling && sub.current_period_end && new Date(sub.current_period_end) > new Date() && (
             <button onClick={onUndo} disabled={actionLoading === sub.id + '-undo'}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-border text-sm font-semibold text-ink hover:bg-muted/50 transition disabled:opacity-60">
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-border text-sm font-semibold text-ink hover:bg-muted/50 transition disabled:opacity-60">
               {actionLoading === sub.id + '-undo' ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle className="size-3.5" />}
               Undo cancellation
             </button>
@@ -317,7 +308,7 @@ function SubscriptionCard({ sub, onCancel, onUndo, actionLoading }: {
 
           {isActive && (
             <button onClick={onCancel}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium text-muted-foreground hover:text-red-600 hover:bg-red-50 transition">
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:text-red-600 hover:bg-red-50 transition">
               <X className="size-3.5" /> Cancel
             </button>
           )}
@@ -329,16 +320,16 @@ function SubscriptionCard({ sub, onCancel, onUndo, actionLoading }: {
 
 export default function StudentSubscriptionsPage() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading]             = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [cancelTarget, setCancelTarget] = useState<Subscription | null>(null);
+  const [cancelTarget, setCancelTarget]   = useState<Subscription | null>(null);
 
   useEffect(() => { load(); }, []);
 
   async function load() {
     setLoading(true);
     try {
-      const res = await fetch('/api/subscriptions/my');
+      const res  = await fetch('/api/subscriptions/my');
       const data = await res.json();
       setSubscriptions(data.subscriptions ?? []);
     } catch (err) {
@@ -374,14 +365,14 @@ export default function StudentSubscriptionsPage() {
     );
   }
 
-  const active = subscriptions.filter((s) => ['ACTIVE', 'GRACE', 'SUSPENDED', 'PENDING_PAYMENT', 'ACTIVATION_FAILED'].includes(s.status));
-  const inactive = subscriptions.filter((s) => ['CANCELLED'].includes(s.status));
+  const active   = subscriptions.filter((s) => ['ACTIVE','GRACE','SUSPENDED','PENDING_PAYMENT','ACTIVATION_FAILED'].includes(s.status));
+  const inactive = subscriptions.filter((s) => s.status === 'CANCELLED');
 
-  // Hero stats
-  const monthlySpend = active.reduce((sum, s) => sum + (s.plan_price_ttd ?? 0), 0);
-  const nextCharge = active
+  const monthlyBill = active.reduce((sum, s) => sum + (s.plan_price_ttd ?? 0), 0);
+  const nextCharge  = active
     .filter((s) => s.next_payment_due_at)
-    .sort((a, b) => new Date(a.next_payment_due_at!).getTime() - new Date(b.next_payment_due_at!).getTime())[0]?.next_payment_due_at ?? null;
+    .sort((a, b) => new Date(a.next_payment_due_at!).getTime() - new Date(b.next_payment_due_at!).getTime())[0]
+    ?.next_payment_due_at ?? null;
 
   return (
     <>
@@ -394,41 +385,41 @@ export default function StudentSubscriptionsPage() {
         />
       )}
 
-      <div className="max-w-3xl mx-auto space-y-6 py-6 px-4">
+      <div className="max-w-4xl mx-auto space-y-6 py-6 px-4">
 
         {/* Hero banner */}
-        <div className="relative rounded-3xl overflow-hidden bg-gradient-to-br from-violet-600 via-purple-600 to-fuchsia-500 p-6 text-white">
+        <div className="relative rounded-3xl overflow-hidden bg-gradient-to-br from-violet-600 via-purple-600 to-fuchsia-500 px-8 py-8 text-white">
           <div className="absolute inset-0 opacity-20"
-            style={{ backgroundImage: 'radial-gradient(circle at 70% 50%, white 0%, transparent 60%)' }} />
+            style={{ backgroundImage: 'radial-gradient(circle at 75% 50%, white 0%, transparent 55%)' }} />
 
-          <div className="relative z-10 flex flex-col sm:flex-row sm:items-center gap-5">
+          <div className="relative z-10 flex flex-col sm:flex-row sm:items-center gap-6">
             <div className="flex-1">
-              {subscriptions.length > 0 && (
+              {active.length > 0 && (
                 <div className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full bg-white/20 backdrop-blur mb-3">
                   <Star className="size-3 fill-white" />
                   {active.length} active plan{active.length !== 1 ? 's' : ''}
                 </div>
               )}
-              <h1 className="text-3xl font-bold leading-tight">My Subscriptions</h1>
-              <p className="text-white/70 text-sm mt-1">
+              <h1 className="text-4xl font-bold leading-tight">My Subscriptions</h1>
+              <p className="text-white/70 text-sm mt-2 max-w-sm">
                 Keep your group classes rolling. Manage billing, pause, or upgrade — all in one place.
               </p>
             </div>
 
             {active.length > 0 && (
               <div className="flex gap-3 shrink-0">
-                <div className="rounded-2xl bg-white/15 backdrop-blur px-4 py-3 text-center min-w-[100px]">
-                  <div className="text-[11px] text-white/70 font-medium mb-0.5 flex items-center gap-1 justify-center">
-                    <TrendingUp className="size-3" /> Monthly spend
+                <div className="rounded-2xl bg-white/15 backdrop-blur px-5 py-4 text-center min-w-[120px]">
+                  <div className="text-xs text-white/70 font-medium mb-1 flex items-center gap-1 justify-center">
+                    <TrendingUp className="size-3" /> Monthly bill
                   </div>
-                  <div className="text-xl font-bold">{fmtTTD(monthlySpend)}</div>
+                  <div className="text-2xl font-bold">{fmtTTD(monthlyBill)}</div>
                 </div>
                 {nextCharge && (
-                  <div className="rounded-2xl bg-white/15 backdrop-blur px-4 py-3 text-center min-w-[100px]">
-                    <div className="text-[11px] text-white/70 font-medium mb-0.5 flex items-center gap-1 justify-center">
+                  <div className="rounded-2xl bg-white/15 backdrop-blur px-5 py-4 text-center min-w-[120px]">
+                    <div className="text-xs text-white/70 font-medium mb-1 flex items-center gap-1 justify-center">
                       <Clock className="size-3" /> Next charge
                     </div>
-                    <div className="text-xl font-bold">{fmtShort(nextCharge)}</div>
+                    <div className="text-2xl font-bold">{fmtShort(nextCharge)}</div>
                   </div>
                 )}
               </div>
@@ -438,12 +429,12 @@ export default function StudentSubscriptionsPage() {
 
         {/* Empty state */}
         {subscriptions.length === 0 && (
-          <div className="text-center py-20 text-muted-foreground">
-            <CreditCard className="size-12 mx-auto mb-4 opacity-30" />
-            <p className="font-semibold text-ink">No subscriptions yet</p>
+          <div className="text-center py-24 text-muted-foreground">
+            <CreditCard className="size-14 mx-auto mb-4 opacity-30" />
+            <p className="font-semibold text-ink text-lg">No subscriptions yet</p>
             <p className="text-sm mt-1">Browse group classes and subscribe to get started.</p>
             <Link href="/student/find-tutors"
-              className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep transition">
+              className="mt-6 inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep transition">
               Browse classes
             </Link>
           </div>
@@ -451,15 +442,13 @@ export default function StudentSubscriptionsPage() {
 
         {/* Active subscriptions */}
         {active.length > 0 && (
-          <div className="space-y-3">
+          <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-ink">Active subscriptions</h2>
+              <h2 className="text-base font-semibold text-ink">Active subscriptions</h2>
               <span className="text-sm text-muted-foreground">{active.length} subscription{active.length !== 1 ? 's' : ''}</span>
             </div>
             {active.map((sub) => (
-              <SubscriptionCard
-                key={sub.id}
-                sub={sub}
+              <SubscriptionCard key={sub.id} sub={sub}
                 onCancel={() => setCancelTarget(sub)}
                 onUndo={() => undoCancel(sub.id)}
                 actionLoading={actionLoading}
@@ -470,12 +459,10 @@ export default function StudentSubscriptionsPage() {
 
         {/* Past / cancelled */}
         {inactive.length > 0 && (
-          <div className="space-y-3">
-            <h2 className="font-semibold text-muted-foreground text-sm uppercase tracking-wider">Past subscriptions</h2>
+          <div className="space-y-4">
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Past subscriptions</h2>
             {inactive.map((sub) => (
-              <SubscriptionCard
-                key={sub.id}
-                sub={sub}
+              <SubscriptionCard key={sub.id} sub={sub}
                 onCancel={() => setCancelTarget(sub)}
                 onUndo={() => undoCancel(sub.id)}
                 actionLoading={actionLoading}
@@ -484,29 +471,30 @@ export default function StudentSubscriptionsPage() {
           </div>
         )}
 
-        {/* Bottom discovery cards */}
+        {/* Bottom cards */}
         {subscriptions.length > 0 && (
           <div className="grid sm:grid-cols-2 gap-4 pt-2">
             <Link href="/student/find-tutors"
-              className="rounded-2xl border border-border bg-background p-5 flex items-center gap-4 hover:shadow-sm hover:-translate-y-0.5 transition-all group">
-              <div className="size-11 rounded-2xl bg-purple-100 grid place-items-center shrink-0">
-                <Sparkles className="size-5 text-purple-600" />
+              className="rounded-2xl border border-border bg-background p-6 flex items-center gap-4 hover:shadow-sm hover:-translate-y-0.5 transition-all">
+              <div className="size-12 rounded-2xl bg-purple-100 grid place-items-center shrink-0">
+                <Sparkles className="size-6 text-purple-600" />
               </div>
               <div>
-                <div className="font-semibold text-ink text-sm">Discover more group classes</div>
-                <div className="text-xs text-muted-foreground mt-0.5">Find subjects taught by top-rated tutors.</div>
+                <div className="font-semibold text-ink">Discover more group classes</div>
+                <div className="text-sm text-muted-foreground mt-0.5">Find subjects taught by top-rated tutors.</div>
               </div>
             </Link>
 
-            <div className="rounded-2xl bg-ink text-white p-5 flex items-center gap-4">
-              <div className="size-11 rounded-2xl bg-white/10 grid place-items-center shrink-0">
-                <TrendingUp className="size-5 text-white" />
+            <Link href="/support"
+              className="rounded-2xl border border-border bg-background p-6 flex items-center gap-4 hover:shadow-sm hover:-translate-y-0.5 transition-all">
+              <div className="size-12 rounded-2xl bg-sky-100 grid place-items-center shrink-0">
+                <LifeBuoy className="size-6 text-sky-600" />
               </div>
               <div>
-                <div className="font-semibold text-sm">Stay consistent</div>
-                <div className="text-xs text-white/60 mt-0.5">Keep the streak going — open your class today.</div>
+                <div className="font-semibold text-ink">Contact support</div>
+                <div className="text-sm text-muted-foreground mt-0.5">Need help with billing or your subscription?</div>
               </div>
-            </div>
+            </Link>
           </div>
         )}
       </div>
