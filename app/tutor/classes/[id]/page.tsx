@@ -9,6 +9,7 @@ import {
   Video, MoreVertical, Pin, Sparkles, Link as LinkIcon, Paperclip, AlertTriangle, ShieldAlert,
   Mail, MessageSquare, DollarSign, BarChart3, ArrowUp, ArrowDown, Lock,
   Calendar as CalendarIcon, BookOpen, Ban, Repeat, Clock, Info, Image as ImageIcon, ArrowUpRight, ChevronRight,
+  CreditCard, RefreshCw,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -61,6 +62,22 @@ type GroupSession = {
   status: 'upcoming' | 'past';
   attendanceStatus?: string;
   paymentStatus?: string;
+};
+
+type Subscriber = {
+  id: string;
+  student_id: string;
+  status: string;
+  payment_status: string;
+  plan_price_ttd: number | null;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  next_payment_due_at: string | null;
+  last_paid_at: string | null;
+  cancel_at_period_end: boolean;
+  cancelled_at: string | null;
+  grace_period_ends_at: string | null;
+  student: { id: string; full_name: string | null; avatar_url: string | null; email: string | null } | null;
 };
 
 type GroupDetail = {
@@ -280,7 +297,7 @@ function ClassHubContent() {
     { key: 'stream', label: 'Stream' },
     { key: 'sessions', label: 'Sessions' },
     { key: 'roster', label: 'Roster' },
-    { key: 'payments', label: 'Payments' },
+    { key: 'payments', label: group.billingModel === 'per-month' ? 'Subscribers' : 'Payments' },
     { key: 'settings', label: 'Settings' },
     ...(isOneOnOne ? [] : [{ key: 'analytics' as Tab, label: 'Analytics' }]),
   ];
@@ -342,7 +359,7 @@ function ClassHubContent() {
           {tab === 'stream'    && <StreamTab group={group} posts={posts} setPosts={setPosts} />}
           {tab === 'sessions'  && <SessionsTab sessions={sessions} groupId={group.id} setSessions={setSessions} />}
           {tab === 'roster'    && <RosterTab members={members} setMembers={setMembers} group={group} isOneOnOne={isOneOnOne} atCapacity={atCapacity} />}
-          {tab === 'payments'  && <PaymentsTab members={members} group={group} />}
+          {tab === 'payments'  && (group.billingModel === 'per-month' ? <SubscribersTab group={group} /> : <PaymentsTab members={members} group={group} />)}
           {tab === 'settings'  && <SettingsTab group={group} setGroup={setGroup} isOneOnOne={isOneOnOne} onDirtyChange={setSettingsDirty} />}
           {tab === 'analytics' && !isOneOnOne && <AnalyticsTab group={group} members={members} />}
         </div>
@@ -1102,6 +1119,266 @@ function PaymentsTab({ members, group }: { members: GroupMember[]; group: GroupD
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ----------- Subscribers (monthly groups) ----------- */
+function SubscribersTab({ group }: { group: GroupDetail }) {
+  const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [removeTarget, setRemoveTarget] = useState<Subscriber | null>(null);
+  const [removeCause, setRemoveCause] = useState<'no_cause' | 'with_cause' | null>(null);
+  const [removeForm, setRemoveForm] = useState({ reason_category: 'behavioral', explanation: '', evidence_url: '' });
+  const [removing, setRemoving] = useState(false);
+  const [removeError, setRemoveError] = useState('');
+
+  useEffect(() => { fetchSubs(); }, [group.id]);
+
+  async function fetchSubs() {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/groups/${group.id}/subscribers`);
+      if (res.ok) {
+        const json = await res.json();
+        setSubscribers(json.subscribers ?? []);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleRemove() {
+    if (!removeTarget || !removeCause) return;
+    if (!removeForm.explanation.trim()) { setRemoveError('Please provide an explanation.'); return; }
+    setRemoving(true);
+    setRemoveError('');
+    try {
+      const body = removeCause === 'no_cause'
+        ? { with_cause: false, reason_category: 'no_cause', explanation: removeForm.explanation }
+        : { with_cause: true, reason_category: removeForm.reason_category, explanation: removeForm.explanation, ...(removeForm.evidence_url ? { evidence_url: removeForm.evidence_url } : {}) };
+
+      const res = await fetch(`/api/groups/${group.id}/members/${removeTarget.student_id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error ?? `Failed (${res.status})`);
+
+      setSubscribers((subs) => subs.map((s) =>
+        s.id === removeTarget.id
+          ? { ...s, status: removeCause === 'no_cause' ? 'CANCELLED' : 'SUSPENDED' }
+          : s
+      ));
+      setRemoveTarget(null);
+      setRemoveCause(null);
+    } catch (e: any) {
+      setRemoveError(e?.message ?? 'Removal failed. Please try again.');
+    } finally {
+      setRemoving(false);
+    }
+  }
+
+  const fmtDate = (d: string | null) => d ? new Date(d).toLocaleDateString('en-TT', { day: 'numeric', month: 'short' }) : '—';
+
+  const statusCfg: Record<string, { label: string; cls: string }> = {
+    ACTIVE:             { label: 'Active',      cls: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
+    GRACE:              { label: 'Grace',        cls: 'bg-amber-100 text-amber-800 border-amber-200' },
+    SUSPENDED:          { label: 'Suspended',   cls: 'bg-rose-100 text-rose-800 border-rose-200' },
+    CANCELLED:          { label: 'Cancelled',   cls: 'bg-zinc-100 text-zinc-600 border-zinc-200' },
+    PENDING_PAYMENT:    { label: 'Pending',      cls: 'bg-blue-100 text-blue-800 border-blue-200' },
+    ACTIVATION_FAILED:  { label: 'Activating',  cls: 'bg-blue-100 text-blue-800 border-blue-200' },
+    WAITLISTED:         { label: 'Waitlisted',  cls: 'bg-purple-100 text-purple-800 border-purple-200' },
+  };
+
+  const activeCount = subscribers.filter((s) => ['ACTIVE', 'GRACE', 'SUSPENDED'].includes(s.status)).length;
+  const overdueCount = subscribers.filter((s) => s.status === 'GRACE').length;
+
+  if (loading) return (
+    <div className="flex justify-center py-12">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand" />
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-ink">Subscribers</h2>
+          <p className="text-xs text-muted-foreground">{activeCount} active · {overdueCount} in grace period</p>
+        </div>
+        <button onClick={fetchSubs} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-xs font-semibold hover:bg-muted">
+          <RefreshCw className="size-3.5" /> Refresh
+        </button>
+      </div>
+
+      {subscribers.length === 0 ? (
+        <EmptyState icon={CreditCard} title="No subscribers yet" body="When students subscribe to this class, they will appear here." />
+      ) : (
+        <div className="rounded-2xl border border-border bg-card overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground">
+              <tr>
+                <th className="text-left font-bold px-4 py-2">Student</th>
+                <th className="text-left font-bold px-4 py-2">Status</th>
+                <th className="text-left font-bold px-4 py-2">Price</th>
+                <th className="text-left font-bold px-4 py-2">Next due</th>
+                <th className="text-left font-bold px-4 py-2">Period end</th>
+                <th className="px-4 py-2"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {subscribers.map((sub) => {
+                const sc = statusCfg[sub.status] ?? { label: sub.status, cls: 'bg-zinc-100 text-zinc-600 border-zinc-200' };
+                const isRemovable = ['ACTIVE', 'GRACE', 'SUSPENDED'].includes(sub.status);
+                const displayName = sub.student?.full_name ?? 'Student';
+                return (
+                  <tr key={sub.id} className={cn(
+                    sub.status === 'GRACE' && 'bg-amber-50/40',
+                    sub.status === 'SUSPENDED' && 'bg-rose-50/40',
+                    sub.status === 'CANCELLED' && 'opacity-60',
+                  )}>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="size-8 rounded-full bg-gradient-to-br from-brand to-emerald-400 grid place-items-center text-xs font-bold text-white">
+                          {displayName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                        </div>
+                        <div>
+                          <div className="font-semibold text-ink">{displayName}</div>
+                          {sub.cancel_at_period_end && (
+                            <div className="text-[10px] text-zinc-500 font-medium flex items-center gap-1">
+                              <X className="size-2.5" /> Cancels {fmtDate(sub.current_period_end)}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border', sc.cls)}>{sc.label}</span>
+                    </td>
+                    <td className="px-4 py-3 text-xs font-medium text-ink">
+                      {sub.plan_price_ttd ? `TTD ${Number(sub.plan_price_ttd).toFixed(2)}` : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">
+                      {sub.status === 'GRACE' ? (
+                        <span className="text-amber-700 font-semibold flex items-center gap-1">
+                          <AlertTriangle className="size-3" /> Overdue
+                        </span>
+                      ) : fmtDate(sub.next_payment_due_at)}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">{fmtDate(sub.current_period_end)}</td>
+                    <td className="px-4 py-3 text-right">
+                      {isRemovable && (
+                        <button
+                          onClick={() => { setRemoveTarget(sub); setRemoveCause(null); setRemoveForm({ reason_category: 'behavioral', explanation: '', evidence_url: '' }); setRemoveError(''); }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-rose-200 text-rose-600 text-[11px] font-semibold hover:bg-rose-50 transition">
+                          <Trash2 className="size-3" /> Remove
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Remove modal */}
+      {removeTarget && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setRemoveTarget(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl bg-background border border-border shadow-xl p-6 space-y-4">
+            {removeCause === null ? (
+              <>
+                <div>
+                  <div className="font-bold text-ink">Remove {removeTarget.student?.full_name ?? 'this student'}?</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Choose the type of removal.</div>
+                </div>
+                <div className="space-y-2">
+                  <button onClick={() => setRemoveCause('no_cause')}
+                    className="w-full flex items-start gap-3 rounded-xl border border-border px-4 py-3 text-left hover:bg-muted transition">
+                    <div>
+                      <div className="text-sm font-semibold text-ink">No cause</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">A pro-rata refund for remaining sessions in the paid period will be issued automatically.</div>
+                    </div>
+                  </button>
+                  <button onClick={() => setRemoveCause('with_cause')}
+                    className="w-full flex items-start gap-3 rounded-xl border border-rose-200 px-4 py-3 text-left hover:bg-rose-50 transition">
+                    <div>
+                      <div className="text-sm font-semibold text-rose-700">For cause</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">Student is suspended immediately. No automatic refund. Submitted for admin review.</div>
+                    </div>
+                  </button>
+                </div>
+                <button onClick={() => setRemoveTarget(null)} className="w-full px-4 py-2 rounded-xl border border-border text-sm text-muted-foreground hover:bg-muted">Cancel</button>
+              </>
+            ) : (
+              <>
+                <div>
+                  <button onClick={() => setRemoveCause(null)} className="text-xs text-muted-foreground hover:text-ink mb-3 inline-flex items-center gap-1">
+                    <ArrowLeft className="size-3" /> Back
+                  </button>
+                  <div className="font-bold text-ink">{removeCause === 'no_cause' ? 'No-cause removal' : 'For-cause removal'}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Removing {removeTarget.student?.full_name ?? 'this student'}</div>
+                </div>
+
+                {removeCause === 'with_cause' && (
+                  <div>
+                    <label className="text-xs font-semibold text-ink">Reason category</label>
+                    <select value={removeForm.reason_category} onChange={(e) => setRemoveForm({ ...removeForm, reason_category: e.target.value })}
+                      className="mt-1 w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand">
+                      <option value="behavioral">Behavioral</option>
+                      <option value="non_payment">Non-payment</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                )}
+
+                <div>
+                  <label className="text-xs font-semibold text-ink">Explanation <span className="text-rose-500">*</span></label>
+                  <textarea value={removeForm.explanation} onChange={(e) => setRemoveForm({ ...removeForm, explanation: e.target.value })}
+                    placeholder={removeCause === 'no_cause' ? 'Reason for removal (visible to admin)…' : 'Describe the misconduct or violation in detail. This will be reviewed by admin.'}
+                    className="mt-1 w-full min-h-20 px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+                </div>
+
+                {removeCause === 'with_cause' && (
+                  <div>
+                    <label className="text-xs font-semibold text-ink">Evidence URL <span className="font-normal text-muted-foreground">(optional)</span></label>
+                    <input value={removeForm.evidence_url} onChange={(e) => setRemoveForm({ ...removeForm, evidence_url: e.target.value })}
+                      placeholder="https://…"
+                      className="mt-1 w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+                  </div>
+                )}
+
+                {removeError && <div className="text-xs text-rose-600 font-medium">{removeError}</div>}
+
+                {removeCause === 'no_cause' && (
+                  <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
+                    A pro-rata refund will be calculated based on remaining sessions in the current paid period and issued automatically.
+                  </div>
+                )}
+                {removeCause === 'with_cause' && (
+                  <div className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-xs text-rose-800">
+                    The student will be suspended immediately. This removal will be flagged for admin review before becoming final.
+                  </div>
+                )}
+
+                <div className="flex gap-2 justify-end">
+                  <button onClick={() => setRemoveTarget(null)} className="px-4 py-2 rounded-xl border border-border text-sm text-muted-foreground hover:bg-muted">Cancel</button>
+                  <button onClick={handleRemove} disabled={removing || !removeForm.explanation.trim()}
+                    className={cn('px-4 py-2 rounded-xl text-white text-sm font-semibold inline-flex items-center gap-1.5 disabled:opacity-50',
+                      removeCause === 'no_cause' ? 'bg-zinc-700 hover:bg-zinc-800' : 'bg-rose-600 hover:bg-rose-700')}>
+                    {removing
+                      ? <><span className="size-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />Removing…</>
+                      : 'Confirm removal'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
     </div>

@@ -32,6 +32,9 @@ import {
 } from 'lunipay';
 import { createSessionForBooking } from '@/lib/services/sessionService';
 import { centsToTtd } from '@/lib/payments/lunipayClient';
+import { handleSubscriptionPayment } from '@/lib/services/subscriptionPayments';
+
+const SUBSCRIPTION_TYPES = new Set(['subscription_initial', 'subscription_renewal', 'subscription_reactivation']);
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -144,6 +147,80 @@ export async function POST(request: NextRequest) {
       { received: false, status: result.status, retry: true },
       { status: 503 }
     );
+  }
+
+  // -----------------------------------------------------------
+  // Subscription payment flow: metadata.type is one of
+  // subscription_initial | subscription_renewal | subscription_reactivation
+  // -----------------------------------------------------------
+  const metadataType = session.metadata?.type as string | undefined;
+
+  if (metadataType && SUBSCRIPTION_TYPES.has(metadataType)) {
+    const subscriptionPaymentId = session.metadata?.payment_id as string | undefined;
+
+    if (!subscriptionPaymentId) {
+      console.error('[lunipay/webhook] Subscription event missing payment_id in metadata:', session.metadata);
+      await admin.from('lunipay_webhook_events').insert({
+        event_id: event.id,
+        event_type: event.type,
+        livemode: event.livemode,
+        payment_id: null,
+        subscription_payment_id: null,
+        raw_payload: event,
+        processing_status: 'failed',
+        error_message: 'metadata.payment_id missing',
+        processed_at: new Date().toISOString(),
+      });
+      return NextResponse.json({ received: true, status: 'metadata_incomplete' });
+    }
+
+    if (event.type === 'checkout.session.completed') {
+      const result = await handleSubscriptionPayment({
+        admin: admin as any,
+        subscriptionPaymentId,
+        lunipaySessionId: session.id,
+        lunipayTransactionId: (session as any).payment_id ?? null,
+        receiptUrl: (session as any).receipt_url ?? null,
+        source: 'webhook',
+      });
+
+      await admin.from('lunipay_webhook_events').insert({
+        event_id: event.id,
+        event_type: event.type,
+        livemode: event.livemode,
+        payment_id: null,
+        subscription_payment_id: subscriptionPaymentId,
+        raw_payload: event,
+        processing_status: result.ok ? 'processed' : 'failed',
+        error_message: result.ok ? null : (result.error ?? null),
+        processed_at: new Date().toISOString(),
+      });
+
+      if (!result.ok && !result.idempotent) {
+        // Return 503 only for transient errors so LuniPay retries.
+        // Permanent failures (capacity_conflict, etc.) are logged above;
+        // return 200 so retries don't loop.
+        const isTransient = result.error?.includes('rpc_failed');
+        if (isTransient) {
+          return NextResponse.json({ received: false, status: result.error, retry: true }, { status: 503 });
+        }
+      }
+
+      return NextResponse.json({ received: true, status: result.ok ? 'activated' : result.error });
+    }
+
+    // expired / other events for subscription checkouts — log and ack
+    await admin.from('lunipay_webhook_events').insert({
+      event_id: event.id,
+      event_type: event.type,
+      livemode: event.livemode,
+      payment_id: null,
+      subscription_payment_id: subscriptionPaymentId,
+      raw_payload: event,
+      processing_status: 'skipped',
+      processed_at: new Date().toISOString(),
+    });
+    return NextResponse.json({ received: true, status: 'subscription_noop' });
   }
 
   // expired/cancelled events for the create_booking flow are a

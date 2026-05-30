@@ -5,6 +5,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/process-subscriptions",
+      "schedule": "0 12 * * *"
+    },
+    {
       "path": "/api/cron/archive-groups",
       "schedule": "0 3 * * *"
     },

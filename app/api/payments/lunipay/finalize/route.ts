@@ -17,6 +17,9 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { getLunipayClient, centsToTtd } from '@/lib/payments/lunipayClient';
 import { createSessionForBooking } from '@/lib/services/sessionService';
 import { getServerClient } from '@/lib/supabase/server';
+import { handleSubscriptionPayment } from '@/lib/services/subscriptionPayments';
+
+const SUBSCRIPTION_TYPES = new Set(['subscription_initial', 'subscription_renewal', 'subscription_reactivation']);
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -97,6 +100,55 @@ export async function GET(request: NextRequest) {
   }
 
   const md = session.metadata || {};
+
+  // -----------------------------------------------------------
+  // Subscription payment path
+  // -----------------------------------------------------------
+  if (md.type && SUBSCRIPTION_TYPES.has(md.type as string)) {
+    const subscriptionPaymentId = md.payment_id as string | undefined;
+
+    if (!subscriptionPaymentId) {
+      return NextResponse.json({ error: 'metadata.payment_id missing' }, { status: 400 });
+    }
+
+    // Auth: must be the student from metadata
+    if (md.student_id && md.student_id !== user.id) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    // Idempotency: check if subscription payment already activated
+    const { data: existingSp } = await admin
+      .from('subscription_payments')
+      .select('id, status, enrollment_id')
+      .eq('id', subscriptionPaymentId)
+      .maybeSingle();
+
+    if (existingSp?.status === 'PAID') {
+      return NextResponse.json({
+        status: 'already_processed',
+        enrollment_id: existingSp.enrollment_id,
+      });
+    }
+
+    const result = await handleSubscriptionPayment({
+      admin: admin as any,
+      subscriptionPaymentId,
+      lunipaySessionId: session.id,
+      lunipayTransactionId: (session as any).payment_id ?? null,
+      receiptUrl: (session as any).receipt_url ?? null,
+      source: 'finalize',
+    });
+
+    if (!result.ok && !result.idempotent) {
+      return NextResponse.json({ error: result.error ?? 'Activation failed' }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      status: result.ok ? 'activated' : 'activation_pending',
+      enrollment_id: result.enrollmentId,
+    });
+  }
+
   if (md.kind !== 'create_booking') {
     return NextResponse.json(
       { error: 'Session is not a create_booking checkout' },
