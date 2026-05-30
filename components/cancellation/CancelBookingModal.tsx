@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { BOOKING_CANCELLATION_REASON_LABELS } from '@/lib/constants/bookingCancellationReasons';
+import { fmtTTD } from '@/lib/utils/formatCurrency';
 
 type StudentPreview = {
   role: 'student';
@@ -149,7 +150,7 @@ export default function CancelBookingModal({ open, bookingId, role, onClose, onC
             <>
               <div className="text-sm text-gray-700 grid grid-cols-2 gap-y-1">
                 <span className="text-gray-500">Session price</span>
-                <span className="text-right font-medium">TTD {preview.session_price_ttd.toFixed(2)}</span>
+                <span className="text-right font-medium">{fmtTTD(preview.session_price_ttd)}</span>
                 <span className="text-gray-500">Time until session</span>
                 <span className="text-right font-medium">
                   {preview.hours_before <= 0
@@ -179,13 +180,13 @@ export default function CancelBookingModal({ open, bookingId, role, onClose, onC
                   <div className="flex justify-between">
                     <span className="text-gray-500">Cancellation fee</span>
                     <span className={preview.will_charge_fee ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold'}>
-                      {preview.will_charge_fee ? `− TTD ${preview.retained_ttd.toFixed(2)}` : 'None'}
+                      {preview.will_charge_fee ? `− ${fmtTTD(preview.retained_ttd)}` : 'None'}
                     </span>
                   </div>
                   <div className="flex justify-between border-t pt-2 mt-2">
                     <span className="font-semibold">Your refund</span>
                     <span className="font-bold text-lg text-green-700">
-                      TTD {preview.refund_ttd.toFixed(2)}
+                      {fmtTTD(preview.refund_ttd)}
                     </span>
                   </div>
                   {preview.cancel_state.count_30d > 0 && (
@@ -203,12 +204,12 @@ export default function CancelBookingModal({ open, bookingId, role, onClose, onC
                   <div className="flex justify-between">
                     <span className="text-gray-500">Student refund</span>
                     <span className="font-semibold text-green-700">
-                      TTD {preview.refund_ttd.toFixed(2)}
+                      {fmtTTD(preview.refund_ttd)}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-500">Your payout</span>
-                    <span className="font-semibold text-red-600">TTD 0.00</span>
+                    <span className="font-semibold text-red-600">TT$0</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-500">Strike recorded</span>

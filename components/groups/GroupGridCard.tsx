@@ -1,6 +1,7 @@
 'use client';
 
 import type { GroupWithTutor } from '@/lib/types/groups';
+import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { getDefaultThumbnail, deterministicDefault, isDefaultThumbnail, type DefaultThumbnail } from '@/lib/defaultThumbnails';
 
 interface GroupGridCardProps {
@@ -186,7 +187,7 @@ export default function GroupGridCard({ group, onClick, onAskToJoin }: GroupGrid
               Earnings
             </span>
             <span className="text-lg font-extrabold text-emerald-700">
-              ${estimatedEarnings.toFixed(2)}
+              {fmtTTD(estimatedEarnings)}
             </span>
           </div>
         )}

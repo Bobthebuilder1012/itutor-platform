@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { CreditCard, Clock, CheckCircle, AlertCircle, Ban, X, Loader2, ArrowLeft, RefreshCw } from 'lucide-react';
+import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { cn } from '@/lib/utils';
 
 type Subscription = {
@@ -157,7 +158,7 @@ export default function StudentSubscriptionsPage() {
                 </div>
                 {sub.plan_price_ttd && (
                   <div className="text-right shrink-0">
-                    <div className="font-bold text-ink">TT${Number(sub.plan_price_ttd).toFixed(2)}</div>
+                    <div className="font-bold text-ink">{fmtTTD(sub.plan_price_ttd)}</div>
                     <div className="text-[11px] text-muted-foreground">/month</div>
                   </div>
                 )}

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
+import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { CheckCircle2, AlertTriangle, Scale } from 'lucide-react';
 
 type ClaimWithSession = {
@@ -122,7 +123,7 @@ function TutorNoShowResolved({ claim, refund }: { claim: any; refund: any }) {
           <div className="rounded-xl bg-green-50 border border-green-200 p-5">
             <div className="text-xs text-green-700 font-semibold uppercase tracking-wide">Refund amount</div>
             <div className="text-3xl font-bold text-green-700 mt-1">
-              TTD {(refund?.refund_amount_ttd ?? total).toFixed(2)}
+              {fmtTTD(refund?.refund_amount_ttd ?? total)}
             </div>
             <div className="text-xs text-gray-600 mt-2">
               Returned to your original payment method within 2–5 business days.
@@ -220,7 +221,7 @@ function TieResolved({ claim, refund }: { claim: any; refund: any }) {
           <div className="rounded-xl bg-green-50 border border-green-200 p-5">
             <div className="text-xs text-green-700 font-semibold uppercase tracking-wide">Refund</div>
             <div className="text-3xl font-bold text-green-700 mt-1">
-              TTD {(refund?.refund_amount_ttd ?? 0).toFixed(2)}
+              {fmtTTD(refund?.refund_amount_ttd ?? 0)}
             </div>
             <div className="text-xs text-gray-600 mt-2">Full refund — neither party was penalised.</div>
           </div>

@@ -2,6 +2,7 @@
 
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { CheckCircle2 } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -27,7 +28,7 @@ export default function FullRefundResultPage() {
         <div className="p-6 space-y-5">
           <div className="rounded-xl bg-green-50 border border-green-200 p-5">
             <div className="text-xs text-green-700 font-semibold uppercase tracking-wide">Refund amount</div>
-            <div className="text-3xl font-bold text-green-700 mt-1">TTD {refund.toFixed(2)}</div>
+            <div className="text-3xl font-bold text-green-700 mt-1">{fmtTTD(refund)}</div>
             <div className="text-xs text-gray-600 mt-2">Returned to your original payment method within 2–5 business days.</div>
           </div>
 
@@ -35,7 +36,7 @@ export default function FullRefundResultPage() {
             <div className="font-semibold text-gray-900">What happens next</div>
             <ul className="list-disc list-inside text-gray-700 space-y-1">
               <li>Your tutor has been notified.</li>
-              <li>Refund of TTD {refund.toFixed(2)} sent to your card.</li>
+              <li>Refund of {fmtTTD(refund)} sent to your card.</li>
               <li>Funds should appear within 2–5 business days.</li>
             </ul>
           </div>

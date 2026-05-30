@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { Session } from '@/lib/types/sessions';
 
 const NO_SHOW_WAIT_MINUTES = 15;
@@ -202,7 +203,7 @@ export default function MarkNoShowButtonEnhanced({
                   <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                     <div className="text-sm">
                       <p className="text-gray-600 mb-1">Session Price:</p>
-                      <p className="font-bold text-gray-900 text-lg">TTD {session.charge_amount_ttd.toFixed(2)}</p>
+                      <p className="font-bold text-gray-900 text-lg">{fmtTTD(session.charge_amount_ttd)}</p>
                       <p className="text-green-600 font-semibold mt-2">→ Full Refund Pending</p>
                     </div>
                   </div>
@@ -236,19 +237,19 @@ export default function MarkNoShowButtonEnhanced({
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
                         <p className="text-gray-600">Original Price:</p>
-                        <p className="font-bold text-gray-900">TTD {session.charge_amount_ttd.toFixed(2)}</p>
+                        <p className="font-bold text-gray-900">{fmtTTD(session.charge_amount_ttd)}</p>
                       </div>
                       <div>
                         <p className="text-gray-600">Student Charge:</p>
-                        <p className="font-bold text-red-600">TTD {(session.charge_amount_ttd * 0.5).toFixed(2)}</p>
+                        <p className="font-bold text-red-600">{fmtTTD(session.charge_amount_ttd * 0.5)}</p>
                       </div>
                       <div>
                         <p className="text-gray-600">Your Payout:</p>
-                        <p className="font-bold text-green-600">TTD {(session.charge_amount_ttd * 0.45).toFixed(2)}</p>
+                        <p className="font-bold text-green-600">{fmtTTD(session.charge_amount_ttd * 0.45)}</p>
                       </div>
                       <div>
                         <p className="text-gray-600">Platform Fee:</p>
-                        <p className="font-bold text-gray-600">TTD {(session.charge_amount_ttd * 0.05).toFixed(2)}</p>
+                        <p className="font-bold text-gray-600">{fmtTTD(session.charge_amount_ttd * 0.05)}</p>
                       </div>
                     </div>
                   </div>

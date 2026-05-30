@@ -31,7 +31,8 @@ function getBannerGradient(id: string): string {
 }
 
 function formatEarnings(val: number | undefined | null): string {
-  return `$${Number(val ?? 0).toFixed(2)}`;
+  const num = Number(val ?? 0);
+  return num % 1 === 0 ? `TT$${num.toLocaleString('en-US')}` : `TT$${num.toFixed(2)}`;
 }
 
 function formatNextSession(occ: GroupWithTutor['next_occurrence']): string {

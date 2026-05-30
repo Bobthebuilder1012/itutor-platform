@@ -2,6 +2,7 @@
 
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { AlertTriangle } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -30,22 +31,22 @@ export default function PartialRefundResultPage() {
           <div className="rounded-xl bg-amber-50 border border-amber-300 p-5 space-y-2 text-sm">
             <div className="flex justify-between text-gray-700">
               <span>Session price</span>
-              <span className="font-medium">TTD {total.toFixed(2)}</span>
+              <span className="font-medium">{fmtTTD(total)}</span>
             </div>
             <div className="flex justify-between text-red-700">
               <span>Late cancellation fee (50%)</span>
-              <span className="font-medium">− TTD {retained.toFixed(2)}</span>
+              <span className="font-medium">− {fmtTTD(retained)}</span>
             </div>
             <div className="flex justify-between border-t border-amber-300 pt-2 mt-2">
               <span className="font-semibold">Your refund</span>
-              <span className="text-2xl font-bold text-amber-700">TTD {refund.toFixed(2)}</span>
+              <span className="text-2xl font-bold text-amber-700">{fmtTTD(refund)}</span>
             </div>
           </div>
 
           <div className="rounded-xl border bg-gray-50 p-4 text-sm space-y-1">
             <div className="font-semibold text-gray-900 mb-2">Where the fee goes</div>
             <div className="text-xs text-gray-600">
-              The retained TTD {retained.toFixed(2)} compensates the tutor for the reserved time. The standard
+              The retained {fmtTTD(retained)} compensates the tutor for the reserved time. The standard
               commission split applies — the tutor receives their share and the platform takes its standard fee.
             </div>
           </div>

@@ -17,6 +17,7 @@ import { useProfile } from '@/lib/hooks/useProfile';
 import { useUnsavedGuard } from '@/lib/hooks/useUnsavedGuard';
 import { UnsavedBar } from '@/components/UnsavedBar';
 import { supabase } from '@/lib/supabase/client';
+import { fmtTTD } from '@/lib/utils/formatCurrency';
 import TutorShell from '@/components/tutor/TutorShell';
 
 type DbSubject = { id: string; name: string; label: string; curriculum: string };
@@ -994,7 +995,7 @@ function RosterRow({ m, onUpdate }: { m: GroupMember; onUpdate: (p: Partial<Grou
             </div>
             <div>
               <div className="font-semibold text-ink">{m.name}</div>
-              {m.paymentStatus === 'overdue' && <div className="text-[11px] text-rose-600 font-semibold">Outstanding TTD {m.outstandingTtd ?? 0}</div>}
+              {m.paymentStatus === 'overdue' && <div className="text-[11px] text-rose-600 font-semibold">Outstanding {fmtTTD(m.outstandingTtd ?? 0)}</div>}
             </div>
           </div>
         </td>
@@ -1064,10 +1065,10 @@ function PaymentsTab({ members, group }: { members: GroupMember[]; group: GroupD
           <p className="text-xs text-muted-foreground">Track every member × period in one grid.</p>
         </div>
         <div className="rounded-xl border border-border bg-card px-4 py-2 text-sm">
-          <span className="text-emerald-700 font-bold">Collected TTD {(group.earningsTtd ?? 0).toLocaleString()}</span>
+          <span className="text-emerald-700 font-bold">Collected {fmtTTD(group.earningsTtd ?? 0)}</span>
           <span className="text-muted-foreground mx-2">vs</span>
           <span className={cn('font-bold', outstanding > 0 ? 'text-rose-700' : 'text-muted-foreground')}>
-            Outstanding TTD {outstanding.toLocaleString()}
+            Outstanding {fmtTTD(outstanding)}
           </span>
         </div>
       </div>
@@ -1260,7 +1261,7 @@ function SubscribersTab({ group }: { group: GroupDetail }) {
                       <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border', sc.cls)}>{sc.label}</span>
                     </td>
                     <td className="px-4 py-3 text-xs font-medium text-ink">
-                      {sub.plan_price_ttd ? `TTD ${Number(sub.plan_price_ttd).toFixed(2)}` : '—'}
+                      {sub.plan_price_ttd ? fmtTTD(sub.plan_price_ttd) : '—'}
                     </td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">
                       {sub.status === 'GRACE' ? (
@@ -1947,7 +1948,7 @@ function AnalyticsTab({ group, members }: { group: GroupDetail; members: GroupMe
             </div>
           ))}
         </ChartCard>
-        <ChartCard title="Revenue by month (TTD)" caption={`Peak: TTD ${maxR.toLocaleString()}`}>
+        <ChartCard title="Revenue by month (TT$)" caption={`Peak: ${fmtTTD(maxR)}`}>
           {revenue.map((v, i) => (
             <div key={i} className="flex-1 flex flex-col items-center gap-2">
               <div className="w-full rounded-t-md bg-gradient-to-t from-amber-500 to-amber-300" style={{ height: `${(v / maxR) * 100}%` }} />

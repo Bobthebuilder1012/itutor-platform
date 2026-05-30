@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { useRouter } from 'next/navigation';
 import Cropper from 'react-easy-crop';
 import type {
@@ -555,7 +556,7 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mt-0.5">Retention</p>
               </div>
               <div className="relative overflow-hidden py-3.5 px-3 bg-gray-50 rounded-[10px] before:absolute before:top-0 before:left-0 before:right-0 before:h-[3px] before:bg-amber-400 before:rounded-t-[10px]">
-                <p className="text-[20px] font-extrabold leading-tight">${estimatedEarnings.toFixed(0)}</p>
+                <p className="text-[20px] font-extrabold leading-tight">{fmtTTD(estimatedEarnings)}</p>
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mt-0.5">Total Earnings</p>
               </div>
             </div>

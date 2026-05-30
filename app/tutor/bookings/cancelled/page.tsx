@@ -2,6 +2,7 @@
 
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { CheckCircle2 } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -29,11 +30,11 @@ export default function TutorCancelledResultPage() {
           <div className="rounded-xl border bg-gray-50 p-4 text-sm space-y-1">
             <div className="flex justify-between">
               <span className="text-gray-500">Student refund</span>
-              <span className="font-semibold text-green-700">TTD {refund.toFixed(2)} (full)</span>
+              <span className="font-semibold text-green-700">{fmtTTD(refund)} (full)</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500">Your payout</span>
-              <span className="font-semibold text-red-600">TTD 0.00</span>
+              <span className="font-semibold text-red-600">TT$0</span>
             </div>
           </div>
 

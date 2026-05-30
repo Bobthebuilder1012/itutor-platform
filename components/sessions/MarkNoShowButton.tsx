@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Session } from '@/lib/types/sessions';
 import { canMarkNoShow } from '@/lib/types/sessions';
+import { fmtTTD } from '@/lib/utils/formatCurrency';
 
 type MarkNoShowButtonProps = {
   session: Session;
@@ -117,19 +118,19 @@ export default function MarkNoShowButton({ session, onSuccess }: MarkNoShowButto
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <p className="text-gray-600">Original Price:</p>
-                    <p className="font-bold text-gray-900">TTD {session.charge_amount_ttd.toFixed(2)}</p>
+                    <p className="font-bold text-gray-900">{fmtTTD(session.charge_amount_ttd)}</p>
                   </div>
                   <div>
                     <p className="text-gray-600">Student Charge:</p>
-                    <p className="font-bold text-red-600">TTD {(session.charge_amount_ttd * 0.5).toFixed(2)}</p>
+                    <p className="font-bold text-red-600">{fmtTTD(session.charge_amount_ttd * 0.5)}</p>
                   </div>
                   <div>
                     <p className="text-gray-600">Your Payout:</p>
-                    <p className="font-bold text-green-600">TTD {(session.charge_amount_ttd * 0.45).toFixed(2)}</p>
+                    <p className="font-bold text-green-600">{fmtTTD(session.charge_amount_ttd * 0.45)}</p>
                   </div>
                   <div>
                     <p className="text-gray-600">Platform Fee:</p>
-                    <p className="font-bold text-gray-600">TTD {(session.charge_amount_ttd * 0.05).toFixed(2)}</p>
+                    <p className="font-bold text-gray-600">{fmtTTD(session.charge_amount_ttd * 0.05)}</p>
                   </div>
                 </div>
               </div>
