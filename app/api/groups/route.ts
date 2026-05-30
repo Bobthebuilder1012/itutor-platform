@@ -309,7 +309,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Only tutors can create groups' }, { status: 403 });
     }
 
-    const body: CreateGroupInput = await request.json();
+    const rawBody = await request.json();
+    // Normalise camelCase fields the creation form sends alongside snake_case ones
+    const body: CreateGroupInput & Record<string, any> = {
+      ...rawBody,
+      max_students: rawBody.max_students ?? rawBody.maxStudents ?? undefined,
+      price_per_session: rawBody.price_per_session ?? rawBody.pricePerSession ?? undefined,
+      form_level: rawBody.form_level ?? rawBody.formLevel ?? undefined,
+      pricing_model: rawBody.pricing_model ?? rawBody.billingModel ?? undefined,
+    };
     if (!body.name?.trim()) {
       return NextResponse.json({ error: 'Group name is required' }, { status: 400 });
     }
@@ -318,7 +326,11 @@ export async function POST(request: NextRequest) {
     const subjectString =
       body.subjects && body.subjects.length > 0
         ? body.subjects.join(', ')
-        : null;
+        : (body.subject?.trim() || null);
+
+    // Resolve visibility: form may send isPublic (boolean legacy) or visibility (string)
+    const resolvedVisibility: string | null =
+      rawBody.visibility ?? (rawBody.isPublic === true ? 'public' : rawBody.isPublic === false ? 'unlisted' : null);
 
     let { data: group, error } = await service
       .from('groups')
@@ -336,9 +348,11 @@ export async function POST(request: NextRequest) {
         pricing_model: body.pricing_model ?? 'FREE',
         price_per_session: body.price_per_session ?? null,
         price_per_course: body.price_per_course ?? null,
+        max_students: body.max_students ?? null,
         availability_window: body.availability_window ?? null,
         cover_image: body.cover_image ?? null,
         header_image: body.header_image ?? null,
+        ...(resolvedVisibility ? { visibility: resolvedVisibility } : {}),
       })
       .select()
       .single();
