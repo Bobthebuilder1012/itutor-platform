@@ -129,18 +129,7 @@ export default function FindTutorsPage() {
 
     fetchTutors();
     fetchGroupLessons();
-    fetchEnrolled();
   }, [profile, loading, router]);
-
-  async function fetchEnrolled() {
-    try {
-      const res = await fetch('/api/student/my-groups', { cache: 'no-store' });
-      if (!res.ok) return;
-      const data = await res.json();
-      const ids = (data.groups ?? []).map((g: any) => g.id);
-      if (ids.length > 0) setEnrolledLessonIds(new Set(ids));
-    } catch { /* ignore */ }
-  }
 
   async function fetchTutors() {
     setLoadingTutors(true);
@@ -371,48 +360,80 @@ export default function FindTutorsPage() {
   async function fetchGroupLessons() {
     setLoadingGroupLessons(true);
     try {
-      const res = await fetch('/api/groups?limit=50&sortBy=latest', { cache: 'no-store' });
-      const payload = await res.json();
-      if (!res.ok || payload?.success === false) { setGroupLessons([]); return; }
+      if (!profile?.id) return;
 
-      const groups: any[] = payload?.data?.groups ?? [];
+      // Query groups directly — avoids API column-schema issues
+      let groups: any[] | null = null;
 
-      // Mark already-enrolled groups using the current_user_membership field
-      setEnrolledLessonIds(new Set(
-        groups.filter((g: any) => g.current_user_membership !== null).map((g: any) => g.id)
-      ));
+      const { data: g1, error: e1 } = await supabase
+        .from('groups')
+        .select('*')
+        .is('archived_at', null)
+        .or('visibility.neq.private,visibility.is.null')
+        .order('created_at', { ascending: false })
+        .limit(50);
 
-      const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      if (!e1) {
+        groups = g1;
+      } else {
+        // Fallback: visibility column may not exist — fetch all non-archived
+        const { data: g2, error: e2 } = await supabase
+          .from('groups')
+          .select('*')
+          .is('archived_at', null)
+          .order('created_at', { ascending: false })
+          .limit(50);
+        if (e2) throw e2;
+        groups = g2;
+      }
+
+      if (!groups?.length) { setGroupLessons([]); return; }
+
+      const groupIds = groups.map((g: any) => g.id);
+      const tutorIds = [...new Set<string>(groups.map((g: any) => g.tutor_id).filter(Boolean))];
+
+      // Fetch tutor names and member counts in parallel
+      const [{ data: tutorProfiles }, { data: memberRows }] = await Promise.all([
+        tutorIds.length
+          ? supabase.from('profiles').select('id, full_name, display_name').in('id', tutorIds)
+          : Promise.resolve({ data: [] as any[] }),
+        supabase.from('group_members').select('group_id, user_id, status').in('group_id', groupIds),
+      ]);
+
+      const tutorMap = new Map((tutorProfiles ?? []).map((p: any) => [p.id, p]));
+      const memberCountMap = new Map<string, number>();
+      const enrolledSet = new Set<string>();
+
+      (memberRows ?? []).forEach((m: any) => {
+        memberCountMap.set(m.group_id, (memberCountMap.get(m.group_id) ?? 0) + 1);
+        if (m.user_id === profile.id && m.status !== 'denied') enrolledSet.add(m.group_id);
+      });
+
+      setEnrolledLessonIds(enrolledSet);
 
       const mapped: GroupLesson[] = groups.map((g: any) => {
-        const next = g.next_occurrence?.scheduled_start_at;
-        let day = '', time = '';
-        if (next) {
-          const d = new Date(next);
-          day = DAY_NAMES[d.getDay()] + 's';
-          time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-        }
+        const tutor = tutorMap.get(g.tutor_id);
         const { color, emoji } = getSubjectStyle(g.subject || '');
-        const price = Number(g.price_monthly ?? g.price_per_session ?? g.price_per_course ?? 0);
         return {
           id: g.id,
           title: g.name,
-          tutor: g.tutor?.full_name || 'Unknown Tutor',
+          tutor: tutor?.display_name || tutor?.full_name || 'Unknown Tutor',
           tutorId: g.tutor_id,
           tutorHue: 145,
           subject: g.subject || 'General',
-          level: g.form_level || g.difficulty || 'CSEC',
-          day: day || 'Schedule TBD',
-          time: time || '',
-          monthlyPrice: price,
-          seats: { taken: g.member_count ?? 0, total: g.max_students ?? null },
+          level: g.form_level || g.difficulty || '',
+          day: 'Schedule TBD',
+          time: '',
+          monthlyPrice: Number(g.price_monthly ?? g.price_per_session ?? g.price_per_course ?? 0),
+          seats: { taken: memberCountMap.get(g.id) ?? 0, total: g.max_students ?? null },
           sessionLength: g.session_length_minutes ?? null,
-          rating: Number(g.tutor?.rating_average ?? 0),
+          rating: 0,
           tags: [],
           color,
           emoji,
         };
       });
+
       setGroupLessons(mapped);
     } catch (err) {
       console.error('fetchGroupLessons error:', err);
