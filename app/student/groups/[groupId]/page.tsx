@@ -374,7 +374,7 @@ export default function StudentGroupPage({ params }: { params: { groupId: string
           <div className="relative flex items-start gap-4">
             <div className="size-16 rounded-2xl bg-white grid place-items-center text-4xl shadow-md shrink-0">{emoji}</div>
             <div className="min-w-0 flex-1">
-              <div className="text-xs uppercase tracking-wider font-bold opacity-90">{(group as any).subject_data?.label ?? (group as any).subject_data?.name ?? group.subject || 'General'}</div>
+              <div className="text-xs uppercase tracking-wider font-bold opacity-90">{(group as any).subject_data?.label ?? (group as any).subject_data?.name ?? (group.subject || 'General')}</div>
               <h1 className="text-2xl sm:text-3xl font-bold mt-1 leading-tight">{group.name}</h1>
               {group.description && <p className="text-sm opacity-90 mt-2 line-clamp-2">{group.description}</p>}
             </div>
@@ -693,7 +693,7 @@ function ClassHomepage({ group, memberStatus, userId, subscriptionAccess }: { gr
         <div className="relative flex flex-wrap items-start gap-4">
           <div className="text-5xl select-none">{emoji}</div>
           <div className="flex-1 min-w-0">
-            <div className="text-xs uppercase tracking-wider text-white/70 font-bold">{(group as any).subject_data?.label ?? (group as any).subject_data?.name ?? group.subject || 'General'} · Group class</div>
+            <div className="text-xs uppercase tracking-wider text-white/70 font-bold">{(group as any).subject_data?.label ?? (group as any).subject_data?.name ?? (group.subject || 'General')} · Group class</div>
             <h1 className="text-2xl lg:text-3xl font-bold text-white mt-1">{group.name}</h1>
             <div className="text-sm text-white/80 mt-1 inline-flex items-center gap-1.5">
               with {tutorName}
