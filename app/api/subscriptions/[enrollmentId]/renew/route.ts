@@ -55,6 +55,20 @@ export async function GET(_req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Enrollment is not in a renewable state' }, { status: 400 });
     }
 
+    // For ACTIVE subscriptions, only allow renewal within 14 days of period end.
+    // This prevents mid-period double charges where the student pays now
+    // and then pays again when the normal renewal reminder fires.
+    if (enrollment.status === 'ACTIVE' && enrollment.current_period_end) {
+      const periodEnd = new Date(enrollment.current_period_end);
+      const daysUntilEnd = (periodEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+      if (daysUntilEnd > 14) {
+        return NextResponse.json(
+          { error: 'Renewal is not available until 14 days before your period ends' },
+          { status: 400 }
+        );
+      }
+    }
+
     const group = enrollment.group as any;
     const appUrl = process.env.NEXT_PUBLIC_APP_URL;
     if (!appUrl) {
@@ -111,27 +125,30 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const lunipay = getLunipayClient();
     let session: any;
     try {
-      session = await lunipay.checkout.sessions.create({
-        amount: amountCents,
-        currency: 'ttd',
-        success_url: `${appUrl}/student/subscriptions/${enrollmentId}/confirmed?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${appUrl}/student/subscriptions`,
-        customer_email: customerEmail,
-        line_items: [
-          {
-            name: `${groupName} — ${paymentType === 'subscription_initial' ? 'Monthly subscription' : paymentType === 'subscription_reactivation' ? 'Reactivation' : 'Renewal'}`,
-            quantity: 1,
-            amount: amountCents,
-          } as any,
-        ],
-        metadata: {
-          type: paymentType,
-          enrollment_id: enrollmentId,
-          group_id: enrollment.group_id,
-          student_id: user.id,
-          payment_id: paymentRow.id,
+      session = await lunipay.checkout.sessions.create(
+        {
+          amount: amountCents,
+          currency: 'ttd',
+          success_url: `${appUrl}/student/subscriptions/${enrollmentId}/confirmed?session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${appUrl}/student/subscriptions`,
+          customer_email: customerEmail,
+          line_items: [
+            {
+              name: `${groupName} — ${paymentType === 'subscription_initial' ? 'Monthly subscription' : paymentType === 'subscription_reactivation' ? 'Reactivation' : 'Renewal'}`,
+              quantity: 1,
+              amount: amountCents,
+            } as any,
+          ],
+          metadata: {
+            type: paymentType,
+            enrollment_id: enrollmentId,
+            group_id: enrollment.group_id,
+            student_id: user.id,
+            payment_id: paymentRow.id,
+          },
         },
-      });
+        { idempotencyKey: `renew-${paymentRow.id}` }
+      );
     } catch (err) {
       if (err instanceof LuniPayError) {
         console.error('[renew] LuniPay checkout creation failed:', err);

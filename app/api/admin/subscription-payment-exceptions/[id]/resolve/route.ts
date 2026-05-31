@@ -178,6 +178,28 @@ export async function POST(req: NextRequest, { params }: Params) {
 
         await admin.from('subscription_payments').update({ status: 'REFUNDED' }).eq('id', sp.id);
 
+        // Reverse any open payout_ledger row for this subscription payment.
+        // If the ledger entry is 'released' the payout is already in the
+        // tutor's balance and needs manual reconciliation — warn but don't block.
+        let ledgerWarning: string | null = null;
+        const { data: ledgerRow } = await admin
+          .from('payout_ledger')
+          .select('id, status')
+          .eq('subscription_payment_id', sp.id)
+          .maybeSingle();
+
+        if (ledgerRow) {
+          if (['owed', 'release_ready'].includes(ledgerRow.status)) {
+            await admin
+              .from('payout_ledger')
+              .update({ status: 'reversed', updated_at: now })
+              .eq('id', ledgerRow.id);
+          } else if (ledgerRow.status === 'released') {
+            ledgerWarning = `Payout ledger row ${ledgerRow.id} is already 'released' — tutor balance may need manual adjustment.`;
+            console.warn(`[admin/exceptions/resolve] Refund issued but ledger already released for payment ${sp.id}`);
+          }
+        }
+
         await admin
           .from('subscription_payment_exceptions')
           .update({
@@ -199,7 +221,7 @@ export async function POST(req: NextRequest, { params }: Params) {
           group_id: exception.group_id,
         });
 
-        return NextResponse.json({ ok: true, action, refund_amount: amountTtd });
+        return NextResponse.json({ ok: true, action, refund_amount: amountTtd, warning: ledgerWarning ?? undefined });
       } catch (err) {
         const msg = err instanceof LuniPayError ? err.message : (err as Error).message;
         console.error('[admin/exceptions/resolve] LuniPay refund failed:', err);

@@ -184,6 +184,19 @@ export async function POST(request: NextRequest) {
         source: 'webhook',
       });
 
+      // For transient failures, skip the event row so LuniPay's retry
+      // is not blocked by the de-dup check. Only persist for terminal outcomes.
+      if (!result.ok && !result.idempotent) {
+        const isTransient = result.error?.includes('rpc_failed');
+        if (isTransient) {
+          console.error(
+            '[lunipay/webhook] Transient subscription activation failure — leaving event un-deduped for retry',
+            { event_id: event.id, error: result.error }
+          );
+          return NextResponse.json({ received: false, status: result.error, retry: true }, { status: 503 });
+        }
+      }
+
       await admin.from('lunipay_webhook_events').insert({
         event_id: event.id,
         event_type: event.type,
@@ -195,16 +208,6 @@ export async function POST(request: NextRequest) {
         error_message: result.ok ? null : (result.error ?? null),
         processed_at: new Date().toISOString(),
       });
-
-      if (!result.ok && !result.idempotent) {
-        // Return 503 only for transient errors so LuniPay retries.
-        // Permanent failures (capacity_conflict, etc.) are logged above;
-        // return 200 so retries don't loop.
-        const isTransient = result.error?.includes('rpc_failed');
-        if (isTransient) {
-          return NextResponse.json({ received: false, status: result.error, retry: true }, { status: 503 });
-        }
-      }
 
       return NextResponse.json({ received: true, status: result.ok ? 'activated' : result.error });
     }

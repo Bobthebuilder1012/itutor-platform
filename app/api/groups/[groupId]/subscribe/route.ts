@@ -386,27 +386,30 @@ export async function POST(req: NextRequest, { params }: Params) {
     const lunipay = getLunipayClient();
     let session: any;
     try {
-      session = await lunipay.checkout.sessions.create({
-        amount: amountCents,
-        currency: 'ttd',
-        success_url: `${appUrl}/student/subscriptions/${enrollmentId}/confirmed?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${appUrl}/student/groups/${groupId}`,
-        customer_email: customerEmail,
-        line_items: [
-          {
-            name: `${group.name} — Monthly Subscription`,
-            quantity: 1,
-            amount: amountCents,
-          } as any,
-        ],
-        metadata: {
-          type: 'subscription_initial',
-          enrollment_id: enrollmentId!,
-          group_id: groupId,
-          student_id: user.id,
-          payment_id: paymentRow.id,
+      session = await lunipay.checkout.sessions.create(
+        {
+          amount: amountCents,
+          currency: 'ttd',
+          success_url: `${appUrl}/student/subscriptions/${enrollmentId}/confirmed?session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${appUrl}/student/groups/${groupId}`,
+          customer_email: customerEmail,
+          line_items: [
+            {
+              name: `${group.name} — Monthly Subscription`,
+              quantity: 1,
+              amount: amountCents,
+            } as any,
+          ],
+          metadata: {
+            type: 'subscription_initial',
+            enrollment_id: enrollmentId!,
+            group_id: groupId,
+            student_id: user.id,
+            payment_id: paymentRow.id,
+          },
         },
-      });
+        { idempotencyKey: `subscribe-${paymentRow.id}` }
+      );
     } catch (err) {
       if (err instanceof LuniPayError) {
         console.error('[subscribe] LuniPay checkout creation failed:', err);
