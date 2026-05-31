@@ -1248,7 +1248,7 @@ function SubscribersTab({ group }: { group: GroupDetail }) {
                 <th className="text-left font-bold px-4 py-2">Status</th>
                 <th className="text-left font-bold px-4 py-2">Price</th>
                 <th className="text-left font-bold px-4 py-2">Next due</th>
-                <th className="text-left font-bold px-4 py-2">Period end</th>
+                <th className="text-left font-bold px-4 py-2">Last paid</th>
                 <th className="px-4 py-2"></th>
               </tr>
             </thead>
@@ -1291,7 +1291,7 @@ function SubscribersTab({ group }: { group: GroupDetail }) {
                         </span>
                       ) : fmtDate(sub.next_payment_due_at)}
                     </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">{fmtDate(sub.current_period_end)}</td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">{fmtDate(sub.last_paid_at)}</td>
                     <td className="px-4 py-3 text-right">
                       {isRemovable && (
                         <button
