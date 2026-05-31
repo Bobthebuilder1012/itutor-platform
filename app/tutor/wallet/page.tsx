@@ -1,5 +1,5 @@
 'use client';
-
+// Group Tracker: financial overview per group class — earned, projected, pending, awaiting payout
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
