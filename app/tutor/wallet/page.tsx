@@ -49,10 +49,11 @@ interface StudentBreakdownRow {
   studentId: string;
   name: string;
   avatarUrl: string | null;
-  completedCount: number;
-  earned: number;
+  totalPaid: number;
+  groupsCount: number;
+  oneOnOneCount: number;
   upcomingCount: number;
-  projected: number;
+  projectedUpcoming: number;
 }
 
 interface UpcomingSession {
@@ -260,10 +261,13 @@ function WalletContent() {
 
   const breakdown = useMemo<StudentBreakdownRow[]>(() => {
     const map = new Map<string, StudentBreakdownRow>();
+    // Tracks distinct subscription group names per student to compute groupsCount
+    const groupNamesByStudent = new Map<string, Set<string>>();
+
     const ensure = (studentId: string, name: string | null, avatarUrl: string | null): StudentBreakdownRow => {
       let row = map.get(studentId);
       if (!row) {
-        row = { studentId, name: name || 'Student', avatarUrl, completedCount: 0, earned: 0, upcomingCount: 0, projected: 0 };
+        row = { studentId, name: name || 'Student', avatarUrl, totalPaid: 0, groupsCount: 0, oneOnOneCount: 0, upcomingCount: 0, projectedUpcoming: 0 };
         map.set(studentId, row);
       } else {
         if (name && row.name === 'Student') row.name = name;
@@ -276,20 +280,32 @@ function WalletContent() {
       if (!h.student_id) continue;
       if (!EARNED_LEDGER_STATUSES.includes(h.status)) continue;
       const row = ensure(h.student_id, h.student_name, h.student_avatar_url);
-      row.completedCount += 1;
-      row.earned += h.amount_ttd;
+      row.totalPaid += h.amount_ttd;
+      if (h.source_type === 'subscription') {
+        const key = h.subject_name ?? '__group__';
+        if (!groupNamesByStudent.has(h.student_id)) groupNamesByStudent.set(h.student_id, new Set());
+        groupNamesByStudent.get(h.student_id)!.add(key);
+      } else {
+        row.oneOnOneCount += 1;
+      }
+    }
+
+    // Derive groupsCount from collected distinct group names
+    for (const [studentId, groupSet] of groupNamesByStudent) {
+      const row = map.get(studentId);
+      if (row) row.groupsCount = groupSet.size;
     }
 
     for (const u of upcoming ?? []) {
       const meta = upcomingStudents.get(u.studentId);
       const row = ensure(u.studentId, meta?.name ?? null, meta?.avatarUrl ?? null);
       row.upcomingCount += 1;
-      row.projected += u.payout;
+      row.projectedUpcoming += u.payout;
     }
 
     return Array.from(map.values())
-      .filter((r) => r.completedCount > 0 || r.upcomingCount > 0)
-      .sort((a, b) => b.earned + b.projected - (a.earned + a.projected));
+      .filter((r) => r.totalPaid > 0 || r.upcomingCount > 0)
+      .sort((a, b) => b.totalPaid + b.projectedUpcoming - (a.totalPaid + a.projectedUpcoming));
   }, [history, upcoming, upcomingStudents]);
 
   const monthEarned = useMemo(() => {
@@ -326,8 +342,8 @@ function WalletContent() {
     [balances, completedThisMonth, tentativeThisMonth],
   );
 
-  const totalCompletedCount = useMemo(
-    () => breakdown.reduce((sum, r) => sum + r.completedCount, 0),
+  const totalOneOnOneCount = useMemo(
+    () => breakdown.reduce((sum, r) => sum + r.oneOnOneCount, 0),
     [breakdown],
   );
   const upcomingCount = upcoming?.length ?? 0;
@@ -421,7 +437,7 @@ function WalletContent() {
 
           <StudentBreakdown
             breakdown={breakdown}
-            completedCount={totalCompletedCount}
+            oneOnOneCount={totalOneOnOneCount}
             upcomingCount={upcomingCount}
             loading={summaryLoading}
           />
@@ -484,14 +500,15 @@ function Stat({ label, value, icon: Icon, hint, valueClass }: { label: string; v
 }
 
 function StudentBreakdown({
-  breakdown, completedCount, upcomingCount, loading,
+  breakdown, oneOnOneCount, upcomingCount, loading,
 }: {
   breakdown: StudentBreakdownRow[];
-  completedCount: number;
+  oneOnOneCount: number;
   upcomingCount: number;
   loading: boolean;
 }) {
   const hasRows = breakdown.length > 0;
+  const totalGroups = breakdown.reduce((s, r) => s + r.groupsCount, 0);
 
   return (
     <div className="rounded-2xl border border-border bg-card overflow-hidden">
@@ -506,7 +523,7 @@ function StudentBreakdown({
               ? 'Loading…'
               : !hasRows
                 ? 'No students yet'
-                : `${breakdown.length} student${breakdown.length === 1 ? '' : 's'} · ${completedCount} completed · ${upcomingCount} upcoming this month`}
+                : `${breakdown.length} student${breakdown.length === 1 ? '' : 's'} · ${oneOnOneCount} 1:1 sessions · ${totalGroups} group subscription${totalGroups === 1 ? '' : 's'} · ${upcomingCount} upcoming`}
           </div>
         </div>
       </div>
@@ -515,10 +532,10 @@ function StudentBreakdown({
         <div className="border-t border-border">
           <div className="hidden sm:grid grid-cols-12 gap-3 px-5 py-2 bg-muted/30 text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
             <div className="col-span-4">Student</div>
-            <div className="col-span-2 text-right">Completed</div>
-            <div className="col-span-2 text-right">Earned</div>
+            <div className="col-span-2 text-right">Total paid</div>
+            <div className="col-span-2 text-right">Groups</div>
+            <div className="col-span-2 text-right">1:1 done</div>
             <div className="col-span-2 text-right">Upcoming</div>
-            <div className="col-span-2 text-right">Projected</div>
           </div>
           <ul className="divide-y divide-border">
             {breakdown.map((row) => (
@@ -536,21 +553,29 @@ function StudentBreakdown({
                   </div>
                   <span className="font-medium text-ink truncate">{row.name}</span>
                 </div>
-                <div className="col-span-3 sm:col-span-2 text-right tabular-nums text-ink">
-                  <span className="sm:hidden text-xs text-muted-foreground mr-1">Done</span>
-                  {row.completedCount}
+                <div className="col-span-6 sm:col-span-2 text-right tabular-nums font-semibold text-ink">
+                  <span className="sm:hidden text-xs text-muted-foreground mr-1">Paid</span>
+                  TT$ {fmtTTD(row.totalPaid)}
                 </div>
-                <div className="col-span-3 sm:col-span-2 text-right tabular-nums font-semibold text-ink">
-                  <span className="sm:hidden text-xs text-muted-foreground mr-1">Earned</span>
-                  TT$ {fmtTTD(row.earned)}
+                <div className="col-span-2 sm:col-span-2 text-right tabular-nums text-ink">
+                  <span className="sm:hidden text-xs text-muted-foreground mr-1">Groups</span>
+                  {row.groupsCount > 0 ? (
+                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-purple-100 text-purple-700 text-[11px] font-semibold">{row.groupsCount}</span>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
                 </div>
-                <div className="col-span-3 sm:col-span-2 text-right tabular-nums text-ink">
+                <div className="col-span-2 sm:col-span-2 text-right tabular-nums text-ink">
+                  <span className="sm:hidden text-xs text-muted-foreground mr-1">1:1</span>
+                  {row.oneOnOneCount > 0 ? row.oneOnOneCount : <span className="text-muted-foreground">—</span>}
+                </div>
+                <div className="col-span-2 sm:col-span-2 text-right tabular-nums text-ink">
                   <span className="sm:hidden text-xs text-muted-foreground mr-1">Upcoming</span>
-                  {row.upcomingCount}
-                </div>
-                <div className="col-span-3 sm:col-span-2 text-right tabular-nums font-bold text-brand-deep">
-                  <span className="sm:hidden text-xs text-muted-foreground mr-1">Proj</span>
-                  TT$ {fmtTTD(row.projected)}
+                  {row.upcomingCount > 0 ? (
+                    <span className="font-semibold text-brand-deep">{row.upcomingCount}</span>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
                 </div>
               </li>
             ))}
