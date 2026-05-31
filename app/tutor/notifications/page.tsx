@@ -11,6 +11,7 @@ import {
 } from '@/lib/services/notificationService';
 import type { Notification, NotificationType } from '@/lib/types/notifications';
 import TutorShell from '@/components/tutor/TutorShell';
+import BrowserPushToggle from '@/components/BrowserPushToggle';
 
 export default function TutorNotificationsPage() {
   return (
@@ -202,25 +203,29 @@ function NotificationsContent() {
       )}
 
       {tab === 'preferences' && (
-        <div className="rounded-2xl border border-border bg-card p-5 space-y-5">
-          <div>
-            <div className="text-sm font-semibold text-ink mb-1">Email notification categories</div>
-            <div className="text-xs text-muted-foreground">Choose which email notifications you want to receive.</div>
-          </div>
-          {[
-            { key: 'email_bookings', label: 'New bookings & cancellations' },
-            { key: 'email_reminders', label: 'Session reminders' },
-            { key: 'email_payments', label: 'Payments & payouts' },
-            { key: 'email_messages', label: 'Student messages' },
-            { key: 'email_reviews', label: 'New reviews' },
-            { key: 'email_platform', label: 'Platform updates' },
-          ].map((p) => (
-            <div key={p.key} className="flex items-center justify-between gap-3 py-1">
-              <div className="text-sm font-medium text-ink">{p.label}</div>
-              <Toggle checked={prefs[p.key as keyof Prefs]} onChange={(v) => savePrefs({ ...prefs, [p.key]: v })} />
+        <div className="space-y-4">
+          {profile?.id && <BrowserPushToggle userId={profile.id} />}
+
+          <div className="rounded-2xl border border-border bg-card p-5 space-y-5">
+            <div>
+              <div className="text-sm font-semibold text-ink mb-1">Email notification categories</div>
+              <div className="text-xs text-muted-foreground">Choose which email notifications you want to receive.</div>
             </div>
-          ))}
-          {savingPrefs && <div className="text-xs text-muted-foreground">Saving…</div>}
+            {[
+              { key: 'email_bookings', label: 'New bookings & cancellations' },
+              { key: 'email_reminders', label: 'Session reminders' },
+              { key: 'email_payments', label: 'Payments & payouts' },
+              { key: 'email_messages', label: 'Student messages' },
+              { key: 'email_reviews', label: 'New reviews' },
+              { key: 'email_platform', label: 'Platform updates' },
+            ].map((p) => (
+              <div key={p.key} className="flex items-center justify-between gap-3 py-1">
+                <div className="text-sm font-medium text-ink">{p.label}</div>
+                <Toggle checked={prefs[p.key as keyof Prefs]} onChange={(v) => savePrefs({ ...prefs, [p.key]: v })} />
+              </div>
+            ))}
+            {savingPrefs && <div className="text-xs text-muted-foreground">Saving…</div>}
+          </div>
         </div>
       )}
     </div>

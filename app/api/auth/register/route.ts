@@ -77,7 +77,14 @@ export async function POST(req: Request) {
     ]);
 
     if (emailTaken) {
-      return NextResponse.json({ error: 'Email is already registered' }, { status: 409 });
+      // Check whether a real auth user still backs this profile — if not it's an
+      // orphan left behind when someone deleted the user from the Supabase dashboard
+      // without deleting the corresponding profiles row. Purge and allow re-registration.
+      const { data: authUser } = await supabase.auth.admin.getUserById(emailTaken.id);
+      if (authUser?.user) {
+        return NextResponse.json({ error: 'Email is already registered' }, { status: 409 });
+      }
+      await supabase.from('profiles').delete().eq('id', emailTaken.id);
     }
     if (usernameTaken) {
       return NextResponse.json({ error: 'Username is already taken' }, { status: 409 });
