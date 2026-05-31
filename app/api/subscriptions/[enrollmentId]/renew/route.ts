@@ -50,8 +50,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Must be in a renewable state
-    if (!['ACTIVE', 'GRACE', 'SUSPENDED', 'CANCELLED'].includes(enrollment.status)) {
+    // Must be in a renewable/resumable state
+    if (!['ACTIVE', 'GRACE', 'SUSPENDED', 'CANCELLED', 'PENDING_PAYMENT'].includes(enrollment.status)) {
       return NextResponse.json({ error: 'Enrollment is not in a renewable state' }, { status: 400 });
     }
 
@@ -68,17 +68,18 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
     // Determine payment type
     const paymentType: SubscriptionPaymentType =
-      enrollment.status === 'SUSPENDED' || enrollment.status === 'CANCELLED'
-        ? 'subscription_reactivation'
-        : 'subscription_renewal';
+      enrollment.status === 'PENDING_PAYMENT'
+        ? 'subscription_initial'
+        : enrollment.status === 'SUSPENDED' || enrollment.status === 'CANCELLED'
+          ? 'subscription_reactivation'
+          : 'subscription_renewal';
 
-    // Expire any stale pending renewal/reactivation payment rows for this enrollment
+    // Expire any stale pending payment rows for this enrollment (any type)
     const { data: stalePending } = await admin
       .from('subscription_payments')
       .select('id')
       .eq('enrollment_id', enrollmentId)
       .eq('status', 'PENDING')
-      .in('type', ['subscription_renewal', 'subscription_reactivation'])
       .order('created_at', { ascending: false })
       .limit(5);
 
@@ -118,7 +119,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
         customer_email: customerEmail,
         line_items: [
           {
-            name: `${groupName} — ${paymentType === 'subscription_reactivation' ? 'Reactivation' : 'Renewal'}`,
+            name: `${groupName} — ${paymentType === 'subscription_initial' ? 'Monthly subscription' : paymentType === 'subscription_reactivation' ? 'Reactivation' : 'Renewal'}`,
             quantity: 1,
             amount: amountCents,
           } as any,
