@@ -278,16 +278,167 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     }
 
     // ─── PATH 2: Tutor no-cause removal ───────────────────────────────
-    // Only operates on active subscription enrollments
     if (!subEnrollment) {
-      // Non-subscription member: just delete
+      // No active subscription — check for a SINGLE_SESSION or other enrollment
+      // that may have an outstanding or paid payment.
+      const { data: anyEnrollment } = await admin
+        .from('group_enrollments')
+        .select('id, status, payment_status, plan_price_ttd, enrollment_type')
+        .eq('group_id', groupId)
+        .eq('student_id', userId)
+        .in('status', ['ACTIVE', 'PENDING_PAYMENT'])
+        .maybeSingle();
+
+      let associatedPayment: {
+        id: string;
+        amount_ttd: number;
+        lunipay_checkout_session_id: string | null;
+        lunipay_transaction_id: string | null;
+        status: string;
+      } | null = null;
+
+      if (anyEnrollment) {
+        const { data: p } = await admin
+          .from('subscription_payments')
+          .select('id, amount_ttd, lunipay_checkout_session_id, lunipay_transaction_id, status')
+          .eq('enrollment_id', anyEnrollment.id)
+          .in('status', ['PENDING', 'PAID'])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        associatedPayment = p ?? null;
+      }
+
+      // Create audit record
+      const { data: removalRow } = await admin
+        .from('group_removals')
+        .insert({
+          group_id: groupId,
+          enrollment_id: anyEnrollment?.id ?? null,
+          student_id: userId,
+          tutor_id: user.id,
+          with_cause: false,
+          reason_category: body.reason_category,
+          explanation: body.explanation,
+          evidence_url: body.evidence_url ?? null,
+          status: associatedPayment ? 'pending_payment_action' : 'auto_processed',
+          refund_amount_ttd: 0,
+        })
+        .select('id')
+        .single();
+
+      // Handle payment: refund if paid, flag if pending
+      let paymentNote: string | null = null;
+      let refundIssued = false;
+
+      if (associatedPayment) {
+        if (associatedPayment.status === 'PAID' && associatedPayment.lunipay_transaction_id) {
+          const refundAmount = Number(anyEnrollment?.plan_price_ttd ?? associatedPayment.amount_ttd ?? 0);
+          try {
+            const lunipay = getLunipayClient();
+            await lunipay.payments.refund(
+              associatedPayment.lunipay_transaction_id,
+              {
+                amount: ttdToCents(refundAmount),
+                reason: 'requested_by_customer',
+                metadata: {
+                  removal_id: removalRow?.id,
+                  enrollment_id: anyEnrollment?.id,
+                  group_id: groupId,
+                },
+              } as any,
+              { idempotencyKey: `removal-refund-${removalRow?.id}` }
+            );
+            await admin.from('subscription_refunds').insert({
+              subscription_payment_id: associatedPayment.id,
+              enrollment_id: anyEnrollment?.id,
+              group_removal_id: removalRow?.id,
+              amount_ttd: refundAmount,
+              status: 'succeeded',
+            });
+            await admin
+              .from('group_removals')
+              .update({ status: 'auto_processed', refund_amount_ttd: refundAmount })
+              .eq('id', removalRow?.id);
+            refundIssued = true;
+            paymentNote = `A refund of TT$${refundAmount.toFixed(2)} has been issued to your original payment method.`;
+          } catch (err) {
+            const msg = err instanceof LuniPayError ? err.message : (err as Error).message;
+            console.error('[DELETE members no-cause] LuniPay refund failed:', err);
+            await admin.from('subscription_refunds').insert({
+              subscription_payment_id: associatedPayment.id,
+              enrollment_id: anyEnrollment?.id,
+              group_removal_id: removalRow?.id,
+              amount_ttd: refundAmount,
+              status: 'failed',
+              error_message: msg,
+            });
+            paymentNote = 'A refund could not be processed automatically. Our team has been alerted and will process it manually.';
+          }
+        } else if (associatedPayment.status === 'PENDING') {
+          // Checkout not yet completed — flag for admin to void
+          paymentNote = 'Your pending payment is being cancelled. Our team has been alerted and will confirm once voided.';
+        }
+
+        // Alert all admins regardless of refund outcome
+        const { data: admins } = await admin.from('profiles').select('id').eq('role', 'admin');
+        if (admins) {
+          const refundAmount = Number(anyEnrollment?.plan_price_ttd ?? associatedPayment.amount_ttd ?? 0);
+          await admin.from('notifications').insert(
+            admins.map((a: { id: string }) => ({
+              user_id: a.id,
+              type: 'group_removal_payment_action',
+              title: 'Group removal — payment action required',
+              message: refundIssued
+                ? `Student removed from "${group?.name}". A refund of TT$${refundAmount.toFixed(2)} was automatically issued.`
+                : `Student removed from "${group?.name}". Payment (status: ${associatedPayment!.status}) requires manual review.`,
+              link: `/admin/group-removals/${removalRow?.id}`,
+              group_id: groupId,
+              metadata: {
+                removal_id: removalRow?.id,
+                enrollment_id: anyEnrollment?.id,
+                payment_id: associatedPayment!.id,
+                payment_status: associatedPayment!.status,
+              },
+            }))
+          );
+        }
+      }
+
+      // Mark member removed
       await admin
         .from('group_members')
         .update({ status: 'removed' })
         .eq('group_id', groupId)
         .eq('user_id', userId);
 
-      return NextResponse.json({ success: true });
+      // Cancel enrollment if present
+      if (anyEnrollment) {
+        await admin
+          .from('group_enrollments')
+          .update({ status: 'CANCELLED' })
+          .eq('id', anyEnrollment.id);
+      }
+
+      // Always notify the student
+      await admin.from('notifications').insert({
+        user_id: userId,
+        type: 'group_removal',
+        title: 'Removed from group',
+        message: paymentNote
+          ? `You have been removed from "${group?.name}". ${paymentNote}`
+          : `You have been removed from "${group?.name}".`,
+        link: `/student/subscriptions`,
+        group_id: groupId,
+        metadata: { removal_id: removalRow?.id },
+      });
+
+      return NextResponse.json({
+        success: true,
+        removal_id: removalRow?.id,
+        refund_issued: refundIssued,
+        payment_action_required: !!(associatedPayment && !refundIssued),
+      });
     }
 
     // Find the last PAID subscription_payments row
@@ -296,6 +447,16 @@ export async function DELETE(req: NextRequest, { params }: Params) {
       .select('id, amount_ttd, lunipay_transaction_id')
       .eq('enrollment_id', subEnrollment.id)
       .eq('status', 'PAID')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    // Also check for a pending checkout that hasn't settled — must be voided by admin
+    const { data: pendingCheckout } = await admin
+      .from('subscription_payments')
+      .select('id, amount_ttd, lunipay_checkout_session_id')
+      .eq('enrollment_id', subEnrollment.id)
+      .eq('status', 'PENDING')
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -468,12 +629,35 @@ export async function DELETE(req: NextRequest, { params }: Params) {
         type: 'subscription_cancellation_finalized',
         title: 'Removed from group',
         message: refundAmount > 0
-          ? `You have been removed from "${group?.name}". A refund of $${refundAmount.toFixed(2)} TTD has been issued.`
+          ? `You have been removed from "${group?.name}". A refund of TT$${refundAmount.toFixed(2)} has been issued to your original payment method.`
           : `You have been removed from "${group?.name}".`,
         link: `/student/subscriptions`,
         group_id: groupId,
         metadata: { removal_id: removalRow?.id, refund_amount: refundAmount },
       });
+    }
+
+    // If a pending checkout was open at removal time, alert admins to void it before it settles
+    if (pendingCheckout) {
+      const { data: admins } = await admin.from('profiles').select('id').eq('role', 'admin');
+      if (admins) {
+        await admin.from('notifications').insert(
+          admins.map((a: { id: string }) => ({
+            user_id: a.id,
+            type: 'group_removal_payment_action',
+            title: 'Group removal — pending checkout must be voided',
+            message: `Student removed from "${group?.name}" had an open checkout of TT$${Number(pendingCheckout.amount_ttd).toFixed(2)} that has not yet settled. Void checkout ${pendingCheckout.lunipay_checkout_session_id ?? pendingCheckout.id} in LuniPay to prevent the charge from completing.`,
+            link: `/admin/group-removals/${removalRow?.id}`,
+            group_id: groupId,
+            metadata: {
+              removal_id: removalRow?.id,
+              enrollment_id: subEnrollment.id,
+              payment_id: pendingCheckout.id,
+              checkout_session_id: pendingCheckout.lunipay_checkout_session_id,
+            },
+          }))
+        );
+      }
     }
 
     return NextResponse.json({
