@@ -208,14 +208,20 @@ function SettingsContent() {
     if (!file || !profile) return;
     setError(''); setMessage(''); setUploading(true);
     try {
-      const path = `${profile.id}/avatar-${Date.now()}.${file.name.split('.').pop() || 'jpg'}`;
-      const { error: upErr } = await supabase.storage.from('avatars').upload(path, file, { upsert: true, cacheControl: '3600' });
+      const path = `${profile.id}/avatar.jpg`;
+      // Remove old avatar first to avoid CDN serving stale cached version
+      await supabase.storage.from('avatars').remove([path]);
+      const { error: upErr } = await supabase.storage.from('avatars').upload(path, file, {
+        contentType: file.type || 'image/jpeg',
+        upsert: true,
+      });
       if (upErr) throw new Error(upErr.message);
       const { data } = supabase.storage.from('avatars').getPublicUrl(path);
-      const url = data.publicUrl;
+      // Add cache-busting timestamp so browsers don't serve the old cached image
+      const url = `${data.publicUrl}?t=${Date.now()}`;
       const { error: updErr } = await supabase.from('profiles').update({ avatar_url: url }).eq('id', profile.id);
       if (updErr) throw new Error(updErr.message);
-      setMessage('Avatar updated!');
+      setMessage('Profile photo updated!');
       setTimeout(() => window.location.reload(), 800);
     } catch (e2) {
       setError((e2 as Error).message);
