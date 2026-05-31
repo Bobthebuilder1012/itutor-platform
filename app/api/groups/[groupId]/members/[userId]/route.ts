@@ -503,6 +503,25 @@ export async function DELETE(req: NextRequest, { params }: Params) {
       }
     }
 
+    // Idempotency: block double-processing on retry/double-click.
+    // If a removal row already exists for this enrollment, return the prior result.
+    const { data: existingRemoval } = await admin
+      .from('group_removals')
+      .select('id, status, refund_amount_ttd')
+      .eq('enrollment_id', subEnrollment.id)
+      .in('status', ['auto_processed', 'pending_payment_action', 'pending_review'])
+      .maybeSingle();
+
+    if (existingRemoval) {
+      return NextResponse.json({
+        success: true,
+        removal_id: existingRemoval.id,
+        refund_amount: Number(existingRemoval.refund_amount_ttd ?? 0),
+        refund_succeeded: existingRemoval.status === 'auto_processed',
+        note: 'Already processed',
+      });
+    }
+
     // Create group_removal row (auto_processed)
     const { data: removalRow } = await admin
       .from('group_removals')

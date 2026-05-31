@@ -170,37 +170,31 @@ export async function handleSubscriptionPayment(
   // Recalculate commission with final amount (in case it changed)
   const { platformFee, payoutAmount } = calculateCommission(sp.amount_ttd);
 
-  // Check: if initial payment with expired reservation, handle capacity
+  // Always re-check capacity for initial subscriptions at activation time.
+  // Guards the TOCTOU race where two students complete checkout simultaneously
+  // against the last remaining slot.
   if (sp.type === 'subscription_initial') {
-    const reservationExpired =
-      enrollment.pending_payment_expires_at &&
-      new Date(enrollment.pending_payment_expires_at) < now;
+    const group = enrollment.group as any;
+    if (group?.max_students) {
+      const { count } = await admin
+        .from('group_enrollments')
+        .select('id', { count: 'exact', head: true })
+        .eq('group_id', sp.group_id)
+        .in('status', ['ACTIVE', 'GRACE', 'SUSPENDED'])
+        .neq('id', sp.enrollment_id);
 
-    if (reservationExpired) {
-      // Check current capacity
-      const group = enrollment.group as any;
-      if (group?.max_students) {
-        const { count } = await admin
-          .from('group_enrollments')
-          .select('id', { count: 'exact', head: true })
-          .eq('group_id', sp.group_id)
-          .in('status', ['ACTIVE', 'GRACE', 'SUSPENDED'])
-          .neq('id', sp.enrollment_id);
+      const { count: pendingCount } = await admin
+        .from('group_enrollments')
+        .select('id', { count: 'exact', head: true })
+        .eq('group_id', sp.group_id)
+        .eq('status', 'PENDING_PAYMENT')
+        .gt('pending_payment_expires_at', now.toISOString())
+        .neq('id', sp.enrollment_id);
 
-        const { count: pendingCount } = await admin
-          .from('group_enrollments')
-          .select('id', { count: 'exact', head: true })
-          .eq('group_id', sp.group_id)
-          .eq('status', 'PENDING_PAYMENT')
-          .gt('pending_payment_expires_at', now.toISOString())
-          .neq('id', sp.enrollment_id);
-
-        const used = (count ?? 0) + (pendingCount ?? 0);
-        if (used >= group.max_students) {
-          // Capacity taken — flag for admin
-          await markActivationFailed(admin, sp, enrollment, 'capacity_conflict', 'Group reached capacity while payment was processing');
-          return { ok: false, error: 'capacity_conflict' };
-        }
+      const used = (count ?? 0) + (pendingCount ?? 0);
+      if (used >= group.max_students) {
+        await markActivationFailed(admin, sp, enrollment, 'capacity_conflict', 'Group reached capacity while payment was processing');
+        return { ok: false, error: 'capacity_conflict' };
       }
     }
   }
