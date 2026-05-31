@@ -24,9 +24,9 @@ type Group = {
   tutor: { full_name: string | null; display_name: string | null } | null;
   max_students: number | null;
   require_join_requests: boolean;
-  parent_feedback_mode: string | null;
+  feedback_mode: string | null;
   primary_channel: string | null;
-  whatsapp_url: string | null;
+  whatsapp_link: string | null;
   google_classroom_link: string | null;
   pricing: number | null;
   pricing_model: string | null;
@@ -169,6 +169,9 @@ export default function StudentGroupPage({ params }: { params: { groupId: string
   const [memberStatus, setMemberStatus] = useState<MemberStatus>(null);
   const [joining, setJoining] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
+  // Subscription state (only populated for MONTHLY groups)
+  const [subscriptionAccess, setSubscriptionAccess] = useState<any>(null);
+  const [subscribing, setSubscribing] = useState(false);
 
   useEffect(() => {
     if (!groupId || profileLoading) return;
@@ -183,11 +186,12 @@ export default function StudentGroupPage({ params }: { params: { groupId: string
       const { data: grp } = await supabase
         .from('groups')
         .select(`
-          id, name, description, subject, tutor_id, max_students,
-          require_join_requests, parent_feedback_mode, primary_channel,
-          whatsapp_url, google_classroom_link, pricing, pricing_model,
+          id, name, description, subject, subject_id, tutor_id, max_students,
+          require_join_requests, feedback_mode, primary_channel,
+          whatsapp_link, google_classroom_link, pricing, pricing_model,
           visibility, archived_at,
-          tutor:profiles!groups_tutor_id_fkey(full_name, display_name)
+          tutor:profiles!groups_tutor_id_fkey(full_name, display_name),
+          subject_data:subjects!subject_id(name, label)
         `)
         .eq('id', groupId)
         .is('archived_at', null)
@@ -235,10 +239,44 @@ export default function StudentGroupPage({ params }: { params: { groupId: string
         enrollment_count: enrollCount ?? 0,
         upcoming_sessions: (occurrences ?? []) as SessionRow[],
       });
+
+      // Fetch subscription access state for MONTHLY groups
+      if (grp.pricing_model === 'MONTHLY') {
+        try {
+          const accessRes = await fetch(`/api/groups/${groupId}/access`);
+          if (accessRes.ok) {
+            const accessData = await accessRes.json();
+            setSubscriptionAccess(accessData);
+          }
+        } catch {
+          // non-critical — CTA degrades gracefully
+        }
+      }
     } catch (err) {
       console.error('[StudentGroupPage]', err);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleSubscribe() {
+    if (!group) return;
+    setSubscribing(true);
+    try {
+      const res = await fetch(`/api/groups/${group.id}/subscribe`, { method: 'POST' });
+      const data = await res.json();
+      if (data.waitlisted) {
+        setSubscriptionAccess({ ...subscriptionAccess, waitlisted: true, waitlist_position: data.position });
+        return;
+      }
+      if (!res.ok) throw new Error(data.error || 'Failed to subscribe');
+      if (data.checkout_url) {
+        window.location.href = data.checkout_url;
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to start subscription. Please try again.');
+    } finally {
+      setSubscribing(false);
     }
   }
 
@@ -283,7 +321,16 @@ export default function StudentGroupPage({ params }: { params: { groupId: string
   const isSuspended = memberStatus === 'suspended' || memberStatus === 'suspended_payment';
   const isBanned = memberStatus === 'banned' || memberStatus === 'removed' || memberStatus === 'rejected';
 
-  if (isEnrolled || isSuspended || isBanned) {
+  const subStatus = subscriptionAccess?.status as string | undefined;
+  const isMonthly = group.pricing_model === 'MONTHLY';
+  const subHasAccess = subscriptionAccess?.has_access === true;
+
+  // Redirect enrolled subscribers (with active access) to the class homepage
+  if (isMonthly && subStatus === 'ACTIVE' && subHasAccess) {
+    return <ClassHomepage group={group} memberStatus={memberStatus} userId={profile!.id} subscriptionAccess={subscriptionAccess} />;
+  }
+  // Non-subscription enrolled view
+  if (!isMonthly && (isEnrolled || isSuspended || isBanned)) {
     return <ClassHomepage group={group} memberStatus={memberStatus} userId={profile!.id} />;
   }
 
@@ -307,9 +354,9 @@ export default function StudentGroupPage({ params }: { params: { groupId: string
   const whatsIncluded = [
     'Live interactive sessions',
     ...(nextSession?.duration_minutes ? [`${formatDuration(nextSession.duration_minutes)} per session`] : []),
-    ...(group.primary_channel === 'whatsapp' || group.whatsapp_url ? ['WhatsApp group access'] : []),
+    ...(group.primary_channel === 'whatsapp' || group.whatsapp_link ? ['WhatsApp group access'] : []),
     ...(group.primary_channel === 'classroom' || group.google_classroom_link ? ['Google Classroom access'] : []),
-    ...(group.parent_feedback_mode === 'included_free' ? ['Free parent feedback reports'] : []),
+    ...(group.feedback_mode === 'included_free' ? ['Free parent feedback reports'] : []),
     'Session recordings within 24 hours',
     'Direct messaging with tutor',
   ];
@@ -327,13 +374,13 @@ export default function StudentGroupPage({ params }: { params: { groupId: string
           <div className="relative flex items-start gap-4">
             <div className="size-16 rounded-2xl bg-white grid place-items-center text-4xl shadow-md shrink-0">{emoji}</div>
             <div className="min-w-0 flex-1">
-              <div className="text-xs uppercase tracking-wider font-bold opacity-90">{group.subject || 'General'}</div>
+              <div className="text-xs uppercase tracking-wider font-bold opacity-90">{(group as any).subject_data?.label ?? (group as any).subject_data?.name ?? (group.subject || 'General')}</div>
               <h1 className="text-2xl sm:text-3xl font-bold mt-1 leading-tight">{group.name}</h1>
               {group.description && <p className="text-sm opacity-90 mt-2 line-clamp-2">{group.description}</p>}
             </div>
           </div>
           <div className="relative mt-5 flex flex-wrap gap-2">
-            {group.parent_feedback_mode === 'included_free' && (
+            {group.feedback_mode === 'included_free' && (
               <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-white/20 backdrop-blur-sm text-white">
                 <Sparkles className="size-3.5" /> Free parent feedback
               </span>
@@ -353,6 +400,64 @@ export default function StudentGroupPage({ params }: { params: { groupId: string
             <div>
               <div className="font-semibold text-amber-900 text-sm">Join request sent</div>
               <div className="text-xs text-amber-700">{tutorName} will review your request shortly.</div>
+            </div>
+          </div>
+        )}
+
+        {/* Subscription state banners */}
+        {isMonthly && subStatus === 'GRACE' && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 flex items-center justify-between gap-3">
+            <div>
+              <div className="font-semibold text-amber-900 text-sm">Payment due</div>
+              <div className="text-xs text-amber-700">Renew before {subscriptionAccess?.grace_period_ends_at ? new Date(subscriptionAccess.grace_period_ends_at).toLocaleDateString('en-TT') : 'your grace period ends'} to keep access.</div>
+            </div>
+            <a href={`/student/subscriptions/${subscriptionAccess?.enrollment_id}/pay`}
+              className="px-4 py-2 rounded-xl bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600 transition shrink-0">
+              Renew Now
+            </a>
+          </div>
+        )}
+        {isMonthly && subStatus === 'SUSPENDED' && (
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 flex items-center justify-between gap-3">
+            <div>
+              <div className="font-semibold text-red-900 text-sm flex items-center gap-1.5"><Ban className="size-4" /> Access suspended</div>
+              <div className="text-xs text-red-700">Your subscription has been suspended due to non-payment.</div>
+            </div>
+            <a href={`/student/subscriptions/${subscriptionAccess?.enrollment_id}/pay`}
+              className="px-4 py-2 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600 transition shrink-0">
+              Reactivate
+            </a>
+          </div>
+        )}
+        {isMonthly && subStatus === 'ACTIVATION_FAILED' && (
+          <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 flex items-center gap-3">
+            <CreditCard className="size-5 text-blue-600 shrink-0" />
+            <div>
+              <div className="font-semibold text-blue-900 text-sm">Payment received — activation pending</div>
+              <div className="text-xs text-blue-700">Your access is being activated. Do not pay again.</div>
+            </div>
+          </div>
+        )}
+        {isMonthly && subscriptionAccess?.cancel_at_period_end && subStatus === 'ACTIVE' && (
+          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 flex items-center justify-between gap-3">
+            <div className="text-sm text-zinc-700">
+              Cancels on {subscriptionAccess?.current_period_end ? new Date(subscriptionAccess.current_period_end).toLocaleDateString('en-TT') : 'period end'}
+            </div>
+            <button onClick={async () => {
+              await fetch(`/api/subscriptions/${subscriptionAccess.enrollment_id}/undo-cancellation`, { method: 'POST' });
+              const r = await fetch(`/api/groups/${groupId}/access`);
+              if (r.ok) setSubscriptionAccess(await r.json());
+            }} className="px-4 py-2 rounded-xl bg-zinc-700 text-white text-sm font-semibold hover:bg-zinc-800 transition shrink-0">
+              Undo cancellation
+            </button>
+          </div>
+        )}
+        {isMonthly && subscriptionAccess?.waitlisted && (
+          <div className="rounded-2xl border border-brand/30 bg-brand/5 p-4 flex items-center gap-3">
+            <Users className="size-5 text-brand shrink-0" />
+            <div>
+              <div className="font-semibold text-ink text-sm">You are #{subscriptionAccess.waitlist_position} on the waitlist</div>
+              <div className="text-xs text-muted-foreground">You will be notified when a spot opens up.</div>
             </div>
           </div>
         )}
@@ -417,30 +522,96 @@ export default function StudentGroupPage({ params }: { params: { groupId: string
       </div>
 
       {/* Sticky CTA */}
-      {!isPending && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 bg-background/95 backdrop-blur border-t border-border p-4">
-          <div className="max-w-3xl mx-auto flex items-center gap-4">
-            <div className="flex-1 min-w-0">
-              {price > 0 ? (
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-xl font-bold text-ink">TT${price}</span>
-                  <span className="text-xs text-muted-foreground">{billingLabel}</span>
+      {!isPending && (() => {
+        // ── MONTHLY subscription CTA ──
+        if (isMonthly) {
+          const monthlyPrice = Number((group as any).price_monthly ?? 0);
+          // States that get their own banner (no sticky CTA needed)
+          if (subStatus === 'ACTIVATION_FAILED') return null;
+          if (subscriptionAccess?.waitlisted) return null;
+          if (subStatus === 'GRACE') return null; // handled by banner above
+          if (subStatus === 'SUSPENDED') return null; // handled by banner above
+          // PENDING_PAYMENT: show "Complete payment" link
+          if (subStatus === 'PENDING_PAYMENT' && subscriptionAccess?.pending_payment_expires_at &&
+              new Date(subscriptionAccess.pending_payment_expires_at) > new Date()) {
+            return (
+              <div className="fixed bottom-0 left-0 right-0 z-40 bg-background/95 backdrop-blur border-t border-border p-4">
+                <div className="max-w-3xl mx-auto flex items-center gap-4">
+                  <div className="flex-1 text-sm text-muted-foreground">Checkout in progress</div>
+                  <a href={`/student/subscriptions/${subscriptionAccess.enrollment_id}/pay`}
+                    className="px-6 py-3 rounded-2xl text-sm font-semibold bg-brand text-white hover:bg-brand-deep inline-flex items-center gap-2 transition shrink-0">
+                    <CreditCard className="size-4" /> Complete payment
+                  </a>
                 </div>
-              ) : (
-                <span className="text-xl font-bold text-brand-deep">Free</span>
-              )}
-              <div className="text-[11px] text-muted-foreground">{group.require_join_requests ? 'Tutor approval required' : 'Join instantly'}</div>
+              </div>
+            );
+          }
+          // Private group without invite
+          if (group.visibility === 'private' && (!subscriptionAccess?.subscribed)) {
+            return (
+              <div className="fixed bottom-0 left-0 right-0 z-40 bg-background/95 backdrop-blur border-t border-border p-4">
+                <div className="max-w-3xl mx-auto flex items-center gap-4">
+                  <div className="flex-1 text-sm text-muted-foreground">By invitation only</div>
+                  <div className="px-6 py-3 rounded-2xl text-sm font-semibold bg-zinc-200 text-zinc-500 inline-flex items-center gap-2 shrink-0 cursor-not-allowed">
+                    <Lock className="size-4" /> Invitation required
+                  </div>
+                </div>
+              </div>
+            );
+          }
+          // Default: Subscribe CTA
+          const canSubscribe = !subStatus || ['CANCELLED', 'ACTIVATION_FAILED'].includes(subStatus);
+          return (
+            <div className="fixed bottom-0 left-0 right-0 z-40 bg-background/95 backdrop-blur border-t border-border p-4">
+              <div className="max-w-3xl mx-auto flex items-center gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-xl font-bold text-ink">TT${monthlyPrice}</span>
+                    <span className="text-xs text-muted-foreground">/month</span>
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    {isFull ? 'Class full — join waitlist' : group.require_join_requests ? 'Approval required' : 'Subscribe instantly'}
+                  </div>
+                </div>
+                <button
+                  onClick={handleSubscribe}
+                  disabled={subscribing || !canSubscribe}
+                  className={cn('px-6 py-3 rounded-2xl text-sm font-semibold inline-flex items-center gap-2 transition shrink-0',
+                    !canSubscribe ? 'bg-zinc-200 text-zinc-500 cursor-not-allowed' :
+                    isFull ? 'bg-ink text-white hover:bg-ink/90' : 'bg-brand text-white hover:bg-brand-deep')}>
+                  {subscribing ? <Loader2 className="size-4 animate-spin" /> : isFull ? <Lock className="size-4" /> : <CreditCard className="size-4" />}
+                  {subscribing ? 'Processing…' : isFull ? 'Join waitlist' : `Subscribe — TT$${monthlyPrice}/mo`}
+                </button>
+              </div>
             </div>
-            <button
-              onClick={() => setShowJoinModal(true)}
-              className={cn('px-6 py-3 rounded-2xl text-sm font-semibold inline-flex items-center gap-2 transition shrink-0',
-                isFull ? 'bg-ink text-white hover:bg-ink/90' : 'bg-brand text-white hover:bg-brand-deep')}>
-              {isFull && <Lock className="size-4" />}
-              {isFull ? 'Join waitlist' : group.require_join_requests ? 'Request to join' : 'Join class'}
-            </button>
+          );
+        }
+        // ── Non-subscription CTA ──
+        return (
+          <div className="fixed bottom-0 left-0 right-0 z-40 bg-background/95 backdrop-blur border-t border-border p-4">
+            <div className="max-w-3xl mx-auto flex items-center gap-4">
+              <div className="flex-1 min-w-0">
+                {price > 0 ? (
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-xl font-bold text-ink">TT${price}</span>
+                    <span className="text-xs text-muted-foreground">{billingLabel}</span>
+                  </div>
+                ) : (
+                  <span className="text-xl font-bold text-brand-deep">Free</span>
+                )}
+                <div className="text-[11px] text-muted-foreground">{group.require_join_requests ? 'Tutor approval required' : 'Join instantly'}</div>
+              </div>
+              <button
+                onClick={() => setShowJoinModal(true)}
+                className={cn('px-6 py-3 rounded-2xl text-sm font-semibold inline-flex items-center gap-2 transition shrink-0',
+                  isFull ? 'bg-ink text-white hover:bg-ink/90' : 'bg-brand text-white hover:bg-brand-deep')}>
+                {isFull && <Lock className="size-4" />}
+                {isFull ? 'Join waitlist' : group.require_join_requests ? 'Request to join' : 'Join class'}
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Join modal */}
       {showJoinModal && (
@@ -497,7 +668,7 @@ export default function StudentGroupPage({ params }: { params: { groupId: string
 
 type Tab = 'stream' | 'sessions' | 'members';
 
-function ClassHomepage({ group, memberStatus, userId }: { group: Group; memberStatus: MemberStatus; userId: string }) {
+function ClassHomepage({ group, memberStatus, userId, subscriptionAccess }: { group: Group; memberStatus: MemberStatus; userId: string; subscriptionAccess?: any }) {
   const [tab, setTab] = useState<Tab>('stream');
   const { from, to } = getGradient(group.subject);
   const emoji = getEmoji(group.subject);
@@ -522,7 +693,7 @@ function ClassHomepage({ group, memberStatus, userId }: { group: Group; memberSt
         <div className="relative flex flex-wrap items-start gap-4">
           <div className="text-5xl select-none">{emoji}</div>
           <div className="flex-1 min-w-0">
-            <div className="text-xs uppercase tracking-wider text-white/70 font-bold">{group.subject || 'General'} · Group class</div>
+            <div className="text-xs uppercase tracking-wider text-white/70 font-bold">{(group as any).subject_data?.label ?? (group as any).subject_data?.name ?? (group.subject || 'General')} · Group class</div>
             <h1 className="text-2xl lg:text-3xl font-bold text-white mt-1">{group.name}</h1>
             <div className="text-sm text-white/80 mt-1 inline-flex items-center gap-1.5">
               with {tutorName}

@@ -11,6 +11,7 @@ export type SessionStatus =
   | 'JOIN_OPEN'
   | 'COMPLETED_ASSUMED'
   | 'NO_SHOW_STUDENT'
+  | 'NO_SHOW_TUTOR'
   | 'EARLY_END_SHORT'
   | 'CANCELLED';
 

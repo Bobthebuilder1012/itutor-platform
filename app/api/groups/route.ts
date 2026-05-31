@@ -86,38 +86,51 @@ export async function GET(request: NextRequest) {
 
     const isTutor = profile?.role === 'tutor';
 
-    // Select only columns confirmed to exist in the DB schema.
-    // Note: group_members profile sub-join omitted — multiple FK paths cause a 300 ambiguity.
-    const selectStr = `
-      id, name, description, tutor_id, subject, pricing, pricing_model, created_at,
-      visibility, primary_channel, whatsapp_url, google_classroom_link,
-      max_students, parent_feedback_mode, parent_feedback_price,
-      require_join_requests, auto_suspend_missed_payment, grace_period_days,
-      archived_at, archived_reason,
-      tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, rating_average, rating_count),
-      group_members(id, user_id, status)
-    `;
+    const SELECT_TIERS = [
+      // Tier 1: full column set (requires migrations 128-132)
+      `id, name, description, tutor_id, subject, pricing, pricing_model, created_at,
+       visibility, primary_channel, whatsapp_url, google_classroom_link,
+       max_students, parent_feedback_mode, parent_feedback_price,
+       require_join_requests, auto_suspend_missed_payment, grace_period_days,
+       archived_at, archived_reason,
+       tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, rating_average, rating_count),
+       group_members(id, user_id, status)`,
+      // Tier 2: drop columns likely missing (parent_feedback_mode → feedback_mode, no archived_reason/whatsapp_url)
+      `id, name, description, tutor_id, subject, pricing, pricing_model, created_at,
+       visibility, primary_channel, google_classroom_link,
+       max_students, parent_feedback_price,
+       require_join_requests, auto_suspend_missed_payment, grace_period_days,
+       archived_at,
+       tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, rating_average, rating_count),
+       group_members(id, user_id, status)`,
+      // Tier 3: drop rating columns from profiles (may live on tutor_profiles instead)
+      `id, name, description, tutor_id, subject, pricing, pricing_model, created_at,
+       visibility, max_students, require_join_requests, grace_period_days, archived_at,
+       tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url),
+       group_members(id, user_id, status)`,
+      // Tier 4: bare minimum
+      `id, name, description, tutor_id, subject, pricing, pricing_model, created_at, archived_at,
+       tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url),
+       group_members(id, user_id, status)`,
+    ];
 
-    const runGroupsQuery = async () => {
-      let query = service
-        .from('groups')
-        .select(selectStr)
-        .order('created_at', { ascending: false });
-
+    const buildBaseQuery = (selectStr: string, useVisibilityFilter = true) => {
+      let q = service.from('groups').select(selectStr).order('created_at', { ascending: false });
       if (fetchArchived) {
-        query = query.not('archived_at', 'is', null).eq('tutor_id', user.id);
+        q = q.not('archived_at', 'is', null).eq('tutor_id', user.id);
       } else {
-        query = query.is('archived_at', null);
-        if (isTutor) {
-          // Tutors always see their own classes
-          query = query.or(`tutor_id.eq.${user.id},visibility.eq.public,visibility.is.null`);
-        } else {
-          // Students see classes that are not explicitly private
-          query = query.or('visibility.eq.public,visibility.is.null');
+        q = q.is('archived_at', null);
+        if (useVisibilityFilter) {
+          if (isTutor) {
+            // Tutors see their own classes plus any non-private group
+            q = q.or(`tutor_id.eq.${user.id},visibility.neq.private,visibility.is.null`);
+          } else {
+            // Students see anything that isn't explicitly private
+            q = q.or('visibility.neq.private,visibility.is.null');
+          }
         }
       }
-
-      return query;
+      return q;
     };
 
     const applyFilters = (query: any) => {
@@ -127,9 +140,19 @@ export async function GET(request: NextRequest) {
       return q;
     };
 
+    const QUERY_ATTEMPTS: Array<[string, boolean]> = [
+      ...SELECT_TIERS.map((t): [string, boolean] => [t, true]),
+      [SELECT_TIERS[SELECT_TIERS.length - 1], false], // last resort: no visibility filter
+    ];
+
     let groups: any[] | null = null;
     let error: any = null;
-    ({ data: groups, error } = await applyFilters(await runGroupsQuery()));
+    for (const [tier, useVis] of QUERY_ATTEMPTS) {
+      ({ data: groups, error } = await applyFilters(buildBaseQuery(tier, useVis)));
+      if (!error) break;
+      if (!isSchemaMismatch(error)) break;
+      console.warn('[GET /api/groups] schema mismatch, trying next tier:', error.message);
+    }
     if (error) throw error;
 
     const groupRows = groups ?? [];
@@ -288,7 +311,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Only tutors can create groups' }, { status: 403 });
     }
 
-    const body: CreateGroupInput = await request.json();
+    const rawBody = await request.json();
+    // Normalise camelCase fields the creation form sends alongside snake_case ones
+    const body: CreateGroupInput & Record<string, any> = {
+      ...rawBody,
+      max_students: rawBody.max_students ?? rawBody.maxStudents ?? undefined,
+      price_per_session: rawBody.price_per_session ?? rawBody.pricePerSession ?? undefined,
+      form_level: rawBody.form_level ?? rawBody.formLevel ?? undefined,
+      pricing_model: rawBody.pricing_model ?? rawBody.billingModel ?? undefined,
+    };
     if (!body.name?.trim()) {
       return NextResponse.json({ error: 'Group name is required' }, { status: 400 });
     }
@@ -297,7 +328,11 @@ export async function POST(request: NextRequest) {
     const subjectString =
       body.subjects && body.subjects.length > 0
         ? body.subjects.join(', ')
-        : null;
+        : (body.subject?.trim() || null);
+
+    // Resolve visibility: form may send isPublic (boolean legacy) or visibility (string)
+    const resolvedVisibility: string | null =
+      rawBody.visibility ?? (rawBody.isPublic === true ? 'public' : rawBody.isPublic === false ? 'unlisted' : null);
 
     let { data: group, error } = await service
       .from('groups')
@@ -315,9 +350,11 @@ export async function POST(request: NextRequest) {
         pricing_model: body.pricing_model ?? 'FREE',
         price_per_session: body.price_per_session ?? null,
         price_per_course: body.price_per_course ?? null,
+        max_students: body.max_students ?? null,
         availability_window: body.availability_window ?? null,
         cover_image: body.cover_image ?? null,
         header_image: body.header_image ?? null,
+        ...(resolvedVisibility ? { visibility: resolvedVisibility } : {}),
       })
       .select()
       .single();

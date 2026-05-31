@@ -85,11 +85,21 @@ export default function TermsPage() {
                 </div>
 
                 <div>
-                  <h3 className="text-xl font-bold text-gray-900 mb-3">5. No-Show and Payment Policy</h3>
+                  <h3 className="text-xl font-bold text-gray-900 mb-3">5. No-Show and Cancellation Policy</h3>
+                  <p className="text-gray-700 mb-2"><strong>Cancellations:</strong></p>
+                  <ul className="list-disc pl-6 text-gray-700 space-y-2 mb-3">
+                    <li>Cancellations 12 or more hours before the scheduled start receive a full refund.</li>
+                    <li>Cancellations under 12 hours before start receive a full refund unless the student has received a prior reliability warning, in which case 50% of the session fee is retained.</li>
+                    <li>Three or more cancellations within any 30-day window may trigger a reliability warning subject to admin review.</li>
+                  </ul>
+                  <p className="text-gray-700 mb-2"><strong>No-shows:</strong></p>
                   <ul className="list-disc pl-6 text-gray-700 space-y-2">
-                    <li>If a student does not join within 33% of the session duration, the iTutor may mark the session as a student no-show.</li>
-                    <li>In this case, 50% of the session fee may be charged.</li>
-                    <li>If the session proceeds normally, the full session fee is charged at the scheduled end time.</li>
+                    <li>If a party does not join within 15 minutes of the scheduled start, the other party may file a no-show claim with evidence.</li>
+                    <li>The accused party has 12 hours to respond before the claim is escalated to admin review.</li>
+                    <li>If the claim is upheld against the student, the full session fee is retained and a strike is recorded on the student's reliability record.</li>
+                    <li>If the claim is upheld against the tutor, the student receives a full refund and a strike plus a system-issued rating is recorded against the tutor.</li>
+                    <li>If the evidence is inconclusive, both parties receive a neutral outcome with no penalties.</li>
+                    <li>Strikes and system ratings may be appealed once from the user's dashboard.</li>
                   </ul>
                 </div>
 
@@ -184,8 +194,11 @@ export default function TermsPage() {
                 <div>
                   <h3 className="text-xl font-bold text-gray-900 mb-3">4. No-Show and Cancellation Policy</h3>
                   <ul className="list-disc pl-6 text-gray-700 space-y-2">
-                    <li>If a student does not attend a session on time, partial charges may apply.</li>
-                    <li>Refunds are limited and governed by platform rules.</li>
+                    <li>Cancellations 12 or more hours before start receive a full refund.</li>
+                    <li>Late cancellations (under 12 hours) typically receive a full refund; warned accounts retain a 50% fee.</li>
+                    <li>Confirmed no-show claims against a student retain the full session fee and record a strike on the student's reliability record.</li>
+                    <li>Confirmed no-show claims against a tutor result in a full refund to the student.</li>
+                    <li>All strikes and system-issued ratings may be appealed once from the account dashboard.</li>
                   </ul>
                 </div>
 
@@ -290,11 +303,15 @@ export default function TermsPage() {
                 </div>
 
                 <div>
-                  <h3 className="text-xl font-bold text-gray-900 mb-3">5. No-Show Policy</h3>
+                  <h3 className="text-xl font-bold text-gray-900 mb-3">5. No-Show and Cancellation Policy</h3>
                   <ul className="list-disc pl-6 text-gray-700 space-y-2">
-                    <li>If a student does not join within 33% of the session duration, iTutors may mark the session as a student no-show.</li>
-                    <li>iTutors must act honestly when marking no-shows.</li>
-                    <li>Abuse of the no-show system may result in penalties or removal.</li>
+                    <li>If a student does not join within 15 minutes of the scheduled start, the tutor may file a no-show claim with supporting evidence.</li>
+                    <li>The student has 12 hours to respond before the claim is escalated to admin review.</li>
+                    <li>If the claim is upheld, the tutor keeps the full session fee and a strike is recorded on the student's reliability record.</li>
+                    <li>Tutor-initiated cancellations result in a full refund to the student, no payout to the tutor, and a strike on the tutor's 90-day reliability record. Cancellations within 15 minutes of start additionally trigger an automatic 2-star system rating.</li>
+                    <li>Five or more active strikes triggers an admin suspension review.</li>
+                    <li>Strikes and system-issued ratings may be appealed once from the tutor dashboard.</li>
+                    <li>False claims will result in account suspension or removal.</li>
                   </ul>
                 </div>
 

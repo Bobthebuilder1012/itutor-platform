@@ -74,7 +74,13 @@ export async function GET() {
       const subject = booking?.subject ? (Array.isArray(booking.subject) ? booking.subject[0] : booking.subject) : null;
       const startAt = s.scheduled_start_at;
       const endAt = s.scheduled_end_at;
+      const cancelledStatuses = ['CANCELLED', 'cancelled'];
+      const isCancelled = cancelledStatuses.includes(s.status);
       const pastStatuses = ['COMPLETED', 'COMPLETED_ASSUMED', 'NO_SHOW_STUDENT', 'EARLY_END_SHORT', 'completed', 'no_show'];
+      // Cancelled sessions stay grouped with whichever side of "now" they
+      // were scheduled on so the tutor sees them in context (upcoming list
+      // if the date hasn't passed yet, past list otherwise) — with a
+      // strikethrough + Cancelled pill applied client-side.
       const isPast = pastStatuses.includes(s.status) || (endAt && new Date(endAt).getTime() < Date.now());
       return {
         id: s.id,
@@ -85,8 +91,9 @@ export async function GET() {
         subject: subject?.label || subject?.name || 'Session',
         studentName: student?.display_name || student?.full_name || 'Student',
         studentId: booking?.student_id ?? null,
-        joinUrl: s.join_url ?? null,
+        joinUrl: isCancelled ? null : (s.join_url ?? null),
         status: isPast ? 'past' : 'upcoming',
+        cancelled: isCancelled,
         attendance: null,
         paymentStatus: (() => {
           const requiresPayment = booking?.payment_required || Number(booking?.price_ttd ?? 0) > 0;
@@ -116,6 +123,7 @@ export async function GET() {
         studentId: student?.id ?? null,
         joinUrl: null,
         status: 'pending',
+        cancelled: false,
         attendance: null,
         paymentStatus: null,
         reviewed: false,

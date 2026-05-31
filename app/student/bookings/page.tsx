@@ -45,9 +45,9 @@ export default function StudentBookingsPage() {
       const data = await getStudentBookings(profile.id);
       const enriched = await Promise.all(data.map(async (booking) => {
         const [tutorRes, subjectRes, sessionRes] = await Promise.all([
-          supabase.from('profiles').select('username, display_name, full_name').eq('id', booking.tutor_id).single(),
-          supabase.from('subjects').select('name, label').eq('id', booking.subject_id).single(),
-          supabase.from('sessions').select('id, status, join_url, scheduled_start_at, scheduled_end_at, duration_minutes').eq('booking_id', booking.id).single(),
+          supabase.from('profiles').select('username, display_name, full_name').eq('id', booking.tutor_id).maybeSingle(),
+          supabase.from('subjects').select('name, label').eq('id', booking.subject_id).maybeSingle(),
+          supabase.from('sessions').select('id, status, join_url, scheduled_start_at, scheduled_end_at, duration_minutes').eq('booking_id', booking.id).maybeSingle(),
         ]);
         return {
           ...booking,
@@ -66,11 +66,14 @@ export default function StudentBookingsPage() {
   }
 
   const isBookingPast = (booking: any) => {
-    if (booking.status === 'COMPLETED' || booking.status === 'DECLINED' || booking.status === 'CANCELLED') return true;
-    if (booking.status === 'CONFIRMED' && booking.session) {
-      const sessionEnd = new Date(booking.session.scheduled_end_at || new Date(new Date(booking.session.scheduled_start_at).getTime() + (booking.session.duration_minutes || 60) * 60000));
-      return new Date() > sessionEnd;
-    }
+    if (booking.status === 'COMPLETED' || booking.status === 'COMPLETED_ASSUMED' || booking.status === 'DECLINED' || booking.status === 'CANCELLED') return true;
+    // Use the most reliable end-time we have: live session > confirmed_end_at > requested_end_at.
+    // This catches PENDING / CONFIRMED rows whose slot has already elapsed.
+    const endIso =
+      booking.session?.scheduled_end_at ||
+      booking.confirmed_end_at ||
+      booking.requested_end_at;
+    if (endIso) return new Date() > new Date(endIso);
     return false;
   };
 
@@ -81,14 +84,26 @@ export default function StudentBookingsPage() {
     return start > now && (start.getTime() - now.getTime()) < 60 * 60 * 1000;
   };
 
-  const upcoming = bookings.filter(b => !isBookingPast(b) && b.status !== 'CANCELLED');
-  const past = bookings.filter(b => isBookingPast(b));
+  // Legacy "ghost" bookings created by the old direct-book flow: status=PENDING
+  // with payment_required=true but never paid. The new flow no longer creates
+  // these — we hide them so the student doesn't see orphan rows the tutor
+  // never approved. Truly tutor-pending paid bookings (payment_status='paid')
+  // stay visible.
+  const isUnpaidGhost = (b: any) =>
+    b.status === 'PENDING' && b.payment_required && b.payment_status !== 'paid';
+
+  const visible = bookings.filter((b) => !isUnpaidGhost(b));
+  const upcoming = visible.filter(b => !isBookingPast(b) && b.status !== 'CANCELLED');
+  const past = visible.filter(b => isBookingPast(b));
 
   const displayed = activeTab === 'upcoming' ? upcoming : past;
 
   const getStatusConfig = (booking: any) => {
     if (booking.status === 'CANCELLED') return { label: 'Cancelled', cls: 'bg-muted text-muted-foreground' };
     if (booking.status === 'COMPLETED' || booking.status === 'COMPLETED_ASSUMED') return { label: 'Completed', cls: 'bg-brand-soft text-forest' };
+    // Anything past its scheduled end-time but never marked completed:
+    // surface as "Past" rather than the stale lifecycle status (PENDING/CONFIRMED).
+    if (isBookingPast(booking)) return { label: 'Past', cls: 'bg-muted text-muted-foreground' };
     if (isBookingSoon(booking)) return { label: 'Starts soon', cls: 'bg-coral-soft text-coral' };
     if (booking.status === 'CONFIRMED') return { label: 'Scheduled', cls: 'bg-sky/40 text-forest' };
     if (booking.status === 'PENDING') return { label: 'Pending', cls: 'bg-peach text-ink' };

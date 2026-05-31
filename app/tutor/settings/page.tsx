@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { User, Bell, Lock, Wallet, GraduationCap, ChevronRight, Camera, Video, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -32,10 +32,12 @@ export default function TutorSettingsPage() {
 
 function SettingsContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialSection = (searchParams.get('section') as Section | null) ?? 'profile';
   const { profile, loading: profileLoading } = useProfile();
   const [uploading, setUploading] = useState(false);
 
-  const [section, setSection] = useState<Section>('profile');
+  const [section, setSection] = useState<Section>(initialSection);
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
@@ -307,7 +309,7 @@ function SettingsContent() {
                 <div className="font-semibold text-ink">Manage availability</div>
                 <div className="text-xs text-muted-foreground mt-1">Set your weekly schedule and time-off blocks.</div>
               </Link>
-              <Link href="/tutor/dashboard" className="block rounded-xl border border-border p-4 hover:bg-muted transition">
+              <Link href="/tutor/get-listed" className="block rounded-xl border border-border p-4 hover:bg-muted transition">
                 <div className="font-semibold text-ink">Manage subjects & rates</div>
                 <div className="text-xs text-muted-foreground mt-1">Add, remove or update the subjects you teach and their pricing.</div>
               </Link>
@@ -391,22 +393,7 @@ function SettingsContent() {
             </>
           )}
 
-          {section === 'payouts' && (
-            <>
-              <div className="rounded-2xl bg-mint p-4 flex items-center justify-between">
-                <div>
-                  <div className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Payouts</div>
-                  <div className="font-semibold text-ink mt-1">No payout method connected yet</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">Set up your bank account to receive automatic payouts.</div>
-                </div>
-              </div>
-              <div className="rounded-xl border border-border p-5 text-center">
-                <Wallet className="size-8 mx-auto text-muted-foreground/40" />
-                <p className="text-sm font-medium text-ink mt-3">Payout management coming soon</p>
-                <p className="text-xs text-muted-foreground mt-1">Bank account, payout frequency, and tax documents will be configurable here.</p>
-              </div>
-            </>
-          )}
+          {section === 'payouts' && <PayoutAccountForm />}
         </div>
       </div>
 
@@ -481,5 +468,228 @@ function SaveBar({ onSave, saving, label = 'Save changes' }: { onSave: () => voi
         {saving ? 'Saving…' : label}
       </button>
     </div>
+  );
+}
+
+const TT_BANKS: Record<string, { swift: string; code: string; branches: string[] }> = {
+  'Republic Bank': {
+    swift: 'RBNKTTPX', code: '004',
+    branches: [
+      'Ellerslie Court – Maraval', 'Glencoe', 'Long Circular Mall – St. James',
+      'Starlite – Diego Martin', 'West Mall – Westmoorings', 'Hilton Agency – POS',
+      'Independence Square – POS', 'Park Street – POS', 'Tragarete Road – POS', 'Woodbrook',
+      'Grand Bazaar – Valsayn', 'Shops of Arima Agency', 'Arima – Broadway',
+      'Trincity', 'Valpark – Valsayn', 'Chaguanas – Centre City', 'Couva',
+      'Sangre Grande', 'San Juan', 'St. Augustine', 'Tunapuna',
+      'Gulf View – La Romaine', 'South Park – Tarouba', 'Atlantic Plaza Agency – Point Lisas',
+      'Cipero Street – San Fernando', 'Fyzabad', 'Harris Promenade – San Fernando',
+      'High Street – San Fernando', 'Marabella', 'Mayaro', 'Penal',
+      'Princes Town', 'Point Fortin', 'Rio Claro', 'Siparia',
+    ],
+  },
+  'First Citizens Bank': {
+    swift: 'FCBLTTPS', code: '006',
+    branches: [
+      'Arima', 'Sangre Grande', 'Tunapuna',
+      'MovieTowne Financial Centre – Invaders Bay',
+      'Port of Spain – Independence Square', 'Port of Spain – Maraval',
+      'One Woodbrook Place – Tragarete Rd', 'Park Street – POS',
+      'West Vale Mall – Diego Martin', 'San Juan',
+      'Chaguanas – Market Street', 'Montrose',
+      'Couva', 'Gulf View Mall – La Romaine', 'Marabella', 'Penal',
+      'Point Fortin', 'Point Lisas', 'Princes Town', 'San Fernando', 'Siparia',
+      'Milford Road – Tobago', 'Scarborough – Tobago', 'Roxborough – Tobago',
+    ],
+  },
+  'RBC Royal Bank': {
+    swift: 'ROYCTTPS', code: '007',
+    branches: [
+      'Arima', 'Chaguanas – Royal Plaza', 'Chaguaramas', 'Couva',
+      'Diego Martin – Starlite', 'Guayaguayare', 'La Romaine – Gulf City',
+      'Maraval', 'Point Fortin', 'Point Lisas', 'Pointe-a-Pierre',
+      'Port of Spain – Independence Square', 'Port of Spain – Park Street',
+      'Princes Town', 'San Fernando – Carlton Centre', 'San Fernando – High Street',
+      'San Juan', 'Sangre Grande', 'Siparia', 'St. Augustine',
+      'St. James', 'Trincity', 'Westmoorings',
+    ],
+  },
+  'Scotiabank': {
+    swift: 'NOSCTTPS', code: '003',
+    branches: [
+      'Diego Martin', 'Maraval', 'Independence Square – POS', 'Scotia Centre – Park & Richmond',
+      'Sangre Grande', 'Trincity', 'Tunapuna', 'Arima',
+      'Couva', 'Price Plaza – Chaguanas', 'Chaguanas',
+      'Marabella', 'Princes Town', 'San Fernando', 'Penal',
+    ],
+  },
+  'ANSA Bank': {
+    swift: 'ANBATTPS', code: '015',
+    branches: [
+      'Head Office – Maraval Road, POS', 'Westmoorings – The Falls',
+      'San Fernando / La Romaine – Gulf City', 'Chaguanas – Endeavour Road',
+    ],
+  },
+  'ANSA Merchant Bank': {
+    swift: 'ANFMTTP1', code: '016',
+    branches: ['Port of Spain – Head Office'],
+  },
+  'CIBC Caribbean Bank': {
+    swift: 'CIBLTTPS', code: '019',
+    branches: [
+      'Maraval Finance Centre', 'Chaguanas Finance Centre',
+      'Corporate & Investment Banking Centre – Chaguanas',
+    ],
+  },
+  'Citibank': {
+    swift: 'CITITTPS', code: '009',
+    branches: ["Port of Spain – Queen's Park East"],
+  },
+  'JMMB Bank': {
+    swift: 'JMMBTTPS', code: '020',
+    branches: [
+      'San Fernando – SouthPark', 'Woodbrook / Port of Spain',
+      'Tunapuna', 'Chaguanas – DSM Plaza', 'Princes Town Mall',
+    ],
+  },
+  'Agricultural Development Bank': {
+    swift: 'ADEVTTP1', code: '017',
+    branches: ['Port of Spain – Head Office', 'Couva', 'Sangre Grande', 'San Fernando', 'Scarborough – Tobago'],
+  },
+};
+
+function PayoutAccountForm() {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const [hasAccount, setHasAccount] = useState(false);
+  const [verified, setVerified] = useState(false);
+  const [payoutName, setPayoutName] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [branch, setBranch] = useState('');
+  const [accountType, setAccountType] = useState('chequing');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/tutor/payout-account');
+        const json = await res.json();
+        if (cancelled) return;
+        if (json.account) {
+          setHasAccount(true);
+          setVerified(!!json.account.verified_at);
+          setPayoutName(json.account.payout_name ?? '');
+          setAccountNumber(json.account.payout_account_identifier ?? '');
+          setBankName(json.account.bank_name ?? '');
+          setBranch(json.account.branch ?? '');
+          setAccountType(json.account.account_type ?? 'chequing');
+        }
+      } catch (err: any) {
+        setError(err.message || 'Failed to load payout account');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  async function save() {
+    setSaving(true); setError(''); setMessage('');
+    try {
+      const res = await fetch('/api/tutor/payout-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          payout_name: payoutName,
+          payout_account_identifier: accountNumber,
+          bank_name: bankName,
+          branch,
+          account_type: accountType,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Failed to save');
+      setHasAccount(true);
+      setVerified(false);
+      setMessage('Bank details saved. Payouts will use this account.');
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
+    return <div className="text-sm text-muted-foreground">Loading payout details…</div>;
+  }
+
+  return (
+    <>
+      <div className="rounded-2xl bg-mint p-4">
+        <div className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Payouts</div>
+        <div className="font-semibold text-ink mt-1">
+          {hasAccount ? (verified ? 'Bank account verified' : 'Bank account on file') : 'No payout method connected yet'}
+        </div>
+        <div className="text-xs text-muted-foreground mt-0.5">
+          iTutor pays out tutor earnings via bulk bank transfer. Your earnings accumulate as you teach paid sessions and are released on the next payout cycle.
+        </div>
+      </div>
+
+      {error && <div className="rounded-xl bg-coral/10 border border-coral/30 p-3 text-sm text-coral">{error}</div>}
+      {message && <div className="rounded-xl bg-mint border border-brand/30 p-3 text-sm text-ink">{message}</div>}
+
+      <div className="space-y-4">
+        <div>
+          <label className="block text-xs font-medium text-ink mb-1.5">Account holder name</label>
+          <input type="text" value={payoutName} onChange={(e) => setPayoutName(e.target.value)}
+            placeholder="As it appears on your bank statement"
+            className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-ink mb-1.5">Bank</label>
+          <select value={bankName} onChange={(e) => { setBankName(e.target.value); setBranch(''); }}
+            className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand">
+            <option value="">Select bank…</option>
+            {Object.keys(TT_BANKS).map((name) => (
+              <option key={name} value={name}>{name}</option>
+            ))}
+          </select>
+          {bankName && TT_BANKS[bankName] && (
+            <div className="mt-1.5 text-[11px] text-muted-foreground font-mono">
+              SWIFT: {TT_BANKS[bankName].swift} · Bank code: {TT_BANKS[bankName].code}
+            </div>
+          )}
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-ink mb-1.5">Branch</label>
+          <select value={branch} onChange={(e) => setBranch(e.target.value)}
+            disabled={!bankName || !TT_BANKS[bankName]}
+            className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand disabled:opacity-60">
+            <option value="">{bankName ? 'Select branch…' : 'Select bank first…'}</option>
+            {(TT_BANKS[bankName]?.branches ?? []).map((b) => (
+              <option key={b} value={b}>{b}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-ink mb-1.5">Account number</label>
+          <input type="text" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)}
+            inputMode="numeric"
+            className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-ink mb-1.5">Account type</label>
+          <select value={accountType} onChange={(e) => setAccountType(e.target.value)}
+            className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand">
+            <option value="chequing">Chequing</option>
+            <option value="savings">Savings</option>
+          </select>
+        </div>
+      </div>
+
+      <SaveBar onSave={save} saving={saving} label={hasAccount ? 'Update bank details' : 'Save bank details'} />
+    </>
   );
 }

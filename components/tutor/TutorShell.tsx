@@ -94,13 +94,24 @@ export default function TutorShell({ children }: { children: ReactNode }) {
     <div className="flex h-screen overflow-hidden bg-background">
       {/* ── Desktop sidebar — fixed height, never scrolls ── */}
       <aside className={cn(
-        'hidden lg:flex h-full shrink-0 flex-col border-r border-white/10 bg-ink text-white transition-all duration-200',
-        collapsed ? 'w-16' : 'w-60',
+        'hidden lg:flex h-full shrink-0 flex-col border-r border-white/10 bg-ink text-white transition-all duration-200 overflow-hidden',
+        collapsed ? 'w-0' : 'w-60',
       )}>
-        <SidebarHeader collapsed={collapsed} onToggle={toggleCollapsed} />
-        <SidebarNav collapsed={collapsed} pathname={pathname} completion={completion} onNavClick={() => {}} />
+        <SidebarHeader collapsed={false} onToggle={toggleCollapsed} />
+        <SidebarNav collapsed={false} pathname={pathname} completion={completion} onNavClick={() => {}} />
         <ProfileMenu {...profileMenuProps} />
       </aside>
+
+      {/* Floating expand button shown when sidebar is fully hidden on desktop */}
+      {collapsed && (
+        <button
+          onClick={toggleCollapsed}
+          className="hidden lg:flex fixed top-4 left-2 z-40 size-8 items-center justify-center rounded-lg bg-ink text-white/70 hover:text-white hover:bg-white/10 shadow-md border border-white/10 transition"
+          title="Expand sidebar"
+        >
+          <PanelLeftOpen className="size-4" />
+        </button>
+      )}
 
       {/* ── Mobile drawer + overlay ── */}
       {mobileOpen && (

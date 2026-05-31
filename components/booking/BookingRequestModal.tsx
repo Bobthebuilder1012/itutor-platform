@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import { createBookingRequest, getSessionTypes } from '@/lib/services/bookingService';
 import { SessionType } from '@/lib/types/booking';
 import { formatDateTime, getDurationMinutes, formatDuration } from '@/lib/utils/calendar';
+import { fmtTTD } from '@/lib/utils/formatCurrency';
 interface BookingRequestModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -227,10 +228,10 @@ export default function BookingRequestModal({
               <div>
                 <span className="text-gray-700 font-semibold text-sm">Estimated Price:</span>
                 <p className="text-xs text-gray-600">
-                  ${pricePerHour}/hour × {durationMinutes} minutes
+                  TT${pricePerHour}/hour × {durationMinutes} minutes
                 </p>
               </div>
-              <span className="text-2xl font-bold text-itutor-green">${calculatedPrice.toFixed(2)} TTD</span>
+              <span className="text-2xl font-bold text-itutor-green">{fmtTTD(calculatedPrice)}</span>
             </div>
           </div>
 

@@ -491,6 +491,25 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    // Guard: cannot delete a group with active subscriptions
+    const nowIso = new Date().toISOString();
+    const { count: activeSubCount } = await service
+      .from('group_enrollments')
+      .select('id', { count: 'exact', head: true })
+      .eq('group_id', groupId)
+      .eq('enrollment_type', 'SUBSCRIPTION')
+      .or(
+        `status.in.(ACTIVE,GRACE,SUSPENDED),` +
+        `and(status.eq.PENDING_PAYMENT,pending_payment_expires_at.gt.${nowIso})`
+      );
+
+    if ((activeSubCount ?? 0) > 0) {
+      return NextResponse.json(
+        { error: 'Cannot delete a group with active subscriptions.', active_subscriptions: activeSubCount },
+        { status: 409 }
+      );
+    }
+
     const deleteByEq = async (table: string, column: string, value: string) => {
       const { error } = await service.from(table).delete().eq(column, value);
       if (error && !isSchemaMismatch(error)) throw error;

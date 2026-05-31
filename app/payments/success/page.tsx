@@ -41,78 +41,163 @@ export default function PaymentSuccess() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const bookingId = searchParams.get('bookingId');
-  const transactionId = searchParams.get('transaction_id');
+  const sessionId = searchParams.get('session_id');
   const isMock = searchParams.get('mock') === 'true';
-  
+
   const [receipt, setReceipt] = useState<PaymentReceipt | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [waitingOnWebhook, setWaitingOnWebhook] = useState(false);
 
   useEffect(() => {
-    if (bookingId) {
+    if (bookingId || sessionId) {
       fetchReceipt();
     } else {
-      setError('No booking ID provided');
+      setError('Missing payment reference');
       setLoading(false);
     }
-  }, [bookingId]);
+  }, [bookingId, sessionId]);
 
   async function fetchReceipt() {
+    // The new pre-payment flow lands here with only ?session_id=... — the
+    // booking + payment rows are written by the webhook AFTER the redirect.
+    // Poll briefly for the webhook; if it's slow / not registered, fall
+    // back to /api/payments/lunipay/finalize which runs the same logic
+    // synchronously off the LuniPay session itself.
+    const start = Date.now();
+    const POLL_MS = 8_000;
+    const RETRY_MS = 1_500;
+
     try {
-      // Get payment details
-      const { data: payments, error: paymentError } = await supabase
-        .from('payments')
-        .select('*')
-        .eq('booking_id', bookingId)
-        .order('created_at', { ascending: false })
-        .limit(1);
+      while (true) {
+        const payment = await loadPayment();
 
-      if (paymentError) throw paymentError;
+        if (payment) {
+          if (!payment.booking_id) {
+            throw new Error(
+              'Your payment went through, but the time slot was no longer available. We will refund you shortly.'
+            );
+          }
+          await loadBookingAndSet(payment);
+          return;
+        }
 
-      if (!payments || payments.length === 0) {
-        throw new Error('Payment not found');
+        if (Date.now() - start > POLL_MS) break;
+
+        if (!waitingOnWebhook) setWaitingOnWebhook(true);
+        await new Promise((r) => setTimeout(r, RETRY_MS));
       }
 
-      const payment = payments[0];
+      // Webhook hasn't fired (or hasn't fired yet). Hit finalize as a
+      // synchronous fallback so the user isn't stuck.
+      if (sessionId) {
+        const res = await fetch(`/api/payments/lunipay/finalize?session_id=${encodeURIComponent(sessionId)}`);
+        const result = await res.json();
+        if (!res.ok) {
+          throw new Error(result?.error || 'Failed to confirm payment');
+        }
+        if (result.status === 'slot_conflict_needs_refund') {
+          throw new Error(
+            'Your payment went through, but the time slot was no longer available. We will refund you shortly.'
+          );
+        }
+        if (result.status === 'not_paid') {
+          throw new Error('Payment was not completed.');
+        }
 
-      // Get booking details with related data
-      const { data: booking, error: bookingError } = await supabase
-        .from('bookings')
-        .select(`
-          id,
-          duration_minutes,
-          requested_start_at,
-          platform_fee_ttd,
-          tutor_payout_ttd,
-          platform_fee_pct,
-          payer:profiles!bookings_payer_id_fkey(full_name, email),
-          tutor:profiles!bookings_tutor_id_fkey(full_name, display_name),
-          subjects(name, label)
-        `)
-        .eq('id', bookingId)
-        .single();
+        // Trust the finalize response. We have the bookingId regardless
+        // of whether the client-side RLS query can see the freshly-
+        // inserted row yet.
+        const payment = result.payment ?? (await loadPaymentByBookingId(result.bookingId));
+        if (payment?.booking_id) {
+          await loadBookingAndSet(payment);
+          return;
+        }
+        throw new Error('Booking was not created.');
+      }
 
-      if (bookingError) throw bookingError;
-
-      setReceipt({
-        payment,
-        booking: booking as any,
-        payer: (booking as any).payer,
-        tutor: (booking as any).tutor,
-        subject: (booking as any).subjects,
-      });
+      throw new Error('Payment confirmation is taking longer than expected. Please check your bookings in a minute.');
     } catch (err: any) {
       console.error('Error fetching receipt:', err);
       setError(err.message || 'Failed to load receipt');
     } finally {
       setLoading(false);
+      setWaitingOnWebhook(false);
     }
+  }
+
+  async function loadPayment() {
+    let q = supabase
+      .from('payments')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (sessionId) {
+      q = q.eq('lunipay_checkout_session_id', sessionId);
+    } else if (bookingId) {
+      q = q.eq('booking_id', bookingId);
+    }
+
+    const { data, error } = await q;
+    if (error) throw error;
+    return data && data.length > 0 ? data[0] : null;
+  }
+
+  async function loadPaymentByBookingId(bid: string | null | undefined) {
+    if (!bid) return null;
+    const { data, error } = await supabase
+      .from('payments')
+      .select('*')
+      .eq('booking_id', bid)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    if (error) throw error;
+    return data && data.length > 0 ? data[0] : null;
+  }
+
+  async function loadBookingAndSet(payment: any) {
+    const { data: booking, error: bookingError } = await supabase
+      .from('bookings')
+      .select(`
+        id,
+        duration_minutes,
+        requested_start_at,
+        platform_fee_ttd,
+        tutor_payout_ttd,
+        platform_fee_pct,
+        payer:profiles!bookings_payer_id_fkey(full_name, email),
+        tutor:profiles!bookings_tutor_id_fkey(full_name, display_name),
+        subjects(name, label)
+      `)
+      .eq('id', payment.booking_id)
+      .single();
+
+    if (bookingError) throw bookingError;
+
+    setReceipt({
+      payment: { ...payment, currency: payment.currency ?? 'TTD' },
+      booking: booking as any,
+      payer: (booking as any).payer,
+      tutor: (booking as any).tutor,
+      subject: (booking as any).subjects,
+    });
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-itutor-green"></div>
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 flex items-center justify-center p-4">
+        <div className="text-center max-w-sm">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-itutor-green mx-auto mb-4"></div>
+          <p className="font-semibold text-gray-900">
+            {waitingOnWebhook ? 'Confirming your payment…' : 'Loading receipt…'}
+          </p>
+          {waitingOnWebhook && (
+            <p className="text-sm text-gray-600 mt-1">
+              This usually takes just a few seconds. Please don't close this window.
+            </p>
+          )}
+        </div>
       </div>
     );
   }

@@ -37,6 +37,7 @@ export default function AdminDashboardPage() {
     completedSessions: 0,
     scheduledSessions: 0
   });
+  const [disputesCount, setDisputesCount] = useState<number | null>(null);
 
   useEffect(() => {
     checkAdminAccess();
@@ -75,6 +76,17 @@ export default function AdminDashboardPage() {
 
       // Fetch stats
       await fetchStats();
+
+      // Fetch pending dispute count (best-effort, non-blocking).
+      try {
+        const res = await fetch('/api/admin/disputes/pending-count');
+        if (res.ok) {
+          const data = await res.json();
+          setDisputesCount(data.total ?? 0);
+        }
+      } catch (e) {
+        console.warn('disputes count fetch failed', e);
+      }
     } catch (error) {
       console.error('Error checking admin access:', error);
       router.push('/login');
@@ -580,6 +592,56 @@ export default function AdminDashboardPage() {
                 <h3 className="font-bold text-gray-900 text-lg">Verified iTutors</h3>
                 <p className="text-sm text-gray-600">View all verified tutors</p>
               </div>
+            </Link>
+
+            <Link
+              href="/admin/payouts"
+              className="flex items-center gap-4 p-6 border-2 border-gray-200 rounded-xl hover:border-emerald-500 hover:bg-emerald-50 transition-all group hover:shadow-lg"
+            >
+              <div className="bg-emerald-100 rounded-lg p-4 group-hover:bg-emerald-200 transition-colors">
+                <svg className="w-8 h-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h.01M12 15h.01M17 15h.01M3 6h18a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V7a1 1 0 011-1z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900 text-lg">Payouts</h3>
+                <p className="text-sm text-gray-600">Generate bank CSV & reconcile transfers</p>
+              </div>
+            </Link>
+
+            <Link
+              href="/admin/refunds"
+              className="flex items-center gap-4 p-6 border-2 border-gray-200 rounded-xl hover:border-rose-500 hover:bg-rose-50 transition-all group hover:shadow-lg"
+            >
+              <div className="bg-rose-100 rounded-lg p-4 group-hover:bg-rose-200 transition-colors">
+                <svg className="w-8 h-8 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900 text-lg">Refunds</h3>
+                <p className="text-sm text-gray-600">Issue refunds for stuck payments</p>
+              </div>
+            </Link>
+
+            <Link
+              href="/admin/disputes"
+              className="flex items-center gap-4 p-6 border-2 border-gray-200 rounded-xl hover:border-amber-500 hover:bg-amber-50 transition-all group hover:shadow-lg relative"
+            >
+              <div className="bg-amber-100 rounded-lg p-4 group-hover:bg-amber-200 transition-colors">
+                <svg className="w-8 h-8 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h3 className="font-bold text-gray-900 text-lg">Disputes & Reliability</h3>
+                <p className="text-sm text-gray-600">No-show claims, warnings, and appeals</p>
+              </div>
+              {disputesCount !== null && disputesCount > 0 && (
+                <span className="absolute top-3 right-3 inline-flex items-center justify-center min-w-[24px] h-6 px-2 rounded-full bg-red-600 text-white text-xs font-bold">
+                  {disputesCount}
+                </span>
+              )}
             </Link>
           </div>
 

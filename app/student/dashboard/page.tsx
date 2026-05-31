@@ -16,6 +16,7 @@ import Link from 'next/link';
 import { Clock, Video, Flame, Trophy, ChevronRight, Calendar, CheckCircle2, Settings, Plus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ALL_TOOLS, useStudentStore, type ToolKey } from '@/lib/student-store';
+import ReliabilityPanel from '@/components/reliability/ReliabilityPanel';
 
 type RecentTutor = {
   tutorId: string;
@@ -248,6 +249,9 @@ export default function StudentDashboard() {
         </div>
         <Settings className="size-4 text-muted-foreground" />
       </button>
+
+      {/* Reliability panel — only shows when there's something to show */}
+      <ReliabilityPanel role="student" />
 
       {/* Greeting */}
       <div className="flex items-end justify-between gap-4 flex-wrap">

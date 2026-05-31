@@ -5,13 +5,14 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   Users, CalendarDays, DollarSign, Eye, Lock, Plus, Clock, BookOpen,
-  UserCircle, ArrowRight, Video, MessageSquare, Star, Wallet,
+  UserCircle, ArrowRight, Video, MessageSquare, Star, Wallet, PenLine, CreditCard,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { useTutorCompletion } from '@/lib/hooks/useTutorCompletion';
 import { supabase } from '@/lib/supabase/client';
 import TutorShell from '@/components/tutor/TutorShell';
+import ReliabilityPanel from '@/components/reliability/ReliabilityPanel';
 
 type DashboardStats = {
   activeStudents: number;
@@ -68,12 +69,12 @@ function DashboardContent() {
     setDataLoading(true);
     try {
       const now = new Date();
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      const monthStartMs = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
 
       const [
         { data: upcomingData },
-        { data: monthSessions },
         { count: studentCount },
+        walletRes,
       ] = await Promise.all([
         supabase
           .from('sessions')
@@ -84,19 +85,18 @@ function DashboardContent() {
           .order('scheduled_start_at', { ascending: true })
           .limit(5),
         supabase
-          .from('sessions')
-          .select('payout_amount_ttd')
-          .eq('tutor_id', tutorId)
-          .in('status', ['COMPLETED', 'COMPLETED_ASSUMED', 'completed'])
-          .gte('scheduled_start_at', monthStart),
-        supabase
           .from('bookings')
           .select('student_id', { count: 'exact', head: true })
           .eq('tutor_id', tutorId)
           .in('status', ['CONFIRMED', 'confirmed']),
+        fetch('/api/tutor/wallet').then((r) => (r.ok ? r.json() : null)).catch(() => null),
       ]);
 
-      const monthTotal = (monthSessions ?? []).reduce((sum, s) => sum + (s.payout_amount_ttd ?? 0), 0);
+      // Source of truth: payout_ledger via /api/tutor/wallet — matches the wallet's
+      // "This month: TT$X" hint exactly.
+      const monthTotal = ((walletRes?.history ?? []) as any[])
+        .filter((h) => h.status === 'paid' && h.released_at && new Date(h.released_at).getTime() >= monthStartMs)
+        .reduce((sum: number, h: any) => sum + Number(h.amount_ttd ?? 0), 0);
 
       const upcomingMapped: UpcomingSession[] = (upcomingData ?? []).map((s: any) => {
         const booking = Array.isArray(s.booking) ? s.booking[0] : s.booking;
@@ -160,11 +160,23 @@ function DashboardContent() {
 
   return (
     <div className="space-y-8 max-w-7xl">
-      <header>
-        <h1 className="text-2xl lg:text-3xl font-bold text-ink">Welcome back, {firstName}.</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {listed ? "Here's what's happening with your students today." : 'Finish setting up your profile to unlock teaching tools.'}
-        </p>
+      <header className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl lg:text-3xl font-bold text-ink">Welcome back, {firstName}.</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {listed ? "Here's what's happening with your students today." : 'Finish setting up your profile to unlock teaching tools.'}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Link href="/tutor/settings?section=teaching"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-border bg-background text-sm font-semibold text-ink hover:bg-muted transition">
+            <PenLine className="size-3.5" /> Edit profile
+          </Link>
+          <Link href="/tutor/settings?section=payouts"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-brand text-white text-sm font-semibold hover:bg-brand-deep transition">
+            <CreditCard className="size-3.5" /> Add payout settings to earn
+          </Link>
+        </div>
       </header>
 
       <section>
@@ -174,6 +186,10 @@ function DashboardContent() {
           <StatCard icon={DollarSign} label="This month (TTD)" value={stats.monthEarnings.toLocaleString()} locked={!listed} />
           <StatCard icon={Eye} label="Profile views" value={String(stats.profileViews)} locked={!listed} />
         </div>
+      </section>
+
+      <section>
+        <ReliabilityPanel role="tutor" />
       </section>
 
       <section className="grid lg:grid-cols-3 gap-6">

@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { Subject } from '@/lib/types/database';
 import PaidClassesLockNotice from '@/components/tutor/PaidClassesLockNotice';
+import { fmtTTD } from '@/lib/utils/formatCurrency';
 
 type AddSubjectModalProps = {
   isOpen: boolean;
@@ -369,11 +370,11 @@ export default function AddSubjectModal({
                         <div className="bg-gray-900/50 rounded-lg p-2.5 border border-gray-700/50">
                           <div className="flex items-center justify-between text-xs mb-1">
                             <span className="text-gray-500">Commission ({commissionRate}%)</span>
-                            <span className="text-red-400">-${commissionAmount.toFixed(2)}</span>
+                            <span className="text-red-400">−{fmtTTD(commissionAmount)}</span>
                           </div>
                           <div className="flex items-center justify-between text-xs">
                             <span className="text-emerald-400 font-medium">You earn</span>
-                            <span className="text-emerald-400 font-bold">${earnings.toFixed(2)}/hr</span>
+                            <span className="text-emerald-400 font-bold">{fmtTTD(earnings)}/hr</span>
                           </div>
                         </div>
                       )}

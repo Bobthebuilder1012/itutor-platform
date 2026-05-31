@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { useTutorCompletion } from '@/lib/hooks/useTutorCompletion';
 import { supabase } from '@/lib/supabase/client';
+import { fmtTTD } from '@/lib/utils/formatCurrency';
 import TutorShell from '@/components/tutor/TutorShell';
 
 type Tab = 'overview' | 'classes' | 'promotions' | 'analytics' | 'feedback';
@@ -471,8 +472,8 @@ function BusinessAnalyticsTab({ classes, totalRevenue }: { classes: any[]; total
       <div className="grid lg:grid-cols-2 gap-4">
         <div className="rounded-2xl bg-card border border-border p-5">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="font-semibold text-ink">Revenue by month (TTD)</h3>
-            <span className="text-[11px] text-muted-foreground">Peak: TTD {maxR.toLocaleString()}</span>
+            <h3 className="font-semibold text-ink">Revenue by month (TT$)</h3>
+            <span className="text-[11px] text-muted-foreground">Peak: {fmtTTD(maxR)}</span>
           </div>
           <div className="h-40 flex items-end gap-3">
             {revenue.map((v, i) => (

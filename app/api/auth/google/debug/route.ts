@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { resolveGoogleRedirectUri } from '@/lib/auth/resolveGoogleRedirectUri';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,12 +45,14 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized - tutors only' }, { status: 403 });
   }
 
-  // Check configuration
+  const resolvedRedirectUri = resolveGoogleRedirectUri(request);
   const config = {
     hasClientId: !!process.env.GOOGLE_CLIENT_ID,
     hasClientSecret: !!process.env.GOOGLE_CLIENT_SECRET,
-    hasRedirectUri: !!process.env.GOOGLE_REDIRECT_URI,
-    redirectUri: process.env.GOOGLE_REDIRECT_URI || 'NOT SET',
+    hasRedirectUri: !!resolvedRedirectUri,
+    redirectUri: resolvedRedirectUri || 'NOT SET',
+    redirectUriEnv: process.env.GOOGLE_REDIRECT_URI || 'NOT SET',
+    vercelEnv: process.env.VERCEL_ENV || 'unset',
     clientIdPrefix: process.env.GOOGLE_CLIENT_ID?.substring(0, 20) + '...' || 'NOT SET',
     expectedScopes: [
       'https://www.googleapis.com/auth/calendar.events',

@@ -11,6 +11,7 @@ import VerifiedBadge from '@/components/VerifiedBadge';
 import UserAvatar from '@/components/UserAvatar';
 import { cn } from '@/lib/utils';
 import { Search, Star, Heart, Calendar, Clock, SlidersHorizontal, Users, GraduationCap, Flame, X, Check, Video } from 'lucide-react';
+import { fmtTTD } from '@/lib/utils/formatCurrency';
 
 type Tutor = {
   id: string;
@@ -129,18 +130,7 @@ export default function FindTutorsPage() {
 
     fetchTutors();
     fetchGroupLessons();
-    fetchEnrolled();
   }, [profile, loading, router]);
-
-  async function fetchEnrolled() {
-    try {
-      const res = await fetch('/api/student/my-groups', { cache: 'no-store' });
-      if (!res.ok) return;
-      const data = await res.json();
-      const ids = (data.groups ?? []).map((g: any) => g.id);
-      if (ids.length > 0) setEnrolledLessonIds(new Set(ids));
-    } catch { /* ignore */ }
-  }
 
   async function fetchTutors() {
     setLoadingTutors(true);
@@ -371,48 +361,98 @@ export default function FindTutorsPage() {
   async function fetchGroupLessons() {
     setLoadingGroupLessons(true);
     try {
-      const res = await fetch('/api/groups?limit=50&sortBy=latest', { cache: 'no-store' });
-      const payload = await res.json();
-      if (!res.ok || payload?.success === false) { setGroupLessons([]); return; }
+      if (!profile?.id) return;
 
-      const groups: any[] = payload?.data?.groups ?? [];
+      // Query groups directly — avoids API column-schema issues
+      let groups: any[] | null = null;
 
-      // Mark already-enrolled groups using the current_user_membership field
-      setEnrolledLessonIds(new Set(
-        groups.filter((g: any) => g.current_user_membership !== null).map((g: any) => g.id)
-      ));
+      const { data: g1, error: e1 } = await supabase
+        .from('groups')
+        .select('*')
+        .is('archived_at', null)
+        .or('visibility.neq.private,visibility.is.null')
+        .order('created_at', { ascending: false })
+        .limit(50);
 
-      const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      if (!e1) {
+        groups = g1;
+      } else {
+        // Fallback: visibility column may not exist — fetch all non-archived
+        const { data: g2, error: e2 } = await supabase
+          .from('groups')
+          .select('*')
+          .is('archived_at', null)
+          .order('created_at', { ascending: false })
+          .limit(50);
+        if (e2) throw e2;
+        groups = g2;
+      }
+
+      if (!groups?.length) { setGroupLessons([]); return; }
+
+      const groupIds = groups.map((g: any) => g.id);
+      const tutorIds = [...new Set<string>(groups.map((g: any) => g.tutor_id).filter(Boolean))];
+
+      // Fetch tutor names, enrollment status, and server-side member counts in parallel
+      const [{ data: tutorProfiles }, { data: memberRows }, { data: subEnrollments }, countsRes] = await Promise.all([
+        tutorIds.length
+          ? supabase.from('profiles').select('id, full_name, display_name').in('id', tutorIds)
+          : Promise.resolve({ data: [] as any[] }),
+        supabase.from('group_members').select('group_id, user_id, status').in('group_id', groupIds),
+        supabase
+          .from('group_enrollments')
+          .select('group_id')
+          .eq('student_id', profile.id)
+          .in('group_id', groupIds)
+          .in('status', ['ACTIVE', 'GRACE', 'SUSPENDED', 'PENDING_PAYMENT']),
+        fetch(`/api/groups/member-counts?ids=${groupIds.join(',')}`).then((r) => r.json()).catch(() => ({ counts: {} })),
+      ]);
+
+      const tutorMap = new Map((tutorProfiles ?? []).map((p: any) => [p.id, p]));
+      // Server-side counts (service role, accurate) take priority over RLS-limited client query
+      const serverCounts: Record<string, number> = countsRes?.counts ?? {};
+      const memberCountMap = new Map<string, number>(
+        Object.entries(serverCounts).map(([k, v]) => [k, v as number])
+      );
+      const enrolledSet = new Set<string>();
+
+      // group_members rows: used only for enrolled-status of non-subscription groups
+      (memberRows ?? []).forEach((m: any) => {
+        if (m.user_id === profile.id && m.status !== 'denied') enrolledSet.add(m.group_id);
+        // Only fall back to group_members count when server didn't return a count
+        if (!(m.group_id in serverCounts)) {
+          memberCountMap.set(m.group_id, (memberCountMap.get(m.group_id) ?? 0) + 1);
+        }
+      });
+
+      // Also mark subscription-enrolled groups
+      (subEnrollments ?? []).forEach((e: any) => enrolledSet.add(e.group_id));
+
+      setEnrolledLessonIds(enrolledSet);
 
       const mapped: GroupLesson[] = groups.map((g: any) => {
-        const next = g.next_occurrence?.scheduled_start_at;
-        let day = '', time = '';
-        if (next) {
-          const d = new Date(next);
-          day = DAY_NAMES[d.getDay()] + 's';
-          time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-        }
+        const tutor = tutorMap.get(g.tutor_id);
         const { color, emoji } = getSubjectStyle(g.subject || '');
-        const price = Number(g.price_monthly ?? g.price_per_session ?? g.price_per_course ?? 0);
         return {
           id: g.id,
           title: g.name,
-          tutor: g.tutor?.full_name || 'Unknown Tutor',
+          tutor: tutor?.display_name || tutor?.full_name || 'Unknown Tutor',
           tutorId: g.tutor_id,
           tutorHue: 145,
           subject: g.subject || 'General',
-          level: g.form_level || g.difficulty || 'CSEC',
-          day: day || 'Schedule TBD',
-          time: time || '',
-          monthlyPrice: price,
-          seats: { taken: g.member_count ?? 0, total: g.max_students ?? null },
+          level: g.form_level || g.difficulty || '',
+          day: 'Schedule TBD',
+          time: '',
+          monthlyPrice: Number(g.price_monthly ?? g.price_per_session ?? g.price_per_course ?? 0),
+          seats: { taken: memberCountMap.get(g.id) ?? 0, total: g.max_students ?? null },
           sessionLength: g.session_length_minutes ?? null,
-          rating: Number(g.tutor?.rating_average ?? 0),
+          rating: 0,
           tags: [],
           color,
           emoji,
         };
       });
+
       setGroupLessons(mapped);
     } catch (err) {
       console.error('fetchGroupLessons error:', err);
@@ -431,19 +471,37 @@ export default function FindTutorsPage() {
     }
     setJoiningLesson(true);
     try {
-      const res = await fetch(`/api/groups/${joinLesson.id}/members`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to join lesson');
-      setEnrolledLessonIds((s) => new Set([...s, joinLesson.id]));
-      setJoinLesson(null);
-      const status = data.member?.status;
-      if (status === 'pending_approval' || status === 'pending') {
-        alert('Your join request has been sent. The tutor will approve it shortly.');
-        router.push('/student/my-lessons');
+      if (joinLesson.monthlyPrice > 0) {
+        // Paid group — go through subscribe → LuniPay checkout
+        const res = await fetch(`/api/groups/${joinLesson.id}/subscribe`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        const data = await res.json();
+        if (data.waitlisted) {
+          setJoinLesson(null);
+          alert(`You've been added to the waitlist (position #${data.position ?? '?'}). We'll notify you when a spot opens.`);
+          return;
+        }
+        if (!res.ok) throw new Error(data.error || 'Failed to start checkout');
+        if (data.checkout_url) {
+          window.location.href = data.checkout_url;
+          return;
+        }
       } else {
+        // Free group — join directly
+        const res = await fetch(`/api/groups/${joinLesson.id}/members`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to join lesson');
+        setEnrolledLessonIds((s) => new Set([...s, joinLesson.id]));
+        setJoinLesson(null);
+        const status = data.member?.status;
+        if (status === 'pending_approval' || status === 'pending') {
+          alert('Your join request has been sent. The tutor will approve it shortly.');
+        }
         router.push('/student/my-lessons');
       }
     } catch (err: any) {
@@ -572,7 +630,6 @@ export default function FindTutorsPage() {
   };
 
   const filteredGroupLessons = groupLessons
-    .filter((l) => !enrolledLessonIds.has(l.id))
     .filter((l) => matchChip(l.subject))
     .filter((l) => !searchQuery || l.title.toLowerCase().includes(searchQuery.toLowerCase()) || l.tutor.toLowerCase().includes(searchQuery.toLowerCase()) || l.subject.toLowerCase().includes(searchQuery.toLowerCase()));
 
@@ -726,7 +783,15 @@ export default function FindTutorsPage() {
         {tab === 'lessons' && (
           <>
             <div className="text-sm text-muted-foreground">
-              {loadingGroupLessons ? 'Loading lessons…' : `${filteredGroupLessons.length} lesson${filteredGroupLessons.length === 1 ? '' : 's'}`}
+              {loadingGroupLessons ? 'Loading lessons…' : (() => {
+                const enrolledCount = filteredGroupLessons.filter(l => enrolledLessonIds.has(l.id)).length;
+                return (
+                  <>
+                    {filteredGroupLessons.length} lesson{filteredGroupLessons.length === 1 ? '' : 's'}
+                    {enrolledCount > 0 && <> · <span className="text-brand font-medium">{enrolledCount} enrolled</span></>}
+                  </>
+                );
+              })()}
               {!loadingGroupLessons && searchQuery && <> matching &ldquo;<span className="text-ink font-medium">{searchQuery}</span>&rdquo;</>}
             </div>
 
@@ -819,7 +884,7 @@ export default function FindTutorsPage() {
                         <div>
                           {l.monthlyPrice > 0 ? (
                             <>
-                              <span className="text-lg font-bold text-ink">TT${l.monthlyPrice}</span>
+                              <span className="text-lg font-bold text-ink">{fmtTTD(l.monthlyPrice)}</span>
                               <span className="text-xs text-muted-foreground">/month</span>
                             </>
                           ) : (
@@ -831,7 +896,7 @@ export default function FindTutorsPage() {
                             href={`/student/groups/${l.id}`}
                             className="px-3 py-1.5 rounded-xl bg-brand-soft text-forest text-xs font-semibold hover:bg-brand/20 transition"
                           >
-                            View lesson →
+                            Open Class
                           </Link>
                         ) : (
                           <button
@@ -958,7 +1023,7 @@ export default function FindTutorsPage() {
                   { label: 'Time', value: joinLesson.time, show: !!joinLesson.time },
                   { label: 'Session length', value: joinLesson.sessionLength ? formatDuration(joinLesson.sessionLength) : null, show: !!joinLesson.sessionLength },
                   { label: 'Enrolled', value: joinLesson.seats.total !== null ? `${joinLesson.seats.taken} / ${joinLesson.seats.total}` : `${joinLesson.seats.taken} students`, show: true },
-                  { label: 'Price', value: joinLesson.monthlyPrice > 0 ? `TT$${joinLesson.monthlyPrice}/month` : 'Free', show: true },
+                  { label: 'Price', value: joinLesson.monthlyPrice > 0 ? `${fmtTTD(joinLesson.monthlyPrice)}/month` : 'Free', show: true },
                 ].filter(r => r.show && r.value).map(({ label, value }) => (
                   <div key={label} className="flex justify-between">
                     <span className="text-muted-foreground">{label}</span>
@@ -983,7 +1048,7 @@ export default function FindTutorsPage() {
                   className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-brand text-white font-semibold hover:bg-brand-deep transition disabled:opacity-60"
                 >
                   <Check className="size-4" />
-                  {joiningLesson ? 'Enrolling…' : `Confirm — TT$${joinLesson.monthlyPrice}/month`}
+                  {joiningLesson ? 'Enrolling…' : joinLesson.monthlyPrice > 0 ? `Subscribe — ${fmtTTD(joinLesson.monthlyPrice)}/month` : 'Join Free'}
                 </button>
               )}
             </div>
