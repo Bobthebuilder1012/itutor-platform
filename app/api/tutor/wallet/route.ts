@@ -48,6 +48,7 @@ interface WalletHistoryRow {
   student_name: string | null;
   student_avatar_url: string | null;
   subject_name: string | null;
+  source_type: 'session' | 'subscription';
 }
 
 function mapLedgerStatus(s: string): WalletHistoryRow['status'] {
@@ -117,7 +118,7 @@ export async function GET() {
     const subRows    = ledger.filter((r: any) => !r.session_id && r.subscription_payment_id);
 
     // Fetch subscription row metadata: group name + student name
-    let subInfoById = new Map<string, { student_name: string | null; student_avatar_url: string | null; subject_name: string | null }>();
+    let subInfoById = new Map<string, { student_id: string | null; student_name: string | null; student_avatar_url: string | null; subject_name: string | null }>();
     if (subRows.length > 0) {
       const subPaymentIds = subRows.map((r: any) => r.subscription_payment_id);
       const { data: subPayments } = await admin
@@ -130,6 +131,7 @@ export async function GET() {
         .in('id', subPaymentIds);
       for (const sp of subPayments ?? []) {
         subInfoById.set(sp.id, {
+          student_id: sp.student_id ?? null,
           student_name: (sp as any).student?.display_name ?? (sp as any).student?.full_name ?? null,
           student_avatar_url: (sp as any).student?.avatar_url ?? null,
           subject_name: (sp as any).group?.name ?? null,
@@ -188,10 +190,11 @@ export async function GET() {
           scheduled_start_at: null,
           charge_amount_ttd: null,
           platform_fee_ttd: null,
-          student_id: null,
+          student_id: info?.student_id ?? null,
           student_name: info?.student_name ?? null,
           student_avatar_url: info?.student_avatar_url ?? null,
           subject_name: info?.subject_name ?? null,
+          source_type: 'subscription',
         } as unknown as WalletHistoryRow;
       }
 
@@ -217,6 +220,7 @@ export async function GET() {
         student_name: student?.display_name ?? student?.full_name ?? null,
         student_avatar_url: student?.avatar_url ?? null,
         subject_name: subject?.label ?? subject?.name ?? null,
+        source_type: 'session',
       };
     });
   }
@@ -319,6 +323,7 @@ export async function GET() {
         student_name: student?.display_name ?? student?.full_name ?? null,
         student_avatar_url: student?.avatar_url ?? null,
         subject_name: subject?.label ?? subject?.name ?? null,
+        source_type: 'session',
       });
     }
 

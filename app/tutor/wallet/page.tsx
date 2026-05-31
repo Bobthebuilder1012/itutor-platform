@@ -3,7 +3,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Wallet, TrendingUp, Search, Banknote, Users, AlertCircle, ArrowDownToLine, Receipt } from 'lucide-react';
+import {
+  Wallet, TrendingUp, Search, Banknote, Users, AlertCircle,
+  ArrowDownToLine, Receipt, CheckCircle2, Clock, XCircle, Loader2,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
@@ -29,6 +32,7 @@ interface WalletHistoryRow {
   student_name: string | null;
   student_avatar_url: string | null;
   subject_name: string | null;
+  source_type?: 'session' | 'subscription';
 }
 
 interface WalletPayload {
@@ -56,14 +60,124 @@ interface UpcomingSession {
   payout: number;
 }
 
+interface GroupSubscriber {
+  enrollment_id: string;
+  student_id: string;
+  student_name: string | null;
+  student_avatar_url: string | null;
+  status: string;
+  payment_status: string;
+  plan_price_ttd: number | null;
+  last_paid_at: string | null;
+  current_period_end: string | null;
+  next_payment_due_at: string | null;
+  cancel_at_period_end: boolean;
+  paid_periods: { month: number; year: number }[];
+}
+
+interface GroupTrackerGroup {
+  id: string;
+  name: string;
+  subject_name: string | null;
+  max_students: number | null;
+  price_monthly: number | null;
+  active_count: number;
+  total_earned_ttd: number;
+  subscribers: GroupSubscriber[];
+}
+
 const UPCOMING_STATUSES = ['SCHEDULED', 'JOIN_OPEN'];
-// Ledger statuses that represent money the tutor has earned (work done, not refunded).
-// Used so per-student "Earned" reconciles with `lifetime_paid_ttd` (+ pending + awaiting).
 const EARNED_LEDGER_STATUSES: HistoryStatus[] = ['in_escrow', 'awaiting_transfer', 'paid'];
 
 function fmtTTD(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+
+const TT_BANKS: Record<string, { swift: string; code: string; branches: string[] }> = {
+  'Republic Bank': {
+    swift: 'RBNKTTPX', code: '004',
+    branches: [
+      'Ellerslie Court – Maraval', 'Glencoe', 'Long Circular Mall – St. James',
+      'Starlite – Diego Martin', 'West Mall – Westmoorings', 'Hilton Agency – POS',
+      'Independence Square – POS', 'Park Street – POS', 'Tragarete Road – POS', 'Woodbrook',
+      'Grand Bazaar – Valsayn', 'Shops of Arima Agency', 'Arima – Broadway',
+      'Trincity', 'Valpark – Valsayn', 'Chaguanas – Centre City', 'Couva',
+      'Sangre Grande', 'San Juan', 'St. Augustine', 'Tunapuna',
+      'Gulf View – La Romaine', 'South Park – Tarouba', 'Atlantic Plaza Agency – Point Lisas',
+      'Cipero Street – San Fernando', 'Fyzabad', 'Harris Promenade – San Fernando',
+      'High Street – San Fernando', 'Marabella', 'Mayaro', 'Penal',
+      'Princes Town', 'Point Fortin', 'Rio Claro', 'Siparia',
+    ],
+  },
+  'First Citizens Bank': {
+    swift: 'FCBLTTPS', code: '006',
+    branches: [
+      'Arima', 'Sangre Grande', 'Tunapuna',
+      'MovieTowne Financial Centre – Invaders Bay',
+      'Port of Spain – Independence Square', 'Port of Spain – Maraval',
+      'One Woodbrook Place – Tragarete Rd', 'Park Street – POS',
+      'West Vale Mall – Diego Martin', 'San Juan',
+      'Chaguanas – Market Street', 'Montrose',
+      'Couva', 'Gulf View Mall – La Romaine', 'Marabella', 'Penal',
+      'Point Fortin', 'Point Lisas', 'Princes Town', 'San Fernando', 'Siparia',
+      'Milford Road – Tobago', 'Scarborough – Tobago', 'Roxborough – Tobago',
+    ],
+  },
+  'RBC Royal Bank': {
+    swift: 'ROYCTTPS', code: '007',
+    branches: [
+      'Arima', 'Chaguanas – Royal Plaza', 'Chaguaramas', 'Couva',
+      'Diego Martin – Starlite', 'Guayaguayare', 'La Romaine – Gulf City',
+      'Maraval', 'Point Fortin', 'Point Lisas', 'Pointe-a-Pierre',
+      'Port of Spain – Independence Square', 'Port of Spain – Park Street',
+      'Princes Town', 'San Fernando – Carlton Centre', 'San Fernando – High Street',
+      'San Juan', 'Sangre Grande', 'Siparia', 'St. Augustine',
+      'St. James', 'Trincity', 'Westmoorings',
+    ],
+  },
+  'Scotiabank': {
+    swift: 'NOSCTTPS', code: '003',
+    branches: [
+      'Diego Martin', 'Maraval', 'Independence Square – POS', 'Scotia Centre – Park & Richmond',
+      'Sangre Grande', 'Trincity', 'Tunapuna', 'Arima',
+      'Couva', 'Price Plaza – Chaguanas', 'Chaguanas',
+      'Marabella', 'Princes Town', 'San Fernando', 'Penal',
+    ],
+  },
+  'ANSA Bank': {
+    swift: 'ANBATTPS', code: '015',
+    branches: [
+      'Head Office – Maraval Road, POS', 'Westmoorings – The Falls',
+      'San Fernando / La Romaine – Gulf City', 'Chaguanas – Endeavour Road',
+    ],
+  },
+  'ANSA Merchant Bank': {
+    swift: 'ANFMTTP1', code: '016',
+    branches: ['Port of Spain – Head Office'],
+  },
+  'CIBC Caribbean Bank': {
+    swift: 'CIBLTTPS', code: '019',
+    branches: [
+      'Maraval Finance Centre', 'Chaguanas Finance Centre',
+      'Corporate & Investment Banking Centre – Chaguanas',
+    ],
+  },
+  'Citibank': {
+    swift: 'CITITTPS', code: '009',
+    branches: ["Port of Spain – Queen's Park East"],
+  },
+  'JMMB Bank': {
+    swift: 'JMMBTTPS', code: '020',
+    branches: [
+      'San Fernando – SouthPark', 'Woodbrook / Port of Spain',
+      'Tunapuna', 'Chaguanas – DSM Plaza', 'Princes Town Mall',
+    ],
+  },
+  'Agricultural Development Bank': {
+    swift: 'ADEVTTP1', code: '017',
+    branches: ['Port of Spain – Head Office', 'Couva', 'Sangre Grande', 'San Fernando', 'Scarborough – Tobago'],
+  },
+};
 
 export default function TutorWalletPage() {
   return (
@@ -112,9 +226,6 @@ function WalletContent() {
     const now = new Date();
     const nextMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
-    // Anything whose scheduled_end_at is still in the future stays
-    // tentative — including in-progress sessions, because a no-show
-    // claim can still be filed before the meeting ends.
     const { data: upcomingSessions } = await supabase
       .from('sessions')
       .select('id, payout_amount_ttd, student_id, scheduled_start_at')
@@ -136,10 +247,7 @@ function WalletContent() {
         .in('id', studentIds);
       const map = new Map<string, { name: string; avatarUrl: string | null }>();
       (profiles ?? []).forEach((p: any) => {
-        map.set(p.id, {
-          name: p.display_name || p.full_name || 'Student',
-          avatarUrl: p.avatar_url ?? null,
-        });
+        map.set(p.id, { name: p.display_name || p.full_name || 'Student', avatarUrl: p.avatar_url ?? null });
       });
       setUpcomingStudents(map);
     } else {
@@ -150,27 +258,17 @@ function WalletContent() {
   const balances = data?.balances;
   const history = data?.history ?? [];
 
-  // Source of truth: payment ledger (same as `lifetime_paid_ttd`). This guarantees
-  // the breakdown's "Earned" total reconciles with the Lifetime Paid card.
   const breakdown = useMemo<StudentBreakdownRow[]>(() => {
     const map = new Map<string, StudentBreakdownRow>();
     const ensure = (studentId: string, name: string | null, avatarUrl: string | null): StudentBreakdownRow => {
       let row = map.get(studentId);
       if (!row) {
-        row = {
-          studentId,
-          name: name || 'Student',
-          avatarUrl,
-          completedCount: 0,
-          earned: 0,
-          upcomingCount: 0,
-          projected: 0,
-        };
+        row = { studentId, name: name || 'Student', avatarUrl, completedCount: 0, earned: 0, upcomingCount: 0, projected: 0 };
         map.set(studentId, row);
-      } else if (name && row.name === 'Student') {
-        row.name = name;
+      } else {
+        if (name && row.name === 'Student') row.name = name;
+        if (avatarUrl && !row.avatarUrl) row.avatarUrl = avatarUrl;
       }
-      if (avatarUrl && !row.avatarUrl) row.avatarUrl = avatarUrl;
       return row;
     };
 
@@ -201,8 +299,6 @@ function WalletContent() {
       .reduce((s, h) => s + h.amount_ttd, 0);
   }, [history]);
 
-  // All earned income in the current calendar month: sessions + subscription payouts.
-  // Session rows use scheduled_start_at; subscription rows (no session) use created_at.
   const completedThisMonth = useMemo(() => {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
@@ -216,20 +312,23 @@ function WalletContent() {
       .reduce((s, h) => s + h.amount_ttd, 0);
   }, [history]);
 
-  // Upcoming sessions remaining this month — the cancellable/tentative portion.
   const tentativeThisMonth = useMemo(
     () => (upcoming ?? []).reduce((sum, u) => sum + u.payout, 0),
     [upcoming],
   );
 
-  // Full month projection: already earned this month + upcoming sessions this month.
+  // Floor: projected can never be less than confirmed ledger balances.
   const projectedThisMonth = useMemo(
-    () => completedThisMonth + tentativeThisMonth,
-    [completedThisMonth, tentativeThisMonth],
+    () => Math.max(
+      (balances?.pending_ttd ?? 0) + (balances?.available_ttd ?? 0),
+      completedThisMonth + tentativeThisMonth,
+    ),
+    [balances, completedThisMonth, tentativeThisMonth],
   );
+
   const totalCompletedCount = useMemo(
     () => breakdown.reduce((sum, r) => sum + r.completedCount, 0),
-    [breakdown]
+    [breakdown],
   );
   const upcomingCount = upcoming?.length ?? 0;
   const summaryLoading = !data || upcoming === null;
@@ -259,7 +358,6 @@ function WalletContent() {
 
       {tab === 'overview' && (
         <div className="space-y-6">
-          {/* Hero — awaiting bank transfer is what tutor cares about most */}
           <div className="rounded-3xl bg-gradient-to-br from-ink to-forest p-6 text-white shadow-pop">
             <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-white/60 font-semibold">
               <Banknote className="size-3.5" /> Awaiting bank transfer
@@ -281,7 +379,6 @@ function WalletContent() {
             </div>
           </div>
 
-          {/* Three-line summary — future money → pending money → received money */}
           <div className="grid sm:grid-cols-3 gap-4">
             <Stat
               label="Projected"
@@ -305,7 +402,6 @@ function WalletContent() {
             />
           </div>
 
-          {/* Bank account status nudge */}
           <div className="rounded-2xl border border-border bg-card p-5 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="size-10 rounded-xl bg-brand-soft flex items-center justify-center">
@@ -316,13 +412,13 @@ function WalletContent() {
                 <div className="text-xs text-muted-foreground">Make sure your bank details are up to date so iTutor can pay you on the next cycle.</div>
               </div>
             </div>
-            <Link href="/tutor/settings?section=payouts"
+            <button
+              onClick={() => setTab('payouts')}
               className="px-3 py-2 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep">
               Manage bank details
-            </Link>
+            </button>
           </div>
 
-          {/* Student breakdown */}
           <StudentBreakdown
             breakdown={breakdown}
             completedCount={totalCompletedCount}
@@ -330,7 +426,6 @@ function WalletContent() {
             loading={summaryLoading}
           />
 
-          {/* Recent activity */}
           <div className="rounded-2xl border border-border bg-card p-5">
             <h3 className="font-semibold text-ink">Recent activity</h3>
             <div className="mt-4 space-y-1">
@@ -361,11 +456,7 @@ function WalletContent() {
       )}
 
       {tab === 'payouts' && (
-        <div className="rounded-2xl border border-border bg-card p-10 text-center">
-          <ArrowDownToLine className="size-8 mx-auto text-muted-foreground/40" />
-          <p className="mt-3 text-sm font-medium text-ink">Payouts coming soon</p>
-          <p className="mt-1 text-xs text-muted-foreground">Connect a bank account in Settings → Payouts to enable automatic payouts.</p>
-        </div>
+        <PayoutsTab />
       )}
 
       {tab === 'statements' && (
@@ -393,10 +484,7 @@ function Stat({ label, value, icon: Icon, hint, valueClass }: { label: string; v
 }
 
 function StudentBreakdown({
-  breakdown,
-  completedCount,
-  upcomingCount,
-  loading,
+  breakdown, completedCount, upcomingCount, loading,
 }: {
   breakdown: StudentBreakdownRow[];
   completedCount: number;
@@ -418,7 +506,7 @@ function StudentBreakdown({
               ? 'Loading…'
               : !hasRows
                 ? 'No students yet'
-                : `${breakdown.length} student${breakdown.length === 1 ? '' : 's'} \u00b7 ${completedCount} completed \u00b7 ${upcomingCount} upcoming this month`}
+                : `${breakdown.length} student${breakdown.length === 1 ? '' : 's'} · ${completedCount} completed · ${upcomingCount} upcoming this month`}
           </div>
         </div>
       </div>
@@ -515,14 +603,13 @@ function TransactionsTab({ history, loading }: { history: WalletHistoryRow[]; lo
 
 function TxRow({ row, detailed }: { row: WalletHistoryRow; detailed?: boolean }) {
   const date = row.scheduled_start_at ?? row.created_at;
-  const dateLabel = new Date(date).toLocaleDateString(undefined, {
-    month: 'short', day: 'numeric', year: 'numeric',
-  });
+  const dateLabel = new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   return (
     <div className={cn('flex items-center gap-3', detailed ? 'p-4' : 'py-2')}>
       <div className="flex-1 min-w-0">
         <div className="font-semibold text-ink truncate text-sm">
-          {row.subject_name ?? 'Session'}{row.student_name ? ` · ${row.student_name}` : ''}
+          {row.subject_name ?? (row.source_type === 'subscription' ? 'Subscription' : 'Session')}
+          {row.student_name ? ` · ${row.student_name}` : ''}
         </div>
         <div className="text-xs text-muted-foreground">
           {dateLabel}
@@ -547,39 +634,59 @@ function TxRow({ row, detailed }: { row: WalletHistoryRow; detailed?: boolean })
 
 function StatusPill({ status }: { status: HistoryStatus }) {
   const config: Record<HistoryStatus, { label: string; cls: string }> = {
-    in_escrow:         { label: 'In escrow',          cls: 'bg-peach/50 text-ink' },
-    awaiting_transfer: { label: 'Awaiting transfer',  cls: 'bg-amber-100 text-amber-800' },
-    paid:              { label: 'Paid',               cls: 'bg-brand-soft text-brand-deep' },
-    reversed:          { label: 'Reversed',           cls: 'bg-coral-soft text-coral' },
-    unknown:           { label: '—',                  cls: 'bg-zinc-100 text-zinc-600' },
+    in_escrow:         { label: 'In escrow',         cls: 'bg-peach/50 text-ink' },
+    awaiting_transfer: { label: 'Awaiting transfer', cls: 'bg-amber-100 text-amber-800' },
+    paid:              { label: 'Paid',              cls: 'bg-brand-soft text-brand-deep' },
+    reversed:          { label: 'Reversed',          cls: 'bg-coral-soft text-coral' },
+    unknown:           { label: '—',                 cls: 'bg-zinc-100 text-zinc-600' },
   };
   const { label, cls } = config[status];
   return <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full', cls)}>{label}</span>;
 }
 
-const PAYMENT_PERIODS = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'] as const;
-type PayStatus = 'paid' | 'due' | 'overdue' | 'waived' | 'n/a';
+// ── Group Tracker ──────────────────────────────────────────────────────────────
 
 function GroupTrackerTab({ tutorId }: { tutorId: string }) {
-  const [groups, setGroups] = useState<any[]>([]);
+  const [groups, setGroups] = useState<GroupTrackerGroup[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!tutorId) return;
-    fetch('/api/groups?limit=50')
-      .then(r => r.json())
-      .then(json => setGroups((json.groups ?? []).filter((g: any) => g.tutor_id === tutorId && !g.archived)))
+    fetch('/api/tutor/wallet/groups')
+      .then((r) => r.json())
+      .then((json) => setGroups(json.groups ?? []))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [tutorId]);
 
-  if (loading) return <div className="py-10 text-center text-sm text-muted-foreground">Loading groups…</div>;
+  // Last 6 calendar months ending with the current month
+  const periods = useMemo(() => {
+    const now = new Date();
+    return Array.from({ length: 6 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - 5 + i, 1);
+      return {
+        label: d.toLocaleDateString('en-TT', { month: 'short', year: '2-digit' }),
+        month: d.getMonth(),
+        year: d.getFullYear(),
+      };
+    });
+  }, []);
+
+  if (loading) return (
+    <div className="flex items-center justify-center py-16 gap-2 text-muted-foreground">
+      <Loader2 className="size-5 animate-spin" /> <span className="text-sm">Loading groups…</span>
+    </div>
+  );
+
   if (groups.length === 0) {
     return (
       <div className="rounded-2xl border-2 border-dashed border-border p-12 text-center">
-        <Wallet className="size-10 mx-auto text-muted-foreground/40" />
+        <Users className="size-10 mx-auto text-muted-foreground/40" />
         <p className="mt-3 text-sm font-semibold text-ink">No group classes yet</p>
-        <p className="mt-1 text-xs text-muted-foreground">Create a group class to track payments here.</p>
+        <p className="mt-1 text-xs text-muted-foreground">Create a group class to track subscription payments here.</p>
+        <Link href="/tutor/classes/new" className="mt-4 inline-flex items-center gap-1 text-sm text-brand hover:underline font-semibold">
+          Create a class →
+        </Link>
       </div>
     );
   }
@@ -588,63 +695,260 @@ function GroupTrackerTab({ tutorId }: { tutorId: string }) {
     <div className="space-y-6">
       <div>
         <h2 className="text-lg font-bold text-ink">Group payment tracker</h2>
-        <p className="text-xs text-muted-foreground">Member × billing period grid across all your classes.</p>
+        <p className="text-xs text-muted-foreground">Member × billing period grid — showing the last 6 months for each class.</p>
       </div>
-      {groups.map((g: any) => {
-        const members: any[] = g.members ?? [];
-        const collected = g.earnings_ttd ?? 0;
-        return (
-          <div key={g.id} className="rounded-2xl border border-border bg-card overflow-hidden">
-            <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-              <div>
-                <div className="font-semibold text-ink">{g.name || g.title}</div>
-                <div className="text-xs text-muted-foreground">{g.subject} · {g.member_count ?? 0} members</div>
-              </div>
-              <div className="text-sm font-bold text-emerald-700">TTD {collected.toLocaleString()}</div>
-            </div>
-            {members.length === 0 ? (
-              <div className="p-6 text-center text-xs text-muted-foreground">No members yet.</div>
+
+      {groups.map((g) => (
+        <GroupCard key={g.id} group={g} periods={periods} />
+      ))}
+    </div>
+  );
+}
+
+function GroupCard({ group: g, periods }: { group: GroupTrackerGroup; periods: { label: string; month: number; year: number }[] }) {
+  const activeSubscribers = g.subscribers.filter(
+    (s) => ['ACTIVE', 'GRACE', 'SUSPENDED'].includes(s.status)
+  );
+
+  return (
+    <div className="rounded-2xl border border-border bg-card overflow-hidden">
+      <div className="px-5 py-4 border-b border-border flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="font-semibold text-ink">{g.name}</div>
+          <div className="text-xs text-muted-foreground">
+            {g.subject_name && <span>{g.subject_name} · </span>}
+            {activeSubscribers.length}
+            {g.max_students ? `/${g.max_students}` : ''} subscribers
+            {g.price_monthly != null && <span> · TT$ {fmtTTD(g.price_monthly)}/mo</span>}
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Collected</div>
+          <div className="font-bold text-brand-deep tabular-nums">TT$ {fmtTTD(g.total_earned_ttd)}</div>
+        </div>
+      </div>
+
+      {g.subscribers.length === 0 ? (
+        <div className="p-6 text-center text-xs text-muted-foreground">No subscribers yet.</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground">
+              <tr>
+                <th className="text-left font-bold px-4 py-2 sticky left-0 bg-muted/40 min-w-[160px]">Subscriber</th>
+                {periods.map((p) => (
+                  <th key={`${p.year}-${p.month}`} className="text-center font-bold px-3 py-2 min-w-[72px]">{p.label}</th>
+                ))}
+                <th className="text-left font-bold px-4 py-2 min-w-[100px]">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {g.subscribers.map((sub) => (
+                <SubscriberRow key={sub.enrollment_id} sub={sub} periods={periods} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SubscriberRow({ sub, periods }: { sub: GroupSubscriber; periods: { label: string; month: number; year: number }[] }) {
+  const initial = (sub.student_name?.[0] ?? '?').toUpperCase();
+  const [imgFailed, setImgFailed] = useState(false);
+
+  const statusConfig: Record<string, { label: string; icon: React.ReactNode; cls: string }> = {
+    ACTIVE:          { label: 'Active',     icon: <CheckCircle2 className="size-3" />, cls: 'bg-emerald-100 text-emerald-700' },
+    GRACE:           { label: 'Grace',      icon: <Clock className="size-3" />,        cls: 'bg-amber-100 text-amber-700' },
+    SUSPENDED:       { label: 'Suspended',  icon: <XCircle className="size-3" />,      cls: 'bg-rose-100 text-rose-700' },
+    PENDING_PAYMENT: { label: 'Pending',    icon: <Clock className="size-3" />,        cls: 'bg-zinc-100 text-zinc-600' },
+    ACTIVATION_FAILED: { label: 'Failed',  icon: <XCircle className="size-3" />,      cls: 'bg-rose-100 text-rose-700' },
+  };
+  const sc = statusConfig[sub.status] ?? { label: sub.status, icon: null, cls: 'bg-zinc-100 text-zinc-600' };
+
+  return (
+    <tr className="hover:bg-muted/20">
+      <td className="px-4 py-3 sticky left-0 bg-card">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="size-7 rounded-full bg-muted grid place-items-center overflow-hidden shrink-0">
+            {sub.student_avatar_url && !imgFailed ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={sub.student_avatar_url} alt={sub.student_name ?? ''} className="size-7 object-cover"
+                onError={() => setImgFailed(true)} />
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground">
-                    <tr>
-                      <th className="text-left font-bold px-4 py-2 sticky left-0 bg-muted/40">Member</th>
-                      {PAYMENT_PERIODS.map((p) => <th key={p} className="text-center font-bold px-3 py-2">{p}</th>)}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {members.slice(0, 5).map((m: any, mi: number) => (
-                      <tr key={m.student_id ?? mi}>
-                        <td className="px-4 py-3 sticky left-0 bg-card">
-                          <span className="font-semibold text-ink">{m.name ?? m.display_name ?? 'Student'}</span>
-                        </td>
-                        {PAYMENT_PERIODS.map((_, pi) => {
-                          const seed = (mi * 7 + pi * 3) % 11;
-                          const status: PayStatus = m.payment_status === 'overdue' && pi >= PAYMENT_PERIODS.length - 2 ? 'overdue'
-                            : m.payment_status === 'pending' && pi === PAYMENT_PERIODS.length - 1 ? 'due'
-                            : seed === 0 ? 'waived' : 'paid';
-                          const chip = status === 'paid' ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
-                            : status === 'due' ? 'bg-amber-100 text-amber-800 border-amber-200'
-                            : status === 'overdue' ? 'bg-rose-100 text-rose-700 border-rose-200'
-                            : 'bg-slate-100 text-slate-600 border-slate-200';
-                          return (
-                            <td key={pi} className="px-2 py-2 text-center">
-                              <span className={cn('inline-block px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider', chip)}>
-                                {status}
-                              </span>
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <span className="text-[10px] font-semibold text-muted-foreground">{initial}</span>
             )}
           </div>
+          <span className="font-medium text-ink truncate text-xs">{sub.student_name ?? 'Student'}</span>
+        </div>
+      </td>
+      {periods.map((p) => {
+        const paid = sub.paid_periods.some((pp) => pp.month === p.month && pp.year === p.year);
+        return (
+          <td key={`${p.year}-${p.month}`} className="px-2 py-2 text-center">
+            {paid ? (
+              <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700 border-emerald-200">
+                <CheckCircle2 className="size-2.5" /> Paid
+              </span>
+            ) : (
+              <span className="inline-block px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider bg-zinc-100 text-zinc-400 border-zinc-200">
+                —
+              </span>
+            )}
+          </td>
         );
       })}
+      <td className="px-4 py-3">
+        <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider', sc.cls)}>
+          {sc.icon} {sc.label}
+          {sub.cancel_at_period_end && <span className="ml-0.5 opacity-70">(cancels)</span>}
+        </span>
+      </td>
+    </tr>
+  );
+}
+
+// ── Payouts Tab ────────────────────────────────────────────────────────────────
+
+function PayoutsTab() {
+  const [loadingAccount, setLoadingAccount] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const [hasAccount, setHasAccount] = useState(false);
+  const [verified, setVerified] = useState(false);
+  const [payoutName, setPayoutName] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [branch, setBranch] = useState('');
+  const [accountType, setAccountType] = useState('chequing');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/tutor/payout-account');
+        const json = await res.json();
+        if (cancelled) return;
+        if (json.account) {
+          setHasAccount(true);
+          setVerified(!!json.account.verified_at);
+          setPayoutName(json.account.payout_name ?? '');
+          setAccountNumber(json.account.payout_account_identifier ?? '');
+          setBankName(json.account.bank_name ?? '');
+          setBranch(json.account.branch ?? '');
+          setAccountType(json.account.account_type ?? 'chequing');
+        }
+      } catch {
+        // non-fatal
+      } finally {
+        if (!cancelled) setLoadingAccount(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  async function save() {
+    setSaving(true); setError(''); setMessage('');
+    try {
+      const res = await fetch('/api/tutor/payout-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payout_name: payoutName, payout_account_identifier: accountNumber, bank_name: bankName, branch, account_type: accountType }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Failed to save');
+      setHasAccount(true);
+      setVerified(false);
+      setMessage('Bank details saved. Payouts will use this account.');
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loadingAccount) {
+    return (
+      <div className="flex items-center justify-center py-16 gap-2 text-muted-foreground">
+        <Loader2 className="size-5 animate-spin" /> <span className="text-sm">Loading payout details…</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-xl space-y-5">
+      <div className="rounded-2xl bg-mint p-4">
+        <div className="text-xs text-muted-foreground uppercase tracking-wider font-semibold flex items-center gap-1.5">
+          <ArrowDownToLine className="size-3.5" /> Payouts
+        </div>
+        <div className="font-semibold text-ink mt-1">
+          {hasAccount ? (verified ? 'Bank account verified ✓' : 'Bank account on file') : 'No payout method connected yet'}
+        </div>
+        <div className="text-xs text-muted-foreground mt-0.5">
+          iTutor pays out tutor earnings via bulk bank transfer. Your earnings accumulate as you teach paid sessions and are released on the next payout cycle.
+        </div>
+      </div>
+
+      {error && <div className="rounded-xl bg-coral/10 border border-coral/30 p-3 text-sm text-coral">{error}</div>}
+      {message && <div className="rounded-xl bg-mint border border-brand/30 p-3 text-sm text-ink">{message}</div>}
+
+      <div className="space-y-4">
+        <div>
+          <label className="block text-xs font-medium text-ink mb-1.5">Account holder name</label>
+          <input type="text" value={payoutName} onChange={(e) => setPayoutName(e.target.value)}
+            placeholder="As it appears on your bank statement"
+            className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-ink mb-1.5">Bank</label>
+          <select value={bankName} onChange={(e) => { setBankName(e.target.value); setBranch(''); }}
+            className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand">
+            <option value="">Select bank…</option>
+            {Object.keys(TT_BANKS).map((name) => (
+              <option key={name} value={name}>{name}</option>
+            ))}
+          </select>
+          {bankName && TT_BANKS[bankName] && (
+            <div className="mt-1.5 text-[11px] text-muted-foreground font-mono">
+              SWIFT: {TT_BANKS[bankName].swift} · Bank code: {TT_BANKS[bankName].code}
+            </div>
+          )}
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-ink mb-1.5">Branch</label>
+          <select value={branch} onChange={(e) => setBranch(e.target.value)}
+            disabled={!bankName || !TT_BANKS[bankName]}
+            className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand disabled:opacity-60">
+            <option value="">{bankName ? 'Select branch…' : 'Select bank first…'}</option>
+            {(TT_BANKS[bankName]?.branches ?? []).map((b) => (
+              <option key={b} value={b}>{b}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-ink mb-1.5">Account number</label>
+          <input type="text" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)}
+            inputMode="numeric"
+            className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-ink mb-1.5">Account type</label>
+          <select value={accountType} onChange={(e) => setAccountType(e.target.value)}
+            className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand">
+            <option value="chequing">Chequing</option>
+            <option value="savings">Savings</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="flex justify-end pt-4 border-t border-border">
+        <button onClick={save} disabled={saving}
+          className="px-4 py-2 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep disabled:opacity-50">
+          {saving ? 'Saving…' : hasAccount ? 'Update bank details' : 'Save bank details'}
+        </button>
+      </div>
     </div>
   );
 }
