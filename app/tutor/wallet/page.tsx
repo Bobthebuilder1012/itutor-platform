@@ -6,6 +6,7 @@ import Link from 'next/link';
 import {
   Wallet, TrendingUp, Search, Banknote, Users, AlertCircle,
   ArrowDownToLine, Receipt, CheckCircle2, Clock, XCircle, Loader2,
+  ChevronDown, ChevronUp, ExternalLink,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -73,6 +74,7 @@ interface GroupSubscriber {
   current_period_end: string | null;
   next_payment_due_at: string | null;
   cancel_at_period_end: boolean;
+  paid_this_month: boolean;
   paid_periods: { month: number; year: number }[];
 }
 
@@ -82,8 +84,14 @@ interface GroupTrackerGroup {
   subject_name: string | null;
   max_students: number | null;
   price_monthly: number | null;
+  status: string;
   active_count: number;
+  pending_count: number;
+  paid_this_month_count: number;
   total_earned_ttd: number;
+  earned_this_month_ttd: number;
+  projected_this_month_ttd: number;
+  waiting_for_payout_ttd: number;
   subscribers: GroupSubscriber[];
 }
 
@@ -684,18 +692,12 @@ function GroupTrackerTab({ tutorId }: { tutorId: string }) {
       .finally(() => setLoading(false));
   }, [tutorId]);
 
-  // Last 6 calendar months ending with the current month
-  const periods = useMemo(() => {
-    const now = new Date();
-    return Array.from({ length: 6 }, (_, i) => {
-      const d = new Date(now.getFullYear(), now.getMonth() - 5 + i, 1);
-      return {
-        label: d.toLocaleDateString('en-TT', { month: 'short', year: '2-digit' }),
-        month: d.getMonth(),
-        year: d.getFullYear(),
-      };
-    });
-  }, []);
+  const totals = useMemo(() => ({
+    activeSubscribers: groups.reduce((s, g) => s + g.active_count, 0),
+    earnedThisMonth:   groups.reduce((s, g) => s + g.earned_this_month_ttd, 0),
+    projected:         groups.reduce((s, g) => s + g.projected_this_month_ttd, 0),
+    waitingForPayout:  groups.reduce((s, g) => s + g.waiting_for_payout_ttd, 0),
+  }), [groups]);
 
   if (loading) return (
     <div className="flex items-center justify-center py-16 gap-2 text-muted-foreground">
@@ -716,85 +718,158 @@ function GroupTrackerTab({ tutorId }: { tutorId: string }) {
     );
   }
 
+  const monthLabel = new Date().toLocaleDateString('en-TT', { month: 'long', year: 'numeric' });
+
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-bold text-ink">Group payment tracker</h2>
-        <p className="text-xs text-muted-foreground">Member × billing period grid — showing the last 6 months for each class.</p>
+      {/* Summary bar */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="rounded-2xl border border-border bg-card p-4">
+          <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">Active subscribers</div>
+          <div className="mt-1.5 text-2xl font-bold text-ink tabular-nums">{totals.activeSubscribers}</div>
+          <div className="text-[11px] text-muted-foreground mt-0.5">across {groups.length} class{groups.length === 1 ? '' : 'es'}</div>
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-4">
+          <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">Earned this month</div>
+          <div className="mt-1.5 text-2xl font-bold text-brand-deep tabular-nums">TT$ {fmtTTD(totals.earnedThisMonth)}</div>
+          <div className="text-[11px] text-muted-foreground mt-0.5">{monthLabel}</div>
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-4">
+          <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">Projected this month</div>
+          <div className="mt-1.5 text-2xl font-bold text-blue-600 tabular-nums">TT$ {fmtTTD(totals.projected)}</div>
+          <div className="text-[11px] text-muted-foreground mt-0.5">from active subscribers</div>
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-4">
+          <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">Awaiting payout</div>
+          <div className="mt-1.5 text-2xl font-bold text-ink tabular-nums">TT$ {fmtTTD(totals.waitingForPayout)}</div>
+          <div className="text-[11px] text-muted-foreground mt-0.5">in escrow or ready</div>
+        </div>
       </div>
 
       {groups.map((g) => (
-        <GroupCard key={g.id} group={g} periods={periods} />
+        <GroupCard key={g.id} group={g} />
       ))}
     </div>
   );
 }
 
-function GroupCard({ group: g, periods }: { group: GroupTrackerGroup; periods: { label: string; month: number; year: number }[] }) {
-  const activeSubscribers = g.subscribers.filter(
-    (s) => ['ACTIVE', 'GRACE', 'SUSPENDED'].includes(s.status)
-  );
+function GroupCard({ group: g }: { group: GroupTrackerGroup }) {
+  const [expanded, setExpanded] = useState(g.subscribers.length <= 5);
+
+  const subscriberCount = g.subscribers.length;
+  const capacityLabel = `${g.active_count}${g.max_students ? `/${g.max_students}` : ''} subscriber${g.active_count === 1 ? '' : 's'}`;
 
   return (
     <div className="rounded-2xl border border-border bg-card overflow-hidden">
-      <div className="px-5 py-4 border-b border-border flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="font-semibold text-ink">{g.name}</div>
-          <div className="text-xs text-muted-foreground">
-            {g.subject_name && <span>{g.subject_name} · </span>}
-            {activeSubscribers.length}
-            {g.max_students ? `/${g.max_students}` : ''} subscribers
-            {g.price_monthly != null && <span> · TT$ {fmtTTD(g.price_monthly)}/mo</span>}
+      {/* Header */}
+      <div className="px-5 py-4 border-b border-border">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-semibold text-ink text-base">{g.name}</span>
+              {g.subject_name && (
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-brand-soft text-brand-deep font-semibold">{g.subject_name}</span>
+              )}
+              {g.status === 'DRAFT' && (
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-500 font-semibold">Draft</span>
+              )}
+            </div>
+            <div className="text-xs text-muted-foreground mt-0.5">
+              {capacityLabel}
+              {g.price_monthly != null && <span> · TT$ {fmtTTD(g.price_monthly)}/mo</span>}
+            </div>
           </div>
+          <Link href={`/tutor/classes/${g.id}`}
+            className="flex items-center gap-1 text-xs text-brand-deep font-semibold hover:underline shrink-0">
+            View roster <ExternalLink className="size-3" />
+          </Link>
         </div>
-        <div className="text-right">
-          <div className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Collected</div>
-          <div className="font-bold text-brand-deep tabular-nums">TT$ {fmtTTD(g.total_earned_ttd)}</div>
+
+        {/* Financial metrics */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+          <div className="rounded-xl bg-emerald-50 border border-emerald-100 p-3">
+            <div className="text-[10px] uppercase tracking-wider text-emerald-600 font-bold">Earned this month</div>
+            <div className="mt-1 font-bold text-emerald-700 tabular-nums text-sm">TT$ {fmtTTD(g.earned_this_month_ttd)}</div>
+            <div className="text-[10px] text-emerald-600/70 mt-0.5">{g.paid_this_month_count} payment{g.paid_this_month_count === 1 ? '' : 's'}</div>
+          </div>
+          <div className="rounded-xl bg-blue-50 border border-blue-100 p-3">
+            <div className="text-[10px] uppercase tracking-wider text-blue-600 font-bold">Projected</div>
+            <div className="mt-1 font-bold text-blue-700 tabular-nums text-sm">TT$ {fmtTTD(g.projected_this_month_ttd)}</div>
+            <div className="text-[10px] text-blue-600/70 mt-0.5">{g.active_count} active sub{g.active_count === 1 ? '' : 's'}</div>
+          </div>
+          <div className="rounded-xl bg-amber-50 border border-amber-100 p-3">
+            <div className="text-[10px] uppercase tracking-wider text-amber-600 font-bold">Pending / unpaid</div>
+            <div className="mt-1 font-bold text-amber-700 tabular-nums text-sm">{g.pending_count} student{g.pending_count === 1 ? '' : 's'}</div>
+            <div className="text-[10px] text-amber-600/70 mt-0.5">grace or overdue</div>
+          </div>
+          <div className="rounded-xl bg-zinc-50 border border-zinc-200 p-3">
+            <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-bold">Awaiting payout</div>
+            <div className="mt-1 font-bold text-ink tabular-nums text-sm">TT$ {fmtTTD(g.waiting_for_payout_ttd)}</div>
+            <div className="text-[10px] text-zinc-400 mt-0.5">in escrow or ready</div>
+          </div>
         </div>
       </div>
 
-      {g.subscribers.length === 0 ? (
+      {/* Subscriber list */}
+      {subscriberCount === 0 ? (
         <div className="p-6 text-center text-xs text-muted-foreground">No subscribers yet.</div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="text-left font-bold px-4 py-2 sticky left-0 bg-muted/40 min-w-[160px]">Subscriber</th>
-                {periods.map((p) => (
-                  <th key={`${p.year}-${p.month}`} className="text-center font-bold px-3 py-2 min-w-[72px]">{p.label}</th>
-                ))}
-                <th className="text-left font-bold px-4 py-2 min-w-[100px]">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {g.subscribers.map((sub) => (
-                <SubscriberRow key={sub.enrollment_id} sub={sub} periods={periods} />
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            className="w-full px-5 py-2.5 flex items-center justify-between text-xs font-semibold text-muted-foreground hover:text-ink hover:bg-muted/20 transition"
+          >
+            <span>{subscriberCount} subscriber{subscriberCount === 1 ? '' : 's'}</span>
+            {expanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+          </button>
+
+          {expanded && (
+            <div className="border-t border-border overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <tr>
+                    <th className="text-left font-bold px-4 py-2 min-w-[160px]">Subscriber</th>
+                    <th className="text-left font-bold px-3 py-2 min-w-[90px]">Status</th>
+                    <th className="text-right font-bold px-3 py-2 min-w-[80px]">Plan price</th>
+                    <th className="text-center font-bold px-3 py-2 min-w-[90px]">This month</th>
+                    <th className="text-right font-bold px-3 py-2 min-w-[90px]">Last paid</th>
+                    <th className="text-right font-bold px-3 py-2 min-w-[90px]">Next due</th>
+                    <th className="text-right font-bold px-3 py-2 min-w-[90px]">Access until</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {g.subscribers.map((sub) => (
+                    <SubscriberRow key={sub.enrollment_id} sub={sub} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
 }
 
-function SubscriberRow({ sub, periods }: { sub: GroupSubscriber; periods: { label: string; month: number; year: number }[] }) {
+function SubscriberRow({ sub }: { sub: GroupSubscriber }) {
   const initial = (sub.student_name?.[0] ?? '?').toUpperCase();
   const [imgFailed, setImgFailed] = useState(false);
 
   const statusConfig: Record<string, { label: string; icon: React.ReactNode; cls: string }> = {
-    ACTIVE:          { label: 'Active',     icon: <CheckCircle2 className="size-3" />, cls: 'bg-emerald-100 text-emerald-700' },
-    GRACE:           { label: 'Grace',      icon: <Clock className="size-3" />,        cls: 'bg-amber-100 text-amber-700' },
-    SUSPENDED:       { label: 'Suspended',  icon: <XCircle className="size-3" />,      cls: 'bg-rose-100 text-rose-700' },
-    PENDING_PAYMENT: { label: 'Pending',    icon: <Clock className="size-3" />,        cls: 'bg-zinc-100 text-zinc-600' },
-    ACTIVATION_FAILED: { label: 'Failed',  icon: <XCircle className="size-3" />,      cls: 'bg-rose-100 text-rose-700' },
+    ACTIVE:            { label: 'Active',    icon: <CheckCircle2 className="size-3" />, cls: 'bg-emerald-100 text-emerald-700' },
+    GRACE:             { label: 'Grace',     icon: <Clock className="size-3" />,        cls: 'bg-amber-100 text-amber-700' },
+    SUSPENDED:         { label: 'Suspended', icon: <XCircle className="size-3" />,      cls: 'bg-rose-100 text-rose-700' },
+    PENDING_PAYMENT:   { label: 'Pending',   icon: <Clock className="size-3" />,        cls: 'bg-zinc-100 text-zinc-500' },
+    ACTIVATION_FAILED: { label: 'Failed',    icon: <XCircle className="size-3" />,      cls: 'bg-rose-100 text-rose-700' },
   };
   const sc = statusConfig[sub.status] ?? { label: sub.status, icon: null, cls: 'bg-zinc-100 text-zinc-600' };
 
+  const fmtDate = (iso: string | null) =>
+    iso ? new Date(iso).toLocaleDateString('en-TT', { month: 'short', day: 'numeric' }) : '—';
+
   return (
     <tr className="hover:bg-muted/20">
-      <td className="px-4 py-3 sticky left-0 bg-card">
+      <td className="px-4 py-3">
         <div className="flex items-center gap-2 min-w-0">
           <div className="size-7 rounded-full bg-muted grid place-items-center overflow-hidden shrink-0">
             {sub.student_avatar_url && !imgFailed ? (
@@ -805,30 +880,45 @@ function SubscriberRow({ sub, periods }: { sub: GroupSubscriber; periods: { labe
               <span className="text-[10px] font-semibold text-muted-foreground">{initial}</span>
             )}
           </div>
-          <span className="font-medium text-ink truncate text-xs">{sub.student_name ?? 'Student'}</span>
+          <div className="min-w-0">
+            <span className="font-medium text-ink truncate text-xs block">{sub.student_name ?? 'Student'}</span>
+            {sub.cancel_at_period_end && (
+              <span className="text-[10px] text-amber-600">Cancels at period end</span>
+            )}
+          </div>
         </div>
       </td>
-      {periods.map((p) => {
-        const paid = sub.paid_periods.some((pp) => pp.month === p.month && pp.year === p.year);
-        return (
-          <td key={`${p.year}-${p.month}`} className="px-2 py-2 text-center">
-            {paid ? (
-              <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700 border-emerald-200">
-                <CheckCircle2 className="size-2.5" /> Paid
-              </span>
-            ) : (
-              <span className="inline-block px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider bg-zinc-100 text-zinc-400 border-zinc-200">
-                —
-              </span>
-            )}
-          </td>
-        );
-      })}
-      <td className="px-4 py-3">
+      <td className="px-3 py-3">
         <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider', sc.cls)}>
           {sc.icon} {sc.label}
-          {sub.cancel_at_period_end && <span className="ml-0.5 opacity-70">(cancels)</span>}
         </span>
+      </td>
+      <td className="px-3 py-3 text-right tabular-nums text-xs text-ink">
+        {sub.plan_price_ttd != null ? `TT$ ${fmtTTD(sub.plan_price_ttd)}` : '—'}
+      </td>
+      <td className="px-3 py-3 text-center">
+        {sub.paid_this_month ? (
+          <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">
+            <CheckCircle2 className="size-2.5" /> Paid
+          </span>
+        ) : sub.status === 'PENDING_PAYMENT' ? (
+          <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-zinc-100 text-zinc-500">
+            <Clock className="size-2.5" /> Pending
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">
+            <AlertCircle className="size-2.5" /> Unpaid
+          </span>
+        )}
+      </td>
+      <td className="px-3 py-3 text-right text-xs text-muted-foreground tabular-nums">
+        {fmtDate(sub.last_paid_at)}
+      </td>
+      <td className="px-3 py-3 text-right text-xs text-muted-foreground tabular-nums">
+        {fmtDate(sub.next_payment_due_at)}
+      </td>
+      <td className="px-3 py-3 text-right text-xs text-muted-foreground tabular-nums">
+        {fmtDate(sub.current_period_end)}
       </td>
     </tr>
   );
