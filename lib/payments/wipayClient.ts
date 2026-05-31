@@ -109,10 +109,20 @@ export class WiPayClient {
     //   .digest('hex');
     // return computedSignature === signature;
 
-    // STUB: Always return true in development
-    // In production, this MUST be replaced with actual verification
-    console.warn('⚠️ WARNING: Using stub webhook verification - DO NOT USE IN PRODUCTION');
-    return true;
+    // Reject ALL webhooks until real credentials and signature logic are wired up.
+    // The stub previously returned true, allowing anyone to fake a successful payment.
+    if (!this.isConfigured()) {
+      console.error('[WiPay] verifyWebhookSignature: client not configured — rejecting webhook');
+      return false;
+    }
+
+    // TODO: replace with real HMAC-SHA256 verification once WiPay docs are available
+    const crypto = require('crypto');
+    const computed = crypto
+      .createHmac('sha256', this.webhookSecret)
+      .update(JSON.stringify(payload))
+      .digest('hex');
+    return computed === signature;
   }
 
   /**
