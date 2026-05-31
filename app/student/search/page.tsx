@@ -6,6 +6,7 @@ import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import { Profile } from '@/lib/types/database';
 import { getDisplayName } from '@/lib/utils/displayName';
+import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { profileBannerDisplayUrl } from '@/lib/utils/profileBannerDisplayUrl';
 import UserAvatar from '@/components/UserAvatar';
 import VerifiedBadge from '@/components/VerifiedBadge';
@@ -436,7 +437,7 @@ export default function StudentSearchResultsPage() {
                           </div>
                           {tutor.subject_price !== null && tutor.subject_price !== undefined && (
                             <p className="mt-1 text-[11px] font-semibold text-emerald-700">
-                              ${tutor.subject_price.toFixed(2)}/hr
+                              {fmtTTD(tutor.subject_price)}/hr
                             </p>
                           )}
                         </div>

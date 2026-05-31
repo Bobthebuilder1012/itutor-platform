@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { createBookingRequest, getSessionTypes } from '@/lib/services/bookingService';
 
 interface SuggestTimeModalProps {
@@ -191,9 +192,9 @@ export default function SuggestTimeModal({
 
               <div className="rounded-xl border-2 border-itutor-green bg-green-50 p-3">
                 <p className="text-sm font-semibold text-gray-700">
-                  Estimated price: <span className="text-itutor-green">${estimatedPrice.toFixed(2)} TTD</span>
+                  Estimated price: <span className="text-itutor-green">{fmtTTD(estimatedPrice)}</span>
                 </p>
-                <p className="text-xs text-gray-600">${pricePerHour}/hour rate</p>
+                <p className="text-xs text-gray-600">TT${pricePerHour}/hour rate</p>
               </div>
             </div>
 

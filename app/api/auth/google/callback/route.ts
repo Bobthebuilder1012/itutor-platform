@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { encrypt } from '@/lib/utils/encryption';
 import { migrateSessionsToNewProvider } from '@/lib/services/migrateSessionsToNewProvider';
+import { resolveGoogleRedirectUri } from '@/lib/auth/resolveGoogleRedirectUri';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,16 +33,15 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Validate environment variables (trim to remove any whitespace/newlines)
     const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
-    const redirectUri = process.env.GOOGLE_REDIRECT_URI?.trim();
+    const redirectUri = resolveGoogleRedirectUri(request);
 
     if (!clientId || !clientSecret || !redirectUri) {
       console.error('❌ Missing Google OAuth credentials:', {
         hasClientId: !!clientId,
         hasClientSecret: !!clientSecret,
-        hasRedirectUri: !!redirectUri
+        hasRedirectUri: !!redirectUri,
       });
       return redirect(returnTo, request.url, { error: 'server_config' });
     }

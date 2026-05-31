@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { LuniPayError } from 'lunipay';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { createSessionForBooking } from '@/lib/services/sessionService';
 import { isPaidClassesEnabled } from '@/lib/featureFlags/paidClasses';
 import { calculateCommission } from '@/lib/utils/commissionCalculator';
+import { getLunipayClient, ttdToCents } from '@/lib/payments/lunipayClient';
+import { resolvePayer } from '@/lib/payments/resolvePayer';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 type Body = {
   tutorId: string;
@@ -36,14 +40,24 @@ export async function POST(request: NextRequest) {
     // 1. Check for duplicate (this student already booked this exact slot)
     const { data: existing } = await admin
       .from('bookings')
-      .select('id')
+      .select('id, payment_required, payment_status, payer_id')
       .eq('student_id', user.id)
       .eq('tutor_id', tutorId)
       .eq('requested_start_at', requestedStartAt)
       .in('status', ['PENDING', 'CONFIRMED'])
       .maybeSingle();
     if (existing) {
-      return NextResponse.json({ success: true, booking_id: existing.id, status: 'CONFIRMED' });
+      if (!existing.payer_id) {
+        await admin.from('bookings').update({ payer_id: user.id }).eq('id', existing.id);
+      }
+      const needsPayment =
+        existing.payment_required === true && existing.payment_status !== 'paid';
+      return NextResponse.json({
+        success: true,
+        booking_id: existing.id,
+        status: 'CONFIRMED',
+        requires_payment: needsPayment,
+      });
     }
 
     // 2. Check for conflicts — any CONFIRMED booking for this tutor overlapping the requested window
@@ -117,7 +131,111 @@ export async function POST(request: NextRequest) {
       ? calculateCommission(priceTtd)
       : { platformFee: 0, payoutAmount: 0, commissionRate: 0 };
 
-    // 6. Insert booking directly as CONFIRMED, setting confirmed times so the calendar RPC sees it as busy
+    // 5b. Paid path: NO booking row is created here. We create a LuniPay
+    // checkout session with the full booking intent in metadata; the
+    // webhook materialises the booking only after payment succeeds.
+    // This guarantees a tutor never sees a "ghost" CONFIRMED row for a
+    // checkout the student abandoned.
+    if (paidClassesEnabled && priceTtd > 0) {
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+      if (!appUrl) {
+        console.error('[direct-book] NEXT_PUBLIC_APP_URL is not configured');
+        return NextResponse.json(
+          { error: 'Payments are not configured on this environment' },
+          { status: 500 }
+        );
+      }
+
+      // Resolve who the cardholder is. For billing_mode='parent_required',
+      // this is the linked parent, not the student.
+      const payer = await resolvePayer(admin, user.id, user.email ?? null);
+      const customerEmail = payer.email;
+      if (!customerEmail) {
+        return NextResponse.json(
+          {
+            error: payer.isProxy
+              ? "The parent listed for this student doesn't have an email on file"
+              : 'Your account is missing an email address',
+          },
+          { status: 400 }
+        );
+      }
+
+      const subjectName = (tutorSubject as any)?.label || 'Tutoring Session';
+      const description = `${subjectName} (${durationMinutes} min)`;
+      const amountCents = ttdToCents(priceTtd);
+
+      // Stripe-style metadata: ≤50 keys, ≤500 chars per value. Truncate
+      // student_notes hard so a long note can't break session creation.
+      const truncatedNotes = (studentNotes || '').slice(0, 400);
+
+      try {
+        const lunipay = getLunipayClient();
+        const session = await lunipay.checkout.sessions.create(
+          {
+            amount: amountCents,
+            currency: 'ttd',
+            success_url: `${appUrl}/payments/success?session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: `${appUrl}/student/tutors/${tutorId}?cancelled=1`,
+            customer_email: customerEmail,
+            line_items: [
+              {
+                name: description,
+                quantity: 1,
+                amount: amountCents,
+              } as any,
+            ],
+            metadata: {
+              kind: 'create_booking',
+              student_id: user.id,
+              payer_id: payer.payerId,
+              tutor_id: tutorId,
+              subject_id: subjectId,
+              session_type_id: sessionTypeId ?? '',
+              requested_start_at: requestedStartAt,
+              requested_end_at: requestedEndAt,
+              duration_minutes: String(durationMinutes),
+              price_ttd: String(priceTtd),
+              platform_fee_pct: String(Math.round(commission.commissionRate * 100)),
+              platform_fee_ttd: String(commission.platformFee),
+              tutor_payout_ttd: String(commission.payoutAmount),
+              student_notes: truncatedNotes,
+            },
+          },
+          // Idempotency: double-clicking returns the SAME hosted URL
+          // instead of starting a second session for the same slot.
+          {
+            idempotencyKey: `book-${user.id}-${tutorId}-${requestedStartAt}`,
+          }
+        );
+
+        return NextResponse.json({
+          success: true,
+          requires_payment: true,
+          paymentUrl: session.url,
+        });
+      } catch (sdkError) {
+        const isApiError = sdkError instanceof LuniPayError;
+        console.error(
+          '[direct-book] LuniPay sessions.create failed:',
+          isApiError
+            ? { code: sdkError.code, status: sdkError.status, message: sdkError.message }
+            : sdkError
+        );
+        return NextResponse.json(
+          {
+            error: 'Failed to start payment session',
+            details: isApiError ? sdkError.message : (sdkError as Error).message,
+          },
+          { status: 502 }
+        );
+      }
+    }
+
+    // 6. Free path: insert booking directly as CONFIRMED, setting confirmed times so the calendar RPC sees it as busy.
+    // Even free bookings record the canonical payer_id so future payments
+    // can use the right cardholder.
+    const freePayer = await resolvePayer(admin, user.id, user.email ?? null);
     const { data: booking, error: insertError } = await admin
       .from('bookings')
       .insert({
@@ -134,6 +252,7 @@ export async function POST(request: NextRequest) {
         last_action_by: 'student',
         student_notes: studentNotes || null,
         price_ttd: priceTtd,
+        payer_id: freePayer.payerId,
         payment_required: paidClassesEnabled,
         payment_status: 'unpaid',
         currency: 'TTD',

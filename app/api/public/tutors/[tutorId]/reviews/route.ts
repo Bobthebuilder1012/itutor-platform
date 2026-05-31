@@ -37,8 +37,9 @@ export async function GET(
     // Also dedupe by (student_id) to enforce "latest rating per student".
     const { data: ratingRows, error: ratingsError } = await admin
       .from('ratings')
-      .select('id, stars, comment, created_at, student_id')
+      .select('id, stars, comment, created_at, student_id, is_active, system_issued')
       .eq('tutor_id', tutorId)
+      .eq('is_active', true)
       .order('created_at', { ascending: false })
       .limit(5000);
 

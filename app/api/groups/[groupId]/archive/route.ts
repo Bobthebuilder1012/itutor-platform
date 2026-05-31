@@ -27,6 +27,25 @@ export async function POST(_req: NextRequest, { params }: Params) {
     }
 
     const now = new Date().toISOString();
+
+    // Guard: cannot archive a group with active subscriptions
+    const { count: activeSubCount } = await service
+      .from('group_enrollments')
+      .select('id', { count: 'exact', head: true })
+      .eq('group_id', groupId)
+      .eq('enrollment_type', 'SUBSCRIPTION')
+      .or(
+        `status.in.(ACTIVE,GRACE,SUSPENDED),` +
+        `and(status.eq.PENDING_PAYMENT,pending_payment_expires_at.gt.${now})`
+      );
+
+    if ((activeSubCount ?? 0) > 0) {
+      return NextResponse.json(
+        { error: 'Cannot archive a group with active subscriptions.', active_subscriptions: activeSubCount },
+        { status: 409 }
+      );
+    }
+
     const { error } = await service
       .from('groups')
       .update({ archived_at: now, status: 'ARCHIVED', archived_reason: 'manual' })

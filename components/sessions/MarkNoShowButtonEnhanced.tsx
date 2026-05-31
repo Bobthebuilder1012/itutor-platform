@@ -1,7 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { Session } from '@/lib/types/sessions';
+
+const NO_SHOW_WAIT_MINUTES = 15;
 
 type MarkNoShowButtonEnhancedProps = {
   session: Session;
@@ -25,22 +28,22 @@ export default function MarkNoShowButtonEnhanced({
     const checkEligibility = () => {
       const now = new Date();
       const sessionStart = new Date(session.scheduled_start_at);
-      const twentyMinutesAfterStart = new Date(sessionStart.getTime() + 20 * 60 * 1000);
+      const waitDeadline = new Date(sessionStart.getTime() + NO_SHOW_WAIT_MINUTES * 60 * 1000);
       const sessionEnd = new Date(sessionStart.getTime() + session.duration_minutes * 60 * 1000);
 
       // Can mark no-show if:
-      // 1. At least 20 minutes have passed since session start
+      // 1. At least NO_SHOW_WAIT_MINUTES have passed since session start
       // 2. Session hasn't ended yet
       // 3. Session status is SCHEDULED or JOIN_OPEN
-      const canMarkNow = now >= twentyMinutesAfterStart && 
+      const canMarkNow = now >= waitDeadline &&
                          now <= sessionEnd &&
                          (session.status === 'SCHEDULED' || session.status === 'JOIN_OPEN');
 
       setCanMark(canMarkNow);
 
       // Calculate minutes remaining until button becomes active
-      if (now < twentyMinutesAfterStart) {
-        const msRemaining = twentyMinutesAfterStart.getTime() - now.getTime();
+      if (now < waitDeadline) {
+        const msRemaining = waitDeadline.getTime() - now.getTime();
         const minsRemaining = Math.ceil(msRemaining / (60 * 1000));
         setMinutesRemaining(minsRemaining);
       } else {
@@ -92,7 +95,7 @@ export default function MarkNoShowButtonEnhanced({
   const tooltipText = canMark
     ? `Click to report that the ${userRole === 'tutor' ? 'student' : 'tutor'} did not join the session. ⚠️ False reports may result in account suspension.`
     : minutesRemaining !== null
-    ? `This button will be enabled ${minutesRemaining} minute${minutesRemaining !== 1 ? 's' : ''} after the session starts (20 minutes total). You can use it if the ${userRole === 'tutor' ? 'student' : 'tutor'} doesn't show up.`
+    ? `This button will be enabled ${minutesRemaining} minute${minutesRemaining !== 1 ? 's' : ''} after the session starts (${NO_SHOW_WAIT_MINUTES} minutes total). You can use it if the ${userRole === 'tutor' ? 'student' : 'tutor'} doesn't show up.`
     : 'This button is currently unavailable';
 
   return (
@@ -200,7 +203,7 @@ export default function MarkNoShowButtonEnhanced({
                   <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                     <div className="text-sm">
                       <p className="text-gray-600 mb-1">Session Price:</p>
-                      <p className="font-bold text-gray-900 text-lg">TTD {session.charge_amount_ttd.toFixed(2)}</p>
+                      <p className="font-bold text-gray-900 text-lg">{fmtTTD(session.charge_amount_ttd)}</p>
                       <p className="text-green-600 font-semibold mt-2">→ Full Refund Pending</p>
                     </div>
                   </div>
@@ -234,19 +237,19 @@ export default function MarkNoShowButtonEnhanced({
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
                         <p className="text-gray-600">Original Price:</p>
-                        <p className="font-bold text-gray-900">TTD {session.charge_amount_ttd.toFixed(2)}</p>
+                        <p className="font-bold text-gray-900">{fmtTTD(session.charge_amount_ttd)}</p>
                       </div>
                       <div>
                         <p className="text-gray-600">Student Charge:</p>
-                        <p className="font-bold text-red-600">TTD {(session.charge_amount_ttd * 0.5).toFixed(2)}</p>
+                        <p className="font-bold text-red-600">{fmtTTD(session.charge_amount_ttd * 0.5)}</p>
                       </div>
                       <div>
                         <p className="text-gray-600">Your Payout:</p>
-                        <p className="font-bold text-green-600">TTD {(session.charge_amount_ttd * 0.45).toFixed(2)}</p>
+                        <p className="font-bold text-green-600">{fmtTTD(session.charge_amount_ttd * 0.45)}</p>
                       </div>
                       <div>
                         <p className="text-gray-600">Platform Fee:</p>
-                        <p className="font-bold text-gray-600">TTD {(session.charge_amount_ttd * 0.05).toFixed(2)}</p>
+                        <p className="font-bold text-gray-600">{fmtTTD(session.charge_amount_ttd * 0.05)}</p>
                       </div>
                     </div>
                   </div>
@@ -262,7 +265,7 @@ export default function MarkNoShowButtonEnhanced({
                   <div>
                     <p className="font-bold text-red-900 mb-1">⚠️ Important Warning</p>
                     <p className="text-sm text-red-800">
-                      Only mark as no-show if the {userRole === 'tutor' ? 'student' : 'tutor'} genuinely did not join within 20 minutes of the session start. 
+                      Only mark as no-show if the {userRole === 'tutor' ? 'student' : 'tutor'} genuinely did not join within {NO_SHOW_WAIT_MINUTES} minutes of the session start.
                       <span className="font-bold"> False no-show reports will result in account suspension or permanent ban from the platform.</span>
                     </p>
                   </div>
@@ -272,7 +275,7 @@ export default function MarkNoShowButtonEnhanced({
               {userRole === 'tutor' && (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                   <p className="text-sm text-gray-700">
-                    <span className="font-semibold">📝 Note:</span> Only mark as no-show if the student genuinely did not join within 20 minutes. False no-show reports may result in account penalties.
+                    <span className="font-semibold">📝 Note:</span> Only mark as no-show if the student genuinely did not join within {NO_SHOW_WAIT_MINUTES} minutes. False no-show reports may result in account penalties.
                   </p>
                 </div>
               )}

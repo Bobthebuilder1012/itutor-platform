@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Lock, TrendingUp, TrendingDown, Users, DollarSign, Star, Calendar, AlertTriangle } from 'lucide-react';
+import { Lock, TrendingUp, TrendingDown, DollarSign, Star, Calendar, AlertTriangle } from 'lucide-react';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { useTutorCompletion } from '@/lib/hooks/useTutorCompletion';
 import { supabase } from '@/lib/supabase/client';
@@ -22,6 +22,9 @@ type Stats = {
   ratingCount: number;
   completionRate: number;
 };
+
+const COMPLETED_STATUSES = ['COMPLETED_ASSUMED'];
+const FINAL_STATUSES = ['COMPLETED_ASSUMED', 'NO_SHOW_STUDENT', 'NO_SHOW_TUTOR', 'EARLY_END_SHORT', 'CANCELLED'];
 
 export default function TutorAnalyticsPage() {
   return (
@@ -58,24 +61,23 @@ function AnalyticsContent() {
     const [{ data: sessions }, { data: ratings }, { data: upcoming }] = await Promise.all([
       supabase
         .from('sessions')
-        .select('id, scheduled_start, status, payout_amount_ttd, booking:bookings(student_id)')
+        .select('id, scheduled_start_at, status, payout_amount_ttd, student_id')
         .eq('tutor_id', tutorId)
-        .gte('scheduled_start', sixMonthsAgo.toISOString()),
+        .gte('scheduled_start_at', sixMonthsAgo.toISOString()),
       supabase
         .from('ratings')
         .select('stars')
         .eq('tutor_id', tutorId),
       supabase
         .from('sessions')
-        .select('id, scheduled_start, payout_amount_ttd')
+        .select('id, scheduled_start_at, payout_amount_ttd')
         .eq('tutor_id', tutorId)
         .in('status', ['scheduled', 'confirmed'])
-        .gte('scheduled_start', now.toISOString())
-        .lt('scheduled_start', nextMonthEnd.toISOString()),
+        .gte('scheduled_start_at', now.toISOString())
+        .lt('scheduled_start_at', nextMonthEnd.toISOString()),
     ]);
 
     const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-    const currentMonthEnd = nextMonthEnd.getTime();
 
     const months: MonthData[] = [];
     for (let i = 5; i >= 0; i--) {
@@ -88,8 +90,8 @@ function AnalyticsContent() {
       const isCurrent = monthStart === currentMonthStart;
 
       const actual = (sessions ?? [])
-        .filter((s: any) => s.status === 'completed' && new Date(s.scheduled_start).getTime() >= monthStart && new Date(s.scheduled_start).getTime() < monthEnd)
-        .reduce((sum: number, s: any) => sum + (s.payout_amount_ttd ?? 0), 0);
+        .filter((s: any) => COMPLETED_STATUSES.includes(s.status) && new Date(s.scheduled_start_at).getTime() >= monthStart && new Date(s.scheduled_start_at).getTime() < monthEnd)
+        .reduce((sum: number, s: any) => sum + Number(s.payout_amount_ttd ?? 0), 0);
 
       let projected = 0;
       if (isCurrent) {
@@ -104,20 +106,19 @@ function AnalyticsContent() {
     const earnedThisMonth = currentMonth?.actual ?? 0;
     const projectedThisMonth = earnedThisMonth + (currentMonth?.projected ?? 0);
 
-    const completed = (sessions ?? []).filter((s: any) => s.status === 'completed');
+    const completed = (sessions ?? []).filter((s: any) => COMPLETED_STATUSES.includes(s.status));
     const totalSessions = completed.length;
-    const totalEarnings = completed.reduce((sum: number, s: any) => sum + (s.payout_amount_ttd ?? 0), 0);
-    const studentSet = new Set();
+    const totalEarnings = completed.reduce((sum: number, s: any) => sum + Number(s.payout_amount_ttd ?? 0), 0);
+    const studentSet = new Set<string>();
     completed.forEach((s: any) => {
-      const b = Array.isArray(s.booking) ? s.booking[0] : s.booking;
-      if (b?.student_id) studentSet.add(b.student_id);
+      if (s.student_id) studentSet.add(s.student_id);
     });
 
     const stars = (ratings ?? []).map((r: any) => r.stars);
     const avgRating = stars.length ? stars.reduce((a: number, b: number) => a + b, 0) / stars.length : 0;
 
-    const totalScheduled = (sessions ?? []).filter((s: any) => ['completed', 'no_show', 'cancelled'].includes(s.status)).length;
-    const completionRate = totalScheduled ? (totalSessions / totalScheduled) * 100 : 0;
+    const totalFinal = (sessions ?? []).filter((s: any) => FINAL_STATUSES.includes(s.status)).length;
+    const completionRate = totalFinal ? (totalSessions / totalFinal) * 100 : 0;
 
     setStats({
       monthlyEarnings: months,

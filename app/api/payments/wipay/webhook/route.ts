@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
           type: 'payment_succeeded',
           title: 'Payment Successful',
           message: `Your payment of $${payment.amount_ttd} TTD was successful. The tutor will now review your booking request.`,
-          link: `/payments/${payment.id}/receipt`,
+          link: '/student/bookings',
           created_at: new Date().toISOString(),
         });
 

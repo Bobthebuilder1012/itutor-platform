@@ -21,6 +21,16 @@ function buildReminderSendAt(startAt: string, reminderType: ReminderType): strin
   return new Date(base.getTime() - offsetHours * 60 * 60 * 1000).toISOString();
 }
 
+// PostgREST PGRST205 / Postgres 42P01 both signal "relation missing".
+// If the session_reminders table hasn't been migrated into this database
+// yet, we don't want to block bookings, cancellations, or reschedules —
+// reminders are a cron-driven nicety, not a transactional dependency.
+function isMissingRemindersTable(error: { code?: string | null; message?: string | null } | null): boolean {
+  if (!error) return false;
+  if (error.code === 'PGRST205' || error.code === '42P01') return true;
+  return /session_reminders/i.test(error.message ?? '') && /(not exist|schema cache)/i.test(error.message ?? '');
+}
+
 /**
  * Schedules 24-hour and 1-hour reminders for both the student and tutor.
  */
@@ -80,6 +90,10 @@ export async function scheduleSessionReminders(session: ReminderSession): Promis
 
   const { error: insertError } = await supabase.from('session_reminders').insert(rows);
   if (insertError) {
+    if (isMissingRemindersTable(insertError)) {
+      console.warn('[scheduleSessionReminders] session_reminders table missing — skipping');
+      return;
+    }
     throw new Error(`Failed to schedule session reminders: ${insertError.message}`);
   }
 }
@@ -96,6 +110,10 @@ export async function cancelSessionReminders(sessionId: string): Promise<void> {
     .eq('status', 'pending');
 
   if (error) {
+    if (isMissingRemindersTable(error)) {
+      console.warn('[cancelSessionReminders] session_reminders table missing — skipping');
+      return;
+    }
     throw new Error(`Failed to cancel session reminders: ${error.message}`);
   }
 }

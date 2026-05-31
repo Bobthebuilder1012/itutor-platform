@@ -13,6 +13,7 @@ export const classSettingsSchema = z.object({
   primary_channel: z.enum(['native', 'whatsapp', 'classroom']).optional(),
   parent_feedback_mode: z.enum(['off', 'included_free', 'paid_addon']).optional(),
   parent_feedback_price: z.number().min(0).or(z.null()).optional(),
+  meeting_link: z.string().url('Must be a valid URL').or(z.literal('')).or(z.null()).optional(),
 });
 
 export type ClassSettingsInput = z.infer<typeof classSettingsSchema>;
