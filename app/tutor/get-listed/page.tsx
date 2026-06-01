@@ -107,6 +107,9 @@ function GetListedContent() {
   const [availOpen, setAvailOpen] = useState(false);
   const [availError, setAvailError] = useState('');
 
+  // Payout account gate
+  const [hasPayoutAccount, setHasPayoutAccount] = useState<boolean | null>(null);
+
   // Video provider
   const [videoConnection, setVideoConnection] = useState<{ provider: string; email: string | null } | null>(null);
   const [videoConnecting, setVideoConnecting] = useState(false);
@@ -142,11 +145,13 @@ function GetListedContent() {
   }, [profile?.id]);
 
   async function fetchData(tutorId: string) {
-    const [{ data: subjs }, rules, { data: vidConn }] = await Promise.all([
+    const [{ data: subjs }, rules, { data: vidConn }, { data: payoutAcc }] = await Promise.all([
       supabase.from('tutor_subjects').select('id, subject_id, price_per_hour_ttd, subjects(name, label)').eq('tutor_id', tutorId),
       getTutorAvailabilityRules(tutorId),
       supabase.from('tutor_video_provider_connections').select('provider, provider_account_email').eq('tutor_id', tutorId).maybeSingle(),
+      supabase.from('tutor_payout_accounts').select('payout_account_identifier').eq('tutor_id', tutorId).maybeSingle(),
     ]);
+    setHasPayoutAccount(!!payoutAcc?.payout_account_identifier);
 
     let tutorSubjects = (subjs ?? []) as unknown as SubjectRow[];
 
@@ -416,6 +421,14 @@ function GetListedContent() {
 
       {/* 4. Rate */}
       <SectionShell done={completion.rate} title="Hourly rate" subtitle="Set your rate per subject (TTD). Each subject can have a different rate.">
+        {hasPayoutAccount === false && (
+          <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <svg className="mt-0.5 size-4 shrink-0 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3m0 3h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+            <span>
+              You need to <a href="/tutor/wallet" className="font-semibold underline underline-offset-2 hover:text-amber-900">set up your payout account</a> before you can set rates or receive payments.
+            </span>
+          </div>
+        )}
         {subjects.length === 0 ? (
           <p className="text-sm text-muted-foreground">Add subjects first to set rates.</p>
         ) : (
@@ -441,7 +454,7 @@ function GetListedContent() {
                   <span className="text-sm text-muted-foreground">/ hr</span>
                   <button
                     onClick={() => saveSubjectRate(s.subject_id)}
-                    disabled={isSaving || !rateInputs[s.subject_id]}
+                    disabled={isSaving || !rateInputs[s.subject_id] || !hasPayoutAccount}
                     className="px-3 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-deep disabled:opacity-50"
                   >
                     {isSaving ? 'Saving…' : 'Save'}
@@ -467,7 +480,7 @@ function GetListedContent() {
             </div>
             <button
               onClick={saveAllRates}
-              disabled={savingAllRate || !applyAllInput}
+              disabled={savingAllRate || !applyAllInput || !hasPayoutAccount}
               className="px-3 py-2 rounded-lg bg-muted text-ink text-sm font-semibold hover:bg-muted/70 disabled:opacity-50"
             >
               {savingAllRate ? 'Saving…' : 'Apply to all'}
