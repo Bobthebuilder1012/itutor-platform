@@ -1,11 +1,9 @@
 // GET /api/admin/lesson-payments
 // Returns three datasets for the Lesson Payments admin page:
-//   active             — PAID subscription_payments for ACTIVE enrollments, not yet batched
-//   completed_removals — group_removals with refunds already processed (auto or manual)
-//   cancelled_left     — group_enrollments CANCELLED by student (no matching group_removal row)
+//   active          — PAID subscription_payments for ACTIVE enrollments, not yet batched
+//   pending_refunds — group_removals where refund_issued=false (awaiting admin approval)
+//   cancelled_left  — group_enrollments CANCELLED by student (no matching group_removal row)
 // Also returns aggregated stats for the KPI cards.
-// NOTE: Refunds are now auto-processed on removal. There is no admin approval step.
-//       Any failed refunds appear as subscription_payment_exceptions, not here.
 
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/middleware/adminAuth';
@@ -22,7 +20,7 @@ export async function GET() {
 
   const [
     activeRes,
-    completedRemovalsRes,
+    pendingRefundsRes,
     cancelledLeftRes,
   ] = await Promise.all([
     // Tab 1: Active subscriptions — PAID, enrollment ACTIVE
@@ -44,7 +42,7 @@ export async function GET() {
       .order('paid_at', { ascending: false })
       .limit(200),
 
-    // Tab 2: Completed removals — group_removals (refund auto-processed at removal time)
+    // Tab 2: Pending refunds — removals where refund not yet issued
     admin
       .from('group_removals')
       .select(`
@@ -61,7 +59,8 @@ export async function GET() {
         group:groups!group_id(id, name),
         tutor:profiles!tutor_id(id, full_name)
       `)
-      .eq('status', 'auto_processed')
+      .eq('refund_issued', false)
+      .in('status', ['auto_processed', 'approved'])
       .order('created_at', { ascending: false })
       .limit(200),
 
@@ -96,9 +95,14 @@ export async function GET() {
     return true;
   });
 
-  // ── Completed removals: all auto_processed removals ──
-  const allRemovals = (completedRemovalsRes.data ?? []) as any[];
-  const completed_removals = allRemovals;
+  // ── Filter pending refunds: must have a PAID subscription_payment ──────────
+  const allRemovals = (pendingRefundsRes.data ?? []) as any[];
+  const pending_refunds = allRemovals.filter((r) => {
+    const enrollment = Array.isArray(r.enrollment) ? r.enrollment[0] : r.enrollment;
+    const sps = enrollment?.subscription_payment;
+    const sp = Array.isArray(sps) ? sps[0] : sps;
+    return sp?.status === 'PAID';
+  });
 
   // ── Filter cancelled-left: exclude enrollments that have a group_removal ───
   const allCancelled = (cancelledLeftRes.data ?? []) as any[];
@@ -113,20 +117,20 @@ export async function GET() {
     return s + Number(ledger?.amount_ttd ?? sp.tutor_payout_ttd ?? 0);
   }, 0);
 
-  const refundedTotal = completed_removals
-    .filter((r) => r.refund_issued)
-    .reduce((s, r) => s + Number(r.refund_amount_ttd ?? 0), 0);
-
-  const failedRefundCount = completed_removals.filter((r) => !r.refund_issued).length;
+  const pendingRefundTotal = pending_refunds.reduce((s, r) => {
+    const enrollment = Array.isArray(r.enrollment) ? r.enrollment[0] : r.enrollment;
+    const sps = enrollment?.subscription_payment;
+    const sp = Array.isArray(sps) ? sps[0] : sps;
+    return s + Number(sp?.amount_ttd ?? 0);
+  }, 0);
 
   const stats = {
-    active_count:             active.length,
-    completed_removal_count:  completed_removals.length,
-    cancelled_left_count:     cancelled_left.length,
-    unbatched_payout_ttd:     +unbatchedTotal.toFixed(2),
-    refunded_total_ttd:       +refundedTotal.toFixed(2),
-    failed_refund_count:      failedRefundCount,
+    active_count:           active.length,
+    pending_refund_count:   pending_refunds.length,
+    cancelled_left_count:   cancelled_left.length,
+    unbatched_payout_ttd:   +unbatchedTotal.toFixed(2),
+    pending_refund_ttd:     +pendingRefundTotal.toFixed(2),
   };
 
-  return NextResponse.json({ active, completed_removals, cancelled_left, stats });
+  return NextResponse.json({ active, pending_refunds, cancelled_left, stats });
 }

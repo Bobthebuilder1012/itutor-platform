@@ -5,9 +5,9 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import { isEmailManagementOnlyAdmin } from '@/lib/auth/adminAccess';
 import {
-  BookOpen, DollarSign, AlertTriangle, Users, Loader2,
+  BookOpen, DollarSign, AlertTriangle, Loader2,
   CheckSquare, Square, Download, RefreshCcw,
-  X, CheckCircle, XCircle,
+  X, CheckCircle,
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -25,7 +25,7 @@ interface ActiveSub {
   payout_ledger: { id: string; status: string; batch_id: string | null; amount_ttd: number } | null;
 }
 
-interface CompletedRemoval {
+interface PendingRefund {
   id: string;
   enrollment_id: string;
   status: string;
@@ -38,7 +38,7 @@ interface CompletedRemoval {
     status: string;
     payment_status: string;
     student: { id: string; full_name: string; email: string } | null;
-    subscription_payment: { id: string; amount_ttd: number; tutor_payout_ttd: number; status: string; lunipay_transaction_id: string | null } | null;
+    subscription_payment: { id: string; amount_ttd: number; tutor_payout_ttd: number; platform_fee_ttd: number; status: string; lunipay_transaction_id: string | null } | null;
   } | null;
   group: { id: string; name: string } | null;
   tutor: { id: string; full_name: string } | null;
@@ -57,11 +57,10 @@ interface CancelledLeft {
 
 interface Stats {
   active_count: number;
-  completed_removal_count: number;
+  pending_refund_count: number;
   cancelled_left_count: number;
   unbatched_payout_ttd: number;
-  refunded_total_ttd: number;
-  failed_refund_count: number;
+  pending_refund_ttd: number;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -108,8 +107,6 @@ function StatCard({ label, value, sub, icon, accent }: {
   );
 }
 
-// ─── Status chip ─────────────────────────────────────────────────────────────
-
 function PayoutChip({ status }: { status: string | null | undefined }) {
   if (!status) return <span className="text-white/30 text-xs">—</span>;
   const cfg: Record<string, string> = {
@@ -126,8 +123,6 @@ function PayoutChip({ status }: { status: string | null | undefined }) {
   );
 }
 
-// ─── Tab button ───────────────────────────────────────────────────────────────
-
 function Tab({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
@@ -140,6 +135,121 @@ function Tab({ active, onClick, children }: { active: boolean; onClick: () => vo
     >
       {children}
     </button>
+  );
+}
+
+function Table({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-white/8 overflow-x-auto" style={{ background: '#161618' }}>
+      <table className="w-full">{children}</table>
+    </div>
+  );
+}
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="flex flex-col items-center py-20 text-white/30 gap-2">
+      <AlertTriangle className="size-10" />
+      <p className="text-sm">{message}</p>
+    </div>
+  );
+}
+
+// ─── Refund confirmation modal ────────────────────────────────────────────────
+
+function RefundModal({
+  removal, onClose, onSuccess,
+}: {
+  removal: PendingRefund;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const enrollment = normalize(removal.enrollment);
+  const sp         = normalize(enrollment?.subscription_payment);
+  const group      = normalize(removal.group);
+  const student    = normalize(enrollment?.student);
+  const tutor      = normalize(removal.tutor);
+  const amount     = Number(removal.refund_amount_ttd ?? sp?.amount_ttd ?? 0);
+
+  async function approveRefund() {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/admin/lesson-payments/refund', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          removal_id: removal.id,
+          enrollment_id: removal.enrollment_id,
+          subscription_payment_id: sp?.id,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Refund failed');
+      onSuccess();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70" onClick={onClose}>
+      <div className="w-full max-w-lg rounded-2xl border border-white/10 shadow-2xl" style={{ background: '#161618' }} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-5 border-b border-white/8">
+          <h2 className="text-base font-bold text-white">Approve Refund</h2>
+          <button onClick={onClose} className="text-white/40 hover:text-white"><X className="size-5" /></button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {error && (
+            <div className="rounded-lg bg-rose-500/10 border border-rose-500/20 p-3 text-sm text-rose-300">{error}</div>
+          )}
+
+          <div className="rounded-xl border border-white/8 p-4 space-y-2" style={{ background: '#0f0f10' }}>
+            <div className="flex justify-between text-sm">
+              <span className="text-white/50">Student</span>
+              <span className="text-white font-semibold">{student?.full_name ?? '—'}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-white/50">Group</span>
+              <span className="text-white">{group?.name ?? '—'}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-white/50">Tutor</span>
+              <span className="text-white">{tutor?.full_name ?? '—'}</span>
+            </div>
+            <div className="flex justify-between text-sm font-bold border-t border-white/8 pt-2 mt-2">
+              <span className="text-white/70">Refund amount</span>
+              <span className="text-rose-300 tabular-nums">{fmtTTD(amount)}</span>
+            </div>
+            <div className="text-xs text-amber-300/80 mt-2">
+              {sp?.lunipay_transaction_id
+                ? 'Refund will be processed via LuniPay. If the payout was already released to the tutor, the amount will be recovered from future earnings.'
+                : 'No LuniPay transaction found. The refund must be processed manually.'}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-3 p-5 border-t border-white/8">
+          <button onClick={onClose} className="flex-1 px-4 py-2 rounded-xl border border-white/10 text-sm font-semibold text-white/60 hover:text-white hover:bg-white/5">
+            Cancel
+          </button>
+          <button
+            onClick={approveRefund}
+            disabled={loading}
+            className="flex-1 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            {loading ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle className="size-4" />}
+            {loading ? 'Processing…' : 'Approve Refund'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -241,16 +351,13 @@ function BatchModal({
         </div>
 
         <div className="flex gap-3 p-5 border-t border-white/8">
-          <button
-            onClick={onClose}
-            className="flex-1 px-4 py-2 rounded-xl border border-white/10 text-sm font-semibold text-white/60 hover:text-white hover:bg-white/5"
-          >
+          <button onClick={onClose} className="flex-1 px-4 py-2 rounded-xl border border-white/10 text-sm font-semibold text-white/60 hover:text-white hover:bg-white/5">
             Cancel
           </button>
           <button
             onClick={submit}
             disabled={loading || rows.length === 0}
-            className="flex-1 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50"
           >
             {loading ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
             {loading ? 'Creating…' : 'Create & Download CSV'}
@@ -261,51 +368,24 @@ function BatchModal({
   );
 }
 
-// ─── Table wrapper ────────────────────────────────────────────────────────────
-
-function Table({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="rounded-xl border border-white/8 overflow-x-auto" style={{ background: '#161618' }}>
-      <table className="w-full">{children}</table>
-    </div>
-  );
-}
-
-function EmptyState({ message }: { message: string }) {
-  return (
-    <div className="flex flex-col items-center py-20 text-white/30 gap-2">
-      <Users className="size-10" />
-      <p className="text-sm">{message}</p>
-    </div>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between text-sm">
-      <span className="text-white/40">{label}</span>
-      <span className="text-white font-medium">{value}</span>
-    </div>
-  );
-}
-
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function LessonPaymentsPage() {
   const router = useRouter();
   const [authLoading, setAuthLoading] = useState(true);
 
-  const [tab, setTab]         = useState<'active' | 'removals' | 'cancelled'>('active');
+  const [tab, setTab]         = useState<'active' | 'pending' | 'cancelled'>('active');
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
 
   const [active, setActive]           = useState<ActiveSub[]>([]);
-  const [completedRemovals, setRemovals] = useState<CompletedRemoval[]>([]);
+  const [pendingRefunds, setPending]  = useState<PendingRefund[]>([]);
   const [cancelledLeft, setCancelled] = useState<CancelledLeft[]>([]);
   const [stats, setStats]             = useState<Stats | null>(null);
 
   const [selected, setSelected]   = useState<Set<string>>(new Set());
   const [batchOpen, setBatchOpen] = useState(false);
+  const [refundTarget, setRefundTarget] = useState<PendingRefund | null>(null);
 
   // ── Auth guard ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -331,7 +411,7 @@ export default function LessonPaymentsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Failed to load');
       setActive(data.active ?? []);
-      setRemovals(data.completed_removals ?? []);
+      setPending(data.pending_refunds ?? []);
       setCancelled(data.cancelled_left ?? []);
       setStats(data.stats ?? null);
       setSelected(new Set());
@@ -344,7 +424,6 @@ export default function LessonPaymentsPage() {
 
   useEffect(() => { if (!authLoading) loadData(); }, [authLoading, loadData]);
 
-  // ── Selection helpers ────────────────────────────────────────────────────
   function toggleOne(id: string) {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -376,7 +455,7 @@ export default function LessonPaymentsPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-white">Lesson Payments</h1>
-            <p className="text-sm text-white/40 mt-0.5">Subscription billing, completed removals & refunds, and cancellations</p>
+            <p className="text-sm text-white/40 mt-0.5">Subscription billing, pending refunds, and cancellations</p>
           </div>
           <button
             onClick={loadData}
@@ -394,34 +473,14 @@ export default function LessonPaymentsPage() {
 
         {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatCard
-            label="Active subscriptions"
-            value={String(stats?.active_count ?? '—')}
-            sub="Enrolled & paid"
-            icon={<BookOpen className="size-4" />}
-            accent="emerald"
-          />
-          <StatCard
-            label="Unbatched payout"
-            value={fmtTTD(stats?.unbatched_payout_ttd)}
-            sub="Pending batch transfer"
-            icon={<DollarSign className="size-4" />}
-            accent="sky"
-          />
-          <StatCard
-            label="Completed removals"
-            value={String(stats?.completed_removal_count ?? '—')}
-            sub={`${stats?.failed_refund_count ?? 0} with failed refunds`}
-            icon={<Users className="size-4" />}
-            accent="amber"
-          />
-          <StatCard
-            label="Refunded total"
-            value={fmtTTD(stats?.refunded_total_ttd)}
-            sub="Auto-processed refunds"
-            icon={<CheckCircle className="size-4" />}
-            accent="rose"
-          />
+          <StatCard label="Active subscriptions" value={String(stats?.active_count ?? '—')}
+            sub="Enrolled & paid" icon={<BookOpen className="size-4" />} accent="emerald" />
+          <StatCard label="Unbatched payout" value={fmtTTD(stats?.unbatched_payout_ttd)}
+            sub="Pending batch transfer" icon={<DollarSign className="size-4" />} accent="sky" />
+          <StatCard label="Pending refunds" value={String(stats?.pending_refund_count ?? '—')}
+            sub={fmtTTD(stats?.pending_refund_ttd)} icon={<AlertTriangle className="size-4" />} accent="amber" />
+          <StatCard label="Cancelled — Left" value={String(stats?.cancelled_left_count ?? '—')}
+            sub="Voluntary by student" icon={<X className="size-4" />} accent="rose" />
         </div>
 
         {/* Tabs */}
@@ -429,8 +488,8 @@ export default function LessonPaymentsPage() {
           <Tab active={tab === 'active'}    onClick={() => setTab('active')}>
             Active Subscriptions {stats ? `(${stats.active_count})` : ''}
           </Tab>
-          <Tab active={tab === 'removals'}  onClick={() => setTab('removals')}>
-            Completed Removals {stats ? `(${stats.completed_removal_count})` : ''}
+          <Tab active={tab === 'pending'}   onClick={() => setTab('pending')}>
+            Pending Refunds {stats ? `(${stats.pending_refund_count})` : ''}
           </Tab>
           <Tab active={tab === 'cancelled'} onClick={() => setTab('cancelled')}>
             Cancelled — Left {stats ? `(${stats.cancelled_left_count})` : ''}
@@ -443,36 +502,24 @@ export default function LessonPaymentsPage() {
           </div>
         ) : (
           <>
-            {/* ── Tab 1: Active Subscriptions ───────────────────────── */}
+            {/* Active Subscriptions */}
             {tab === 'active' && (
               <div className="space-y-3">
                 {active.length > 0 && (
                   <div className="flex items-center justify-between">
-                    <button
-                      onClick={toggleAll}
-                      className="flex items-center gap-2 text-sm text-white/50 hover:text-white"
-                    >
-                      {selected.size === active.length
-                        ? <CheckSquare className="size-4 text-emerald-400" />
-                        : <Square className="size-4" />}
+                    <button onClick={toggleAll} className="flex items-center gap-2 text-sm text-white/50 hover:text-white">
+                      {selected.size === active.length ? <CheckSquare className="size-4 text-emerald-400" /> : <Square className="size-4" />}
                       {selected.size === active.length ? 'Deselect all' : 'Select all'}
                       {selected.size > 0 && <span className="text-white/30">({selected.size} selected)</span>}
                     </button>
                     {selected.size > 0 && (
-                      <button
-                        onClick={() => setBatchOpen(true)}
-                        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold flex items-center gap-2"
-                      >
-                        <Download className="size-4" />
-                        Transfer to CSV Batch ({selected.size})
+                      <button onClick={() => setBatchOpen(true)} className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold flex items-center gap-2">
+                        <Download className="size-4" /> Transfer to CSV Batch ({selected.size})
                       </button>
                     )}
                   </div>
                 )}
-
-                {active.length === 0 ? (
-                  <EmptyState message="No active subscription payments to batch." />
-                ) : (
+                {active.length === 0 ? <EmptyState message="No active subscription payments to batch." /> : (
                   <Table>
                     <thead>
                       <tr className="text-[11px] font-semibold text-white/30 uppercase tracking-wider">
@@ -494,15 +541,10 @@ export default function LessonPaymentsPage() {
                         const ledger     = normalize(sp.payout_ledger);
                         const isSelected = selected.has(sp.id);
                         return (
-                          <tr
-                            key={sp.id}
-                            onClick={() => toggleOne(sp.id)}
-                            className={`cursor-pointer transition ${isSelected ? 'bg-emerald-500/8' : 'hover:bg-white/3'}`}
-                          >
+                          <tr key={sp.id} onClick={() => toggleOne(sp.id)}
+                            className={`cursor-pointer transition ${isSelected ? 'bg-emerald-500/8' : 'hover:bg-white/3'}`}>
                             <td className="px-4 py-3">
-                              {isSelected
-                                ? <CheckSquare className="size-4 text-emerald-400" />
-                                : <Square className="size-4 text-white/20" />}
+                              {isSelected ? <CheckSquare className="size-4 text-emerald-400" /> : <Square className="size-4 text-white/20" />}
                             </td>
                             <td className="px-4 py-3">
                               <p className="text-sm font-semibold text-white">{group?.name ?? '—'}</p>
@@ -511,12 +553,8 @@ export default function LessonPaymentsPage() {
                             <td className="px-4 py-3 text-sm text-white/70">{tutor?.full_name ?? '—'}</td>
                             <td className="px-4 py-3 text-right text-sm text-white tabular-nums">{fmtTTD(sp.amount_ttd)}</td>
                             <td className="px-4 py-3 text-right text-sm text-emerald-300 tabular-nums">{fmtTTD(sp.tutor_payout_ttd)}</td>
-                            <td className="px-4 py-3 text-xs text-white/40">
-                              {fmtDate(sp.period_start)} → {fmtDate(sp.period_end)}
-                            </td>
-                            <td className="px-4 py-3 text-center">
-                              <PayoutChip status={ledger?.status} />
-                            </td>
+                            <td className="px-4 py-3 text-xs text-white/40">{fmtDate(sp.period_start)} → {fmtDate(sp.period_end)}</td>
+                            <td className="px-4 py-3 text-center"><PayoutChip status={ledger?.status} /></td>
                           </tr>
                         );
                       })}
@@ -526,24 +564,21 @@ export default function LessonPaymentsPage() {
               </div>
             )}
 
-            {/* ── Tab 2: Completed Removals ──────────────────────────── */}
-            {tab === 'removals' && (
-              completedRemovals.length === 0 ? (
-                <EmptyState message="No completed removals." />
-              ) : (
+            {/* Pending Refunds */}
+            {tab === 'pending' && (
+              pendingRefunds.length === 0 ? <EmptyState message="No pending refunds to approve." /> : (
                 <Table>
                   <thead>
                     <tr className="text-[11px] font-semibold text-white/30 uppercase tracking-wider">
                       <th className="px-4 py-3 text-left">Group / Student</th>
                       <th className="px-4 py-3 text-left">Tutor</th>
-                      <th className="px-4 py-3 text-center">Refund</th>
-                      <th className="px-4 py-3 text-right">Amount</th>
+                      <th className="px-4 py-3 text-right">Refund</th>
                       <th className="px-4 py-3 text-left">Removed</th>
-                      <th className="px-4 py-3 text-left">Resolved</th>
+                      <th className="px-4 py-3 text-center w-24">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
-                    {completedRemovals.map((r) => {
+                    {pendingRefunds.map((r) => {
                       const enrollment = normalize(r.enrollment);
                       const sp         = normalize(enrollment?.subscription_payment);
                       const group      = normalize(r.group);
@@ -556,20 +591,16 @@ export default function LessonPaymentsPage() {
                             <p className="text-xs text-white/40">{student?.full_name ?? '—'}</p>
                           </td>
                           <td className="px-4 py-3 text-sm text-white/70">{tutor?.full_name ?? '—'}</td>
-                          <td className="px-4 py-3 text-center">
-                            {r.refund_issued ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-300">
-                                <CheckCircle className="size-3" /> Refunded
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-500/15 text-rose-300" title="Refund failed — check subscription_payment_exceptions">
-                                <XCircle className="size-3" /> Failed
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-right text-sm text-white tabular-nums">{fmtTTD(r.refund_amount_ttd)}</td>
+                          <td className="px-4 py-3 text-right text-sm text-amber-300 tabular-nums">{fmtTTD(r.refund_amount_ttd)}</td>
                           <td className="px-4 py-3 text-xs text-white/40">{fmtDate(r.created_at)}</td>
-                          <td className="px-4 py-3 text-xs text-white/40">{fmtDate(r.resolved_at)}</td>
+                          <td className="px-4 py-3 text-center">
+                            <button
+                              onClick={() => setRefundTarget(r)}
+                              className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition"
+                            >
+                              Issue Refund
+                            </button>
+                          </td>
                         </tr>
                       );
                     })}
@@ -578,11 +609,9 @@ export default function LessonPaymentsPage() {
               )
             )}
 
-            {/* ── Tab 3: Cancelled — Left ────────────────────────────── */}
+            {/* Cancelled — Left */}
             {tab === 'cancelled' && (
-              cancelledLeft.length === 0 ? (
-                <EmptyState message="No voluntarily cancelled subscriptions." />
-              ) : (
+              cancelledLeft.length === 0 ? <EmptyState message="No voluntarily cancelled subscriptions." /> : (
                 <Table>
                   <thead>
                     <tr className="text-[11px] font-semibold text-white/30 uppercase tracking-wider">
@@ -612,8 +641,7 @@ export default function LessonPaymentsPage() {
                             <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${
                               e.payment_status === 'REFUNDED'  ? 'bg-rose-500/15 text-rose-300' :
                               e.payment_status === 'PAID'      ? 'bg-sky-500/15 text-sky-300' :
-                                                                 'bg-white/10 text-white/50'
-                            }`}>
+                                                                 'bg-white/10 text-white/50'}`}>
                               {e.payment_status}
                             </span>
                           </td>
@@ -630,14 +658,16 @@ export default function LessonPaymentsPage() {
         )}
       </div>
 
-      {/* Batch modal */}
       {batchOpen && (
-        <BatchModal
-          selected={selected}
-          allActive={active}
+        <BatchModal selected={selected} allActive={active}
           onClose={() => setBatchOpen(false)}
-          onSuccess={() => { setBatchOpen(false); loadData(); }}
-        />
+          onSuccess={() => { setBatchOpen(false); loadData(); }} />
+      )}
+
+      {refundTarget && (
+        <RefundModal removal={refundTarget}
+          onClose={() => setRefundTarget(null)}
+          onSuccess={() => { setRefundTarget(null); loadData(); }} />
       )}
     </div>
   );
