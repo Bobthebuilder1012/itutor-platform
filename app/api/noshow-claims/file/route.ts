@@ -151,6 +151,63 @@ export async function POST(request: NextRequest) {
       console.error('noshow-claims/file: notification insert failed', e);
     }
 
+    // Hold or pre-register the payout when a student files a claim.
+    if (claimantRole === 'student') {
+      try {
+        const { data: ledgerRow } = await admin
+          .from('payout_ledger')
+          .select('id, status')
+          .eq('session_id', session.id)
+          .maybeSingle();
+
+        if (!ledgerRow) {
+          // Charge cron hasn't fired yet — create a pre-ledger payout_case so
+          // fn_create_earning_on_charge creates the ledger in admin_hold and links them.
+          await admin.from('payout_cases').insert({
+            payout_ledger_id: null,
+            session_id:       session.id,
+            noshow_claim_id:  inserted.id,
+            claimant_id:      user.id,
+            tutor_id:         session.tutor_id,
+            hold_reason:      'student_reported_tutor_no_show',
+            status:           'open',
+          });
+        } else if (['owed', 'release_ready'].includes(ledgerRow.status)) {
+          await (admin as any).rpc('place_payout_hold', {
+            p_ledger_id:       ledgerRow.id,
+            p_hold_reason:     'student_reported_tutor_no_show',
+            p_noshow_claim_id: inserted.id,
+            p_claimant_id:     user.id,
+          });
+        } else if (ledgerRow.status === 'admin_hold') {
+          // Already held — attach the claim to the existing open case
+          await admin
+            .from('payout_cases')
+            .update({
+              noshow_claim_id: inserted.id,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('payout_ledger_id', ledgerRow.id)
+            .in('status', ['open', 'under_review']);
+        } else if (ledgerRow.status === 'released') {
+          // Payout already released — open a post-payout recovery case
+          await admin.from('payout_cases').insert({
+            payout_ledger_id: ledgerRow.id,
+            session_id:       session.id,
+            noshow_claim_id:  inserted.id,
+            claimant_id:      user.id,
+            tutor_id:         session.tutor_id,
+            hold_reason:      'student_reported_tutor_no_show',
+            status:           'open',
+            admin_notes:      'Post-payout recovery: payout was already released at claim time.',
+          });
+        }
+        // reversed: payout already cancelled — no action needed
+      } catch (e) {
+        console.error('noshow-claims/file: payout hold failed (non-blocking)', e);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       claim_id: inserted.id,
