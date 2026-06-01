@@ -288,6 +288,9 @@ async function handleTutorRemoval(
   );
 
   const refundAmount = Number(paidPayment?.amount_ttd ?? 0);
+  // Tutor debt = what the tutor was actually paid (their payout share, not the
+  // full subscription amount which includes the platform fee).
+  const tutorDebtAmount = Math.round((Number(paidPayment?.tutor_payout_ttd ?? refundAmount)) * 100) / 100;
 
   // 3b. Check if the tutor's payout for this subscription payment has already
   // been released. If so, record the debt immediately so it cannot be missed
@@ -304,10 +307,10 @@ async function handleTutorRemoval(
     payoutAlreadyReleased = !!releasedLedger;
 
     if (payoutAlreadyReleased) {
-      // Record the debt against the tutor immediately
+      // Record the debt against the tutor immediately (tutor's payout share only)
       const { error: deductErr } = await admin.from('tutor_deductions').insert({
         tutor_id: args.tutorId,
-        amount_ttd: refundAmount,
+        amount_ttd: tutorDebtAmount,
         reason: 'student_removal_refund',
         source_enrollment_id: subEnrollment.id,
         source_subscription_payment_id: paidPayment.id,
@@ -324,10 +327,10 @@ async function handleTutorRemoval(
         .maybeSingle();
 
       const available = Math.round((Number(tutorBal?.available_ttd ?? 0)) * 100) / 100;
-      if (available >= refundAmount) {
+      if (available >= tutorDebtAmount) {
         await admin
           .from('tutor_balances')
-          .update({ available_ttd: available - refundAmount, last_updated: new Date().toISOString() })
+          .update({ available_ttd: available - tutorDebtAmount, last_updated: new Date().toISOString() })
           .eq('tutor_id', args.tutorId);
       }
     }
@@ -392,8 +395,8 @@ async function handleTutorRemoval(
     ? `You have been removed from "${args.groupName}". A refund of TT$${refundAmount.toFixed(2)} is pending admin approval.`
     : `You have been removed from "${args.groupName}".`;
 
-  const tutorDebtMsg = payoutAlreadyReleased && refundAmount > 0
-    ? `TT$${refundAmount.toFixed(2)} has been recorded as a deduction against your account for the removal of a student whose payment was already paid out. This will be recovered from your next payout.`
+  const tutorDebtMsg = payoutAlreadyReleased && tutorDebtAmount > 0
+    ? `TT$${tutorDebtAmount.toFixed(2)} has been recorded as a deduction against your account for the removal of a student whose payment was already paid out. This will be recovered from your next payout.`
     : null;
 
   const notifRows: any[] = [{
@@ -440,7 +443,7 @@ async function loadCurrentPaidSubscriptionPayment(
   if (activatedSubscriptionPaymentId) {
     const { data } = await admin
       .from('subscription_payments')
-      .select('id, amount_ttd, lunipay_transaction_id')
+      .select('id, amount_ttd, tutor_payout_ttd, lunipay_transaction_id')
       .eq('id', activatedSubscriptionPaymentId)
       .eq('status', 'PAID')
       .maybeSingle();

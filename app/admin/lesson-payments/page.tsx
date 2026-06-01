@@ -7,7 +7,7 @@ import { isEmailManagementOnlyAdmin } from '@/lib/auth/adminAccess';
 import {
   BookOpen, DollarSign, AlertTriangle, Loader2,
   CheckSquare, Square, Download, RefreshCcw,
-  X, CheckCircle,
+  X, CheckCircle, FileSpreadsheet, TrendingDown,
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -374,7 +374,7 @@ export default function LessonPaymentsPage() {
   const router = useRouter();
   const [authLoading, setAuthLoading] = useState(true);
 
-  const [tab, setTab]         = useState<'active' | 'pending' | 'cancelled'>('active');
+  const [tab, setTab]         = useState<'active' | 'pending' | 'cancelled' | 'unofficial'>('active');
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
 
@@ -386,6 +386,16 @@ export default function LessonPaymentsPage() {
   const [selected, setSelected]   = useState<Set<string>>(new Set());
   const [batchOpen, setBatchOpen] = useState(false);
   const [refundTarget, setRefundTarget] = useState<PendingRefund | null>(null);
+
+  // Unofficial payouts tab
+  interface UnofficialTutor {
+    tutor_id: string; tutor_name: string; email: string | null;
+    bank_name: string | null; branch: string | null; account_number: string | null; account_type: string | null;
+    gross_payout_ttd: number; pending_debt_ttd: number; net_payout_ttd: number;
+  }
+  const [unofficial, setUnofficial] = useState<UnofficialTutor[]>([]);
+  const [unofficialTotals, setUnofficialTotals] = useState({ gross: 0, debt: 0, net: 0 });
+  const [unofficialLoading, setUnofficialLoading] = useState(false);
 
   // ── Auth guard ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -423,6 +433,43 @@ export default function LessonPaymentsPage() {
   }, []);
 
   useEffect(() => { if (!authLoading) loadData(); }, [authLoading, loadData]);
+
+  async function loadUnofficial() {
+    setUnofficialLoading(true);
+    try {
+      const res = await fetch('/api/admin/payouts/unofficial');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Failed');
+      setUnofficial(data.tutors ?? []);
+      setUnofficialTotals({ gross: data.total_gross_ttd, debt: data.total_debt_ttd, net: data.total_net_ttd });
+    } catch { /* silent */ } finally {
+      setUnofficialLoading(false);
+    }
+  }
+
+  function downloadUnofficialCsv() {
+    const rows = ['tutor_name,bank_name,branch,account_number,account_type,gross_payout_ttd,pending_debt_ttd,net_payout_ttd'];
+    function cell(v: string | number | null | undefined): string {
+      if (v == null) return '';
+      const s = String(v);
+      return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+    }
+    for (const t of unofficial) {
+      rows.push([
+        cell(t.tutor_name), cell(t.bank_name), cell(t.branch),
+        cell(t.account_number), cell(t.account_type),
+        cell(t.gross_payout_ttd.toFixed(2)),
+        cell(t.pending_debt_ttd.toFixed(2)),
+        cell(t.net_payout_ttd.toFixed(2)),
+      ].join(','));
+    }
+    const csv = rows.join('\r\n') + '\r\n';
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `itutor-unofficial-payouts-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+  }
 
   function toggleOne(id: string) {
     setSelected((prev) => {
@@ -493,6 +540,9 @@ export default function LessonPaymentsPage() {
           </Tab>
           <Tab active={tab === 'cancelled'} onClick={() => setTab('cancelled')}>
             Cancelled — Left {stats ? `(${stats.cancelled_left_count})` : ''}
+          </Tab>
+          <Tab active={tab === 'unofficial'} onClick={() => { setTab('unofficial'); loadUnofficial(); }}>
+            Unofficial CSV
           </Tab>
         </div>
 
@@ -653,6 +703,94 @@ export default function LessonPaymentsPage() {
                   </tbody>
                 </Table>
               )
+            )}
+            {/* Unofficial CSV */}
+            {tab === 'unofficial' && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div>
+                    <p className="text-sm text-white/50">Per-tutor payout totals with pending debts deducted. Not yet an official batch.</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={loadUnofficial} className="px-3 py-2 rounded-xl border border-white/10 text-white/70 hover:text-white text-sm flex items-center gap-2">
+                      <RefreshCcw className="size-3.5" /> Refresh
+                    </button>
+                    {unofficial.length > 0 && (
+                      <button onClick={downloadUnofficialCsv} className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-sm font-bold flex items-center gap-2">
+                        <FileSpreadsheet className="size-4" /> Download CSV
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {unofficialLoading ? (
+                  <div className="flex items-center justify-center py-16 gap-2 text-white/30">
+                    <Loader2 className="size-5 animate-spin" /><span className="text-sm">Loading…</span>
+                  </div>
+                ) : unofficial.length === 0 ? (
+                  <EmptyState message="No unbatched payouts found." />
+                ) : (
+                  <>
+                    {unofficialTotals.debt > 0 && (
+                      <div className="flex items-start gap-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
+                        <TrendingDown className="size-4 mt-0.5 shrink-0" />
+                        <span>
+                          <strong className="text-rose-200">TT$ {unofficialTotals.debt.toFixed(2)}</strong> in platform debt is being deducted across {unofficial.filter(t => t.pending_debt_ttd > 0).length} tutor(s) before CSV totals are calculated.
+                        </span>
+                      </div>
+                    )}
+                    <div className="rounded-xl overflow-hidden border border-white/8">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-[11px] font-semibold text-white/30 uppercase tracking-wider border-b border-white/8" style={{ background: '#161618' }}>
+                            <th className="px-4 py-3 text-left">Tutor</th>
+                            <th className="px-4 py-3 text-left">Bank / Account</th>
+                            <th className="px-4 py-3 text-right">Gross payout</th>
+                            <th className="px-4 py-3 text-right text-rose-400">Platform debt</th>
+                            <th className="px-4 py-3 text-right text-emerald-400">Net payout</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                          {unofficial.map((t) => (
+                            <tr key={t.tutor_id} className="hover:bg-white/[0.02]" style={{ background: '#0f0f10' }}>
+                              <td className="px-4 py-3">
+                                <div className="font-semibold text-white">{t.tutor_name}</div>
+                                {t.email && <div className="text-xs text-white/40">{t.email}</div>}
+                              </td>
+                              <td className="px-4 py-3 text-white/60 text-xs">
+                                {t.bank_name ?? '—'}{t.branch ? ` · ${t.branch}` : ''}<br />
+                                <span className="font-mono">{t.account_number ?? '—'}</span>
+                                {t.account_type ? <span className="ml-1 text-white/30">({t.account_type})</span> : null}
+                              </td>
+                              <td className="px-4 py-3 text-right tabular-nums text-white/70">
+                                TT$ {t.gross_payout_ttd.toFixed(2)}
+                              </td>
+                              <td className="px-4 py-3 text-right tabular-nums">
+                                {t.pending_debt_ttd > 0
+                                  ? <span className="text-rose-400">− TT$ {t.pending_debt_ttd.toFixed(2)}</span>
+                                  : <span className="text-white/20">—</span>}
+                              </td>
+                              <td className="px-4 py-3 text-right tabular-nums font-bold text-emerald-400">
+                                TT$ {t.net_payout_ttd.toFixed(2)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot className="border-t border-white/10">
+                          <tr style={{ background: '#161618' }}>
+                            <td colSpan={2} className="px-4 py-3 text-xs font-semibold text-white/40 uppercase tracking-wider">Totals</td>
+                            <td className="px-4 py-3 text-right tabular-nums text-white/60 font-semibold">TT$ {unofficialTotals.gross.toFixed(2)}</td>
+                            <td className="px-4 py-3 text-right tabular-nums text-rose-400 font-semibold">
+                              {unofficialTotals.debt > 0 ? `− TT$ ${unofficialTotals.debt.toFixed(2)}` : '—'}
+                            </td>
+                            <td className="px-4 py-3 text-right tabular-nums text-emerald-400 font-bold">TT$ {unofficialTotals.net.toFixed(2)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
             )}
           </>
         )}
