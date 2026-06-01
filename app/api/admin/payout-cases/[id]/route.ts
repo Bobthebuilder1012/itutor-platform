@@ -23,7 +23,7 @@ export async function GET(
       refund_amount_ttd, release_amount_ttd,
       admin_notes, resolved_at, created_at, updated_at,
       payout_ledger_id, session_id, subscription_payment_id, payment_id,
-      payout_ledger:payout_ledger(id, amount_ttd, status, blocked_at, hold_reason),
+      payout_ledger:payout_ledger_id(id, amount_ttd, status, blocked_at, hold_reason),
       tutor:profiles!tutor_id(id, full_name, email),
       claimant:profiles!claimant_id(id, full_name, email),
       admin_profile:profiles!admin_id(id, full_name),

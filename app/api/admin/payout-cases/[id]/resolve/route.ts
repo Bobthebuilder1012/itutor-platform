@@ -83,7 +83,7 @@ export async function POST(
     .select(`
       id, status, tutor_id,
       payout_ledger_id, session_id, subscription_payment_id, payment_id,
-      payout_ledger:payout_ledger(id, amount_ttd, status)
+      payout_ledger:payout_ledger_id(id, amount_ttd, status)
     `)
     .eq('id', caseId)
     .maybeSingle();
