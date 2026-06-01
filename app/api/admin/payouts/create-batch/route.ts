@@ -119,7 +119,7 @@ async function handlePost(request: NextRequest) {
           return admin
             .from('tutor_balances')
             .upsert(
-              { tutor_id: tutorId, pending_ttd: newPending, available_ttd: newAvailable, updated_at: new Date().toISOString() },
+              { tutor_id: tutorId, pending_ttd: newPending, available_ttd: newAvailable, last_updated: new Date().toISOString() },
               { onConflict: 'tutor_id' }
             )
             .then(({ error }) => {
