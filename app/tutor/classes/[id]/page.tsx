@@ -134,6 +134,7 @@ function ClassHubContent() {
   const [dataLoading, setDataLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('stream');
   const [settingsDirty, setSettingsDirty] = useState(false);
+  const [subsKey, setSubsKey] = useState(0);
 
   const switchTab = (next: Tab) => {
     if (tab === 'settings' && settingsDirty) {
@@ -380,8 +381,8 @@ function ClassHubContent() {
         <div className="mt-6">
           {tab === 'stream'    && <StreamTab group={group} posts={posts} setPosts={setPosts} />}
           {tab === 'sessions'  && <SessionsTab sessions={sessions} groupId={group.id} setSessions={setSessions} />}
-          {tab === 'roster'    && <RosterTab members={members} setMembers={setMembers} group={group} isOneOnOne={isOneOnOne} atCapacity={atCapacity} />}
-          {tab === 'payments'  && (group.billingModel === 'per-month' ? <SubscribersTab group={group} /> : <PaymentsTab members={members} group={group} />)}
+          {tab === 'roster'    && <RosterTab members={members} setMembers={setMembers} group={group} isOneOnOne={isOneOnOne} atCapacity={atCapacity} onMemberRemoved={() => setSubsKey((k) => k + 1)} />}
+          {tab === 'payments'  && (group.billingModel === 'per-month' ? <SubscribersTab key={subsKey} group={group} onMemberRemoved={() => setSubsKey((k) => k + 1)} /> : <PaymentsTab members={members} group={group} />)}
           {tab === 'settings'  && <SettingsTab group={group} setGroup={setGroup} isOneOnOne={isOneOnOne} onDirtyChange={setSettingsDirty} />}
           {tab === 'analytics' && !isOneOnOne && <AnalyticsTab group={group} members={members} />}
         </div>
@@ -826,9 +827,9 @@ function SessionsTab({ sessions, groupId, setSessions }: { sessions: GroupSessio
 }
 
 /* ----------- Roster ----------- */
-function RosterTab({ members, setMembers, group, isOneOnOne, atCapacity }: {
+function RosterTab({ members, setMembers, group, isOneOnOne, atCapacity, onMemberRemoved }: {
   members: GroupMember[]; setMembers: React.Dispatch<React.SetStateAction<GroupMember[]>>;
-  group: GroupDetail; isOneOnOne: boolean; atCapacity: boolean;
+  group: GroupDetail; isOneOnOne: boolean; atCapacity: boolean; onMemberRemoved?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [inviteOpen, setInviteOpen] = useState<null | 'link' | 'user'>(null);
@@ -960,7 +961,7 @@ function RosterTab({ members, setMembers, group, isOneOnOne, atCapacity }: {
             </thead>
             <tbody className="divide-y divide-border">
               {visible.map((m) => (
-                <RosterRow key={m.studentId} m={m} groupId={group.id} onUpdate={(p) => updateMember(m.studentId, p)} />
+                <RosterRow key={m.studentId} m={m} groupId={group.id} onUpdate={(p) => updateMember(m.studentId, p)} onRemoved={onMemberRemoved} />
               ))}
             </tbody>
           </table>
@@ -970,7 +971,7 @@ function RosterTab({ members, setMembers, group, isOneOnOne, atCapacity }: {
   );
 }
 
-function RosterRow({ m, onUpdate, groupId }: { m: GroupMember; onUpdate: (p: Partial<GroupMember>) => void; groupId: string }) {
+function RosterRow({ m, onUpdate, groupId, onRemoved }: { m: GroupMember; onUpdate: (p: Partial<GroupMember>) => void; groupId: string; onRemoved?: () => void }) {
   const [menu, setMenu] = useState(false);
   const [confirm, setConfirm] = useState<null | 'suspend' | 'ban' | 'remove'>(null);
   const [removing, setRemoving] = useState(false);
@@ -988,6 +989,7 @@ function RosterRow({ m, onUpdate, groupId }: { m: GroupMember; onUpdate: (p: Par
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error ?? `Failed (${res.status})`);
       onUpdate({ status: 'removed' });
+      onRemoved?.();
       setConfirm(null);
     } catch (e: any) {
       setRemoveError(e?.message ?? 'Removal failed. Please try again.');
@@ -1188,7 +1190,7 @@ function PaymentsTab({ members, group }: { members: GroupMember[]; group: GroupD
 }
 
 /* ----------- Subscribers (monthly groups) ----------- */
-function SubscribersTab({ group }: { group: GroupDetail }) {
+function SubscribersTab({ group, onMemberRemoved }: { group: GroupDetail; onMemberRemoved?: () => void }) {
   const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
   const [loading, setLoading] = useState(true);
   const [removeTarget, setRemoveTarget] = useState<Subscriber | null>(null);
@@ -1223,11 +1225,8 @@ function SubscribersTab({ group }: { group: GroupDetail }) {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error ?? `Failed (${res.status})`);
 
-      setSubscribers((subs) => subs.map((s) =>
-        s.id === removeTarget.id
-          ? { ...s, status: 'CANCELLED' }
-          : s
-      ));
+      setSubscribers((subs) => subs.filter((s) => s.id !== removeTarget.id));
+      onMemberRemoved?.();
       setRemoveTarget(null);
     } catch (e: any) {
       setRemoveError(e?.message ?? 'Removal failed. Please try again.');
@@ -1248,8 +1247,9 @@ function SubscribersTab({ group }: { group: GroupDetail }) {
     WAITLISTED:         { label: 'Waitlisted',  cls: 'bg-purple-100 text-purple-800 border-purple-200' },
   };
 
-  const activeCount = subscribers.filter((s) => ['ACTIVE', 'GRACE', 'SUSPENDED'].includes(s.status)).length;
-  const overdueCount = subscribers.filter((s) => s.status === 'GRACE').length;
+  const visibleSubs = subscribers.filter((s) => !['CANCELLED', 'ACTIVATION_FAILED'].includes(s.status));
+  const activeCount = visibleSubs.filter((s) => ['ACTIVE', 'GRACE', 'SUSPENDED'].includes(s.status)).length;
+  const overdueCount = visibleSubs.filter((s) => s.status === 'GRACE').length;
 
   if (loading) return (
     <div className="flex justify-center py-12">
@@ -1269,7 +1269,7 @@ function SubscribersTab({ group }: { group: GroupDetail }) {
         </button>
       </div>
 
-      {subscribers.length === 0 ? (
+      {visibleSubs.length === 0 ? (
         <EmptyState icon={CreditCard} title="No subscribers yet" body="When students subscribe to this class, they will appear here." />
       ) : (
         <div className="rounded-2xl border border-border bg-card overflow-x-auto">
@@ -1285,7 +1285,7 @@ function SubscribersTab({ group }: { group: GroupDetail }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {subscribers.map((sub) => {
+              {visibleSubs.map((sub) => {
                 const sc = statusCfg[sub.status] ?? { label: sub.status, cls: 'bg-zinc-100 text-zinc-600 border-zinc-200' };
                 const isRemovable = ['ACTIVE', 'GRACE', 'SUSPENDED'].includes(sub.status);
                 const displayName = sub.student?.full_name ?? 'Student';
