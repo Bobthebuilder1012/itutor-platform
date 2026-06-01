@@ -312,8 +312,8 @@ async function handleTutorRemoval(
         source_enrollment_id: subEnrollment.id,
         source_subscription_payment_id: paidPayment.id,
         status: 'pending',
-      }).then(({ error }) => {
-        if (error) console.error('[handleTutorRemoval] tutor_deductions insert failed:', error);
+      }).then(({ error: deductInsertErr }) => {
+        if (deductInsertErr) console.error('[handleTutorRemoval] tutor_deductions insert failed:', deductInsertErr);
       });
 
       // Immediately decrement the tutor's available balance if they have enough;
