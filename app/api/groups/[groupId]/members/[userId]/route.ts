@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { promoteNextFromWaitlist } from '@/lib/services/waitlistService';
-import { refundRemovedSubscription } from '@/lib/payments/subscriptionRemovalRefund';
 
 type Params = { params: Promise<{ groupId: string; userId: string }> };
 
@@ -71,7 +70,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
 // DELETE /api/groups/[groupId]/members/[userId]
 // Student self-leave keeps paid access until period end.
-// Tutor removal is a single flow: full current-month refund, then remove.
+// Tutor removal records the removal and cancels the enrollment.
+// The refund is separately approved by an admin (see /api/admin/lesson-payments/refund).
 export async function DELETE(req: NextRequest, { params }: Params) {
   try {
     const { groupId, userId } = await params;
@@ -95,8 +95,6 @@ export async function DELETE(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Body is accepted for backward-compatible clients, but ignored. There is
-    // no cause/reason selection anymore.
     await req.json().catch(() => ({}));
 
     if (isSelf) {
@@ -175,6 +173,8 @@ async function handleSelfLeave(
   return NextResponse.json({ success: true });
 }
 
+// ─── Tutor removal ─────────────────────────────────────────────────────────────
+
 async function handleTutorRemoval(
   admin: any,
   args: {
@@ -184,12 +184,12 @@ async function handleTutorRemoval(
     tutorId: string;
   }
 ) {
+  // 1. Find the subscription enrollment for this student
   const { data: subEnrollment } = await admin
     .from('group_enrollments')
     .select(`
-      id, status, payment_status, plan_price_ttd,
-      activated_subscription_payment_id,
-      current_period_start, current_period_end
+      id, status, payment_status,
+      activated_subscription_payment_id
     `)
     .eq('group_id', args.groupId)
     .eq('student_id', args.studentId)
@@ -198,6 +198,7 @@ async function handleTutorRemoval(
     .maybeSingle();
 
   if (!subEnrollment) {
+    // No subscription — just mark the group member as removed
     await admin
       .from('group_members')
       .update({ status: 'removed' })
@@ -213,14 +214,16 @@ async function handleTutorRemoval(
       group_id: args.groupId,
     });
 
+    await promoteNextFromWaitlist(admin, args.groupId);
     return NextResponse.json({ success: true, refund_amount: 0 });
   }
 
+  // 2. Idempotency — was this enrollment already removed?
   const { data: existingRemoval } = await admin
     .from('group_removals')
     .select('id, status, refund_amount_ttd, refund_issued')
     .eq('enrollment_id', subEnrollment.id)
-    .eq('status', 'auto_processed')
+    .in('status', ['auto_processed', 'approved'])
     .maybeSingle();
 
   if (existingRemoval) {
@@ -228,11 +231,12 @@ async function handleTutorRemoval(
       success: true,
       removal_id: existingRemoval.id,
       refund_amount: Number(existingRemoval.refund_amount_ttd ?? 0),
-      refund_succeeded: !!existingRemoval.refund_issued,
+      refund_issued: !!existingRemoval.refund_issued,
       note: 'Already processed',
     });
   }
 
+  // 3. Find the paid subscription payment (for refund amount)
   const paidPayment = await loadCurrentPaidSubscriptionPayment(
     admin,
     subEnrollment.id,
@@ -241,6 +245,8 @@ async function handleTutorRemoval(
 
   const refundAmount = Number(paidPayment?.amount_ttd ?? 0);
 
+  // 4. Create the removal record (refund NOT issued yet — admin approves)
+  const now = new Date().toISOString();
   const { data: removalRow, error: removalError } = await admin
     .from('group_removals')
     .insert({
@@ -254,122 +260,71 @@ async function handleTutorRemoval(
       evidence_url: null,
       status: 'auto_processed',
       refund_amount_ttd: refundAmount,
+      refund_issued: false,
     })
     .select('id')
     .single();
 
   if (removalError) {
+    console.error('[handleTutorRemoval] group_removals insert failed:', removalError);
     return NextResponse.json({ error: removalError.message }, { status: 500 });
   }
 
-  if (!paidPayment || refundAmount <= 0) {
-    await finalizeRemoval(admin, {
-      enrollmentId: subEnrollment.id,
-      removalId: removalRow?.id ?? null,
-      refundAmountTtd: 0,
-      groupId: args.groupId,
-    });
+  // 5. Cancel the enrollment directly (no RPC dependency)
+  const { error: enrollError } = await admin
+    .from('group_enrollments')
+    .update({
+      status: 'CANCELLED',
+      cancelled_at: now,
+      cancel_at_period_end: false,
+    })
+    .eq('id', subEnrollment.id);
 
-    await notifyStudentRemoved(admin, {
-      studentId: args.studentId,
-      groupId: args.groupId,
-      groupName: args.groupName,
-      refundAmountTtd: 0,
-      removalId: removalRow?.id ?? null,
-      refundPath: 'no_payment',
-    });
+  if (enrollError) {
+    console.error('[handleTutorRemoval] enrollment cancel failed:', enrollError);
+    return NextResponse.json({ error: `Failed to cancel enrollment: ${enrollError.message}` }, { status: 500 });
+  }
 
-    return NextResponse.json({
-      success: true,
+  // 6. Remove from group_members
+  const { error: memberError } = await admin
+    .from('group_members')
+    .update({ status: 'removed' })
+    .eq('group_id', args.groupId)
+    .eq('user_id', args.studentId);
+
+  if (memberError) {
+    console.error('[handleTutorRemoval] member remove failed:', memberError);
+    // Non-fatal — enrollment is already cancelled
+  }
+
+  // 7. Notify the student
+  await admin.from('notifications').insert({
+    user_id: args.studentId,
+    type: 'subscription_cancellation_finalized',
+    title: 'Removed from group',
+    message: refundAmount > 0
+      ? `You have been removed from "${args.groupName}". A refund of TT$${refundAmount.toFixed(2)} is pending admin approval.`
+      : `You have been removed from "${args.groupName}".`,
+    link: `/student/subscriptions`,
+    group_id: args.groupId,
+    metadata: {
       removal_id: removalRow?.id,
-      refund_amount: 0,
-      refund_succeeded: false,
-    });
-  }
-
-  const refundResult = await refundRemovedSubscription({
-    admin,
-    subscriptionPaymentId: paidPayment.id,
-    enrollmentId: subEnrollment.id,
-    groupId: args.groupId,
-    removalId: removalRow?.id ?? null,
-    tutorId: args.tutorId,
-    actorId: args.tutorId,
+      refund_amount: refundAmount,
+    },
   });
 
-  // Always finalize the removal — the student must be removed regardless of
-  // whether the refund succeeds. A failed refund creates an exception for admin
-  // follow-up.
-  const refundOk = refundResult.ok;
-  let refundPath = 'failed';
-  let deductionAmountTtd = 0;
-  let pendingDeductionTtd = 0;
-
-  if (refundOk) {
-    refundPath = refundResult.path;
-    deductionAmountTtd = refundResult.deductionAmountTtd;
-    pendingDeductionTtd = refundResult.pendingDeductionTtd;
-  } else {
-    await admin.from('subscription_payment_exceptions').insert({
-      subscription_payment_id: paidPayment.id,
-      enrollment_id: subEnrollment.id,
-      group_id: args.groupId,
-      student_id: args.studentId,
-      exception_type: 'refund_required',
-      status: 'open',
-      error_message: `Student removal refund failed: ${refundResult.error}`,
-    });
-
-    const { data: admins } = await admin.from('profiles').select('id').eq('role', 'admin');
-    if (admins) {
-      await admin.from('notifications').insert(
-        admins.map((a: { id: string }) => ({
-          user_id: a.id,
-          type: 'refund_failed_admin_alert',
-          title: 'Subscription refund failed — student already removed',
-          message: `A full monthly refund for a removed subscriber in "${args.groupName}" failed and requires manual action. The student has been removed.`,
-          link: `/admin/subscription-payment-exceptions`,
-          group_id: args.groupId,
-          metadata: {
-            removal_id: removalRow?.id,
-            enrollment_id: subEnrollment.id,
-            subscription_payment_id: paidPayment.id,
-          },
-        }))
-      );
-    }
-  }
-
-  await finalizeRemoval(admin, {
-    enrollmentId: subEnrollment.id,
-    removalId: removalRow?.id ?? null,
-    refundAmountTtd: refundOk ? refundAmount : 0,
-    groupId: args.groupId,
-  });
-
-  await notifyStudentRemoved(admin, {
-    studentId: args.studentId,
-    groupId: args.groupId,
-    groupName: args.groupName,
-    refundAmountTtd: refundOk ? refundAmount : 0,
-    removalId: removalRow?.id ?? null,
-    refundPath,
-  });
+  await promoteNextFromWaitlist(admin, args.groupId);
 
   return NextResponse.json({
     success: true,
     removal_id: removalRow?.id,
-    refund_amount: refundOk ? refundAmount : 0,
-    refund_succeeded: refundOk,
-    refund_path: refundPath,
-    ...(refundOk ? {
-      deduction_amount: deductionAmountTtd,
-      pending_deduction_amount: pendingDeductionTtd,
-    } : {
-      note: 'Refund failed. An admin has been alerted to issue the refund manually.',
-    }),
+    refund_amount: refundAmount,
+    refund_issued: false,
+    note: 'Student removed. Refund requires admin approval.',
   });
 }
+
+// ─── Helpers ───────────────────────────────────────────────────────────────────
 
 async function loadCurrentPaidSubscriptionPayment(
   admin: any,
@@ -383,7 +338,6 @@ async function loadCurrentPaidSubscriptionPayment(
       .eq('id', activatedSubscriptionPaymentId)
       .eq('status', 'PAID')
       .maybeSingle();
-
     if (data) return data;
   }
 
@@ -397,64 +351,4 @@ async function loadCurrentPaidSubscriptionPayment(
     .maybeSingle();
 
   return data ?? null;
-}
-
-async function finalizeRemoval(
-  admin: any,
-  args: {
-    enrollmentId: string;
-    removalId: string | null;
-    refundAmountTtd: number;
-    groupId: string;
-  }
-) {
-  const { error: rpcError } = await admin.rpc('process_subscription_removal', {
-    p_payload: {
-      enrollment_id: args.enrollmentId,
-      removal_id: args.removalId,
-      refund_amount_ttd: args.refundAmountTtd,
-    },
-  });
-
-  if (rpcError) {
-    console.error('[finalizeRemoval] process_subscription_removal RPC failed:', rpcError);
-    throw new Error('Failed to finalize removal: ' + (rpcError.message ?? rpcError));
-  }
-
-  if (args.refundAmountTtd > 0) {
-    await admin
-      .from('group_enrollments')
-      .update({ payment_status: 'REFUNDED' })
-      .eq('id', args.enrollmentId);
-  }
-
-  await promoteNextFromWaitlist(admin, args.groupId);
-}
-
-async function notifyStudentRemoved(
-  admin: any,
-  args: {
-    studentId: string;
-    groupId: string;
-    groupName: string;
-    refundAmountTtd: number;
-    removalId: string | null;
-    refundPath: string;
-  }
-) {
-  await admin.from('notifications').insert({
-    user_id: args.studentId,
-    type: 'subscription_cancellation_finalized',
-    title: 'Removed from group',
-    message: args.refundAmountTtd > 0
-      ? `You have been removed from "${args.groupName}". A full monthly refund of TT$${args.refundAmountTtd.toFixed(2)} has been issued to your original payment method.`
-      : `You have been removed from "${args.groupName}".`,
-    link: `/student/subscriptions`,
-    group_id: args.groupId,
-    metadata: {
-      removal_id: args.removalId,
-      refund_amount: args.refundAmountTtd,
-      refund_path: args.refundPath,
-    },
-  });
 }
