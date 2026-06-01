@@ -84,6 +84,20 @@ export default function AdminPayoutsPage() {
   async function exportBatch() {
     setError(''); setMessage(''); setWorking(true);
     try {
+      // If nothing is release_ready but there are escrow rows, force-release them first.
+      if (exportable.length === 0 && escrowTutors.length > 0) {
+        const confirmed = confirm(
+          `Release $${escrowTotal.toFixed(2)} TTD from escrow now (bypasses the 7-day window) and generate the CSV?`
+        );
+        if (!confirmed) { setWorking(false); return; }
+        const rel = await fetch('/api/admin/payouts/force-release', { method: 'POST' });
+        if (!rel.ok) {
+          const relJson = await rel.json();
+          throw new Error(relJson.error || 'Failed to release from escrow');
+        }
+        await loadPending();
+      }
+
       const res = await fetch('/api/admin/payouts/export', { method: 'POST' });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Export failed');
@@ -282,10 +296,12 @@ export default function AdminPayoutsPage() {
             </div>
             <button
               onClick={exportBatch}
-              disabled={working || exportable.length === 0}
+              disabled={working || (exportable.length === 0 && escrowTutors.length === 0)}
               className="px-4 py-2 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep disabled:opacity-40"
             >
-              {working ? 'Working…' : 'Generate batch CSV'}
+              {working ? 'Working…' : exportable.length === 0 && escrowTutors.length > 0
+                ? 'Release from escrow & generate CSV'
+                : 'Generate batch CSV'}
             </button>
           </div>
         </section>
