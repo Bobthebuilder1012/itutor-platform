@@ -27,19 +27,24 @@ export async function GET(request: NextRequest) {
   let query = admin
     .from('payout_cases')
     .select(`
-      id, hold_reason, status,
+      id, hold_reason, status, group_id,
       refund_amount_ttd, release_amount_ttd,
       admin_notes, resolved_at, created_at, updated_at,
       payout_ledger:payout_ledger_id(amount_ttd, status, blocked_at),
       tutor:profiles!tutor_id(id, full_name, email),
+      student:profiles!student_id(id, full_name),
       claimant:profiles!claimant_id(id, full_name),
       session:sessions!session_id(id, scheduled_start_at),
-      noshow_claim:noshow_claims!noshow_claim_id(id, status, admin_verdict)
+      noshow_claim:noshow_claims!noshow_claim_id(id, status, admin_verdict),
+      group:groups!group_id(id, name)
     `, { count: 'exact' })
     .order('created_at', { ascending: false })
     .range(offset, offset + pageSize - 1);
 
-  if (status)     query = query.eq('status', status);
+  const statuses = searchParams.getAll('status');
+  if (statuses.length === 1)  query = query.eq('status', statuses[0]);
+  else if (statuses.length > 1) query = query.in('status', statuses);
+  else if (status)              query = query.eq('status', status);
   if (tutorId)    query = query.eq('tutor_id', tutorId);
   if (holdReason) query = query.eq('hold_reason', holdReason);
 
