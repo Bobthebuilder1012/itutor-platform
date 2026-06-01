@@ -124,6 +124,7 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('stream');
   const [memberState, setMemberState] = useState<MembershipState>('active');
+  const [rawMemberStatus, setRawMemberStatus] = useState<string | null>(null);
   const [actionReason, setActionReason] = useState<string | null>(null);
   const [suspendedUntil, setSuspendedUntil] = useState<Date | null>(null);
   const [hasNextSession, setHasNextSession] = useState(false);
@@ -146,14 +147,19 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
       if (!grp) { setLoading(false); return; }
 
       const membership = grp.current_user_membership;
-      const s = membership?.status ?? 'active';
+      setRawMemberStatus(membership?.status ?? null);
+      // Default to 'removed' (not 'active') when no membership row exists —
+      // a missing row means the student is not a current member and must
+      // not receive class access by default.
+      const s = membership?.status ?? 'removed';
       // Check if suspension has expired
       const suspUntil = membership?.suspended_until ? new Date(membership.suspended_until) : null;
       const suspExpired = suspUntil && suspUntil <= new Date();
       setMemberState(
         (s === 'suspended' || s === 'suspended_payment') && !suspExpired ? 'suspended'
         : s === 'banned' || s === 'removed' || s === 'rejected' ? 'banned'
-        : 'active'
+        : s === 'approved' || s === 'active' || s === 'invited' ? 'active'
+        : 'banned'
       );
       if (membership?.action_reason) setActionReason(membership.action_reason);
       if (suspUntil && !suspExpired) setSuspendedUntil(suspUntil);
@@ -280,16 +286,20 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
         </div>
       )}
 
-      {/* Banned */}
+      {/* Removed / Banned */}
       {memberState === 'banned' && (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 p-5 flex flex-col sm:flex-row sm:items-start gap-4">
           <div className="size-12 rounded-xl bg-rose-100 grid place-items-center shrink-0">
             <Ban className="size-5 text-rose-700" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="font-bold text-rose-900">You've been banned from this class</div>
+            <div className="font-bold text-rose-900">
+              {rawMemberStatus === 'banned' ? "You've been banned from this class" : "You no longer have access to this class"}
+            </div>
             <p className="text-sm text-rose-800 mt-0.5">
-              <strong>{tutorName}</strong> has permanently removed you from <strong>{group.name}</strong>. You can't rejoin or request access.
+              {rawMemberStatus === 'banned'
+                ? <><strong>{tutorName}</strong> has permanently removed you from <strong>{group.name}</strong>. You can&apos;t rejoin or request access.</>
+                : <>You have been removed from <strong>{group.name}</strong>. If a refund is due, it will be processed by the admin.</>}
             </p>
             {actionReason && (
               <p className="text-sm text-rose-900 mt-2 font-medium">Reason: "{actionReason}"</p>
