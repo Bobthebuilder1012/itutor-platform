@@ -225,6 +225,54 @@ export async function DELETE(req: NextRequest, { params }: Params) {
         .select('id')
         .single();
 
+      // Hold the tutor's payout for this enrollment pending admin review
+      if (subEnrollment) {
+        try {
+          const { data: paidSp } = await admin
+            .from('subscription_payments')
+            .select('id')
+            .eq('enrollment_id', subEnrollment.id)
+            .eq('status', 'PAID')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (paidSp) {
+            const { data: ledgerRow } = await admin
+              .from('payout_ledger')
+              .select('id, status')
+              .eq('subscription_payment_id', paidSp.id)
+              .maybeSingle();
+
+            if (ledgerRow && ['owed', 'release_ready'].includes(ledgerRow.status)) {
+              await (admin as any).rpc('place_payout_hold', {
+                p_ledger_id:           ledgerRow.id,
+                p_hold_reason:         'student_removed_from_group',
+                p_student_id:          userId,
+                p_group_id:            groupId,
+                p_group_enrollment_id: subEnrollment.id,
+                p_group_removal_id:    removalRow?.id,
+              });
+            } else if (!ledgerRow) {
+              // No ledger yet — pre-ledger case so activate_subscription holds it when created
+              await admin.from('payout_cases').insert({
+                payout_ledger_id:        null,
+                subscription_payment_id: paidSp.id,
+                tutor_id:                group!.tutor_id,
+                student_id:              userId,
+                group_id:                groupId,
+                group_enrollment_id:     subEnrollment.id,
+                group_removal_id:        removalRow?.id,
+                hold_reason:             'student_removed_from_group',
+                status:                  'open',
+              });
+            }
+          }
+        } catch (e) {
+          console.error('[DELETE members with-cause] payout hold failed:', e);
+        }
+      }
+
       // Notify student + tutor + admin
       const notifications = [
         {
@@ -638,6 +686,27 @@ export async function DELETE(req: NextRequest, { params }: Params) {
           refund_amount_ttd: refundAmount,
         },
       });
+
+      // Reverse the payout_ledger row now that the student has been refunded
+      if (paidPayment?.id) {
+        try {
+          const { data: ledgerRow } = await admin
+            .from('payout_ledger')
+            .select('id')
+            .eq('subscription_payment_id', paidPayment.id)
+            .neq('status', 'reversed')
+            .maybeSingle();
+
+          if (ledgerRow) {
+            await (admin as any).rpc('reverse_payout_ledger_row', {
+              p_ledger_id:  ledgerRow.id,
+              p_removal_id: removalRow?.id ?? null,
+            });
+          }
+        } catch (e) {
+          console.error('[DELETE members no-cause] reverse_payout_ledger_row failed:', e);
+        }
+      }
 
       // Promote waitlist
       await promoteNextFromWaitlist(admin as any, groupId);
