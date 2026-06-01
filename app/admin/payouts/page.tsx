@@ -164,9 +164,20 @@ export default function AdminPayoutsPage() {
     );
   }
 
-  const tutorsMissingBank = pendingTutors.filter((t) => !t.has_payout_account);
+  // Combine escrow (owed) + ready rows into one list for display
+  const allUnpaidTutors = [...escrowTutors, ...pendingTutors].reduce<PendingTutor[]>((acc, t) => {
+    const existing = acc.find((x) => x.tutor_id === t.tutor_id);
+    if (existing) {
+      existing.total_ttd += t.total_ttd;
+      existing.line_count += t.line_count;
+    } else {
+      acc.push({ ...t });
+    }
+    return acc;
+  }, []);
+  const allUnpaidTotal = escrowTotal + pendingTotal;
   const exportable = pendingTutors.filter((t) => t.has_payout_account);
-  const exportableTotal = exportable.reduce((s, t) => s + t.total_ttd, 0);
+  const tutorsMissingBank = allUnpaidTutors.filter((t) => !t.has_payout_account);
 
   return (
     <DashboardLayout role="admin" userName="Admin">
@@ -184,73 +195,25 @@ export default function AdminPayoutsPage() {
         {error && <div className="rounded-xl border border-red-300 bg-red-50 text-red-800 p-3 text-sm">{error}</div>}
         {message && <div className="rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-800 p-3 text-sm">{message}</div>}
 
-        {/* In escrow — owed ledger rows still within the 7-day release window */}
+        {/* Unpaid earnings */}
         <section className="rounded-2xl border border-border bg-card p-6 space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-ink">In escrow</h2>
+              <h2 className="text-lg font-semibold text-ink">Unpaid earnings</h2>
               <p className="text-xs text-muted-foreground">
-                Tutor earnings held during the 7-day release window. These automatically advance to Pending payouts when the window passes.
+                All tutor earnings not yet paid out. Generate a CSV to batch-pay via bank transfer.
               </p>
             </div>
             <div className="text-right">
               <div className="text-xs text-muted-foreground uppercase tracking-wider">Total</div>
               <div className="text-2xl font-bold text-ink">
-                ${escrowTotal.toFixed(2)} <span className="text-sm font-normal text-muted-foreground">TTD</span>
+                ${allUnpaidTotal.toFixed(2)} <span className="text-sm font-normal text-muted-foreground">TTD</span>
               </div>
             </div>
           </div>
 
-          {escrowTutors.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No tutors currently in escrow.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-left text-xs text-muted-foreground uppercase">
-                    <th className="py-2 pr-4">Tutor</th>
-                    <th className="py-2 pr-4">Bank</th>
-                    <th className="py-2 pr-4 text-right">Sessions</th>
-                    <th className="py-2 pr-0 text-right">Amount (TTD)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {escrowTutors.map((t) => (
-                    <tr key={t.tutor_id} className="border-b border-border/50">
-                      <td className="py-2 pr-4">
-                        <div className="font-medium text-ink">{t.tutor_name || '—'}</div>
-                        <div className="text-xs text-muted-foreground">{t.tutor_email}</div>
-                      </td>
-                      <td className="py-2 pr-4">
-                        {t.has_payout_account
-                          ? <span className="text-ink">{t.bank_name} <span className="text-xs text-muted-foreground">/ {t.branch}</span></span>
-                          : <span className="text-amber-700 font-medium">Missing — tutor must add bank details</span>}
-                      </td>
-                      <td className="py-2 pr-4 text-right">{t.line_count}</td>
-                      <td className="py-2 text-right font-semibold text-ink">${t.total_ttd.toFixed(2)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-
-        {/* Pending payouts */}
-        <section className="rounded-2xl border border-border bg-card p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-ink">Pending payouts</h2>
-              <p className="text-xs text-muted-foreground">Sessions whose release window has passed but haven't been paid out yet.</p>
-            </div>
-            <div className="text-right">
-              <div className="text-xs text-muted-foreground uppercase tracking-wider">Total</div>
-              <div className="text-2xl font-bold text-ink">${pendingTotal.toFixed(2)} <span className="text-sm font-normal text-muted-foreground">TTD</span></div>
-            </div>
-          </div>
-
-          {pendingTutors.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No payouts ready to process.</p>
+          {allUnpaidTutors.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No unpaid earnings.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -264,7 +227,7 @@ export default function AdminPayoutsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pendingTutors.map((t) => (
+                  {allUnpaidTutors.map((t) => (
                     <tr key={t.tutor_id} className="border-b border-border/50">
                       <td className="py-2 pr-4">
                         <div className="font-medium text-ink">{t.tutor_name || '—'}</div>
@@ -290,18 +253,13 @@ export default function AdminPayoutsPage() {
               {tutorsMissingBank.length > 0 && (
                 <span className="text-amber-700">{tutorsMissingBank.length} tutor(s) skipped (no bank details). </span>
               )}
-              {exportable.length > 0 && (
-                <span>Exportable: {exportable.length} tutor(s), ${exportableTotal.toFixed(2)} TTD.</span>
-              )}
             </div>
             <button
               onClick={exportBatch}
-              disabled={working || (exportable.length === 0 && escrowTutors.length === 0)}
+              disabled={working || allUnpaidTutors.length === 0}
               className="px-4 py-2 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep disabled:opacity-40"
             >
-              {working ? 'Working…' : exportable.length === 0 && escrowTutors.length > 0
-                ? 'Release from escrow & generate CSV'
-                : 'Generate batch CSV'}
+              {working ? 'Working…' : 'Generate batch CSV'}
             </button>
           </div>
         </section>
