@@ -36,7 +36,7 @@ interface WalletHistoryRow {
   ledger_id: string;
   session_id: string;
   amount_ttd: number;
-  status: 'in_escrow' | 'awaiting_transfer' | 'paid' | 'reversed' | 'unknown';
+  status: 'in_escrow' | 'awaiting_transfer' | 'paid' | 'reversed' | 'under_review' | 'unknown';
   ledger_status: string;
   created_at: string;
   released_at: string | null;
@@ -57,6 +57,7 @@ function mapLedgerStatus(s: string): WalletHistoryRow['status'] {
     case 'release_ready': return 'awaiting_transfer';
     case 'released':      return 'paid';
     case 'reversed':      return 'reversed';
+    case 'admin_hold':    return 'under_review';
     default:              return 'unknown';
   }
 }
@@ -98,6 +99,18 @@ export async function GET() {
     .eq('status', 'released');
 
   const lifetimePaid = (releasedRows ?? []).reduce(
+    (s: number, r: any) => s + Number(r.amount_ttd ?? 0),
+    0
+  );
+
+  // -- Held amount (admin_hold rows — already excluded from tutor_balances) --
+  const { data: heldRows } = await admin
+    .from('payout_ledger')
+    .select('amount_ttd')
+    .eq('tutor_id', user.id)
+    .eq('status', 'admin_hold');
+
+  const heldTtd = (heldRows ?? []).reduce(
     (s: number, r: any) => s + Number(r.amount_ttd ?? 0),
     0
   );
@@ -336,10 +349,11 @@ export async function GET() {
 
   return NextResponse.json({
     balances: {
-      pending_ttd: Math.round((pending + unprocessedPending) * 100) / 100,
-      available_ttd: available,
+      pending_ttd:       Math.round((pending + unprocessedPending) * 100) / 100,
+      available_ttd:     available,
       lifetime_paid_ttd: Math.round(lifetimePaid * 100) / 100,
-      last_updated: balanceRow?.last_updated ?? null,
+      held_ttd:          Math.round(heldTtd * 100) / 100,
+      last_updated:      balanceRow?.last_updated ?? null,
     },
     history,
   });

@@ -15,7 +15,7 @@ import TutorShell from '@/components/tutor/TutorShell';
 
 type Tab = 'overview' | 'transactions' | 'group-tracker' | 'payouts' | 'statements';
 
-type HistoryStatus = 'in_escrow' | 'awaiting_transfer' | 'paid' | 'reversed' | 'unknown';
+type HistoryStatus = 'in_escrow' | 'awaiting_transfer' | 'paid' | 'reversed' | 'under_review' | 'unknown';
 
 interface WalletHistoryRow {
   ledger_id: string;
@@ -41,6 +41,7 @@ interface WalletPayload {
     pending_ttd: number;
     available_ttd: number;
     lifetime_paid_ttd: number;
+    held_ttd: number;
     last_updated: string | null;
   };
   history: WalletHistoryRow[];
@@ -398,6 +399,14 @@ function WalletContent() {
                     ? `TT$ ${fmtTTD(balances?.pending_ttd ?? 0)} in escrow — releases after 7 days`
                     : 'No pending earnings'}
             </div>
+            {(balances?.held_ttd ?? 0) > 0 && (
+              <div className="mt-3 flex items-center gap-2 rounded-xl bg-amber-500/20 px-3 py-2 text-sm">
+                <AlertCircle className="size-4 text-amber-300 shrink-0" />
+                <span className="text-amber-200">
+                  TT$ {fmtTTD(balances?.held_ttd ?? 0)} under review — awaiting admin decision
+                </span>
+              </div>
+            )}
             <div className="mt-3 text-xs text-white/60">
               iTutor pays out via bulk bank transfer on the next payout cycle. Earnings move from escrow to bank-transfer queue 7 days after each session completes.
             </div>
@@ -619,6 +628,7 @@ function TransactionsTab({ history, loading }: { history: WalletHistoryRow[]; lo
           <option value="awaiting_transfer">Awaiting bank transfer</option>
           <option value="paid">Paid</option>
           <option value="reversed">Reversed</option>
+          <option value="under_review">Under review</option>
         </select>
       </div>
       <div className="rounded-2xl border border-border bg-card divide-y divide-border overflow-hidden">
@@ -671,6 +681,7 @@ function StatusPill({ status }: { status: HistoryStatus }) {
     awaiting_transfer: { label: 'Awaiting transfer', cls: 'bg-amber-100 text-amber-800' },
     paid:              { label: 'Paid',              cls: 'bg-brand-soft text-brand-deep' },
     reversed:          { label: 'Reversed',          cls: 'bg-coral-soft text-coral' },
+    under_review:      { label: 'Under Review',      cls: 'bg-amber-100 text-amber-700' },
     unknown:           { label: '—',                 cls: 'bg-zinc-100 text-zinc-600' },
   };
   const { label, cls } = config[status];

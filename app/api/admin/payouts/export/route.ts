@@ -6,6 +6,7 @@
 // 1. Inserts a payout_batches row.
 // 2. Atomically claims all release_ready ledger items not yet
 //    in a batch — stamps batch_id on them.
+//    admin_hold rows are excluded by design (status filter = 'release_ready').
 // 3. Returns the batch metadata + CSV body.
 //
 // Tutors without a saved payout account are SKIPPED (their lines

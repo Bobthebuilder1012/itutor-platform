@@ -211,6 +211,43 @@ export async function POST(
       .eq('id', session.booking_id);
   }
 
+  // Auto-close any open payout_case for this session.
+  // apply_refund_side_effects already handled admin_hold → reversed for
+  // tutor_noshow/tie paths; here we just update the case status.
+  try {
+    const { data: openCase } = await admin
+      .from('payout_cases')
+      .select('id, status')
+      .eq('session_id', session.id)
+      .in('status', ['open', 'under_review'])
+      .maybeSingle();
+
+    if (openCase) {
+      if (outcome === 'student_noshow') {
+        await (admin as any).rpc('resolve_payout_case', {
+          p_case_id:     openCase.id,
+          p_action:      'release_to_tutor',
+          p_admin_id:    auth.user!.id,
+          p_admin_notes: `Auto-resolved: verdict was student_noshow. ${body.adminNotes ?? ''}`.trim(),
+        });
+      } else {
+        // tutor_noshow / tie: ledger already reversed by refundPayment; close the case
+        await admin
+          .from('payout_cases')
+          .update({
+            status:      'closed',
+            admin_id:    auth.user!.id,
+            admin_notes: `Closed: verdict ${outcome}. Payout reversed via refundPayment.`,
+            resolved_at: new Date().toISOString(),
+            updated_at:  new Date().toISOString(),
+          })
+          .eq('id', openCase.id);
+      }
+    }
+  } catch (e) {
+    console.error('[admin/noshow/resolve] payout case auto-close failed (non-blocking):', e);
+  }
+
   return NextResponse.json({
     ok: true,
     session_id: session.id,
