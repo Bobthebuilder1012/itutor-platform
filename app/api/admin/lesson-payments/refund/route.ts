@@ -135,9 +135,10 @@ export async function POST(req: NextRequest) {
     // Record the refund
     await admin.from('subscription_refunds').insert({
       subscription_payment_id: spId,
+      enrollment_id,
+      group_removal_id: removal_id,
       amount_ttd: refundAmount,
-      refunded_by: auth.user.id,
-      reason: 'Student removal - admin approved (Path A)',
+      status: 'succeeded',
     });
 
     // Mark everything as done
@@ -195,7 +196,7 @@ export async function POST(req: NextRequest) {
   if (available >= refundAmount) {
     await admin
       .from('tutor_balances')
-      .update({ available_ttd: available - refundAmount })
+      .update({ available_ttd: available - refundAmount, last_updated: new Date().toISOString() })
       .eq('tutor_id', removal.tutor_id);
   }
   // If not enough, the pending deduction will be recovered from future batches
@@ -203,9 +204,10 @@ export async function POST(req: NextRequest) {
   // Record the refund
   await admin.from('subscription_refunds').insert({
     subscription_payment_id: spId,
+    enrollment_id,
+    group_removal_id: removal_id,
     amount_ttd: refundAmount,
-    refunded_by: auth.user.id,
-    reason: 'Student removal - admin approved (Path B - tutor deduction)',
+    status: 'succeeded',
   });
 
   // Mark everything as done

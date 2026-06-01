@@ -960,7 +960,7 @@ function RosterTab({ members, setMembers, group, isOneOnOne, atCapacity }: {
             </thead>
             <tbody className="divide-y divide-border">
               {visible.map((m) => (
-                <RosterRow key={m.studentId} m={m} onUpdate={(p) => updateMember(m.studentId, p)} />
+                <RosterRow key={m.studentId} m={m} groupId={group.id} onUpdate={(p) => updateMember(m.studentId, p)} />
               ))}
             </tbody>
           </table>
@@ -970,9 +970,32 @@ function RosterTab({ members, setMembers, group, isOneOnOne, atCapacity }: {
   );
 }
 
-function RosterRow({ m, onUpdate }: { m: GroupMember; onUpdate: (p: Partial<GroupMember>) => void }) {
+function RosterRow({ m, onUpdate, groupId }: { m: GroupMember; onUpdate: (p: Partial<GroupMember>) => void; groupId: string }) {
   const [menu, setMenu] = useState(false);
   const [confirm, setConfirm] = useState<null | 'suspend' | 'ban' | 'remove'>(null);
+  const [removing, setRemoving] = useState(false);
+  const [removeError, setRemoveError] = useState('');
+
+  async function handleRemoveConfirm() {
+    setRemoving(true);
+    setRemoveError('');
+    try {
+      const res = await fetch(`/api/groups/${groupId}/members/${m.studentId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error ?? `Failed (${res.status})`);
+      onUpdate({ status: 'removed' });
+      setConfirm(null);
+    } catch (e: any) {
+      setRemoveError(e?.message ?? 'Removal failed. Please try again.');
+    } finally {
+      setRemoving(false);
+    }
+  }
+
   const statusMeta: Record<string, { label: string; chip: string }> = {
     pending_approval: { label: 'Pending',   chip: 'bg-amber-100 text-amber-800 border-amber-200' },
     invited:          { label: 'Invited',   chip: 'bg-sky-100 text-sky-700 border-sky-200' },
@@ -999,9 +1022,9 @@ function RosterRow({ m, onUpdate }: { m: GroupMember; onUpdate: (p: Partial<Grou
     },
     remove: {
       title: `Remove ${m.name} from this class?`,
-      body: `${m.name} will lose access immediately. They can be re-invited later.`,
+      body: `${m.name} will lose access immediately. If they have an active subscription, a refund will be initiated pending admin approval.`,
       action: 'Remove', tone: 'rose',
-      run: () => { onUpdate({ status: 'removed' }); },
+      run: () => {},
     },
   };
   const conf = confirm ? confirmCopy[confirm] : null;
@@ -1051,16 +1074,33 @@ function RosterRow({ m, onUpdate }: { m: GroupMember; onUpdate: (p: Partial<Grou
       {/* Confirm dialog */}
       {confirm && conf && (
         <tr><td colSpan={5} className="p-0">
-          <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setConfirm(null)}>
+          <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4" onClick={() => !removing && setConfirm(null)}>
             <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl bg-background border border-border shadow-xl p-6 space-y-4">
               <div className="font-bold text-ink text-lg">{conf.title}</div>
               <p className="text-sm text-muted-foreground">{conf.body}</p>
+              {confirm === 'remove' && (
+                <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
+                  If the tutor payout was already released, iTutor will refund the student and recover the amount from the tutor&apos;s future earnings.
+                </div>
+              )}
+              {removeError && <p className="text-xs text-rose-600 font-medium">{removeError}</p>}
               <div className="flex justify-end gap-2 pt-2">
-                <button onClick={() => setConfirm(null)} className="px-4 py-2 rounded-xl border border-border text-sm font-semibold hover:bg-muted">Cancel</button>
-                <button onClick={() => { conf.run(); setConfirm(null); }}
-                  className={cn('px-4 py-2 rounded-xl text-white text-sm font-semibold',
+                <button onClick={() => setConfirm(null)} disabled={removing} className="px-4 py-2 rounded-xl border border-border text-sm font-semibold hover:bg-muted disabled:opacity-50">Cancel</button>
+                <button
+                  onClick={async () => {
+                    if (confirm === 'remove') {
+                      await handleRemoveConfirm();
+                    } else {
+                      conf.run();
+                      setConfirm(null);
+                    }
+                  }}
+                  disabled={removing}
+                  className={cn('px-4 py-2 rounded-xl text-white text-sm font-semibold inline-flex items-center gap-1.5 disabled:opacity-50',
                     conf.tone === 'rose' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-amber-600 hover:bg-amber-700')}>
-                  {conf.action}
+                  {removing
+                    ? <><span className="size-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />Removing...</>
+                    : conf.action}
                 </button>
               </div>
             </div>
