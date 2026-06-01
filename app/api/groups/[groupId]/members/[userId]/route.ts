@@ -289,7 +289,52 @@ async function handleTutorRemoval(
 
   const refundAmount = Number(paidPayment?.amount_ttd ?? 0);
 
-  // 4. Create the removal record (refund NOT issued yet — admin approves)
+  // 3b. Check if the tutor's payout for this subscription payment has already
+  // been released. If so, record the debt immediately so it cannot be missed
+  // regardless of when (or whether) admin manually processes the refund.
+  let payoutAlreadyReleased = false;
+  if (paidPayment && refundAmount > 0) {
+    const { data: releasedLedger } = await admin
+      .from('payout_ledger')
+      .select('id')
+      .eq('subscription_payment_id', paidPayment.id)
+      .eq('status', 'released')
+      .maybeSingle();
+
+    payoutAlreadyReleased = !!releasedLedger;
+
+    if (payoutAlreadyReleased) {
+      // Record the debt against the tutor immediately
+      await admin.from('tutor_deductions').insert({
+        tutor_id: args.tutorId,
+        amount_ttd: refundAmount,
+        reason: 'student_removal_refund',
+        source_enrollment_id: subEnrollment.id,
+        source_subscription_payment_id: paidPayment.id,
+        status: 'pending',
+      }).then(({ error }) => {
+        if (error) console.error('[handleTutorRemoval] tutor_deductions insert failed:', error);
+      });
+
+      // Immediately decrement the tutor's available balance if they have enough;
+      // otherwise the pending deduction will be recovered from the next payout batch.
+      const { data: tutorBal } = await admin
+        .from('tutor_balances')
+        .select('available_ttd')
+        .eq('tutor_id', args.tutorId)
+        .maybeSingle();
+
+      const available = Math.round((Number(tutorBal?.available_ttd ?? 0)) * 100) / 100;
+      if (available >= refundAmount) {
+        await admin
+          .from('tutor_balances')
+          .update({ available_ttd: available - refundAmount, last_updated: new Date().toISOString() })
+          .eq('tutor_id', args.tutorId);
+      }
+    }
+  }
+
+  // 4. Create the removal record (refund NOT issued yet — admin approves LuniPay refund to student)
   const now = new Date().toISOString();
   const { data: removalRow, error: removalError } = await admin
     .from('group_removals')
@@ -341,21 +386,37 @@ async function handleTutorRemoval(
     // Non-fatal — enrollment is already cancelled
   }
 
-  // 7. Notify the student
-  await admin.from('notifications').insert({
+  // 7. Notify the student + tutor
+  const studentMsg = refundAmount > 0
+    ? `You have been removed from "${args.groupName}". A refund of TT$${refundAmount.toFixed(2)} is pending admin approval.`
+    : `You have been removed from "${args.groupName}".`;
+
+  const tutorDebtMsg = payoutAlreadyReleased && refundAmount > 0
+    ? `TT$${refundAmount.toFixed(2)} has been recorded as a deduction against your account for the removal of a student whose payment was already paid out. This will be recovered from your next payout.`
+    : null;
+
+  const notifRows: any[] = [{
     user_id: args.studentId,
     type: 'subscription_cancellation_finalized',
     title: 'Removed from group',
-    message: refundAmount > 0
-      ? `You have been removed from "${args.groupName}". A refund of TT$${refundAmount.toFixed(2)} is pending admin approval.`
-      : `You have been removed from "${args.groupName}".`,
+    message: studentMsg,
     link: `/student/subscriptions`,
     group_id: args.groupId,
-    metadata: {
-      removal_id: removalRow?.id,
-      refund_amount: refundAmount,
-    },
-  });
+    metadata: { removal_id: removalRow?.id, refund_amount: refundAmount },
+  }];
+
+  if (tutorDebtMsg) {
+    notifRows.push({
+      user_id: args.tutorId,
+      type: 'tutor_deduction_applied',
+      title: 'Earnings deduction recorded',
+      message: tutorDebtMsg,
+      link: `/tutor/wallet`,
+      group_id: args.groupId,
+    });
+  }
+
+  await admin.from('notifications').insert(notifRows);
 
   await promoteNextFromWaitlist(admin, args.groupId);
 
