@@ -204,7 +204,7 @@ export async function POST(req: NextRequest) {
   await admin.from('subscription_refunds').insert({
     subscription_payment_id: spId,
     amount_ttd: refundAmount,
-    refunded_by: auth.userId,
+    refunded_by: auth.user.id,
     reason: 'Student removal - admin approved (Path B - tutor deduction)',
   });
 
