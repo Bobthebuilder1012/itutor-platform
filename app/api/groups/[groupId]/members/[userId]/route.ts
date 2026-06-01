@@ -297,7 +297,19 @@ async function handleTutorRemoval(
     actorId: args.tutorId,
   });
 
-  if (!refundResult.ok) {
+  // Always finalize the removal — the student must be removed regardless of
+  // whether the refund succeeds. A failed refund creates an exception for admin
+  // follow-up.
+  const refundOk = refundResult.ok;
+  let refundPath = 'failed';
+  let deductionAmountTtd = 0;
+  let pendingDeductionTtd = 0;
+
+  if (refundOk) {
+    refundPath = refundResult.path;
+    deductionAmountTtd = refundResult.deductionAmountTtd;
+    pendingDeductionTtd = refundResult.pendingDeductionTtd;
+  } else {
     await admin.from('subscription_payment_exceptions').insert({
       subscription_payment_id: paidPayment.id,
       enrollment_id: subEnrollment.id,
@@ -314,8 +326,8 @@ async function handleTutorRemoval(
         admins.map((a: { id: string }) => ({
           user_id: a.id,
           type: 'refund_failed_admin_alert',
-          title: 'Subscription refund failed',
-          message: `A full monthly refund for a removed subscriber in "${args.groupName}" failed and requires manual action.`,
+          title: 'Subscription refund failed — student already removed',
+          message: `A full monthly refund for a removed subscriber in "${args.groupName}" failed and requires manual action. The student has been removed.`,
           link: `/admin/subscription-payment-exceptions`,
           group_id: args.groupId,
           metadata: {
@@ -326,18 +338,12 @@ async function handleTutorRemoval(
         }))
       );
     }
-
-    return NextResponse.json({
-      error: 'Refund failed - student not removed. Admin alerted.',
-      removal_id: removalRow?.id,
-      details: refundResult.error,
-    }, { status: refundResult.status });
   }
 
   await finalizeRemoval(admin, {
     enrollmentId: subEnrollment.id,
     removalId: removalRow?.id ?? null,
-    refundAmountTtd: refundAmount,
+    refundAmountTtd: refundOk ? refundAmount : 0,
     groupId: args.groupId,
   });
 
@@ -345,19 +351,23 @@ async function handleTutorRemoval(
     studentId: args.studentId,
     groupId: args.groupId,
     groupName: args.groupName,
-    refundAmountTtd: refundAmount,
+    refundAmountTtd: refundOk ? refundAmount : 0,
     removalId: removalRow?.id ?? null,
-    refundPath: refundResult.path,
+    refundPath,
   });
 
   return NextResponse.json({
     success: true,
     removal_id: removalRow?.id,
-    refund_amount: refundAmount,
-    refund_succeeded: true,
-    refund_path: refundResult.path,
-    deduction_amount: refundResult.deductionAmountTtd,
-    pending_deduction_amount: refundResult.pendingDeductionTtd,
+    refund_amount: refundOk ? refundAmount : 0,
+    refund_succeeded: refundOk,
+    refund_path: refundPath,
+    ...(refundOk ? {
+      deduction_amount: deductionAmountTtd,
+      pending_deduction_amount: pendingDeductionTtd,
+    } : {
+      note: 'Refund failed. An admin has been alerted to issue the refund manually.',
+    }),
   });
 }
 
@@ -443,4 +453,3 @@ async function notifyStudentRemoved(
     },
   });
 }
-
