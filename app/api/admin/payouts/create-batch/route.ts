@@ -89,7 +89,7 @@ async function handlePost(request: NextRequest) {
       return NextResponse.json({ error: flipErr.message }, { status: 500 });
     }
 
-    // Adjust tutor_balances: pending -= amount, available += amount per tutor
+    // Move balance: pending_ttd -= amount, available_ttd += amount per tutor
     const amountByTutor = new Map<string, number>();
     for (const r of owedRows) {
       amountByTutor.set(
@@ -98,17 +98,36 @@ async function handlePost(request: NextRequest) {
       );
     }
 
-    await Promise.all(
-      Array.from(amountByTutor.entries()).map(([tutorId, amount]) =>
-        (admin as any).rpc('adjust_tutor_balance_owed_to_ready', {
-          p_tutor_id: tutorId,
-          p_amount:   Math.round(amount * 100) / 100,
-        }).catch((e: any) => {
-          // Non-fatal: balances may be slightly off until next reconcile
-          console.error('[create-batch] adjust_tutor_balance_owed_to_ready failed for', tutorId, e);
+    const tutorIdsToAdjust = Array.from(amountByTutor.keys());
+    if (tutorIdsToAdjust.length > 0) {
+      const { data: balanceRows } = await admin
+        .from('tutor_balances')
+        .select('tutor_id, pending_ttd, available_ttd')
+        .in('tutor_id', tutorIdsToAdjust);
+
+      const balanceMap = new Map(
+        (balanceRows ?? []).map((b: any) => [b.tutor_id, b])
+      );
+
+      await Promise.all(
+        tutorIdsToAdjust.map((tutorId) => {
+          const amount  = Math.round((amountByTutor.get(tutorId) ?? 0) * 100) / 100;
+          const current = balanceMap.get(tutorId);
+          const newPending   = Math.max(0, Math.round(((current?.pending_ttd   ?? 0) - amount) * 100) / 100);
+          const newAvailable = Math.round(((current?.available_ttd ?? 0) + amount) * 100) / 100;
+
+          return admin
+            .from('tutor_balances')
+            .upsert(
+              { tutor_id: tutorId, pending_ttd: newPending, available_ttd: newAvailable, updated_at: new Date().toISOString() },
+              { onConflict: 'tutor_id' }
+            )
+            .then(({ error }) => {
+              if (error) console.error('[create-batch] tutor_balances upsert failed for', tutorId, error);
+            });
         })
-      )
-    );
+      );
+    }
   }
 
   // ── Create batch via create_payout_batch_atomic ───────────────────────────
