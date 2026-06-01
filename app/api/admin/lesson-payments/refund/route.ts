@@ -122,7 +122,7 @@ export async function POST(req: NextRequest) {
         const lunipay = getLunipayClient();
         await lunipay.payments.refund(subPayment.lunipay_transaction_id, {
           amount: ttdToCents(refundAmount),
-          reason: 'Student removed from group (admin-approved)',
+          reason: 'requested_by_customer', metadata: { removal_reason: 'student_removed_admin_approved' },
         });
       } catch (e: any) {
         console.error('[refund] LuniPay refund failed:', e);
@@ -161,7 +161,7 @@ export async function POST(req: NextRequest) {
       const lunipay = getLunipayClient();
       await lunipay.payments.refund(subPayment.lunipay_transaction_id, {
         amount: ttdToCents(refundAmount),
-        reason: 'Student removed from group (admin-approved, tutor already paid)',
+        reason: 'requested_by_customer', metadata: { removal_reason: 'student_removed_tutor_paid_path_b' },
       });
     } catch (e: any) {
       console.error('[refund] LuniPay refund failed:', e);
