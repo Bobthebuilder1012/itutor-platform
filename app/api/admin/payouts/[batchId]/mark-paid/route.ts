@@ -69,7 +69,7 @@ export async function POST(
           admin
             .from('tutor_balances')
             .upsert(
-              { tutor_id: tutorId, available_ttd: newAvailable, pending_ttd: newPending, updated_at: new Date().toISOString() },
+              { tutor_id: tutorId, available_ttd: newAvailable, pending_ttd: newPending, last_updated: new Date().toISOString() },
               { onConflict: 'tutor_id' }
             )
             .then(({ error }) => {
