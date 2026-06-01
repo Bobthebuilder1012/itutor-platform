@@ -38,6 +38,8 @@ export default function AdminPayoutsPage() {
   const [escrowTutors, setEscrowTutors] = useState<PendingTutor[]>([]);
   const [escrowTotal, setEscrowTotal] = useState(0);
   const [batches, setBatches] = useState<Batch[]>([]);
+  const [heldCount, setHeldCount] = useState(0);
+  const [heldTotal, setHeldTotal] = useState(0);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -54,7 +56,7 @@ export default function AdminPayoutsPage() {
       if (profile?.role !== 'admin') { router.push('/login'); return; }
       if (isEmailManagementOnlyAdmin(profile.email)) { router.replace('/admin/emails'); return; }
       setAuthLoading(false);
-      await Promise.all([loadPending(), loadBatches()]);
+      await Promise.all([loadPending(), loadBatches(), loadHeld()]);
     })();
   }, []);
 
@@ -69,6 +71,18 @@ export default function AdminPayoutsPage() {
     setPendingTotal(json.total_amount_ttd);
     setEscrowTutors(json.escrow_tutors ?? []);
     setEscrowTotal(json.escrow_total_amount_ttd ?? 0);
+  }
+
+  async function loadHeld() {
+    const [r1, r2] = await Promise.all([
+      fetch('/api/admin/payout-cases?status=open&page_size=100'),
+      fetch('/api/admin/payout-cases?status=under_review&page_size=100'),
+    ]);
+    const [j1, j2] = await Promise.all([r1.ok ? r1.json() : { cases: [], total: 0 }, r2.ok ? r2.json() : { cases: [], total: 0 }]);
+    const allCases: any[] = [...(j1.cases ?? []), ...(j2.cases ?? [])];
+    setHeldCount((j1.total ?? 0) + (j2.total ?? 0));
+    const total = allCases.reduce((s: number, c: any) => s + Number(c.payout_ledger?.amount_ttd ?? 0), 0);
+    setHeldTotal(Math.round(total * 100) / 100);
   }
 
   async function loadBatches() {
@@ -261,6 +275,35 @@ export default function AdminPayoutsPage() {
             >
               {working ? 'Working…' : 'Generate batch CSV'}
             </button>
+          </div>
+        </section>
+
+        {/* Held payouts */}
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-6 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-amber-900">Held payouts</h2>
+              <p className="text-xs text-amber-700">
+                Payouts frozen pending admin review (no-show claims, disputes, manual holds). These are excluded from CSV exports until resolved.
+              </p>
+            </div>
+            <div className="text-right">
+              <div className="text-xs text-amber-700 uppercase tracking-wider">Total held</div>
+              <div className="text-2xl font-bold text-amber-900">
+                ${heldTotal.toFixed(2)} <span className="text-sm font-normal text-amber-700">TTD</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-amber-800">
+              {heldCount === 0 ? 'No held cases.' : `${heldCount} open case${heldCount !== 1 ? 's' : ''} awaiting resolution.`}
+            </span>
+            <Link
+              href="/admin/payout-cases"
+              className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold transition-colors"
+            >
+              Review held payouts →
+            </Link>
           </div>
         </section>
 
