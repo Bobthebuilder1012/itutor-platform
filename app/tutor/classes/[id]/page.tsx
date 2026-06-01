@@ -1619,8 +1619,6 @@ function SubscribersTab({ group, onMemberRemoved }: { group: GroupDetail; onMemb
   const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
   const [loading, setLoading] = useState(true);
   const [removeTarget, setRemoveTarget] = useState<Subscriber | null>(null);
-  const [removeCause, setRemoveCause] = useState<'no_cause' | 'with_cause' | null>(null);
-  const [removeForm, setRemoveForm] = useState({ reason_category: 'behavioral', explanation: '', evidence_url: '' });
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState('');
 
@@ -1640,19 +1638,14 @@ function SubscribersTab({ group, onMemberRemoved }: { group: GroupDetail; onMemb
   }
 
   async function handleRemove() {
-    if (!removeTarget || !removeCause) return;
-    if (!removeForm.explanation.trim()) { setRemoveError('Please provide an explanation.'); return; }
+    if (!removeTarget) return;
     setRemoving(true);
     setRemoveError('');
     try {
-      const body = removeCause === 'no_cause'
-        ? { with_cause: false, reason_category: 'no_cause', explanation: removeForm.explanation }
-        : { with_cause: true, reason_category: removeForm.reason_category, explanation: removeForm.explanation, ...(removeForm.evidence_url ? { evidence_url: removeForm.evidence_url } : {}) };
-
       const res = await fetch(`/api/groups/${group.id}/members/${removeTarget.student_id}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({}),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error ?? `Failed (${res.status})`);
@@ -1660,7 +1653,6 @@ function SubscribersTab({ group, onMemberRemoved }: { group: GroupDetail; onMemb
       setSubscribers((subs) => subs.filter((s) => s.id !== removeTarget.id));
       onMemberRemoved?.();
       setRemoveTarget(null);
-      setRemoveCause(null);
     } catch (e: any) {
       setRemoveError(e?.message ?? 'Removal failed. Please try again.');
     } finally {
@@ -1760,7 +1752,7 @@ function SubscribersTab({ group, onMemberRemoved }: { group: GroupDetail; onMemb
                     <td className="px-4 py-3 text-right">
                       {isRemovable && (
                         <button
-                          onClick={() => { setRemoveTarget(sub); setRemoveCause(null); setRemoveForm({ reason_category: 'behavioral', explanation: '', evidence_url: '' }); setRemoveError(''); }}
+                          onClick={() => { setRemoveTarget(sub); setRemoveError(''); }}
                           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-rose-200 text-rose-600 text-[11px] font-semibold hover:bg-rose-50 transition">
                           <Trash2 className="size-3" /> Remove
                         </button>
@@ -1776,95 +1768,27 @@ function SubscribersTab({ group, onMemberRemoved }: { group: GroupDetail; onMemb
 
       {/* Remove modal */}
       {removeTarget && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setRemoveTarget(null)}>
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4" onClick={() => !removing && setRemoveTarget(null)}>
           <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl bg-background border border-border shadow-xl p-6 space-y-4">
-            {removeCause === null ? (
-              <>
-                <div>
-                  <div className="font-bold text-ink">Remove {removeTarget.student?.full_name ?? 'this student'}?</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">Choose the type of removal.</div>
-                </div>
-                <div className="space-y-2">
-                  <button onClick={() => setRemoveCause('no_cause')}
-                    className="w-full flex items-start gap-3 rounded-xl border border-border px-4 py-3 text-left hover:bg-muted transition">
-                    <div>
-                      <div className="text-sm font-semibold text-ink">No cause</div>
-                      <div className="text-xs text-muted-foreground mt-0.5">A pro-rata refund for remaining sessions in the paid period will be issued automatically.</div>
-                    </div>
-                  </button>
-                  <button onClick={() => setRemoveCause('with_cause')}
-                    className="w-full flex items-start gap-3 rounded-xl border border-rose-200 px-4 py-3 text-left hover:bg-rose-50 transition">
-                    <div>
-                      <div className="text-sm font-semibold text-rose-700">For cause</div>
-                      <div className="text-xs text-muted-foreground mt-0.5">Student is suspended immediately. No automatic refund. Submitted for admin review.</div>
-                    </div>
-                  </button>
-                </div>
-                <button onClick={() => setRemoveTarget(null)} className="w-full px-4 py-2 rounded-xl border border-border text-sm text-muted-foreground hover:bg-muted">Cancel</button>
-              </>
-            ) : (
-              <>
-                <div>
-                  <button onClick={() => setRemoveCause(null)} className="text-xs text-muted-foreground hover:text-ink mb-3 inline-flex items-center gap-1">
-                    <ArrowLeft className="size-3" /> Back
-                  </button>
-                  <div className="font-bold text-ink">{removeCause === 'no_cause' ? 'No-cause removal' : 'For-cause removal'}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">Removing {removeTarget.student?.full_name ?? 'this student'}</div>
-                </div>
-
-                {removeCause === 'with_cause' && (
-                  <div>
-                    <label className="text-xs font-semibold text-ink">Reason category</label>
-                    <select value={removeForm.reason_category} onChange={(e) => setRemoveForm({ ...removeForm, reason_category: e.target.value })}
-                      className="mt-1 w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand">
-                      <option value="behavioral">Behavioral</option>
-                      <option value="non_payment">Non-payment</option>
-                      <option value="other">Other</option>
-                    </select>
-                  </div>
-                )}
-
-                <div>
-                  <label className="text-xs font-semibold text-ink">Explanation <span className="text-rose-500">*</span></label>
-                  <textarea value={removeForm.explanation} onChange={(e) => setRemoveForm({ ...removeForm, explanation: e.target.value })}
-                    placeholder={removeCause === 'no_cause' ? 'Reason for removal (visible to admin)…' : 'Describe the misconduct or violation in detail. This will be reviewed by admin.'}
-                    className="mt-1 w-full min-h-20 px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
-                </div>
-
-                {removeCause === 'with_cause' && (
-                  <div>
-                    <label className="text-xs font-semibold text-ink">Evidence URL <span className="font-normal text-muted-foreground">(optional)</span></label>
-                    <input value={removeForm.evidence_url} onChange={(e) => setRemoveForm({ ...removeForm, evidence_url: e.target.value })}
-                      placeholder="https://…"
-                      className="mt-1 w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
-                  </div>
-                )}
-
-                {removeError && <div className="text-xs text-rose-600 font-medium">{removeError}</div>}
-
-                {removeCause === 'no_cause' && (
-                  <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
-                    A pro-rata refund will be calculated based on remaining sessions in the current paid period and issued automatically.
-                  </div>
-                )}
-                {removeCause === 'with_cause' && (
-                  <div className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-xs text-rose-800">
-                    The student will be suspended immediately. This removal will be flagged for admin review before becoming final.
-                  </div>
-                )}
-
-                <div className="flex gap-2 justify-end">
-                  <button onClick={() => setRemoveTarget(null)} className="px-4 py-2 rounded-xl border border-border text-sm text-muted-foreground hover:bg-muted">Cancel</button>
-                  <button onClick={handleRemove} disabled={removing || !removeForm.explanation.trim()}
-                    className={cn('px-4 py-2 rounded-xl text-white text-sm font-semibold inline-flex items-center gap-1.5 disabled:opacity-50',
-                      removeCause === 'no_cause' ? 'bg-zinc-700 hover:bg-zinc-800' : 'bg-rose-600 hover:bg-rose-700')}>
-                    {removing
-                      ? <><span className="size-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />Removing…</>
-                      : 'Confirm removal'}
-                  </button>
-                </div>
-              </>
-            )}
+            <div>
+              <div className="font-bold text-ink">Remove {removeTarget.student?.full_name ?? 'this student'}?</div>
+              <div className="text-xs text-muted-foreground mt-0.5">
+                They will lose access immediately and a full refund for the current month will be submitted for admin approval.
+              </div>
+            </div>
+            <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
+              If the tutor payout was already released, iTutor will refund the student from company balance and recover the amount from the tutor&apos;s future earnings.
+            </div>
+            {removeError && <div className="text-xs text-rose-600 font-medium">{removeError}</div>}
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setRemoveTarget(null)} disabled={removing} className="px-4 py-2 rounded-xl border border-border text-sm text-muted-foreground hover:bg-muted disabled:opacity-50">Cancel</button>
+              <button onClick={handleRemove} disabled={removing}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold inline-flex items-center gap-1.5 disabled:opacity-50">
+                {removing
+                  ? <><span className="size-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />Removing…</>
+                  : 'Confirm removal'}
+              </button>
+            </div>
           </div>
         </div>
       )}
