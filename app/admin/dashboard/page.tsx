@@ -610,6 +610,21 @@ export default function AdminDashboardPage() {
             </Link>
 
             <Link
+              href="/admin/payout-cases"
+              className="flex items-center gap-4 p-6 border-2 border-gray-200 rounded-xl hover:border-amber-500 hover:bg-amber-50 transition-all group hover:shadow-lg"
+            >
+              <div className="bg-amber-100 rounded-lg p-4 group-hover:bg-amber-200 transition-colors">
+                <svg className="w-8 h-8 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900 text-lg">Payout Cases</h3>
+                <p className="text-sm text-gray-600">Review and resolve held tutor payouts</p>
+              </div>
+            </Link>
+
+            <Link
               href="/admin/refunds"
               className="flex items-center gap-4 p-6 border-2 border-gray-200 rounded-xl hover:border-rose-500 hover:bg-rose-50 transition-all group hover:shadow-lg"
             >
