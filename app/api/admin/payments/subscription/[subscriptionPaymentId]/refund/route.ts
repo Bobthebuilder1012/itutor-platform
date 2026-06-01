@@ -17,7 +17,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/middleware/adminAuth';
 import { getServiceClient } from '@/lib/supabase/server';
-import { getLunipayClient, ttdToCents } from '@/lib/payments/lunipayClient';
+import { LuniPayError } from 'lunipay';
+import { getLunipayClient } from '@/lib/payments/lunipayClient';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -64,23 +65,25 @@ export async function POST(
 
   // ── 2. LuniPay refund ────────────────────────────────────────────────────
   const lunipay = getLunipayClient();
-  const amountCents = ttdToCents(Number(sp.amount_ttd));
   let luniRefund: any;
 
   try {
-    luniRefund = await lunipay.refunds.create({
-      transaction_id: sp.lunipay_transaction_id,
-      amount: amountCents,
-      metadata: {
-        subscription_payment_id: sp.id,
-        admin_id: auth.user!.id,
-        reason: 'admin_subscription_refund',
-      },
-    });
+    luniRefund = await lunipay.payments.refund(
+      sp.lunipay_transaction_id,
+      {
+        reason: 'requested_by_customer',
+        metadata: {
+          subscription_payment_id: sp.id,
+          admin_id: auth.user!.id,
+          reason: 'admin_subscription_refund',
+        },
+      } as any
+    );
   } catch (err: any) {
+    const isApiError = err instanceof LuniPayError;
     console.error('[subscription refund] LuniPay error:', err);
     return NextResponse.json(
-      { error: 'LuniPay refund failed', details: err?.message },
+      { error: 'LuniPay refund failed', details: isApiError ? err.message : String(err) },
       { status: 502 }
     );
   }
