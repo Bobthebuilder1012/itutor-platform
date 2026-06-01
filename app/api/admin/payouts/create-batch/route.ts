@@ -16,6 +16,15 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 export async function POST(request: NextRequest) {
+  try {
+    return await handlePost(request);
+  } catch (err: any) {
+    console.error('[POST /api/admin/payouts/create-batch] unhandled error:', err);
+    return NextResponse.json({ error: err?.message ?? 'Internal server error' }, { status: 500 });
+  }
+}
+
+async function handlePost(request: NextRequest) {
   const auth = await requireAdmin('full');
   if (auth.error) return auth.error;
 
@@ -41,7 +50,7 @@ export async function POST(request: NextRequest) {
     .from('payout_ledger')
     .select('id, status, amount_ttd, tutor_id, batch_id')
     .in('subscription_payment_id', spIds)
-    .not('status', 'in', '("reversed","admin_hold","released")');
+    .not('status', 'in', '(reversed,admin_hold,released)');
 
   if (ledgerErr) {
     return NextResponse.json({ error: ledgerErr.message }, { status: 500 });

@@ -186,12 +186,11 @@ export default function StudentGroupPage({ params }: { params: { groupId: string
       const { data: grp } = await supabase
         .from('groups')
         .select(`
-          id, name, description, subject, subject_id, tutor_id, max_students,
+          id, name, description, subject, tutor_id, max_students,
           require_join_requests, feedback_mode, primary_channel,
           whatsapp_link, google_classroom_link, pricing, pricing_model,
           visibility, archived_at,
-          tutor:profiles!groups_tutor_id_fkey(full_name, display_name),
-          subject_data:subjects!subject_id(name, label)
+          tutor:profiles!groups_tutor_id_fkey(full_name, display_name)
         `)
         .eq('id', groupId)
         .is('archived_at', null)
