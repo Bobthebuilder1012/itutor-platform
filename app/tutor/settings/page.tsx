@@ -210,14 +210,20 @@ function SettingsContent() {
     if (!file || !profile) return;
     setError(''); setMessage(''); setUploading(true);
     try {
-      const path = `${profile.id}/avatar-${Date.now()}.${file.name.split('.').pop() || 'jpg'}`;
-      const { error: upErr } = await supabase.storage.from('avatars').upload(path, file, { upsert: true, cacheControl: '3600' });
+      const path = `${profile.id}/avatar.jpg`;
+      // Remove old avatar first to avoid CDN serving stale cached version
+      await supabase.storage.from('avatars').remove([path]);
+      const { error: upErr } = await supabase.storage.from('avatars').upload(path, file, {
+        contentType: file.type || 'image/jpeg',
+        upsert: true,
+      });
       if (upErr) throw new Error(upErr.message);
       const { data } = supabase.storage.from('avatars').getPublicUrl(path);
-      const url = data.publicUrl;
+      // Add cache-busting timestamp so browsers don't serve the old cached image
+      const url = `${data.publicUrl}?t=${Date.now()}`;
       const { error: updErr } = await supabase.from('profiles').update({ avatar_url: url }).eq('id', profile.id);
       if (updErr) throw new Error(updErr.message);
-      setMessage('Avatar updated!');
+      setMessage('Profile photo updated!');
       setTimeout(() => window.location.reload(), 800);
     } catch (e2) {
       setError((e2 as Error).message);
@@ -303,6 +309,7 @@ function SettingsContent() {
                 <div className="font-semibold text-ink">Manage availability</div>
                 <div className="text-xs text-muted-foreground mt-1">Set your weekly schedule and time-off blocks.</div>
               </Link>
+              <Pause1on1Toggle tutorId={profile?.id ?? ''} />
               <Link href="/tutor/get-listed" className="block rounded-xl border border-border p-4 hover:bg-muted transition">
                 <div className="font-semibold text-ink">Manage subjects & rates</div>
                 <div className="text-xs text-muted-foreground mt-1">Add, remove or update the subjects you teach and their pricing.</div>
@@ -685,5 +692,40 @@ function PayoutAccountForm() {
 
       <SaveBar onSave={save} saving={saving} label={hasAccount ? 'Update bank details' : 'Save bank details'} />
     </>
+  );
+}
+
+function Pause1on1Toggle({ tutorId }: { tutorId: string }) {
+  const [paused, setPaused] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!tutorId) return;
+    supabase.from('profiles').select('pause_1on1').eq('id', tutorId).single()
+      .then(({ data }) => { if (data) setPaused(!!(data as any).pause_1on1); });
+  }, [tutorId]);
+
+  const toggle = async () => {
+    setSaving(true);
+    const next = !paused;
+    await supabase.from('profiles').update({ pause_1on1: next } as any).eq('id', tutorId);
+    setPaused(next);
+    setSaving(false);
+  };
+
+  return (
+    <div className={`rounded-xl border p-4 flex items-start justify-between gap-4 ${paused ? 'border-amber-200 bg-amber-50' : 'border-border'}`}>
+      <div>
+        <div className="font-semibold text-ink text-sm">Pause 1:1 bookings</div>
+        <div className="text-xs text-muted-foreground mt-0.5">
+          {paused ? 'You are hidden from the 1:1 tutor marketplace.' : 'You are visible to students for 1:1 bookings.'}
+        </div>
+      </div>
+      <button disabled={saving} onClick={toggle}
+        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors disabled:opacity-50 ${paused ? 'bg-amber-500' : 'bg-brand'}`}
+        role="switch" aria-checked={paused}>
+        <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${paused ? 'translate-x-5' : 'translate-x-0'}`} />
+      </button>
+    </div>
   );
 }

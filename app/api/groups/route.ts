@@ -89,10 +89,10 @@ export async function GET(request: NextRequest) {
     const SELECT_TIERS = [
       // Tier 1: full column set (requires migrations 128-132)
       `id, name, description, tutor_id, subject, pricing, pricing_model, created_at,
-       visibility, primary_channel, whatsapp_url, google_classroom_link,
+       visibility, primary_channel, whatsapp_url, whatsapp_link, google_classroom_link,
        max_students, parent_feedback_mode, parent_feedback_price,
        require_join_requests, auto_suspend_missed_payment, grace_period_days,
-       archived_at, archived_reason,
+       archived_at, archived_reason, cover_image, form_level, session_length_minutes, schedule_display, schedule_data,
        tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, rating_average, rating_count),
        group_members(id, user_id, status)`,
       // Tier 2: drop columns likely missing (parent_feedback_mode → feedback_mode, no archived_reason/whatsapp_url)

@@ -12,6 +12,7 @@ import UserAvatar from '@/components/UserAvatar';
 import { cn } from '@/lib/utils';
 import { Search, Star, Heart, Calendar, Clock, SlidersHorizontal, Users, GraduationCap, Flame, X, Check, Video } from 'lucide-react';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
+import { parseScheduleData, scheduleToDisplay } from '@/lib/utils/scheduleFormat';
 
 type Tutor = {
   id: string;
@@ -65,6 +66,9 @@ type GroupLesson = {
   tags: string[];
   color: string;
   emoji: string;
+  description?: string | null;
+  coverImage?: string | null;
+  requireJoinRequests?: boolean;
 };
 
 function formatDuration(mins: number) {
@@ -170,7 +174,7 @@ export default function FindTutorsPage() {
       let tutorProfiles: Record<string, unknown>[] | null = null;
       let profilesError: { message: string; code?: string; details?: string } | null = null;
       for (const cols of tutorSelectTiers) {
-        const res = await supabase.from('profiles').select(cols).eq('role', 'tutor');
+        const res = await supabase.from('profiles').select(cols).eq('role', 'tutor').or('pause_1on1.is.null,pause_1on1.eq.false');
         if (!res.error) {
           tutorProfiles = (res.data ?? []) as unknown as Record<string, unknown>[];
           profilesError = null;
@@ -441,7 +445,11 @@ export default function FindTutorsPage() {
           tutorHue: 145,
           subject: g.subject || 'General',
           level: g.form_level || g.difficulty || '',
-          day: 'Schedule TBD',
+          day: (() => {
+            const entries = parseScheduleData(g.schedule_data);
+            if (entries.length) return scheduleToDisplay(entries);
+            return g.schedule_display || 'Schedule TBD';
+          })(),
           time: '',
           monthlyPrice: Number(g.price_monthly ?? g.price_per_session ?? g.price_per_course ?? 0),
           seats: { taken: memberCountMap.get(g.id) ?? 0, total: g.max_students ?? null },
@@ -450,8 +458,51 @@ export default function FindTutorsPage() {
           tags: [],
           color,
           emoji,
+          description: g.description ?? null,
+          coverImage: g.cover_image ?? null,
+          requireJoinRequests: g.require_join_requests ?? false,
         };
       });
+
+      // Batch-fetch sessions to get schedule for groups without a manual schedule_display
+      try {
+        const groupIds = groups.filter((g: any) => !g.schedule_display).map((g: any) => g.id);
+        if (!groupIds.length) { setGroupLessons(mapped); return; }
+        const { data: sessions } = await supabase
+          .from('group_sessions')
+          .select('group_id, start_time, recurrence_type, recurrence_days, duration_minutes')
+          .in('group_id', groupIds)
+          .neq('recurrence_type', 'NONE')
+          .order('created_at', { ascending: true });
+
+        if (sessions?.length) {
+          const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+          const sessionByGroup = new Map<string, any>();
+          for (const s of sessions) {
+            if (!sessionByGroup.has(s.group_id)) sessionByGroup.set(s.group_id, s);
+          }
+
+          setGroupLessons(mapped.map((l) => {
+            const s = sessionByGroup.get(l.id);
+            if (!s) return l;
+            const days = Array.isArray(s.recurrence_days) && s.recurrence_days.length
+              ? s.recurrence_days.map((d: number) => dayNames[d] ?? '').filter(Boolean).join(', ')
+              : s.recurrence_type === 'DAILY' ? 'Daily' : null;
+            const time = s.start_time
+              ? new Date(`2000-01-01T${s.start_time}`).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+              : '';
+            const durMin = s.duration_minutes ?? l.sessionLength;
+            const durLabel = durMin ? (durMin < 60 ? `${durMin}m` : durMin % 60 === 0 ? `${durMin / 60}h` : `${Math.floor(durMin / 60)}h ${durMin % 60}m`) : '';
+            return {
+              ...l,
+              day: days || 'Schedule TBD',
+              time,
+              sessionLength: durMin ?? l.sessionLength,
+            };
+          }));
+          return;
+        }
+      } catch { /* non-critical */ }
 
       setGroupLessons(mapped);
     } catch (err) {
@@ -466,7 +517,7 @@ export default function FindTutorsPage() {
     if (!joinLesson || !profile) return;
     if (enrolledLessonIds.has(joinLesson.id)) {
       setJoinLesson(null);
-      router.push('/student/my-lessons');
+      router.push('/student/classes');
       return;
     }
     setJoiningLesson(true);
@@ -502,7 +553,7 @@ export default function FindTutorsPage() {
         if (status === 'pending_approval' || status === 'pending') {
           alert('Your join request has been sent. The tutor will approve it shortly.');
         }
-        router.push('/student/my-lessons');
+        router.push('/student/classes');
       }
     } catch (err: any) {
       console.error('Error joining lesson:', err);
@@ -815,7 +866,8 @@ export default function FindTutorsPage() {
                 const pctFull = l.seats.total ? Math.round((l.seats.taken / l.seats.total) * 100) : null;
                 return (
                   <div key={l.id} className={cn('group rounded-3xl bg-background border overflow-hidden hover:shadow-card transition-all hover:-translate-y-0.5 flex flex-col', enrolledLessonIds.has(l.id) ? 'border-brand/40' : 'border-border')}>
-                    <div className={`relative h-24 bg-gradient-to-br ${l.color} flex items-end p-3`}>
+                    <div className={`relative h-24 flex items-end p-3 ${l.coverImage ? '' : `bg-gradient-to-br ${l.color}`}`}
+                      style={l.coverImage ? { backgroundImage: `url(${l.coverImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}>
                       {enrolledLessonIds.has(l.id) && (
                         <div className="absolute top-2.5 left-2.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-brand text-white">
                           Enrolled
@@ -833,36 +885,55 @@ export default function FindTutorsPage() {
                       <div>
                         <div className="flex items-center justify-between gap-2">
                           <h3 className="font-semibold text-ink leading-tight">{l.title}</h3>
-                          <div className="flex items-center gap-1 text-sm shrink-0">
-                            <Star className="size-3.5 fill-coral text-coral" />
-                            <span className="font-semibold">{l.rating}</span>
-                          </div>
+                          {l.rating > 0 && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-bold tabular-nums shrink-0">
+                              <Star className="size-3 fill-amber-500 text-amber-500" />
+                              {l.rating.toFixed(1)}
+                            </span>
+                          )}
                         </div>
                         <div className="mt-1.5 inline-flex items-center gap-2">
                           <TutorInitialAvatar name={l.tutor} size={22} />
                           <span className="text-sm text-muted-foreground">by {l.tutor}</span>
                         </div>
-                        <div className="text-xs text-muted-foreground mt-1">{l.subject} · {l.level}</div>
+                        <div className="text-xs text-muted-foreground mt-1">{l.subject}{l.level ? ` · ${l.level}` : ''}</div>
+                        {l.description && (
+                          <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">{l.description}</p>
+                        )}
                       </div>
 
-                      {(lowStock || full) && (
-                        <div className={cn('inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full self-start', full ? 'bg-muted text-muted-foreground' : 'bg-coral-soft text-coral')}>
-                          <Flame className="size-3.5" />
-                          {full ? 'Lesson full · join waitlist' : `Only ${remaining} spot${remaining === 1 ? '' : 's'} left!`}
-                        </div>
-                      )}
+                      <div className="flex flex-wrap gap-1.5">
+                        {l.requireJoinRequests && !enrolledLessonIds.has(l.id) && (
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border border-border bg-muted text-muted-foreground">
+                            Approval required
+                          </span>
+                        )}
+                        {(lowStock || full) && (
+                          <div className={cn('inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full', full ? 'bg-muted text-muted-foreground' : 'bg-coral-soft text-coral')}>
+                            <Flame className="size-3.5" />
+                            {full ? 'Class full' : `Only ${remaining} spot${remaining === 1 ? '' : 's'} left!`}
+                          </div>
+                        )}
+                      </div>
 
                       <div className="space-y-1.5 text-xs">
-                        <div className="flex items-center gap-1.5 text-brand-deep font-medium">
-                          <Calendar className="size-3.5" /> {l.day}
-                        </div>
-                        {l.time && (
+                        {/* Schedule — structured (contains "–") or plain fallback */}
+                        {l.day !== 'Schedule TBD' ? (
+                          <div className="text-muted-foreground whitespace-pre-line leading-relaxed">{l.day}</div>
+                        ) : (
+                          <div className="flex items-center gap-1.5 text-muted-foreground">
+                            <Calendar className="size-3.5 shrink-0" />
+                            <span>Schedule TBD</span>
+                          </div>
+                        )}
+                        {/* Only show separate time/duration for legacy auto-derived schedules without a range */}
+                        {l.time && !l.day.includes('–') && (
                           <div className="flex items-center gap-1.5 text-muted-foreground">
                             <Clock className="size-3.5" /> {l.time}
                             {l.sessionLength && <span className="text-muted-foreground/70">· {formatDuration(l.sessionLength)}</span>}
                           </div>
                         )}
-                        {!l.time && l.sessionLength && (
+                        {!l.time && l.sessionLength && !l.day.includes('–') && (
                           <div className="flex items-center gap-1.5 text-muted-foreground">
                             <Clock className="size-3.5" /> {formatDuration(l.sessionLength)} per session
                           </div>
@@ -893,19 +964,18 @@ export default function FindTutorsPage() {
                         </div>
                         {enrolledLessonIds.has(l.id) ? (
                           <Link
-                            href={`/student/groups/${l.id}`}
+                            href={`/student/classes/${l.id}`}
                             className="px-3 py-1.5 rounded-xl bg-brand-soft text-forest text-xs font-semibold hover:bg-brand/20 transition"
                           >
                             Open Class
                           </Link>
                         ) : (
-                          <button
-                            onClick={() => setJoinLesson(l)}
-                            disabled={full}
-                            className="px-3 py-1.5 rounded-xl bg-brand text-white text-xs font-semibold hover:bg-brand-deep transition disabled:opacity-50"
+                          <Link
+                            href={`/student/explore/${l.id}`}
+                            className="px-3 py-1.5 rounded-xl bg-brand text-white text-xs font-semibold hover:bg-brand-deep transition"
                           >
-                            {full ? 'Waitlist' : 'Join lesson'}
-                          </button>
+                            {full ? 'Join waitlist' : l.requireJoinRequests ? 'Request to join' : 'Join class'}
+                          </Link>
                         )}
                       </div>
                     </div>
@@ -961,11 +1031,17 @@ export default function FindTutorsPage() {
                       </div>
 
                       <div className="flex items-center gap-2 mt-1.5 text-xs">
-                        <span className="inline-flex items-center gap-1 font-semibold text-ink">
-                          <Star className="size-3 fill-coral text-coral" />
-                          {tutor.average_rating !== null ? tutor.average_rating.toFixed(1) : '—'}
-                        </span>
-                        {tutor.total_reviews > 0 && <span className="text-muted-foreground">({tutor.total_reviews})</span>}
+                        {tutor.average_rating !== null ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold tabular-nums">
+                            <Star className="size-3 fill-amber-500 text-amber-500" />
+                            {tutor.average_rating.toFixed(1)}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-muted-foreground font-semibold">
+                            <Star className="size-3 text-muted-foreground" /> —
+                          </span>
+                        )}
+                        {tutor.total_reviews > 0 && <span className="text-muted-foreground">({tutor.total_reviews} reviews)</span>}
                       </div>
 
                       {tutor.bio && <p className="text-xs text-muted-foreground mt-2 line-clamp-1">{tutor.bio}</p>}

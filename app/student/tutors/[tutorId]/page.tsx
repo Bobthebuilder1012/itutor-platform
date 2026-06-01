@@ -467,9 +467,6 @@ export default function TutorProfilePage() {
                 <button onClick={() => setSaved((s) => !s)} className="size-10 rounded-full border border-border bg-background grid place-items-center hover:bg-muted">
                   <Heart className={cn('size-4', saved && 'fill-coral text-coral')} />
                 </button>
-                <button onClick={() => router.push('/student/messages')} className="hidden sm:inline-flex items-center gap-2 px-4 py-2.5 rounded-full border border-border font-semibold text-sm hover:bg-muted">
-                  <MessageSquare className="size-4" /> Message
-                </button>
               </div>
             </div>
 

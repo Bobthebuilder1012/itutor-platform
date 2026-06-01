@@ -5,7 +5,7 @@ type Params = { params: Promise<{ groupId: string }> };
 function isSchemaMismatch(error: any): boolean {
   const code = String(error?.code ?? '');
   const msg = String(error?.message ?? '').toLowerCase();
-  return code === '42703' || code === '42P01' || code === 'PGRST205' || msg.includes('does not exist');
+  return code === '42703' || code === '42P01' || code === 'PGRST200' || code === 'PGRST205' || msg.includes('does not exist') || msg.includes('relationship') || msg.includes('embed');
 }
 
 // GET /api/groups/[groupId]/members — list members (tutor sees all, members see approved)
@@ -33,7 +33,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
     let query: any = service
       .from('group_members')
-      .select('id, group_id, user_id, status, joined_at, profile:profiles(id, full_name, avatar_url, role)')
+      .select('id, group_id, user_id, status, joined_at, profile:profiles!group_members_user_id_fkey(id, full_name, avatar_url, role, email)')
       .eq('group_id', groupId)
       .order('joined_at', { ascending: true });
 
@@ -43,13 +43,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
     let { data: members, error } = await query;
     if (error && isSchemaMismatch(error)) {
+      // Fallback: drop role column + try without FK hint
       query = service
         .from('group_members')
-        .select('id, group_id, user_id, status, joined_at, profile:profiles(id, full_name, avatar_url)')
+        .select('id, group_id, user_id, status, joined_at, profile:profiles!group_members_user_id_fkey(id, full_name, avatar_url, email, phone)')
         .eq('group_id', groupId)
         .order('joined_at', { ascending: true });
       if (!isTutor) {
-        query = query.eq('status', 'approved');
+        query = query.in('status', ['approved', 'active', 'invited']);
       }
       ({ data: members, error } = await query);
     }
@@ -101,7 +102,8 @@ export async function POST(_req: NextRequest, { params }: Params) {
       .eq('user_id', user.id)
       .maybeSingle();
 
-    if (existing) {
+    // Active/pending/invited membership — block duplicate
+    if (existing && !['removed', 'banned', 'denied'].includes(existing.status)) {
       return NextResponse.json({ member: existing, already_exists: true });
     }
 
@@ -114,30 +116,45 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
     const initialStatus = groupSettings?.require_join_requests ? 'pending' : 'approved';
 
-    const { data: member, error } = await service
-      .from('group_members')
-      .insert({ group_id: groupId, user_id: user.id, status: initialStatus })
-      .select()
-      .single();
+    // Reuse existing row (update) if the student previously left/was removed
+    let member: any;
+    let error: any;
+    if (existing) {
+      ({ data: member, error } = await service
+        .from('group_members')
+        .update({ status: initialStatus, joined_at: new Date().toISOString(), action_reason: null, actioned_at: null, actioned_by: null })
+        .eq('id', existing.id)
+        .select()
+        .single());
+    } else {
+      ({ data: member, error } = await service
+        .from('group_members')
+        .insert({ group_id: groupId, user_id: user.id, status: initialStatus })
+        .select()
+        .single());
+    }
 
     if (error) throw error;
 
     // Notify tutor of new join request (non-critical)
     try {
-      const groupName = (group as { name?: string }).name ?? 'your class';
-      const { data: studentProfile } = await service.from('profiles').select('full_name').eq('id', user.id).single();
-      const studentName = (studentProfile as { full_name?: string } | null)?.full_name ?? 'A student';
+      const groupName = (group as any)?.name ?? 'your class';
+      const { data: studentProfile } = await service.from('profiles').select('full_name, display_name').eq('id', user.id).single();
+      const studentName = (studentProfile as any)?.display_name || (studentProfile as any)?.full_name || 'A student';
+      const isRequest = initialStatus === 'pending';
       await service.from('notifications').insert({
         user_id: group.tutor_id,
-        type: 'new_class_member',
-        title: 'New Student',
-        message: `${studentName} requested to join "${groupName}".`,
-        link: `/lessons/${groupId}`,
+        type: isRequest ? 'join_request' : 'new_class_member',
+        title: isRequest ? `${studentName} wants to join ${groupName}` : `${studentName} joined ${groupName}`,
+        message: isRequest
+          ? `${studentName} has requested to join your class "${groupName}". Go to the Roster to approve or decline.`
+          : `${studentName} has joined "${groupName}".`,
+        link: `/tutor/classes/${groupId}?tab=roster`,
         group_id: groupId,
         metadata: { groupId, studentId: user.id },
       });
     } catch {
-      // Non-critical: notifications table may use a different name
+      // Non-critical
     }
 
     return NextResponse.json({ member }, { status: 201 });

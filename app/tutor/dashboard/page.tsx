@@ -27,8 +27,9 @@ type UpcomingSession = {
   subject: string;
   studentName: string;
   durationMin: number;
-  type: string;
+  type: '1-on-1' | 'Group class';
   joinUrl: string | null;
+  groupId?: string;
 };
 
 type ActivityItem = {
@@ -53,6 +54,7 @@ function DashboardContent() {
   const [stats, setStats] = useState<DashboardStats>({ activeStudents: 0, upcomingSessions: 0, monthEarnings: 0, profileViews: 0 });
   const [upcoming, setUpcoming] = useState<UpcomingSession[]>([]);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
+  const [joinRequests, setJoinRequests] = useState<{ id: string; studentId: string; studentName: string; groupId: string; groupName: string; joinedAt: string }[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
 
   useEffect(() => {
@@ -63,6 +65,17 @@ function DashboardContent() {
   useEffect(() => {
     if (!profile?.id) return;
     fetchDashboardData(profile.id);
+
+    // Realtime: refresh when join requests change
+    const channel = supabase
+      .channel(`dashboard-${profile.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'group_members' },
+        () => { fetchDashboardData(profile.id); })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'group_members' },
+        () => { fetchDashboardData(profile.id); })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [profile?.id]);
 
   async function fetchDashboardData(tutorId: string) {
@@ -98,7 +111,7 @@ function DashboardContent() {
         .filter((h) => h.status === 'paid' && h.released_at && new Date(h.released_at).getTime() >= monthStartMs)
         .reduce((sum: number, h: any) => sum + Number(h.amount_ttd ?? 0), 0);
 
-      const upcomingMapped: UpcomingSession[] = (upcomingData ?? []).map((s: any) => {
+      const oneOnOneSessions: UpcomingSession[] = (upcomingData ?? []).map((s: any) => {
         const booking = Array.isArray(s.booking) ? s.booking[0] : s.booking;
         const studentProfile = booking?.profiles ? (Array.isArray(booking.profiles) ? booking.profiles[0] : booking.profiles) : null;
         const subject = booking?.subjects ? (Array.isArray(booking.subjects) ? booking.subjects[0] : booking.subjects) : null;
@@ -112,11 +125,37 @@ function DashboardContent() {
           joinUrl: s.join_url ?? null,
         };
       });
-      setUpcoming(upcomingMapped);
+
+      // Fetch upcoming group class sessions via API (bypasses RLS)
+      const groupSessions: UpcomingSession[] = [];
+      try {
+        const res = await fetch('/api/tutor/upcoming-class-sessions', { cache: 'no-store' });
+        if (res.ok) {
+          const json = await res.json();
+          for (const s of json.sessions ?? []) {
+            groupSessions.push({
+              id: s.id,
+              date: s.date,
+              subject: s.className,
+              studentName: s.className,
+              durationMin: s.durationMin,
+              type: 'Group class',
+              joinUrl: s.joinUrl ?? null,
+              groupId: s.groupId,
+            });
+          }
+        }
+      } catch { /* non-critical */ }
+
+      const allUpcoming = [...oneOnOneSessions, ...groupSessions]
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        .slice(0, 8);
+
+      setUpcoming(allUpcoming);
 
       setStats({
         activeStudents: studentCount ?? 0,
-        upcomingSessions: upcomingMapped.length,
+        upcomingSessions: allUpcoming.length,
         monthEarnings: monthTotal,
         profileViews: 0,
       });
@@ -134,6 +173,15 @@ function DashboardContent() {
         .eq('tutor_id', tutorId)
         .order('created_at', { ascending: false })
         .limit(3);
+
+      // Fetch pending join requests — use API to bypass RLS issues
+      try {
+        const res = await fetch('/api/tutor/pending-join-requests', { cache: 'no-store' });
+        if (res.ok) {
+          const json = await res.json();
+          setJoinRequests(json.requests ?? []);
+        }
+      } catch { /* non-critical */ }
 
       const acts: ActivityItem[] = [];
       (recentRatings ?? []).forEach((r: any) => {
@@ -188,6 +236,33 @@ function DashboardContent() {
         </div>
       </section>
 
+      {/* Join requests banner */}
+      {joinRequests.length > 0 && (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="size-8 rounded-lg bg-amber-100 grid place-items-center shrink-0">
+              <Clock className="size-4 text-amber-700" />
+            </div>
+            <div className="flex-1">
+              <div className="font-bold text-amber-900 text-sm">
+                {joinRequests.length} pending join request{joinRequests.length !== 1 ? 's' : ''}
+              </div>
+              <div className="text-xs text-amber-700">Students are waiting for your approval.</div>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {joinRequests.map((r) => (
+              <JoinRequestRow
+                key={r.id}
+                request={r}
+                onApprove={() => setJoinRequests((prev) => prev.filter((x) => x.id !== r.id))}
+                onDecline={() => setJoinRequests((prev) => prev.filter((x) => x.id !== r.id))}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
       <section>
         <ReliabilityPanel role="tutor" />
       </section>
@@ -214,19 +289,29 @@ function DashboardContent() {
             <ul className="divide-y divide-border">
               {upcoming.map((s) => {
                 const d = new Date(s.date);
+                const isGroup = s.type === 'Group class';
                 return (
                   <li key={s.id} className="px-5 py-3 flex items-center gap-3 hover:bg-muted/40 transition">
-                    <div className="size-9 rounded-lg bg-brand/10 text-brand-deep grid place-items-center text-xs font-bold tabular-nums shrink-0">
+                    <div className={cn('size-9 rounded-lg grid place-items-center text-xs font-bold tabular-nums shrink-0',
+                      isGroup ? 'bg-emerald-50 text-emerald-700' : 'bg-brand/10 text-brand-deep')}>
                       {d.getDate()}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-semibold text-ink truncate">{s.subject}</div>
                       <div className="text-xs text-muted-foreground truncate">
-                        {s.studentName} · {d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · {d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · {s.durationMin}m
+                        {d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · {d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · {s.durationMin}m
                       </div>
                     </div>
-                    <span className="hidden sm:inline-flex text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{s.type}</span>
-                    {s.joinUrl ? (
+                    <span className={cn('hidden sm:inline-flex text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full',
+                      isGroup ? 'bg-emerald-100 text-emerald-700' : 'bg-muted text-muted-foreground')}>
+                      {s.type}
+                    </span>
+                    {isGroup && s.groupId ? (
+                      <Link href={`/tutor/classes/${s.groupId}`}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-semibold hover:bg-muted">
+                        View class
+                      </Link>
+                    ) : s.joinUrl ? (
                       <a href={s.joinUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90">
                         <Video className="size-3" /> Join
                       </a>
@@ -324,6 +409,48 @@ function QuickAction({ to, icon: Icon, label, gated }: { to: string; icon: Compo
       <span className="flex-1 text-left">{label}</span>
       <ArrowRight className="size-3.5 text-muted-foreground" />
     </Link>
+  );
+}
+
+function JoinRequestRow({ request, onApprove, onDecline }: {
+  request: { id: string; studentId: string; studentName: string; groupId: string; groupName: string };
+  onApprove: () => void;
+  onDecline: () => void;
+}) {
+  const [loading, setLoading] = useState<'approve' | 'decline' | null>(null);
+
+  const act = async (status: 'approved' | 'removed', cb: () => void) => {
+    setLoading(status === 'approved' ? 'approve' : 'decline');
+    try {
+      const res = await fetch(`/api/groups/${request.groupId}/members/${request.studentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      if (res.ok) cb();
+    } catch { /* silent */ } finally { setLoading(null); }
+  };
+
+  return (
+    <div className="flex items-center gap-3 bg-white rounded-xl px-3 py-2.5 border border-amber-200">
+      <div className="size-8 rounded-full bg-gradient-to-br from-brand to-emerald-400 grid place-items-center text-white text-xs font-bold shrink-0">
+        {request.studentName.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="font-semibold text-ink text-sm truncate">{request.studentName}</div>
+        <div className="text-xs text-muted-foreground truncate">wants to join <Link href={`/tutor/classes/${request.groupId}`} className="text-brand-deep hover:underline">{request.groupName}</Link></div>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <button disabled={loading !== null} onClick={() => act('removed', onDecline)}
+          className="px-2.5 py-1.5 rounded-lg border border-border text-xs font-semibold hover:bg-muted disabled:opacity-50">
+          {loading === 'decline' ? '…' : 'Decline'}
+        </button>
+        <button disabled={loading !== null} onClick={() => act('approved', onApprove)}
+          className="px-2.5 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90 disabled:opacity-50">
+          {loading === 'approve' ? '…' : 'Approve'}
+        </button>
+      </div>
+    </div>
   );
 }
 

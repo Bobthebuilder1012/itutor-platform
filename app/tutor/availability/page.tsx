@@ -10,6 +10,7 @@ import {
   upsertAvailabilityRule,
   deleteAvailabilityRule,
 } from '@/lib/services/bookingService';
+import { supabase } from '@/lib/supabase/client';
 import { TutorAvailabilityRule } from '@/lib/types/booking';
 import TutorShell from '@/components/tutor/TutorShell';
 
@@ -77,11 +78,15 @@ function AvailabilityContent() {
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [dataLoading, setDataLoading] = useState(true);
+  const [pause1on1, setPause1on1] = useState(false);
+  const [pauseSaving, setPauseSaving] = useState(false);
 
   useEffect(() => {
     if (loading) return;
     if (!profile || profile.role !== 'tutor') { router.push('/login'); return; }
     loadRules(profile.id);
+    supabase.from('profiles').select('pause_1on1').eq('id', profile.id).single()
+      .then(({ data }) => { if (data) setPause1on1(!!(data as any).pause_1on1); });
   }, [profile, loading, router]);
 
   async function loadRules(tutorId: string) {
@@ -144,6 +149,33 @@ function AvailabilityContent() {
         <h1 className="text-2xl lg:text-3xl font-bold text-ink">Weekly availability</h1>
         <p className="text-sm text-muted-foreground mt-1">Click slots to mark when you're available to teach. Timezone: AST (Trinidad).</p>
       </header>
+
+      {/* 1:1 listing toggle */}
+      <div className={`rounded-2xl border p-4 flex items-start justify-between gap-4 ${pause1on1 ? 'border-amber-200 bg-amber-50' : 'border-border bg-card'}`}>
+        <div>
+          <div className="font-semibold text-ink text-sm">Pause 1:1 bookings</div>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {pause1on1
+              ? 'You are hidden from the 1:1 tutor marketplace. Students cannot book 1:1 sessions with you.'
+              : 'You are visible in the 1:1 tutor marketplace. Students can book sessions with you.'}
+          </p>
+        </div>
+        <button
+          disabled={pauseSaving}
+          onClick={async () => {
+            setPauseSaving(true);
+            const next = !pause1on1;
+            await supabase.from('profiles').update({ pause_1on1: next } as any).eq('id', profile!.id);
+            setPause1on1(next);
+            setPauseSaving(false);
+          }}
+          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none disabled:opacity-50 ${pause1on1 ? 'bg-amber-500' : 'bg-brand'}`}
+          role="switch"
+          aria-checked={pause1on1}
+        >
+          <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition-transform ${pause1on1 ? 'translate-x-5' : 'translate-x-0'}`} />
+        </button>
+      </div>
 
       <div className="rounded-2xl border border-border bg-card p-5 space-y-4">
         <div className="flex justify-end">

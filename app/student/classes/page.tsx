@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowRight, Users, BookOpen, Search } from 'lucide-react';
+import { ArrowRight, Users, BookOpen, Search, Star } from 'lucide-react';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
@@ -16,6 +16,8 @@ type Lesson = {
   tutorName: string;
   subject: string;
   gradient: string;
+  tutorRating?: number | null;
+  reviewCount?: number | null;
 };
 
 const GRADIENTS = [
@@ -41,7 +43,7 @@ function gradientForSubject(subject: string, index: number): string {
   return GRADIENTS[index % GRADIENTS.length];
 }
 
-export default function MyLessonsPage() {
+export default function MyClassesPage() {
   const { profile, loading: profileLoading } = useProfile();
   const router = useRouter();
   const [lessons, setLessons] = useState<Lesson[]>([]);
@@ -79,11 +81,13 @@ export default function MyLessonsPage() {
         result.push({
           key: `group-${grp.id}`,
           type: 'group',
-          href: `/student/my-lessons/${grp.id}`,
+          href: `/student/classes/${grp.id}`,
           title: grp.name,
           subject: grp.subject || '',
           tutorName: tutor?.display_name || tutor?.full_name || 'Unknown Tutor',
           gradient: gradientForSubject(grp.subject || grp.name || '', idx++),
+          tutorRating: grp.average_rating ?? tutor?.rating_average ?? null,
+          reviewCount: grp.review_count ?? tutor?.rating_count ?? null,
         });
       }
 
@@ -186,9 +190,18 @@ export default function MyLessonsPage() {
                     <div className="flex items-center justify-between mt-auto pt-3 border-t border-border mt-3">
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                         <Users className="size-3.5" />
-                        <span className="truncate max-w-[130px]">{l.tutorName}</span>
+                        <span className="truncate max-w-[110px]">{l.tutorName}</span>
                       </div>
-                      <ArrowRight className="size-4 text-brand group-hover:translate-x-0.5 transition" />
+                      <div className="flex items-center gap-1.5">
+                        {l.tutorRating != null && l.tutorRating > 0 && (
+                          <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-bold tabular-nums">
+                            <Star className="size-3 fill-amber-500 text-amber-500" />
+                            {l.tutorRating.toFixed(1)}
+                            {l.reviewCount ? <span className="font-normal text-amber-700/70 ml-0.5">({l.reviewCount})</span> : null}
+                          </span>
+                        )}
+                        <ArrowRight className="size-4 text-brand group-hover:translate-x-0.5 transition" />
+                      </div>
                     </div>
                   </div>
                 </Link>

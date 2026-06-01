@@ -44,27 +44,30 @@ export async function GET(_req: NextRequest, { params }: Params) {
         require_join_requests, auto_suspend_missed_payment, grace_period_days,
         visibility, parent_feedback_mode, parent_feedback_price, member_service_fee,
         tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, response_time_minutes),
-        group_members(id, user_id, status, profile:profiles(id, full_name, avatar_url))
+        group_members(id, user_id, status, profile:profiles!group_members_user_id_fkey(id, full_name, avatar_url))
       `,
       `
         id, name, description, tutor_id, subject, pricing, created_at, archived_at,
         form_level, topic, session_length_minutes, session_frequency, price_per_course, pricing_mode, availability_window,
-        cover_image, header_image, whatsapp_url, google_classroom_link, primary_channel, meeting_link,
+        max_students, price_per_session, price_monthly, cover_image, whatsapp_url, whatsapp_link,
+        google_classroom_link, primary_channel, meeting_link, schedule_display, schedule_data,
         require_join_requests, auto_suspend_missed_payment, grace_period_days,
-        visibility, parent_feedback_mode, parent_feedback_price,
+        visibility, parent_feedback_mode, parent_feedback_price, feedback_mode, status,
         tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url),
-        group_members(id, user_id, status, profile:profiles(id, full_name, avatar_url))
+        group_members(id, user_id, status, profile:profiles!group_members_user_id_fkey(id, full_name, avatar_url))
       `,
       `
         id, name, description, tutor_id, subject, pricing, created_at,
-        cover_image, header_image, whatsapp_url,
+        max_students, price_per_session, price_monthly, cover_image, whatsapp_url, whatsapp_link,
+        google_classroom_link, schedule_display, schedule_data, require_join_requests, visibility, status,
         tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url),
-        group_members(id, user_id, status, profile:profiles(id, full_name, avatar_url))
+        group_members(id, user_id, status, profile:profiles!group_members_user_id_fkey(id, full_name, avatar_url))
       `,
       `
         id, name, description, tutor_id, subject, pricing, created_at,
+        max_students, price_per_session, price_monthly, require_join_requests, visibility,
         tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url),
-        group_members(id, user_id, status, profile:profiles(id, full_name, avatar_url))
+        group_members(id, user_id, status, profile:profiles!group_members_user_id_fkey(id, full_name, avatar_url))
       `,
     ];
 
@@ -368,6 +371,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (body.timezone !== undefined) updates.timezone = body.timezone;
     if (body.max_students !== undefined) updates.max_students = body.max_students;
     if (body.cover_image !== undefined) updates.cover_image = body.cover_image;
+    if ((body as any).schedule_display !== undefined) updates.schedule_display = (body as any).schedule_display;
+    if ((body as any).schedule_data !== undefined) updates.schedule_data = (body as any).schedule_data;
     if (body.header_image !== undefined) updates.header_image = body.header_image;
     if (body.content_blocks !== undefined) updates.content_blocks = body.content_blocks;
     if (body.status !== undefined) updates.status = body.status;

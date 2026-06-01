@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Video, MessageSquare, CheckCircle2, XCircle, Star } from 'lucide-react';
+import { Video, MessageSquare, CheckCircle2, XCircle, Star, Users, Calendar } from 'lucide-react';
+import { supabase } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
 import TutorShell from '@/components/tutor/TutorShell';
@@ -32,16 +33,56 @@ export default function TutorSessionsPage() {
   );
 }
 
+type ClassSessionRow = {
+  id: string;
+  groupId: string;
+  className: string;
+  date: string;
+  durationMin: number;
+  type: 'class';
+};
+
 function SessionsContent() {
   const { profile } = useProfile();
   const [tab, setTab] = useState<'upcoming' | 'past' | 'pending'>('upcoming');
   const [rows, setRows] = useState<SessionRow[]>([]);
+  const [classSessions, setClassSessions] = useState<ClassSessionRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!profile?.id) return;
     fetchSessions(profile.id);
+    fetchClassSessions(profile.id);
   }, [profile?.id]);
+
+  async function fetchClassSessions(tutorId: string) {
+    try {
+      // Query only THIS tutor's groups directly — avoids the public groups API
+      const { data: groups, error } = await supabase
+        .from('groups')
+        .select('id, name')
+        .eq('tutor_id', tutorId)
+        .is('archived_at', null);
+      if (error || !groups?.length) return;
+      const now = new Date();
+      const all: ClassSessionRow[] = [];
+      await Promise.all(groups.map(async (grp: any) => {
+        try {
+          const sRes = await fetch(`/api/groups/${grp.id}/sessions`, { cache: 'no-store' });
+          if (!sRes.ok) return;
+          const { sessions } = await sRes.json();
+          for (const s of sessions ?? []) {
+            for (const o of s.occurrences ?? []) {
+              const dt = o.scheduled_start_at;
+              if (!dt) continue;
+              all.push({ id: o.id, groupId: grp.id, className: grp.name, date: dt, durationMin: s.duration_minutes ?? 60, type: 'class' });
+            }
+          }
+        } catch { /* skip */ }
+      }));
+      setClassSessions(all.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
+    } catch { /* non-critical */ }
+  }
 
   async function fetchSessions(_tutorId: string) {
     setLoading(true);
@@ -69,9 +110,13 @@ function SessionsContent() {
       });
   }, [rows, tab]);
 
+  const now = new Date();
+  const upcomingClassSessions = classSessions.filter((cs) => new Date(cs.date) > now);
+  const pastClassSessions = classSessions.filter((cs) => new Date(cs.date) <= now);
+
   const counts = {
-    upcoming: rows.filter((r) => r.status === 'upcoming').length,
-    past: rows.filter((r) => r.status === 'past').length,
+    upcoming: rows.filter((r) => r.status === 'upcoming').length + upcomingClassSessions.length,
+    past: rows.filter((r) => r.status === 'past').length + pastClassSessions.length,
     pending: rows.filter((r) => r.status === 'pending').length,
   };
 
@@ -96,12 +141,47 @@ function SessionsContent() {
       <div className="rounded-2xl border border-border bg-card divide-y divide-border">
         {loading ? (
           <div className="p-10 text-center text-sm text-muted-foreground">Loading sessions…</div>
-        ) : filtered.length === 0 ? (
+        ) : filtered.length === 0 && (tab === 'pending' || (tab === 'upcoming' ? upcomingClassSessions.length === 0 : pastClassSessions.length === 0)) ? (
           <div className="p-10 text-center text-sm text-muted-foreground">
             {tab === 'upcoming' ? 'No upcoming sessions.' : tab === 'past' ? 'No past sessions yet.' : 'No pending requests.'}
           </div>
         ) : (
-          filtered.map((s) => {
+          <>
+            {/* Class sessions */}
+            {tab !== 'pending' && (tab === 'upcoming' ? upcomingClassSessions : pastClassSessions).map((cs) => {
+              const d = new Date(cs.date);
+              const durLabel = cs.durationMin < 60 ? `${cs.durationMin}m` : cs.durationMin % 60 === 0 ? `${cs.durationMin / 60}h` : `${Math.floor(cs.durationMin / 60)}h ${cs.durationMin % 60}m`;
+              return (
+                <div key={`class-${cs.id}`} className="p-4 flex flex-col sm:flex-row sm:items-center gap-3 bg-brand/5">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="size-12 rounded-xl grid place-items-center text-center shrink-0 bg-brand/10 text-brand-deep">
+                      <div className="leading-tight">
+                        <div className="text-[10px] uppercase font-bold">{d.toLocaleString(undefined, { month: 'short' })}</div>
+                        <div className="text-base font-bold tabular-nums">{d.getDate()}</div>
+                      </div>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="font-semibold text-ink flex items-center gap-2">
+                        {cs.className}
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-brand-soft text-forest flex items-center gap-1">
+                          <Users className="size-3" /> Group class
+                        </span>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · {durLabel}
+                      </div>
+                    </div>
+                  </div>
+                  <TutorClassJoinButton groupId={cs.groupId} />
+                  <a href={`/tutor/classes/${cs.groupId}`}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-sm font-semibold hover:bg-muted">
+                    View class
+                  </a>
+                </div>
+              );
+            })}
+            {/* 1-on-1 sessions */}
+            {filtered.map((s) => {
             const d = new Date(s.date);
             return (
               <div key={s.id} className={cn('p-4 flex flex-col sm:flex-row sm:items-center gap-3', s.cancelled && 'opacity-60')}>
@@ -163,7 +243,8 @@ function SessionsContent() {
                 </div>
               </div>
             );
-          })
+          })}
+          </>
         )}
       </div>
     </div>
@@ -173,4 +254,30 @@ function SessionsContent() {
 function PayPill({ status }: { status: 'paid' | 'pending' | 'overdue' }) {
   const m = { paid: 'text-brand-deep', pending: 'text-amber-600', overdue: 'text-coral' }[status];
   return <span className={cn('font-semibold capitalize', m)}>{status}</span>;
+}
+
+function TutorClassJoinButton({ groupId }: { groupId: string }) {
+  const [loading, setLoading] = useState(false);
+
+  const join = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/groups/${groupId}/meeting-link`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      const json = await res.json();
+      const url = json?.join_url;
+      if (url) window.open(url, '_blank', 'noreferrer');
+      else alert(json?.error ?? 'Could not generate meeting link');
+    } catch {
+      alert('Could not get meeting link');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <button onClick={join} disabled={loading}
+      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand/90 disabled:opacity-60">
+      <Video className="size-4" /> {loading ? 'Getting link…' : 'Join'}
+    </button>
+  );
 }

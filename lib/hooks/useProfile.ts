@@ -5,8 +5,29 @@ import { supabase } from '@/lib/supabase/client';
 import { Profile } from '@/lib/types/database';
 import { User } from '@supabase/supabase-js';
 
+const CACHE_KEY = 'itutor_profile_cache';
+
+function readCache(): Profile | null {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    return raw ? (JSON.parse(raw) as Profile) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(profile: Profile | null) {
+  try {
+    if (profile) localStorage.setItem(CACHE_KEY, JSON.stringify(profile));
+    else localStorage.removeItem(CACHE_KEY);
+  } catch { /* ignore */ }
+}
+
 export function useProfile() {
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return readCache();
+  });
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -18,6 +39,7 @@ export function useProfile() {
 
       if (!user) {
         setLoading(false);
+        writeCache(null);
         return;
       }
 
@@ -40,8 +62,10 @@ export function useProfile() {
           .maybeSingle();
         if (ensuredError) throw ensuredError;
         setProfile(ensured || null);
+        writeCache(ensured || null);
       } else {
         setProfile(data);
+        writeCache(data);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch profile');

@@ -683,7 +683,7 @@ function ClassHomepage({ group, memberStatus, userId, subscriptionAccess }: { gr
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="flex items-center justify-between gap-3">
-        <Link href="/student/my-lessons" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-ink transition">
+        <Link href="/student/classes" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-ink transition">
           <ArrowLeft className="size-4" /> My Classes
         </Link>
       </div>
