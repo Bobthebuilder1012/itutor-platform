@@ -93,5 +93,16 @@ export async function POST(
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
+  const now = new Date().toISOString();
+  const { error: deductionError } = await (admin as any)
+    .from('tutor_deductions')
+    .update({ status: 'deducted', resolved_at: now })
+    .eq('deducted_from_batch_id', params.batchId)
+    .eq('status', 'pending');
+
+  if (deductionError) {
+    console.error('[mark-paid] tutor_deductions update failed:', deductionError);
+  }
+
   return NextResponse.json({ ok: true, result: data });
 }

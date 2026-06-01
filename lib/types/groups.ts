@@ -20,7 +20,7 @@ export type GroupAttendanceStatus = 'PRESENT' | 'ABSENT' | 'LATE';
 export type GroupWaitlistStatus = 'waiting' | 'offered' | 'expired' | 'accepted' | 'removed';
 export type SubscriptionPaymentType = 'subscription_initial' | 'subscription_renewal' | 'subscription_reactivation';
 export type SubscriptionPaymentStatus = 'PENDING' | 'PAID' | 'REFUNDED' | 'PARTIALLY_REFUNDED' | 'ACTIVATION_FAILED' | 'expired';
-export type GroupRemovalStatus = 'auto_processed' | 'pending_review' | 'approved' | 'overturned';
+export type GroupRemovalStatus = 'auto_processed' | 'approved' | 'overturned';
 export type GroupVisibility = 'public' | 'unlisted' | 'private';
 
 // Day-of-week: 0 = Sunday … 6 = Saturday (matches JS getDay())
@@ -351,10 +351,6 @@ export interface GroupRemoval {
   enrollment_id: string;
   student_id: string;
   tutor_id: string;
-  with_cause: boolean;
-  reason_category?: string | null;
-  explanation?: string | null;
-  evidence_url?: string | null;
   status: GroupRemovalStatus;
   admin_id?: string | null;
   admin_notes?: string | null;

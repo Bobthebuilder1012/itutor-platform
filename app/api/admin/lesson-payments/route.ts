@@ -48,7 +48,7 @@ export async function GET() {
       .from('group_removals')
       .select(`
         id, group_id, enrollment_id, student_id, tutor_id,
-        with_cause, reason_category, explanation, status,
+        status,
         refund_issued, refund_amount_ttd, admin_notes, created_at,
         enrollment:group_enrollments!enrollment_id(
           id, status, payment_status,
@@ -61,6 +61,7 @@ export async function GET() {
         tutor:profiles!tutor_id(id, full_name)
       `)
       .eq('refund_issued', false)
+      .eq('status', 'auto_processed')
       .order('created_at', { ascending: false })
       .limit(200),
 

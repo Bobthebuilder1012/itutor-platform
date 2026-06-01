@@ -40,6 +40,7 @@ BEGIN
     'public.noshow_claims',
     'public.tutor_strikes',
     'public.student_strikes',
+    'public.tutor_deductions',
     'public.payout_ledger',
     'public.payout_batches',
     'public.payments',

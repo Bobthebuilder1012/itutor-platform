@@ -28,9 +28,6 @@ interface ActiveSub {
 interface PendingRefund {
   id: string;
   enrollment_id: string;
-  with_cause: boolean;
-  reason_category: string;
-  explanation: string | null;
   status: string;
   refund_issued: boolean;
   created_at: string;
@@ -316,8 +313,7 @@ function RefundModal({
             <Row label="Student" value={student?.full_name ?? '—'} />
             <Row label="Tutor"   value={tutor?.full_name ?? '—'} />
             <Row label="Group"   value={group?.name ?? '—'} />
-            <Row label="Removal type" value={removal.with_cause ? 'With cause' : 'No cause'} />
-            <Row label="Reason" value={removal.reason_category?.replace(/_/g, ' ') ?? '—'} />
+            <Row label="Removal status" value={removal.status?.replace(/_/g, ' ') ?? '—'} />
             <div className="border-t border-white/8 pt-2 mt-2 flex justify-between text-sm font-bold">
               <span className="text-white/70">Refund amount</span>
               <span className="text-emerald-300 tabular-nums">{fmtTTD(sp?.amount_ttd)}</span>
@@ -612,7 +608,7 @@ export default function LessonPaymentsPage() {
                     <tr className="text-[11px] font-semibold text-white/30 uppercase tracking-wider">
                       <th className="px-4 py-3 text-left">Group / Student</th>
                       <th className="px-4 py-3 text-left">Tutor</th>
-                      <th className="px-4 py-3 text-left">Removal</th>
+                      <th className="px-4 py-3 text-left">Status</th>
                       <th className="px-4 py-3 text-right">Amount</th>
                       <th className="px-4 py-3 text-left">Date</th>
                       <th className="px-4 py-3 text-center">Action</th>
@@ -633,12 +629,9 @@ export default function LessonPaymentsPage() {
                           </td>
                           <td className="px-4 py-3 text-sm text-white/70">{tutor?.full_name ?? '—'}</td>
                           <td className="px-4 py-3">
-                            <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${r.with_cause ? 'bg-rose-500/15 text-rose-300' : 'bg-white/10 text-white/50'}`}>
-                              {r.with_cause ? 'With cause' : 'No cause'}
+                            <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-500/15 text-rose-300">
+                              Pending refund
                             </span>
-                            {r.reason_category && (
-                              <p className="text-[11px] text-white/30 mt-0.5">{r.reason_category.replace(/_/g, ' ')}</p>
-                            )}
                           </td>
                           <td className="px-4 py-3 text-right text-sm text-white tabular-nums">{fmtTTD(sp?.amount_ttd)}</td>
                           <td className="px-4 py-3 text-xs text-white/40">{fmtDate(r.created_at)}</td>
