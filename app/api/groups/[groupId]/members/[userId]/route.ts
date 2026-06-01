@@ -408,13 +408,18 @@ async function finalizeRemoval(
     groupId: string;
   }
 ) {
-  await admin.rpc('process_subscription_removal', {
+  const { error: rpcError } = await admin.rpc('process_subscription_removal', {
     p_payload: {
       enrollment_id: args.enrollmentId,
       removal_id: args.removalId,
       refund_amount_ttd: args.refundAmountTtd,
     },
   });
+
+  if (rpcError) {
+    console.error('[finalizeRemoval] process_subscription_removal RPC failed:', rpcError);
+    throw new Error('Failed to finalize removal: ' + (rpcError.message ?? rpcError));
+  }
 
   if (args.refundAmountTtd > 0) {
     await admin
