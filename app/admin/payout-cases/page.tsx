@@ -124,7 +124,7 @@ export default function AdminPayoutCasesPage() {
 
   if (authLoading) {
     return (
-      <DashboardLayout role="admin">
+      <DashboardLayout role="admin" userName="Admin">
         <div className="flex items-center justify-center py-20">
           <Loader2 className="size-6 animate-spin text-gray-400" />
         </div>
@@ -136,7 +136,7 @@ export default function AdminPayoutCasesPage() {
   const openCount = cases.filter((c) => c.status === 'open' || c.status === 'under_review').length;
 
   return (
-    <DashboardLayout role="admin">
+    <DashboardLayout role="admin" userName="Admin">
       <div className="max-w-6xl mx-auto space-y-6 p-6">
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-3">
