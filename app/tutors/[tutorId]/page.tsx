@@ -89,7 +89,7 @@ export default function PublicTutorProfilePage() {
     if (profile.role === 'student') {
       router.replace(`/student/tutors/${tutorId}`);
     } else if (profile.role === 'parent') {
-      router.replace(`/parent/tutors/${tutorId}`);
+      router.replace(`/student/tutors/${tutorId}`);
     } else if (profile.role === 'tutor') {
       router.replace(`/student/tutors/${tutorId}`);
     }

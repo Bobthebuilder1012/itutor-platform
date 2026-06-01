@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import LogoutConfirmModal from '@/components/LogoutConfirmModal';
 import { usePathname, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { useEffect, useState, type ComponentType, type ReactNode } from 'react';
@@ -109,18 +110,7 @@ function ProfileMenu({ collapsed, displayName, initials, roleLabel, avatarUrl }:
           </button>
         </div>
       )}
-      {confirmLogout && (
-        <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-ink/40 backdrop-blur-sm" onClick={() => setConfirmLogout(false)}>
-          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-pop" onClick={(e) => e.stopPropagation()}>
-            <h3 className="font-semibold text-ink">Log out?</h3>
-            <p className="text-sm text-gray-500 mt-1">You'll need to sign in again to access your lessons.</p>
-            <div className="flex gap-2 mt-4">
-              <button onClick={() => setConfirmLogout(false)} className="flex-1 px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-100">Cancel</button>
-              <button onClick={handleLogout} className="flex-1 px-4 py-2 rounded-xl bg-coral text-white text-sm font-semibold text-center hover:bg-coral/90">Log out</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <LogoutConfirmModal open={confirmLogout} onClose={() => setConfirmLogout(false)} onConfirm={handleLogout} role="student" />
     </div>
   );
 }

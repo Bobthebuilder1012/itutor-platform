@@ -38,6 +38,7 @@ type GroupData = {
   member_count: number;
   enrolled: boolean;
   memberStatus: string | null;
+  parent_feedback_price: number | null;
 };
 
 const GRADIENTS = [
@@ -57,6 +58,7 @@ export default function ExploreClassDetailPage() {
   const [group, setGroup] = useState<GroupData | null>(null);
   const [loading, setLoading] = useState(true);
   const [step, setStep] = useState<Step>('detail');
+  const [hasLinkedParent, setHasLinkedParent] = useState(false);
 
   useEffect(() => {
     if (!groupId) return;
@@ -98,7 +100,7 @@ export default function ExploreClassDetailPage() {
         price_per_session: g.price_per_session ?? null,
         max_students: g.max_students ?? 20,
         require_join_requests: g.require_join_requests ?? false,
-        feedback_mode: g.feedback_mode ?? null,
+        feedback_mode: g.feedback_mode ?? g.parent_feedback_mode ?? null,
         cover_image: g.cover_image ?? null,
         schedule_display: g.schedule_display ?? null,
         schedule_data: g.schedule_data ?? null,
@@ -116,7 +118,18 @@ export default function ExploreClassDetailPage() {
         member_count: g.enrollment_count ?? g.member_count ?? 0,
         enrolled,
         memberStatus,
+        parent_feedback_price: g.parent_feedback_price ?? null,
       });
+
+      // Check if student has a linked parent account
+      if (profile?.id) {
+        const { data: parentLink } = await supabase
+          .from('parent_child_links')
+          .select('parent_id')
+          .eq('child_id', profile.id)
+          .maybeSingle();
+        setHasLinkedParent(!!parentLink);
+      }
     } catch (err) {
       console.error('[ExploreClassDetail]', err);
     } finally {
@@ -137,7 +150,7 @@ export default function ExploreClassDetailPage() {
     );
   }
 
-  if (step === 'join') return <JoinFlow group={group} onBack={() => setStep('detail')} onSuccess={(s) => setStep(s)} profile={profile} />;
+  if (step === 'join') return <JoinFlow group={group} onBack={() => setStep('detail')} onSuccess={(s) => setStep(s)} profile={profile} hasLinkedParent={hasLinkedParent} />;
   if (step === 'joined') return <JoinedScreen group={group} kind="enrolled" />;
   if (step === 'awaiting-approval') return <JoinedScreen group={group} kind="awaiting-approval" />;
   return <Detail group={group} onJoin={() => setStep('join')} />;
@@ -200,9 +213,14 @@ function Detail({ group, onJoin }: { group: GroupData; onJoin: () => void }) {
           {group.form_level && (
             <span className="text-[11px] font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-white/95 text-ink">{group.form_level.replace('_', ' ')}</span>
           )}
-          {group.feedback_mode && group.feedback_mode !== 'off' && (
+          {group.feedback_mode === 'included_free' && (
             <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-brand text-white shadow-sm">
-              <Sparkles className="size-3.5" /> {group.feedback_mode === 'paid_addon' ? 'Parent feedback' : 'Free parent feedback'}
+              <Sparkles className="size-3.5" /> Free parent feedback
+            </span>
+          )}
+          {group.feedback_mode === 'paid_addon' && group.parent_feedback_price && (
+            <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 shadow-sm">
+              <Sparkles className="size-3.5" /> Parent feedback +{fmtTTD(group.parent_feedback_price)}/mo
             </span>
           )}
           {group.require_join_requests && (
@@ -308,6 +326,35 @@ function Detail({ group, onJoin }: { group: GroupData; onJoin: () => void }) {
         </section>
       )}
 
+      {/* Parent feedback */}
+      {group.feedback_mode && group.feedback_mode !== 'off' && (
+        <section className={`rounded-2xl border p-5 space-y-2 ${group.feedback_mode === 'included_free' ? 'border-brand/30 bg-brand-soft/30' : 'border-amber-200 bg-amber-50/40'}`}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className={`size-10 rounded-xl grid place-items-center shrink-0 ${group.feedback_mode === 'included_free' ? 'bg-brand-soft' : 'bg-amber-100'}`}>
+                <Sparkles className={`size-5 ${group.feedback_mode === 'included_free' ? 'text-brand-deep' : 'text-amber-700'}`} />
+              </div>
+              <div>
+                <div className="font-bold text-ink text-sm">
+                  {group.feedback_mode === 'included_free' ? 'Free parent feedback included' : 'Parent feedback available'}
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {group.feedback_mode === 'included_free'
+                    ? 'This tutor sends monthly written feedback reports to your parent at no extra charge.'
+                    : 'Monthly written feedback reports sent to your parent — you can add this when joining.'}
+                </p>
+              </div>
+            </div>
+            {group.feedback_mode === 'paid_addon' && group.parent_feedback_price && (
+              <div className="text-right shrink-0">
+                <div className="font-bold text-amber-800">+{fmtTTD(group.parent_feedback_price)}</div>
+                <div className="text-[11px] text-muted-foreground">/mo add-on</div>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* Pending request banner */}
       {isPending && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
@@ -373,16 +420,21 @@ function InfoRow({ icon, label, children }: { icon: React.ReactNode; label: stri
 
 /* ─── Join flow ──────────────────────────────────────── */
 
-function JoinFlow({ group, onBack, onSuccess, profile }: {
+function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent }: {
   group: GroupData;
   onBack: () => void;
   onSuccess: (step: Step) => void;
   profile: any;
+  hasLinkedParent: boolean;
 }) {
   const isFull = group.max_students - group.member_count <= 0;
   const isRequest = group.require_join_requests;
   const price = group.price_monthly ?? group.price_per_session ?? 0;
+  const hasFeedbackAddon = group.feedback_mode === 'paid_addon' && !!group.parent_feedback_price;
+  const [wantsFeedback, setWantsFeedback] = useState<boolean | null>(null); // null = not yet chosen
   const [submitting, setSubmitting] = useState(false);
+  const totalPrice = price + (wantsFeedback && hasFeedbackAddon ? (group.parent_feedback_price ?? 0) : 0);
+  const feedbackDecisionRequired = hasFeedbackAddon && hasLinkedParent && wantsFeedback === null;
   const [err, setErr] = useState('');
 
   const heading = isFull ? 'Join the waitlist'
@@ -449,10 +501,57 @@ function JoinFlow({ group, onBack, onSuccess, profile }: {
         </InfoRow>
         {price > 0 && (
           <p className="text-xs text-muted-foreground leading-relaxed">
-            You'll be charged {fmtTTD(price)}{group.price_monthly ? ' each month' : ' per session'}. Cancel any time from your account.
+            You'll be charged {fmtTTD(totalPrice)}{group.price_monthly ? ' each month' : ' per session'}. Cancel any time from your account.
           </p>
         )}
       </section>
+
+      {/* Parent feedback decision — required for paid add-on */}
+      {hasFeedbackAddon && (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50/40 p-5 space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="size-10 rounded-xl bg-amber-100 grid place-items-center shrink-0">
+              <Sparkles className="size-5 text-amber-700" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-bold text-ink text-sm">
+                Parent feedback add-on <span className="text-amber-700">+{fmtTTD(group.parent_feedback_price ?? 0)}/mo</span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">Monthly written progress reports from your tutor sent directly to your parent.</p>
+            </div>
+          </div>
+
+          {hasLinkedParent ? (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-ink">Would you like to add parent feedback? <span className="text-rose-500">*</span></p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setWantsFeedback(true)}
+                  className={`px-4 py-3 rounded-xl border text-sm font-semibold transition ${wantsFeedback === true ? 'bg-brand text-white border-brand' : 'bg-background border-border text-muted-foreground hover:border-brand/50'}`}
+                >
+                  Yes, add it
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWantsFeedback(false)}
+                  className={`px-4 py-3 rounded-xl border text-sm font-semibold transition ${wantsFeedback === false ? 'bg-muted text-ink border-border' : 'bg-background border-border text-muted-foreground hover:border-border'}`}
+                >
+                  No thanks
+                </button>
+              </div>
+              {wantsFeedback === true && (
+                <p className="text-xs text-brand-deep">+{fmtTTD(group.parent_feedback_price ?? 0)}/mo will be added. Total: {fmtTTD(totalPrice)}/mo</p>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-xl bg-background border border-amber-200 px-3 py-2.5 space-y-1">
+              <p className="text-xs font-semibold text-amber-900">No linked parent account</p>
+              <p className="text-xs text-amber-800">To add parent feedback, ask your parent to create an iTutor account and link it to yours from their parent dashboard. You can add it later once linked.</p>
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Terms */}
       <section className="rounded-2xl border border-border bg-background p-5 space-y-2">
@@ -465,12 +564,15 @@ function JoinFlow({ group, onBack, onSuccess, profile }: {
         </ul>
       </section>
 
+      {feedbackDecisionRequired && (
+        <p className="text-xs text-amber-700 text-center font-medium">Please choose whether to add parent feedback above before continuing.</p>
+      )}
       {err && <p className="text-xs text-rose-600 text-center">{err}</p>}
 
       <button
         onClick={handleConfirm}
-        disabled={submitting}
-        className="block w-full text-center px-5 py-3 rounded-2xl bg-brand text-white font-semibold hover:bg-brand-deep disabled:opacity-50"
+        disabled={submitting || feedbackDecisionRequired}
+        className="block w-full text-center px-5 py-3 rounded-2xl bg-brand text-white font-semibold hover:bg-brand-deep disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {submitting ? <span className="inline-flex items-center gap-2 justify-center"><Loader2 className="size-4 animate-spin" /> Processing…</span> : confirmLabel}
       </button>

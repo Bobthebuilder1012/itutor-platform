@@ -10,7 +10,7 @@ import { getDisplayName } from '@/lib/utils/displayName';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import UserAvatar from '@/components/UserAvatar';
 import { cn } from '@/lib/utils';
-import { Search, Star, Heart, Calendar, Clock, SlidersHorizontal, Users, GraduationCap, Flame, X, Check, Video } from 'lucide-react';
+import { Search, Star, Heart, Calendar, Clock, SlidersHorizontal, Users, GraduationCap, Flame, X, Check, Video, Sparkles } from 'lucide-react';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { parseScheduleData, scheduleToDisplay } from '@/lib/utils/scheduleFormat';
 
@@ -69,6 +69,8 @@ type GroupLesson = {
   description?: string | null;
   coverImage?: string | null;
   requireJoinRequests?: boolean;
+  feedbackMode?: string | null;
+  parentFeedbackPrice?: number | null;
 };
 
 function formatDuration(mins: number) {
@@ -461,6 +463,8 @@ export default function FindTutorsPage() {
           description: g.description ?? null,
           coverImage: g.cover_image ?? null,
           requireJoinRequests: g.require_join_requests ?? false,
+          feedbackMode: g.feedback_mode ?? g.parent_feedback_mode ?? null,
+          parentFeedbackPrice: g.parent_feedback_price ?? null,
         };
       });
 
@@ -906,6 +910,16 @@ export default function FindTutorsPage() {
                         {l.requireJoinRequests && !enrolledLessonIds.has(l.id) && (
                           <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border border-border bg-muted text-muted-foreground">
                             Approval required
+                          </span>
+                        )}
+                        {l.feedbackMode === 'included_free' && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-brand text-white">
+                            <Sparkles className="size-3" /> Free parent feedback
+                          </span>
+                        )}
+                        {l.feedbackMode === 'paid_addon' && l.parentFeedbackPrice && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                            <Sparkles className="size-3" /> Parent feedback +{fmtTTD(l.parentFeedbackPrice)}/mo
                           </span>
                         )}
                         {(lowStock || full) && (

@@ -15,7 +15,11 @@ const nextConfig = {
       minimumCacheTTL: 60, // Cache images for 60 seconds
     },
     // Webpack configuration to handle Firebase
-    webpack: (config, { isServer }) => {
+    webpack: (config, { isServer, dev }) => {
+      // Disable filesystem cache in dev to prevent OneDrive EBUSY/ENOENT errors
+      if (dev) {
+        config.cache = false;
+      }
       // Exclude Firebase from server-side bundle
       if (isServer) {
         config.resolve.alias = {

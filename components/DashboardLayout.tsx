@@ -239,29 +239,18 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/tutor/settings', label: 'Settings', icon: icons.settings },
         ]},
       ];
-      case 'parent': {
-        const menuItems = [
-          { href: '/parent/dashboard', label: 'Dashboard', icon: icons.dashboard },
-          { href: '/parent/add-child', label: 'Add Child', icon: icons.userPlus },
-          { href: '/parent/approve-bookings', label: 'Booking Requests', icon: icons.calendar },
-        ];
-        if (parentHasLinkedChild === true) {
-          menuItems.push({
-            href: '/parent/session-feedback',
-            label: 'Session feedback',
-            icon: icons.chatFeedback,
-          });
-        }
-        if (showGroups) {
-          menuItems.push({ href: '/lessons', label: 'Lessons', icon: icons.groups });
-        }
-        return [
-          { label: 'Menu', items: menuItems },
-          { label: 'Account', items: [
-            { href: '/parent/settings', label: 'Settings', icon: icons.settings },
-          ]},
-        ];
-      }
+      case 'parent': return [
+        { label: 'Menu', items: [
+          { href: '/parent/dashboard',     label: 'Home',          icon: icons.dashboard },
+          { href: '/parent/children',      label: 'Children',      icon: icons.userPlus },
+          { href: '/parent/classes',       label: 'Find Classes',  icon: icons.groups },
+          { href: '/parent/subscriptions', label: 'Subscriptions', icon: icons.calendar },
+          { href: '/parent/transactions',  label: 'Transactions',  icon: icons.calendar },
+        ]},
+        { label: 'Account', items: [
+          { href: '/parent/settings', label: 'Settings', icon: icons.settings },
+        ]},
+      ];
       case 'reviewer': return [
         { label: 'Review', items: [
           { href: '/reviewer/dashboard', label: 'Dashboard', icon: icons.dashboard },
