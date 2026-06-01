@@ -138,19 +138,35 @@ CREATE TABLE IF NOT EXISTS public.payout_case_events (
 
 ALTER TABLE public.payout_case_events ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "admin_all_payout_case_events"
-  ON public.payout_case_events FOR ALL TO authenticated
-  USING (EXISTS (
-    SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'
-  ));
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'payout_case_events'
+      AND policyname = 'admin_all_payout_case_events'
+  ) THEN
+    CREATE POLICY "admin_all_payout_case_events"
+      ON public.payout_case_events FOR ALL TO authenticated
+      USING (EXISTS (
+        SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'
+      ));
+  END IF;
+END $$;
 
-CREATE POLICY "tutor_read_own_payout_case_events"
-  ON public.payout_case_events FOR SELECT TO authenticated
-  USING (EXISTS (
-    SELECT 1 FROM public.payout_cases pc
-    WHERE pc.id = payout_case_events.case_id
-      AND pc.tutor_id = auth.uid()
-  ));
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'payout_case_events'
+      AND policyname = 'tutor_read_own_payout_case_events'
+  ) THEN
+    CREATE POLICY "tutor_read_own_payout_case_events"
+      ON public.payout_case_events FOR SELECT TO authenticated
+      USING (EXISTS (
+        SELECT 1 FROM public.payout_cases pc
+        WHERE pc.id = payout_case_events.case_id
+          AND pc.tutor_id = auth.uid()
+      ));
+  END IF;
+END $$;
 
 GRANT ALL ON public.payout_case_events TO service_role;
 
