@@ -11,7 +11,6 @@ import {
   BookOpen,
   Settings,
   Bell,
-  MessageSquare,
   GraduationCap,
   Wrench,
   PanelLeftClose,
@@ -23,7 +22,6 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { StudentStoreProvider } from '@/lib/student-store';
-import { CalendarPopup } from './CalendarPanel';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import dynamic from 'next/dynamic';
@@ -41,12 +39,11 @@ type NavItem = {
 const nav: NavItem[] = [
   { to: '/student/dashboard', label: 'Home', icon: LayoutDashboard, exact: true, tint: 'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-400/30' },
   { to: '/student/find-tutors', label: 'Explore', icon: Search, tint: 'bg-rose-500/20 text-rose-300 ring-1 ring-rose-400/30' },
-  { to: '/student/my-lessons', label: 'My Lessons', icon: GraduationCap, tint: 'bg-sky-500/20 text-sky-300 ring-1 ring-sky-400/30' },
+  { to: '/student/classes', label: 'My Classes', icon: GraduationCap, tint: 'bg-sky-500/20 text-sky-300 ring-1 ring-sky-400/30' },
   { to: '/student/bookings', label: 'My Bookings', icon: CalendarDays, tint: 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-400/30' },
   { to: '/student/subscriptions', label: 'Subscriptions', icon: CreditCard, tint: 'bg-purple-500/20 text-purple-300 ring-1 ring-purple-400/30' },
   { to: '/student/transactions', label: 'Transactions', icon: ReceiptText, tint: 'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-400/30' },
   { to: '/student/tools', label: 'Tools', icon: Wrench, tint: 'bg-violet-500/20 text-violet-300 ring-1 ring-violet-400/30' },
-  { to: '/student/messages', label: 'Messages', icon: MessageSquare, tint: 'bg-teal-500/20 text-teal-300 ring-1 ring-teal-400/30' },
 ];
 
 const COLLAPSE_KEY = 'itutor.sidebarCollapsed';
@@ -133,7 +130,6 @@ function ShellInner({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { profile } = useProfile();
   const [collapsed, setCollapsed] = useState(false);
-  const [calOpen, setCalOpen] = useState(false);
   const [query, setQuery] = useState('');
 
   const displayName = profile?.display_name || profile?.full_name?.split(' ')[0] || 'Student';
@@ -237,12 +233,6 @@ function ShellInner({ children }: { children: ReactNode }) {
             </form>
 
             <div className="flex items-center gap-1">
-              <button onClick={() => setCalOpen(true)} className="size-9 grid place-items-center rounded-full hover:bg-muted text-muted-foreground" title="Calendar">
-                <CalendarDays className="size-4" />
-              </button>
-              <Link href="/student/messages" className="size-9 grid place-items-center rounded-full hover:bg-muted text-muted-foreground" title="Messages">
-                <MessageSquare className="size-4" />
-              </Link>
               <Link href="/student/notifications" className="relative size-9 grid place-items-center rounded-full hover:bg-muted text-muted-foreground" title="Notifications">
                 <Bell className="size-4" />
               </Link>
@@ -280,7 +270,6 @@ function ShellInner({ children }: { children: ReactNode }) {
         </nav>
       </div>
 
-      <CalendarPopup open={calOpen} onClose={() => setCalOpen(false)} />
     </div>
   );
 }

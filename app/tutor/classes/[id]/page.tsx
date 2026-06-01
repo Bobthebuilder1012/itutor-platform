@@ -8,7 +8,7 @@ import {
   Bell, X, Plus, ExternalLink, Trash2, Globe, Eye,
   Video, MoreVertical, Pin, Sparkles, Link as LinkIcon, Paperclip, AlertTriangle, ShieldAlert,
   Mail, MessageSquare, DollarSign, BarChart3, ArrowUp, ArrowDown, Lock,
-  Calendar as CalendarIcon, BookOpen, Ban, Repeat, Clock, Info, Image as ImageIcon, ArrowUpRight, ChevronRight,
+  Calendar as CalendarIcon, BookOpen, Ban, Repeat, Clock, Info, ArrowUpRight, ChevronRight,
   CreditCard, RefreshCw,
 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -39,9 +39,10 @@ type GroupMember = {
   studentId: string;
   name: string;
   paymentStatus: 'paid' | 'pending' | 'overdue';
-  status: 'active' | 'invited' | 'suspended' | 'banned' | 'removed';
+  status: 'active' | 'approved' | 'invited' | 'pending' | 'suspended' | 'banned' | 'removed';
   joinedAt: string | null;
   outstandingTtd?: number;
+  email?: string | null;
 };
 
 type StreamPost = {
@@ -81,6 +82,10 @@ type Subscriber = {
   student: { id: string; full_name: string | null; avatar_url: string | null; email: string | null } | null;
 };
 
+import { type ScheduleEntry, formatScheduleEntry, scheduleToDisplay } from '@/lib/utils/scheduleFormat';
+
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
 type GroupDetail = {
   id: string;
   title: string;
@@ -111,6 +116,9 @@ type GroupDetail = {
   reviewCount?: number;
   whatsappLink?: string;
   meetingLink?: string;
+  coverImage?: string;
+  scheduleDisplay?: string;
+  scheduleData?: ScheduleEntry[];
 };
 
 export default function TutorLessonDetailPage() {
@@ -150,6 +158,23 @@ function ClassHubContent() {
   useEffect(() => {
     if (!id || !profile?.id) return;
     fetchAll(id);
+
+    // Realtime: re-fetch members whenever a join request arrives for this group
+    const channel = supabase
+      .channel(`class-members-${id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'group_members', filter: `group_id=eq.${id}` },
+        () => { fetchAll(id); }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'group_members', filter: `group_id=eq.${id}` },
+        () => { fetchAll(id); }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [id, profile?.id]);
 
   async function fetchAll(groupId: string) {
@@ -171,6 +196,9 @@ function ClassHubContent() {
           subject: g.subject || '—',
           level: g.form_level || '—',
           description: g.description || g.bio || '',
+          coverImage: g.cover_image ?? '',
+          scheduleDisplay: g.schedule_display ?? '',
+          scheduleData: (() => { try { return g.schedule_data ? JSON.parse(g.schedule_data) : []; } catch { return []; } })(),
           capacity: g.max_students ?? 20,
           enrolled: 0,
           pricePerSession: billingModel === 'per-month'
@@ -234,6 +262,7 @@ function ClassHubContent() {
         paymentStatus: derivePaymentStatus(subMap.get(m.user_id)),
         status: m.status ?? 'active',
         joinedAt: m.joined_at ?? null,
+        email: m.profile?.email ?? null,
       })));
       if (g) setGroup((prev) => prev ? { ...prev, enrolled: rawMembers.filter((m: any) => ['approved', 'active'].includes(m.status)).length } : prev);
 
@@ -291,7 +320,7 @@ function ClassHubContent() {
               title: derivedTitle,
               body: derivedBody,
               at: formatRelative(p.created_at),
-              pinned: p.is_pinned ?? p.pinned ?? false,
+              pinned: !!(p.pinned_at ?? p.is_pinned ?? p.pinned),
               pendingApproval: p.pending_approval ?? false,
               attachmentName: p.attachment_name,
               linkUrl: p.link_url,
@@ -327,7 +356,8 @@ function ClassHubContent() {
   return (
     <div className="-mx-4 lg:-mx-8 -mt-6 lg:-mt-8">
       {/* Banner header */}
-      <div className={cn('relative h-44 lg:h-52 bg-gradient-to-br', group.thumbnailGradient ?? 'from-brand to-emerald-400')}>
+      <div className={cn('relative h-44 lg:h-52', !group.coverImage && (group.thumbnailGradient ?? 'from-brand to-emerald-400'), !group.coverImage && 'bg-gradient-to-br')}
+        style={group.coverImage ? { backgroundImage: `url(${group.coverImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}>
         <Link href="/tutor/classes" className="absolute top-4 left-4 inline-flex items-center gap-1 text-xs font-semibold text-white/95 bg-black/30 hover:bg-black/40 px-3 py-1.5 rounded-full backdrop-blur">
           <ArrowLeft className="size-3.5" /> All Classes
         </Link>
@@ -379,10 +409,10 @@ function ClassHubContent() {
 
         <div className="mt-6">
           {tab === 'stream'    && <StreamTab group={group} posts={posts} setPosts={setPosts} />}
-          {tab === 'sessions'  && <SessionsTab sessions={sessions} groupId={group.id} setSessions={setSessions} />}
+          {tab === 'sessions'  && <SessionsTab sessions={sessions} groupId={group.id} setSessions={setSessions} meetingLink={group.meetingLink ?? ''} />}
           {tab === 'roster'    && <RosterTab members={members} setMembers={setMembers} group={group} isOneOnOne={isOneOnOne} atCapacity={atCapacity} />}
           {tab === 'payments'  && (group.billingModel === 'per-month' ? <SubscribersTab group={group} /> : <PaymentsTab members={members} group={group} />)}
-          {tab === 'settings'  && <SettingsTab group={group} setGroup={setGroup} isOneOnOne={isOneOnOne} onDirtyChange={setSettingsDirty} />}
+          {tab === 'settings'  && <SettingsTab group={group} setGroup={setGroup} isOneOnOne={isOneOnOne} onDirtyChange={setSettingsDirty} enrolledCount={enrolledCount} />}
           {tab === 'analytics' && !isOneOnOne && <AnalyticsTab group={group} members={members} />}
         </div>
       </div>
@@ -434,8 +464,32 @@ function StreamTab({ group, posts, setPosts }: { group: GroupDetail; posts: Stre
     setTitle(''); setBody(''); setComposer(null);
   };
 
-  const togglePin = (id: string) => setPosts(posts.map((p) => p.id === id ? { ...p, pinned: !p.pinned } : p));
-  const remove = (id: string) => setPosts(posts.filter((p) => p.id !== id));
+  const togglePin = async (id: string) => {
+    const post = posts.find(p => p.id === id);
+    if (!post) return;
+    const newPinned = !post.pinned;
+    try {
+      const res = await fetch(`/api/stream/post/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinned: newPinned }),
+      });
+      if (!res.ok) throw new Error((await res.json())?.error ?? 'Failed to pin');
+      setPosts(posts.map(p => p.id === id ? { ...p, pinned: newPinned } : p));
+    } catch (e: any) {
+      alert(e?.message ?? 'Failed to update pin');
+    }
+  };
+
+  const remove = async (id: string) => {
+    try {
+      const res = await fetch(`/api/stream/post/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error ?? 'Failed to delete');
+      setPosts(posts.filter(p => p.id !== id));
+    } catch (e: any) {
+      alert(e?.message ?? 'Failed to delete post');
+    }
+  };
 
   return (
     <div className="grid lg:grid-cols-[1fr,280px] gap-6">
@@ -562,10 +616,147 @@ const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
   return { value, label };
 });
 
-function SessionsTab({ sessions, groupId, setSessions }: { sessions: GroupSession[]; groupId: string; setSessions: React.Dispatch<React.SetStateAction<GroupSession[]>> }) {
+function SessionRow({ s, groupId, meetingLink, selected, onSelect, onCancel }: { s: GroupSession; groupId: string; meetingLink: string; selected: boolean; onSelect: () => void; onCancel: () => void }) {
+  const d = new Date(s.date);
+  const valid = !isNaN(d.getTime());
+  const future = valid && d > new Date();
+  const durationMin = s.durationMin ?? 60;
+  const durLabel = durationMin < 60 ? `${durationMin}m` : durationMin % 60 === 0 ? `${durationMin / 60}hr` : `${Math.floor(durationMin / 60)}h ${durationMin % 60}m`;
+  const [cancelling, setCancelling] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [joiningLink, setJoiningLink] = useState(false);
+  const [joinError, setJoinError] = useState('');
+
+  const handleJoin = async () => {
+    setJoiningLink(true); setJoinError('');
+    try {
+      const res = await fetch(`/api/groups/${groupId}/meeting-link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? 'Could not generate link');
+      const url = json?.join_url;
+      if (url) window.open(url, '_blank', 'noreferrer');
+      else throw new Error('No link returned');
+    } catch (e: any) {
+      setJoinError(e?.message ?? 'Failed to get meeting link');
+    } finally {
+      setJoiningLink(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    setCancelling(true);
+    try {
+      const res = await fetch(`/api/groups/${groupId}/sessions/occurrences/${s.id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error((await res.json())?.error ?? 'Failed');
+      onCancel();
+    } catch (e: any) {
+      alert(e?.message ?? 'Failed to cancel session');
+      setCancelling(false);
+    }
+  };
+
+  return (
+    <>
+      <div className={cn('rounded-2xl bg-card border p-4 flex flex-col md:flex-row md:items-center gap-4', selected ? 'border-brand bg-brand/5' : 'border-border')}>
+        <input type="checkbox" checked={selected} onChange={onSelect} className="rounded shrink-0 mt-0.5 self-start md:self-center" />
+        <div className="flex items-center gap-3 md:w-60">
+          <div className="text-center bg-brand/10 text-brand-deep rounded-lg px-3 py-1.5 leading-tight shrink-0">
+            <div className="text-base font-bold">{valid ? d.getDate() : '—'}</div>
+            <div className="text-[9px] uppercase font-bold tracking-wider">{valid ? d.toLocaleString(undefined, { month: 'short' }) : '—'}</div>
+          </div>
+          <div className="min-w-0">
+            <div className="font-semibold text-ink text-sm truncate">
+              {valid ? d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : 'Scheduled'}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {valid ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : ''}{valid ? ' · ' : ''}{durLabel}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-1 items-center gap-2 flex-wrap">
+          <Pill tone={s.attendanceStatus === 'attended' ? 'emerald' : s.attendanceStatus === 'no-show' ? 'rose' : 'slate'}
+            label={`Attendance: ${s.attendanceStatus ?? (future ? '—' : 'pending')}`} />
+          <Pill tone={s.paymentStatus === 'paid' ? 'emerald' : s.paymentStatus === 'overdue' ? 'rose' : 'amber'}
+            label={`Payment: ${s.paymentStatus ?? 'pending'}`} />
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={handleJoin}
+            disabled={joiningLink}
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90 disabled:opacity-60">
+            <Video className="size-3.5" /> {joiningLink ? 'Getting link…' : 'Join'}
+          </button>
+          <button
+            onClick={() => setConfirmCancel(true)}
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-rose-200 text-rose-600 text-xs font-semibold hover:bg-rose-50 transition">
+            <X className="size-3.5" /> Cancel
+          </button>
+        </div>
+      </div>
+
+      {joinError && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setJoinError('')}>
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-2xl bg-background border border-border shadow-xl p-6 space-y-3">
+            <div className="font-bold text-ink text-lg">Could not get meeting link</div>
+            <p className="text-sm text-muted-foreground">{joinError}</p>
+            <div className="flex justify-end">
+              <button onClick={() => setJoinError('')} className="px-4 py-2 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand/90">OK</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmCancel && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setConfirmCancel(false)}>
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-2xl bg-background border border-border shadow-xl p-6 space-y-4">
+            <div className="font-bold text-ink text-lg">Cancel this session?</div>
+            <p className="text-sm text-muted-foreground">
+              {valid ? d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }) : 'This session'} will be removed. Students will no longer see it on their schedule.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setConfirmCancel(false)} disabled={cancelling} className="px-4 py-2 rounded-xl border border-border text-sm font-semibold hover:bg-muted">Keep</button>
+              <button onClick={handleCancel} disabled={cancelling}
+                className="px-4 py-2 rounded-xl bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 disabled:opacity-50">
+                {cancelling ? 'Cancelling…' : 'Cancel session'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function SessionsTab({ sessions, groupId, setSessions, meetingLink }: { sessions: GroupSession[]; groupId: string; setSessions: React.Dispatch<React.SetStateAction<GroupSession[]>>; meetingLink: string }) {
   const upcoming = sessions.filter((s) => s.status === 'upcoming');
   const [addOpen, setAddOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [conflictDates, setConflictDates] = useState<Date[]>([]);
+
+  const toggleSelect = (id: string) =>
+    setSelectedIds((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggleAll = () =>
+    setSelectedIds(selectedIds.size === sessions.length ? new Set() : new Set(sessions.map((s) => s.id)));
+
+  const bulkDelete = async () => {
+    if (!selectedIds.size) return;
+    setBulkDeleting(true);
+    const ids = [...selectedIds];
+    const results = await Promise.allSettled(
+      ids.map((id) => fetch(`/api/groups/${groupId}/sessions/occurrences/${id}`, { method: 'DELETE' }))
+    );
+    const deleted = ids.filter((_, i) => (results[i] as PromiseFulfilledResult<Response>)?.value?.ok);
+    setSessions((prev) => prev.filter((s) => !deleted.includes(s.id)));
+    setSelectedIds(new Set());
+    setBulkDeleting(false);
+  };
 
   const blankForm = () => {
     const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
@@ -597,9 +788,30 @@ function SessionsTab({ sessions, groupId, setSessions }: { sessions: GroupSessio
   };
   const occurrences = buildOccurrences();
 
+  const detectConflicts = (): Date[] => {
+    return occurrences.filter((newOcc) => {
+      const newStart = newOcc.getTime();
+      const newEnd = newStart + form.duration * 60000;
+      return sessions.some((existing) => {
+        const existStart = new Date(existing.date).getTime();
+        if (isNaN(existStart)) return false;
+        const existEnd = existStart + (existing.durationMin ?? 60) * 60000;
+        return newStart < existEnd && newEnd > existStart;
+      });
+    });
+  };
+
+  const handleAddSession = () => {
+    if (!form.date) return;
+    const conflicts = detectConflicts();
+    if (conflicts.length > 0) { setConflictDates(conflicts); return; }
+    createSession();
+  };
+
   const createSession = async () => {
     if (!form.date) return;
     setSaving(true);
+    setConflictDates([]);
     try {
       // The API expects a single session record with recurrence info —
       // it generates all occurrences server-side.
@@ -769,7 +981,7 @@ function SessionsTab({ sessions, groupId, setSessions }: { sessions: GroupSessio
             </div>
             <div className="px-5 py-3 border-t border-border flex justify-end gap-2 shrink-0">
               <button onClick={() => setAddOpen(false)} className="px-3 py-1.5 rounded-lg text-sm text-muted-foreground hover:bg-muted">Cancel</button>
-              <button onClick={createSession} disabled={!form.date || saving}
+              <button onClick={handleAddSession} disabled={!form.date || saving}
                 className="px-4 py-1.5 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand/90 disabled:opacity-50">
                 {saving ? 'Saving…' : form.recurrence === 'none' ? 'Add session' : `Add ${occurrences.length} session${occurrences.length !== 1 ? 's' : ''}`}
               </button>
@@ -780,47 +992,81 @@ function SessionsTab({ sessions, groupId, setSessions }: { sessions: GroupSessio
 
       <div className="rounded-xl border border-dashed border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground flex items-start gap-2">
         <Video className="size-3.5 mt-0.5 shrink-0 text-brand-deep" />
-        Meeting links are generated automatically from your video provider — no manual setup per session.
+        Meeting links are generated automatically from your connected video provider.
       </div>
+
+      {/* Bulk action bar */}
+      {sessions.length > 0 && (
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={selectedIds.size === sessions.length && sessions.length > 0}
+              onChange={toggleAll}
+              className="rounded"
+            />
+            {selectedIds.size === 0 ? 'Select all' : `${selectedIds.size} selected`}
+          </label>
+          {selectedIds.size > 0 && (
+            <button
+              onClick={bulkDelete}
+              disabled={bulkDeleting}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-rose-600 text-white text-xs font-semibold hover:bg-rose-700 disabled:opacity-50">
+              <Trash2 className="size-3.5" /> {bulkDeleting ? 'Deleting…' : `Delete ${selectedIds.size} session${selectedIds.size !== 1 ? 's' : ''}`}
+            </button>
+          )}
+        </div>
+      )}
+
       {sessions.length === 0 && <EmptyState icon={CalendarIcon} title="No sessions scheduled" body="Add your first session to publish a calendar entry to enrolled students." />}
-      <div className="space-y-3">
-        {sessions.map((s) => {
-          const d = new Date(s.date);
-          const valid = !isNaN(d.getTime());
-          const future = valid && d > new Date();
-          const durationMin = s.durationMin ?? 60;
-          const durLabel = durationMin < 60 ? `${durationMin}m` : durationMin % 60 === 0 ? `${durationMin / 60}hr` : `${Math.floor(durationMin / 60)}h ${durationMin % 60}m`;
-          return (
-            <div key={s.id} className="rounded-2xl bg-card border border-border p-4 flex flex-col md:flex-row md:items-center gap-4">
-              <div className="flex items-center gap-3 md:w-64">
-                <div className="text-center bg-brand/10 text-brand-deep rounded-lg px-3 py-1.5 leading-tight">
-                  <div className="text-base font-bold">{valid ? d.getDate() : '—'}</div>
-                  <div className="text-[9px] uppercase font-bold tracking-wider">{valid ? d.toLocaleString(undefined, { month: 'short' }) : '—'}</div>
-                </div>
-                <div className="min-w-0">
-                  <div className="font-semibold text-ink text-sm truncate">
-                    {valid ? d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : 'Scheduled'}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {valid ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : ''}{valid ? ' · ' : ''}{durLabel}
-                  </div>
-                </div>
-              </div>
-              <div className="flex flex-1 items-center gap-2 flex-wrap">
-                <Pill tone={s.attendanceStatus === 'attended' ? 'emerald' : s.attendanceStatus === 'no-show' ? 'rose' : 'slate'}
-                  label={`Attendance: ${s.attendanceStatus ?? (future ? '—' : 'pending')}`} />
-                <Pill tone={s.paymentStatus === 'paid' ? 'emerald' : s.paymentStatus === 'overdue' ? 'rose' : 'amber'}
-                  label={`Payment: ${s.paymentStatus ?? 'pending'}`} />
-              </div>
-              {future && (
-                <button className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90">
-                  <Video className="size-3.5" /> Join
-                </button>
-              )}
-            </div>
-          );
-        })}
+      <div className="space-y-2">
+        {sessions.map((s) => (
+          <SessionRow
+            key={s.id}
+            s={s}
+            groupId={groupId}
+            meetingLink={meetingLink}
+            selected={selectedIds.has(s.id)}
+            onSelect={() => toggleSelect(s.id)}
+            onCancel={() => { setSessions((prev) => prev.filter((x) => x.id !== s.id)); setSelectedIds((p) => { const n = new Set(p); n.delete(s.id); return n; }); }}
+          />
+        ))}
       </div>
+
+      {/* Conflict warning modal */}
+      {conflictDates.length > 0 && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl bg-background border border-border shadow-xl p-6 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="size-10 rounded-xl bg-amber-100 grid place-items-center shrink-0">
+                <AlertTriangle className="size-5 text-amber-600" />
+              </div>
+              <div>
+                <div className="font-bold text-ink text-lg">Time conflict detected</div>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  The following {conflictDates.length === 1 ? 'time' : 'times'} overlap with an existing session in this class:
+                </p>
+              </div>
+            </div>
+            <ul className="space-y-1 text-sm bg-amber-50 rounded-xl p-3 border border-amber-200">
+              {conflictDates.map((d, i) => (
+                <li key={i} className="text-amber-900 font-medium">
+                  {d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · {d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                </li>
+              ))}
+            </ul>
+            <div className="flex justify-end gap-2 pt-1">
+              <button onClick={() => setConflictDates([])} className="px-4 py-2 rounded-xl border border-border text-sm font-semibold hover:bg-muted">
+                Change time
+              </button>
+              <button onClick={() => { setConflictDates([]); createSession(); }}
+                className="px-4 py-2 rounded-xl bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700">
+                Add anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -878,10 +1124,33 @@ function RosterTab({ members, setMembers, group, isOneOnOne, atCapacity }: {
       setInviteSending(false);
     }
   };
-  const visible = members.filter((m) => m.status !== 'removed');
+  const pending = members.filter((m) => m.status === 'pending');
+  const visible = members.filter((m) => m.status !== 'removed' && m.status !== 'pending');
 
   return (
     <div className="space-y-4">
+      {/* Pending join requests */}
+      {pending.length > 0 && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="size-8 rounded-lg bg-amber-100 grid place-items-center shrink-0">
+              <Clock className="size-4 text-amber-700" />
+            </div>
+            <div>
+              <div className="font-bold text-amber-900 text-sm">{pending.length} pending join request{pending.length !== 1 ? 's' : ''}</div>
+              <div className="text-xs text-amber-700">Review and approve or decline each request.</div>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {pending.map((m) => (
+              <PendingRequestRow key={m.studentId} m={m} groupId={group.id}
+                onApprove={() => updateMember(m.studentId, { status: 'approved' })}
+                onDecline={() => updateMember(m.studentId, { status: 'removed' })} />
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-lg font-bold text-ink">Roster</h2>
@@ -952,6 +1221,7 @@ function RosterTab({ members, setMembers, group, isOneOnOne, atCapacity }: {
             <thead className="bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="text-left font-bold px-4 py-2">Member</th>
+                <th className="text-left font-bold px-4 py-2">Contact</th>
                 <th className="text-left font-bold px-4 py-2">Status</th>
                 <th className="text-left font-bold px-4 py-2">Payment</th>
                 <th className="text-left font-bold px-4 py-2">Joined</th>
@@ -960,19 +1230,154 @@ function RosterTab({ members, setMembers, group, isOneOnOne, atCapacity }: {
             </thead>
             <tbody className="divide-y divide-border">
               {visible.map((m) => (
-                <RosterRow key={m.studentId} m={m} onUpdate={(p) => updateMember(m.studentId, p)} />
+                <RosterRow key={m.studentId} m={m} groupId={group.id} onUpdate={(p) => updateMember(m.studentId, p)} externalChannels={[group.whatsappLink && 'WhatsApp', group.googleClassroomLink && 'Google Classroom'].filter(Boolean).join(' and ') || undefined} />
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Banned students */}
+      {members.filter((m) => m.status === 'banned').length > 0 && (
+        <div className="space-y-2">
+          <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground pt-2">Banned students</div>
+          <div className="rounded-2xl border border-rose-200 bg-rose-50/40 divide-y divide-rose-100">
+            {members.filter((m) => m.status === 'banned').map((m) => (
+              <div key={m.studentId} className="flex items-center gap-3 px-4 py-3">
+                <div className="size-8 rounded-full bg-rose-200 grid place-items-center text-xs font-bold text-rose-700 shrink-0">
+                  {m.name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-ink text-sm">{m.name}</div>
+                </div>
+                <PardonButton studentId={m.studentId} groupId={group.id} onPardon={() => updateMember(m.studentId, { status: 'approved' })} />
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-function RosterRow({ m, onUpdate }: { m: GroupMember; onUpdate: (p: Partial<GroupMember>) => void }) {
+function PendingRequestRow({ m, groupId, onApprove, onDecline }: {
+  m: GroupMember; groupId: string; onApprove: () => void; onDecline: () => void;
+}) {
+  const [loading, setLoading] = useState<'approve' | 'decline' | null>(null);
+
+  const act = async (status: 'approved' | 'removed', cb: () => void) => {
+    setLoading(status === 'approved' ? 'approve' : 'decline');
+    try {
+      const res = await fetch(`/api/groups/${groupId}/members/${m.studentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) throw new Error();
+      cb();
+    } catch { /* silent */ } finally { setLoading(null); }
+  };
+
+  return (
+    <div className="flex items-center gap-3 bg-background rounded-xl px-3 py-2.5 border border-amber-200">
+      <div className="size-8 rounded-full bg-gradient-to-br from-brand to-emerald-400 grid place-items-center text-white text-xs font-bold shrink-0">
+        {m.name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="font-semibold text-ink text-sm truncate">{m.name}</div>
+        <div className="text-xs text-muted-foreground">Requested to join</div>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <button
+          disabled={loading !== null}
+          onClick={() => act('removed', onDecline)}
+          className="px-3 py-1.5 rounded-lg border border-border text-xs font-semibold hover:bg-muted disabled:opacity-50">
+          {loading === 'decline' ? 'Declining…' : 'Decline'}
+        </button>
+        <button
+          disabled={loading !== null}
+          onClick={() => act('approved', onApprove)}
+          className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90 disabled:opacity-50">
+          {loading === 'approve' ? 'Approving…' : 'Approve'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PardonButton({ studentId, groupId, onPardon }: { studentId: string; groupId: string; onPardon: () => void }) {
+  const [loading, setLoading] = useState(false);
+  const pardon = async () => {
+    setLoading(true);
+    try {
+      // Delete the membership row so the student must re-join from scratch.
+      // The pardon API route handles notifying the student they can rejoin.
+      const res = await fetch(`/api/groups/${groupId}/members/${studentId}/pardon`, {
+        method: 'POST',
+      });
+      if (!res.ok) throw new Error();
+      onPardon();
+    } catch { /* silent */ } finally { setLoading(false); }
+  };
+  return (
+    <button onClick={pardon} disabled={loading}
+      className="text-xs font-semibold text-brand-deep hover:underline disabled:opacity-50">
+      {loading ? 'Pardoning…' : 'Pardon'}
+    </button>
+  );
+}
+
+function RosterRow({ m, groupId, onUpdate, externalChannels }: { m: GroupMember; groupId: string; onUpdate: (p: Partial<GroupMember>) => void; externalChannels?: string }) {
   const [menu, setMenu] = useState(false);
+  const [menuPos, setMenuPos] = useState({ top: 0, right: 0 });
+  const btnRef = useRef<HTMLButtonElement>(null);
   const [confirm, setConfirm] = useState<null | 'suspend' | 'ban' | 'remove'>(null);
+  const [reason, setReason] = useState('');
+  const [suspendedUntil, setSuspendedUntil] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  // Default suspension end: 7 days from now
+  const defaultSuspendUntil = (() => {
+    const d = new Date(); d.setDate(d.getDate() + 7);
+    return d.toISOString().slice(0, 16);
+  })();
+
+  const openMenu = () => {
+    if (btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      const menuHeight = 140;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const top = spaceBelow < menuHeight ? rect.top - menuHeight : rect.bottom + 4;
+      setMenuPos({ top, right: window.innerWidth - rect.right });
+    }
+    setMenu(true);
+  };
+
+  const closeConfirm = () => { setConfirm(null); setReason(''); setSuspendedUntil(''); setErr(''); };
+
+  const callApi = async (status: string, r?: string) => {
+    setSaving(true); setErr('');
+    try {
+      const body: Record<string, unknown> = { status, reason: r || undefined };
+      if (status === 'suspended' && suspendedUntil) {
+        body.suspended_until = new Date(suspendedUntil).toISOString();
+      }
+      const res = await fetch(`/api/groups/${groupId}/members/${m.studentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error((await res.json())?.error ?? 'Failed');
+      onUpdate({ status: status as GroupMember['status'] });
+      closeConfirm();
+    } catch (e: any) {
+      setErr(e?.message ?? 'Something went wrong');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const statusMeta: Record<string, { label: string; chip: string }> = {
     pending_approval: { label: 'Pending',   chip: 'bg-amber-100 text-amber-800 border-amber-200' },
     invited:          { label: 'Invited',   chip: 'bg-sky-100 text-sky-700 border-sky-200' },
@@ -984,34 +1389,34 @@ function RosterRow({ m, onUpdate }: { m: GroupMember; onUpdate: (p: Partial<Grou
   };
   const sm = statusMeta[m.status] ?? statusMeta.active;
 
+  const isOverdue = m.paymentStatus === 'overdue';
   const confirmCopy = {
     suspend: {
       title: `Suspend ${m.name}?`,
-      body: `${m.name} will lose access to the stream, sessions, and meeting links until you reactivate them.`,
-      action: 'Suspend', tone: 'amber',
-      run: () => { onUpdate({ status: 'suspended' }); },
+      body: isOverdue
+        ? `${m.name} has an outstanding balance. Suspending pauses their access to the stream, sessions, and meeting links until you reactivate them or they settle the balance.`
+        : `${m.name} will lose access to the stream, sessions, and meeting links until you reactivate them.`,
+      action: 'Suspend', tone: 'amber' as const,
     },
     ban: {
       title: `Ban ${m.name} from this class?`,
-      body: `${m.name} will be permanently removed and blocked from rejoining. This cannot be undone.`,
-      action: 'Ban from class', tone: 'rose',
-      run: () => { onUpdate({ status: 'banned' }); },
+      body: `${m.name} will be permanently removed and blocked from rejoining or requesting access. They'll be notified. This cannot be undone.`,
+      action: 'Ban from class', tone: 'rose' as const,
     },
     remove: {
-      title: `Remove ${m.name} from this class?`,
+      title: `Remove ${m.name}?`,
       body: `${m.name} will lose access immediately. They can be re-invited later.`,
-      action: 'Remove', tone: 'rose',
-      run: () => { onUpdate({ status: 'removed' }); },
+      action: 'Remove', tone: 'rose' as const,
     },
   };
   const conf = confirm ? confirmCopy[confirm] : null;
 
   return (
     <>
-      <tr className={cn(m.status === 'suspended' && 'bg-amber-50/40', m.status === 'banned' && 'bg-rose-50/40', m.status === 'removed' && 'opacity-60')}>
+      <tr className={cn(m.status === 'suspended' && 'bg-amber-50/40', m.status === 'banned' && 'bg-rose-50/40')}>
         <td className="px-4 py-3">
           <div className="flex items-center gap-3">
-            <div className="size-9 rounded-full bg-gradient-to-br from-brand to-emerald-400 grid place-items-center text-xs font-bold text-white">
+            <div className="size-9 rounded-full bg-gradient-to-br from-brand to-emerald-400 grid place-items-center text-xs font-bold text-white shrink-0">
               {m.name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
             </div>
             <div>
@@ -1019,6 +1424,11 @@ function RosterRow({ m, onUpdate }: { m: GroupMember; onUpdate: (p: Partial<Grou
               {m.paymentStatus === 'overdue' && <div className="text-[11px] text-rose-600 font-semibold">Outstanding {fmtTTD(m.outstandingTtd ?? 0)}</div>}
             </div>
           </div>
+        </td>
+        <td className="px-4 py-3 text-xs">
+          {m.email ? (
+            <a href={`mailto:${m.email}`} className="block text-ink hover:text-brand-deep hover:underline truncate max-w-[160px] text-xs">{m.email}</a>
+          ) : <span className="text-muted-foreground">—</span>}
         </td>
         <td className="px-4 py-3">
           <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border', sm.chip)}>{sm.label}</span>
@@ -1029,38 +1439,82 @@ function RosterRow({ m, onUpdate }: { m: GroupMember; onUpdate: (p: Partial<Grou
         <td className="px-4 py-3 text-xs text-muted-foreground">
           {m.joinedAt ? new Date(m.joinedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—'}
         </td>
-        <td className="px-4 py-3 text-right relative">
-          <button onClick={() => setMenu(!menu)} className="size-8 grid place-items-center rounded-md hover:bg-muted text-muted-foreground">
+        <td className="px-4 py-3 text-right">
+          <button ref={btnRef} onClick={openMenu} className="size-8 grid place-items-center rounded-md hover:bg-muted text-muted-foreground">
             <MoreVertical className="size-4" />
           </button>
           {menu && (
-            <div className="absolute right-4 top-10 z-10 w-56 rounded-xl border border-border bg-background shadow-lg p-1 text-left">
-              {m.status !== 'suspended' && m.status !== 'banned'
-                ? <MenuBtn icon={ShieldAlert} label="Suspend" onClick={() => { setMenu(false); setConfirm('suspend'); }} />
-                : m.status === 'suspended'
-                ? <MenuBtn icon={Check} label="Reactivate" onClick={() => { onUpdate({ status: 'active' }); setMenu(false); }} />
-                : null}
-              <MenuBtn icon={AlertTriangle} label="Send warning" onClick={() => setMenu(false)} />
-              {m.status !== 'banned' && <MenuBtn icon={Ban} destructive label="Ban from class" onClick={() => { setMenu(false); setConfirm('ban'); }} />}
-              <MenuBtn icon={Trash2} destructive label="Remove from class" onClick={() => { setMenu(false); setConfirm('remove'); }} />
-            </div>
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setMenu(false)} />
+              <div
+                className="fixed z-50 w-56 rounded-xl border border-border bg-background shadow-xl p-1 text-left"
+                style={{ top: menuPos.top, right: menuPos.right }}
+              >
+                {m.status === 'suspended'
+                  ? <MenuBtn icon={Check} label="Reactivate" onClick={() => { callApi('approved'); setMenu(false); }} />
+                  : m.status !== 'banned' && m.paymentStatus === 'overdue'
+                  ? <MenuBtn icon={ShieldAlert} label="Suspend" onClick={() => { setMenu(false); setConfirm('suspend'); }} />
+                  : null}
+                {m.status !== 'banned' && <MenuBtn icon={Ban} destructive label="Ban from class" onClick={() => { setMenu(false); setConfirm('ban'); }} />}
+                <MenuBtn icon={Trash2} destructive label="Remove from class" onClick={() => { setMenu(false); setConfirm('remove'); }} />
+              </div>
+            </>
           )}
         </td>
       </tr>
 
-      {/* Confirm dialog */}
       {confirm && conf && (
         <tr><td colSpan={5} className="p-0">
-          <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setConfirm(null)}>
+          <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4" onClick={closeConfirm}>
             <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl bg-background border border-border shadow-xl p-6 space-y-4">
               <div className="font-bold text-ink text-lg">{conf.title}</div>
               <p className="text-sm text-muted-foreground">{conf.body}</p>
-              <div className="flex justify-end gap-2 pt-2">
-                <button onClick={() => setConfirm(null)} className="px-4 py-2 rounded-xl border border-border text-sm font-semibold hover:bg-muted">Cancel</button>
-                <button onClick={() => { conf.run(); setConfirm(null); }}
-                  className={cn('px-4 py-2 rounded-xl text-white text-sm font-semibold',
+              {/* Suspension end date — only for suspend action */}
+              {confirm === 'suspend' && (
+                <div>
+                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Suspended until <span className="normal-case font-normal text-rose-600">*</span>
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={suspendedUntil || defaultSuspendUntil}
+                    min={new Date().toISOString().slice(0, 16)}
+                    onChange={(e) => setSuspendedUntil(e.target.value)}
+                    className="mt-1.5 w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">The student's access will automatically restore at this date and time.</p>
+                </div>
+              )}
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Reason <span className="normal-case font-normal">(optional — shown to student)</span>
+                </label>
+                <textarea
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="e.g. Repeated disruption during sessions"
+                  rows={2}
+                  className="mt-1.5 w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand resize-none"
+                />
+              </div>
+              {externalChannels && (
+                <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-amber-50 border border-amber-200">
+                  <ShieldAlert className="size-4 text-amber-600 mt-0.5 shrink-0" />
+                  <p className="text-xs text-amber-800">
+                    <span className="font-semibold">Also remove from external channels — </span>
+                    if {m.name} is in your {externalChannels}, remove them there too. iTutor can't do that automatically.
+                  </p>
+                </div>
+              )}
+              {err && <p className="text-xs text-rose-600">{err}</p>}
+              <div className="flex justify-end gap-2 pt-1">
+                <button onClick={closeConfirm} disabled={saving} className="px-4 py-2 rounded-xl border border-border text-sm font-semibold hover:bg-muted">Cancel</button>
+                <button
+                  disabled={saving}
+                  onClick={() => callApi(confirm === 'suspend' ? 'suspended' : confirm === 'ban' ? 'banned' : 'removed', reason)}
+                  className={cn('px-4 py-2 rounded-xl text-white text-sm font-semibold disabled:opacity-50',
                     conf.tone === 'rose' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-amber-600 hover:bg-amber-700')}>
-                  {conf.action}
+                  {saving ? 'Saving…' : conf.action}
                 </button>
               </div>
             </div>
@@ -1409,7 +1863,7 @@ function SubscribersTab({ group }: { group: GroupDetail }) {
 
 /* ----------- Settings ----------- */
 const SETTINGS_SECTIONS = [
-  { id: 'basics',    label: 'Basics',            icon: Info },
+  { id: 'basics',    label: 'Display',           icon: Info },
   { id: 'capacity',  label: 'Capacity',          icon: Users },
   { id: 'billing',   label: 'Billing',           icon: DollarSign },
   { id: 'access',    label: 'Access & policies', icon: Lock },
@@ -1419,11 +1873,12 @@ const SETTINGS_SECTIONS = [
 ] as const;
 type SettingsSectionId = (typeof SETTINGS_SECTIONS)[number]['id'];
 
-function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange }: {
+function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount }: {
   group: GroupDetail;
   setGroup: React.Dispatch<React.SetStateAction<GroupDetail | null>>;
   isOneOnOne: boolean;
   onDirtyChange: (dirty: boolean) => void;
+  enrolledCount: number;
 }) {
   const gradients = [
     'from-orange-500 to-amber-400', 'from-fuchsia-500 to-purple-500', 'from-sky-500 to-cyan-400',
@@ -1515,6 +1970,9 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange }: {
         body: JSON.stringify({
           name: draft.title || 'Untitled class',
           description: draft.description || null,
+          cover_image: draft.coverImage?.trim() || null,
+          schedule_display: draft.scheduleDisplay?.trim() || null,
+          schedule_data: draft.scheduleData?.length ? JSON.stringify(draft.scheduleData) : null,
           subject: draft.subject && draft.subject !== '—' ? draft.subject : null,
           form_level: draft.level && draft.level !== '—' ? draft.level : null,
           max_students: draft.capacity > 0 ? draft.capacity : 20,
@@ -1630,7 +2088,7 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange }: {
         <div className="rounded-2xl bg-background border border-border p-6 space-y-6">
           {section === 'basics' && (
             <>
-              <SettingsHead title="Basics" desc="Core details students see in your class listing." />
+              <SettingsHead title="Display" desc="Control how your class appears to students in the marketplace." />
               <SetField label="Class title">
                 <input value={draft.title} onChange={(e) => d('title', e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
@@ -1677,19 +2135,26 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange }: {
               </div>
               <SetField label="Description" hint="Shown on your public listing and marketplace card.">
                 <textarea value={draft.description} onChange={(e) => d('description', e.target.value)}
+                  placeholder="Tell students what this class covers, who it's for, and what they'll achieve…"
                   className="w-full min-h-24 px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
               </SetField>
+              <SchedulePicker
+                entries={draft.scheduleData ?? []}
+                onChange={(entries) => {
+                  d('scheduleData', entries);
+                  d('scheduleDisplay', scheduleToDisplay(entries));
+                }}
+              />
+              <ClassBannerUpload
+                groupId={draft.id}
+                currentUrl={draft.coverImage ?? ''}
+                onUploaded={(url) => d('coverImage', url)}
+              />
+              {/* Marketplace preview */}
               <div className="pt-2 border-t border-border space-y-3">
-                <div className="text-sm font-semibold text-ink">Thumbnail</div>
-                <div className={cn('h-20 rounded-xl bg-gradient-to-br grid place-items-center', draft.thumbnailGradient ?? 'from-brand to-emerald-400')}>
-                  <ImageIcon className="size-7 text-white/80" />
-                </div>
-                <div className="grid grid-cols-8 gap-2">
-                  {gradients.map((g) => (
-                    <button key={g} onClick={() => d('thumbnailGradient', g)}
-                      className={cn('h-7 rounded-md bg-gradient-to-br', g, draft.thumbnailGradient === g && 'ring-2 ring-brand ring-offset-2')} />
-                  ))}
-                </div>
+                <div className="text-sm font-semibold text-ink">Marketplace preview</div>
+                <p className="text-xs text-muted-foreground">This is how your class appears to students browsing the Explore page.</p>
+                <ClassPreviewCard draft={draft} enrolledCount={enrolledCount} />
               </div>
             </>
           )}
@@ -1788,46 +2253,14 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange }: {
 
           {section === 'channels' && (
             <>
-              <SettingsHead title="Communication channels" desc="Where members go for class chatter outside of sessions." />
-              <SetField label="WhatsApp group link">
+              <SettingsHead title="Communication channels" desc="Optional external channels where your students can stay in touch." />
+              <SetField label="WhatsApp group link" infoTitle="WhatsApp" infoBlurb="Students enrolled in this class will see a prompt to join your WhatsApp group.">
                 <input value={draft.whatsappLink ?? ''} onChange={(e) => d('whatsappLink', e.target.value)} placeholder="https://chat.whatsapp.com/…"
                   className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
               </SetField>
-              <SetField label="Google Classroom link">
+              <SetField label="Google Classroom link" infoTitle="Google Classroom" infoBlurb="Students will see a prompt to join your Google Classroom when they open the class stream.">
                 <input value={draft.googleClassroomLink ?? ''} onChange={(e) => d('googleClassroomLink', e.target.value)} placeholder="https://classroom.google.com/c/…"
                   className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
-              </SetField>
-              <SetField label="Primary channel" infoTitle="Primary channel" infoBlurb="Where members are pointed for class chatter. iTutor native keeps everything in-app; WhatsApp/Classroom hands chat off to your existing group.">
-                <div className="grid grid-cols-3 gap-2">
-                  {(['native', 'whatsapp', 'classroom'] as const).map((ch) => {
-                    const disabled =
-                      (ch === 'whatsapp' && !draft.whatsappLink?.trim()) ||
-                      (ch === 'classroom' && !draft.googleClassroomLink?.trim());
-                    return (
-                      <button key={ch}
-                        disabled={disabled}
-                        title={disabled ? 'Add the link above to use this channel.' : undefined}
-                        onClick={() => !disabled && d('primaryChannel', ch)}
-                        className={cn('px-3 py-2 rounded-lg border text-xs font-semibold capitalize inline-flex items-center justify-center gap-1.5 transition-colors',
-                          draft.primaryChannel === ch ? 'bg-brand-soft border-brand text-brand-deep' : 'bg-background text-muted-foreground border-border hover:text-ink',
-                          disabled && 'opacity-40 cursor-not-allowed hover:text-muted-foreground')}>
-                        {ch === 'whatsapp' ? <MessageSquare className="size-3.5" /> : ch === 'classroom' ? <Globe className="size-3.5" /> : <Sparkles className="size-3.5" />}
-                        {ch === 'native' ? 'iTutor native' : ch}
-                      </button>
-                    );
-                  })}
-                </div>
-                {(!draft.whatsappLink?.trim() || !draft.googleClassroomLink?.trim()) && (
-                  <div className="text-[11px] text-muted-foreground mt-1.5">Add a link above to enable that channel.</div>
-                )}
-              </SetField>
-              <SetField label="Meeting link" infoTitle="Meeting link" infoBlurb="Paste your recurring Google Meet or Zoom link here. Students will use this to join every live session.">
-                <input
-                  value={draft.meetingLink ?? ''}
-                  onChange={(e) => d('meetingLink', e.target.value)}
-                  placeholder="https://meet.google.com/xxx-xxxx-xxx or https://zoom.us/j/…"
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand"
-                />
               </SetField>
             </>
           )}
@@ -1910,6 +2343,214 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange }: {
       )}
 
       <UnsavedBar dirty={dirty} onSave={handleSave} onDiscard={handleDiscard} saveLabel="Save class settings" saving={saving} />
+    </div>
+  );
+}
+
+/* ─── Schedule picker ────────────────────────────────── */
+const DURATION_OPTIONS = [
+  { value: 30, label: '30 min' },
+  { value: 45, label: '45 min' },
+  { value: 60, label: '1 hour' },
+  { value: 90, label: '1h 30m' },
+  { value: 120, label: '2 hours' },
+  { value: 150, label: '2h 30m' },
+  { value: 180, label: '3 hours' },
+];
+
+function SchedulePicker({ entries, onChange }: { entries: ScheduleEntry[]; onChange: (e: ScheduleEntry[]) => void }) {
+  const [adding, setAdding] = useState(false);
+  const [newDay, setNewDay] = useState(1);
+  const [newTime, setNewTime] = useState('16:00');
+  const [newDur, setNewDur] = useState(60);
+
+  const add = () => {
+    if (entries.some(e => e.day === newDay && e.time === newTime)) return;
+    const next = [...entries, { day: newDay, time: newTime, durationMin: newDur }]
+      .sort((a, b) => a.day !== b.day ? a.day - b.day : a.time.localeCompare(b.time));
+    onChange(next);
+    setAdding(false);
+  };
+
+  const remove = (i: number) => onChange(entries.filter((_, idx) => idx !== i));
+
+  return (
+    <div className="space-y-3">
+      <div className="text-sm font-semibold text-ink">Schedule</div>
+      <p className="text-xs text-muted-foreground -mt-1">Add your recurring sessions. Students see this on the marketplace.</p>
+
+      {entries.length > 0 && (
+        <div className="space-y-2">
+          {entries.map((e, i) => (
+            <div key={i} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-border bg-muted/30 text-sm">
+              <span className="font-medium text-ink">{formatScheduleEntry(e)}</span>
+              <button onClick={() => remove(i)} className="size-6 grid place-items-center rounded-md hover:bg-muted text-muted-foreground hover:text-rose-600 shrink-0">
+                <X className="size-3.5" />
+              </button>
+            </div>
+          ))}
+          {/* Generated display text preview */}
+          <div className="px-3 py-2 rounded-lg bg-brand/5 border border-brand/20 text-xs text-brand-deep font-medium whitespace-pre-line">
+            {scheduleToDisplay(entries)}
+          </div>
+        </div>
+      )}
+
+      {adding ? (
+        <div className="rounded-xl border border-border bg-background p-4 space-y-3">
+          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">New session</div>
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Day</label>
+              <select value={newDay} onChange={(e) => setNewDay(Number(e.target.value))}
+                className="w-full px-2 py-1.5 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand">
+                {DAY_NAMES.map((d, i) => <option key={i} value={i}>{d}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Start time</label>
+              <input type="time" value={newTime} onChange={(e) => setNewTime(e.target.value)}
+                className="w-full px-2 py-1.5 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Duration</label>
+              <select value={newDur} onChange={(e) => setNewDur(Number(e.target.value))}
+                className="w-full px-2 py-1.5 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand">
+                {DURATION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="text-xs text-muted-foreground">
+            → <span className="font-medium text-ink">{formatScheduleEntry({ day: newDay, time: newTime, durationMin: newDur })}</span>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={add}
+              className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90">
+              Add session
+            </button>
+            <button onClick={() => setAdding(false)}
+              className="px-3 py-1.5 rounded-lg border border-border text-xs font-semibold hover:bg-muted">
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => setAdding(true)}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-border text-xs font-semibold text-muted-foreground hover:text-ink hover:border-border hover:bg-muted transition">
+          <Plus className="size-3.5" /> Add session
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ─── Class banner upload ─────────────────────────────── */
+function ClassBannerUpload({ groupId, currentUrl, onUploaded }: { groupId: string; currentUrl: string; onUploaded: (url: string) => void }) {
+  const [uploading, setUploading] = useState(false);
+  const [err, setErr] = useState('');
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setErr('Please select an image file.'); return; }
+    if (file.size > 5 * 1024 * 1024) { setErr('Image must be under 5 MB.'); return; }
+    setUploading(true); setErr('');
+    try {
+      const ext = file.name.split('.').pop() ?? 'jpg';
+      const path = `class-banners/${groupId}-${Date.now()}.${ext}`;
+      const { supabase } = await import('@/lib/supabase/client');
+      const { error: upErr } = await supabase.storage.from('class-banners').upload(path, file, { upsert: true });
+      if (upErr) throw new Error(upErr.message);
+      const { data } = supabase.storage.from('class-banners').getPublicUrl(path);
+      onUploaded(data.publicUrl);
+    } catch (e: any) {
+      setErr(e?.message ?? 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="text-sm font-semibold text-ink">Banner image</div>
+      <p className="text-xs text-muted-foreground">Displayed at the top of your class listing. Recommended: 1200×300px.</p>
+      {currentUrl && (
+        <div className="rounded-xl overflow-hidden h-24 border border-border">
+          <img src={currentUrl} alt="Banner" className="w-full h-full object-cover" />
+        </div>
+      )}
+      <label className={cn('inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-sm font-semibold cursor-pointer hover:bg-muted transition', uploading && 'opacity-50 cursor-not-allowed')}>
+        <ArrowUpRight className="size-4 rotate-45" />
+        {uploading ? 'Uploading…' : currentUrl ? 'Change banner' : 'Upload banner'}
+        <input type="file" accept="image/*" className="hidden" disabled={uploading} onChange={handleFile} />
+      </label>
+      {currentUrl && (
+        <button onClick={() => onUploaded('')} className="ml-2 text-xs text-muted-foreground hover:text-rose-600 transition">Remove</button>
+      )}
+      {err && <p className="text-xs text-rose-600">{err}</p>}
+    </div>
+  );
+}
+
+/* ─── Marketplace preview card ───────────────────────── */
+function ClassPreviewCard({ draft, enrolledCount }: { draft: any; enrolledCount: number }) {
+  const capacity = draft.capacity ?? 20;
+  const pct = capacity > 0 ? Math.round((enrolledCount / capacity) * 100) : 0;
+  const spotsLeft = capacity - enrolledCount;
+  const isLow = spotsLeft > 0 && spotsLeft <= 3;
+  const isFull = spotsLeft <= 0;
+  const GRADIENTS = ['from-brand to-emerald-400', 'from-sky-500 to-cyan-400', 'from-orange-500 to-amber-400', 'from-fuchsia-500 to-purple-500'];
+  const gradient = GRADIENTS[Math.abs((draft.title || '').charCodeAt(0) ?? 0) % GRADIENTS.length];
+
+  return (
+    <div className="max-w-xs rounded-3xl bg-background border border-border overflow-hidden shadow-md">
+      {/* Banner */}
+      <div className={cn('relative h-24 flex items-end p-3', !draft.coverImage && `bg-gradient-to-br ${gradient}`)}
+        style={draft.coverImage ? { backgroundImage: `url(${draft.coverImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}>
+        <div className="size-12 rounded-2xl bg-white/90 backdrop-blur grid place-items-center text-2xl shadow-md">📚</div>
+      </div>
+      {/* Body */}
+      <div className="p-4 space-y-3">
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="font-semibold text-ink leading-tight">{draft.title || 'Untitled class'}</h3>
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-bold shrink-0">
+            <Star className="size-3 fill-amber-500 text-amber-500" /> 0.0
+          </span>
+        </div>
+        <div className="text-xs text-muted-foreground">
+          {draft.subject || 'Subject'}{draft.level ? ` · ${draft.level}` : ''}
+        </div>
+        {draft.description && <p className="text-xs text-muted-foreground line-clamp-2">{draft.description}</p>}
+        <div className="flex flex-wrap gap-1.5">
+          {draft.requireJoinRequests && (
+            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border border-border bg-muted text-muted-foreground">Approval required</span>
+          )}
+          {draft.feedbackMode !== 'off' && (
+            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-brand text-white inline-flex items-center gap-1">
+              <Sparkles className="size-2.5" /> {draft.feedbackMode === 'paid_addon' ? 'Parent feedback' : 'Free parent feedback'}
+            </span>
+          )}
+          {isLow && <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">Only {spotsLeft} spot{spotsLeft !== 1 ? 's' : ''} left</span>}
+          {isFull && <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Class full</span>}
+        </div>
+        {draft.scheduleDisplay && (
+          <div className="text-xs text-muted-foreground whitespace-pre-line">{draft.scheduleDisplay}</div>
+        )}
+        <div className="space-y-1">
+          <div className="text-xs text-muted-foreground">{enrolledCount}/{capacity} enrolled</div>
+          <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+            <div className={cn('h-full rounded-full transition-all', pct > 80 ? 'bg-coral' : 'bg-brand')} style={{ width: `${Math.min(100, pct)}%` }} />
+          </div>
+        </div>
+        <div className="flex items-center justify-between pt-1 border-t border-border">
+          <div>
+            {draft.billingModel === 'per-month'
+              ? <><span className="font-bold text-ink">{draft.pricePerSession ? `TT$${draft.pricePerSession}` : 'Free'}</span><span className="text-xs text-muted-foreground">/mo</span></>
+              : <span className="font-bold text-brand-deep">Free</span>}
+          </div>
+          <span className="text-xs font-semibold text-brand-deep">View →</span>
+        </div>
+      </div>
     </div>
   );
 }

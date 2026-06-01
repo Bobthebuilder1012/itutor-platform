@@ -26,14 +26,14 @@ export default function LessonDetailPage() {
     return (
       <div className="max-w-4xl mx-auto text-center py-20">
         <p className="font-semibold text-ink">Lesson not found</p>
-        <Link href="/student/my-lessons" className="text-sm text-brand-deep hover:underline mt-2 block">Back to My Lessons</Link>
+        <Link href="/student/classes" className="text-sm text-brand-deep hover:underline mt-2 block">Back to My Lessons</Link>
       </div>
     );
   }
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      <Link href="/student/my-lessons" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-ink">
+      <Link href="/student/classes" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-ink">
         <ArrowLeft className="size-4" /> All lessons
       </Link>
 

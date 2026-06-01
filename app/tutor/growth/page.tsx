@@ -47,7 +47,7 @@ function MyBusinessContent() {
     try {
       const { data, error } = await supabase
         .from('groups')
-        .select('id, name, subject, tutor_id, pricing_model, max_students, visibility, archived_at, created_at')
+        .select('id, name, description, subject, form_level, tutor_id, pricing_model, price_monthly, price_per_session, max_students, visibility, archived_at, created_at, cover_image, schedule_display, require_join_requests, feedback_mode, status')
         .eq('tutor_id', tutorId)
         .is('archived_at', null)
         .order('created_at', { ascending: false });
@@ -182,10 +182,15 @@ function OverviewTab({ activeClasses, totalRevenue, totalStudents, profile }: an
 
 /* ----------- Classes ----------- */
 function ClassesTab({ activeClasses }: { activeClasses: any[] }) {
+  const GRADIENTS = ['from-brand to-emerald-400', 'from-sky-500 to-cyan-400', 'from-orange-500 to-amber-400', 'from-fuchsia-500 to-purple-500', 'from-rose-500 to-pink-400', 'from-indigo-500 to-blue-500'];
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-ink">All Classes ({activeClasses.length})</h2>
+        <div>
+          <h2 className="text-lg font-bold text-ink">Your classes ({activeClasses.length})</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">This is how your classes appear to students on the marketplace.</p>
+        </div>
         <Link href="/tutor/classes/new" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand/90">
           <Plus className="size-3.5" /> New Class
         </Link>
@@ -197,38 +202,65 @@ function ClassesTab({ activeClasses }: { activeClasses: any[] }) {
           <p className="text-xs text-muted-foreground mt-1">Create your first class to start teaching.</p>
         </div>
       ) : (
-        <div className="rounded-2xl border border-border bg-card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="text-left font-bold px-4 py-2">Class</th>
-                <th className="text-left font-bold px-4 py-2">Members</th>
-                <th className="text-left font-bold px-4 py-2">Revenue (TTD)</th>
-                <th className="text-left font-bold px-4 py-2">Status</th>
-                <th className="px-4 py-2"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {activeClasses.map((c: any) => (
-                <tr key={c.id}>
-                  <td className="px-4 py-3">
-                    <div className="font-semibold text-ink">{c.name || c.title || 'Untitled'}</div>
-                    <div className="text-xs text-muted-foreground">{c.subject}</div>
-                  </td>
-                  <td className="px-4 py-3 tabular-nums">{c.member_count ?? c.enrollmentCount ?? 0}</td>
-                  <td className="px-4 py-3 tabular-nums font-semibold text-emerald-700">{(c.earnings_ttd ?? 0).toLocaleString()}</td>
-                  <td className="px-4 py-3">
-                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-emerald-100 text-emerald-700">
-                      {c.status ?? 'published'}
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {activeClasses.map((c: any, i: number) => {
+            const gradient = GRADIENTS[i % GRADIENTS.length];
+            const enrolled = c.member_count ?? c.enrollmentCount ?? 0;
+            const capacity = c.max_students ?? 20;
+            const pct = capacity > 0 ? Math.round((enrolled / capacity) * 100) : 0;
+            const spotsLeft = capacity - enrolled;
+            const isLow = spotsLeft > 0 && spotsLeft <= 3;
+            const price = Number(c.price_monthly ?? c.price_per_session ?? 0);
+
+            return (
+              <div key={c.id} className="rounded-3xl bg-background border border-border overflow-hidden shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5 flex flex-col">
+                {/* Banner */}
+                <div className={cn('relative h-24 flex items-end p-3', !c.cover_image && `bg-gradient-to-br ${gradient}`)}
+                  style={c.cover_image ? { backgroundImage: `url(${c.cover_image})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}>
+                  <div className="size-12 rounded-2xl bg-white/90 backdrop-blur grid place-items-center text-2xl shadow-md">📚</div>
+                  <span className={cn('absolute top-2.5 right-2.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full',
+                    c.visibility === 'private' ? 'bg-muted/90 text-ink' : 'bg-emerald-500 text-white')}>
+                    {c.visibility === 'private' ? 'Private' : 'Live'}
+                  </span>
+                </div>
+                {/* Body */}
+                <div className="p-4 space-y-2 flex-1 flex flex-col">
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="font-semibold text-ink leading-tight">{c.name || 'Untitled'}</h3>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-bold shrink-0">
+                      <Star className="size-3 fill-amber-500 text-amber-500" /> —
                     </span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <Link href={`/tutor/classes/${c.id}`} className="text-xs font-semibold text-brand-deep hover:underline">Manage</Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+                  <div className="text-xs text-muted-foreground">{c.subject}{c.form_level ? ` · ${c.form_level}` : ''}</div>
+                  {c.description && <p className="text-xs text-muted-foreground line-clamp-2">{c.description}</p>}
+                  <div className="flex flex-wrap gap-1">
+                    {c.require_join_requests && <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border border-border bg-muted text-muted-foreground">Approval required</span>}
+                    {c.feedback_mode && c.feedback_mode !== 'off' && (
+                      <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-brand text-white inline-flex items-center gap-1">
+                        <Sparkles className="size-2.5" /> Parent feedback
+                      </span>
+                    )}
+                    {isLow && <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">Only {spotsLeft} left</span>}
+                  </div>
+                  {c.schedule_display && <div className="text-xs text-muted-foreground whitespace-pre-line">{c.schedule_display}</div>}
+                  <div className="space-y-1 mt-auto">
+                    <div className="text-xs text-muted-foreground">{enrolled}/{capacity} enrolled</div>
+                    <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                      <div className={cn('h-full rounded-full', pct > 80 ? 'bg-coral' : 'bg-brand')} style={{ width: `${Math.min(100, pct)}%` }} />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-border">
+                    <div>
+                      {price > 0
+                        ? <><span className="font-bold text-ink">TT${price}</span><span className="text-xs text-muted-foreground">/mo</span></>
+                        : <span className="font-bold text-brand-deep">Free</span>}
+                    </div>
+                    <Link href={`/tutor/classes/${c.id}`} className="text-xs font-semibold text-brand-deep hover:underline">Manage →</Link>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

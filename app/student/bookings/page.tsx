@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -10,15 +10,27 @@ import { getDisplayName } from '@/lib/utils/displayName';
 import type { BookingWithDetails } from '@/lib/types/booking';
 import { getBookingStatusLabel } from '@/lib/types/booking';
 import { formatDateTime } from '@/lib/utils/calendar';
-import { Calendar, Video, MoreHorizontal, RotateCcw, Star, Clock } from 'lucide-react';
+import { Calendar, Video, MoreHorizontal, RotateCcw, Star, Clock, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type TabType = 'upcoming' | 'past';
+
+type ClassSession = {
+  id: string;
+  groupId: string;
+  className: string;
+  tutorName: string;
+  date: string;
+  durationMin: number;
+  meetingLink?: string;
+  type: 'class';
+};
 
 export default function StudentBookingsPage() {
   const { profile, loading: profileLoading } = useProfile();
   const router = useRouter();
   const [bookings, setBookings] = useState<BookingWithDetails[]>([]);
+  const [classSessions, setClassSessions] = useState<ClassSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('upcoming');
   const [paidClassesEnabled, setPaidClassesEnabled] = useState(false);
@@ -28,6 +40,7 @@ export default function StudentBookingsPage() {
     if (!profile || profile.role !== 'student') { router.push('/login'); return; }
     fetchPaidClassesFlag();
     loadBookings();
+    loadClassSessions();
   }, [profile, profileLoading, router]);
 
   async function fetchPaidClassesFlag() {
@@ -63,6 +76,47 @@ export default function StudentBookingsPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function loadClassSessions() {
+    try {
+      const groupsRes = await fetch('/api/student/my-groups', { cache: 'no-store' });
+      if (!groupsRes.ok) return;
+      const { groups } = await groupsRes.json();
+      if (!groups?.length) return;
+
+      const now = new Date();
+      const all: ClassSession[] = [];
+
+      await Promise.all((groups as any[]).map(async (grp: any) => {
+        try {
+          const res = await fetch(`/api/groups/${grp.id}/sessions`, { cache: 'no-store' });
+          if (!res.ok) return;
+          const { sessions } = await res.json();
+          const tutor = Array.isArray(grp.tutor) ? grp.tutor[0] : grp.tutor;
+          const tutorName = tutor?.display_name || tutor?.full_name || 'Tutor';
+
+          for (const s of sessions ?? []) {
+            for (const o of s.occurrences ?? []) {
+              const dt = o.scheduled_start_at;
+              if (!dt || new Date(dt) <= now) continue;
+              all.push({
+                id: o.id,
+                groupId: grp.id,
+                className: grp.name,
+                tutorName,
+                date: dt,
+                durationMin: s.duration_minutes ?? 60,
+                meetingLink: grp.meeting_link || undefined,
+                type: 'class',
+              });
+            }
+          }
+        } catch { /* skip failed group */ }
+      }));
+
+      setClassSessions(all.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
+    } catch { /* non-critical */ }
   }
 
   const isBookingPast = (booking: any) => {
@@ -111,7 +165,7 @@ export default function StudentBookingsPage() {
   };
 
   const tabs: { key: TabType; label: string; count: number }[] = [
-    { key: 'upcoming', label: 'Upcoming', count: upcoming.length },
+    { key: 'upcoming', label: 'Upcoming', count: upcoming.length + classSessions.length },
     { key: 'past', label: 'Past', count: past.length },
   ];
 
@@ -156,7 +210,7 @@ export default function StudentBookingsPage() {
         <div className="space-y-3">
           {[1, 2, 3].map(i => <div key={i} className="h-32 rounded-2xl bg-muted animate-pulse" />)}
         </div>
-      ) : displayed.length === 0 ? (
+      ) : displayed.length === 0 && (activeTab !== 'upcoming' || classSessions.length === 0) ? (
         <div className="text-center py-16 rounded-3xl bg-background border border-border">
           <div className="size-14 mx-auto rounded-2xl bg-brand-soft grid place-items-center mb-3">
             <Calendar className="size-6 text-brand-deep" />
@@ -171,6 +225,45 @@ export default function StudentBookingsPage() {
         </div>
       ) : (
         <div className="space-y-3">
+          {/* Class sessions — upcoming tab only */}
+          {activeTab === 'upcoming' && classSessions.map((cs) => {
+            const d = new Date(cs.date);
+            const durLabel = cs.durationMin < 60 ? `${cs.durationMin}m` : cs.durationMin % 60 === 0 ? `${cs.durationMin / 60}h` : `${Math.floor(cs.durationMin / 60)}h ${cs.durationMin % 60}m`;
+            return (
+              <div key={cs.id} className="rounded-2xl bg-background border border-border p-4 hover:shadow-card transition hover:border-brand/30">
+                <div className="flex items-start gap-4">
+                  <div className="size-12 rounded-2xl bg-gradient-to-br from-brand to-emerald-400 grid place-items-center text-white font-semibold flex-shrink-0">
+                    <Users className="size-5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-semibold text-ink truncate">{cs.className}</h3>
+                      <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wider bg-sky/40 text-forest">Group class</span>
+                    </div>
+                    <div className="text-sm text-muted-foreground mt-1">{cs.tutorName}</div>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
+                      <Calendar className="size-3.5" />
+                      {d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · {d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · {durLabel}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {cs.meetingLink ? (
+                      <a href={cs.meetingLink} target="_blank" rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90">
+                        <Video className="size-3.5" /> Join
+                      </a>
+                    ) : (
+                      <ClassJoinButton groupId={cs.groupId} />
+                    )}
+                    <Link href={`/student/classes/${cs.groupId}`}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-semibold hover:bg-muted">
+                      View class
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
           {displayed.map((booking) => {
             const displayTime = (booking as any).session?.scheduled_start_at || (booking as any).confirmed_start_at || (booking as any).requested_start_at;
             const { label: statusLabel, cls: statusCls } = getStatusConfig(booking);
@@ -258,5 +351,36 @@ export default function StudentBookingsPage() {
         </div>
       ))}
     </div>
+  );
+}
+
+function ClassJoinButton({ groupId }: { groupId: string }) {
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+
+  const join = useCallback(async () => {
+    setLoading(true); setErr('');
+    try {
+      const res = await fetch(`/api/groups/${groupId}/meeting-link`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? 'No link available');
+      const url = json?.join_url;
+      if (url) window.open(url, '_blank', 'noreferrer');
+      else throw new Error('No link available yet.');
+    } catch (e: any) {
+      setErr(e?.message ?? 'Could not get link');
+    } finally {
+      setLoading(false);
+    }
+  }, [groupId]);
+
+  return (
+    <>
+      <button onClick={join} disabled={loading}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90 disabled:opacity-60">
+        <Video className="size-3.5" /> {loading ? 'Getting link…' : 'Join'}
+      </button>
+      {err && <p className="text-xs text-rose-600 mt-1">{err}</p>}
+    </>
   );
 }

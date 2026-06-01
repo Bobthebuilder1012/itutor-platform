@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  ArrowLeft, Video, MessageCircle, Paperclip, Bell, Link as LinkIcon,
+  ArrowLeft, Video, MessageCircle, Paperclip, Bell, Link as LinkIcon, MessageSquare, Globe, Check as CheckIcon,
   Calendar as CalendarIcon, Users, Pin, ExternalLink, Star, Download,
   Clock, Check, X, ShieldAlert, Ban, CreditCard,
 } from 'lucide-react';
@@ -23,9 +23,11 @@ type Group = {
   primary_channel: string | null;
   enrollment_count: number;
   tutor_rating: number | null;
+  whatsapp_link: string | null;
+  google_classroom_link: string | null;
 };
 
-type Tab = 'stream' | 'sessions' | 'members';
+type Tab = 'stream' | 'sessions' | 'members' | 'whatsapp' | 'classroom';
 type MembershipState = 'active' | 'suspended' | 'banned';
 
 type StreamPost = {
@@ -122,6 +124,8 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('stream');
   const [memberState, setMemberState] = useState<MembershipState>('active');
+  const [actionReason, setActionReason] = useState<string | null>(null);
+  const [suspendedUntil, setSuspendedUntil] = useState<Date | null>(null);
   const [hasNextSession, setHasNextSession] = useState(false);
   const [nextMeetingLink, setNextMeetingLink] = useState<string | null>(null);
 
@@ -143,19 +147,26 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
 
       const membership = grp.current_user_membership;
       const s = membership?.status ?? 'active';
+      // Check if suspension has expired
+      const suspUntil = membership?.suspended_until ? new Date(membership.suspended_until) : null;
+      const suspExpired = suspUntil && suspUntil <= new Date();
       setMemberState(
-        s === 'suspended' || s === 'suspended_payment' ? 'suspended'
+        (s === 'suspended' || s === 'suspended_payment') && !suspExpired ? 'suspended'
         : s === 'banned' || s === 'removed' || s === 'rejected' ? 'banned'
         : 'active'
       );
+      if (membership?.action_reason) setActionReason(membership.action_reason);
+      if (suspUntil && !suspExpired) setSuspendedUntil(suspUntil);
 
       const enrollmentCount = grp.enrollment_count ?? grp.member_count ?? 0;
       const avgRating = typeof grp.average_rating === 'number' && grp.average_rating > 0
         ? grp.average_rating
         : null;
 
-      setHasNextSession(Boolean(grp.next_occurrence));
-      setNextMeetingLink(grp.meeting_link ?? grp.next_occurrence?.meeting_link ?? null);
+      const nextOcc = grp.next_occurrence;
+      const isReallyUpcoming = nextOcc?.scheduled_start_at && new Date(nextOcc.scheduled_start_at) > new Date();
+      setHasNextSession(Boolean(isReallyUpcoming));
+      setNextMeetingLink(grp.meeting_link ?? nextOcc?.meeting_link ?? null);
 
       const tutorObj = Array.isArray(grp.tutor) ? grp.tutor[0] : grp.tutor;
       const tutor = tutorObj
@@ -174,6 +185,8 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
         primary_channel: grp.primary_channel ?? null,
         enrollment_count: enrollmentCount,
         tutor_rating: avgRating,
+        whatsapp_link: grp.whatsapp_link ?? grp.whatsapp_url ?? null,
+        google_classroom_link: grp.google_classroom_link ?? null,
       });
     } catch (err) {
       console.error('[EnrolledClassPage]', err);
@@ -190,7 +203,7 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
     return (
       <div className="max-w-md mx-auto text-center py-20">
         <h1 className="text-2xl font-bold text-ink">Class not found</h1>
-        <Link href="/student/my-lessons" className="mt-4 inline-block text-brand-deep font-semibold">← My Classes</Link>
+        <Link href="/student/classes" className="mt-4 inline-block text-brand-deep font-semibold">← My Classes</Link>
       </div>
     );
   }
@@ -206,11 +219,15 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      {/* Back link */}
-      <Link href="/student/my-lessons"
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-ink">
-        <ArrowLeft className="size-4" /> All classes
-      </Link>
+      {/* Back link + Leave */}
+      <div className="flex items-center justify-between">
+        <Link href="/student/classes"
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-ink">
+          <ArrowLeft className="size-4" /> All classes
+        </Link>
+        {/* Leave available when active OR suspended */}
+        {(memberState === 'active' || memberState === 'suspended') && <LeaveClassButton groupId={groupId} />}
+      </div>
 
       {/* Banner */}
       <div className="rounded-3xl p-6 lg:p-8 relative overflow-hidden" style={bannerStyle}>
@@ -232,14 +249,7 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
             </div>
           </div>
           {!blocked && hasNextSession && (
-            <a
-              href={nextMeetingLink || '#'}
-              target={nextMeetingLink ? '_blank' : undefined}
-              rel="noreferrer"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-ink text-white font-semibold text-sm hover:bg-forest shrink-0"
-            >
-              <Video className="size-4" /> Join next session
-            </a>
+            <JoinSessionButton groupId={groupId} staticLink={nextMeetingLink} />
           )}
         </div>
       </div>
@@ -253,9 +263,16 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
           <div className="flex-1 min-w-0">
             <div className="font-bold text-amber-900">You're suspended from this class</div>
             <p className="text-sm text-amber-800 mt-0.5">
-              <strong>{tutorName}</strong> has paused your access — usually because of an outstanding payment.
-              You can still see the class info, but you can't join sessions, see new posts, or contact other members until you're reactivated.
+              <strong>{tutorName}</strong> has paused your access. You can still see the class info but can't join sessions or view new posts.
             </p>
+            {suspendedUntil && (
+              <p className="text-sm text-amber-900 mt-1.5 font-semibold">
+                Access restores: {suspendedUntil.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} at {suspendedUntil.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+              </p>
+            )}
+            {actionReason && (
+              <p className="text-sm text-amber-900 mt-1 font-medium">Reason: "{actionReason}"</p>
+            )}
           </div>
           <button className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700 shrink-0">
             <CreditCard className="size-4" /> Settle balance
@@ -270,15 +287,18 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
             <Ban className="size-5 text-rose-700" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="font-bold text-rose-900">You've been removed from this class</div>
+            <div className="font-bold text-rose-900">You've been banned from this class</div>
             <p className="text-sm text-rose-800 mt-0.5">
-              <strong>{tutorName}</strong> has banned you from <strong>{group.name}</strong>.
-              You can't rejoin or request access. If you think this was a mistake, you can report it to iTutor support.
+              <strong>{tutorName}</strong> has permanently removed you from <strong>{group.name}</strong>. You can't rejoin or request access.
             </p>
+            {actionReason && (
+              <p className="text-sm text-rose-900 mt-2 font-medium">Reason: "{actionReason}"</p>
+            )}
+            <p className="text-xs text-rose-700 mt-2">If you think this was a mistake, contact iTutor support.</p>
             <div className="mt-3 flex flex-wrap gap-2">
-              <button className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-rose-600 text-white text-xs font-semibold hover:bg-rose-700">
+              <a href="mailto:support@myitutor.com?subject=Class ban dispute" className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-rose-600 text-white text-xs font-semibold hover:bg-rose-700">
                 Contact support
-              </button>
+              </a>
               <Link href="/student/find-tutors"
                 className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-rose-300 text-rose-700 text-xs font-semibold hover:bg-rose-100">
                 Find another tutor
@@ -293,9 +313,11 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
         <>
           <div className="border-b border-border flex items-center gap-6 overflow-x-auto">
             {([
-              { key: 'stream'   as const, label: 'Stream',   icon: MessageCircle },
-              { key: 'sessions' as const, label: 'Sessions', icon: CalendarIcon },
-              { key: 'members'  as const, label: 'Members',  icon: Users },
+              { key: 'stream'    as const, label: 'Stream',     icon: MessageCircle },
+              { key: 'sessions'  as const, label: 'Sessions',   icon: CalendarIcon },
+              { key: 'members'   as const, label: 'Members',    icon: Users },
+              ...(group.whatsapp_link ? [{ key: 'whatsapp'  as const, label: 'WhatsApp',   icon: MessageSquare }] : []),
+              ...(group.google_classroom_link ? [{ key: 'classroom' as const, label: 'Classroom',  icon: Globe }] : []),
             ]).map((t) => {
               const Icon = t.icon;
               return (
@@ -309,11 +331,207 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
             })}
           </div>
 
-          {tab === 'stream'   && <StreamTab   groupId={groupId} group={group} tutorName={tutorName} />}
-          {tab === 'sessions' && <SessionsTab groupId={groupId} userId={profile!.id} />}
-          {tab === 'members'  && <MembersTab  groupId={groupId} userId={profile!.id} />}
+          {tab === 'stream'    && <StreamTab   groupId={groupId} group={group} tutorName={tutorName} />}
+          {tab === 'sessions'  && <SessionsTab groupId={groupId} userId={profile!.id} />}
+          {tab === 'members'   && <MembersTab  groupId={groupId} userId={profile!.id} />}
+          {tab === 'whatsapp'  && <ExternalChannelTab groupId={groupId} platform="whatsapp"  url={group.whatsapp_link!} tutorName={tutorName} />}
+          {tab === 'classroom' && <ExternalChannelTab groupId={groupId} platform="classroom" url={group.google_classroom_link!} tutorName={tutorName} />}
         </>
       )}
+    </div>
+  );
+}
+
+/* ─── Join session button ───────────────────────────── */
+
+function JoinSessionButton({ groupId, staticLink }: { groupId: string; staticLink: string | null }) {
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+
+  const handleClick = async () => {
+    if (staticLink) { window.open(staticLink, '_blank', 'noreferrer'); return; }
+    setLoading(true); setErr('');
+    try {
+      const res = await fetch(`/api/groups/${groupId}/meeting-link`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? 'No link available yet');
+      const url = json?.join_url;
+      if (url) window.open(url, '_blank', 'noreferrer');
+      else throw new Error('Meeting link not set up yet. Check back closer to the session.');
+    } catch (e: any) {
+      setErr(e?.message ?? 'Could not get link');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="shrink-0">
+      <button
+        onClick={handleClick}
+        disabled={loading}
+        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-ink text-white font-semibold text-sm hover:bg-forest disabled:opacity-60 transition"
+      >
+        <Video className="size-4" /> {loading ? 'Getting link…' : 'Join next session'}
+      </button>
+      {err && (
+        <div className="absolute mt-2 max-w-xs rounded-xl bg-background border border-border shadow-lg p-3 text-xs text-muted-foreground z-50">
+          {err}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── External channel tab ──────────────────────────── */
+
+function ExternalChannelTab({ groupId, platform, url, tutorName }: {
+  groupId: string;
+  platform: 'whatsapp' | 'classroom';
+  url: string;
+  tutorName: string;
+}) {
+  const KEY = `itutor.joinedChannels.${groupId}`;
+  const channelKey = platform === 'whatsapp' ? 'wa' : 'gc';
+
+  const [joined, setJoined] = useState<boolean>(() => {
+    try {
+      const stored = JSON.parse(typeof window !== 'undefined' ? localStorage.getItem(KEY) || '{}' : '{}');
+      return !!stored[channelKey];
+    } catch { return false; }
+  });
+
+  const handleJoin = () => {
+    window.open(url, '_blank', 'noreferrer');
+    try {
+      const stored = JSON.parse(localStorage.getItem(KEY) || '{}');
+      stored[channelKey] = true;
+      localStorage.setItem(KEY, JSON.stringify(stored));
+    } catch {}
+    setJoined(true);
+  };
+
+  const isWhatsApp = platform === 'whatsapp';
+  const platformName = isWhatsApp ? 'WhatsApp' : 'Google Classroom';
+  const Icon = isWhatsApp ? MessageSquare : Globe;
+  const color = isWhatsApp ? '#25D366' : '#1A73E8';
+  const bgClass = isWhatsApp ? 'bg-[#25D366]' : 'bg-[#1A73E8]';
+
+  return (
+    <div className="max-w-md mx-auto space-y-5 py-4">
+      {/* Icon + heading */}
+      <div className="flex flex-col items-center text-center gap-4 py-6">
+        <div className="size-16 rounded-2xl grid place-items-center text-white shadow-lg" style={{ background: color }}>
+          <Icon className="size-8" />
+        </div>
+        <div>
+          <h2 className="text-xl font-bold text-ink">{platformName} group</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            {tutorName} uses {platformName} to share announcements, materials, and schedule updates with this class.
+          </p>
+        </div>
+      </div>
+
+      {/* Join card */}
+      <div className="rounded-2xl border border-border bg-background p-5 space-y-4">
+        {joined ? (
+          <div className="text-center space-y-3">
+            <div className="size-12 rounded-full bg-brand/10 grid place-items-center mx-auto">
+              <CheckIcon className="size-6 text-brand-deep" />
+            </div>
+            <div>
+              <div className="font-semibold text-ink">You've joined the {platformName} group</div>
+              <p className="text-sm text-muted-foreground mt-0.5">You can rejoin at any time using the button below.</p>
+            </div>
+            <button
+              onClick={handleJoin}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition"
+              style={{ background: color }}
+            >
+              <ExternalLink className="size-4" /> Open {platformName}
+            </button>
+          </div>
+        ) : (
+          <div className="text-center space-y-3">
+            <div>
+              <div className="font-semibold text-ink">Join the {platformName} group</div>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Stay up to date with reminders, materials, and class announcements.
+              </p>
+            </div>
+            <button
+              onClick={handleJoin}
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-semibold text-white transition hover:opacity-90 w-full justify-center"
+              style={{ background: color }}
+            >
+              <Icon className="size-4" /> Join {platformName} group
+            </button>
+            <p className="text-[11px] text-muted-foreground">You'll be taken to {platformName} to join. Come back here after.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Channel join banner ────────────────────────────── */
+
+function ChannelJoinBanner({ group, tutorName }: { group: Group; tutorName: string }) {
+  const wa = group.whatsapp_link?.trim();
+  const gc = group.google_classroom_link?.trim();
+  if (!wa && !gc) return null;
+
+  const KEY = `itutor.joinedChannels.${group.id}`;
+  const [joined, setJoined] = useState<Record<string, boolean>>(() => {
+    try { return JSON.parse(typeof window !== 'undefined' ? localStorage.getItem(KEY) || '{}' : '{}'); } catch { return {}; }
+  });
+
+  const mark = (k: 'wa' | 'gc') => {
+    const next = { ...joined, [k]: true };
+    setJoined(next);
+    try { localStorage.setItem(KEY, JSON.stringify(next)); } catch {}
+  };
+
+  const allJoined = (!wa || joined.wa) && (!gc || joined.gc);
+  if (allJoined) return null;
+
+  return (
+    <div className="rounded-2xl border border-brand/30 bg-brand-soft/40 p-4">
+      <div className="flex items-start gap-3">
+        <div className="size-10 rounded-xl bg-brand text-white grid place-items-center shrink-0">
+          <MessageCircle className="size-5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="font-bold text-ink">Join your class channels</div>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {tutorName} uses external channels to share reminders, materials, and updates. Join below so you don't miss anything.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {wa && !joined.wa && (
+              <a href={wa} target="_blank" rel="noreferrer" onClick={() => mark('wa')}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#25D366] text-white text-sm font-semibold hover:opacity-90 transition">
+                <MessageSquare className="size-4" /> Join WhatsApp group
+              </a>
+            )}
+            {gc && !joined.gc && (
+              <a href={gc} target="_blank" rel="noreferrer" onClick={() => mark('gc')}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-ink text-white text-sm font-semibold hover:bg-forest transition">
+                <Globe className="size-4" /> Join Google Classroom
+              </a>
+            )}
+            {wa && joined.wa && (
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-brand-deep">
+                <CheckIcon className="size-3.5" /> WhatsApp joined
+              </span>
+            )}
+            {gc && joined.gc && (
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-brand-deep">
+                <CheckIcon className="size-3.5" /> Classroom joined
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -330,17 +548,14 @@ function StreamTab({ groupId, group, tutorName }: { groupId: string; group: Grou
       .then(d => {
         const raw: any[] = d.posts ?? d.data ?? [];
         setPosts(raw.map((p: any) => {
-          // Map stream_posts DB fields → StreamPost shape
           const kind: StreamPost['kind'] =
             p.post_type === 'attachment' ? 'attachment'
             : p.post_type === 'link'     ? 'link'
             : 'announcement';
 
-          // Attachments come as nested array from the API
           const firstAttachment = (p.attachments ?? [])[0];
 
           const body = p.message_body ?? p.body ?? p.content ?? '';
-          // Use first line as title, rest as body
           const lines = body.split('\n').filter(Boolean);
           const title = p.title ?? p.heading ?? lines[0] ?? '';
           const bodyText = lines.length > 1 ? lines.slice(1).join('\n') : body;
@@ -378,6 +593,7 @@ function StreamTab({ groupId, group, tutorName }: { groupId: string; group: Grou
   return (
     <div className="grid lg:grid-cols-[1fr,280px] gap-6">
       <div className="space-y-3">
+        <ChannelJoinBanner group={group} tutorName={tutorName} />
         <div className="rounded-xl border border-dashed border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
           The stream is read-only — your tutor posts here. Use Messages to reply.
         </div>
@@ -480,14 +696,12 @@ function SessionsTab({ groupId, userId }: { groupId: string; userId: string }) {
   useEffect(() => {
     async function load() {
       try {
-        // Use the sessions API which returns group_sessions with nested occurrences
         const res = await fetch(`/api/groups/${groupId}/sessions`, { cache: 'no-store' });
         const d = await res.json();
 
         setMeetingLink(d.meeting_link ?? null);
         const rawSessions: any[] = d.sessions ?? d.data ?? [];
 
-        // Flatten all occurrences from all sessions
         const allOccs: any[] = rawSessions.flatMap((s: any) =>
           (s.occurrences ?? []).map((o: any) => ({
             id: o.id,
@@ -495,11 +709,10 @@ function SessionsTab({ groupId, userId }: { groupId: string; userId: string }) {
             topic: o.title ?? s.title ?? 'Class session',
             date: o.scheduled_start_at,
             durationMin: s.duration_minutes ?? 60,
-            meetingLink: null as string | null, // populated via join-link API when session starts
+            meetingLink: null as string | null,
           }))
         );
 
-        // Sort: upcoming first, then most-recent past
         const now = new Date();
         const upcoming = allOccs.filter(o => new Date(o.date) > now)
           .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -509,7 +722,6 @@ function SessionsTab({ groupId, userId }: { groupId: string; userId: string }) {
 
         if (!sorted.length) { setSessions([]); return; }
 
-        // Fetch attendance records
         const occIds = sorted.map(o => o.id);
         const attMap: Record<string, 'attended' | 'missed'> = {};
         try {
@@ -677,5 +889,72 @@ function MembersTab({ groupId, userId }: { groupId: string; userId: string }) {
         ))}
       </div>
     </div>
+  );
+}
+
+/* ─── Leave class button ─────────────────────────────── */
+
+function LeaveClassButton({ groupId }: { groupId: string }) {
+  const router = useRouter();
+  const { profile } = useProfile();
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+
+  const leave = useCallback(async () => {
+    if (!profile) return;
+    setLoading(true); setErr('');
+    try {
+      const res = await fetch(`/api/groups/${groupId}/members/${profile.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: reason.trim() || undefined }),
+      });
+      if (!res.ok) throw new Error((await res.json())?.error ?? 'Failed to leave');
+      router.push('/student/classes');
+    } catch (e: any) {
+      setErr(e?.message ?? 'Something went wrong');
+      setLoading(false);
+    }
+  }, [groupId, profile, reason, router]);
+
+  const close = () => { setOpen(false); setReason(''); setErr(''); };
+
+  return (
+    <>
+      <button onClick={() => setOpen(true)}
+        className="text-xs font-semibold text-muted-foreground hover:text-rose-600 transition">
+        Leave class
+      </button>
+      {open && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4" onClick={close}>
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-2xl bg-background border border-border shadow-xl p-6 space-y-4">
+            <div className="font-bold text-ink text-lg">Leave this class?</div>
+            <p className="text-sm text-muted-foreground">You'll lose access to the stream and sessions. You can rejoin later if the class is open.</p>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Reason <span className="normal-case font-normal">(optional)</span>
+              </label>
+              <textarea
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="e.g. Schedule conflict, found another tutor…"
+                rows={2}
+                className="mt-1.5 w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand resize-none"
+              />
+            </div>
+            {err && <p className="text-xs text-rose-600">{err}</p>}
+            <div className="flex justify-end gap-2">
+              <button onClick={close} disabled={loading} className="px-4 py-2 rounded-xl border border-border text-sm font-semibold hover:bg-muted">Cancel</button>
+              <button onClick={leave} disabled={loading}
+                className="px-4 py-2 rounded-xl bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 disabled:opacity-50">
+                {loading ? 'Leaving…' : 'Leave class'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
