@@ -305,16 +305,15 @@ async function handleTutorRemoval(
 
     if (payoutAlreadyReleased) {
       // Record the debt against the tutor immediately
-      await admin.from('tutor_deductions').insert({
+      const { error: deductErr } = await admin.from('tutor_deductions').insert({
         tutor_id: args.tutorId,
         amount_ttd: refundAmount,
         reason: 'student_removal_refund',
         source_enrollment_id: subEnrollment.id,
         source_subscription_payment_id: paidPayment.id,
         status: 'pending',
-      }).then((result) => {
-        if (result.error) console.error('[handleTutorRemoval] tutor_deductions insert failed:', result.error);
       });
+      if (deductErr) console.error('[handleTutorRemoval] tutor_deductions insert failed:', deductErr);
 
       // Immediately decrement the tutor's available balance if they have enough;
       // otherwise the pending deduction will be recovered from the next payout batch.
