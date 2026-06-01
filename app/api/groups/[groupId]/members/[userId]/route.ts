@@ -128,7 +128,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     await req.json().catch(() => ({}));
 
     if (isSelf) {
-      return handleSelfLeave(admin as any, groupId, userId, group?.name ?? 'this group');
+      return handleSelfLeave(admin as any, groupId, userId, group as any);
     }
 
     return handleTutorRemoval(admin as any, {
@@ -147,8 +147,9 @@ async function handleSelfLeave(
   admin: any,
   groupId: string,
   userId: string,
-  groupName: string
+  group: any
 ) {
+  const groupName: string = group?.name ?? 'this group';
   const { data: subEnrollment } = await admin
     .from('group_enrollments')
     .select('id, status, current_period_end, cancel_at_period_end')
