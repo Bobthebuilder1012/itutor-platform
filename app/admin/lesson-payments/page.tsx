@@ -1,13 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import { isEmailManagementOnlyAdmin } from '@/lib/auth/adminAccess';
 import {
   BookOpen, DollarSign, AlertTriangle, Users, Loader2,
-  CheckSquare, Square, Download, RefreshCcw, ChevronDown,
-  XCircle, X, AlertCircle,
+  CheckSquare, Square, Download, RefreshCcw,
+  X, CheckCircle, XCircle,
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -25,12 +25,14 @@ interface ActiveSub {
   payout_ledger: { id: string; status: string; batch_id: string | null; amount_ttd: number } | null;
 }
 
-interface PendingRefund {
+interface CompletedRemoval {
   id: string;
   enrollment_id: string;
   status: string;
   refund_issued: boolean;
+  refund_amount_ttd: number | null;
   created_at: string;
+  resolved_at: string | null;
   enrollment: {
     id: string;
     status: string;
@@ -55,10 +57,11 @@ interface CancelledLeft {
 
 interface Stats {
   active_count: number;
-  pending_refund_count: number;
+  completed_removal_count: number;
   cancelled_left_count: number;
   unbatched_payout_ttd: number;
-  pending_refund_ttd: number;
+  refunded_total_ttd: number;
+  failed_refund_count: number;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -169,7 +172,6 @@ function BatchModal({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Batch creation failed');
 
-      // Trigger CSV download
       if (data.csv) {
         const blob = new Blob([data.csv], { type: 'text/csv' });
         const url  = URL.createObjectURL(blob);
@@ -200,7 +202,6 @@ function BatchModal({
             <div className="rounded-lg bg-rose-500/10 border border-rose-500/20 p-3 text-sm text-rose-300">{error}</div>
           )}
 
-          {/* Summary */}
           <div className="rounded-xl border border-white/8 p-4 space-y-2" style={{ background: '#0f0f10' }}>
             <div className="flex justify-between text-sm">
               <span className="text-white/50">Selected payments</span>
@@ -220,7 +221,6 @@ function BatchModal({
             </div>
           </div>
 
-          {/* Row list */}
           <div className="max-h-48 overflow-y-auto space-y-1">
             {rows.map((r) => {
               const enrollment = normalize(r.enrollment);
@@ -261,91 +261,21 @@ function BatchModal({
   );
 }
 
-// ─── Refund confirm modal ─────────────────────────────────────────────────────
+// ─── Table wrapper ────────────────────────────────────────────────────────────
 
-function RefundModal({
-  removal, onClose, onSuccess,
-}: {
-  removal: PendingRefund;
-  onClose: () => void;
-  onSuccess: () => void;
-}) {
-  const enrollment = normalize(removal.enrollment);
-  const sp         = normalize(enrollment?.subscription_payment);
-  const group      = normalize(removal.group);
-  const student    = normalize(enrollment?.student);
-  const tutor      = normalize(removal.tutor);
-
-  const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState('');
-
-  async function confirm() {
-    if (!sp?.id) { setError('No subscription payment found'); return; }
-    setLoading(true); setError('');
-    try {
-      const res = await fetch(`/api/admin/payments/subscription/${sp.id}/refund`, {
-        method: 'POST',
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Refund failed');
-      onSuccess();
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
+function Table({ children }: { children: React.ReactNode }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
-      <div className="w-full max-w-md rounded-2xl border border-white/10 shadow-2xl" style={{ background: '#161618' }}>
-        <div className="flex items-center justify-between p-5 border-b border-white/8">
-          <h2 className="text-base font-bold text-white">Confirm Refund</h2>
-          <button onClick={onClose} className="text-white/40 hover:text-white"><X className="size-5" /></button>
-        </div>
+    <div className="rounded-xl border border-white/8 overflow-x-auto" style={{ background: '#161618' }}>
+      <table className="w-full">{children}</table>
+    </div>
+  );
+}
 
-        <div className="p-5 space-y-4">
-          {error && (
-            <div className="rounded-lg bg-rose-500/10 border border-rose-500/20 p-3 text-sm text-rose-300">{error}</div>
-          )}
-
-          <div className="rounded-xl border border-white/8 p-4 space-y-2" style={{ background: '#0f0f10' }}>
-            <Row label="Student" value={student?.full_name ?? '—'} />
-            <Row label="Tutor"   value={tutor?.full_name ?? '—'} />
-            <Row label="Group"   value={group?.name ?? '—'} />
-            <Row label="Removal status" value={removal.status?.replace(/_/g, ' ') ?? '—'} />
-            <div className="border-t border-white/8 pt-2 mt-2 flex justify-between text-sm font-bold">
-              <span className="text-white/70">Refund amount</span>
-              <span className="text-emerald-300 tabular-nums">{fmtTTD(sp?.amount_ttd)}</span>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 p-3">
-            <AlertCircle className="size-4 text-amber-400 shrink-0 mt-0.5" />
-            <p className="text-xs text-amber-300">
-              This will issue a full LuniPay refund of {fmtTTD(sp?.amount_ttd)} to the student.
-              The tutor's payout ledger row will be reversed.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex gap-3 p-5 border-t border-white/8">
-          <button
-            onClick={onClose}
-            className="flex-1 px-4 py-2 rounded-xl border border-white/10 text-sm font-semibold text-white/60 hover:text-white hover:bg-white/5"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={confirm}
-            disabled={loading}
-            className="flex-1 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50"
-          >
-            {loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCcw className="size-4" />}
-            {loading ? 'Refunding…' : 'Issue Refund'}
-          </button>
-        </div>
-      </div>
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="flex flex-col items-center py-20 text-white/30 gap-2">
+      <Users className="size-10" />
+      <p className="text-sm">{message}</p>
     </div>
   );
 }
@@ -365,19 +295,17 @@ export default function LessonPaymentsPage() {
   const router = useRouter();
   const [authLoading, setAuthLoading] = useState(true);
 
-  const [tab, setTab]         = useState<'active' | 'pending' | 'cancelled'>('active');
+  const [tab, setTab]         = useState<'active' | 'removals' | 'cancelled'>('active');
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
 
-  const [active, setActive]             = useState<ActiveSub[]>([]);
-  const [pendingRefunds, setPending]    = useState<PendingRefund[]>([]);
-  const [cancelledLeft, setCancelled]   = useState<CancelledLeft[]>([]);
-  const [stats, setStats]               = useState<Stats | null>(null);
+  const [active, setActive]           = useState<ActiveSub[]>([]);
+  const [completedRemovals, setRemovals] = useState<CompletedRemoval[]>([]);
+  const [cancelledLeft, setCancelled] = useState<CancelledLeft[]>([]);
+  const [stats, setStats]             = useState<Stats | null>(null);
 
   const [selected, setSelected]   = useState<Set<string>>(new Set());
   const [batchOpen, setBatchOpen] = useState(false);
-
-  const [refundTarget, setRefundTarget] = useState<PendingRefund | null>(null);
 
   // ── Auth guard ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -403,7 +331,7 @@ export default function LessonPaymentsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Failed to load');
       setActive(data.active ?? []);
-      setPending(data.pending_refunds ?? []);
+      setRemovals(data.completed_removals ?? []);
       setCancelled(data.cancelled_left ?? []);
       setStats(data.stats ?? null);
       setSelected(new Set());
@@ -448,7 +376,7 @@ export default function LessonPaymentsPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-white">Lesson Payments</h1>
-            <p className="text-sm text-white/40 mt-0.5">Subscription billing, pending refunds, and cancellations</p>
+            <p className="text-sm text-white/40 mt-0.5">Subscription billing, completed removals & refunds, and cancellations</p>
           </div>
           <button
             onClick={loadData}
@@ -481,17 +409,17 @@ export default function LessonPaymentsPage() {
             accent="sky"
           />
           <StatCard
-            label="Pending refunds"
-            value={String(stats?.pending_refund_count ?? '—')}
-            sub="Removals without refund"
-            icon={<AlertTriangle className="size-4" />}
+            label="Completed removals"
+            value={String(stats?.completed_removal_count ?? '—')}
+            sub={`${stats?.failed_refund_count ?? 0} with failed refunds`}
+            icon={<Users className="size-4" />}
             accent="amber"
           />
           <StatCard
-            label="Pending refund total"
-            value={fmtTTD(stats?.pending_refund_ttd)}
-            sub="Est. refund exposure"
-            icon={<Users className="size-4" />}
+            label="Refunded total"
+            value={fmtTTD(stats?.refunded_total_ttd)}
+            sub="Auto-processed refunds"
+            icon={<CheckCircle className="size-4" />}
             accent="rose"
           />
         </div>
@@ -501,8 +429,8 @@ export default function LessonPaymentsPage() {
           <Tab active={tab === 'active'}    onClick={() => setTab('active')}>
             Active Subscriptions {stats ? `(${stats.active_count})` : ''}
           </Tab>
-          <Tab active={tab === 'pending'}   onClick={() => setTab('pending')}>
-            Pending Refunds — Removed {stats && stats.pending_refund_count > 0 ? `(${stats.pending_refund_count})` : ''}
+          <Tab active={tab === 'removals'}  onClick={() => setTab('removals')}>
+            Completed Removals {stats ? `(${stats.completed_removal_count})` : ''}
           </Tab>
           <Tab active={tab === 'cancelled'} onClick={() => setTab('cancelled')}>
             Cancelled — Left {stats ? `(${stats.cancelled_left_count})` : ''}
@@ -598,24 +526,24 @@ export default function LessonPaymentsPage() {
               </div>
             )}
 
-            {/* ── Tab 2: Pending Refunds — Removed ──────────────────── */}
-            {tab === 'pending' && (
-              pendingRefunds.length === 0 ? (
-                <EmptyState message="No pending refunds." />
+            {/* ── Tab 2: Completed Removals ──────────────────────────── */}
+            {tab === 'removals' && (
+              completedRemovals.length === 0 ? (
+                <EmptyState message="No completed removals." />
               ) : (
                 <Table>
                   <thead>
                     <tr className="text-[11px] font-semibold text-white/30 uppercase tracking-wider">
                       <th className="px-4 py-3 text-left">Group / Student</th>
                       <th className="px-4 py-3 text-left">Tutor</th>
-                      <th className="px-4 py-3 text-left">Status</th>
+                      <th className="px-4 py-3 text-center">Refund</th>
                       <th className="px-4 py-3 text-right">Amount</th>
-                      <th className="px-4 py-3 text-left">Date</th>
-                      <th className="px-4 py-3 text-center">Action</th>
+                      <th className="px-4 py-3 text-left">Removed</th>
+                      <th className="px-4 py-3 text-left">Resolved</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
-                    {pendingRefunds.map((r) => {
+                    {completedRemovals.map((r) => {
                       const enrollment = normalize(r.enrollment);
                       const sp         = normalize(enrollment?.subscription_payment);
                       const group      = normalize(r.group);
@@ -628,21 +556,20 @@ export default function LessonPaymentsPage() {
                             <p className="text-xs text-white/40">{student?.full_name ?? '—'}</p>
                           </td>
                           <td className="px-4 py-3 text-sm text-white/70">{tutor?.full_name ?? '—'}</td>
-                          <td className="px-4 py-3">
-                            <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-500/15 text-rose-300">
-                              Pending refund
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-right text-sm text-white tabular-nums">{fmtTTD(sp?.amount_ttd)}</td>
-                          <td className="px-4 py-3 text-xs text-white/40">{fmtDate(r.created_at)}</td>
                           <td className="px-4 py-3 text-center">
-                            <button
-                              onClick={() => setRefundTarget(r)}
-                              className="px-3 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600/40 border border-rose-500/20 text-rose-300 text-xs font-semibold transition"
-                            >
-                              Refund
-                            </button>
+                            {r.refund_issued ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-300">
+                                <CheckCircle className="size-3" /> Refunded
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-500/15 text-rose-300" title="Refund failed — check subscription_payment_exceptions">
+                                <XCircle className="size-3" /> Failed
+                              </span>
+                            )}
                           </td>
+                          <td className="px-4 py-3 text-right text-sm text-white tabular-nums">{fmtTTD(r.refund_amount_ttd)}</td>
+                          <td className="px-4 py-3 text-xs text-white/40">{fmtDate(r.created_at)}</td>
+                          <td className="px-4 py-3 text-xs text-white/40">{fmtDate(r.resolved_at)}</td>
                         </tr>
                       );
                     })}
@@ -712,33 +639,6 @@ export default function LessonPaymentsPage() {
           onSuccess={() => { setBatchOpen(false); loadData(); }}
         />
       )}
-
-      {/* Refund confirm modal */}
-      {refundTarget && (
-        <RefundModal
-          removal={refundTarget}
-          onClose={() => setRefundTarget(null)}
-          onSuccess={() => { setRefundTarget(null); loadData(); }}
-        />
-      )}
-    </div>
-  );
-}
-
-// ─── Shared sub-components ────────────────────────────────────────────────────
-
-function Table({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="rounded-xl border border-white/8 overflow-hidden" style={{ background: '#161618' }}>
-      <table className="w-full text-sm">{children}</table>
-    </div>
-  );
-}
-
-function EmptyState({ message }: { message: string }) {
-  return (
-    <div className="rounded-xl border border-white/8 p-12 text-center" style={{ background: '#161618' }}>
-      <p className="text-sm text-white/30 italic">{message}</p>
     </div>
   );
 }
