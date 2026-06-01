@@ -34,6 +34,15 @@ type Subscription = {
   } | null;
 };
 
+const LUNIPAY_PCT   = 0.03;
+const LUNIPAY_FIXED = 1.00;
+
+function calcGross(base: number): { gross: number; fee: number } {
+  const gross = Math.round(((base + LUNIPAY_FIXED) / (1 - LUNIPAY_PCT)) * 100) / 100;
+  const fee   = Math.round((gross - base) * 100) / 100;
+  return { gross, fee };
+}
+
 function fmtDate(d: string | null) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('en-TT', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -135,6 +144,9 @@ function SubscriptionCard({ sub, onCancel, onUndo, actionLoading }: {
   const isCancelling= sub.cancel_at_period_end;
   const isActivating= sub.status === 'ACTIVATION_FAILED';
   const isCancelled = sub.status === 'CANCELLED';
+  // Due today: active, not cancelling, and next_payment_due_at has passed
+  // (covers the window between due date and when the cron moves it to GRACE)
+  const isDueNow    = isActive && !!sub.next_payment_due_at && new Date(sub.next_payment_due_at) <= new Date() && !sub.next_cycle_paid;
 
   // Billing cycle starts from last paid date
   const progress  = cycleProgress(sub.last_paid_at, sub.current_period_end);
@@ -143,6 +155,18 @@ function SubscriptionCard({ sub, onCancel, onUndo, actionLoading }: {
   return (
     <div className="rounded-2xl border border-border bg-background overflow-hidden">
       {/* Alert banners */}
+      {isDueNow && (
+        <div className="bg-brand/10 border-b border-brand/20 px-5 py-3 text-sm text-brand-deep flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <RefreshCw className="size-4 shrink-0" />
+            <span>Your subscription renews today — renew now to keep uninterrupted access.</span>
+          </div>
+          <a href={`/student/subscriptions/${sub.id}/pay`}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand-deep transition shrink-0">
+            Renew now →
+          </a>
+        </div>
+      )}
       {isGrace && (
         <div className="bg-amber-50 border-b border-amber-200 px-5 py-3 text-sm text-amber-800 flex items-center gap-2">
           <AlertCircle className="size-4 shrink-0" />
@@ -207,12 +231,18 @@ function SubscriptionCard({ sub, onCancel, onUndo, actionLoading }: {
             </div>
           </div>
 
-          {sub.plan_price_ttd && (
-            <div className="text-right shrink-0">
-              <div className="text-2xl font-bold text-ink">{fmtTTD(sub.plan_price_ttd)}</div>
-              <div className="text-xs text-muted-foreground">per month</div>
-            </div>
-          )}
+          {sub.plan_price_ttd && (() => {
+            const { gross, fee } = calcGross(sub.plan_price_ttd);
+            return (
+              <div className="text-right shrink-0">
+                <div className="text-2xl font-bold text-ink">{fmtTTD(gross)}</div>
+                <div className="text-xs text-muted-foreground">per month</div>
+                <div className="text-xs text-muted-foreground/70 mt-0.5">
+                  {fmtTTD(sub.plan_price_ttd)} + {fmtTTD(fee)} fee
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* Billing cycle progress — starts from last_paid_at */}
@@ -275,7 +305,14 @@ function SubscriptionCard({ sub, onCancel, onUndo, actionLoading }: {
             <Play className="size-3.5 fill-white" /> Open Class
           </Link>
 
-          {isActive && !sub.next_cycle_paid && (
+          {isDueNow && (
+            <a href={`/student/subscriptions/${sub.id}/pay`}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep transition">
+              <RefreshCw className="size-3.5" /> Renew subscription
+            </a>
+          )}
+
+          {isActive && !sub.next_cycle_paid && !isDueNow && (
             <a href={`/student/subscriptions/${sub.id}/pay`}
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-border text-sm font-semibold text-ink hover:bg-muted/50 transition">
               <CreditCard className="size-3.5" /> Pay next month
@@ -368,7 +405,7 @@ export default function StudentSubscriptionsPage() {
   const active   = subscriptions.filter((s) => ['ACTIVE','GRACE','SUSPENDED','PENDING_PAYMENT','ACTIVATION_FAILED'].includes(s.status));
   const inactive = subscriptions.filter((s) => s.status === 'CANCELLED');
 
-  const monthlyBill = active.reduce((sum, s) => sum + (s.plan_price_ttd ?? 0), 0);
+  const monthlyBill = active.reduce((sum, s) => sum + calcGross(s.plan_price_ttd ?? 0).gross, 0);
   const nextCharge  = active
     .filter((s) => s.next_payment_due_at)
     .sort((a, b) => new Date(a.next_payment_due_at!).getTime() - new Date(b.next_payment_due_at!).getTime())[0]
