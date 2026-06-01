@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
       id, hold_reason, status,
       refund_amount_ttd, release_amount_ttd,
       admin_notes, resolved_at, created_at, updated_at,
-      payout_ledger:payout_ledger(amount_ttd, status, blocked_at),
+      payout_ledger:payout_ledger_id(amount_ttd, status, blocked_at),
       tutor:profiles!tutor_id(id, full_name, email),
       claimant:profiles!claimant_id(id, full_name),
       session:sessions!session_id(id, scheduled_start_at),
