@@ -184,9 +184,7 @@ function ClassHubContent() {
       const { data: g } = await supabase.from('groups').select('*').eq('id', groupId).single();
       if (g) {
         const pricingModel = g.pricing_model ?? 'FREE';
-        const billingModel: GroupDetail['billingModel'] =
-          pricingModel === 'PER_SESSION' ? 'per-session' :
-          pricingModel === 'MONTHLY' ? 'per-month' : 'prepaid';
+        const billingModel: GroupDetail['billingModel'] = 'per-month'; // Only monthly billing supported
         const visibilityVal: GroupDetail['visibility'] =
           g.visibility === 'private' ? 'private' : 'public';
 
@@ -2187,19 +2185,11 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
           {section === 'billing' && (
             <>
               <SettingsHead title="Billing" desc="How members are charged for this class." />
-              <SetField label="Billing model" infoTitle="Billing model" infoBlurb="Per-session: charged after each class. Per-month: a flat monthly fee. Prepaid: students pay upfront for a block of sessions.">
-                <div className="grid grid-cols-3 gap-2">
-                  {(['per-session', 'per-month', 'prepaid'] as const).map((m) => (
-                    <button key={m} onClick={() => d('billingModel', m)}
-                      className={cn('px-3 py-2 rounded-lg border text-xs font-semibold capitalize transition-colors',
-                        draft.billingModel === m ? 'bg-brand-soft border-brand text-brand-deep' : 'bg-background text-muted-foreground border-border hover:text-ink')}>
-                      {m === 'per-session' ? 'Per session' : m === 'per-month' ? 'Monthly' : 'Prepaid'}
-                    </button>
-                  ))}
-                </div>
-              </SetField>
+              <div className="rounded-xl border border-brand/30 bg-brand-soft/30 px-4 py-3 text-sm font-medium text-brand-deep">
+                Monthly billing — students are charged a flat fee each month.
+              </div>
               <div className="grid grid-cols-2 gap-3">
-                <SetField label={draft.billingModel === 'per-month' ? 'Monthly price (TTD)' : 'Price per session (TTD)'}>
+                <SetField label="Monthly price (TTD)">
                   <input type="number" value={draft.pricePerSession ?? 0} onChange={(e) => d('pricePerSession', Number(e.target.value))}
                     className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm" />
                 </SetField>
@@ -2280,7 +2270,7 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
                 </div>
               </SetField>
               {draft.feedbackMode === 'paid_addon' && (
-                <SetField label="Price per report (TTD)" hint="Required before save — must be greater than 0.">
+                <SetField label="Parent feedback add-on (TTD)" infoTitle="Parent feedback add-on" infoBlurb="This is an extra amount charged on top of your standard class fee. For example, if your class costs TT$200/mo and you set TT$50 here, parents will pay TT$250/mo total — TT$200 for the class plus TT$50 for the monthly feedback report.">
                   <input type="number" min={0} required value={draft.parentFeedbackPrice} onChange={(e) => d('parentFeedbackPrice', Number(e.target.value))}
                     className="w-32 px-3 py-2 rounded-lg border border-border bg-background text-sm" />
                 </SetField>

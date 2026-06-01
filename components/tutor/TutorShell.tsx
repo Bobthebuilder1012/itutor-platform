@@ -181,7 +181,7 @@ export default function TutorShell({ children }: { children: ReactNode }) {
         </nav>
       </div>
 
-      <LogoutConfirmModal open={logoutOpen} onClose={() => setLogoutOpen(false)} onConfirm={handleLogout} />
+      <LogoutConfirmModal open={logoutOpen} onClose={() => setLogoutOpen(false)} onConfirm={handleLogout} role="tutor" />
     </div>
   );
 }
