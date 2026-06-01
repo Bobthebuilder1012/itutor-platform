@@ -29,15 +29,38 @@ CREATE TABLE IF NOT EXISTS public.tutor_deductions (
 
 ALTER TABLE public.tutor_deductions ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "admins_manage_tutor_deductions"
-  ON public.tutor_deductions FOR ALL TO authenticated
-  USING (EXISTS (
-    SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'
-  ));
+-- Policies (idempotent — safe to re-run)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'tutor_deductions'
+      AND policyname = 'admins_manage_tutor_deductions'
+  ) THEN
+    CREATE POLICY "admins_manage_tutor_deductions"
+      ON public.tutor_deductions FOR ALL TO authenticated
+      USING (EXISTS (
+        SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'
+      ));
+  END IF;
+END;
+$$;
 
-CREATE POLICY "tutors_read_own_deductions"
-  ON public.tutor_deductions FOR SELECT TO authenticated
-  USING (tutor_id = auth.uid());
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'tutor_deductions'
+      AND policyname = 'tutors_read_own_deductions'
+  ) THEN
+    CREATE POLICY "tutors_read_own_deductions"
+      ON public.tutor_deductions FOR SELECT TO authenticated
+      USING (tutor_id = auth.uid());
+  END IF;
+END;
+$$;
 
 GRANT ALL ON public.tutor_deductions TO service_role;
 
@@ -69,65 +92,71 @@ WHERE with_cause = true
 ALTER TABLE public.group_removals
   ALTER COLUMN with_cause SET DEFAULT false;
 
+-- Constraint helpers (idempotent — drop old, add new)
 DO $$
 DECLARE
   v_con text;
 BEGIN
+  -- with_cause constraint
   SELECT conname INTO v_con
   FROM pg_constraint
   WHERE conrelid = 'public.group_removals'::regclass
     AND contype = 'c'
     AND pg_get_constraintdef(oid) LIKE '%with_cause%'
   LIMIT 1;
-
   IF v_con IS NOT NULL THEN
     EXECUTE format('ALTER TABLE public.group_removals DROP CONSTRAINT %I', v_con);
   END IF;
-END;
-$$;
 
-ALTER TABLE public.group_removals
-  ADD CONSTRAINT group_removals_with_cause_false_check
-  CHECK (with_cause = false);
-
-DO $$
-DECLARE
-  v_con text;
-BEGIN
+  -- reason_category constraint
   SELECT conname INTO v_con
   FROM pg_constraint
   WHERE conrelid = 'public.group_removals'::regclass
     AND contype = 'c'
     AND pg_get_constraintdef(oid) LIKE '%reason_category%'
   LIMIT 1;
-
   IF v_con IS NOT NULL THEN
     EXECUTE format('ALTER TABLE public.group_removals DROP CONSTRAINT %I', v_con);
   END IF;
-END;
-$$;
 
-ALTER TABLE public.group_removals
-  ADD CONSTRAINT group_removals_reason_category_check
-  CHECK (reason_category = 'no_cause');
-
-DO $$
-DECLARE
-  v_con text;
-BEGIN
+  -- status constraint (old 'pending_review' variant)
   SELECT conname INTO v_con
   FROM pg_constraint
   WHERE conrelid = 'public.group_removals'::regclass
     AND contype = 'c'
-    AND pg_get_constraintdef(oid) LIKE '%pending_review%'
+    AND (pg_get_constraintdef(oid) LIKE '%pending_review%'
+      OR pg_get_constraintdef(oid) LIKE '%auto_processed%')
   LIMIT 1;
-
   IF v_con IS NOT NULL THEN
     EXECUTE format('ALTER TABLE public.group_removals DROP CONSTRAINT %I', v_con);
   END IF;
 END;
 $$;
 
-ALTER TABLE public.group_removals
-  ADD CONSTRAINT group_removals_status_check
-  CHECK (status IN ('auto_processed', 'approved', 'overturned'));
+-- Add new constraints (may fail if already exist — that's fine, catch and continue)
+DO $$
+BEGIN
+  ALTER TABLE public.group_removals
+    ADD CONSTRAINT group_removals_with_cause_false_check
+    CHECK (with_cause = false);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END;
+$$;
+
+DO $$
+BEGIN
+  ALTER TABLE public.group_removals
+    ADD CONSTRAINT group_removals_reason_category_check
+    CHECK (reason_category = 'no_cause');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END;
+$$;
+
+DO $$
+BEGIN
+  ALTER TABLE public.group_removals
+    ADD CONSTRAINT group_removals_status_check
+    CHECK (status IN ('auto_processed', 'approved', 'overturned'));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END;
+$$;
