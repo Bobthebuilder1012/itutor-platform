@@ -373,12 +373,14 @@ async function handleTutorRemoval(
     return NextResponse.json({ error: `Failed to cancel enrollment: ${enrollError.message}` }, { status: 500 });
   }
 
-  // 6. Remove from group_members
+  // 6. Remove from group_members — upsert so the row is guaranteed to exist
+  // with status='removed' even if activate_subscription never created it.
   const { error: memberError } = await admin
     .from('group_members')
-    .update({ status: 'removed' })
-    .eq('group_id', args.groupId)
-    .eq('user_id', args.studentId);
+    .upsert(
+      { group_id: args.groupId, user_id: args.studentId, status: 'removed' },
+      { onConflict: 'group_id,user_id' }
+    );
 
   if (memberError) {
     console.error('[handleTutorRemoval] member remove failed:', memberError);

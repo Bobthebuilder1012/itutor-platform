@@ -36,14 +36,26 @@ interface WalletHistoryRow {
   source_type?: 'session' | 'subscription';
 }
 
+interface PendingDeduction {
+  id: string;
+  amount_ttd: number;
+  reason: string;
+  status: string;
+  created_at: string;
+  source_enrollment_id: string | null;
+  source_subscription_payment_id: string | null;
+}
+
 interface WalletPayload {
   balances: {
     pending_ttd: number;
     available_ttd: number;
     lifetime_paid_ttd: number;
     held_ttd: number;
+    pending_deductions_ttd: number;
     last_updated: string | null;
   };
+  pending_deductions: PendingDeduction[];
   history: WalletHistoryRow[];
 }
 
@@ -407,6 +419,14 @@ function WalletContent() {
                 </span>
               </div>
             )}
+            {(balances?.pending_deductions_ttd ?? 0) > 0 && (
+              <div className="mt-3 flex items-center gap-2 rounded-xl bg-red-500/20 px-3 py-2 text-sm">
+                <AlertCircle className="size-4 text-red-300 shrink-0" />
+                <span className="text-red-200">
+                  TT$ {fmtTTD(balances?.pending_deductions_ttd ?? 0)} owed to platform — will be recovered from your next payout
+                </span>
+              </div>
+            )}
             <div className="mt-3 text-xs text-white/60">
               iTutor pays out via bulk bank transfer on the next payout cycle. Earnings move from escrow to bank-transfer queue 7 days after each session completes.
             </div>
@@ -451,6 +471,31 @@ function WalletContent() {
               Manage bank details
             </button>
           </div>
+
+          {(data?.pending_deductions ?? []).length > 0 && (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-5 space-y-3">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="size-5 text-red-500 shrink-0" />
+                <div>
+                  <div className="font-semibold text-red-800">Platform debt — TT$ {fmtTTD(balances?.pending_deductions_ttd ?? 0)} owed</div>
+                  <div className="text-xs text-red-600 mt-0.5">These amounts will be automatically deducted from your next payout batch.</div>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {(data?.pending_deductions ?? []).map((d) => (
+                  <div key={d.id} className="flex items-center justify-between text-sm bg-white rounded-xl px-4 py-2.5 border border-red-100">
+                    <div>
+                      <div className="font-medium text-red-800">
+                        {d.reason === 'student_removal_refund' ? 'Student removal refund' : d.reason === 'chargeback' ? 'Chargeback' : 'Admin deduction'}
+                      </div>
+                      <div className="text-xs text-red-500 mt-0.5">{new Date(d.created_at).toLocaleDateString('en-TT', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+                    </div>
+                    <div className="font-bold text-red-700">− TT$ {fmtTTD(d.amount_ttd)}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <StudentBreakdown
             breakdown={breakdown}
