@@ -323,15 +323,9 @@ export async function POST(req: NextRequest, { params }: Params) {
         .eq('id', enrollmentId);
     }
 
-    // Step 11: Upsert group_members for open groups
-    if (!group.require_join_requests && group.visibility !== 'private') {
-      await admin
-        .from('group_members')
-        .upsert(
-          { group_id: groupId, user_id: user.id, status: 'approved' },
-          { onConflict: 'group_id,user_id', ignoreDuplicates: false }
-        );
-    }
+    // Step 11: group_members is created by activate_subscription after payment
+    // completes. Do NOT create it here — doing so would grant access before
+    // payment is confirmed and leave a stale member row if checkout is abandoned.
 
     // Step 12: Create pending subscription_payments row
     // If reusing enrollment, expire the previous pending payment row first

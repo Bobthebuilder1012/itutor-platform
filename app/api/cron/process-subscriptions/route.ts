@@ -135,6 +135,25 @@ export async function GET(req: NextRequest) {
           .update({ status: 'CANCELLED' })
           .eq('id', e.id);
 
+        // Remove the student from group_members if they have no other active
+        // enrollment for this group — checkout was abandoned, access must be revoked.
+        const { data: otherActive } = await admin
+          .from('group_enrollments')
+          .select('id')
+          .eq('group_id', e.group_id)
+          .eq('student_id', e.student_id)
+          .in('status', ['ACTIVE', 'GRACE', 'SUSPENDED'])
+          .maybeSingle();
+
+        if (!otherActive) {
+          await admin
+            .from('group_members')
+            .update({ status: 'removed' })
+            .eq('group_id', e.group_id)
+            .eq('user_id', e.student_id)
+            .in('status', ['approved', 'active']);
+        }
+
         expiredGroupIds.add(e.group_id);
         expiredCount++;
       }
