@@ -269,6 +269,8 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         ]},
         { label: 'Finance', items: [
           { href: '/reviewer/payments', label: 'Payments & Revenue', icon: icons.creditCard },
+          { href: '/admin/payments', label: 'Payments Overview', icon: icons.creditCard },
+          { href: '/admin/lesson-payments', label: 'Lesson Payments', icon: icons.banknote },
           { href: '/admin/payouts', label: 'Payouts', icon: icons.banknote },
           { href: '/admin/refunds', label: 'Refunds', icon: icons.refund },
           { href: '/admin/disputes', label: 'Disputes & Reliability', icon: icons.shield },
