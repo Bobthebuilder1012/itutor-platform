@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft, Star, Calendar, Clock, Users, Check, Lock, BadgeCheck,
@@ -161,6 +161,8 @@ function ScheduleRow({ icon, label, value }: { icon: React.ReactNode; label: str
 
 export default function StudentGroupPage({ params }: { params: { groupId: string } }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const openFromSubscriptions = searchParams.get('open') === '1';
   const { profile, loading: profileLoading } = useProfile();
   const groupId = params.groupId;
 
@@ -186,12 +188,11 @@ export default function StudentGroupPage({ params }: { params: { groupId: string
       const { data: grp } = await supabase
         .from('groups')
         .select(`
-          id, name, description, subject, subject_id, tutor_id, max_students,
+          id, name, description, subject, tutor_id, max_students,
           require_join_requests, feedback_mode, primary_channel,
           whatsapp_link, google_classroom_link, pricing, pricing_model,
           visibility, archived_at,
-          tutor:profiles!groups_tutor_id_fkey(full_name, display_name),
-          subject_data:subjects!subject_id(name, label)
+          tutor:profiles!groups_tutor_id_fkey(full_name, display_name)
         `)
         .eq('id', groupId)
         .is('archived_at', null)
@@ -326,11 +327,11 @@ export default function StudentGroupPage({ params }: { params: { groupId: string
   const subHasAccess = subscriptionAccess?.has_access === true;
 
   // Redirect enrolled subscribers (with active access) to the class homepage
-  if (isMonthly && subStatus === 'ACTIVE' && subHasAccess) {
+  if (openFromSubscriptions || (isMonthly && subStatus === 'ACTIVE' && subHasAccess)) {
     return <ClassHomepage group={group} memberStatus={memberStatus} userId={profile!.id} subscriptionAccess={subscriptionAccess} />;
   }
   // Non-subscription enrolled view
-  if (!isMonthly && (isEnrolled || isSuspended || isBanned)) {
+  if (openFromSubscriptions || (!isMonthly && (isEnrolled || isSuspended || isBanned))) {
     return <ClassHomepage group={group} memberStatus={memberStatus} userId={profile!.id} />;
   }
 

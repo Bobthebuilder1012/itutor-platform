@@ -20,6 +20,7 @@ import WhatsAppSetupTab from './WhatsAppSetupTab';
 import TutorStreamView from '../stream/TutorStreamView';
 import TutorFeedbackTab from './TutorFeedbackTab';
 import GroupAnalyticsTab from './GroupAnalyticsTab';
+import RemoveMemberModal from '@/components/RemoveMemberModal';
 
 type Tab = 'stream' | 'sessions' | 'feedback' | 'whatsapp' | 'analytics';
 type ManageSection = 'profile' | 'members' | 'access' | 'danger';
@@ -160,6 +161,18 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
     setCoPerms(PERM_OPTIONS.map((p) => p.id));
     setCoSearchResult(null);
     setCoError('');
+  };
+
+  const [removeTarget, setRemoveTarget] = useState<{ userId: string; name: string } | null>(null);
+
+  const handleRosterRemove = async () => {
+    if (!removeTarget) return;
+    try {
+      await fetch(`/api/groups/${group.id}/members/${removeTarget.userId}`, { method: 'DELETE' });
+      fetchMembers();
+    } finally {
+      setRemoveTarget(null);
+    }
   };
 
   const removeCoTutor = (id: string) => {
@@ -874,7 +887,7 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
                               <td className="p-2.5 border-b border-[#f1f5f9] text-[13px]">{new Date(m.joined_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</td>
                               <td className="p-2.5 border-b border-[#f1f5f9]">
                                 <button
-                                  onClick={async () => { if (!confirm(`Remove ${name} from this class?`)) return; await fetch(`/api/groups/${group.id}/members/${m.user_id}`, { method: 'DELETE' }); fetchMembers(); }}
+                                  onClick={async () => { setRemoveTarget({ userId: m.user_id, name }); }}
                                   className="px-2.5 py-1 rounded-md text-[11px] font-medium border border-[#e4e8ee] bg-white text-[#6b7280] hover:border-red-400 hover:text-red-500 transition-colors"
                                 >Remove</button>
                               </td>
@@ -932,7 +945,7 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
                       </div>
                       <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-indigo-50 text-indigo-600 flex-shrink-0">Full access</span>
                       <button
-                        onClick={async () => { if (!confirm(`Remove ${coName} from this class?`)) return; await fetch(`/api/groups/${group.id}/members/${m.user_id}`, { method: 'DELETE' }); fetchMembers(); }}
+                        onClick={async () => { setRemoveTarget({ userId: m.user_id, name: coName }); }}
                         className="px-2.5 py-1 rounded-md text-[11px] font-medium border border-[#e4e8ee] bg-white text-[#6b7280] hover:border-red-400 hover:text-red-500 transition-colors flex-shrink-0"
                       >Remove</button>
                     </div>
@@ -1444,6 +1457,13 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
           onClose={() => setShowCreateRecurring(false)}
         />
       )}
+      {/* Removal confirmation modal */}
+      <RemoveMemberModal
+        memberName={removeTarget?.name ?? ''}
+        isOpen={!!removeTarget}
+        onClose={() => setRemoveTarget(null)}
+        onConfirm={handleRosterRemove}
+      />
     </div>
   );
 }

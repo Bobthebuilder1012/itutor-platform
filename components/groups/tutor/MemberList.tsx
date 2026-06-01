@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react';
 import type { GroupMember } from '@/lib/types/groups';
 import UserAvatar from '@/components/UserAvatar';
+import RemoveMemberModal from '@/components/RemoveMemberModal';
 
 const AVATAR_COLORS = [
   '#0d9668', '#6366f1', '#f59e0b', '#e11d48', '#0891b2',
@@ -55,6 +56,9 @@ export default function MemberList({
   const [modalSearch, setModalSearch] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
 
+  // Removal confirmation modal state
+  const [removeTarget, setRemoveTarget] = useState<{ userId: string; name: string } | null>(null);
+
   const pending = members.filter((m) => m.status === 'pending');
   const approved = members.filter((m) => m.status === 'approved');
   const totalCount = approved.length + 1;
@@ -90,11 +94,17 @@ export default function MemberList({
     }
   };
 
-  const handleRemove = async (userId: string) => {
-    if (!confirm('Remove this member?')) return;
-    setActionLoading(userId);
+  const handleRemove = async () => {
+    if (!removeTarget) return;
+    setActionLoading(removeTarget.userId);
     try {
-      await fetch(`/api/groups/${groupId}/members/${userId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/groups/${groupId}/members/${removeTarget.userId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error ?? `Failed (${res.status})`);
       onRefresh();
     } finally {
       setActionLoading(null);
@@ -133,8 +143,6 @@ export default function MemberList({
           <p className="text-[10px] text-[#6b7280]">
             {isMemberTutor
               ? 'Head Tutor'
-              : opts?.showDate
-              ? `Joined ${new Date(m.joined_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
               : `Joined ${new Date(m.joined_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`}
           </p>
         </div>
@@ -146,7 +154,7 @@ export default function MemberList({
           <span className="px-[7px] py-[2px] rounded text-[9px] font-semibold bg-[#eef2ff] text-[#6366f1] flex-shrink-0">Tutor</span>
         ) : opts?.showRemove && isTutor ? (
           <button
-            onClick={() => handleRemove(m.user_id)}
+            onClick={() => setRemoveTarget({ userId: m.user_id, name })}
             disabled={actionLoading === m.user_id}
             className="w-6 h-6 rounded-md border-none bg-transparent cursor-pointer flex items-center justify-center text-[#6b7280] opacity-0 group-hover:opacity-100 hover:bg-[#f5f7fa] hover:text-[#ef4444] transition-all flex-shrink-0 disabled:opacity-40"
           >
@@ -322,6 +330,14 @@ export default function MemberList({
           </div>
         </div>
       )}
+
+      {/* Removal confirmation modal */}
+      <RemoveMemberModal
+        memberName={removeTarget?.name ?? ''}
+        isOpen={!!removeTarget}
+        onClose={() => setRemoveTarget(null)}
+        onConfirm={handleRemove}
+      />
     </>
   );
 

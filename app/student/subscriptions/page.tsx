@@ -270,7 +270,7 @@ function SubscriptionCard({ sub, onCancel, onUndo, actionLoading }: {
 
         {/* Actions */}
         <div className="flex items-center gap-2.5 flex-wrap">
-          <Link href={`/student/groups/${sub.group_id}`}
+          <Link href={`/student/groups/${sub.group_id}?open=1`}
             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-ink text-white text-sm font-semibold hover:bg-ink/90 transition">
             <Play className="size-3.5 fill-white" /> Open Class
           </Link>
