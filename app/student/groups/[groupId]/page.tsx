@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft, Star, Calendar, Clock, Users, Check, Lock, BadgeCheck,
@@ -161,6 +161,8 @@ function ScheduleRow({ icon, label, value }: { icon: React.ReactNode; label: str
 
 export default function StudentGroupPage({ params }: { params: { groupId: string } }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const openFromSubscriptions = searchParams.get('open') === '1';
   const { profile, loading: profileLoading } = useProfile();
   const groupId = params.groupId;
 
@@ -325,11 +327,11 @@ export default function StudentGroupPage({ params }: { params: { groupId: string
   const subHasAccess = subscriptionAccess?.has_access === true;
 
   // Redirect enrolled subscribers (with active access) to the class homepage
-  if (isMonthly && subStatus === 'ACTIVE' && subHasAccess) {
+  if (openFromSubscriptions || (isMonthly && subStatus === 'ACTIVE' && subHasAccess)) {
     return <ClassHomepage group={group} memberStatus={memberStatus} userId={profile!.id} subscriptionAccess={subscriptionAccess} />;
   }
   // Non-subscription enrolled view
-  if (!isMonthly && (isEnrolled || isSuspended || isBanned)) {
+  if (openFromSubscriptions || (!isMonthly && (isEnrolled || isSuspended || isBanned))) {
     return <ClassHomepage group={group} memberStatus={memberStatus} userId={profile!.id} />;
   }
 
