@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
       const { error: reverseErr } = await admin.rpc('reverse_payout_ledger_row', {
         p_ledger_id: ledger.id,
         p_removal_id: removal_id,
-        p_admin_id: auth.userId,
+        p_admin_id: auth.user.id,
         p_notes: 'Admin-approved refund for removed student.',
       });
 
@@ -136,7 +136,7 @@ export async function POST(req: NextRequest) {
     await admin.from('subscription_refunds').insert({
       subscription_payment_id: spId,
       amount_ttd: refundAmount,
-      refunded_by: auth.userId,
+      refunded_by: auth.user.id,
       reason: 'Student removal - admin approved (Path A)',
     });
 
