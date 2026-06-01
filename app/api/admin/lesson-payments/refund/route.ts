@@ -118,9 +118,10 @@ export async function POST(req: NextRequest) {
     // Refund via LuniPay
     if (subPayment.lunipay_transaction_id) {
       try {
-        const { default: lunipay } = await import('@/lib/api/lunipay');
-        await lunipay.refund(subPayment.lunipay_transaction_id, {
-          amount: refundAmount,
+        const { getLunipayClient, ttdToCents } = await import('@/lib/payments/lunipayClient');
+        const lunipay = getLunipayClient();
+        await lunipay.payments.refund(subPayment.lunipay_transaction_id, {
+          amount: ttdToCents(refundAmount),
           reason: 'Student removed from group (admin-approved)',
         });
       } catch (e: any) {
@@ -143,7 +144,7 @@ export async function POST(req: NextRequest) {
     await admin.from('group_removals').update({
       refund_issued: true,
       resolved_at: new Date().toISOString(),
-      admin_notes: `Refund approved via Path A (ledger reversed). Amount: TT$${refundAmount.toFixed(2)}`,
+      admin_notes: `Refund approved via Path A (ledger reversed). Amount: TT${refundAmount.toFixed(2)}`,
     }).eq('id', removal_id);
 
     await admin.from('subscription_payments').update({ status: 'REFUNDED' }).eq('id', spId);
@@ -156,9 +157,10 @@ export async function POST(req: NextRequest) {
   // Refund via LuniPay from platform balance
   if (subPayment.lunipay_transaction_id) {
     try {
-      const { default: lunipay } = await import('@/lib/api/lunipay');
-      await lunipay.refund(subPayment.lunipay_transaction_id, {
-        amount: refundAmount,
+      const { getLunipayClient, ttdToCents } = await import('@/lib/payments/lunipayClient');
+      const lunipay = getLunipayClient();
+      await lunipay.payments.refund(subPayment.lunipay_transaction_id, {
+        amount: ttdToCents(refundAmount),
         reason: 'Student removed from group (admin-approved, tutor already paid)',
       });
     } catch (e: any) {
