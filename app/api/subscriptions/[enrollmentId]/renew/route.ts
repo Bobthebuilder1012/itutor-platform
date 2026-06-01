@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { LuniPayError } from 'lunipay';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { getLunipayClient, ttdToCents } from '@/lib/payments/lunipayClient';
+import { calculateGrossAmount } from '@/lib/payments/grossUp';
 import {
   createPendingSubscriptionPayment,
   expireSubscriptionPayment,
@@ -120,7 +121,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
     }
 
     const groupName = group?.name ?? 'Group Subscription';
-    const amountCents = ttdToCents(price);
+    const { grossAmount: grossRenewalPrice, processingFee: renewalFee } = calculateGrossAmount(price);
+    const amountCents = ttdToCents(grossRenewalPrice);
 
     const lunipay = getLunipayClient();
     let session: any;
@@ -145,6 +147,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
             group_id: enrollment.group_id,
             student_id: user.id,
             payment_id: paymentRow.id,
+            base_amount_ttd: String(price),
+            processing_fee_ttd: String(renewalFee),
           },
         },
         { idempotencyKey: `renew-${paymentRow.id}` }

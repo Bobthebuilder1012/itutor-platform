@@ -17,6 +17,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { LuniPayError } from 'lunipay';
 import { getLunipayClient, ttdToCents } from '@/lib/payments/lunipayClient';
+import { calculateGrossAmount } from '@/lib/payments/grossUp';
 import { isPaidClassesEnabled } from '@/lib/featureFlags/paidClasses';
 import { paidClassesForbiddenResponse } from '@/lib/featureFlags/http';
 import { calculateCommission } from '@/lib/utils/commissionCalculator';
@@ -215,7 +216,8 @@ export async function POST(request: NextRequest) {
     );
 
     const commission = calculateCommission(priceTtd);
-    const amountCents = ttdToCents(priceTtd);
+    const { grossAmount, processingFee } = calculateGrossAmount(priceTtd);
+    const amountCents = ttdToCents(grossAmount);
 
     // -----------------------------------------------------------
     // Idempotency: if there is already an open checkout session
@@ -308,6 +310,8 @@ export async function POST(request: NextRequest) {
             booking_id: bookingId,
             payment_id: payment.id,
             payer_id: user.id,
+            base_amount_ttd: String(priceTtd),
+            processing_fee_ttd: String(processingFee),
           },
         },
         { idempotencyKey: `init-${payment.id}` }

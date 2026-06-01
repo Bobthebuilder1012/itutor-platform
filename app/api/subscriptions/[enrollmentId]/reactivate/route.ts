@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { LuniPayError } from 'lunipay';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { getLunipayClient, ttdToCents } from '@/lib/payments/lunipayClient';
+import { calculateGrossAmount } from '@/lib/payments/grossUp';
 import {
   createPendingSubscriptionPayment,
   expireSubscriptionPayment,
@@ -158,7 +159,8 @@ export async function POST(_req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Your account is missing an email address' }, { status: 400 });
     }
 
-    const amountCents = ttdToCents(price);
+    const { grossAmount: grossReactivatePrice, processingFee: reactivateFee } = calculateGrossAmount(price);
+    const amountCents = ttdToCents(grossReactivatePrice);
     const lunipay = getLunipayClient();
     let session: any;
     try {
@@ -181,6 +183,8 @@ export async function POST(_req: NextRequest, { params }: Params) {
           group_id: enrollment.group_id,
           student_id: user.id,
           payment_id: paymentRow.id,
+          base_amount_ttd: String(price),
+          processing_fee_ttd: String(reactivateFee),
         },
       });
     } catch (err) {

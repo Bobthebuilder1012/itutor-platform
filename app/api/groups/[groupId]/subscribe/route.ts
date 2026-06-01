@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { LuniPayError } from 'lunipay';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { getLunipayClient, ttdToCents } from '@/lib/payments/lunipayClient';
+import { calculateGrossAmount } from '@/lib/payments/grossUp';
 import {
   createPendingSubscriptionPayment,
   expireSubscriptionPayment,
@@ -367,7 +368,8 @@ export async function POST(req: NextRequest, { params }: Params) {
       .eq('id', paymentRow.id);
 
     // Step 13: Create LuniPay checkout session
-    const amountCents = ttdToCents(finalPrice);
+    const { grossAmount: grossFinalPrice, processingFee: subFee } = calculateGrossAmount(finalPrice);
+    const amountCents = ttdToCents(grossFinalPrice);
 
     // Get student email for checkout
     const { data: profile } = await admin
@@ -406,6 +408,8 @@ export async function POST(req: NextRequest, { params }: Params) {
             group_id: groupId,
             student_id: user.id,
             payment_id: paymentRow.id,
+            base_amount_ttd: String(finalPrice),
+            processing_fee_ttd: String(subFee),
           },
         },
         { idempotencyKey: `subscribe-${paymentRow.id}` }

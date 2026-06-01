@@ -5,6 +5,7 @@ import { createSessionForBooking } from '@/lib/services/sessionService';
 import { isPaidClassesEnabled } from '@/lib/featureFlags/paidClasses';
 import { calculateCommission } from '@/lib/utils/commissionCalculator';
 import { getLunipayClient, ttdToCents } from '@/lib/payments/lunipayClient';
+import { calculateGrossAmount } from '@/lib/payments/grossUp';
 import { resolvePayer } from '@/lib/payments/resolvePayer';
 
 export const dynamic = 'force-dynamic';
@@ -163,7 +164,8 @@ export async function POST(request: NextRequest) {
 
       const subjectName = (tutorSubject as any)?.label || 'Tutoring Session';
       const description = `${subjectName} (${durationMinutes} min)`;
-      const amountCents = ttdToCents(priceTtd);
+      const { grossAmount: grossPriceTtd, processingFee: sessionFee } = calculateGrossAmount(priceTtd);
+      const amountCents = ttdToCents(grossPriceTtd);
 
       // Stripe-style metadata: ≤50 keys, ≤500 chars per value. Truncate
       // student_notes hard so a long note can't break session creation.
@@ -196,6 +198,7 @@ export async function POST(request: NextRequest) {
               requested_end_at: requestedEndAt,
               duration_minutes: String(durationMinutes),
               price_ttd: String(priceTtd),
+              processing_fee_ttd: String(sessionFee),
               platform_fee_pct: String(Math.round(commission.commissionRate * 100)),
               platform_fee_ttd: String(commission.platformFee),
               tutor_payout_ttd: String(commission.payoutAmount),
