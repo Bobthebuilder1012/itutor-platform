@@ -55,7 +55,7 @@ export async function POST(
     );
 
     // For each tutor, if available_ttd < needed, pull the shortfall from pending_ttd
-    const adjustments: Promise<any>[] = [];
+    const adjustments: PromiseLike<any>[] = [];
     for (const [tutorId, needed] of neededByTutor) {
       const bal = balanceMap.get(tutorId);
       const available = Math.round((Number(bal?.available_ttd ?? 0)) * 100) / 100;
