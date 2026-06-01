@@ -53,6 +53,16 @@ export async function POST(
     return NextResponse.json({ error: ledgerError.message }, { status: 500 });
   }
 
+  const { error: deductionError } = await (admin as any)
+    .from('tutor_deductions')
+    .update({ deducted_from_batch_id: null })
+    .eq('deducted_from_batch_id', params.batchId)
+    .eq('status', 'pending');
+
+  if (deductionError) {
+    return NextResponse.json({ error: deductionError.message }, { status: 500 });
+  }
+
   const { error: batchError } = await admin
     .from('payout_batches')
     .update({ status: 'cancelled', cancelled_at: now })

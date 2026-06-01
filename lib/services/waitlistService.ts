@@ -9,8 +9,7 @@
 //   - Cron expires a PENDING_PAYMENT reservation (when no
 //     active offered entry exists for the group)
 //   - Cron processes expired waitlist offers
-//   - Tutor no-cause removal (after refund succeeds)
-//   - Admin overturn (after refund succeeds)
+//   - Tutor removal (after refund succeeds)
 //
 // NEVER call when a student schedules a cancellation —
 // promotion only happens when cron finalizes it.

@@ -130,10 +130,32 @@ async function handlePost(request: NextRequest) {
     }
   }
 
+  // ── Apply pending tutor deductions to this payout preview ────────────────
+  const grossByTutor = new Map<string, number>();
+  for (const r of unbatched) {
+    grossByTutor.set(
+      r.tutor_id,
+      (grossByTutor.get(r.tutor_id) ?? 0) + Number(r.amount_ttd)
+    );
+  }
+  const deductionPlan = await buildDeductionPlan(admin as any, grossByTutor);
+  const deductionByTutor = new Map<string, number>();
+  for (const item of deductionPlan) {
+    deductionByTutor.set(
+      item.tutorId,
+      (deductionByTutor.get(item.tutorId) ?? 0) + item.amountTtd
+    );
+  }
+
   // ── Create batch via create_payout_batch_atomic ───────────────────────────
   const eligibleIds = unbatched.map((r) => r.id);
-  const totalAmount = unbatched.reduce((s, r) => s + Number(r.amount_ttd), 0);
-  const uniqueTutors = new Set(unbatched.map((r) => r.tutor_id)).size;
+  const netByTutor = new Map<string, number>();
+  for (const [tutorId, gross] of grossByTutor) {
+    const deduction = deductionByTutor.get(tutorId) ?? 0;
+    netByTutor.set(tutorId, Math.max(0, Math.round((gross - deduction) * 100) / 100));
+  }
+  const totalAmount = Array.from(netByTutor.values()).reduce((s, amount) => s + amount, 0);
+  const uniqueTutors = Array.from(netByTutor.values()).filter((amount) => amount > 0).length;
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
   const filename = `itutor-lesson-payouts-${ts}.csv`;
 
@@ -155,6 +177,10 @@ async function handlePost(request: NextRequest) {
   }
 
   const rpc = rpcResult as Record<string, any>;
+
+  if (deductionPlan.length > 0) {
+    await reserveDeductionPlan(admin as any, deductionPlan, rpc.batch_id);
+  }
 
   // ── Build CSV ─────────────────────────────────────────────────────────────
   const tutorIds = Array.from(new Set(unbatched.map((r) => r.tutor_id)));
@@ -190,6 +216,10 @@ async function handlePost(request: NextRequest) {
 
   const csvRows = ['tutor_id,name,bank_name,branch,account_number,account_type,amount_ttd,reference'];
   for (const [tutorId, amount] of amountByTutorFinal) {
+    const deduction = deductionByTutor.get(tutorId) ?? 0;
+    const netAmount = Math.max(0, Math.round((amount - deduction) * 100) / 100);
+    if (netAmount <= 0) continue;
+
     const acc = accountByTutor.get(tutorId);
     const pro = profileById.get(tutorId);
     csvRows.push([
@@ -199,7 +229,7 @@ async function handlePost(request: NextRequest) {
       cell(acc?.branch),
       cell(acc?.payout_account_identifier),
       cell(acc?.account_type),
-      cell((Math.round(amount * 100) / 100).toFixed(2)),
+      cell(netAmount.toFixed(2)),
       cell(`ITUTOR-${rpc.batch_id?.slice(0, 8) ?? 'BATCH'}`),
     ].join(','));
   }
@@ -217,5 +247,106 @@ async function handlePost(request: NextRequest) {
     csv:      csvRows.join('\r\n') + '\r\n',
     filename,
     stamped_count: stampedIds.size,
+    deductions_applied_ttd: +Array.from(deductionByTutor.values()).reduce((s, amount) => s + amount, 0).toFixed(2),
   });
+}
+
+type DeductionAllocation = {
+  id: string;
+  tutorId: string;
+  amountTtd: number;
+  remainderTtd: number;
+  reason: string;
+  sourceEnrollmentId: string | null;
+  sourcePaymentId: string | null;
+  sourceSubscriptionPaymentId: string | null;
+};
+
+async function buildDeductionPlan(
+  admin: any,
+  grossByTutor: Map<string, number>
+): Promise<DeductionAllocation[]> {
+  const tutorIds = Array.from(grossByTutor.keys());
+  if (tutorIds.length === 0) return [];
+
+  const { data, error } = await admin
+    .from('tutor_deductions')
+    .select('id, tutor_id, amount_ttd, reason, source_enrollment_id, source_payment_id, source_subscription_payment_id')
+    .in('tutor_id', tutorIds)
+    .eq('status', 'pending')
+    .is('deducted_from_batch_id', null)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('[create-batch] failed to load tutor_deductions:', error);
+    return [];
+  }
+
+  const remainingByTutor = new Map(grossByTutor);
+  const plan: DeductionAllocation[] = [];
+
+  for (const row of data ?? []) {
+    const tutorId = row.tutor_id as string;
+    const availableGross = Math.round((remainingByTutor.get(tutorId) ?? 0) * 100) / 100;
+    if (availableGross <= 0) continue;
+
+    const rowAmount = Math.round(Number(row.amount_ttd ?? 0) * 100) / 100;
+    const allocation = Math.round(Math.min(rowAmount, availableGross) * 100) / 100;
+    if (allocation <= 0) continue;
+
+    plan.push({
+      id: row.id,
+      tutorId,
+      amountTtd: allocation,
+      remainderTtd: Math.round((rowAmount - allocation) * 100) / 100,
+      reason: row.reason,
+      sourceEnrollmentId: row.source_enrollment_id,
+      sourcePaymentId: row.source_payment_id,
+      sourceSubscriptionPaymentId: row.source_subscription_payment_id,
+    });
+
+    remainingByTutor.set(tutorId, Math.round((availableGross - allocation) * 100) / 100);
+  }
+
+  return plan;
+}
+
+async function reserveDeductionPlan(
+  admin: any,
+  plan: DeductionAllocation[],
+  batchId: string
+): Promise<void> {
+  for (const item of plan) {
+    const { error: updateError } = await admin
+      .from('tutor_deductions')
+      .update({
+        amount_ttd: item.amountTtd,
+        deducted_from_batch_id: batchId,
+      })
+      .eq('id', item.id)
+      .eq('status', 'pending');
+
+    if (updateError) {
+      console.error('[create-batch] failed to reserve tutor_deduction:', item.id, updateError);
+      continue;
+    }
+
+    if (item.remainderTtd > 0) {
+      const { error: insertError } = await admin
+        .from('tutor_deductions')
+        .insert({
+          tutor_id: item.tutorId,
+          amount_ttd: item.remainderTtd,
+          reason: item.reason,
+          source_enrollment_id: item.sourceEnrollmentId,
+          source_payment_id: item.sourcePaymentId,
+          source_subscription_payment_id: item.sourceSubscriptionPaymentId,
+          status: 'pending',
+        });
+
+      if (insertError) {
+        console.error('[create-batch] failed to carry tutor_deduction remainder:', item.id, insertError);
+      }
+    }
+  }
 }
