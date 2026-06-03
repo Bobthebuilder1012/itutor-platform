@@ -403,12 +403,14 @@ export async function GET() {
     return s + Math.max(0, r.amount_ttd - r.total_refunded_ttd);
   }, 0));
 
-  const cancelled_count = all_payments.filter(
-    (r) => r.session_status === 'CANCELLED' || r.booking_status === 'CANCELLED'
-  ).length;
+  // cancelled_count: use raw cancellation_events — covers cancellations even
+  // when no payment was processed yet (bookings cancelled before being paid).
+  const cancelled_count = cancelEvents.length;
 
+  // noshow_count: any open claim (awaiting_response or pending_admin) counts
+  // as needing attention. Resolved claims are already closed.
   const noshow_count = noshowClaims.filter(
-    (n: any) => n.status !== 'resolved'
+    (n: any) => ['awaiting_response', 'pending_admin'].includes(n.status)
   ).length;
 
   const batch_failed_count = failedBatches.length;
