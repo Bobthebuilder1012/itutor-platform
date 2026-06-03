@@ -29,7 +29,8 @@ type ClassSession = {
 export default function StudentBookingsPage() {
   const { profile, loading: profileLoading } = useProfile();
   const router = useRouter();
-  const [bookings, setBookings] = useState<BookingWithDetails[]>([]);
+  type BookingWithSession = BookingWithDetails & { session: { status?: string; scheduled_end_at?: string; scheduled_start_at?: string; [k: string]: any } | null };
+  const [bookings, setBookings] = useState<BookingWithSession[]>([]);
   const [classSessions, setClassSessions] = useState<ClassSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('upcoming');
@@ -121,6 +122,9 @@ export default function StudentBookingsPage() {
 
   const isBookingPast = (booking: any) => {
     if (booking.status === 'COMPLETED' || booking.status === 'COMPLETED_ASSUMED' || booking.status === 'DECLINED' || booking.status === 'CANCELLED') return true;
+    // Also treat cancelled sessions as past — booking may still be CONFIRMED
+    // if cancelled via a different path (tutor cancel, admin, etc.)
+    if (booking.session?.status === 'CANCELLED') return true;
     // Use the most reliable end-time we have: live session > confirmed_end_at > requested_end_at.
     // This catches PENDING / CONFIRMED rows whose slot has already elapsed.
     const endIso =
@@ -147,13 +151,13 @@ export default function StudentBookingsPage() {
     b.status === 'PENDING' && b.payment_required && b.payment_status !== 'paid';
 
   const visible = bookings.filter((b) => !isUnpaidGhost(b));
-  const upcoming = visible.filter(b => !isBookingPast(b) && b.status !== 'CANCELLED');
+  const upcoming = visible.filter(b => !isBookingPast(b) && b.status !== 'CANCELLED' && b.session?.status !== 'CANCELLED');
   const past = visible.filter(b => isBookingPast(b));
 
   const displayed = activeTab === 'upcoming' ? upcoming : past;
 
   const getStatusConfig = (booking: any) => {
-    if (booking.status === 'CANCELLED') return { label: 'Cancelled', cls: 'bg-muted text-muted-foreground' };
+    if (booking.status === 'CANCELLED' || booking.session?.status === 'CANCELLED') return { label: 'Cancelled', cls: 'bg-muted text-muted-foreground' };
     if (booking.status === 'COMPLETED' || booking.status === 'COMPLETED_ASSUMED') return { label: 'Completed', cls: 'bg-brand-soft text-forest' };
     // Anything past its scheduled end-time but never marked completed:
     // surface as "Past" rather than the stale lifecycle status (PENDING/CONFIRMED).
