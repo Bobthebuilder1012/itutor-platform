@@ -228,6 +228,13 @@ export default function PaymentSuccess() {
   const subjectName = receipt.subject.label || receipt.subject.name;
   const sessionDate = format(new Date(receipt.booking.requested_start_at), 'PPPp');
 
+  // Calculate gross amount charged to card (base + LuniPay transaction fee)
+  const LUNIPAY_PCT   = 0.03;
+  const LUNIPAY_FIXED = 1.00;
+  const base          = receipt.payment.amount_ttd;
+  const gross         = Math.round(((base + LUNIPAY_FIXED) / (1 - LUNIPAY_PCT)) * 100) / 100;
+  const transactionFee = Math.round((gross - base) * 100) / 100;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 py-12 px-4">
       <div className="max-w-3xl mx-auto">
@@ -285,23 +292,19 @@ export default function PaymentSuccess() {
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Payment Details</h3>
             <div className="space-y-3">
               <div className="flex justify-between">
-                <span className="text-gray-600">Session Price</span>
+                <span className="text-gray-600">Session Charge</span>
                 <span className="font-semibold text-gray-900">
-                  ${receipt.payment.amount_ttd.toFixed(2)} {receipt.payment.currency}
+                  ${base.toFixed(2)} {receipt.payment.currency}
                 </span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Platform Fee ({receipt.booking.platform_fee_pct}%)</span>
-                <span className="text-gray-700">${receipt.booking.platform_fee_ttd.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Tutor Receives</span>
-                <span className="text-gray-700">${receipt.booking.tutor_payout_ttd.toFixed(2)}</span>
+                <span className="text-gray-500">Transaction Fee (non-refundable)</span>
+                <span className="text-gray-600">${transactionFee.toFixed(2)}</span>
               </div>
               <div className="border-t pt-3 flex justify-between text-lg font-bold">
                 <span className="text-gray-900">Total Paid</span>
                 <span className="text-itutor-green">
-                  ${receipt.payment.amount_ttd.toFixed(2)} {receipt.payment.currency}
+                  ${gross.toFixed(2)} {receipt.payment.currency}
                 </span>
               </div>
             </div>
