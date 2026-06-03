@@ -716,6 +716,8 @@ export default function OneOnOnePaymentsPage() {
   // Modals
   const [refundTarget, setRefundTarget] = useState<PendingRefundRow | null>(null);
   const [noshowTarget, setNoshowTarget] = useState<NoshowRow | null>(null);
+  // Track which cancellation rows have already had a strike issued this session
+  const [strikesIssued, setStrikesIssued] = useState<Set<string>>(new Set());
 
   // ── Auth guard ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1064,27 +1066,36 @@ export default function OneOnOnePaymentsPage() {
                               <span className="px-2.5 py-1 rounded-lg bg-white/5 text-white/30 text-[11px]">Pending refund</span>
                             )}
                             {row.is_late && row.student_id && (
-                              <button
-                                onClick={async () => {
-                                  if (!confirm(`Issue a reliability strike to ${row.student_name ?? 'this student'} for a late cancellation?`)) return;
-                                  const res = await fetch('/api/admin/student-strikes', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({
-                                      student_id: row.student_id,
-                                      reason: 'student_noshow',
-                                      session_id: row.session_id,
-                                      booking_id: row.booking_id,
-                                      notes: 'Late cancellation — issued from One-on-One Payments admin panel',
-                                    }),
-                                  });
-                                  if (res.ok) alert('Strike issued.');
-                                  else alert('Failed to issue strike.');
-                                }}
-                                className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-[11px] font-bold transition"
-                              >
-                                Issue Strike
-                              </button>
+                              strikesIssued.has(row.event_id) ? (
+                                <span className="px-2.5 py-1 rounded-lg bg-white/5 text-white/30 text-[11px] font-bold cursor-default">
+                                  Strike issued
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={async () => {
+                                    if (!confirm(`Issue a reliability strike to ${row.student_name ?? 'this student'} for a late cancellation?`)) return;
+                                    const res = await fetch('/api/admin/student-strikes', {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({
+                                        student_id: row.student_id,
+                                        reason: 'student_noshow',
+                                        session_id: row.session_id,
+                                        booking_id: row.booking_id,
+                                        notes: 'Late cancellation — issued from One-on-One Payments admin panel',
+                                      }),
+                                    });
+                                    if (res.ok) {
+                                      setStrikesIssued((prev) => new Set([...prev, row.event_id]));
+                                    } else {
+                                      alert('Failed to issue strike.');
+                                    }
+                                  }}
+                                  className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-[11px] font-bold transition"
+                                >
+                                  Issue Strike
+                                </button>
+                              )
                             )}
                           </div>
                         </td>

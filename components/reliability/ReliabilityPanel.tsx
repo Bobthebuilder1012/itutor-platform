@@ -62,6 +62,7 @@ interface Props {
 export default function ReliabilityPanel({ role }: Props) {
   const [data, setData] = useState<TutorData | StudentData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
   const [appealTarget, setAppealTarget] = useState<{
     endpoint: string;
     title: string;
@@ -103,6 +104,8 @@ export default function ReliabilityPanel({ role }: Props) {
     return null;
   }
 
+  const pct = Math.min(100, warnAt > 0 ? (activeStrikes / warnAt) * 100 : 0);
+
   return (
     <div className="rounded-2xl border border-border bg-card p-5 space-y-4">
       <header className="flex items-center justify-between">
@@ -111,36 +114,45 @@ export default function ReliabilityPanel({ role }: Props) {
             <ShieldAlert className="w-5 h-5 text-amber-600" />
             Reliability
           </h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Strikes and system-issued items on your account.
-          </p>
+          {!collapsed && (
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Strikes and system-issued items on your account.
+            </p>
+          )}
         </div>
-        <div className="text-right">
-          <div className="text-xs text-muted-foreground">Active strikes</div>
-          <div className={`text-xl font-bold ${activeStrikes >= warnAt ? 'text-red-600' : 'text-amber-600'}`}>
-            {activeStrikes}
-            <span className="text-xs text-muted-foreground font-normal"> / {susAt}</span>
+        <div className="flex items-center gap-3">
+          <div className="text-right">
+            <div className="text-xs text-muted-foreground">Active strikes</div>
+            <div className={`text-xl font-bold ${activeStrikes >= warnAt ? 'text-red-600' : 'text-amber-600'}`}>
+              {activeStrikes}
+              <span className="text-xs text-muted-foreground font-normal"> / {warnAt}</span>
+            </div>
           </div>
+          <button
+            onClick={() => setCollapsed((c) => !c)}
+            className="text-xs text-muted-foreground hover:text-ink border border-border rounded-lg px-2.5 py-1 transition"
+          >
+            {collapsed ? 'Show' : 'Hide'}
+          </button>
         </div>
       </header>
 
-      {activeStrikes > 0 && (
-        <div className="space-y-2">
-          <div className="w-full h-2 rounded-full bg-gray-200 overflow-hidden">
-            <div
-              className={`h-full ${activeStrikes >= warnAt ? 'bg-red-500' : 'bg-amber-500'}`}
-              style={{ width: `${Math.min(100, (activeStrikes / susAt) * 100)}%` }}
-            />
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {activeStrikes >= susAt
-              ? 'Account may be suspended pending admin review.'
-              : activeStrikes >= warnAt
-                ? `${susAt - activeStrikes} more strike${susAt - activeStrikes === 1 ? '' : 's'} until suspension review.`
-                : `${warnAt - activeStrikes} more strike${warnAt - activeStrikes === 1 ? '' : 's'} until reliability warning.`}
-          </p>
+      {/* Always-visible compact bar */}
+      <div className="space-y-1">
+        <div className="w-full h-2 rounded-full bg-gray-200 overflow-hidden">
+          <div
+            className={`h-full transition-all ${activeStrikes >= warnAt ? 'bg-red-500' : 'bg-amber-500'}`}
+            style={{ width: `${pct}%` }}
+          />
         </div>
-      )}
+        <p className="text-xs text-muted-foreground">
+          {activeStrikes >= warnAt
+            ? 'Reliability warning threshold reached — pending admin review.'
+            : `${warnAt - activeStrikes} more strike${warnAt - activeStrikes === 1 ? '' : 's'} until reliability warning.`}
+        </p>
+      </div>
+
+      {collapsed ? null : (<>
 
       {studentData && studentData.cancel_state.count_30d > 0 && (
         <div className="rounded-xl border bg-amber-50 border-amber-200 p-3 text-sm flex items-start gap-2">
@@ -262,6 +274,8 @@ export default function ReliabilityPanel({ role }: Props) {
           </ul>
         </section>
       )}
+
+      </>)}
 
       <AppealModal
         open={!!appealTarget}
