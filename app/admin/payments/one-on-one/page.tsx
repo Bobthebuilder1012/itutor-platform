@@ -1046,12 +1046,10 @@ export default function OneOnOnePaymentsPage() {
                           {row.hours_before > 0 ? `${row.hours_before.toFixed(1)}h` : '—'}
                         </td>
                         <td className="px-4 py-3">
-                          {row.is_super_late ? (
-                            <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-600/20 text-rose-300">Super-late (&lt;15min)</span>
-                          ) : row.is_late ? (
+                          {row.is_late ? (
                             <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/15 text-amber-300">Late cancel (&lt;12h)</span>
                           ) : (
-                            <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-white/8 text-white/50">Standard</span>
+                            <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-white/8 text-white/50">Early cancel</span>
                           )}
                         </td>
                         <td className="px-4 py-3 text-xs text-white/50 capitalize">
@@ -1059,36 +1057,35 @@ export default function OneOnOnePaymentsPage() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-center gap-1.5">
-                            {row.refund_recommended && row.booking_payment_status !== 'REFUNDED' && (
+                            {/* Refunds for student cancellations are processed automatically — no admin action needed */}
+                            {row.booking_payment_status === 'REFUNDED' || row.booking_payment_status === 'PARTIALLY_REFUNDED' ? (
+                              <span className="px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-400 text-[11px] font-bold">Auto-refunded</span>
+                            ) : (
+                              <span className="px-2.5 py-1 rounded-lg bg-white/5 text-white/30 text-[11px]">Pending refund</span>
+                            )}
+                            {row.is_late && row.student_id && (
                               <button
-                                onClick={() => {
-                                  // Build refund target from cancellation context
-                                  if (!row.booking_id) return;
-                                  const paymentRow = data.all_payments.find(
-                                    (p) => p.booking_id === row.booking_id
-                                  );
-                                  if (paymentRow) {
-                                    setRefundTarget({
-                                      ...paymentRow,
-                                      refund_reason: 'student_cancelled',
-                                      recommended_refund_ttd: Math.max(0, paymentRow.amount_ttd - paymentRow.total_refunded_ttd),
-                                      retained_ttd: paymentRow.retained_amount_ttd,
-                                    });
-                                  }
+                                onClick={async () => {
+                                  if (!confirm(`Issue a reliability strike to ${row.student_name ?? 'this student'} for a late cancellation?`)) return;
+                                  const res = await fetch('/api/admin/student-strikes', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                      student_id: row.student_id,
+                                      reason: 'student_noshow',
+                                      session_id: row.session_id,
+                                      booking_id: row.booking_id,
+                                      notes: 'Late cancellation — issued from One-on-One Payments admin panel',
+                                    }),
+                                  });
+                                  if (res.ok) alert('Strike issued.');
+                                  else alert('Failed to issue strike.');
                                 }}
-                                className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-bold transition"
+                                className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-[11px] font-bold transition"
                               >
-                                Refund
+                                Issue Strike
                               </button>
                             )}
-                            {row.cancelled_by === 'tutor' && (
-                              <button className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-[11px] font-bold transition">
-                                Strike
-                              </button>
-                            )}
-                            <button className="px-2.5 py-1 rounded-lg bg-white/8 hover:bg-white/12 text-white/50 hover:text-white text-[11px] font-bold transition">
-                              Reviewed
-                            </button>
                           </div>
                         </td>
                       </tr>

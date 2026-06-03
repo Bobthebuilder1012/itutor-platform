@@ -460,18 +460,20 @@ export async function GET() {
     const tutor      = evt.tutor_id   ? profilesById.get(evt.tutor_id)   ?? null : null;
     const subject    = booking        ? subjectsById.get(booking.subject_id) ?? null : null;
 
-    // Determine who cancelled (source column)
-    const cancelled_by = evt.source === 'student_cancel' ? 'student' : 'student'; // all events here are student-sourced per schema
+    // cancellation_events.source = 'student_cancel' | 'counter_offer_rejected'
+    // Tutor cancellations are not recorded via this table — all rows here are student-sourced.
+    const cancelled_by  = 'student';
 
     const hours_before  = Number(evt.hours_before ?? 0);
-    const is_late       = evt.was_late === true || hours_before < 24;
-    // "super late" = within 2 hours of scheduled start
-    const is_super_late = hours_before > 0 && hours_before < 2;
+    // For STUDENTS: only the 12-hour cutoff matters (no super-late rule).
+    // Super-late (<15 min) is a TUTOR-only classification.
+    const is_late       = evt.was_late === true || (hours_before > 0 && hours_before < 12);
+    const is_super_late = false; // never applicable to student cancellations
 
-    // Recommend action: if late cancel, retain partial; if super late, retain more
+    // Refunds for student cancellations are handled automatically at cancel time.
+    // Recommend action is informational only.
     let recommended_action = 'full_refund';
-    if (is_super_late)    recommended_action = 'admin_review_retain_partial';
-    else if (is_late)     recommended_action = 'late_cancel_fee_may_apply';
+    if (is_late) recommended_action = 'late_cancel_50pct_retained';
 
     const payment_amount = Number(booking?.price_ttd ?? 0);
     const platform_fee   = Number(booking?.platform_fee_ttd ?? 0);
