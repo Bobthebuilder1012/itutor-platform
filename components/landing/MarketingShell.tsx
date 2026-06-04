@@ -18,7 +18,7 @@ function MarketingNav() {
           <Link href="/signup" className="hidden rounded-full px-4 py-2 text-sm font-medium text-white/80 hover:text-white sm:inline-flex transition-colors">
             Sign Up
           </Link>
-          <Link href="/login" className="rounded-full bg-[#199356] px-5 py-2.5 text-sm font-semibold text-white transition-transform hover:scale-[1.04] active:scale-95">
+          <Link href="/login" className="rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-white shadow-pop transition-transform hover:scale-[1.04] active:scale-95">
             Log In
           </Link>
         </div>
