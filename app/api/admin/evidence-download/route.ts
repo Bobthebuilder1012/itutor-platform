@@ -4,8 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/middleware/adminAuth';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { getServiceClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,11 +17,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'path is required' }, { status: 400 });
   }
 
-  // Generate a fresh signed URL (valid 5 minutes)
-  const supabase = createRouteHandlerClient({ cookies });
+  // Generate a fresh signed URL (valid 5 minutes) using the service client
+  const supabase = getServiceClient();
   const { data, error } = await supabase.storage
     .from('noshow-evidence')
-    .createSignedUrl(path, 300); // 5 minutes
+    .createSignedUrl(path, 300);
 
   if (error || !data?.signedUrl) {
     console.error('[evidence-download] Failed to create signed URL:', error);
