@@ -540,27 +540,65 @@ function NoshowModal({
             )}
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-3">
             <p className="text-xs font-semibold text-white/40 uppercase tracking-wider">Verdict</p>
-            {verdictOptions.map(({ key, label, desc, color }) => (
-              <button
-                key={key}
-                onClick={() => setVerdict(key)}
-                className={`w-full text-left px-4 py-3 rounded-xl border transition ${
-                  verdict === key
-                    ? 'border-white/20 bg-white/8'
-                    : 'border-white/6 bg-white/2 hover:bg-white/5'
-                }`}
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  {verdict === key
-                    ? <CheckCircle className="size-4 text-emerald-400 shrink-0" />
-                    : <div className="size-4 rounded-full border border-white/20 shrink-0" />}
-                  <span className={`text-sm font-semibold text-${color}-300`}>{label}</span>
-                </div>
-                <p className="text-xs text-white/40 ml-6">{desc}</p>
-              </button>
-            ))}
+
+            {/* Student Dispute — student filed the claim (tutor didn't show) */}
+            <p className="text-[10px] font-bold text-white/25 uppercase tracking-[.06em] pt-1">Student Dispute</p>
+            <button
+              onClick={() => setVerdict('tutor_noshow')}
+              className={`w-full text-left px-4 py-3 rounded-xl border transition ${
+                verdict === 'tutor_noshow'
+                  ? 'border-white/20 bg-white/8'
+                  : 'border-white/6 bg-white/2 hover:bg-white/5'
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                {verdict === 'tutor_noshow'
+                  ? <CheckCircle className="size-4 text-emerald-400 shrink-0" />
+                  : <div className="size-4 rounded-full border border-white/20 shrink-0" />}
+                <span className="text-sm font-semibold text-rose-300">Tutor No-show</span>
+              </div>
+              <p className="text-xs text-white/40 ml-6">Full refund to student. Tutor strike + 1-star system rating.</p>
+            </button>
+
+            {/* Tutor Dispute — tutor filed the claim (student didn't show) */}
+            <p className="text-[10px] font-bold text-white/25 uppercase tracking-[.06em] pt-1">Tutor Dispute</p>
+            <button
+              onClick={() => setVerdict('student_noshow')}
+              className={`w-full text-left px-4 py-3 rounded-xl border transition ${
+                verdict === 'student_noshow'
+                  ? 'border-white/20 bg-white/8'
+                  : 'border-white/6 bg-white/2 hover:bg-white/5'
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                {verdict === 'student_noshow'
+                  ? <CheckCircle className="size-4 text-emerald-400 shrink-0" />
+                  : <div className="size-4 rounded-full border border-white/20 shrink-0" />}
+                <span className="text-sm font-semibold text-amber-300">Student No-show</span>
+              </div>
+              <p className="text-xs text-white/40 ml-6">No refund. Tutor payout proceeds. Student receives a strike.</p>
+            </button>
+
+            {/* Tie / Mutual */}
+            <p className="text-[10px] font-bold text-white/25 uppercase tracking-[.06em] pt-1">Mutual</p>
+            <button
+              onClick={() => setVerdict('tie_mutual')}
+              className={`w-full text-left px-4 py-3 rounded-xl border transition ${
+                verdict === 'tie_mutual'
+                  ? 'border-white/20 bg-white/8'
+                  : 'border-white/6 bg-white/2 hover:bg-white/5'
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                {verdict === 'tie_mutual'
+                  ? <CheckCircle className="size-4 text-emerald-400 shrink-0" />
+                  : <div className="size-4 rounded-full border border-white/20 shrink-0" />}
+                <span className="text-sm font-semibold text-sky-300">Tie / Mutual Non-completion</span>
+              </div>
+              <p className="text-xs text-white/40 ml-6">Full refund. No penalties for either side.</p>
+            </button>
           </div>
 
           <div className="space-y-1.5">
