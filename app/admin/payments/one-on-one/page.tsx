@@ -586,12 +586,13 @@ function NoshowModal({
               {(claim.claimant_role === 'student' ? claim.evidence_files : claim.defendant_evidence_files)?.length > 0 && (
                 <div>
                   <p className="text-[10px] text-white/30 uppercase mb-2">Evidence Screenshots</p>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-col gap-1.5">
                     {(claim.claimant_role === 'student' ? claim.evidence_files : claim.defendant_evidence_files).map((file: any, i: number) => (
-                      <a key={i} href={file.signed_url ?? (typeof file === 'string' ? file : '#')} target="_blank" rel="noopener noreferrer"
-                        className="size-20 rounded-lg border border-white/10 overflow-hidden hover:border-white/30 transition">
-                        <img src={file.signed_url ?? (typeof file === 'string' ? file : '')} alt={`Evidence ${i + 1}`}
-                          className="size-full object-cover" />
+                      <a key={i} href={file.signed_url ?? (typeof file === 'string' ? file : '#')} download={file.original_name ?? `evidence-${i + 1}`} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-2 px-3 py-2 rounded-lg border border-white/10 bg-white/3 hover:bg-white/8 transition text-xs text-white/60 hover:text-white">
+                        <svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
+                        <span className="truncate">{file.original_name ?? `Evidence ${i + 1}`}</span>
+                        <svg className="size-3.5 shrink-0 ml-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
                       </a>
                     ))}
                   </div>
@@ -617,10 +618,11 @@ function NoshowModal({
                   <p className="text-[10px] text-white/30 uppercase mb-2">Evidence Screenshots</p>
                   <div className="flex flex-wrap gap-2">
                     {(claim.claimant_role === 'tutor' ? claim.evidence_files : claim.defendant_evidence_files).map((file: any, i: number) => (
-                      <a key={i} href={file.signed_url ?? (typeof file === 'string' ? file : '#')} target="_blank" rel="noopener noreferrer"
-                        className="size-20 rounded-lg border border-white/10 overflow-hidden hover:border-white/30 transition">
-                        <img src={file.signed_url ?? (typeof file === 'string' ? file : '')} alt={`Evidence ${i + 1}`}
-                          className="size-full object-cover" />
+                      <a key={i} href={file.signed_url ?? (typeof file === 'string' ? file : '#')} download={file.original_name ?? `evidence-${i + 1}`} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-2 px-3 py-2 rounded-lg border border-white/10 bg-white/3 hover:bg-white/8 transition text-xs text-white/60 hover:text-white">
+                        <svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
+                        <span className="truncate">{file.original_name ?? `Evidence ${i + 1}`}</span>
+                        <svg className="size-3.5 shrink-0 ml-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
                       </a>
                     ))}
                   </div>
