@@ -1,26 +1,70 @@
 'use client';
 
-import { FormEvent, useState, useEffect, useRef, useCallback } from 'react';
+import { FormEvent, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  ArrowLeft, Check, ChevronDown, Eye, EyeOff, GraduationCap,
+  Loader2, Search, UserRound, Users, Lightbulb, X as XIcon,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
-import CountrySelect from '@/components/CountrySelect';
-import SocialLoginButton from '@/components/SocialLoginButton';
-import SubjectMultiSelect from '@/components/SubjectMultiSelect';
 import InstitutionAutocomplete from '@/components/InstitutionAutocomplete';
-import { setUserSubjects } from '@/lib/supabase/userSubjects';
 import { Institution } from '@/lib/hooks/useInstitutionsSearch';
+import { setUserSubjects } from '@/lib/supabase/userSubjects';
 import { ensureSchoolCommunityAndMembership } from '@/lib/actions/community';
+import { cn } from '@/lib/utils';
 
 type UserRole = 'student' | 'tutor' | 'parent';
-type Step = 1 | 2 | 3 | 4 | 5;
-type SchoolAffiliation = 'attend' | 'teach' | 'none' | null;
+type Step = 'details' | 'role' | 'verify' | 'confirmed' | 'profile';
+type SchoolAffiliation = 'attend' | 'teach' | 'no';
 
-const STEP_LABELS = ['Details', 'Role', 'Verify', 'Confirmed', 'Profile'];
-const FORM_LEVELS = ['Form 1', 'Form 2', 'Form 3', 'Form 4', 'Form 5', 'Lower 6', 'Upper 6'];
+const STEPS: { id: Step; label: string }[] = [
+  { id: 'details', label: 'Details' },
+  { id: 'role', label: 'Role' },
+  { id: 'verify', label: 'Verify' },
+  { id: 'confirmed', label: 'Confirmed' },
+  { id: 'profile', label: 'Profile' },
+];
 
-function isNetworkError(error: unknown): boolean {
-  if (error instanceof TypeError && error.message === 'Failed to fetch') return true;
-  if (error instanceof Error && (error.message.includes('network') || error.message.includes('Network') || error.message.includes('fetch'))) return true;
+const YEAR_LEVELS = [
+  { value: 'SEA', label: 'SEA (10–11)' },
+  { value: 'Form 1', label: 'Form 1 (11–12)' },
+  { value: 'Form 2', label: 'Form 2 (12–13)' },
+  { value: 'Form 3', label: 'Form 3 (13–14)' },
+  { value: 'Form 4', label: 'Form 4 (14–15)' },
+  { value: 'Form 5', label: 'Form 5 (15–16)' },
+  { value: 'Lower 6', label: 'Lower 6 (16–17)' },
+  { value: 'Upper 6', label: 'Upper 6 (17–18)' },
+];
+
+const TUTOR_LEVELS = [
+  { value: 'sea', label: 'SEA' },
+  { value: 'form-1', label: 'Form 1' },
+  { value: 'form-2', label: 'Form 2' },
+  { value: 'form-3', label: 'Form 3' },
+  { value: 'form-4', label: 'Form 4' },
+  { value: 'form-5', label: 'Form 5' },
+  { value: 'cape-1', label: 'CAPE Unit 1' },
+  { value: 'cape-2', label: 'CAPE Unit 2' },
+];
+
+const TUTOR_SUBJECT_LIST = [
+  'CSEC Mathematics', 'CSEC Additional Mathematics', 'CSEC English A', 'CSEC English B',
+  'CSEC Physics', 'CSEC Chemistry', 'CSEC Biology', 'CSEC Human & Social Biology',
+  'CSEC Information Technology', 'CSEC Principles of Accounts', 'CSEC Principles of Business',
+  'CSEC Economics', 'CSEC Geography', 'CSEC History', 'CSEC Spanish', 'CSEC French',
+  'CSEC Social Studies', 'CSEC Religious Education',
+  'CAPE Pure Mathematics', 'CAPE Applied Mathematics', 'CAPE Physics', 'CAPE Chemistry',
+  'CAPE Biology', 'CAPE Computer Science', 'CAPE Economics', 'CAPE Accounting',
+  'CAPE Management of Business', 'CAPE Sociology', 'CAPE Literatures in English',
+  'CAPE Communication Studies', 'CAPE Caribbean Studies', 'CAPE Law', 'CAPE History',
+  'CAPE Geography', 'SEA Mathematics', 'SEA English', 'SEA Creative Writing', 'SEA Science',
+];
+
+function isNetworkError(err: unknown): boolean {
+  if (err instanceof TypeError && err.message === 'Failed to fetch') return true;
+  if (err instanceof Error && (err.message.includes('network') || err.message.includes('fetch'))) return true;
   return typeof navigator !== 'undefined' ? !navigator.onLine : false;
 }
 
@@ -28,57 +72,71 @@ export default function SignupPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const [step, setStep] = useState<Step>(1);
+  const [step, setStep] = useState<Step>('details');
   const [userId, setUserId] = useState<string | null>(null);
-  const [fullName, setFullName] = useState('');
+
+  // Step 1
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
-  const [countryCode, setCountryCode] = useState('');
+  const [country, setCountry] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [role, setRole] = useState<UserRole | null>(null);
-  const [termsAccepted, setTermsAccepted] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [showPw, setShowPw] = useState(false);
+  const [agree, setAgree] = useState(false);
   const [usernameError, setUsernameError] = useState('');
   const [usernameChecking, setUsernameChecking] = useState(false);
   const [usernameAvailable, setUsernameAvailable] = useState(false);
 
-  const [verificationCode, setVerificationCode] = useState<string[]>(Array(8).fill(''));
-  const [resendCooldown, setResendCooldown] = useState(0);
+  // Step 2
+  const [role, setRole] = useState<UserRole | null>(null);
+
+  // Step 3
+  const [code, setCode] = useState<string[]>(['', '', '', '', '', '']);
+  const [resendIn, setResendIn] = useState(0);
   const [resendLoading, setResendLoading] = useState(false);
-  const codeRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const [verifyError, setVerifyError] = useState('');
+  const [verifying, setVerifying] = useState(false);
 
-  // Step 5: Profile state
-  const [affiliation, setAffiliation] = useState<SchoolAffiliation>(null);
+  // Step 5 — student
+  const [affiliation, setAffiliation] = useState<SchoolAffiliation | null>(null);
   const [studentInstitution, setStudentInstitution] = useState<Institution | null>(null);
-  const [formLevel, setFormLevel] = useState('');
-  const [studentSubjects, setStudentSubjects] = useState<string[]>([]);
+  const [year, setYear] = useState('');
 
+  // Step 5 — tutor
+  const [tLevels, setTLevels] = useState<string[]>([]);
+  const [tSubjects, setTSubjects] = useState<string[]>([]);
+  const [tQuery, setTQuery] = useState('');
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  // Hash-based step navigation
   useEffect(() => {
-    const hash = window.location.hash.replace('#', '');
-    const stepMap: Record<string, Step> = { details: 1, role: 2, verify: 3, confirmed: 4, profile: 5 };
-    if (stepMap[hash]) setStep(stepMap[hash]);
-
+    if (typeof window === 'undefined') return;
+    const h = window.location.hash.replace('#', '') as Step;
+    if (STEPS.some((s) => s.id === h)) setStep(h);
     const onPop = () => {
-      const h = window.location.hash.replace('#', '');
-      if (stepMap[h]) setStep(stepMap[h]);
-      else setStep(1);
+      const hash = window.location.hash.replace('#', '') as Step;
+      if (STEPS.some((s) => s.id === hash)) setStep(hash);
+      else setStep('details');
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
 
-  const goStep = useCallback((s: Step) => {
-    const names = ['', 'details', 'role', 'verify', 'confirmed', 'profile'];
-    window.history.pushState(null, '', `#${names[s]}`);
+  const goto = useCallback((s: Step) => {
     setStep(s);
     setError('');
+    if (typeof window !== 'undefined') window.history.pushState(null, '', `#${s}`);
   }, []);
 
+  // Resend cooldown
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const t = setInterval(() => setResendIn((n) => Math.max(0, n - 1)), 1000);
+    return () => clearInterval(t);
+  }, [resendIn]);
+
+  // Real-time username check
   useEffect(() => {
     setUsernameError('');
     setUsernameAvailable(false);
@@ -86,8 +144,7 @@ export default function SignupPage() {
     if (!trimmed) return;
     if (trimmed.length < 3) { setUsernameError('Min 3 characters'); return; }
     if (trimmed.length > 30) { setUsernameError('Max 30 characters'); return; }
-    if (!/^[a-zA-Z0-9_]+$/.test(trimmed)) { setUsernameError('Letters, numbers, _ only'); return; }
-
+    if (!/^[a-zA-Z0-9_]+$/.test(trimmed)) { setUsernameError('Letters, numbers and _ only'); return; }
     setUsernameChecking(true);
     const timer = setTimeout(async () => {
       try {
@@ -97,37 +154,23 @@ export default function SignupPage() {
           body: JSON.stringify({ username: trimmed }),
         });
         const data = await res.json();
-        if (data.usernameAvailable === false) setUsernameError('Username taken');
+        if (data.usernameAvailable === false) setUsernameError('Username already taken');
         else setUsernameAvailable(true);
       } catch { /* ignore */ } finally { setUsernameChecking(false); }
     }, 400);
     return () => clearTimeout(timer);
   }, [username]);
 
-  useEffect(() => {
-    if (resendCooldown > 0) {
-      const t = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000);
-      return () => clearTimeout(t);
-    }
-  }, [resendCooldown]);
+  const usernameValid = /^[a-zA-Z0-9_]{3,30}$/.test(username) && !usernameError && usernameAvailable;
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  const passwordValid = password.length >= 8;
+  const detailsValid = usernameValid && emailValid && !!country && passwordValid && agree;
 
-  useEffect(() => {
-    if (affiliation === 'none') setStudentInstitution(null);
-  }, [affiliation]);
-
-  // --- Step 1 ---
-  const handleStep1 = async () => {
+  // ---- Step 1 ----
+  const handleStep1 = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!detailsValid) return;
     setError('');
-    const trimmedName = fullName.trim();
-    if (!trimmedName || trimmedName.length < 2) { setError('Enter your full name.'); return; }
-    if (trimmedName.length > 50) { setError('Name must be 50 characters or less.'); return; }
-    if (usernameError || !usernameAvailable) { setError('Choose a valid available username.'); return; }
-    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError('Enter a valid email.'); return; }
-    if (!countryCode) { setError('Select your country.'); return; }
-    if (password.length < 8) { setError('Password must be at least 8 characters.'); return; }
-    if (password !== confirmPassword) { setError('Passwords do not match.'); return; }
-    if (!termsAccepted) { setError('Accept Terms & Conditions.'); return; }
-
     setLoading(true);
     try {
       const res = await fetch('/api/auth/check-availability', {
@@ -136,561 +179,814 @@ export default function SignupPage() {
         body: JSON.stringify({ email, username: username.trim() }),
       });
       const data = await res.json();
-      if (!data.emailAvailable) { setError('Email already registered. Log in instead?'); setLoading(false); return; }
-      if (!data.usernameAvailable) { setError('Username already taken.'); setLoading(false); return; }
+      if (!data.emailAvailable) { setError('Email already registered. Log in instead?'); return; }
+      if (!data.usernameAvailable) { setError('Username already taken.'); return; }
     } catch (err) {
       setError(isNetworkError(err) ? 'Connect to the Internet' : 'An error occurred.');
-      setLoading(false);
       return;
-    }
-    setLoading(false);
-    goStep(2);
+    } finally { setLoading(false); }
+    goto('role');
   };
 
-  // --- Step 2 ---
+  // ---- Step 2 ----
+  const sendCode = async () => {
+    setResendLoading(true);
+    setResendIn(0);
+    try {
+      const res = await fetch('/api/auth/send-verification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      if (!res.ok) { const d = await res.json(); setError(d.error || 'Failed to send code.'); return; }
+      setResendIn(60);
+      setCode(['', '', '', '', '', '']);
+    } catch (err) {
+      setError(isNetworkError(err) ? 'Connect to the Internet' : 'Failed to send code.');
+    } finally { setResendLoading(false); }
+  };
+
   const handleStep2 = async () => {
     if (!role) { setError('Select a role to continue.'); return; }
     setError('');
     setLoading(true);
-    try {
-      const res = await fetch('/api/auth/send-verification', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setError(data.error || 'Failed to send code.'); setLoading(false); return; }
-      setResendCooldown(60);
-    } catch (err) {
-      setError(isNetworkError(err) ? 'Connect to the Internet' : 'Failed to send verification code.');
-      setLoading(false);
-      return;
-    }
+    await sendCode();
     setLoading(false);
-    goStep(3);
+    if (!error) goto('verify');
   };
 
-  // --- Resend ---
-  const handleResend = async () => {
-    if (resendCooldown > 0) return;
-    setResendLoading(true);
-    setError('');
-    try {
-      const res = await fetch('/api/auth/send-verification', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
-      });
-      if (!res.ok) { const d = await res.json(); setError(d.error || 'Failed to resend.'); }
-      else { setResendCooldown(60); setVerificationCode(Array(8).fill('')); }
-    } catch { setError('Failed to resend code.'); }
-    finally { setResendLoading(false); }
-  };
-
-  // --- Code input ---
-  const handleCodeInput = (i: number, val: string) => {
-    if (!/^\d*$/.test(val)) return;
-    const next = [...verificationCode];
-    next[i] = val.slice(-1);
-    setVerificationCode(next);
-    if (val && i < 7) codeRefs.current[i + 1]?.focus();
-  };
-  const handleCodeKeyDown = (i: number, e: React.KeyboardEvent) => {
-    if (e.key === 'Backspace' && !verificationCode[i] && i > 0) codeRefs.current[i - 1]?.focus();
-  };
-  const handleCodePaste = (e: React.ClipboardEvent) => {
-    e.preventDefault();
-    const text = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 8);
-    if (!text) return;
-    const next = Array(8).fill('');
-    for (let i = 0; i < text.length; i++) next[i] = text[i];
-    setVerificationCode(next);
-    codeRefs.current[Math.min(text.length, 7)]?.focus();
-  };
-
-  // --- Step 3: Verify + Register ---
+  // ---- Step 3: Verify + Register ----
   const handleVerify = async () => {
-    const code = verificationCode.join('');
-    if (code.length !== 8) { setError('Enter the full 8-digit code.'); return; }
-    setError('');
-    setLoading(true);
+    const joined = code.join('');
+    if (joined.length !== 6) { setVerifyError('Enter all 6 digits.'); return; }
+    setVerifyError('');
+    setVerifying(true);
+
     try {
-      const res = await fetch('/api/auth/verify-code', {
+      const verifyRes = await fetch('/api/auth/verify-code', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, code }),
+        body: JSON.stringify({ email, code: joined }),
       });
-      const data = await res.json();
-      if (!data.valid) {
-        setError(data.expired ? 'Code expired. Click Resend to get a new code.' : `Invalid code. ${data.attemptsRemaining ?? 0} attempts remaining.`);
-        setLoading(false);
+      const verifyData = await verifyRes.json();
+      if (!verifyData.valid) {
+        setVerifyError(verifyData.expired
+          ? 'Code expired. Click Resend to get a new one.'
+          : `Invalid code. ${verifyData.attemptsRemaining ?? 0} attempts remaining.`);
+        setVerifying(false);
         return;
       }
     } catch (err) {
-      setError(isNetworkError(err) ? 'Connect to the Internet' : 'Verification failed.');
-      setLoading(false);
+      setVerifyError(isNetworkError(err) ? 'Connect to the Internet' : 'Verification failed.');
+      setVerifying(false);
       return;
     }
 
     try {
-      const res = await fetch('/api/auth/register', {
+      const regRes = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: fullName.trim(), username: username.trim(), email: email.trim().toLowerCase(),
-          country: countryCode, password, role, verificationCode: verificationCode.join(''),
+          username: username.trim(),
+          email: email.trim().toLowerCase(),
+          country,
+          password,
+          role,
+          verificationCode: joined,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) { setError(data.error || 'Registration failed.'); setLoading(false); return; }
-      setUserId(data.user?.id || null);
+      const regData = await regRes.json();
+      if (!regRes.ok) { setVerifyError(regData.error || 'Registration failed.'); setVerifying(false); return; }
+      setUserId(regData.user?.id || null);
       await supabase.auth.signInWithPassword({ email, password });
     } catch (err) {
-      setError(isNetworkError(err) ? 'Connect to the Internet' : 'Registration failed.');
-      setLoading(false);
+      setVerifyError(isNetworkError(err) ? 'Connect to the Internet' : 'Registration failed.');
+      setVerifying(false);
       return;
     }
-    setLoading(false);
-    goStep(4);
+
+    setVerifying(false);
+    goto('confirmed');
+    // Auto-advance from confirmed
+    setTimeout(() => {
+      if (role === 'student' || role === 'tutor') goto('profile');
+      else {
+        const redirectUrl = searchParams.get('redirect');
+        router.push(redirectUrl ? decodeURIComponent(redirectUrl) : '/parent/coming-soon');
+      }
+    }, 1400);
   };
 
-  // --- Step 5: Profile submit ---
-  const handleProfileSubmit = async (e: FormEvent) => {
+  // ---- Step 5: Student profile ----
+  const handleStudentProfile = async (e: FormEvent) => {
     e.preventDefault();
+    if (!affiliation) { setError('Select your school affiliation.'); return; }
+    if (!year) { setError('Select your year level.'); return; }
     setError('');
-    if (affiliation === null) { setError('Select whether you are affiliated with a school.'); return; }
-    if (!formLevel) { setError('Select your form level.'); return; }
-    if (studentSubjects.length === 0) { setError('Select at least one subject.'); return; }
-
     setLoading(true);
     try {
       const showSchool = affiliation === 'attend' || affiliation === 'teach';
-      const schoolUpdate = showSchool && studentInstitution
-        ? { school: studentInstitution.name, institution_id: studentInstitution.id }
-        : { school: null, institution_id: null };
-
       const { error: updateError } = await supabase.from('profiles')
-        .update({ ...schoolUpdate, form_level: formLevel, subjects_of_study: studentSubjects })
+        .update({
+          school: showSchool && studentInstitution ? studentInstitution.name : null,
+          institution_id: showSchool && studentInstitution ? studentInstitution.id : null,
+          form_level: year,
+        })
         .eq('id', userId);
+      if (updateError) { setError(`Error saving profile: ${updateError.message}`); return; }
 
-      if (updateError) { setError(`Error updating profile: ${updateError.message}`); setLoading(false); return; }
-
-      const { error: subjectsError } = await setUserSubjects(userId!, studentSubjects);
-      if (subjectsError) { setError('Error saving subjects.'); setLoading(false); return; }
-
-      const ensure = await ensureSchoolCommunityAndMembership(userId!);
-      if (!ensure.success) { setError(ensure.error ?? 'Could not join school community.'); setLoading(false); return; }
-
-      router.push('/student/dashboard');
+      if (showSchool && studentInstitution) await ensureSchoolCommunityAndMembership(userId!);
+      const redirectUrl = searchParams.get('redirect');
+      router.push(redirectUrl ? decodeURIComponent(redirectUrl) : '/student/dashboard');
     } catch (err) {
-      console.error('Profile completion error:', err);
       setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
-  // --- Step 4: route to Step 5 or dashboard ---
-  const handleBuildProfile = () => {
-    if (role === 'student') { goStep(5); return; }
-    const redirectUrl = searchParams.get('redirect');
-    if (redirectUrl) { router.push(decodeURIComponent(redirectUrl)); return; }
-    if (role === 'tutor') router.push('/tutor/dashboard');
-    else if (role === 'parent') router.push('/parent/dashboard');
-    else router.push('/');
+  // ---- Step 5: Tutor profile ----
+  const handleTutorProfile = async () => {
+    if (tLevels.length === 0) { setError('Select at least one teaching level.'); return; }
+    const needsSubjects = tLevels.some((l) => l !== 'sea');
+    if (needsSubjects && tSubjects.length === 0) { setError('Select at least one subject.'); return; }
+    setError('');
+    setLoading(true);
+    try {
+      await supabase.from('profiles').update({ teaching_levels: tLevels }).eq('id', userId);
+      if (tSubjects.length > 0) await setUserSubjects(userId!, tSubjects);
+      const redirectUrl = searchParams.get('redirect');
+      router.push(redirectUrl ? decodeURIComponent(redirectUrl) : '/tutor/dashboard');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
+    } finally { setLoading(false); }
   };
 
-  const inputWithIcon = 'w-full bg-white border border-gray-200 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-400 text-sm py-2.5 pl-10 pr-4';
-  const inputBase = 'w-full bg-white border border-gray-200 text-gray-900 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition placeholder-gray-400 text-sm py-2.5 px-4';
+  const toggleLevel = (v: string) =>
+    setTLevels((cur) => cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v]);
+  const addTutorSubject = (s: string) => { if (!tSubjects.includes(s)) setTSubjects((cur) => [...cur, s]); setTQuery(''); };
+  const removeTutorSubject = (s: string) => setTSubjects((cur) => cur.filter((x) => x !== s));
+
+  const filteredTutorSubjects = useMemo(() =>
+    TUTOR_SUBJECT_LIST.filter((s) => s.toLowerCase().includes(tQuery.toLowerCase()) && !tSubjects.includes(s)).slice(0, 8),
+    [tQuery, tSubjects]);
 
   return (
-    <div className="min-h-screen flex" style={{ background: 'linear-gradient(135deg, #071a0e 0%, #0d2318 50%, #0a1e14 100%)' }}>
-      {/* LEFT PANEL */}
-      <div className="relative hidden flex-col justify-center overflow-hidden px-24 py-12 lg:flex lg:w-[55%] lg:items-start">
-        {/* Background glows */}
-        <div className="absolute top-[-60px] right-[-60px] w-80 h-80 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(25,147,86,0.18) 0%, transparent 70%)' }} />
-        <div className="absolute bottom-[40px] left-[-60px] w-64 h-64 rounded-full pointer-events-none" style={{ background: 'radial-gradient(circle, rgba(25,147,86,0.10) 0%, transparent 70%)' }} />
+    <main className="min-h-screen text-white" style={{ background: 'linear-gradient(135deg, #071a0e 0%, #0d2318 50%, #0a1e14 100%)' }}>
+      <div className="mx-auto flex min-h-screen max-w-7xl flex-col gap-6 p-4 sm:p-6 lg:flex-row lg:items-stretch lg:p-8">
 
-        {/* Main content */}
-        <div className="flex w-full max-w-lg flex-col">
-          <div className="mb-12 flex items-center gap-3 -ml-4 sm:-ml-6">
-            <img
-              src="/assets/logo/itutor-mark.png"
-              alt=""
-              className="h-28 w-auto shrink-0 object-contain object-left mix-blend-screen sm:h-[9rem]"
-              aria-hidden
-            />
-            <span className="text-7xl font-normal lowercase tracking-tight text-white sm:text-8xl">itutor</span>
-            <span className="sr-only">iTutor</span>
+        {/* LEFT — brand panel */}
+        <aside className="hidden flex-col justify-between rounded-3xl p-10 lg:flex lg:w-[55%]" style={{ backgroundColor: 'oklch(0.16 0.04 155)' }}>
+          <div>
+            <img src="/assets/logo/itutor-logo-new.png" alt="iTutor" className="h-14 w-auto object-contain" />
           </div>
-          <div className="inline-flex mb-6">
-            <span className="px-4 py-1.5 rounded-full text-sm font-semibold tracking-wide" style={{ color: '#5dcea0', border: '1px solid rgba(25,147,86,0.45)', backgroundColor: 'rgba(25,147,86,0.15)' }}>
-              ✦ CARIBBEAN&apos;S #1 TUTORING PLATFORM
-            </span>
-          </div>
-          <h1 className="text-[3.25rem] font-extrabold text-white leading-tight mb-6">
-            Find your<br />
-            <span style={{ color: '#2ecc7a' }} className="whitespace-nowrap">perfect tutor,</span><br />
-            ace every subject.
-          </h1>
-          <div className="flex gap-3 mb-8">
-            {[
-              { value: '100+', label: 'Expert Tutors' },
-              { value: '50+', label: 'Subjects' },
-              { value: '4.9★', label: 'Avg. Rating' },
-              { value: '200+', label: 'Students' },
-            ].map(({ value, label }) => (
-              <div key={label} className="flex flex-col items-center justify-center rounded-xl px-4 py-3 backdrop-blur-md" style={{ background: 'rgba(25,147,86,0.15)', border: '1px solid rgba(46,204,122,0.30)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(25,147,86,0.12)', minWidth: '78px' }}>
-                <span className="text-xl font-extrabold leading-none" style={{ color: '#2ecc7a' }}>{value}</span>
-                <span className="text-[10px] mt-1 text-center leading-tight" style={{ color: 'rgba(180,230,200,0.70)' }}>{label}</span>
-              </div>
-            ))}
-          </div>
-          <p className="text-base mb-8 leading-relaxed" style={{ color: 'rgba(180,230,200,0.70)' }}>
-            Get matched with top-rated verified iTutors.<br />CSEC, CAPE &amp; beyond — all in one platform.
-          </p>
-          <div className="space-y-3">
-            {[
-              { icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />, title: '1-on-1 Live Sessions', desc: 'Real-time tutoring, any time you need' },
-              { icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />, title: 'Track Your Progress', desc: 'Visual dashboards & session history' },
-              { icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />, title: 'Flexible Scheduling', desc: 'Book sessions around your timetable' },
-            ].map(({ icon, title, desc }) => (
-              <div key={title} className="flex items-center gap-4 rounded-xl px-5 py-3" style={{ backgroundColor: 'rgba(25,147,86,0.10)', border: '1px solid rgba(25,147,86,0.18)' }}>
-                <span className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(25,147,86,0.25)' }}>
-                  <svg className="w-5 h-5" style={{ color: '#2ecc7a' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">{icon}</svg>
-                </span>
-                <div>
-                  <p className="text-white text-base font-semibold">{title}</p>
-                  <p className="text-sm" style={{ color: 'rgba(180,230,200,0.65)' }}>{desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* RIGHT PANEL */}
-      <div className="w-full lg:w-[45%] flex items-center justify-center px-6 py-6 relative z-10">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[480px] px-8 py-6 max-h-[calc(100vh-48px)] overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#d1d5db transparent' }}>
-
-          {/* Step Indicator — 5 dots */}
-          <div className="flex items-center gap-0 mb-1 px-1">
-            {[1, 2, 3, 4, 5].map((s, i) => (
-              <div key={s} className="flex items-center flex-1 last:flex-none">
-                <div className={`transition-all rounded-full ${s < step ? 'w-2.5 h-2.5 bg-itutor-green' : s === step ? 'w-6 h-2.5 bg-itutor-green rounded-md' : 'w-2.5 h-2.5 bg-gray-200'}`} />
-                {i < 4 && <div className={`flex-1 h-0.5 mx-1 transition-colors ${s < step ? 'bg-itutor-green' : 'bg-gray-200'}`} />}
-              </div>
-            ))}
-          </div>
-          <div className="flex justify-between mb-5 px-0.5">
-            {STEP_LABELS.map((l, i) => (
-              <span key={l} className={`text-[10px] transition-colors ${i + 1 <= step ? 'text-itutor-green font-semibold' : 'text-gray-300'}`}>{l}</span>
-            ))}
-          </div>
-
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-600 px-3 py-1.5 rounded-lg mb-3">
-              <p className="text-xs">{error}</p>
-            </div>
-          )}
-
-          {/* ===== STEP 1: DETAILS ===== */}
-          {step === 1 && (
-            <>
-              <div className="text-center mb-3">
-                <h2 className="text-lg font-bold text-gray-900 mb-0.5">Create your account</h2>
-                <p className="text-xs text-gray-500">Sign up for your iTutor account</p>
-              </div>
-
-              <div className="mb-3">
-                <SocialLoginButton provider="google" mode="signup" redirectTo="/auth/callback?next=/signup/complete-role" />
-              </div>
-
-              <div className="flex items-center gap-2 mb-3">
-                <div className="flex-1 h-px bg-gray-200" />
-                <span className="text-[10px] text-gray-400 font-medium tracking-wider">OR CONTINUE WITH EMAIL</span>
-                <div className="flex-1 h-px bg-gray-200" />
-              </div>
-
-              <form onSubmit={(e: FormEvent) => { e.preventDefault(); handleStep1(); }} className="space-y-2">
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-                  </span>
-                  <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)}
-                    className={inputWithIcon}
-                    placeholder="Full name" required disabled={loading} maxLength={50} />
-                </div>
-
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                  </span>
-                  <input type="text" value={username} onChange={(e) => setUsername(e.target.value)}
-                    className={`${inputWithIcon} pr-10 ${usernameError ? 'border-red-400 focus:ring-red-400' : usernameAvailable && username ? 'border-itutor-green' : ''}`}
-                    placeholder="Username" required disabled={loading} minLength={3} maxLength={30} />
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                    {usernameChecking ? (
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-itutor-green" />
-                    ) : usernameError ? (
-                      <svg className="w-4 h-4 text-red-400" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg>
-                    ) : usernameAvailable && username ? (
-                      <svg className="w-4 h-4 text-itutor-green" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
-                    ) : null}
-                  </div>
-                </div>
-                {usernameError && <p className="text-[11px] text-red-400 -mt-1">{usernameError}</p>}
-
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
-                  </span>
-                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputWithIcon} placeholder="you@example.com" required disabled={loading} />
-                </div>
-
-                <CountrySelect value={countryCode} onChange={setCountryCode} disabled={loading}
-                  className={`w-full bg-white border border-gray-200 text-sm py-2.5 px-4 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition ${!countryCode ? 'text-gray-400' : 'text-gray-900'} ${loading ? 'opacity-50 cursor-not-allowed' : ''}`} />
-
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-0">Password</label>
-                  <div className="relative">
-                    <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)}
-                      className={`${inputBase} pr-14`} placeholder="At least 8 characters" required disabled={loading} />
-                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500 hover:text-gray-700 font-medium" tabIndex={-1}>
-                      {showPassword ? 'Hide' : 'Show'}
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-0">Confirm password</label>
-                  <div className="relative">
-                    <input type={showConfirmPassword ? 'text' : 'password'} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
-                      className={`${inputBase} pr-14`} placeholder="Re-enter your password" required disabled={loading} />
-                    <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500 hover:text-gray-700 font-medium" tabIndex={-1}>
-                      {showConfirmPassword ? 'Hide' : 'Show'}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-2.5">
-                  <input type="checkbox" id="terms" checked={termsAccepted} onChange={(e) => setTermsAccepted(e.target.checked)}
-                    className="w-4 h-4 mt-0.5 text-itutor-green rounded focus:ring-itutor-green border-gray-300" required disabled={loading} />
-                  <label htmlFor="terms" className="text-xs text-gray-500 leading-relaxed">
-                    I agree to the <a href="/terms/student" target="_blank" className="text-itutor-green font-medium hover:underline">Terms & Conditions</a>
-                  </label>
-                </div>
-
-                <button type="submit" disabled={loading}
-                  className="w-full bg-itutor-green hover:bg-emerald-700 text-white py-2.5 rounded-lg font-bold text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                  {loading ? 'Checking...' : 'Continue'}
-                </button>
-              </form>
-
-              <div className="mt-2 text-center space-y-1">
-                <p className="text-xs text-gray-600">Already have an account? <a href="/login" className="font-bold text-gray-900 hover:text-itutor-green transition-colors">Log in</a></p>
-                <p className="text-[11px] text-gray-400">Signing up for your child? <a href="/signup/parent" className="text-itutor-green font-medium hover:underline">Parent/guardian signup</a></p>
-              </div>
-            </>
-          )}
-
-          {/* ===== STEP 2: ROLE ===== */}
-          {step === 2 && (
-            <>
-              <div className="text-center mb-4">
-                <h2 className="text-lg font-bold text-gray-900 mb-0.5">I am a...</h2>
-                <p className="text-xs text-gray-500">Choose how you&apos;ll use iTutor</p>
-              </div>
-
-              <div className="flex flex-col gap-2.5 mb-4">
-                {([
-                  { id: 'student' as UserRole, name: 'Student', desc: 'I want to find tutors and join classes', color: 'bg-blue-50 text-blue-600', icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 19.5A2.5 2.5 0 016.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" /> },
-                  { id: 'tutor' as UserRole, name: 'Tutor', desc: 'I want to teach and create classes', color: 'bg-emerald-50 text-emerald-600', icon: <><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 2v2" /><circle cx="9" cy="7" r="4" strokeWidth={1.8} /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" /></> },
-                  { id: 'parent' as UserRole, name: 'Parent / Guardian', desc: 'I want to manage my child\'s learning', color: 'bg-violet-50 text-violet-600', icon: <><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 2v2" /><circle cx="12" cy="7" r="4" strokeWidth={1.8} /></> },
-                ]).map(({ id, name, desc, color, icon }) => (
-                  <button key={id} type="button" onClick={() => { setRole(id); setError(''); }}
-                    className={`flex items-center gap-3.5 p-4 border-2 rounded-xl transition-all text-left ${role === id ? 'border-itutor-green bg-green-50' : 'border-gray-200 hover:border-itutor-green hover:bg-green-50/30'}`}>
-                    <span className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${color}`}>
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">{icon}</svg>
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-gray-900">{name}</p>
-                      <p className="text-[11px] text-gray-500">{desc}</p>
-                    </div>
-                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${role === id ? 'border-itutor-green bg-itutor-green' : 'border-gray-300'}`}>
-                      {role === id && <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" /></svg>}
-                    </div>
-                  </button>
-                ))}
-              </div>
-
-              <button onClick={handleStep2} disabled={!role || loading}
-                className="w-full bg-itutor-green hover:bg-emerald-700 text-white py-2.5 rounded-lg font-bold text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-                {loading ? 'Sending code...' : 'Continue'}
-              </button>
-              <button onClick={() => goStep(1)} className="w-full mt-2 py-2 border border-gray-200 rounded-lg text-sm font-semibold text-gray-500 hover:text-gray-900 hover:border-gray-400 transition-colors">Back</button>
-            </>
-          )}
-
-          {/* ===== STEP 3: VERIFY ===== */}
-          {step === 3 && (
-            <>
-              <div className="text-center mb-4">
-                <div className="mx-auto w-12 h-12 bg-emerald-50 rounded-full flex items-center justify-center mb-3">
-                  <svg className="w-6 h-6 text-itutor-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                  </svg>
-                </div>
-                <h2 className="text-lg font-bold text-gray-900 mb-0.5">Verify your email</h2>
-                <p className="text-xs text-gray-500">Enter the 8-digit code we sent to your email</p>
-              </div>
-
-              <div className="mb-3">
-                <label className="block text-xs font-medium text-gray-700 mb-1">Email address</label>
-                <input type="email" value={email} readOnly className={`${inputBase} bg-gray-50 text-gray-500`} />
-              </div>
-
-              <div className="flex gap-1.5 justify-center mb-2" onPaste={handleCodePaste}>
-                {verificationCode.map((d, i) => (
-                  <input key={i} ref={(el) => { codeRefs.current[i] = el; }} type="text" inputMode="numeric" maxLength={1} value={d}
-                    onChange={(e) => handleCodeInput(i, e.target.value)} onKeyDown={(e) => handleCodeKeyDown(i, e)}
-                    className="w-10 h-12 border-2 border-gray-200 rounded-lg text-center text-xl font-bold outline-none transition-all focus:border-itutor-green focus:ring-2 focus:ring-green-100"
-                    disabled={loading} />
-                ))}
-              </div>
-
-              <div className="text-center text-xs text-gray-500 mb-3">
-                Didn&apos;t receive the code?{' '}
-                <button type="button" onClick={handleResend} disabled={resendCooldown > 0 || resendLoading}
-                  className="text-itutor-green font-semibold hover:underline disabled:opacity-50 disabled:cursor-not-allowed">
-                  {resendLoading ? 'Sending...' : resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend Code'}
-                </button>
-              </div>
-
-              <div className="rounded-lg px-3 py-2.5 mb-3" style={{ backgroundColor: 'rgba(25,147,86,0.06)', border: '1px solid rgba(25,147,86,0.15)' }}>
-                <p className="text-[11px] text-gray-500"><span className="font-semibold text-gray-600">Note:</span> Organization/company email systems may delay delivery by 5–30 minutes. Check your spam folder.</p>
-              </div>
-
-              <button onClick={handleVerify} disabled={loading || verificationCode.join('').length !== 8}
-                className="w-full bg-itutor-green hover:bg-emerald-700 text-white py-2.5 rounded-lg font-bold text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                {loading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>
-                    Creating account...
-                  </span>
-                ) : 'Verify & Create Account'}
-              </button>
-              <button onClick={() => goStep(2)} disabled={loading} className="w-full mt-2 py-2 border border-gray-200 rounded-lg text-sm font-semibold text-gray-500 hover:text-gray-900 hover:border-gray-400 transition-colors disabled:opacity-50">Back</button>
-            </>
-          )}
-
-          {/* ===== STEP 4: CONFIRMED ===== */}
-          {step === 4 && (
-            <div className="py-4 text-center">
-              <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
-                <svg className="w-8 h-8 text-itutor-green" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" /></svg>
-              </div>
-              <h2 className="text-xl font-bold text-gray-900 mb-1">Account verified!</h2>
-              <p className="text-sm text-gray-500 mb-5 leading-relaxed">
-                Your account has been created successfully.<br />
-                {role === 'student' ? 'One last step — tell us about your studies.' : 'Welcome to iTutor — let\u2019s get started.'}
+          <div className="space-y-8">
+            <div>
+              <h1 className="font-display text-5xl font-bold leading-tight tracking-tight">
+                Learn with the<br />Caribbean's best tutors.
+              </h1>
+              <p className="mt-4 max-w-md text-white/70">
+                Join thousands of students mastering SEA, CSEC and CAPE with verified iTutors.
               </p>
-              {role === 'tutor' && (
-                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
-                  Credential verification is required before you can teach. You&apos;ll be guided through this next.
-                </p>
-              )}
-              <button onClick={handleBuildProfile}
-                className="w-full bg-itutor-green hover:bg-emerald-700 text-white py-3 rounded-lg font-bold text-sm transition-colors">
-                {role === 'student' ? 'Build My Profile' : role === 'tutor' ? 'Complete Tutor Profile' : 'Go to Dashboard'}
-              </button>
             </div>
-          )}
-
-          {/* ===== STEP 5: STUDENT PROFILE ===== */}
-          {step === 5 && (
-            <>
-              <div className="text-center mb-3">
-                <div className="mx-auto w-10 h-10 bg-emerald-50 rounded-full flex items-center justify-center mb-2">
-                  <svg className="w-5 h-5 text-itutor-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                  </svg>
+            <div className="grid grid-cols-3 gap-4">
+              {[{ n: '1k+', l: 'Students' }, { n: '200+', l: 'Verified iTutors' }, { n: '4.9★', l: 'Avg rating' }].map((s) => (
+                <div key={s.l} className="rounded-2xl p-4 ring-1 ring-white/10" style={{ backgroundColor: 'rgba(255,255,255,0.05)' }}>
+                  <div className="font-display text-2xl font-bold text-itutor-green">{s.n}</div>
+                  <div className="mt-1 text-xs text-white/60">{s.l}</div>
                 </div>
-                <h2 className="text-base font-bold text-gray-900 mb-0.5">Complete your profile</h2>
-                <p className="text-[11px] text-gray-500">Tell us about your form level and subjects</p>
-              </div>
+              ))}
+            </div>
+            <ul className="space-y-3 text-sm text-white/80">
+              {['Book 1:1s by the hour, or join recurring lessons', 'Verified subject qualifications on every iTutor', 'Cancel or reschedule with one tap'].map((b) => (
+                <li key={b} className="flex items-start gap-3">
+                  <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(25,147,86,0.2)' }}>
+                    <Check className="h-3 w-3 text-itutor-green" />
+                  </span>
+                  {b}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <p className="text-xs text-white/40">© iTutor 2026</p>
+        </aside>
 
-              <form onSubmit={handleProfileSubmit} className="space-y-3">
-                <fieldset>
-                  <legend className="block text-xs font-semibold text-gray-800 mb-1.5">Are you affiliated with a school?</legend>
-                  <div className="space-y-1">
-                    {([
-                      { value: 'attend' as const, label: 'Yes, I attend a school' },
-                      { value: 'teach' as const, label: 'Yes, I teach at a school' },
-                      { value: 'none' as const, label: 'No, not affiliated' },
-                    ]).map(({ value, label }) => (
-                      <label key={value} className="flex items-center gap-2 py-1.5 px-2.5 rounded-lg border border-gray-200 bg-white hover:border-itutor-green cursor-pointer transition">
-                        <input type="radio" name="affiliation" value={value} checked={affiliation === value}
-                          onChange={() => setAffiliation(value)} disabled={loading}
-                          className="h-3.5 w-3.5 text-itutor-green border-gray-300 focus:ring-itutor-green" />
-                        <span className="text-gray-800 text-[11px]">{label}</span>
+        {/* RIGHT — card */}
+        <section className="flex-1 lg:w-[45%]">
+          <div className="mx-auto flex h-full max-w-xl flex-col overflow-hidden rounded-3xl bg-white text-gray-900 shadow-2xl">
+
+            {/* Back to site link */}
+            <div className="flex items-center justify-end px-5 py-3 border-b border-gray-100">
+              <Link href="/" className="text-xs font-medium text-gray-400 hover:text-gray-600 transition">Back to site</Link>
+            </div>
+
+            {/* Progress */}
+            <div className="px-6 pt-6 sm:px-8">
+              <StepProgress current={step} />
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 pb-8 pt-6 sm:px-8">
+
+              {error && (
+                <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+                  <p className="text-sm text-red-600">{error}</p>
+                </div>
+              )}
+
+              <AnimatePresence mode="wait">
+
+                {/* ===== STEP: DETAILS ===== */}
+                {step === 'details' && (
+                  <StepWrap key="details">
+                    <StepHeader title="Create your account" sub="A few details to get started — you can change them later." />
+                    <form onSubmit={handleStep1} className="mt-6 space-y-4">
+                      <Field label="Username" hint={username && usernameError ? usernameError : undefined}
+                        suffix={usernameChecking ? <Loader2 className="h-4 w-4 animate-spin text-gray-400" /> : usernameAvailable && username ? <Check className="h-4 w-4 text-itutor-green" /> : undefined}>
+                        <input
+                          type="text" value={username} onChange={(e) => setUsername(e.target.value)}
+                          placeholder="e.g. ramdeen_phys" autoComplete="username"
+                          className={cn('w-full rounded-lg border px-3 py-2.5 text-sm outline-none transition focus:ring-2',
+                            usernameError ? 'border-red-400 focus:ring-red-200' : usernameAvailable && username ? 'border-itutor-green focus:ring-green-100' : 'border-gray-200 focus:border-itutor-green focus:ring-green-100')}
+                          disabled={loading} required minLength={3} maxLength={30}
+                        />
+                      </Field>
+
+                      <Field label="Email">
+                        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                          placeholder="you@example.com" autoComplete="email"
+                          className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm outline-none transition focus:border-itutor-green focus:ring-2 focus:ring-green-100"
+                          disabled={loading} required />
+                      </Field>
+
+                      <Field label="Country">
+                        <CountryPicker value={country} onChange={setCountry} />
+                      </Field>
+
+                      <Field label="Password" hint={password && !passwordValid ? 'At least 8 characters' : undefined}>
+                        <div className="relative">
+                          <input type={showPw ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)}
+                            placeholder="At least 8 characters" autoComplete="new-password"
+                            className="w-full rounded-lg border border-gray-200 px-3 py-2.5 pr-10 text-sm outline-none transition focus:border-itutor-green focus:ring-2 focus:ring-green-100"
+                            disabled={loading} required />
+                          <button type="button" onClick={() => setShowPw((s) => !s)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600" tabIndex={-1}>
+                            {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </button>
+                        </div>
+                      </Field>
+
+                      <label className="flex cursor-pointer items-start gap-2.5 pt-1 text-sm text-gray-500">
+                        <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)}
+                          className="mt-0.5 h-4 w-4 rounded border-gray-300 text-itutor-green focus:ring-itutor-green" />
+                        <span>
+                          I agree to the{' '}
+                          <a href="/terms/student" target="_blank" className="font-medium text-gray-900 underline">Terms</a>{' '}
+                          and{' '}
+                          <a href="/terms/student" target="_blank" className="font-medium text-gray-900 underline">Privacy Policy</a>.
+                        </span>
                       </label>
-                    ))}
-                  </div>
-                </fieldset>
 
-                {(affiliation === 'attend' || affiliation === 'teach') && (
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-800 mb-1">School (optional)</label>
-                    <InstitutionAutocomplete
-                      selectedInstitution={studentInstitution}
-                      onChange={setStudentInstitution}
-                      filters={{ institution_level: 'secondary', country_code: 'TT' }}
-                      disabled={loading}
-                      placeholder="Type to search (e.g. Presentation, QRC)..."
-                      required={false}
-                      hideDefaultHint
-                    />
-                  </div>
+                      <button type="submit" disabled={!detailsValid || loading}
+                        className="w-full rounded-xl bg-itutor-green py-3 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:opacity-40">
+                        {loading ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : 'Continue'}
+                      </button>
+
+                      <div className="relative py-1">
+                        <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-gray-200" /></div>
+                        <div className="relative flex justify-center text-xs uppercase">
+                          <span className="bg-white px-2 text-gray-400">or</span>
+                        </div>
+                      </div>
+
+                      <GoogleButton redirectTo={`${typeof window !== 'undefined' ? window.location.origin : ''}/auth/callback?next=/signup/complete-role`} label="Continue with Google" />
+
+                      <p className="pt-1 text-center text-sm text-gray-500">
+                        Already have an account?{' '}
+                        <Link href="/login" className="font-medium text-itutor-green underline">Log in</Link>
+                      </p>
+                    </form>
+                  </StepWrap>
                 )}
 
-                <div>
-                  <label htmlFor="formLevel" className="block text-xs font-semibold text-gray-800 mb-1">
-                    Form Level <span className="text-red-500">*</span>
-                  </label>
-                  <select id="formLevel" value={formLevel} onChange={(e) => setFormLevel(e.target.value)} disabled={loading}
-                    className={`${inputBase} ${!formLevel ? 'text-gray-400' : ''}`}>
-                    <option value="">Select your form level</option>
-                    {FORM_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
-                  </select>
-                </div>
+                {/* ===== STEP: ROLE ===== */}
+                {step === 'role' && (
+                  <StepWrap key="role">
+                    <BackBtn onClick={() => goto('details')} />
+                    <StepHeader title="What brings you here?" sub="Pick what fits — you can adjust this later." />
+                    <div className="mt-6 space-y-3">
+                      <RoleCard active={role === 'student'} onClick={() => setRole('student')}
+                        icon={<GraduationCap className="h-5 w-5" />} title="I'm a student" desc="Find tutors and join lessons" />
+                      <RoleCard active={role === 'tutor'} onClick={() => setRole('tutor')}
+                        icon={<UserRound className="h-5 w-5" />} title="I'm an iTutor" desc="Teach 1:1s and run lessons" />
+                      {/* Parent accounts — coming soon */}
+                      <div className="relative rounded-xl border-2 border-dashed border-border bg-muted/30 p-4 opacity-70 cursor-not-allowed select-none">
+                        <div className="flex items-center gap-3">
+                          <div className="rounded-lg bg-muted p-2"><Users className="h-5 w-5 text-muted-foreground" /></div>
+                          <div className="flex-1">
+                            <div className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
+                              I'm a parent / guardian
+                              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Coming soon</span>
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-0.5">Manage my child's learning</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <button onClick={handleStep2} disabled={!role || loading}
+                      className="mt-6 w-full rounded-xl bg-itutor-green py-3 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:opacity-40">
+                      {loading ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : 'Continue'}
+                    </button>
+                  </StepWrap>
+                )}
 
-                <div>
-                  <label className="block text-xs font-semibold text-gray-800 mb-0.5">
-                    Subjects of Study <span className="text-red-500">*</span>
-                  </label>
-                  <p className="text-[10px] text-gray-500 mb-1">Search and select the subjects you&apos;re studying.</p>
-                  <SubjectMultiSelect
-                    selectedSubjects={studentSubjects}
-                    onChange={setStudentSubjects}
-                    disabled={loading}
-                    placeholder="Type subject name (e.g. Mathematics, Physics)..."
-                  />
-                </div>
+                {/* ===== STEP: VERIFY ===== */}
+                {step === 'verify' && (
+                  <StepWrap key="verify">
+                    <BackBtn onClick={() => goto('role')} />
+                    <StepHeader
+                      title="Check your email"
+                      sub={<>We sent a 6-digit code to <span className="font-medium text-gray-900">{email}</span>.</>}
+                    />
+                    <div className="mt-6 space-y-4">
+                      <OTPInputs value={code} onChange={setCode} onComplete={handleVerify} />
+                      {verifyError && <p className="text-center text-sm text-red-500">{verifyError}</p>}
+                      <button onClick={handleVerify} disabled={code.join('').length !== 6 || verifying}
+                        className="w-full rounded-xl bg-itutor-green py-3 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:opacity-40">
+                        {verifying ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : 'Verify & create account'}
+                      </button>
+                      <div className="text-center text-sm text-gray-500">
+                        Didn&apos;t get it?{' '}
+                        <button type="button" disabled={resendIn > 0 || resendLoading} onClick={sendCode}
+                          className="font-medium text-itutor-green underline disabled:no-underline disabled:opacity-50">
+                          {resendLoading ? 'Sending…' : resendIn > 0 ? `Resend in ${resendIn}s` : 'Resend code'}
+                        </button>
+                      </div>
+                      <p className="text-center text-xs text-gray-400">
+                        Emails can take up to a minute. Check spam if you don&apos;t see it.
+                      </p>
+                    </div>
+                  </StepWrap>
+                )}
 
-                <button type="submit" disabled={loading}
-                  className="w-full bg-itutor-green hover:bg-emerald-700 text-white py-2.5 rounded-lg font-bold text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                  {loading ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>
-                      Saving...
-                    </span>
-                  ) : 'Complete Profile'}
-                </button>
-              </form>
-            </>
-          )}
-        </div>
+                {/* ===== STEP: CONFIRMED ===== */}
+                {step === 'confirmed' && (
+                  <StepWrap key="confirmed">
+                    <div className="flex flex-col items-center pt-6 text-center">
+                      <motion.div
+                        initial={{ scale: 0.6, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        transition={{ type: 'spring', stiffness: 200, damping: 14 }}
+                        className="grid h-20 w-20 place-items-center rounded-full text-itutor-green"
+                        style={{ backgroundColor: 'rgba(25,147,86,0.12)' }}
+                      >
+                        <Check className="h-10 w-10" strokeWidth={3} />
+                      </motion.div>
+                      <h2 className="mt-5 font-display text-2xl font-bold">You&apos;re verified!</h2>
+                      <p className="mt-2 max-w-sm text-sm text-gray-500">
+                        {role === 'student'
+                          ? 'One last step — tell us about your studies.'
+                          : role === 'tutor'
+                            ? 'One last step — set up your tutor profile.'
+                            : 'Taking you to your dashboard…'}
+                      </p>
+                      {role === 'tutor' && (
+                        <p className="mt-3 max-w-xs rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-600">
+                          Credential verification is required before you can teach. You&apos;ll be guided through this next.
+                        </p>
+                      )}
+                      <div className="mt-6 flex items-center gap-2 text-xs text-gray-400">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Redirecting…
+                      </div>
+                    </div>
+                  </StepWrap>
+                )}
+
+                {/* ===== STEP: PROFILE — STUDENT ===== */}
+                {step === 'profile' && role === 'student' && (
+                  <StepWrap key="profile-student">
+                    <StepHeader title="Tell us about your studies" sub="This helps us match you with the right tutors and lessons." />
+                    <form onSubmit={handleStudentProfile} className="mt-6 space-y-5">
+                      <Field label="Are you affiliated with a school?">
+                        <div className="grid grid-cols-3 gap-2">
+                      {([{ v: 'attend', l: 'Yes, attend' }, { v: 'teach', l: 'Yes, teach' }, { v: 'no', l: 'No' }] as const).map((o) => (
+                          <button key={o.v} type="button" onClick={() => { setAffiliation(o.v); setStudentInstitution(null); }}
+                            className={cn('rounded-xl border px-3 py-2.5 text-sm font-medium transition',
+                              affiliation === o.v ? 'border-itutor-green bg-itutor-green text-white' : 'border-gray-200 bg-white hover:border-itutor-green/40')}>
+                            {o.l}
+                          </button>
+                        ))}
+                      </div>
+                    </Field>
+
+                      {(affiliation === 'attend' || affiliation === 'teach') && (
+                        <Field label="School (optional)">
+                          <InstitutionAutocomplete
+                            selectedInstitution={studentInstitution}
+                            onChange={setStudentInstitution}
+                            filters={{ institution_level: 'secondary' }}
+                            disabled={loading}
+                            placeholder="Type to search (e.g. PERS, Presentation, QRC)..."
+                            required={false}
+                            hideDefaultHint
+                          />
+                        </Field>
+                      )}
+
+                      <Field label="Year level *">
+                        <select value={year} onChange={(e) => setYear(e.target.value)} disabled={loading}
+                          className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm outline-none transition focus:border-itutor-green focus:ring-2 focus:ring-green-100">
+                          <option value="">Select your year</option>
+                          {YEAR_LEVELS.map((y) => <option key={y.value} value={y.value}>{y.label}</option>)}
+                        </select>
+                      </Field>
+
+                      <button type="submit" disabled={loading}
+                        className="w-full rounded-xl bg-itutor-green py-3 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:opacity-40">
+                        {loading ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : 'Complete profile'}
+                      </button>
+                    </form>
+                  </StepWrap>
+                )}
+
+                {/* ===== STEP: PROFILE — TUTOR ===== */}
+                {step === 'profile' && role === 'tutor' && (
+                  <StepWrap key="profile-tutor">
+                    <div className="flex flex-col items-center text-center">
+                      <div className="grid h-14 w-14 place-items-center rounded-2xl bg-itutor-green text-white shadow-lg">
+                        <Lightbulb className="h-6 w-6" />
+                      </div>
+                      <h2 className="mt-4 font-display text-2xl font-bold tracking-tight">Set up your tutor profile</h2>
+                      <p className="mt-1.5 max-w-md text-sm text-gray-500">
+                        Add the levels you teach and your subjects so students can find you.
+                      </p>
+                    </div>
+
+                    <div className="mt-6 space-y-5">
+                      <div className="rounded-2xl p-4 ring-1 ring-itutor-green/20" style={{ backgroundColor: 'rgba(25,147,86,0.05)' }}>
+                        <label className="text-sm font-semibold text-gray-800">Teaching Levels <span className="text-red-500">*</span></label>
+                        <p className="mt-0.5 text-xs text-gray-500">Select all levels you can teach.</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {TUTOR_LEVELS.map((l) => {
+                            const active = tLevels.includes(l.value);
+                            return (
+                              <button key={l.value} type="button" onClick={() => toggleLevel(l.value)}
+                                className={cn('rounded-full border px-4 py-1.5 text-sm font-semibold transition',
+                                  active ? 'border-itutor-green bg-itutor-green text-white' : 'border-gray-200 bg-white hover:border-itutor-green/40')}>
+                                {l.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {tLevels.some((l) => l !== 'sea') && (
+                        <div className="rounded-2xl border border-gray-200 bg-white p-4">
+                          <label className="text-sm font-semibold text-gray-800">Subjects you can teach <span className="text-red-500">*</span></label>
+                          <p className="mt-0.5 text-xs text-gray-500">Search and add CSEC / CAPE subjects.</p>
+                          <div className="relative mt-3">
+                            <input value={tQuery} onChange={(e) => setTQuery(e.target.value)}
+                              placeholder="Type subject name (e.g. CSEC Math, CAPE Physics)…"
+                              className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm outline-none transition focus:border-itutor-green focus:ring-2 focus:ring-green-100" />
+                            {tQuery.trim() && (
+                              <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                                {filteredTutorSubjects.length === 0
+                                  ? <li className="px-3 py-2 text-sm text-gray-400">No matches</li>
+                                  : filteredTutorSubjects.map((s) => (
+                                    <li key={s}>
+                                      <button type="button" onClick={() => addTutorSubject(s)}
+                                        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-gray-50">
+                                        {s}<span className="text-xs text-gray-400">Add</span>
+                                      </button>
+                                    </li>
+                                  ))}
+                              </ul>
+                            )}
+                          </div>
+                          {tSubjects.length > 0 && (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {tSubjects.map((s) => (
+                                <span key={s} className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1 text-xs font-medium">
+                                  {s}
+                                  <button type="button" onClick={() => removeTutorSubject(s)} className="text-gray-400 hover:text-gray-700">
+                                    <XIcon className="h-3 w-3" />
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      <button onClick={handleTutorProfile} disabled={loading ||
+                        tLevels.length === 0 || (tLevels.some((l) => l !== 'sea') && tSubjects.length === 0)}
+                        className="w-full rounded-xl bg-itutor-green py-3 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:opacity-40">
+                        {loading ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : 'Complete Profile'}
+                      </button>
+                    </div>
+                  </StepWrap>
+                )}
+
+              </AnimatePresence>
+            </div>
+          </div>
+        </section>
       </div>
+    </main>
+  );
+}
+
+/* ─── Sub-components ─── */
+
+function StepProgress({ current }: { current: Step }) {
+  const idx = STEPS.findIndex((s) => s.id === current);
+  return (
+    <div>
+      <div className="flex items-center gap-1.5">
+        {STEPS.map((s, i) => (
+          <div key={s.id} className={cn('h-1.5 flex-1 rounded-full transition-colors', i <= idx ? 'bg-itutor-green' : 'bg-gray-200')} />
+        ))}
+      </div>
+      <div className="mt-2 flex justify-between text-[11px] font-medium uppercase tracking-wide text-gray-400">
+        {STEPS.map((s, i) => (
+          <span key={s.id} className={cn(i === idx && 'text-itutor-green')}>{s.label}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StepWrap({ children }: { children: React.ReactNode }) {
+  return (
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }}>
+      {children}
+    </motion.div>
+  );
+}
+
+function StepHeader({ title, sub }: { title: string; sub: React.ReactNode }) {
+  return (
+    <div>
+      <h2 className="font-display text-2xl font-bold tracking-tight sm:text-3xl">{title}</h2>
+      <p className="mt-1.5 text-sm text-gray-500">{sub}</p>
+    </div>
+  );
+}
+
+function BackBtn({ onClick }: { onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick}
+      className="mb-3 inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-700">
+      <ArrowLeft className="h-4 w-4" /> Back
+    </button>
+  );
+}
+
+function Field({ label, children, hint, suffix }: { label: string; children: React.ReactNode; hint?: string; suffix?: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <label className="block text-sm font-medium text-gray-700">{label}</label>
+      <div className="relative">
+        {children}
+        {suffix && <span className="absolute right-3 top-1/2 -translate-y-1/2">{suffix}</span>}
+      </div>
+      {hint && <p className="text-xs text-red-500">{hint}</p>}
+    </div>
+  );
+}
+
+function RoleCard({ active, onClick, icon, title, desc }: { active: boolean; onClick: () => void; icon: React.ReactNode; title: string; desc: string }) {
+  return (
+    <button type="button" onClick={onClick}
+      className={cn('flex w-full items-center gap-4 rounded-2xl border-2 p-4 text-left transition',
+        active ? 'border-itutor-green bg-green-50' : 'border-gray-200 bg-white hover:border-itutor-green/40')}>
+      <div className={cn('grid h-11 w-11 shrink-0 place-items-center rounded-xl',
+        active ? 'bg-itutor-green text-white' : 'bg-gray-100 text-gray-400')}>
+        {icon}
+      </div>
+      <div className="flex-1">
+        <div className="font-semibold text-gray-900">{title}</div>
+        <div className="text-sm text-gray-500">{desc}</div>
+      </div>
+      <div className={cn('grid h-5 w-5 place-items-center rounded-full border-2 transition',
+        active ? 'border-itutor-green bg-itutor-green text-white' : 'border-gray-300')}>
+        {active && <Check className="h-3 w-3" strokeWidth={3} />}
+      </div>
+    </button>
+  );
+}
+
+function OTPInputs({ value, onChange, onComplete }: { value: string[]; onChange: (v: string[]) => void; onComplete?: () => void }) {
+  const refs = useRef<(HTMLInputElement | null)[]>([]);
+  const setAt = (i: number, ch: string) => {
+    const next = [...value];
+    next[i] = ch;
+    onChange(next);
+    if (ch && i < 5) refs.current[i + 1]?.focus();
+    if (next.every((c) => c) && next.join('').length === 6) onComplete?.();
+  };
+  return (
+    <div className="flex justify-center gap-2 sm:gap-3">
+      {value.map((c, i) => (
+        <input key={i} ref={(el) => { refs.current[i] = el; }}
+          inputMode="numeric" maxLength={1} value={c}
+          onChange={(e) => { const v = e.target.value.replace(/\D/g, '').slice(-1); setAt(i, v); }}
+          onKeyDown={(e) => { if (e.key === 'Backspace' && !value[i] && i > 0) refs.current[i - 1]?.focus(); }}
+          onPaste={(e) => {
+            const txt = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+            if (!txt) return;
+            e.preventDefault();
+            const next = txt.split('').concat(Array(6).fill('')).slice(0, 6);
+            onChange(next);
+            refs.current[Math.min(txt.length, 5)]?.focus();
+            if (txt.length === 6) onComplete?.();
+          }}
+          className="h-14 w-11 rounded-xl border-2 border-gray-200 bg-white text-center text-xl font-semibold tabular-nums shadow-sm outline-none transition focus:border-itutor-green focus:ring-2 focus:ring-green-100 sm:h-16 sm:w-12 sm:text-2xl"
+        />
+      ))}
+    </div>
+  );
+}
+
+function CountryPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Inline country data (ISO 3166-1 subset with flags)
+  const COUNTRIES = [
+    { code: 'TT', name: 'Trinidad and Tobago', flag: '🇹🇹' },
+    { code: 'JM', name: 'Jamaica', flag: '🇯🇲' },
+    { code: 'BB', name: 'Barbados', flag: '🇧🇧' },
+    { code: 'GY', name: 'Guyana', flag: '🇬🇾' },
+    { code: 'SR', name: 'Suriname', flag: '🇸🇷' },
+    { code: 'LC', name: 'Saint Lucia', flag: '🇱🇨' },
+    { code: 'VC', name: 'Saint Vincent and the Grenadines', flag: '🇻🇨' },
+    { code: 'GD', name: 'Grenada', flag: '🇬🇩' },
+    { code: 'DM', name: 'Dominica', flag: '🇩🇲' },
+    { code: 'AG', name: 'Antigua and Barbuda', flag: '🇦🇬' },
+    { code: 'KN', name: 'Saint Kitts and Nevis', flag: '🇰🇳' },
+    { code: 'BS', name: 'Bahamas', flag: '🇧🇸' },
+    { code: 'BZ', name: 'Belize', flag: '🇧🇿' },
+    { code: 'HT', name: 'Haiti', flag: '🇭🇹' },
+    { code: 'DO', name: 'Dominican Republic', flag: '🇩🇴' },
+    { code: 'CU', name: 'Cuba', flag: '🇨🇺' },
+    { code: 'US', name: 'United States', flag: '🇺🇸' },
+    { code: 'CA', name: 'Canada', flag: '🇨🇦' },
+    { code: 'GB', name: 'United Kingdom', flag: '🇬🇧' },
+    { code: 'NG', name: 'Nigeria', flag: '🇳🇬' },
+    { code: 'GH', name: 'Ghana', flag: '🇬🇭' },
+    { code: 'ZA', name: 'South Africa', flag: '🇿🇦' },
+    { code: 'IN', name: 'India', flag: '🇮🇳' },
+    { code: 'AU', name: 'Australia', flag: '🇦🇺' },
+    { code: 'AF', name: 'Afghanistan', flag: '🇦🇫' },
+    { code: 'AL', name: 'Albania', flag: '🇦🇱' },
+    { code: 'DZ', name: 'Algeria', flag: '🇩🇿' },
+    { code: 'AR', name: 'Argentina', flag: '🇦🇷' },
+    { code: 'AT', name: 'Austria', flag: '🇦🇹' },
+    { code: 'AZ', name: 'Azerbaijan', flag: '🇦🇿' },
+    { code: 'BD', name: 'Bangladesh', flag: '🇧🇩' },
+    { code: 'BY', name: 'Belarus', flag: '🇧🇾' },
+    { code: 'BE', name: 'Belgium', flag: '🇧🇪' },
+    { code: 'BO', name: 'Bolivia', flag: '🇧🇴' },
+    { code: 'BR', name: 'Brazil', flag: '🇧🇷' },
+    { code: 'BG', name: 'Bulgaria', flag: '🇧🇬' },
+    { code: 'CM', name: 'Cameroon', flag: '🇨🇲' },
+    { code: 'CL', name: 'Chile', flag: '🇨🇱' },
+    { code: 'CN', name: 'China', flag: '🇨🇳' },
+    { code: 'CO', name: 'Colombia', flag: '🇨🇴' },
+    { code: 'HR', name: 'Croatia', flag: '🇭🇷' },
+    { code: 'CY', name: 'Cyprus', flag: '🇨🇾' },
+    { code: 'CZ', name: 'Czechia', flag: '🇨🇿' },
+    { code: 'DK', name: 'Denmark', flag: '🇩🇰' },
+    { code: 'EG', name: 'Egypt', flag: '🇪🇬' },
+    { code: 'ET', name: 'Ethiopia', flag: '🇪🇹' },
+    { code: 'FI', name: 'Finland', flag: '🇫🇮' },
+    { code: 'FR', name: 'France', flag: '🇫🇷' },
+    { code: 'DE', name: 'Germany', flag: '🇩🇪' },
+    { code: 'GR', name: 'Greece', flag: '🇬🇷' },
+    { code: 'HU', name: 'Hungary', flag: '🇭🇺' },
+    { code: 'ID', name: 'Indonesia', flag: '🇮🇩' },
+    { code: 'IE', name: 'Ireland', flag: '🇮🇪' },
+    { code: 'IL', name: 'Israel', flag: '🇮🇱' },
+    { code: 'IT', name: 'Italy', flag: '🇮🇹' },
+    { code: 'JP', name: 'Japan', flag: '🇯🇵' },
+    { code: 'JO', name: 'Jordan', flag: '🇯🇴' },
+    { code: 'KE', name: 'Kenya', flag: '🇰🇪' },
+    { code: 'KR', name: 'South Korea', flag: '🇰🇷' },
+    { code: 'LB', name: 'Lebanon', flag: '🇱🇧' },
+    { code: 'MY', name: 'Malaysia', flag: '🇲🇾' },
+    { code: 'MX', name: 'Mexico', flag: '🇲🇽' },
+    { code: 'MA', name: 'Morocco', flag: '🇲🇦' },
+    { code: 'MM', name: 'Myanmar', flag: '🇲🇲' },
+    { code: 'NP', name: 'Nepal', flag: '🇳🇵' },
+    { code: 'NL', name: 'Netherlands', flag: '🇳🇱' },
+    { code: 'NZ', name: 'New Zealand', flag: '🇳🇿' },
+    { code: 'NO', name: 'Norway', flag: '🇳🇴' },
+    { code: 'PK', name: 'Pakistan', flag: '🇵🇰' },
+    { code: 'PE', name: 'Peru', flag: '🇵🇪' },
+    { code: 'PH', name: 'Philippines', flag: '🇵🇭' },
+    { code: 'PL', name: 'Poland', flag: '🇵🇱' },
+    { code: 'PT', name: 'Portugal', flag: '🇵🇹' },
+    { code: 'RO', name: 'Romania', flag: '🇷🇴' },
+    { code: 'RU', name: 'Russia', flag: '🇷🇺' },
+    { code: 'SA', name: 'Saudi Arabia', flag: '🇸🇦' },
+    { code: 'SN', name: 'Senegal', flag: '🇸🇳' },
+    { code: 'SG', name: 'Singapore', flag: '🇸🇬' },
+    { code: 'ES', name: 'Spain', flag: '🇪🇸' },
+    { code: 'LK', name: 'Sri Lanka', flag: '🇱🇰' },
+    { code: 'SE', name: 'Sweden', flag: '🇸🇪' },
+    { code: 'CH', name: 'Switzerland', flag: '🇨🇭' },
+    { code: 'TW', name: 'Taiwan', flag: '🇹🇼' },
+    { code: 'TZ', name: 'Tanzania', flag: '🇹🇿' },
+    { code: 'TH', name: 'Thailand', flag: '🇹🇭' },
+    { code: 'TR', name: 'Türkiye', flag: '🇹🇷' },
+    { code: 'UG', name: 'Uganda', flag: '🇺🇬' },
+    { code: 'UA', name: 'Ukraine', flag: '🇺🇦' },
+    { code: 'AE', name: 'United Arab Emirates', flag: '🇦🇪' },
+    { code: 'UY', name: 'Uruguay', flag: '🇺🇾' },
+    { code: 'VE', name: 'Venezuela', flag: '🇻🇪' },
+    { code: 'VN', name: 'Vietnam', flag: '🇻🇳' },
+    { code: 'ZM', name: 'Zambia', flag: '🇿🇲' },
+    { code: 'ZW', name: 'Zimbabwe', flag: '🇿🇼' },
+  ];
+
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, []);
+
+  const selected = COUNTRIES.find((c) => c.code === value);
+  const filtered = useMemo(() => {
+    if (!q.trim()) return COUNTRIES;
+    const s = q.toLowerCase();
+    return COUNTRIES.filter((c) => c.name.toLowerCase().includes(s));
+  }, [q]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button type="button" onClick={() => setOpen((o) => !o)}
+        className="flex h-10 w-full items-center justify-between rounded-lg border border-gray-200 px-3 text-sm shadow-sm transition hover:border-gray-300">
+        <span className={cn('flex items-center gap-2', !selected && 'text-gray-400')}>
+          {selected ? <><span className="text-base">{selected.flag}</span>{selected.name}</> : 'Select your country'}
+        </span>
+        <ChevronDown className="h-4 w-4 opacity-50" />
+      </button>
+      {open && (
+        <div className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl">
+          <div className="flex items-center gap-2 border-b border-gray-100 px-3 py-2">
+            <Search className="h-4 w-4 text-gray-400" />
+            <input autoFocus value={q} onChange={(e) => setQ(e.target.value)}
+              placeholder="Search countries…" className="w-full bg-transparent text-sm outline-none" />
+          </div>
+          <ul className="max-h-64 overflow-y-auto py-1">
+            {filtered.length === 0
+              ? <li className="px-3 py-2 text-sm text-gray-400">No matches</li>
+              : filtered.map((c) => (
+                <li key={c.code}>
+                  <button type="button" onClick={() => { onChange(c.code); setOpen(false); setQ(''); }}
+                    className={cn('flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm hover:bg-gray-50', value === c.code && 'bg-gray-50')}>
+                    <span className="text-base">{c.flag}</span>
+                    <span className="flex-1">{c.name}</span>
+                    {value === c.code && <Check className="h-4 w-4 text-itutor-green" />}
+                  </button>
+                </li>
+              ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GoogleButton({ redirectTo, label }: { redirectTo: string; label: string }) {
+  const [oauthLoading, setOauthLoading] = useState(false);
+  const [oauthError, setOauthError] = useState('');
+
+  const handleClick = async () => {
+    setOauthLoading(true);
+    setOauthError('');
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo, queryParams: { access_type: 'offline', prompt: 'consent' } },
+    });
+    if (error) { setOauthError('Failed to connect with Google. Please try again.'); setOauthLoading(false); }
+  };
+
+  return (
+    <div>
+      <button type="button" onClick={handleClick} disabled={oauthLoading}
+        className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:opacity-50">
+        {oauthLoading
+          ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-700" />
+          : <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden>
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.99.66-2.25 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z" />
+              <path fill="#FBBC05" d="M5.84 14.1A6.6 6.6 0 0 1 5.49 12c0-.73.13-1.44.35-2.1V7.07H2.18a11 11 0 0 0 0 9.87l3.66-2.84z" />
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z" />
+            </svg>}
+        {oauthLoading ? 'Connecting…' : label}
+      </button>
+      {oauthError && <p className="mt-1.5 text-center text-xs text-red-500">{oauthError}</p>}
     </div>
   );
 }

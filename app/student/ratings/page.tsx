@@ -2,127 +2,210 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Star, MessageSquare } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
-import DashboardLayout from '@/components/DashboardLayout';
-import { Rating } from '@/lib/types/database';
-import { getDisplayName } from '@/lib/utils/displayName';
+import { StarRow } from '@/components/ratings/StarInput';
 
-type RatingWithTutor = Rating & {
-  tutor?: {
-    full_name?: string | null;
-    display_name?: string | null;
-    username?: string | null;
-    avatar_url?: string | null;
-  } | null;
+type OneOnOneRating = {
+  id: string;
+  stars: number;
+  comment: string | null;
+  created_at: string;
+  tutorName: string;
+  tutorAvatar: string | null;
+  tutorInitials: string;
+  tutor_reply: string | null;
 };
+
+type GroupRating = {
+  id: string;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+  groupName: string;
+  tutorName: string;
+  tutorAvatar: string | null;
+  tutorInitials: string;
+  tutor_reply: string | null;
+};
+
+type Tab = '1on1' | 'group';
 
 export default function StudentRatings() {
   const { profile, loading } = useProfile();
   const router = useRouter();
-  const [ratings, setRatings] = useState<RatingWithTutor[]>([]);
-  const [loadingData, setLoadingData] = useState(true);
+  const [tab, setTab] = useState<Tab>('1on1');
+  const [oneOnOne, setOneOnOne] = useState<OneOnOneRating[]>([]);
+  const [group, setGroup] = useState<GroupRating[]>([]);
+  const [dataLoading, setDataLoading] = useState(true);
 
   useEffect(() => {
     if (loading) return;
-    
-    if (!profile || profile.role !== 'student') {
-      router.push('/login');
-      return;
-    }
-
-    fetchRatings();
+    if (!profile || profile.role !== 'student') { router.push('/login'); return; }
+    fetchAll(profile.id);
   }, [profile, loading, router]);
 
-  async function fetchRatings() {
-    if (!profile) return;
-
+  async function fetchAll(studentId: string) {
+    setDataLoading(true);
     try {
-      const { data } = await supabase
-        .from('ratings')
-        .select(
-          'id, session_id, student_id, tutor_id, stars, comment, created_at, tutor:profiles!ratings_tutor_id_fkey(full_name, display_name, username, avatar_url)'
-        )
-        .eq('student_id', profile.id)
-        .order('created_at', { ascending: false });
+      const [{ data: ratings }, { data: groupReviews }] = await Promise.all([
+        supabase
+          .from('ratings')
+          .select('id, stars, comment, created_at, tutor_reply, tutor:profiles!ratings_tutor_id_fkey(full_name, avatar_url)')
+          .eq('student_id', studentId)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('group_reviews')
+          .select('id, rating, comment, created_at, tutor_reply, group:groups!group_reviews_group_id_fkey(id, name, tutor:profiles!groups_tutor_id_fkey(full_name, avatar_url))')
+          .eq('reviewer_id', studentId)
+          .is('deleted_at', null)
+          .order('created_at', { ascending: false }),
+      ]);
 
-      if (data) {
-        const seen = new Set<string>();
-        const unique = (data as RatingWithTutor[]).filter((r) => {
-          if (seen.has(r.tutor_id)) return false;
-          seen.add(r.tutor_id);
-          return true;
-        });
-        setRatings(unique);
-      }
-    } catch (error) {
-      console.error('Error fetching ratings:', error);
+      // Dedupe 1:1 ratings by tutor (latest per tutor)
+      const seen = new Set<string>();
+      setOneOnOne((ratings ?? []).filter((r: any) => {
+        const tutorId = typeof r.tutor === 'object' && !Array.isArray(r.tutor) ? r.tutor?.id : (Array.isArray(r.tutor) ? r.tutor[0]?.id : null);
+        if (tutorId && seen.has(tutorId)) return false;
+        if (tutorId) seen.add(tutorId);
+        return true;
+      }).map((r: any): OneOnOneRating => {
+        const t = Array.isArray(r.tutor) ? r.tutor[0] : r.tutor;
+        const name = t?.full_name || 'Tutor';
+        return {
+          id: r.id, stars: r.stars, comment: r.comment, created_at: r.created_at,
+          tutorName: name,
+          tutorAvatar: t?.avatar_url ?? null,
+          tutorInitials: name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase(),
+          tutor_reply: r.tutor_reply ?? null,
+        };
+      }));
+
+      setGroup((groupReviews ?? []).map((r: any): GroupRating => {
+        const grp = Array.isArray(r.group) ? r.group[0] : r.group;
+        const tutor = grp?.tutor ? (Array.isArray(grp.tutor) ? grp.tutor[0] : grp.tutor) : null;
+        const tutorName = tutor?.full_name || 'Tutor';
+        return {
+          id: r.id, rating: r.rating, comment: r.comment, created_at: r.created_at,
+          groupName: grp?.name || 'Class',
+          tutorName,
+          tutorAvatar: tutor?.avatar_url ?? null,
+          tutorInitials: tutorName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase(),
+          tutor_reply: r.tutor_reply ?? null,
+        };
+      }));
+    } catch (err) {
+      console.error('Failed to load ratings:', err);
     } finally {
-      setLoadingData(false);
+      setDataLoading(false);
     }
   }
 
-  if (loading || !profile) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
+  const current = tab === '1on1' ? oneOnOne : group;
 
   return (
-    <DashboardLayout role="student" userName={profile.full_name}>
-      <div className="px-4 py-6 sm:px-0">
-        <h1 className="text-3xl font-bold text-gray-900 mb-6">My Reviews</h1>
+    <div className="max-w-3xl mx-auto space-y-6">
+        <header>
+          <h1 className="text-2xl font-bold text-ink">My Reviews</h1>
+          <p className="text-sm text-muted-foreground mt-1">Reviews you've left for tutors and classes.</p>
+        </header>
 
-        <div className="bg-white shadow rounded-lg p-6">
-          {loadingData ? (
-            <p className="text-gray-500">Loading reviews...</p>
-          ) : ratings.length > 0 ? (
-            <div className="space-y-6">
-              {ratings.map((rating) => (
-                <div key={rating.id} className="border-b pb-6 last:border-b-0">
-                  <div className="mb-2">
-                    <p className="text-sm font-semibold text-gray-900">
-                      {getDisplayName(rating.tutor || {})}
-                      {rating.tutor?.username ? (
-                        <span className="ml-2 text-sm font-normal text-gray-500">@{rating.tutor.username}</span>
-                      ) : null}
-                    </p>
-                  </div>
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="flex items-center">
-                      {[...Array(5)].map((_, i) => (
-                        <svg
-                          key={i}
-                          className={`h-5 w-5 ${
-                            i < rating.stars ? 'text-yellow-400' : 'text-gray-300'
-                          }`}
-                          fill="currentColor"
-                          viewBox="0 0 20 20"
-                        >
-                          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                        </svg>
-                      ))}
-                      <span className="ml-2 font-semibold">{rating.stars}/5</span>
-                    </div>
-                    <span className="text-sm text-gray-500">
-                      {new Date(rating.created_at).toLocaleDateString()}
-                    </span>
-                  </div>
-                  {rating.comment && (
-                    <p className="text-gray-700 mt-2">{rating.comment}</p>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <p className="text-gray-500">No reviews yet</p>
-            </div>
-          )}
+        {/* Tabs */}
+        <div className="inline-flex rounded-xl border border-border bg-card p-1 text-sm font-semibold">
+          {([['1on1', '1:1 Sessions'], ['group', 'Group Classes']] as const).map(([key, label]) => (
+            <button key={key} onClick={() => setTab(key)}
+              className={cn('px-4 py-2 rounded-lg transition', tab === key ? 'bg-ink text-white' : 'text-muted-foreground hover:text-ink')}>
+              {label}
+              <span className={cn('ml-1.5 text-[11px]', tab === key ? 'text-white/70' : 'text-muted-foreground')}>
+                ({key === '1on1' ? oneOnOne.length : group.length})
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {dataLoading ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">Loading…</div>
+        ) : current.length === 0 ? (
+          <div className="rounded-2xl border-2 border-dashed border-border p-12 text-center">
+            <Star className="size-10 mx-auto text-muted-foreground/30 mb-3" />
+            <p className="text-sm font-semibold text-ink">No reviews yet</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {tab === '1on1' ? 'Rate a 1:1 session to see it here.' : 'Review a group class to see it here.'}
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {tab === '1on1'
+              ? oneOnOne.map(r => <OneOnOneCard key={r.id} r={r} />)
+              : group.map(r => <GroupCard key={r.id} r={r} />)
+            }
+          </div>
+        )}
+      </div>
+  );
+}
+
+function OneOnOneCard({ r }: { r: OneOnOneRating }) {
+  return (
+    <article className="rounded-2xl border border-border bg-card p-5 space-y-3">
+      <div className="flex items-start gap-3">
+        <div className="size-10 rounded-full bg-brand/15 text-brand-deep grid place-items-center text-sm font-bold shrink-0 overflow-hidden">
+          {r.tutorAvatar ? <img src={r.tutorAvatar} alt={r.tutorName} className="size-10 object-cover" /> : r.tutorInitials}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="font-semibold text-ink">{r.tutorName}</span>
+            <StarRow value={r.stars} size={14} />
+          </div>
+          <div className="text-[11px] text-muted-foreground mt-0.5">
+            {new Date(r.created_at).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
+          </div>
         </div>
       </div>
-    </DashboardLayout>
+      {r.comment && <p className="text-sm text-ink/90 pl-[52px]">{r.comment}</p>}
+      {r.tutor_reply && (
+        <div className="ml-[52px] rounded-xl bg-brand/5 border-l-2 border-brand p-3">
+          <div className="text-[11px] font-bold text-brand-deep uppercase tracking-wider mb-1 flex items-center gap-1">
+            <MessageSquare className="size-3" /> Tutor Reply
+          </div>
+          <p className="text-sm text-ink/80 italic">{r.tutor_reply}</p>
+        </div>
+      )}
+    </article>
+  );
+}
+
+function GroupCard({ r }: { r: GroupRating }) {
+  return (
+    <article className="rounded-2xl border border-border bg-card p-5 space-y-3">
+      <div className="flex items-start gap-3">
+        <div className="size-10 rounded-full bg-brand/15 text-brand-deep grid place-items-center text-sm font-bold shrink-0 overflow-hidden">
+          {r.tutorAvatar ? <img src={r.tutorAvatar} alt={r.tutorName} className="size-10 object-cover" /> : r.tutorInitials}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div>
+              <span className="font-semibold text-ink">{r.groupName}</span>
+              <span className="text-xs text-muted-foreground ml-1.5">· {r.tutorName}</span>
+            </div>
+            <StarRow value={r.rating} size={14} />
+          </div>
+          <div className="text-[11px] text-muted-foreground mt-0.5">
+            {new Date(r.created_at).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
+          </div>
+        </div>
+      </div>
+      {r.comment && <p className="text-sm text-ink/90 pl-[52px]">{r.comment}</p>}
+      {r.tutor_reply && (
+        <div className="ml-[52px] rounded-xl bg-brand/5 border-l-2 border-brand p-3">
+          <div className="text-[11px] font-bold text-brand-deep uppercase tracking-wider mb-1 flex items-center gap-1">
+            <MessageSquare className="size-3" /> Tutor Reply
+          </div>
+          <p className="text-sm text-ink/80 italic">{r.tutor_reply}</p>
+        </div>
+      )}
+    </article>
   );
 }

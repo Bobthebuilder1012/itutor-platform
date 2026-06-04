@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { TutorSubject, Subject } from '@/lib/types/database';
 import PaidClassesLockNotice from '@/components/tutor/PaidClassesLockNotice';
+import { fmtTTD } from '@/lib/utils/formatCurrency';
 
 type EditSubjectModalProps = {
   isOpen: boolean;
@@ -166,15 +167,15 @@ export default function EditSubjectModal({
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-400">Session Price</span>
-                      <span className="text-itutor-white font-semibold">${currentPrice.toFixed(2)}</span>
+                      <span className="text-itutor-white font-semibold">{fmtTTD(currentPrice)}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-400">iTutor Commission ({commissionRate}%)</span>
-                      <span className="text-red-400">-${commissionAmount.toFixed(2)}</span>
+                      <span className="text-red-400">−{fmtTTD(commissionAmount)}</span>
                     </div>
                     <div className="border-t border-emerald-700/30 pt-2 flex items-center justify-between">
                       <span className="text-emerald-300 font-semibold">Your Earnings</span>
-                      <span className="text-emerald-300 font-bold text-lg">${yourEarnings.toFixed(2)}</span>
+                      <span className="text-emerald-300 font-bold text-lg">{fmtTTD(yourEarnings)}</span>
                     </div>
                   </div>
                 </div>

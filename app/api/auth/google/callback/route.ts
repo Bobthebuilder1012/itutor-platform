@@ -2,8 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { encrypt } from '@/lib/utils/encryption';
 import { migrateSessionsToNewProvider } from '@/lib/services/migrateSessionsToNewProvider';
+import { resolveGoogleRedirectUri } from '@/lib/auth/resolveGoogleRedirectUri';
 
 export const dynamic = 'force-dynamic';
+
+function redirect(returnTo: string, baseUrl: string, params: Record<string, string>) {
+  const url = new URL(returnTo, baseUrl);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  return NextResponse.redirect(url);
+}
 
 export async function GET(request: NextRequest) {
   // Use service role for callback (user context in state parameter)
@@ -13,32 +20,36 @@ export async function GET(request: NextRequest) {
   );
   const searchParams = request.nextUrl.searchParams;
   const code = searchParams.get('code');
-  const state = searchParams.get('state'); // user ID
+  const stateRaw = searchParams.get('state');
   const error = searchParams.get('error');
 
-  if (error || !code || !state) {
-    return NextResponse.redirect(new URL('/tutor/video-setup?error=auth_failed', request.url));
+  // Decode state — "userId|returnPath" or legacy plain userId
+  const stateParts = (stateRaw ?? '').split('|');
+  const tutorId = stateParts[0] ?? '';
+  const returnTo = stateParts[1] || '/tutor/video-setup';
+
+  if (error || !code || !tutorId) {
+    return redirect(returnTo, request.url, { error: 'auth_failed' });
   }
 
   try {
-    // Validate environment variables (trim to remove any whitespace/newlines)
     const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
-    const redirectUri = process.env.GOOGLE_REDIRECT_URI?.trim();
+    const redirectUri = resolveGoogleRedirectUri(request);
 
     if (!clientId || !clientSecret || !redirectUri) {
       console.error('❌ Missing Google OAuth credentials:', {
         hasClientId: !!clientId,
         hasClientSecret: !!clientSecret,
-        hasRedirectUri: !!redirectUri
+        hasRedirectUri: !!redirectUri,
       });
-      return NextResponse.redirect(new URL('/tutor/video-setup?error=server_config', request.url));
+      return redirect(returnTo, request.url, { error: 'server_config' });
     }
 
     console.log('🔄 Exchanging OAuth code for tokens...', {
       hasCode: !!code,
       redirectUri,
-      tutorId: state
+      tutorId
     });
 
     // Exchange code for tokens
@@ -63,9 +74,7 @@ export async function GET(request: NextRequest) {
         redirectUri,
         clientIdPrefix: clientId.slice(0, 12) + '...',
       });
-      return NextResponse.redirect(
-        new URL(`/tutor/video-setup?error=connection_failed&detail=${encodeURIComponent(`Token exchange ${tokenResponse.status}: ${errorData}`)}`, request.url)
-      );
+      return redirect(returnTo, request.url, { error: 'connection_failed', detail: `Token exchange ${tokenResponse.status}: ${errorData}` });
     }
 
     const tokens = await tokenResponse.json();
@@ -89,7 +98,7 @@ export async function GET(request: NextRequest) {
     const { data: existingConnection } = await supabase
       .from('tutor_video_provider_connections')
       .select('provider')
-      .eq('tutor_id', state)
+      .eq('tutor_id', tutorId)
       .single();
 
     const previousProvider = existingConnection?.provider;
@@ -99,7 +108,7 @@ export async function GET(request: NextRequest) {
     const { error: dbError } = await supabase
       .from('tutor_video_provider_connections')
       .upsert({
-        tutor_id: state,
+        tutor_id: tutorId,
         provider: 'google_meet',
         is_active: true,
         connection_status: 'connected',
@@ -114,37 +123,28 @@ export async function GET(request: NextRequest) {
 
     if (dbError) {
       console.error('❌ Database upsert error:', JSON.stringify(dbError, null, 2));
-      return NextResponse.redirect(
-        new URL(`/tutor/video-setup?error=connection_failed&detail=${encodeURIComponent(dbError.message ?? dbError.code ?? 'unknown')}`, request.url)
-      );
+      return redirect(returnTo, request.url, { error: 'connection_failed', detail: dbError.message ?? dbError.code ?? 'unknown' });
     }
 
     // If switching from another provider, migrate all future sessions
     if (isSwitchingProvider) {
-      console.log(`🔄 Tutor ${state} is switching from ${previousProvider} to google_meet. Migrating sessions...`);
+      console.log(`🔄 Tutor ${tutorId} is switching from ${previousProvider} to google_meet. Migrating sessions...`);
       
-      const migrationResult = await migrateSessionsToNewProvider(state, 'google_meet');
+      const migrationResult = await migrateSessionsToNewProvider(tutorId, 'google_meet');
       
       if (migrationResult.success) {
         console.log(`✅ Successfully migrated ${migrationResult.migratedCount} sessions to Google Meet`);
-        return NextResponse.redirect(
-          new URL(`/tutor/video-setup?success=true&migrated=${migrationResult.migratedCount}`, request.url)
-        );
+        return redirect(returnTo, request.url, { success: 'true', migrated: String(migrationResult.migratedCount) });
       } else {
         console.warn(`⚠️ Session migration completed with issues: ${migrationResult.error}`);
-        return NextResponse.redirect(
-          new URL(`/tutor/video-setup?success=true&migration_warning=true`, request.url)
-        );
+        return redirect(returnTo, request.url, { success: 'true', migration_warning: 'true' });
       }
     }
 
-    return NextResponse.redirect(new URL('/tutor/video-setup?success=true', request.url));
+    return redirect(returnTo, request.url, { success: 'true' });
   } catch (error: any) {
     console.error('❌ OAuth callback error:', error);
-    const detail = error?.message ?? 'unknown';
-    return NextResponse.redirect(
-      new URL(`/tutor/video-setup?error=connection_failed&detail=${encodeURIComponent(detail)}`, request.url)
-    );
+    return redirect(returnTo, request.url, { error: 'connection_failed', detail: error?.message ?? 'unknown' });
   }
 }
 

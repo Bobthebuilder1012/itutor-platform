@@ -10,10 +10,8 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const USERNAME_RE = /^[a-zA-Z0-9_]+$/;
 
 function validate(body: Record<string, unknown>): string | null {
-  const { name, username, email, country, password, role, verificationCode } = body;
+  const { username, email, country, password, role, verificationCode } = body;
 
-  if (!name || typeof name !== 'string' || name.length < 2 || name.length > 50)
-    return 'Name must be 2-50 characters';
   if (!username || typeof username !== 'string' || username.length < 3 || username.length > 30 || !USERNAME_RE.test(username))
     return 'Username must be 3-30 alphanumeric/underscore characters';
   if (RESERVED.has((username as string).toLowerCase()))
@@ -26,8 +24,8 @@ function validate(body: Record<string, unknown>): string | null {
     return 'Password must be 8-128 characters';
   if (!role || !VALID_ROLES.has(role as string))
     return 'Role must be student, tutor, or parent';
-  if (!verificationCode || typeof verificationCode !== 'string' || !/^\d{8}$/.test(verificationCode))
-    return 'Verification code must be 8 digits';
+  if (!verificationCode || typeof verificationCode !== 'string' || !/^\d{6}$/.test(verificationCode))
+    return 'Verification code must be 6 digits';
 
   return null;
 }
@@ -35,7 +33,10 @@ function validate(body: Record<string, unknown>): string | null {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { name, username, email, country, password, role, verificationCode } = body;
+    const { username, email, country, password, role, verificationCode } = body;
+    const name: string = (typeof body.name === 'string' && body.name.trim().length >= 2)
+      ? body.name.trim()
+      : username;
 
     const validationError = validate(body);
     if (validationError) {
@@ -76,7 +77,14 @@ export async function POST(req: Request) {
     ]);
 
     if (emailTaken) {
-      return NextResponse.json({ error: 'Email is already registered' }, { status: 409 });
+      // Check whether a real auth user still backs this profile — if not it's an
+      // orphan left behind when someone deleted the user from the Supabase dashboard
+      // without deleting the corresponding profiles row. Purge and allow re-registration.
+      const { data: authUser } = await supabase.auth.admin.getUserById(emailTaken.id);
+      if (authUser?.user) {
+        return NextResponse.json({ error: 'Email is already registered' }, { status: 409 });
+      }
+      await supabase.from('profiles').delete().eq('id', emailTaken.id);
     }
     if (usernameTaken) {
       return NextResponse.json({ error: 'Username is already taken' }, { status: 409 });

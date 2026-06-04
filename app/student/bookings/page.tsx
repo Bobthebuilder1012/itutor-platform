@@ -1,38 +1,47 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { getStudentBookings } from '@/lib/services/bookingService';
 import { supabase } from '@/lib/supabase/client';
-import DashboardLayout from '@/components/DashboardLayout';
 import { getDisplayName } from '@/lib/utils/displayName';
-import { Booking, BookingStatus, BookingWithDetails } from '@/lib/types/booking';
-import { formatDateTime, getRelativeTime } from '@/lib/utils/calendar';
-import { getBookingStatusColor, getBookingStatusLabel } from '@/lib/types/booking';
+import type { BookingWithDetails } from '@/lib/types/booking';
+import { getBookingStatusLabel } from '@/lib/types/booking';
+import { formatDateTime } from '@/lib/utils/calendar';
+import { Calendar, Video, MoreHorizontal, RotateCcw, Star, Clock, Users } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
-type TabType = 'all' | 'pending' | 'confirmed' | 'cancelled' | 'past';
+type TabType = 'upcoming' | 'past';
+
+type ClassSession = {
+  id: string;
+  groupId: string;
+  className: string;
+  tutorName: string;
+  date: string;
+  durationMin: number;
+  meetingLink?: string;
+  type: 'class';
+};
 
 export default function StudentBookingsPage() {
   const { profile, loading: profileLoading } = useProfile();
   const router = useRouter();
-  
-  const [bookings, setBookings] = useState<BookingWithDetails[]>([]);
+  type BookingWithSession = BookingWithDetails & { session: { status?: string; scheduled_end_at?: string; scheduled_start_at?: string; [k: string]: any } | null };
+  const [bookings, setBookings] = useState<BookingWithSession[]>([]);
+  const [classSessions, setClassSessions] = useState<ClassSession[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<TabType>('all');
-  const [paidClassesEnabled, setPaidClassesEnabled] = useState<boolean>(false);
+  const [activeTab, setActiveTab] = useState<TabType>('upcoming');
+  const [paidClassesEnabled, setPaidClassesEnabled] = useState(false);
 
   useEffect(() => {
     if (profileLoading) return;
-    
-    if (!profile || profile.role !== 'student') {
-      router.push('/login');
-      return;
-    }
-
+    if (!profile || profile.role !== 'student') { router.push('/login'); return; }
     fetchPaidClassesFlag();
     loadBookings();
+    loadClassSessions();
   }, [profile, profileLoading, router]);
 
   async function fetchPaidClassesFlag() {
@@ -40,50 +49,29 @@ export default function StudentBookingsPage() {
       const res = await fetch('/api/feature-flags', { cache: 'no-store' });
       const data = await res.json();
       setPaidClassesEnabled(Boolean(data?.paidClassesEnabled));
-    } catch {
-      setPaidClassesEnabled(false);
-    }
+    } catch { setPaidClassesEnabled(false); }
   }
 
   async function loadBookings() {
     if (!profile) return;
-
     setLoading(true);
     try {
       const data = await getStudentBookings(profile.id);
-      
-      // Fetch tutor details, subject names, and session data
-      const enrichedBookings = await Promise.all(
-        data.map(async (booking) => {
-          const [tutorRes, subjectRes, sessionRes] = await Promise.all([
-            supabase
-              .from('profiles')
-              .select('username, display_name, full_name')
-              .eq('id', booking.tutor_id)
-              .single(),
-            supabase
-              .from('subjects')
-              .select('name, label')
-              .eq('id', booking.subject_id)
-              .single(),
-            supabase
-              .from('sessions')
-              .select('id, status, scheduled_start_at, scheduled_end_at, duration_minutes')
-              .eq('booking_id', booking.id)
-              .single()
-          ]);
-
-          return {
-            ...booking,
-            tutor_name: tutorRes.data ? getDisplayName(tutorRes.data) : 'Unknown Tutor',
-            tutor_username: tutorRes.data?.username,
-            subject_name: subjectRes.data?.label || subjectRes.data?.name || 'Unknown Subject',
-            session: sessionRes.data || null
-          } as BookingWithDetails & { session: any };
-        })
-      );
-
-      setBookings(enrichedBookings);
+      const enriched = await Promise.all(data.map(async (booking) => {
+        const [tutorRes, subjectRes, sessionRes] = await Promise.all([
+          supabase.from('profiles').select('username, display_name, full_name').eq('id', booking.tutor_id).maybeSingle(),
+          supabase.from('subjects').select('name, label').eq('id', booking.subject_id).maybeSingle(),
+          supabase.from('sessions').select('id, status, join_url, scheduled_start_at, scheduled_end_at, duration_minutes').eq('booking_id', booking.id).maybeSingle(),
+        ]);
+        return {
+          ...booking,
+          tutor_name: tutorRes.data ? getDisplayName(tutorRes.data) : 'Unknown Tutor',
+          tutor_username: tutorRes.data?.username,
+          subject_name: subjectRes.data?.label || subjectRes.data?.name || 'Unknown Subject',
+          session: sessionRes.data || null,
+        } as BookingWithDetails & { session: any };
+      }));
+      setBookings(enriched);
     } catch (error) {
       console.error('Error loading bookings:', error);
     } finally {
@@ -91,268 +79,312 @@ export default function StudentBookingsPage() {
     }
   }
 
+  async function loadClassSessions() {
+    try {
+      const groupsRes = await fetch('/api/student/my-groups', { cache: 'no-store' });
+      if (!groupsRes.ok) return;
+      const { groups } = await groupsRes.json();
+      if (!groups?.length) return;
 
-  const isBookingInProgress = (booking: any) => {
-    if (booking.status === 'CONFIRMED' && booking.session) {
       const now = new Date();
-      const session = booking.session;
-      const sessionStart = new Date(session.scheduled_start_at);
-      const sessionEnd = new Date(session.scheduled_end_at || new Date(sessionStart.getTime() + (session.duration_minutes || 60) * 60000));
-      
-      return now >= sessionStart && now <= sessionEnd;
-    }
-    return false;
-  };
+      const all: ClassSession[] = [];
+
+      await Promise.all((groups as any[]).map(async (grp: any) => {
+        try {
+          const res = await fetch(`/api/groups/${grp.id}/sessions`, { cache: 'no-store' });
+          if (!res.ok) return;
+          const { sessions } = await res.json();
+          const tutor = Array.isArray(grp.tutor) ? grp.tutor[0] : grp.tutor;
+          const tutorName = tutor?.display_name || tutor?.full_name || 'Tutor';
+
+          for (const s of sessions ?? []) {
+            for (const o of s.occurrences ?? []) {
+              const dt = o.scheduled_start_at;
+              if (!dt || new Date(dt) <= now) continue;
+              all.push({
+                id: o.id,
+                groupId: grp.id,
+                className: grp.name,
+                tutorName,
+                date: dt,
+                durationMin: s.duration_minutes ?? 60,
+                meetingLink: grp.meeting_link || undefined,
+                type: 'class',
+              });
+            }
+          }
+        } catch { /* skip failed group */ }
+      }));
+
+      setClassSessions(all.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
+    } catch { /* non-critical */ }
+  }
 
   const isBookingPast = (booking: any) => {
-    if (booking.status === 'COMPLETED' || booking.status === 'DECLINED') return true;
-    
-    // Don't count in-progress sessions as past
-    if (isBookingInProgress(booking)) return false;
-    
-    // Check if booking has an associated session
-    if (booking.status === 'CONFIRMED' && booking.session) {
-      const now = new Date();
-      const session = booking.session;
-      const sessionStart = new Date(session.scheduled_start_at);
-      const sessionEnd = new Date(session.scheduled_end_at || new Date(sessionStart.getTime() + (session.duration_minutes || 60) * 60000));
-      
-      // Only consider it past if the session has ended
-      return now > sessionEnd;
-    }
-    
-    // Fallback for confirmed bookings without sessions
-    if (booking.status === 'CONFIRMED') {
-      const endTime = booking.confirmed_end_at || booking.requested_end_at;
-      if (endTime) {
-        return new Date(endTime) < new Date();
-      }
-    }
-    
+    if (booking.status === 'COMPLETED' || booking.status === 'COMPLETED_ASSUMED' || booking.status === 'DECLINED' || booking.status === 'CANCELLED') return true;
+    // Also treat cancelled sessions as past — booking may still be CONFIRMED
+    // if cancelled via a different path (tutor cancel, admin, etc.)
+    if (booking.session?.status === 'CANCELLED') return true;
+    // Use the most reliable end-time we have: live session > confirmed_end_at > requested_end_at.
+    // This catches PENDING / CONFIRMED rows whose slot has already elapsed.
+    const endIso =
+      booking.session?.scheduled_end_at ||
+      booking.confirmed_end_at ||
+      booking.requested_end_at;
+    if (endIso) return new Date() > new Date(endIso);
     return false;
   };
 
-  const filteredBookings = bookings.filter(booking => {
-    if (activeTab === 'all') return true;
-    if (activeTab === 'pending') {
-      return booking.status === 'PENDING' || booking.status === 'COUNTER_PROPOSED';
-    }
-    if (activeTab === 'confirmed') {
-      return booking.status === 'CONFIRMED' && !isBookingPast(booking);
-    }
-    if (activeTab === 'cancelled') {
-      return booking.status === 'CANCELLED';
-    }
-    if (activeTab === 'past') {
-      return isBookingPast(booking);
-    }
-    return true;
-  });
+  const isBookingSoon = (booking: any) => {
+    if (booking.status !== 'CONFIRMED' || !booking.session) return false;
+    const start = new Date(booking.session.scheduled_start_at);
+    const now = new Date();
+    return start > now && (start.getTime() - now.getTime()) < 60 * 60 * 1000;
+  };
+
+  // Legacy "ghost" bookings created by the old direct-book flow: status=PENDING
+  // with payment_required=true but never paid. The new flow no longer creates
+  // these — we hide them so the student doesn't see orphan rows the tutor
+  // never approved. Truly tutor-pending paid bookings (payment_status='paid')
+  // stay visible.
+  const isUnpaidGhost = (b: any) =>
+    b.status === 'PENDING' && b.payment_required && b.payment_status !== 'paid';
+
+  const visible = bookings.filter((b) => !isUnpaidGhost(b));
+  const upcoming = visible.filter(b => !isBookingPast(b) && b.status !== 'CANCELLED' && b.session?.status !== 'CANCELLED');
+  const past = visible.filter(b => isBookingPast(b));
+
+  const displayed = activeTab === 'upcoming' ? upcoming : past;
+
+  const getStatusConfig = (booking: any) => {
+    if (booking.status === 'CANCELLED' || booking.session?.status === 'CANCELLED') return { label: 'Cancelled', cls: 'bg-muted text-muted-foreground' };
+    if (booking.status === 'COMPLETED' || booking.status === 'COMPLETED_ASSUMED') return { label: 'Completed', cls: 'bg-brand-soft text-forest' };
+    // Anything past its scheduled end-time but never marked completed:
+    // surface as "Past" rather than the stale lifecycle status (PENDING/CONFIRMED).
+    if (isBookingPast(booking)) return { label: 'Past', cls: 'bg-muted text-muted-foreground' };
+    if (isBookingSoon(booking)) return { label: 'Starts soon', cls: 'bg-coral-soft text-coral' };
+    if (booking.status === 'CONFIRMED') return { label: 'Scheduled', cls: 'bg-sky/40 text-forest' };
+    if (booking.status === 'PENDING') return { label: 'Pending', cls: 'bg-peach text-ink' };
+    return { label: getBookingStatusLabel(booking.status), cls: 'bg-muted text-muted-foreground' };
+  };
 
   const tabs: { key: TabType; label: string; count: number }[] = [
-    { key: 'all', label: 'All', count: bookings.length },
-    { key: 'pending', label: 'Pending', count: bookings.filter(b => b.status === 'PENDING' || b.status === 'COUNTER_PROPOSED').length },
-    { key: 'confirmed', label: 'Confirmed', count: bookings.filter(b => b.status === 'CONFIRMED' && !isBookingPast(b)).length },
-    { key: 'cancelled', label: 'Cancelled', count: bookings.filter(b => b.status === 'CANCELLED').length },
-    { key: 'past', label: 'Past', count: bookings.filter(b => isBookingPast(b)).length }
+    { key: 'upcoming', label: 'Upcoming', count: upcoming.length + classSessions.length },
+    { key: 'past', label: 'Past', count: past.length },
   ];
-
-  function getTabColor(tabKey: TabType, isActive: boolean) {
-    return `text-gray-600 ${isActive ? 'border-b-2 border-itutor-green' : ''}`;
-  }
-
-  function getTabBadgeColor(tabKey: TabType) {
-    return 'bg-gray-200 text-gray-700';
-  }
 
   if (profileLoading || !profile) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-itutor-green"></div>
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand" />
       </div>
     );
   }
 
   return (
-    <DashboardLayout role="student" userName={getDisplayName(profile)}>
-      <div className="px-4 py-6 sm:px-0 max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">My Bookings</h1>
-          <p className="text-gray-600">View and manage your tutoring sessions</p>
+    <div className="max-w-4xl mx-auto space-y-6">
+      <div>
+        <h1 className="text-2xl lg:text-3xl font-bold text-ink">My bookings</h1>
+        <p className="text-sm text-muted-foreground mt-1">All your lessons in one place</p>
+      </div>
+
+      {/* Tabs */}
+      <div className="inline-flex bg-background border border-border p-1 h-11 rounded-2xl gap-0.5">
+        {tabs.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={cn(
+              'rounded-xl px-4 py-1.5 text-sm font-medium transition',
+              activeTab === tab.key ? 'bg-brand-soft text-forest shadow-sm' : 'text-muted-foreground hover:text-ink'
+            )}
+          >
+            {tab.label}
+            {tab.count > 0 && (
+              <span className={cn('ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold', activeTab === tab.key ? 'bg-brand-deep/20' : 'bg-muted')}>
+                {tab.count}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Upcoming / Past content */}
+      {(loading ? (
+        <div className="space-y-3">
+          {[1, 2, 3].map(i => <div key={i} className="h-32 rounded-2xl bg-muted animate-pulse" />)}
         </div>
-
-        {/* Tabs */}
-        <div className="flex gap-2 mb-6 border-b border-gray-300 overflow-x-auto">
-          {tabs.map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`
-                px-4 py-3 font-medium transition-all whitespace-nowrap
-                ${getTabColor(tab.key, activeTab === tab.key)}
-              `}
-            >
-              {tab.label}
-              {tab.count > 0 && (
-                <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${getTabBadgeColor(tab.key)}`}>
-                  {tab.count}
-                </span>
-              )}
-            </button>
-          ))}
+      ) : displayed.length === 0 && (activeTab !== 'upcoming' || classSessions.length === 0) ? (
+        <div className="text-center py-16 rounded-3xl bg-background border border-border">
+          <div className="size-14 mx-auto rounded-2xl bg-brand-soft grid place-items-center mb-3">
+            <Calendar className="size-6 text-brand-deep" />
+          </div>
+          <p className="font-semibold text-ink">No bookings found</p>
+          <p className="text-sm text-muted-foreground mt-1 mb-5">
+            {activeTab === 'upcoming' ? "You don't have any upcoming lessons." : "No bookings in this category."}
+          </p>
+          <Link href="/student/find-tutors" className="px-5 py-2.5 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep transition">
+            Find a tutor
+          </Link>
         </div>
-
-        {/* Loading State */}
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-itutor-green"></div>
-            <span className="ml-3 text-gray-600">Loading bookings...</span>
-          </div>
-        ) : filteredBookings.length === 0 ? (
-          // Empty State
-          <div className="text-center py-12 bg-gradient-to-br from-blue-50 to-purple-50 border-2 border-blue-200 rounded-2xl">
-            <svg className="w-16 h-16 text-blue-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            <p className="text-gray-600 mb-4">No bookings found</p>
-            <Link
-              href="/student/find-tutors"
-              className="inline-block bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-white py-3 px-6 rounded-lg font-semibold transition-all duration-300 shadow-lg hover:shadow-itutor-green/50"
-            >
-              Find a Tutor
-            </Link>
-          </div>
-        ) : (
-          // Bookings List
-          <div className="space-y-4">
-            {filteredBookings.map(booking => {
-              const displayTime = booking.confirmed_start_at || booking.requested_start_at;
-              const now = new Date();
-              
-              // Determine display status
-              let displayStatus = getBookingStatusLabel(booking.status);
-              let statusColor = getBookingStatusColor(booking.status);
-              
-              // Override status for confirmed bookings with sessions
-              if (booking.status === 'CONFIRMED' && (booking as any).session) {
-                const session = (booking as any).session;
-                const sessionStart = new Date(session.scheduled_start_at);
-                const sessionEnd = new Date(session.scheduled_end_at || new Date(sessionStart.getTime() + (session.duration_minutes || 60) * 60000));
-                
-                // Check if session is in progress
-                if (now >= sessionStart && now <= sessionEnd) {
-                  displayStatus = 'In Progress';
-                  statusColor = 'bg-purple-100 text-purple-700 border-purple-300';
-                }
-                // Check if session has ended
-                else if (now > sessionEnd) {
-                  // Show appropriate status based on session status
-                  if (session.status === 'COMPLETED_ASSUMED' || session.status === 'COMPLETED') {
-                    displayStatus = 'Completed';
-                    statusColor = 'bg-green-100 text-green-700 border-green-300';
-                  } else if (session.status === 'NO_SHOW_STUDENT') {
-                    displayStatus = 'No Show';
-                    statusColor = 'bg-orange-100 text-orange-700 border-orange-300';
-                  } else if (session.status === 'CANCELLED') {
-                    displayStatus = 'Cancelled';
-                    statusColor = 'bg-red-100 text-red-700 border-red-300';
-                  } else {
-                    displayStatus = 'Past (Not Completed)';
-                    statusColor = 'bg-gray-100 text-gray-700 border-gray-300';
-                  }
-                }
-              }
-              // For confirmed bookings without sessions that have passed
-              else if (booking.status === 'CONFIRMED' && displayTime && new Date(displayTime) < now) {
-                displayStatus = 'Past (Not Completed)';
-                statusColor = 'bg-gray-100 text-gray-700 border-gray-300';
-              }
-              
-              return (
-                <Link
-                  key={booking.id}
-                  href={`/student/bookings/${booking.id}`}
-                  className="block bg-gradient-to-br from-blue-50 to-purple-50 border-2 border-blue-200 rounded-2xl p-6 hover:shadow-xl hover:border-blue-400 hover:scale-[1.01] transition-all duration-300"
-                >
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                    {/* Left: Booking Info */}
-                    <div className="flex-1">
-                      <div className="flex items-start gap-3 mb-3">
-                        <div className="bg-itutor-green/20 p-2 rounded-lg flex-shrink-0">
-                          <svg className="w-6 h-6 text-itutor-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                          </svg>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h3 className="text-lg font-bold text-gray-900 mb-1">
-                            {booking.tutor_name}
-                            {booking.tutor_username && (
-                              <span className="text-sm text-gray-600 font-normal ml-2">
-                                @{booking.tutor_username}
-                              </span>
-                            )}
-                          </h3>
-                          <p className="text-gray-600 text-sm">{booking.subject_name}</p>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap gap-4 text-sm text-gray-700">
-                        <span className="flex items-center gap-1">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                          {formatDateTime(displayTime)}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          {(() => {
-                            const endTime = booking.confirmed_end_at || booking.requested_end_at;
-                            if (displayTime && endTime) {
-                              const durationMs = new Date(endTime).getTime() - new Date(displayTime).getTime();
-                              const durationMinutes = Math.round(durationMs / 60000);
-                              const hours = Math.floor(durationMinutes / 60);
-                              const mins = durationMinutes % 60;
-                              if (hours > 0) {
-                                return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
-                              }
-                              return `${mins} min`;
-                            }
-                            return '60 min';
-                          })()}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          ${paidClassesEnabled ? booking.price_ttd : 0} TTD
-                        </span>
-                      </div>
+      ) : (
+        <div className="space-y-3">
+          {/* Class sessions — upcoming tab only */}
+          {activeTab === 'upcoming' && classSessions.map((cs) => {
+            const d = new Date(cs.date);
+            const durLabel = cs.durationMin < 60 ? `${cs.durationMin}m` : cs.durationMin % 60 === 0 ? `${cs.durationMin / 60}h` : `${Math.floor(cs.durationMin / 60)}h ${cs.durationMin % 60}m`;
+            return (
+              <div key={cs.id} className="rounded-2xl bg-background border border-border p-4 hover:shadow-card transition hover:border-brand/30">
+                <div className="flex items-start gap-4">
+                  <div className="size-12 rounded-2xl bg-gradient-to-br from-brand to-emerald-400 grid place-items-center text-white font-semibold flex-shrink-0">
+                    <Users className="size-5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-semibold text-ink truncate">{cs.className}</h3>
+                      <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wider bg-sky/40 text-forest">Group class</span>
                     </div>
-
-                    {/* Right: Status & Arrow */}
-                    <div className="flex items-center gap-4">
-                      <span className={`
-                        px-3 py-1.5 rounded-lg text-sm font-semibold border
-                        ${statusColor}
-                      `}>
-                        {displayStatus}
-                      </span>
-                      
-                      <svg className="w-5 h-5 text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
+                    <div className="text-sm text-muted-foreground mt-1">{cs.tutorName}</div>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
+                      <Calendar className="size-3.5" />
+                      {d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · {d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · {durLabel}
                     </div>
                   </div>
-                </Link>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </DashboardLayout>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {cs.meetingLink ? (
+                      <a href={cs.meetingLink} target="_blank" rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90">
+                        <Video className="size-3.5" /> Join
+                      </a>
+                    ) : (
+                      <ClassJoinButton groupId={cs.groupId} />
+                    )}
+                    <Link href={`/student/classes/${cs.groupId}`}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-semibold hover:bg-muted">
+                      View class
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {displayed.map((booking) => {
+            const displayTime = (booking as any).session?.scheduled_start_at || (booking as any).confirmed_start_at || (booking as any).requested_start_at;
+            const { label: statusLabel, cls: statusCls } = getStatusConfig(booking);
+            const past = isBookingPast(booking);
+            const soon = isBookingSoon(booking);
+            const initials = ((booking as any).tutor_name || 'T').split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase();
+
+            return (
+              <div key={booking.id} className="rounded-2xl bg-background border border-border p-4 hover:shadow-card transition">
+                <div className="flex items-start gap-4">
+                  <div className="size-12 rounded-2xl bg-gradient-to-br from-brand to-brand-deep grid place-items-center text-white font-semibold flex-shrink-0">
+                    {initials}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-semibold text-ink truncate">{(booking as any).subject_name}</h3>
+                      <span className={cn('px-2.5 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wider', statusCls)}>{statusLabel}</span>
+                    </div>
+                    <div className="text-sm text-muted-foreground mt-1">{(booking as any).tutor_name}</div>
+                    {displayTime && (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
+                        <Calendar className="size-3.5" /> {formatDateTime(displayTime)}
+                      </div>
+                    )}
+                    {paidClassesEnabled && (booking as any).price_ttd && (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                        <Clock className="size-3.5" /> TT${(booking as any).price_ttd}
+                      </div>
+                    )}
+                  </div>
+                  <Link href={`/student/bookings/${booking.id}`} className="size-8 grid place-items-center rounded-full hover:bg-muted text-muted-foreground">
+                    <MoreHorizontal className="size-4" />
+                  </Link>
+                </div>
+                <div className="flex gap-2 mt-4">
+                  {!past && soon && (
+                    (booking as any).session?.join_url ? (
+                      <a
+                        href={(booking as any).session.join_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-brand text-white font-semibold text-sm hover:bg-brand-deep"
+                      >
+                        <Video className="size-4" /> Join now
+                      </a>
+                    ) : (
+                      <span className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-muted text-muted-foreground font-semibold text-sm cursor-default">
+                        <Video className="size-4" /> Link generating…
+                      </span>
+                    )
+                  )}
+                  {!past && !soon && booking.status === 'CONFIRMED' && (
+                    <Link href={`/student/bookings/${booking.id}`} className="flex-1 inline-flex items-center justify-center px-4 py-2.5 rounded-xl border border-border font-semibold text-sm hover:bg-muted">
+                      View details
+                    </Link>
+                  )}
+                  {past && ((booking.status as string) === 'COMPLETED' || (booking.status as string) === 'COMPLETED_ASSUMED') && (
+                    <>
+                      {(booking as any).session?.id ? (
+                        <Link
+                          href={`/feedback/student/${(booking as any).session.id}`}
+                          className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-coral-soft text-coral font-semibold text-sm hover:bg-coral hover:text-white"
+                        >
+                          <Star className="size-4" /> Rate session
+                        </Link>
+                      ) : (
+                        <button className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-coral-soft text-coral font-semibold text-sm opacity-50 cursor-default">
+                          <Star className="size-4" /> Rate session
+                        </button>
+                      )}
+                      <Link href={`/student/find-tutors`} className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-border font-semibold text-sm hover:bg-muted">
+                        <RotateCcw className="size-4" /> Rebook
+                      </Link>
+                    </>
+                  )}
+                  {booking.status === 'PENDING' && (
+                    <Link href={`/student/bookings/${booking.id}`} className="flex-1 inline-flex items-center justify-center px-4 py-2.5 rounded-xl border border-border font-semibold text-sm hover:bg-muted">
+                      View request
+                    </Link>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
   );
 }
 
+function ClassJoinButton({ groupId }: { groupId: string }) {
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+
+  const join = useCallback(async () => {
+    setLoading(true); setErr('');
+    try {
+      const res = await fetch(`/api/groups/${groupId}/meeting-link`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? 'No link available');
+      const url = json?.join_url;
+      if (url) window.open(url, '_blank', 'noreferrer');
+      else throw new Error('No link available yet.');
+    } catch (e: any) {
+      setErr(e?.message ?? 'Could not get link');
+    } finally {
+      setLoading(false);
+    }
+  }, [groupId]);
+
+  return (
+    <>
+      <button onClick={join} disabled={loading}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90 disabled:opacity-60">
+        <Video className="size-3.5" /> {loading ? 'Getting link…' : 'Join'}
+      </button>
+      {err && <p className="text-xs text-rose-600 mt-1">{err}</p>}
+    </>
+  );
+}

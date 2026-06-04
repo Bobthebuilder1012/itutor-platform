@@ -5,8 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
-import DashboardLayout from '@/components/DashboardLayout';
-import { getDisplayName } from '@/lib/utils/displayName';
+import TutorShell from '@/components/tutor/TutorShell';
 import SupportFormModal from '@/components/SupportFormModal';
 import VerifiedBadge from '@/components/VerifiedBadge';
 
@@ -155,10 +154,8 @@ export default function TutorVerificationPage() {
     );
   }
 
-  const displayName = getDisplayName(profile);
-
   return (
-    <DashboardLayout role="tutor" userName={displayName}>
+    <TutorShell>
       <div className="px-4 py-6 sm:px-0 max-w-4xl mx-auto">
         <div className="flex justify-between items-start mb-6">
           <div>
@@ -419,6 +416,6 @@ export default function TutorVerificationPage() {
         {/* Support Form Modal */}
         <SupportFormModal isOpen={showSupportForm} onClose={() => setShowSupportForm(false)} />
       </div>
-    </DashboardLayout>
+    </TutorShell>
   );
 }

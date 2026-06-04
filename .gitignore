@@ -27,6 +27,11 @@ yarn-error.log*
 .env*.local
 .env
 
+# transient log/dump scratch files
+vercel-*.txt
+vercel-*.json
+*_dump.sql
+
 # vercel
 .vercel
 
@@ -193,3 +198,4 @@ OAUTH_IMPLEMENTATION_COMPLETE.md
 
 
 
+migration-list.txt

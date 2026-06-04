@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useProfile } from '@/lib/hooks/useProfile';
-import DashboardLayout from '@/components/DashboardLayout';
+import TutorShell from '@/components/tutor/TutorShell';
 
 type QuestionResult = {
   question: string;
@@ -464,7 +464,7 @@ export default function ToolsAiPage() {
     const estText = estSeconds <= 10 ? 'Almost done...' : `Est. time remaining: ~${estSeconds} seconds`;
 
     return (
-      <DashboardLayout role={profile.role as 'student' | 'tutor'} userName={displayName}>
+      <TutorShell>
         <div className="flex items-center justify-center min-h-[70vh]">
           <div className="w-full max-w-lg text-center">
             <div className="mx-auto mb-6 w-16 h-16 border-[3px] border-gray-200 border-t-itutor-green rounded-full animate-spin" />
@@ -509,7 +509,7 @@ export default function ToolsAiPage() {
             </button>
           </div>
         </div>
-      </DashboardLayout>
+      </TutorShell>
     );
   }
 
@@ -521,7 +521,7 @@ export default function ToolsAiPage() {
     const s3Stats = computeStats(s3Studs, s3Marks);
 
     return (
-      <DashboardLayout role={profile.role as 'student' | 'tutor'} userName={displayName}>
+      <TutorShell>
         <div className="space-y-6">
           {writingBack && (
             <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-sm text-emerald-700">
@@ -697,14 +697,14 @@ export default function ToolsAiPage() {
             )}
           </div>
         </div>
-      </DashboardLayout>
+      </TutorShell>
     );
   }
 
   /* ═══════════════════ STATE 1 — SETUP ═══════════════════ */
   if (currentState === 1) {
     return (
-      <DashboardLayout role={profile.role as 'student' | 'tutor'} userName={displayName}>
+      <TutorShell>
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2 text-sm text-gray-500">
             <button onClick={() => { resetSetupState(); setCurrentState(0); }} className="font-medium text-gray-900 hover:text-itutor-green transition-colors">iTutor AI</button>
@@ -1010,13 +1010,13 @@ export default function ToolsAiPage() {
             </div>
           </div>
         </div>
-      </DashboardLayout>
+      </TutorShell>
     );
   }
 
   /* ═══════════════════ STATE 0 — HISTORY ═══════════════════ */
   return (
-    <DashboardLayout role={profile.role as 'student' | 'tutor'} userName={displayName}>
+    <TutorShell>
       <div className="space-y-6">
         {/* Topbar */}
         <div className="flex items-center justify-between">
@@ -1166,6 +1166,6 @@ export default function ToolsAiPage() {
           </div>
         )}
       </div>
-    </DashboardLayout>
+    </TutorShell>
   );
 }

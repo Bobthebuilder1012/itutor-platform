@@ -3,14 +3,16 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
-import DashboardLayout from '@/components/DashboardLayout';
-import SubjectMultiSelect from '@/components/SubjectMultiSelect';
 import { getDisplayName } from '@/lib/utils/displayName';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import UserAvatar from '@/components/UserAvatar';
-import { profileBannerDisplayUrl } from '@/lib/utils/profileBannerDisplayUrl';
+import { cn } from '@/lib/utils';
+import { Search, Star, Heart, Calendar, Clock, SlidersHorizontal, Users, GraduationCap, Flame, X, Check, Video, Sparkles } from 'lucide-react';
+import { fmtTTD } from '@/lib/utils/formatCurrency';
+import { parseScheduleData, scheduleToDisplay } from '@/lib/utils/scheduleFormat';
 
 type Tutor = {
   id: string;
@@ -47,6 +49,73 @@ type Institution = {
   name: string;
 };
 
+type GroupLesson = {
+  id: string;
+  title: string;
+  tutor: string;
+  tutorId: string;
+  tutorHue: number;
+  subject: string;
+  level: string;
+  day: string;
+  time: string;
+  monthlyPrice: number;
+  seats: { taken: number; total: number | null };
+  sessionLength: number | null;
+  rating: number;
+  tags: string[];
+  color: string;
+  emoji: string;
+  description?: string | null;
+  coverImage?: string | null;
+  requireJoinRequests?: boolean;
+  feedbackMode?: string | null;
+  parentFeedbackPrice?: number | null;
+  activePromotion?: { id: string; kind: string; discount: number; student_cap: number | null; duration_days: number | null } | null;
+};
+
+function promoLabel(promo: { kind: string; discount: number; student_cap: number | null; duration_days: number | null; created_at?: string; used_count?: number }): string {
+  if (promo.kind === 'early-bird' && promo.student_cap) {
+    const remaining = promo.student_cap - (promo.used_count ?? 0);
+    return `Next ${remaining} student${remaining !== 1 ? 's' : ''} get ${promo.discount}% off`;
+  }
+  if (promo.kind === 'time-limited' && promo.duration_days && promo.created_at) {
+    const exp = new Date(promo.created_at);
+    exp.setDate(exp.getDate() + promo.duration_days);
+    const daysLeft = Math.max(0, Math.ceil((exp.getTime() - Date.now()) / 86400000));
+    return `${promo.discount}% off · ${daysLeft} day${daysLeft !== 1 ? 's' : ''} left`;
+  }
+  return `${promo.discount}% off`;
+}
+
+function formatDuration(mins: number) {
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h === 0) return `${m} min`;
+  return m ? `${h}h ${m}min` : `${h}h`;
+}
+
+function formatHHMM(t: string) {
+  const [h, m] = t.split(':').map(Number);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  return `${h % 12 || 12}:${m.toString().padStart(2, '0')} ${ampm}`;
+}
+
+const SUBJECT_CHIPS = ['All', 'Maths', 'English', 'Physics', 'Chemistry', 'Biology', 'SEA'];
+
+function TutorInitialAvatar({ name, size = 40 }: { name: string; size?: number }) {
+  const initials = name.replace(/^(Mr\.|Ms\.|Mrs\.|Dr\.)\s*/i, '').split(' ').map((p: string) => p[0]).join('').slice(0, 2).toUpperCase();
+  return (
+    <div
+      className="inline-flex items-center justify-center rounded-full font-semibold shrink-0 bg-brand-soft text-forest"
+      style={{ width: size, height: size, fontSize: size * 0.38 }}
+      aria-hidden
+    >
+      {initials}
+    </div>
+  );
+}
+
 export default function FindTutorsPage() {
   const { profile, loading } = useProfile();
   const router = useRouter();
@@ -55,12 +124,21 @@ export default function FindTutorsPage() {
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
-  const [selectedRating, setSelectedRating] = useState<string>('');
-  const [selectedPrice, setSelectedPrice] = useState<string>('');
+  const [selectedRating, setSelectedRating] = useState<number | null>(null);
+  const [priceMin, setPriceMin] = useState<string>('');
+  const [priceMax, setPriceMax] = useState<string>('');
   const [selectedSchool, setSelectedSchool] = useState<string>('');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [sortOrder, setSortOrder] = useState<'relevance' | 'price_low' | 'rating_high'>('relevance');
+  const [tab, setTab] = useState<'lessons' | 'tutors'>('lessons');
+  const [activeChip, setActiveChip] = useState('All');
+  const [savedItems, setSavedItems] = useState<Set<string>>(new Set());
+  const [groupLessons, setGroupLessons] = useState<GroupLesson[]>([]);
+  const [loadingGroupLessons, setLoadingGroupLessons] = useState(true);
+  const [enrolledLessonIds, setEnrolledLessonIds] = useState<Set<string>>(new Set());
+  const [joiningLesson, setJoiningLesson] = useState(false);
+  const [joinLesson, setJoinLesson] = useState<GroupLesson | null>(null);
   const TUTORS_PER_PAGE = 12;
 
   useEffect(() => {
@@ -72,6 +150,7 @@ export default function FindTutorsPage() {
     }
 
     fetchTutors();
+    fetchGroupLessons();
   }, [profile, loading, router]);
 
   async function fetchTutors() {
@@ -112,7 +191,7 @@ export default function FindTutorsPage() {
       let tutorProfiles: Record<string, unknown>[] | null = null;
       let profilesError: { message: string; code?: string; details?: string } | null = null;
       for (const cols of tutorSelectTiers) {
-        const res = await supabase.from('profiles').select(cols).eq('role', 'tutor');
+        const res = await supabase.from('profiles').select(cols).eq('role', 'tutor').or('pause_1on1.is.null,pause_1on1.eq.false');
         if (!res.error) {
           tutorProfiles = (res.data ?? []) as unknown as Record<string, unknown>[];
           profilesError = null;
@@ -143,13 +222,15 @@ export default function FindTutorsPage() {
 
       const tutorProfilesWithBanners = tutorProfiles as Array<Record<string, unknown> & { id: string }>;
 
-      console.log('✅ Fetched tutor profiles:', tutorProfilesWithBanners?.length || 0);
-      console.log('Tutor profiles data:', tutorProfilesWithBanners);
+      // Fetch listed tutor IDs from server API (bypasses RLS on protected tables)
+      const listedRes = await fetch('/api/tutors/listed-ids', { cache: 'no-store' });
+      const listedJson = listedRes.ok ? await listedRes.json() : { ids: [] };
+      const listedSet = new Set<string>(listedJson.ids ?? []);
 
-      const activeTutorProfiles = tutorProfilesWithBanners;
+      const activeTutorProfiles = tutorProfilesWithBanners.filter(t => listedSet.has(t.id));
       const activeTutorIds = activeTutorProfiles.map((t) => t.id);
 
-      console.log(`✅ Showing ${activeTutorProfiles.length} tutors (video provider filter disabled)`);
+      console.log(`✅ Showing ${activeTutorProfiles.length} listed tutors (of ${tutorProfilesWithBanners.length} total)`);
 
       // Fetch subjects for all tutor profiles
       const { data: tutorSubjects, error: subjectsError } =
@@ -275,6 +356,273 @@ export default function FindTutorsPage() {
     }
   }
 
+  const SUBJECT_STYLE: Record<string, { color: string; emoji: string }> = {
+    math: { color: 'from-coral to-peach', emoji: '📐' },
+    physics: { color: 'from-sky to-lavender', emoji: '⚛️' },
+    chemistry: { color: 'from-brand-deep to-forest', emoji: '🧪' },
+    biology: { color: 'from-brand to-brand-deep', emoji: '🧬' },
+    english: { color: 'from-lavender to-brand-soft', emoji: '📚' },
+    history: { color: 'from-peach to-coral', emoji: '📜' },
+    economics: { color: 'from-peach to-coral', emoji: '📊' },
+    information: { color: 'from-sky to-lavender', emoji: '💻' },
+    spanish: { color: 'from-coral to-peach', emoji: '🇪🇸' },
+    french: { color: 'from-sky to-lavender', emoji: '🇫🇷' },
+    sea: { color: 'from-brand to-brand-deep', emoji: '✏️' },
+    accounting: { color: 'from-peach to-coral', emoji: '📒' },
+  };
+
+  function getSubjectStyle(subject: string) {
+    const lower = (subject || '').toLowerCase();
+    for (const [key, val] of Object.entries(SUBJECT_STYLE)) {
+      if (lower.includes(key)) return val;
+    }
+    return { color: 'from-brand to-brand-deep', emoji: '📖' };
+  }
+
+  async function fetchGroupLessons() {
+    setLoadingGroupLessons(true);
+    try {
+      if (!profile?.id) return;
+
+      // Query groups directly — avoids API column-schema issues
+      let groups: any[] | null = null;
+
+      const { data: g1, error: e1 } = await supabase
+        .from('groups')
+        .select('*')
+        .is('archived_at', null)
+        .or('visibility.neq.private,visibility.is.null')
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (!e1) {
+        groups = g1;
+      } else {
+        // Fallback: visibility column may not exist — fetch all non-archived
+        const { data: g2, error: e2 } = await supabase
+          .from('groups')
+          .select('*')
+          .is('archived_at', null)
+          .order('created_at', { ascending: false })
+          .limit(50);
+        if (e2) throw e2;
+        groups = g2;
+      }
+
+      if (!groups?.length) { setGroupLessons([]); return; }
+
+      const groupIds = groups.map((g: any) => g.id);
+      const tutorIds = [...new Set<string>(groups.map((g: any) => g.tutor_id).filter(Boolean))];
+
+      // Fetch tutor names, enrollment status, and server-side member counts in parallel
+      const [{ data: tutorProfiles }, { data: memberRows }, { data: subEnrollments }, countsRes] = await Promise.all([
+        tutorIds.length
+          ? supabase.from('profiles').select('id, full_name, display_name').in('id', tutorIds)
+          : Promise.resolve({ data: [] as any[] }),
+        supabase.from('group_members').select('group_id, user_id, status').in('group_id', groupIds),
+        supabase
+          .from('group_enrollments')
+          .select('group_id')
+          .eq('student_id', profile.id)
+          .in('group_id', groupIds)
+          .in('status', ['ACTIVE', 'GRACE', 'SUSPENDED', 'PENDING_PAYMENT']),
+        fetch(`/api/groups/member-counts?ids=${groupIds.join(',')}`).then((r) => r.json()).catch(() => ({ counts: {} })),
+      ]);
+
+      const tutorMap = new Map((tutorProfiles ?? []).map((p: any) => [p.id, p]));
+      // Server-side counts (service role, accurate) take priority over RLS-limited client query
+      const serverCounts: Record<string, number> = countsRes?.counts ?? {};
+      const memberCountMap = new Map<string, number>(
+        Object.entries(serverCounts).map(([k, v]) => [k, v as number])
+      );
+      const enrolledSet = new Set<string>();
+
+      // group_members rows: used only for enrolled-status of non-subscription groups
+      (memberRows ?? []).forEach((m: any) => {
+        if (m.user_id === profile.id && m.status !== 'denied') enrolledSet.add(m.group_id);
+        // Only fall back to group_members count when server didn't return a count
+        if (!(m.group_id in serverCounts)) {
+          memberCountMap.set(m.group_id, (memberCountMap.get(m.group_id) ?? 0) + 1);
+        }
+      });
+
+      // Also mark subscription-enrolled groups
+      (subEnrollments ?? []).forEach((e: any) => enrolledSet.add(e.group_id));
+
+      setEnrolledLessonIds(enrolledSet);
+
+      const mapped: GroupLesson[] = groups.map((g: any) => {
+        const tutor = tutorMap.get(g.tutor_id);
+        const { color, emoji } = getSubjectStyle(g.subject || '');
+        return {
+          id: g.id,
+          title: g.name,
+          tutor: tutor?.display_name || tutor?.full_name || 'Unknown Tutor',
+          tutorId: g.tutor_id,
+          tutorHue: 145,
+          subject: g.subject || 'General',
+          level: g.form_level || g.difficulty || '',
+          day: (() => {
+            const entries = parseScheduleData(g.schedule_data);
+            if (entries.length) return scheduleToDisplay(entries);
+            return g.schedule_display || 'Schedule TBD';
+          })(),
+          time: '',
+          monthlyPrice: Number(g.price_monthly ?? g.price_per_session ?? g.price_per_course ?? 0),
+          seats: { taken: memberCountMap.get(g.id) ?? 0, total: g.max_students ?? null },
+          sessionLength: g.session_length_minutes ?? null,
+          rating: 0,
+          tags: [],
+          color,
+          emoji,
+          description: g.description ?? null,
+          coverImage: g.cover_image ?? null,
+          requireJoinRequests: g.require_join_requests ?? false,
+          feedbackMode: g.feedback_mode ?? g.parent_feedback_mode ?? null,
+          parentFeedbackPrice: g.parent_feedback_price ?? null,
+          activePromotion: null,
+        };
+      });
+
+      // Fetch active promotions + usage counts for all groups
+      try {
+        const [{ data: promos }, { data: usageRows }] = await Promise.all([
+          supabase
+            .from('group_promotions')
+            .select('id, group_id, kind, discount, student_cap, duration_days, created_at')
+            .in('group_id', groupIds)
+            .eq('active', true)
+            .order('created_at', { ascending: false }),
+          supabase
+            .from('group_enrollments')
+            .select('promotion_id')
+            .in('group_id', groupIds)
+            .not('promotion_id', 'is', null),
+        ]);
+
+        // Count how many enrollments used each promotion
+        const usageByPromoId = new Map<string, number>();
+        for (const row of usageRows ?? []) {
+          if (row.promotion_id) usageByPromoId.set(row.promotion_id, (usageByPromoId.get(row.promotion_id) ?? 0) + 1);
+        }
+
+        const now = new Date();
+        const bestPromoByGroup = new Map<string, any>();
+        for (const promo of promos ?? []) {
+          if (bestPromoByGroup.has(promo.group_id)) continue;
+          const usedCount = usageByPromoId.get(promo.id) ?? 0;
+          let valid = false;
+          if (promo.kind === 'open-ended') valid = true;
+          else if (promo.kind === 'early-bird' && promo.student_cap && usedCount < promo.student_cap) valid = true;
+          else if (promo.kind === 'time-limited' && promo.duration_days) {
+            const exp = new Date(promo.created_at);
+            exp.setDate(exp.getDate() + promo.duration_days);
+            if (now < exp) valid = true;
+          }
+          if (valid) bestPromoByGroup.set(promo.group_id, { ...promo, used_count: usedCount });
+        }
+        mapped.forEach((g) => { g.activePromotion = bestPromoByGroup.get(g.id) ?? null; });
+      } catch { /* non-fatal */ }
+
+      // Batch-fetch sessions to get schedule for groups without a manual schedule_display
+      try {
+        const groupIds = groups.filter((g: any) => !g.schedule_display).map((g: any) => g.id);
+        if (!groupIds.length) { setGroupLessons(mapped); return; }
+        const { data: sessions } = await supabase
+          .from('group_sessions')
+          .select('group_id, start_time, recurrence_type, recurrence_days, duration_minutes')
+          .in('group_id', groupIds)
+          .neq('recurrence_type', 'NONE')
+          .order('created_at', { ascending: true });
+
+        if (sessions?.length) {
+          const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+          const sessionByGroup = new Map<string, any>();
+          for (const s of sessions) {
+            if (!sessionByGroup.has(s.group_id)) sessionByGroup.set(s.group_id, s);
+          }
+
+          setGroupLessons(mapped.map((l) => {
+            const s = sessionByGroup.get(l.id);
+            if (!s) return l;
+            const days = Array.isArray(s.recurrence_days) && s.recurrence_days.length
+              ? s.recurrence_days.map((d: number) => dayNames[d] ?? '').filter(Boolean).join(', ')
+              : s.recurrence_type === 'DAILY' ? 'Daily' : null;
+            const time = s.start_time
+              ? new Date(`2000-01-01T${s.start_time}`).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+              : '';
+            const durMin = s.duration_minutes ?? l.sessionLength;
+            const durLabel = durMin ? (durMin < 60 ? `${durMin}m` : durMin % 60 === 0 ? `${durMin / 60}h` : `${Math.floor(durMin / 60)}h ${durMin % 60}m`) : '';
+            return {
+              ...l,
+              day: days || 'Schedule TBD',
+              time,
+              sessionLength: durMin ?? l.sessionLength,
+            };
+          }));
+          return;
+        }
+      } catch { /* non-critical */ }
+
+      setGroupLessons(mapped);
+    } catch (err) {
+      console.error('fetchGroupLessons error:', err);
+      setGroupLessons([]);
+    } finally {
+      setLoadingGroupLessons(false);
+    }
+  }
+
+  async function handleJoinLesson() {
+    if (!joinLesson || !profile) return;
+    if (enrolledLessonIds.has(joinLesson.id)) {
+      setJoinLesson(null);
+      router.push('/student/classes');
+      return;
+    }
+    setJoiningLesson(true);
+    try {
+      if (joinLesson.monthlyPrice > 0) {
+        // Paid group — go through subscribe → LuniPay checkout
+        const res = await fetch(`/api/groups/${joinLesson.id}/subscribe`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        const data = await res.json();
+        if (data.waitlisted) {
+          setJoinLesson(null);
+          alert(`You've been added to the waitlist (position #${data.position ?? '?'}). We'll notify you when a spot opens.`);
+          return;
+        }
+        if (!res.ok) throw new Error(data.error || 'Failed to start checkout');
+        if (data.checkout_url) {
+          window.location.href = data.checkout_url;
+          return;
+        }
+      } else {
+        // Free group — join directly
+        const res = await fetch(`/api/groups/${joinLesson.id}/members`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to join lesson');
+        setEnrolledLessonIds((s) => new Set([...s, joinLesson.id]));
+        setJoinLesson(null);
+        const status = data.member?.status;
+        if (status === 'pending_approval' || status === 'pending') {
+          alert('Your join request has been sent. The tutor will approve it shortly.');
+        }
+        router.push('/student/classes');
+      }
+    } catch (err: any) {
+      console.error('Error joining lesson:', err);
+      alert(err.message || 'Failed to join lesson. Please try again.');
+    } finally {
+      setJoiningLesson(false);
+    }
+  }
+
   const filteredTutors = useMemo(() => {
     let filtered = [...tutors];
 
@@ -307,26 +655,24 @@ export default function FindTutorsPage() {
     }
 
     // Filter by rating
-    if (selectedRating) {
-      const minRating = parseFloat(selectedRating);
+    if (selectedRating !== null) {
       filtered = filtered.filter(tutor =>
-        tutor.average_rating !== null && tutor.average_rating >= minRating
+        tutor.average_rating !== null && tutor.average_rating >= selectedRating
       );
     }
 
-    // Filter by price
-    if (selectedPrice) {
-      if (selectedPrice === 'free') {
-        // Only show tutors with at least one free subject
-        filtered = filtered.filter(tutor =>
-          tutor.subjects.some(s => s.price_per_hour_ttd === 0)
-        );
-      } else {
-        const maxPrice = parseFloat(selectedPrice);
-        filtered = filtered.filter(tutor =>
-          tutor.subjects.some(s => s.price_per_hour_ttd <= maxPrice)
-        );
-      }
+    // Filter by price range
+    const min = priceMin ? parseFloat(priceMin) : null;
+    const max = priceMax ? parseFloat(priceMax) : null;
+    if (min !== null || max !== null) {
+      filtered = filtered.filter(tutor =>
+        tutor.subjects.some(s => {
+          const p = s.price_per_hour_ttd;
+          if (min !== null && p < min) return false;
+          if (max !== null && p > max) return false;
+          return true;
+        })
+      );
     }
 
     const minPrice = (t: Tutor) => {
@@ -355,10 +701,10 @@ export default function FindTutorsPage() {
     }
 
     return filtered;
-  }, [tutors, searchQuery, selectedSubjects, selectedRating, selectedPrice, selectedSchool, profile, sortOrder]);
+  }, [tutors, searchQuery, selectedSubjects, selectedRating, priceMin, priceMax, selectedSchool, profile, sortOrder]);
 
   // Reset to page 1 whenever filters change
-  useEffect(() => { setCurrentPage(1); }, [searchQuery, selectedSubjects, selectedRating, selectedPrice, selectedSchool, sortOrder]);
+  useEffect(() => { setCurrentPage(1); }, [searchQuery, selectedSubjects, selectedRating, priceMin, priceMax, selectedSchool, sortOrder]);
 
   const totalPages = Math.ceil(filteredTutors.length / TUTORS_PER_PAGE);
   const pagedTutors = filteredTutors.slice(
@@ -374,352 +720,502 @@ export default function FindTutorsPage() {
     );
   }
 
-  const hasActiveFilters = searchQuery || selectedSubjects.length > 0 || selectedRating || selectedPrice || selectedSchool;
+  const hasActiveFilters = searchQuery || selectedSubjects.length > 0 || selectedRating !== null || priceMin || priceMax || selectedSchool;
+  const activeFilterCount = [selectedRating !== null, !!(priceMin || priceMax), !!selectedSchool].filter(Boolean).length;
 
   const clearFilters = () => {
     setSearchQuery('');
     setSelectedSubjects([]);
-    setSelectedRating('');
-    setSelectedPrice('');
+    setSelectedRating(null);
+    setPriceMin('');
+    setPriceMax('');
     setSelectedSchool('');
   };
 
-  const quickSubjects = ['CSEC Mathematics', 'CSEC English A', 'CSEC Biology', 'CSEC Chemistry', 'CAPE Physics', 'SEA Mathematics'];
+  const matchChip = (subject: string) => {
+    if (activeChip === 'All') return true;
+    const s = subject.toLowerCase();
+    if (activeChip === 'Maths') return s.includes('math');
+    if (activeChip === 'SEA') return s.includes('sea');
+    return s.includes(activeChip.toLowerCase());
+  };
+
+  const filteredGroupLessons = groupLessons
+    .filter((l) => matchChip(l.subject))
+    .filter((l) => !searchQuery || l.title.toLowerCase().includes(searchQuery.toLowerCase()) || l.tutor.toLowerCase().includes(searchQuery.toLowerCase()) || l.subject.toLowerCase().includes(searchQuery.toLowerCase()));
+
+  const toggleSave = (id: string) => setSavedItems((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   return (
-    <DashboardLayout role="student" userName={getDisplayName(profile)}>
-      <div className="px-1 py-2 sm:px-0">
+    <>
+      <div className="max-w-6xl mx-auto space-y-6">
 
-        {/* ── HERO HEADER ── */}
-        <div className="mb-5">
-          <p className="text-[11px] font-bold uppercase tracking-[1.5px] text-itutor-green mb-1">Discover</p>
-          <div className="flex items-center gap-4 flex-wrap">
-            <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">Find an iTutor</h1>
-            <span className="inline-flex items-center gap-1.5 bg-itutor-green text-black text-sm font-bold px-3 py-1 rounded-full">
-              <span className="text-base font-extrabold">100+</span> tutors available
-            </span>
-          </div>
-          <p className="text-gray-500 text-sm mt-1">Search and book from verified tutors across Trinidad &amp; Tobago</p>
+        {/* Header */}
+        <div>
+          <h1 className="text-2xl lg:text-3xl font-bold text-ink">Explore</h1>
+          <p className="text-sm text-muted-foreground mt-1">Join a recurring group lesson, or book a 1:1 with a tutor.</p>
         </div>
 
-        {/* ── FILTER PANEL ── */}
-        <div className="bg-white border border-gray-200 rounded-2xl shadow-sm mb-5 overflow-hidden">
+        {/* Tab switcher */}
+        <div className="inline-flex p-1 rounded-2xl bg-muted">
+          <button
+            onClick={() => setTab('lessons')}
+            className={cn('inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition', tab === 'lessons' ? 'bg-background text-ink shadow-sm' : 'text-muted-foreground hover:text-ink')}
+          >
+            <Users className="size-4" /> Group Lessons
+          </button>
+          <button
+            onClick={() => setTab('tutors')}
+            className={cn('inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition', tab === 'tutors' ? 'bg-background text-ink shadow-sm' : 'text-muted-foreground hover:text-ink')}
+          >
+            <GraduationCap className="size-4" /> 1:1 Tutors
+          </button>
+        </div>
 
-          {/* Search + toggle row */}
-          <div className="px-4 py-3 flex items-center gap-2">
-            <div className="relative flex-1">
-              <svg className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search tutors by name or username..."
-                className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 text-gray-900 rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none focus:bg-white transition text-sm"
-              />
+        {/* Search bar */}
+        <div className="rounded-2xl bg-background border border-border p-2 flex items-center gap-2 shadow-sm">
+          <div className="flex-1 flex items-center gap-2 px-3">
+            <Search className="size-4 text-muted-foreground" />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={tab === 'lessons' ? 'Search lessons, subjects, tutors…' : 'Search tutors by subject or name…'}
+              className="flex-1 bg-transparent outline-none text-sm py-2 min-w-0"
+            />
+          </div>
+          <button
+            onClick={() => setFiltersOpen((o) => !o)}
+            className={cn(
+              'inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-xl transition',
+              filtersOpen || activeFilterCount > 0
+                ? 'bg-brand text-white'
+                : 'text-muted-foreground hover:bg-muted'
+            )}
+          >
+            <SlidersHorizontal className="size-4" />
+            Filters
+            {activeFilterCount > 0 && (
+              <span className="size-5 rounded-full bg-white text-brand text-xs font-bold grid place-items-center">{activeFilterCount}</span>
+            )}
+          </button>
+        </div>
+
+        {/* Filters panel */}
+        {filtersOpen && (
+          <div className="rounded-2xl border border-border bg-background p-4 space-y-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-ink text-sm">Filters</h3>
+              {hasActiveFilters && (
+                <button onClick={clearFilters} className="text-xs text-brand-deep font-semibold hover:underline">
+                  Clear all
+                </button>
+              )}
             </div>
 
-            {/* Active filter count badge */}
-            {hasActiveFilters && (
-              <span className="flex-shrink-0 w-5 h-5 rounded-full bg-itutor-green text-white text-[10px] font-bold flex items-center justify-center">
-                {[selectedSubjects.length > 0, selectedSchool, selectedPrice, selectedRating].filter(Boolean).length}
-              </span>
-            )}
-
-            {/* Filter toggle */}
-            <button
-              onClick={() => setFiltersOpen(o => !o)}
-              className={`flex-shrink-0 flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border text-sm font-medium transition-all ${
-                filtersOpen
-                  ? 'bg-itutor-green/10 border-itutor-green text-itutor-green'
-                  : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
-              }`}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z"/>
-              </svg>
-              <span className="hidden sm:inline">Filters</span>
-              <svg className={`w-3.5 h-3.5 transition-transform duration-200 ${filtersOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/>
-              </svg>
-            </button>
-
-            {/* Search button */}
-            <button className="flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-itutor-green text-white text-sm font-semibold hover:bg-emerald-700 transition">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-              </svg>
-              <span className="hidden sm:inline">Search</span>
-            </button>
-          </div>
-
-          {/* Expandable filters */}
-          {filtersOpen && (
-            <>
-              <div className="px-4 pb-4 pt-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 border-t border-gray-100">
-                {/* Subjects */}
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Subjects</p>
-                  <SubjectMultiSelect selectedSubjects={selectedSubjects} onChange={setSelectedSubjects} placeholder="Type a subject..." />
-                </div>
-
-                {/* School */}
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">School / Institution</p>
-                  <div className="relative">
-                    <select value={selectedSchool} onChange={(e) => setSelectedSchool(e.target.value)}
-                      className="w-full px-3 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition text-sm appearance-none pr-8">
-                      <option value="">All schools</option>
-                      {institutions.map(inst => <option key={inst.id} value={inst.id}>{inst.name}</option>)}
-                    </select>
-                    <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/></svg>
-                  </div>
-                </div>
-
-                {/* Price */}
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Price Range</p>
-                  <div className="relative">
-                    <select value={selectedPrice} onChange={(e) => setSelectedPrice(e.target.value)}
-                      className="w-full px-3 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition text-sm appearance-none pr-8">
-                      <option value="">Any price</option>
-                      <option value="free">Free Sessions</option>
-                      <option value="50">Up to $50</option>
-                      <option value="100">Up to $100</option>
-                      <option value="150">Up to $150</option>
-                      <option value="200">Up to $200</option>
-                      <option value="300">Up to $300</option>
-                    </select>
-                    <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/></svg>
-                  </div>
-                </div>
-
-                {/* Rating */}
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Rating</p>
-                  <div className="relative">
-                    <select value={selectedRating} onChange={(e) => setSelectedRating(e.target.value)}
-                      className="w-full px-3 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl focus:ring-2 focus:ring-itutor-green focus:border-itutor-green focus:outline-none transition text-sm appearance-none pr-8">
-                      <option value="">Any rating</option>
-                      <option value="4.5">4.5+ Stars</option>
-                      <option value="4.0">4.0+ Stars</option>
-                      <option value="3.5">3.5+ Stars</option>
-                      <option value="3.0">3.0+ Stars</option>
-                    </select>
-                    <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/></svg>
-                  </div>
-                </div>
+            {/* Price range */}
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Price range (TT$/hr)</label>
+              <div className="flex items-center gap-2 mt-2">
+                <input
+                  type="number"
+                  min={0}
+                  placeholder="Min"
+                  value={priceMin}
+                  onChange={(e) => setPriceMin(e.target.value)}
+                  className="w-24 px-3 py-2 rounded-xl border border-border bg-background text-sm tabular-nums"
+                />
+                <span className="text-muted-foreground text-sm">—</span>
+                <input
+                  type="number"
+                  min={0}
+                  placeholder="Max"
+                  value={priceMax}
+                  onChange={(e) => setPriceMax(e.target.value)}
+                  className="w-24 px-3 py-2 rounded-xl border border-border bg-background text-sm tabular-nums"
+                />
               </div>
+            </div>
 
-              {/* Quick chips */}
-              <div className="px-4 pb-3 flex items-center gap-2 flex-wrap border-t border-gray-100 pt-3">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mr-1">Quick</span>
-                {quickSubjects.map(subj => (
-                  <button key={subj}
-                    onClick={() => setSelectedSubjects(prev => prev.includes(subj) ? prev.filter(s => s !== subj) : [...prev, subj])}
-                    className={`text-xs px-3.5 py-1.5 rounded-full border font-medium transition-all ${
-                      selectedSubjects.includes(subj)
-                        ? 'bg-itutor-green/10 text-itutor-green border-itutor-green'
-                        : 'bg-white text-gray-600 border-gray-200 hover:border-itutor-green hover:text-itutor-green'
-                    }`}>
-                    {selectedSubjects.includes(subj) && <span className="mr-1">•</span>}{subj}
+            {/* Star rating */}
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Minimum rating</label>
+              <div className="flex items-center gap-1.5 mt-2">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    onClick={() => setSelectedRating(selectedRating === star ? null : star)}
+                    className={cn(
+                      'inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium border transition',
+                      selectedRating === star
+                        ? 'bg-coral/10 border-coral text-coral'
+                        : 'border-border text-muted-foreground hover:border-coral/40'
+                    )}
+                  >
+                    <Star className={cn('size-3.5', selectedRating !== null && star <= selectedRating ? 'fill-coral text-coral' : 'text-current')} />
+                    {star}+
                   </button>
                 ))}
-                {hasActiveFilters && (
-                  <button onClick={clearFilters} className="ml-auto text-xs px-3 py-1.5 rounded-full border border-red-200 text-red-400 hover:bg-red-50 transition font-medium">
-                    Clear all
-                  </button>
-                )}
               </div>
-            </>
-          )}
-
-          {/* Results bar */}
-          <div className={`px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap ${filtersOpen ? 'border-t border-gray-100' : ''}`}>
-            <p className="text-sm font-semibold text-itutor-green">
-              {filteredTutors.length >= 100 ? '100+' : filteredTutors.length} iTutors Found
-              {totalPages > 1 && <span className="text-gray-400 font-normal ml-2 text-xs">page {currentPage} of {totalPages}</span>}
-            </p>
-            <div className="flex items-center gap-2 ml-auto">
-              <label className="text-xs text-gray-500 whitespace-nowrap">Sort</label>
-              <select
-                value={sortOrder}
-                onChange={(e) => setSortOrder(e.target.value as 'relevance' | 'price_low' | 'rating_high')}
-                className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-800 focus:ring-2 focus:ring-itutor-green focus:border-itutor-green"
-              >
-                <option value="relevance">Best match</option>
-                <option value="price_low">Price: Low to High</option>
-                <option value="rating_high">Rating: High to Low</option>
-              </select>
             </div>
-            {hasActiveFilters && !filtersOpen && (
-              <button onClick={clearFilters} className="text-xs text-gray-400 hover:text-red-400 transition font-medium">Clear filters</button>
+
+            {/* School filter */}
+            {institutions.length > 0 && (
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">School / Institution</label>
+                <select
+                  value={selectedSchool}
+                  onChange={(e) => setSelectedSchool(e.target.value)}
+                  className="mt-2 w-full px-3 py-2 rounded-xl border border-border bg-background text-sm"
+                >
+                  <option value="">All schools</option>
+                  {institutions.map((inst) => (
+                    <option key={inst.id} value={inst.id}>{inst.name}</option>
+                  ))}
+                </select>
+              </div>
             )}
           </div>
+        )}
+
+        {/* Subject chips */}
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {SUBJECT_CHIPS.map((c) => (
+            <button
+              key={c}
+              onClick={() => setActiveChip(c)}
+              className={cn('px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition border', activeChip === c ? 'bg-ink text-white border-ink' : 'bg-background text-muted-foreground border-border hover:border-ink/30')}
+            >
+              {c}
+            </button>
+          ))}
         </div>
 
-        {/* Tutors Grid */}
-        {loadingTutors ? (
-          <div className="text-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-itutor-green mx-auto"></div>
-            <p className="text-gray-600 mt-4">Loading tutors...</p>
-          </div>
-        ) : filteredTutors.length === 0 ? (
-          <div className="text-center py-12 bg-white border-2 border-gray-200 rounded-2xl shadow-md">
-            <div className="bg-gray-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
-              <svg className="h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
+        {/* Group Lessons tab */}
+        {tab === 'lessons' && (
+          <>
+            <div className="text-sm text-muted-foreground">
+              {loadingGroupLessons ? 'Loading lessons…' : (() => {
+                const enrolledCount = filteredGroupLessons.filter(l => enrolledLessonIds.has(l.id)).length;
+                return (
+                  <>
+                    {filteredGroupLessons.length} lesson{filteredGroupLessons.length === 1 ? '' : 's'}
+                    {enrolledCount > 0 && <> · <span className="text-brand font-medium">{enrolledCount} enrolled</span></>}
+                  </>
+                );
+              })()}
+              {!loadingGroupLessons && searchQuery && <> matching &ldquo;<span className="text-ink font-medium">{searchQuery}</span>&rdquo;</>}
             </div>
-            <p className="text-gray-600 mb-2">No iTutors found</p>
-            <p className="text-sm text-gray-500">Try adjusting your filters</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {pagedTutors.map(tutor => {
-              return (
-                <div
-                  key={tutor.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => router.push(`/student/tutors/${tutor.id}`)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      router.push(`/student/tutors/${tutor.id}`);
-                    }
-                  }}
-                  aria-label={`Open ${getDisplayName(tutor)}'s profile`}
-                  className="bg-white border border-gray-200 rounded-2xl overflow-hidden hover:shadow-lg hover:border-itutor-green transition-all duration-300 flex flex-col cursor-pointer focus:outline-none focus:ring-2 focus:ring-itutor-green focus:ring-offset-2"
-                >
-                  {/* Banner — compact height */}
-                  <div className="relative h-16 shrink-0">
-                    <img
-                      src={profileBannerDisplayUrl(tutor.profile_banner_url, tutor.updated_at)}
-                      alt=""
-                      className="h-full w-full object-cover"
-                    />
-                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
-                  </div>
 
-                  <div className="flex flex-1 flex-col p-3 gap-2">
+            {loadingGroupLessons ? (
+              <div className="flex justify-center py-16">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand" />
+              </div>
+            ) : filteredGroupLessons.length === 0 ? (
+              <div className="text-center py-16 text-muted-foreground text-sm">
+                <div className="text-3xl mb-3">📚</div>
+                <p className="font-semibold text-ink">No group lessons yet</p>
+                <p className="mt-1">Check back soon — tutors are adding new group classes.</p>
+              </div>
+            ) : null}
 
-                    {/* Avatar + name row */}
-                    <div className="flex items-center gap-2.5">
-                      <UserAvatar avatarUrl={tutor.avatar_url} name={getDisplayName(tutor)} size={40} />
-                      <div className="min-w-0 flex-1">
-                        <h3 className="flex items-center gap-1.5 truncate text-sm font-bold text-gray-900 leading-tight">
-                          {getDisplayName(tutor)}
-                          {tutor.tutor_verification_status === 'VERIFIED' && <VerifiedBadge size="sm" />}
-                        </h3>
-                        {tutor.username && (
-                          <p className="text-[11px] text-gray-400 truncate leading-tight">@{tutor.username}</p>
-                        )}
-                        {tutor.institution_name && (
-                          <p className="truncate text-[11px] text-gray-500 leading-tight">{tutor.institution_name}</p>
-                        )}
-                        <div className="flex items-center gap-1 mt-0.5">
-                          <span className="text-xs text-yellow-400">★</span>
-                          {tutor.average_rating !== null ? (
-                            <>
-                              <span className="text-[11px] font-bold text-gray-900">{tutor.average_rating.toFixed(1)}</span>
-                              <span className="text-[10px] text-gray-500">({tutor.total_reviews} {tutor.total_reviews === 1 ? 'review' : 'reviews'})</span>
-                            </>
-                          ) : (
-                            <span className="text-[10px] text-gray-400 italic">No reviews yet</span>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredGroupLessons.map((l) => {
+                const remaining = l.seats.total !== null ? l.seats.total - l.seats.taken : null;
+                const lowStock = remaining !== null && remaining > 0 && remaining <= 3;
+                const full = remaining !== null && remaining <= 0;
+                const pctFull = l.seats.total ? Math.round((l.seats.taken / l.seats.total) * 100) : null;
+                return (
+                  <div key={l.id} className={cn('group rounded-3xl bg-background border overflow-hidden hover:shadow-card transition-all hover:-translate-y-0.5 flex flex-col', enrolledLessonIds.has(l.id) ? 'border-brand/40' : 'border-border')}>
+                    <div className={`relative h-24 flex items-end p-3 ${l.coverImage ? '' : `bg-gradient-to-br ${l.color}`}`}
+                      style={l.coverImage ? { backgroundImage: `url(${l.coverImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}>
+                      {enrolledLessonIds.has(l.id) && (
+                        <div className="absolute top-2.5 left-2.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-brand text-white">
+                          Enrolled
+                        </div>
+                      )}
+                      <button
+                        onClick={() => toggleSave(l.id)}
+                        className="absolute top-2.5 right-2.5 size-8 rounded-full bg-white/90 backdrop-blur grid place-items-center hover:bg-white"
+                      >
+                        <Heart className={cn('size-4', savedItems.has(l.id) ? 'fill-coral text-coral' : 'text-ink')} />
+                      </button>
+                      <div className="size-12 rounded-2xl bg-white grid place-items-center text-2xl shadow-md">{l.emoji}</div>
+                    </div>
+                    <div className="p-4 space-y-3 flex-1 flex flex-col">
+                      <div>
+                        <div className="flex items-center justify-between gap-2">
+                          <h3 className="font-semibold text-ink leading-tight">{l.title}</h3>
+                          {l.rating > 0 && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-bold tabular-nums shrink-0">
+                              <Star className="size-3 fill-amber-500 text-amber-500" />
+                              {l.rating.toFixed(1)}
+                            </span>
                           )}
                         </div>
-                      </div>
-                    </div>
-
-                    {/* Bio — 1 line only */}
-                    {tutor.bio && (
-                      <p className="text-[12px] text-gray-600 line-clamp-1 leading-snug">{tutor.bio}</p>
-                    )}
-
-                    {/* Top Comment — compact */}
-                    {tutor.topComment && (
-                      <div className="rounded-lg p-2 border border-green-100 bg-green-50/50">
-                        <div className="flex items-center gap-0.5 mb-0.5">
-                          {[...Array(tutor.topComment.stars)].map((_, i) => (
-                            <span key={i} className="text-yellow-400 text-[10px]">★</span>
-                          ))}
-                          <span className="text-[10px] text-gray-400 ml-1">· {tutor.topComment.student_name}</span>
+                        <div className="mt-1.5 inline-flex items-center gap-2">
+                          <TutorInitialAvatar name={l.tutor} size={22} />
+                          <span className="text-sm text-muted-foreground">by {l.tutor}</span>
                         </div>
-                        <p className="text-[11px] text-gray-600 italic line-clamp-1">
-                          &ldquo;{tutor.topComment.comment}&rdquo;
-                        </p>
+                        <div className="text-xs text-muted-foreground mt-1">{l.subject}{l.level ? ` · ${l.level}` : ''}</div>
+                        {l.description && (
+                          <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">{l.description}</p>
+                        )}
                       </div>
-                    )}
 
-                    {/* Subjects */}
-                    <div className="mt-auto">
-                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">Teaches</p>
-                      <div className="flex flex-wrap gap-1">
-                        {tutor.subjects.slice(0, 3).map(subject => (
-                          <span key={subject.id} className="text-[11px] px-2 py-0.5 rounded-full bg-gray-50 border border-gray-200 text-gray-700">
-                            {subject.name}
+                      <div className="flex flex-wrap gap-1.5">
+                        {l.requireJoinRequests && !enrolledLessonIds.has(l.id) && (
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border border-border bg-muted text-muted-foreground">
+                            Approval required
                           </span>
-                        ))}
-                        {tutor.subjects.length > 3 && (
-                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 border border-gray-200 text-gray-500 font-medium">
-                            +{tutor.subjects.length - 3} more
-                          </span>
+                        )}
+                        {/* Parent feedback badges hidden — parent accounts coming soon */}
+                        {(lowStock || full) && (
+                          <div className={cn('inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full', full ? 'bg-muted text-muted-foreground' : 'bg-coral-soft text-coral')}>
+                            <Flame className="size-3.5" />
+                            {full ? 'Class full' : `Only ${remaining} spot${remaining === 1 ? '' : 's'} left!`}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-1.5 text-xs">
+                        {/* Schedule — structured (contains "–") or plain fallback */}
+                        {l.day !== 'Schedule TBD' ? (
+                          <div className="text-muted-foreground whitespace-pre-line leading-relaxed">{l.day}</div>
+                        ) : (
+                          <div className="flex items-center gap-1.5 text-muted-foreground">
+                            <Calendar className="size-3.5 shrink-0" />
+                            <span>Schedule TBD</span>
+                          </div>
+                        )}
+                        {/* Only show separate time/duration for legacy auto-derived schedules without a range */}
+                        {l.time && !l.day.includes('–') && (
+                          <div className="flex items-center gap-1.5 text-muted-foreground">
+                            <Clock className="size-3.5" /> {l.time}
+                            {l.sessionLength && <span className="text-muted-foreground/70">· {formatDuration(l.sessionLength)}</span>}
+                          </div>
+                        )}
+                        {!l.time && l.sessionLength && !l.day.includes('–') && (
+                          <div className="flex items-center gap-1.5 text-muted-foreground">
+                            <Clock className="size-3.5" /> {formatDuration(l.sessionLength)} per session
+                          </div>
+                        )}
+                        <div className="flex items-center gap-1.5 text-muted-foreground">
+                          <Users className="size-3.5" />
+                          {l.seats.total !== null
+                            ? `${l.seats.taken}/${l.seats.total} enrolled`
+                            : `${l.seats.taken} enrolled`}
+                        </div>
+                        {pctFull !== null && (
+                          <div className="h-1 rounded-full bg-muted overflow-hidden">
+                            <div className={cn('h-full rounded-full', lowStock ? 'bg-coral' : 'bg-brand')} style={{ width: `${pctFull}%` }} />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-end justify-between pt-3 mt-auto border-t border-border">
+                        <div>
+                          {l.monthlyPrice > 0 ? (
+                            l.activePromotion ? (
+                              <div>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 whitespace-nowrap">
+                                    {promoLabel(l.activePromotion)}
+                                  </span>
+                                </div>
+                                <div className="flex items-baseline gap-1 mt-0.5">
+                                  <span className="text-lg font-bold text-brand-deep">{fmtTTD(Math.round(l.monthlyPrice * (1 - l.activePromotion.discount / 100)))}</span>
+                                  <span className="text-xs line-through text-muted-foreground">{fmtTTD(l.monthlyPrice)}</span>
+                                  <span className="text-xs text-muted-foreground">/month</span>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <span className="text-lg font-bold text-ink">{fmtTTD(l.monthlyPrice)}</span>
+                                <span className="text-xs text-muted-foreground">/month</span>
+                              </>
+                            )
+                          ) : (
+                            <span className="text-lg font-bold text-brand-deep">Free</span>
+                          )}
+                        </div>
+                        {enrolledLessonIds.has(l.id) ? (
+                          <Link
+                            href={`/student/classes/${l.id}`}
+                            className="px-3 py-1.5 rounded-xl bg-brand-soft text-forest text-xs font-semibold hover:bg-brand/20 transition"
+                          >
+                            Open Class
+                          </Link>
+                        ) : (
+                          <Link
+                            href={`/student/explore/${l.id}`}
+                            className="px-3 py-1.5 rounded-xl bg-brand text-white text-xs font-semibold hover:bg-brand-deep transition"
+                          >
+                            {full ? 'Join waitlist' : l.requireJoinRequests ? 'Request to join' : 'Join class'}
+                          </Link>
                         )}
                       </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          </>
         )}
 
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="mt-8 flex items-center justify-center gap-2">
-            <button
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg border-2 border-gray-200 bg-white text-gray-700 font-medium text-sm transition-all hover:border-itutor-green hover:text-itutor-green disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-gray-200 disabled:hover:text-gray-700"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              Previous
-            </button>
-
-            <div className="flex items-center gap-1">
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
-                <button
-                  key={page}
-                  onClick={() => setCurrentPage(page)}
-                  className={`w-9 h-9 rounded-lg text-sm font-semibold transition-all ${
-                    page === currentPage
-                      ? 'bg-itutor-green text-white shadow-md'
-                      : 'border-2 border-gray-200 bg-white text-gray-600 hover:border-itutor-green hover:text-itutor-green'
-                  }`}
-                >
-                  {page}
-                </button>
-              ))}
+        {/* 1:1 Tutors tab */}
+        {tab === 'tutors' && (
+          <>
+            <div className="text-sm text-muted-foreground">
+              {loadingTutors ? 'Loading tutors…' : `${pagedTutors.length} tutor${pagedTutors.length === 1 ? '' : 's'} for 1:1 sessions`}
             </div>
 
-            <button
-              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg border-2 border-gray-200 bg-white text-gray-700 font-medium text-sm transition-all hover:border-itutor-green hover:text-itutor-green disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-gray-200 disabled:hover:text-gray-700"
-            >
-              Next
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-          </div>
+            {loadingTutors ? (
+              <div className="flex justify-center py-16">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand" />
+              </div>
+            ) : pagedTutors.length === 0 ? (
+              <div className="text-center py-16 text-muted-foreground text-sm">No tutors found. Try adjusting your search.</div>
+            ) : (
+              <div className="grid sm:grid-cols-2 gap-3">
+                {pagedTutors.map((tutor) => (
+                  <div
+                    key={tutor.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => router.push(`/student/tutors/${tutor.id}`)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); router.push(`/student/tutors/${tutor.id}`); } }}
+                    className="group rounded-2xl bg-background border border-border p-4 hover:shadow-card hover:border-brand/40 transition-all flex gap-3 items-start cursor-pointer w-full min-w-0"
+                  >
+                    <UserAvatar avatarUrl={tutor.avatar_url} name={getDisplayName(tutor)} size={56} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <h3 className="font-semibold text-ink truncate">{getDisplayName(tutor)}</h3>
+                          </div>
+                          <div className="text-xs text-muted-foreground truncate">
+                            {tutor.subjects.slice(0, 3).map((s) => s.name).join(' · ')}
+                            {tutor.subjects.length > 3 && ` +${tutor.subjects.length - 3}`}
+                          </div>
+                        </div>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); toggleSave(tutor.id); }}
+                          className="size-8 rounded-full hover:bg-muted grid place-items-center shrink-0"
+                        >
+                          <Heart className={cn('size-4', savedItems.has(tutor.id) ? 'fill-coral text-coral' : 'text-muted-foreground')} />
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-2 mt-1.5 text-xs">
+                        {tutor.average_rating !== null ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold tabular-nums">
+                            <Star className="size-3 fill-amber-500 text-amber-500" />
+                            {tutor.average_rating.toFixed(1)}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-muted-foreground font-semibold">
+                            <Star className="size-3 text-muted-foreground" /> —
+                          </span>
+                        )}
+                        {tutor.total_reviews > 0 && <span className="text-muted-foreground">({tutor.total_reviews} reviews)</span>}
+                      </div>
+
+                      {tutor.bio && <p className="text-xs text-muted-foreground mt-2 line-clamp-1">{tutor.bio}</p>}
+
+                      {tutor.institution_name && (
+                        <div className="text-[11px] text-muted-foreground mt-1">{tutor.institution_name}</div>
+                      )}
+
+                      <div className="flex items-end justify-between mt-3 pt-3 border-t border-border">
+                        <div>
+                          {tutor.subjects.length > 0 && (
+                            <>
+                              <span className="text-base font-bold text-ink">TT${Math.min(...tutor.subjects.map((s) => s.price_per_hour_ttd))}</span>
+                              <span className="text-[11px] text-muted-foreground">/hr</span>
+                            </>
+                          )}
+                        </div>
+                        <span className="text-xs font-semibold text-brand-deep group-hover:underline">View profile →</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-2">
+                <button onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-4 py-2 rounded-xl border border-border text-sm font-medium disabled:opacity-40 hover:bg-muted transition">Previous</button>
+                <span className="text-sm text-muted-foreground">Page {currentPage} of {totalPages}</span>
+                <button onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="px-4 py-2 rounded-xl border border-border text-sm font-medium disabled:opacity-40 hover:bg-muted transition">Next</button>
+              </div>
+            )}
+          </>
         )}
       </div>
-    </DashboardLayout>
+
+      {/* Join Lesson Modal */}
+      {joinLesson && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40" onClick={() => setJoinLesson(null)}>
+          <div className="bg-background w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className={`relative h-24 bg-gradient-to-br ${joinLesson.color} flex items-end p-4`}>
+              <button onClick={() => setJoinLesson(null)} className="absolute top-3 right-3 size-8 rounded-full bg-white/90 grid place-items-center hover:bg-white">
+                <X className="size-4 text-ink" />
+              </button>
+              <div className="size-12 rounded-2xl bg-white grid place-items-center text-2xl shadow-md">{joinLesson.emoji}</div>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <h2 className="text-lg font-bold text-ink">{joinLesson.title}</h2>
+                <p className="text-sm text-muted-foreground">by {joinLesson.tutor} · {joinLesson.subject} · {joinLesson.level}</p>
+              </div>
+              <div className="rounded-2xl border border-border p-4 space-y-2 text-sm">
+                {[
+                  { label: 'Day', value: joinLesson.day, show: !!joinLesson.day },
+                  { label: 'Time', value: joinLesson.time, show: !!joinLesson.time },
+                  { label: 'Session length', value: joinLesson.sessionLength ? formatDuration(joinLesson.sessionLength) : null, show: !!joinLesson.sessionLength },
+                  { label: 'Enrolled', value: joinLesson.seats.total !== null ? `${joinLesson.seats.taken} / ${joinLesson.seats.total}` : `${joinLesson.seats.taken} students`, show: true },
+                  { label: 'Price', value: joinLesson.monthlyPrice > 0
+                    ? joinLesson.activePromotion
+                      ? `${fmtTTD(Math.round(joinLesson.monthlyPrice * (1 - joinLesson.activePromotion.discount / 100)))}/month (${joinLesson.activePromotion.discount}% off)`
+                      : `${fmtTTD(joinLesson.monthlyPrice)}/month`
+                    : 'Free', show: true },
+                ].filter(r => r.show && r.value).map(({ label, value }) => (
+                  <div key={label} className="flex justify-between">
+                    <span className="text-muted-foreground">{label}</span>
+                    <span className="text-ink font-medium">{value}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                {joinLesson.tags.map((t) => (
+                  <span key={t} className="px-2.5 py-1 rounded-full bg-brand-soft text-forest text-xs font-medium">{t}</span>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">You'll be charged monthly. Cancel anytime before the next billing cycle.</p>
+              {enrolledLessonIds.has(joinLesson.id) ? (
+                <div className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-brand-soft text-forest font-semibold">
+                  <Check className="size-4" /> Already enrolled
+                </div>
+              ) : (
+                <button
+                  onClick={handleJoinLesson}
+                  disabled={joiningLesson}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-brand text-white font-semibold hover:bg-brand-deep transition disabled:opacity-60"
+                >
+                  <Check className="size-4" />
+                  {joiningLesson ? 'Enrolling…' : joinLesson.monthlyPrice > 0
+                    ? joinLesson.activePromotion
+                      ? `Subscribe — ${fmtTTD(Math.round(joinLesson.monthlyPrice * (1 - joinLesson.activePromotion.discount / 100)))}/month`
+                      : `Subscribe — ${fmtTTD(joinLesson.monthlyPrice)}/month`
+                    : 'Join Free'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

@@ -1,15 +1,11 @@
 import { NextRequest } from 'next/server';
-import { z } from 'zod';
 import { authenticateUser, requireGroupOwner } from '@/lib/api/groupAuth';
 import { fail, ok } from '@/lib/api/http';
-import { generateMeetingLink } from '@/lib/meetingLinks';
 import { getServiceClient } from '@/lib/supabase/server';
+import { createMeeting } from '@/lib/services/videoProviders';
+import type { Session, VideoProvider } from '@/lib/types/sessions';
 
 type Params = { params: Promise<{ groupId: string; sessionId: string }> };
-
-const schema = z.object({
-  platform: z.enum(['ZOOM', 'GOOGLE_MEET', 'INTERNAL']).optional(),
-});
 
 export const dynamic = 'force-dynamic';
 
@@ -22,48 +18,95 @@ export async function POST(req: NextRequest, { params }: Params) {
     const isOwner = await requireGroupOwner(groupId, user.id);
     if (!isOwner) return fail('Forbidden', 403);
 
-    const parsed = schema.safeParse(await req.json().catch(() => ({})));
-    if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? 'Invalid body', 400);
-
     const service = getServiceClient();
-    const { data: session, error } = await service
+
+    // Look up the occurrence
+    const { data: occurrence, error: occErr } = await service
       .from('group_session_occurrences')
       .select(`
         id, scheduled_start_at,
-        session:group_sessions!inner(id, title, duration_minutes, meeting_platform, group_id),
-        group:groups!inner(id, name, tutor:profiles!groups_tutor_id_fkey(full_name))
+        session:group_sessions!inner(id, title, duration_minutes, group_id)
       `)
       .eq('id', sessionId)
-      .eq('session.group_id', groupId)
       .single();
 
-    if (error || !session) return fail('Session not found', 404);
+    if (occErr || !occurrence) {
+      return fail('Session occurrence not found — make sure this session has a scheduled date.', 404);
+    }
 
-    const platform = parsed.data.platform ?? (session as any).session?.meeting_platform ?? 'INTERNAL';
-    const link = await generateMeetingLink({
-      platform,
-      sessionId: session.id,
-      scheduledAt: new Date(session.scheduled_start_at),
-      durationMinutes: (session as any).session?.duration_minutes ?? 60,
-      tutorName: (session as any).group?.tutor?.full_name ?? 'Tutor',
-      groupTitle: (session as any).group?.name ?? (session as any).session?.title ?? 'Group Session',
-    });
+    const sessionData = (occurrence as any).session;
+    if (sessionData?.group_id !== groupId) {
+      return fail('Forbidden', 403);
+    }
 
-    const { data: updated, error: updateError } = await service
+    // If a meeting link is already stored, return it
+    const { data: existing } = await service
+      .from('group_session_occurrences')
+      .select('meeting_link, meeting_join_url')
+      .eq('id', sessionId)
+      .single();
+
+    const existingLink = (existing as any)?.meeting_join_url || (existing as any)?.meeting_link;
+    if (existingLink) {
+      return ok({ meeting_link: existingLink, join_url: existingLink });
+    }
+
+    // Get the tutor's connected video provider
+    const { data: connection, error: connErr } = await service
+      .from('tutor_video_provider_connections')
+      .select('provider, connection_status, is_active')
+      .eq('tutor_id', user.id)
+      .eq('is_active', true)
+      .eq('connection_status', 'connected')
+      .single();
+
+    if (connErr || !connection) {
+      return fail('No video provider connected. Go to Settings → Video Setup to connect Google Meet or Zoom.', 422);
+    }
+
+    const provider = connection.provider as VideoProvider;
+    const durationMinutes = sessionData?.duration_minutes ?? 60;
+    const scheduledAt = occurrence.scheduled_start_at;
+
+    // Build a session-like object for createMeeting
+    const sessionForMeeting: Session = {
+      id: occurrence.id,
+      booking_id: '',
+      tutor_id: user.id,
+      student_id: '',
+      provider,
+      meeting_external_id: null,
+      join_url: null,
+      scheduled_start_at: scheduledAt,
+      scheduled_end_at: new Date(new Date(scheduledAt).getTime() + durationMinutes * 60000).toISOString(),
+      duration_minutes: durationMinutes,
+      no_show_wait_minutes: 10,
+      min_payable_minutes: 30,
+      meeting_created_at: null,
+      meeting_started_at: null,
+      meeting_ended_at: null,
+      tutor_marked_no_show_at: null,
+      status: 'SCHEDULED',
+      charge_scheduled_at: scheduledAt,
+      charged_at: null,
+    } as any;
+
+    // Generate the meeting via real OAuth
+    const meetingInfo = await createMeeting(sessionForMeeting);
+
+    // Save the link back to the occurrence
+    await service
       .from('group_session_occurrences')
       .update({
-        meeting_link: link,
-        meeting_platform: platform,
-        meeting_join_url: link,
+        meeting_link: meetingInfo.join_url,
+        meeting_platform: provider,
+        meeting_join_url: meetingInfo.join_url,
       })
-      .eq('id', session.id)
-      .select('id, meeting_link, meeting_platform, meeting_join_url')
-      .single();
+      .eq('id', occurrence.id);
 
-    if (updateError) return fail(updateError.message, 500);
-    return ok(updated);
+    return ok({ meeting_link: meetingInfo.join_url, join_url: meetingInfo.join_url });
   } catch (error: any) {
-    return fail(error?.message ?? 'Internal server error', 500);
+    console.error('[POST meeting-link]', error);
+    return fail(error?.message ?? 'Failed to generate meeting link', 500);
   }
 }
-

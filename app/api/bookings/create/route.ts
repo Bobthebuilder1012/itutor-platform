@@ -122,6 +122,18 @@ async function createParentBooking(
     throw new Error('Tutor pricing is not configured for this subject');
   }
 
+  // Require tutor to have a payout account before paid bookings can be created
+  if (isPaidClassesEnabled()) {
+    const { data: payoutAcc } = await admin
+      .from('tutor_payout_accounts')
+      .select('payout_account_identifier')
+      .eq('tutor_id', body.tutorId)
+      .maybeSingle();
+    if (!payoutAcc?.payout_account_identifier) {
+      throw new Error('This tutor has not set up their payout account yet and cannot accept paid bookings.');
+    }
+  }
+
   const priceTtd = Number(((hourlyRate / 60) * durationMinutes).toFixed(2));
   const paidClassesEnabled = isPaidClassesEnabled();
   const commission = paidClassesEnabled

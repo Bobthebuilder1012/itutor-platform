@@ -5,6 +5,12 @@ import { migrateSessionsToNewProvider } from '@/lib/services/migrateSessionsToNe
 
 export const dynamic = 'force-dynamic';
 
+function redirect(returnTo: string, baseUrl: string, params: Record<string, string>) {
+  const url = new URL(returnTo, baseUrl);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  return NextResponse.redirect(url);
+}
+
 export async function GET(request: NextRequest) {
   // Use service role for callback (user context in state parameter)
   const supabase = createClient(
@@ -13,11 +19,16 @@ export async function GET(request: NextRequest) {
   );
   const searchParams = request.nextUrl.searchParams;
   const code = searchParams.get('code');
-  const state = searchParams.get('state'); // user ID
+  const stateRaw = searchParams.get('state');
   const error = searchParams.get('error');
 
-  if (error || !code || !state) {
-    return NextResponse.redirect(new URL('/tutor/video-setup?error=auth_failed', request.url));
+  // Decode state — "userId|returnPath" or legacy plain userId
+  const stateParts = (stateRaw ?? '').split('|');
+  const tutorId = stateParts[0] ?? '';
+  const returnTo = stateParts[1] || '/tutor/video-setup';
+
+  if (error || !code || !tutorId) {
+    return redirect(returnTo, request.url, { error: 'auth_failed' });
   }
 
   try {
@@ -32,13 +43,13 @@ export async function GET(request: NextRequest) {
         hasClientSecret: !!clientSecret,
         hasRedirectUri: !!redirectUri
       });
-      return NextResponse.redirect(new URL('/tutor/video-setup?error=server_config', request.url));
+      return redirect(returnTo, request.url, { error: 'server_config' });
     }
 
     console.log('🔄 Exchanging OAuth code for tokens...', {
       hasCode: !!code,
       redirectUri,
-      tutorId: state
+      tutorId
     });
 
     // Exchange code for tokens
@@ -91,7 +102,7 @@ export async function GET(request: NextRequest) {
     const { data: existingConnection } = await supabase
       .from('tutor_video_provider_connections')
       .select('provider')
-      .eq('tutor_id', state)
+      .eq('tutor_id', tutorId)
       .single();
 
     const previousProvider = existingConnection?.provider;
@@ -101,7 +112,7 @@ export async function GET(request: NextRequest) {
     const { error: dbError } = await supabase
       .from('tutor_video_provider_connections')
       .upsert({
-        tutor_id: state,
+        tutor_id: tutorId,
         provider: 'zoom',
         is_active: true,
         connection_status: 'connected',
@@ -121,27 +132,23 @@ export async function GET(request: NextRequest) {
 
     // If switching from another provider, migrate all future sessions
     if (isSwitchingProvider) {
-      console.log(`🔄 Tutor ${state} is switching from ${previousProvider} to zoom. Migrating sessions...`);
+      console.log(`🔄 Tutor ${tutorId} is switching from ${previousProvider} to zoom. Migrating sessions...`);
       
-      const migrationResult = await migrateSessionsToNewProvider(state, 'zoom');
+      const migrationResult = await migrateSessionsToNewProvider(tutorId, 'zoom');
       
       if (migrationResult.success) {
         console.log(`✅ Successfully migrated ${migrationResult.migratedCount} sessions to Zoom`);
-        return NextResponse.redirect(
-          new URL(`/tutor/video-setup?success=true&migrated=${migrationResult.migratedCount}`, request.url)
-        );
+        return redirect(returnTo, request.url, { success: 'true', migrated: String(migrationResult.migratedCount) });
       } else {
         console.warn(`⚠️ Session migration completed with issues: ${migrationResult.error}`);
-        return NextResponse.redirect(
-          new URL(`/tutor/video-setup?success=true&migration_warning=true`, request.url)
-        );
+        return redirect(returnTo, request.url, { success: 'true', migration_warning: 'true' });
       }
     }
 
-    return NextResponse.redirect(new URL('/tutor/video-setup?success=true', request.url));
+    return redirect(returnTo, request.url, { success: 'true' });
   } catch (error) {
     console.error('OAuth callback error:', error);
-    return NextResponse.redirect(new URL('/tutor/video-setup?error=connection_failed', request.url));
+    return redirect(returnTo, request.url, { error: 'connection_failed' });
   }
 }
 

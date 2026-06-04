@@ -4,7 +4,7 @@ import { Profile } from './database';
 // ENUMS / UNION TYPES
 // ============================
 
-export type GroupMemberStatus = 'pending' | 'approved' | 'denied';
+export type GroupMemberStatus = 'pending' | 'approved' | 'denied' | 'invited' | 'removed' | 'suspended' | 'banned';
 export type RecurrenceType = 'none' | 'weekly' | 'daily';
 export type OccurrenceStatus = 'upcoming' | 'cancelled';
 export type GroupDifficulty = 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED';
@@ -14,9 +14,14 @@ export type GroupPricingMode = 'PER_SESSION' | 'PER_COURSE' | 'FREE';
 export type GroupPublishStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
 export type GroupRecurrenceTypeV2 = 'NONE' | 'DAILY' | 'WEEKLY' | 'MONTHLY';
 export type GroupEnrollmentType = 'SUBSCRIPTION' | 'SINGLE_SESSION';
-export type GroupEnrollmentStatus = 'ACTIVE' | 'CANCELLED' | 'WAITLISTED' | 'COMPLETED';
-export type GroupPaymentStatus = 'PENDING' | 'PAID' | 'REFUNDED' | 'FREE';
+export type GroupEnrollmentStatus = 'ACTIVE' | 'CANCELLED' | 'WAITLISTED' | 'COMPLETED' | 'PENDING_PAYMENT' | 'GRACE' | 'SUSPENDED' | 'ACTIVATION_FAILED';
+export type GroupPaymentStatus = 'PENDING' | 'PAID' | 'REFUNDED' | 'FREE' | 'PARTIALLY_REFUNDED' | 'OVERDUE' | 'ACTIVATION_FAILED';
 export type GroupAttendanceStatus = 'PRESENT' | 'ABSENT' | 'LATE';
+export type GroupWaitlistStatus = 'waiting' | 'offered' | 'expired' | 'accepted' | 'removed';
+export type SubscriptionPaymentType = 'subscription_initial' | 'subscription_renewal' | 'subscription_reactivation';
+export type SubscriptionPaymentStatus = 'PENDING' | 'PAID' | 'REFUNDED' | 'PARTIALLY_REFUNDED' | 'ACTIVATION_FAILED' | 'expired';
+export type GroupRemovalStatus = 'auto_processed' | 'approved' | 'overturned';
+export type GroupVisibility = 'public' | 'unlisted' | 'private';
 
 // Day-of-week: 0 = Sunday … 6 = Saturday (matches JS getDay())
 export type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -63,6 +68,10 @@ export interface Group {
   header_image?: string | null;
   content_blocks?: unknown;
   status?: GroupPublishStatus;
+  visibility?: GroupVisibility;
+  require_join_requests?: boolean;
+  grace_period_days?: number;
+  auto_suspend_missed_payment?: boolean;
   created_at: string;
   updated_at?: string;
   archived_at: string | null;
@@ -154,6 +163,28 @@ export interface GroupEnrollment {
   expires_at: string | null;
   created_at: string;
   updated_at: string;
+  // Subscription billing columns
+  plan_price_ttd?: number | null;
+  original_price_ttd?: number | null;
+  discount_percent?: number | null;
+  discounted_price_ttd?: number | null;
+  promotion_id?: string | null;
+  promotion_applied_at?: string | null;
+  promotion_duration_days_snapshot?: number | null;
+  promotion_expires_at?: string | null;
+  current_period_start?: string | null;
+  current_period_end?: string | null;
+  next_payment_due_at?: string | null;
+  grace_period_ends_at?: string | null;
+  grace_period_days_snapshot?: number | null;
+  last_paid_at?: string | null;
+  activated_subscription_payment_id?: string | null;
+  pending_payment_expires_at?: string | null;
+  reminder_count?: number;
+  last_reminder_sent_at?: string | null;
+  cancel_at_period_end?: boolean;
+  cancelled_at?: string | null;
+  removal_reason?: string | null;
 }
 
 export interface GroupWaitlistEntry {
@@ -163,6 +194,11 @@ export interface GroupWaitlistEntry {
   joined_at: string;
   position: number;
   created_at: string;
+  status?: GroupWaitlistStatus;
+  offer_expires_at?: string | null;
+  offered_at?: string | null;
+  accepted_at?: string | null;
+  expired_at?: string | null;
 }
 
 export interface GroupReview {
@@ -276,4 +312,94 @@ export interface GroupFilters {
   session_frequency?: string;
   availability?: 'today' | 'this_week' | 'this_month' | '';
   day?: DayOfWeek;
+}
+
+// ============================
+// SUBSCRIPTION ENTITIES
+// ============================
+
+export interface SubscriptionPayment {
+  id: string;
+  enrollment_id: string;
+  group_id: string;
+  student_id: string;
+  type: SubscriptionPaymentType;
+  amount_ttd: number;
+  original_amount_ttd?: number | null;
+  discount_percent?: number | null;
+  promotion_id?: string | null;
+  platform_fee_ttd: number;
+  tutor_payout_ttd: number;
+  status: SubscriptionPaymentStatus;
+  period_start?: string | null;
+  period_end?: string | null;
+  activation_status?: 'pending' | 'succeeded' | 'failed' | null;
+  activation_error?: string | null;
+  lunipay_checkout_session_id?: string | null;
+  lunipay_transaction_id?: string | null;
+  receipt_url?: string | null;
+  receipt_reference?: string | null;
+  checkout_expires_at?: string | null;
+  paid_at?: string | null;
+  refunded_at?: string | null;
+  created_at: string;
+}
+
+export interface GroupRemoval {
+  id: string;
+  group_id: string;
+  enrollment_id: string;
+  student_id: string;
+  tutor_id: string;
+  status: GroupRemovalStatus;
+  admin_id?: string | null;
+  admin_notes?: string | null;
+  resolved_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SubscriptionRefund {
+  id: string;
+  payment_id: string;
+  enrollment_id: string;
+  group_removal_id?: string | null;
+  amount_ttd: number;
+  status: 'pending' | 'succeeded' | 'failed';
+  lunipay_refund_id?: string | null;
+  error_message?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SubscriptionPaymentException {
+  id: string;
+  payment_id: string;
+  enrollment_id: string;
+  group_id: string;
+  student_id: string;
+  exception_type: 'activation_failed' | 'metadata_invalid' | 'enrollment_missing' | 'duplicate_payment' | 'capacity_conflict' | 'refund_required';
+  status: 'open' | 'in_review' | 'resolved' | 'refunded' | 'duplicate';
+  error_message?: string | null;
+  admin_id?: string | null;
+  admin_action?: string | null;
+  admin_notes?: string | null;
+  resolved_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GroupAccessContext {
+  has_access: boolean;
+  enrollment_id?: string | null;
+  status?: GroupEnrollmentStatus | null;
+  payment_status?: GroupPaymentStatus | null;
+  current_period_end?: string | null;
+  grace_period_ends_at?: string | null;
+  cancel_at_period_end?: boolean;
+  next_payment_due_at?: string | null;
+  waitlist_position?: number | null;
+  waitlist_status?: GroupWaitlistStatus | null;
+  offer_expires_at?: string | null;
+  pending_payment_expires_at?: string | null;
 }

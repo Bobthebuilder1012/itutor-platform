@@ -84,6 +84,8 @@ const icons = {
   settings: <I><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-[18px] h-[18px]"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" strokeWidth="1.8"/><circle cx="12" cy="12" r="3" strokeWidth="1.8"/></svg></I>,
   tools: <I><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-[18px] h-[18px]"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg></I>,
   sparkles: <I><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-[18px] h-[18px]"><path d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg></I>,
+  banknote: <I><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-[18px] h-[18px]"><rect x="2" y="6" width="20" height="12" rx="2" strokeWidth="1.8"/><circle cx="12" cy="12" r="2.5" strokeWidth="1.8"/><path d="M6 10h.01M18 14h.01" strokeWidth="1.8" strokeLinecap="round"/></svg></I>,
+  refund: <I><svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-[18px] h-[18px]"><path d="M3 12a9 9 0 1 0 3-6.7" strokeWidth="1.8" strokeLinecap="round"/><path d="M3 4v5h5" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><path d="M12 8v4l2.5 2.5" strokeWidth="1.8" strokeLinecap="round"/></svg></I>,
 };
 
 export default function DashboardLayout({ children, role, userName }: DashboardLayoutProps) {
@@ -237,29 +239,18 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/tutor/settings', label: 'Settings', icon: icons.settings },
         ]},
       ];
-      case 'parent': {
-        const menuItems = [
-          { href: '/parent/dashboard', label: 'Dashboard', icon: icons.dashboard },
-          { href: '/parent/add-child', label: 'Add Child', icon: icons.userPlus },
-          { href: '/parent/approve-bookings', label: 'Booking Requests', icon: icons.calendar },
-        ];
-        if (parentHasLinkedChild === true) {
-          menuItems.push({
-            href: '/parent/session-feedback',
-            label: 'Session feedback',
-            icon: icons.chatFeedback,
-          });
-        }
-        if (showGroups) {
-          menuItems.push({ href: '/lessons', label: 'Lessons', icon: icons.groups });
-        }
-        return [
-          { label: 'Menu', items: menuItems },
-          { label: 'Account', items: [
-            { href: '/parent/settings', label: 'Settings', icon: icons.settings },
-          ]},
-        ];
-      }
+      case 'parent': return [
+        { label: 'Menu', items: [
+          { href: '/parent/dashboard',     label: 'Home',          icon: icons.dashboard },
+          { href: '/parent/children',      label: 'Children',      icon: icons.userPlus },
+          { href: '/parent/classes',       label: 'Find Classes',  icon: icons.groups },
+          { href: '/parent/subscriptions', label: 'Subscriptions', icon: icons.calendar },
+          { href: '/parent/transactions',  label: 'Transactions',  icon: icons.calendar },
+        ]},
+        { label: 'Account', items: [
+          { href: '/parent/settings', label: 'Settings', icon: icons.settings },
+        ]},
+      ];
       case 'reviewer': return [
         { label: 'Review', items: [
           { href: '/reviewer/dashboard', label: 'Dashboard', icon: icons.dashboard },
@@ -270,11 +261,21 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         ]},
       ];
       case 'admin': return [
-        { label: 'Admin', items: [
+        { label: 'Operations', items: [
+          { href: '/admin/dashboard', label: 'Dashboard', icon: icons.dashboard },
           { href: '/reviewer/verification/queue', label: 'Verification Queue', icon: icons.queue },
           { href: '/reviewer/verified-tutors', label: 'Verified iTutors', icon: icons.shield },
           { href: '/reviewer/accounts', label: 'Account Management', icon: icons.users },
+        ]},
+        { label: 'Finance', items: [
           { href: '/reviewer/payments', label: 'Payments & Revenue', icon: icons.creditCard },
+          { href: '/admin/payments', label: 'Payments Overview', icon: icons.creditCard },
+          { href: '/admin/lesson-payments', label: 'Lesson Payments', icon: icons.banknote },
+          { href: '/admin/payouts', label: 'Payouts', icon: icons.banknote },
+          { href: '/admin/refunds', label: 'Refunds', icon: icons.refund },
+          { href: '/admin/disputes', label: 'Disputes & Reliability', icon: icons.shield },
+        ]},
+        { label: 'System', items: [
           { href: '/admin/emails', label: 'Email Management', icon: icons.mail },
         ]},
       ];
@@ -307,14 +308,14 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         <div className={`h-16 flex items-center border-b border-white/10 flex-shrink-0 ${collapsed ? 'justify-center px-3' : 'px-5 justify-between'}`}>
           {collapsed ? (
             sidebarOpen ? (
-              // Mobile overlay — navigate to dashboard as before
+              // Mobile overlay — show icon mark only
               <Link href={getDashboardLink()} onClick={() => setSidebarOpen(false)} title="Go to dashboard" className="flex items-center justify-center hover:opacity-80 transition-opacity">
-                <Image src="/assets/logo/itutor-mark.png" alt="iTutor" width={36} height={36} className="w-9 h-9 object-contain" />
+                <Image src="/assets/logo/itutor-mark.png" alt="iTutor" width={32} height={32} className="h-8 w-8 object-contain" />
               </Link>
             ) : (
-              // Desktop — click logo to expand sidebar
+              // Desktop collapsed — show icon mark, click to expand
               <button onClick={toggleCollapsed} title="Expand sidebar" className="flex items-center justify-center hover:opacity-80 transition-opacity">
-                <Image src="/assets/logo/itutor-mark.png" alt="iTutor" width={36} height={36} className="w-9 h-9 object-contain" />
+                <Image src="/assets/logo/itutor-mark.png" alt="iTutor" width={32} height={32} className="h-8 w-8 object-contain" />
               </button>
             )
           ) : (

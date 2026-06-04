@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { getConversations } from '@/lib/services/notificationService';
-import DashboardLayout from '@/components/DashboardLayout';
+import TutorShell from '@/components/tutor/TutorShell';
 import { getDisplayName } from '@/lib/utils/displayName';
 import type { ConversationWithParticipant } from '@/lib/types/notifications';
 import { getRelativeTime } from '@/lib/utils/calendar';
@@ -81,7 +81,7 @@ export default function TutorMessagesPage() {
   }
 
   return (
-    <DashboardLayout role="tutor" userName={getDisplayName(profile)}>
+    <TutorShell>
       <div className="px-4 py-6 sm:px-0 max-w-5xl mx-auto">
         {/* Header */}
         <div className="mb-6">
@@ -230,6 +230,6 @@ export default function TutorMessagesPage() {
           </div>
         )}
       </div>
-    </DashboardLayout>
+    </TutorShell>
   );
 }

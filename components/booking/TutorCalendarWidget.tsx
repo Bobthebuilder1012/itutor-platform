@@ -18,6 +18,7 @@ import FlexibleTimePicker from './FlexibleTimePicker';
 interface TutorCalendarWidgetProps {
   tutorId: string;
   onSlotSelect: (startAt: string, endAt: string) => void;
+  onSlotClear?: () => void;
   maxWeeksAhead?: number;
   sessionDurations?: { label: string; minutes: number }[];
 }
@@ -25,6 +26,7 @@ interface TutorCalendarWidgetProps {
 export default function TutorCalendarWidget({
   tutorId,
   onSlotSelect,
+  onSlotClear,
   maxWeeksAhead = 4,
   sessionDurations = [
     { label: '30 minutes', minutes: 30 },
@@ -46,8 +48,16 @@ export default function TutorCalendarWidget({
     loadCalendar();
   }, [tutorId, currentWeekStart]);
 
+  function clearSelectedSlot() {
+    setSelectedSlot(null);
+    onSlotClear?.();
+  }
+
   async function loadCalendar() {
     setLoading(true);
+    clearSelectedSlot();
+    setSelectedDate(null);
+    setViewMode('calendar');
     try {
       const rangeStart = toISOString(weekDays[0]);
       const rangeEnd = toISOString(new Date(weekDays[6].getTime() + 24 * 60 * 60 * 1000 - 1));
@@ -139,6 +149,7 @@ export default function TutorCalendarWidget({
 
   // Handle date selection (for flexible booking)
   function handleDateSelect(date: Date) {
+    clearSelectedSlot();
     setSelectedDate(date);
     setViewMode('time-picker');
   }
@@ -222,7 +233,10 @@ export default function TutorCalendarWidget({
       {supportsFlexible && viewMode === 'time-picker' && selectedDate && (
         <div className="mb-4">
           <button
-            onClick={() => setViewMode('calendar')}
+            onClick={() => {
+              clearSelectedSlot();
+              setViewMode('calendar');
+            }}
             className="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-2"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

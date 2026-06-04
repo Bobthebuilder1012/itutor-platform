@@ -7,5 +7,5 @@ interface PageProps {
 }
 
 export default async function TutorSessionDetailPage({ params }: PageProps) {
-  redirect('/tutor/dashboard');
+  redirect('/tutor/sessions');
 }

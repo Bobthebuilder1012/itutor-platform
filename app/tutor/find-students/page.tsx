@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
-import DashboardLayout from '@/components/DashboardLayout';
+import TutorShell from '@/components/tutor/TutorShell';
 import SubjectMultiSelect from '@/components/SubjectMultiSelect';
 import { getDisplayName } from '@/lib/utils/displayName';
 import UserAvatar from '@/components/UserAvatar';
@@ -271,7 +271,7 @@ export default function FindStudentsPage() {
   }
 
   return (
-    <DashboardLayout role="tutor" userName={getDisplayName(profile)}>
+    <TutorShell>
       <div className="px-4 py-3 sm:px-0">
         {/* Header */}
         <div className="mb-6">
@@ -501,7 +501,7 @@ export default function FindStudentsPage() {
           </div>
         )}
       </div>
-    </DashboardLayout>
+    </TutorShell>
   );
 }
 

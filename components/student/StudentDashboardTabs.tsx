@@ -79,7 +79,7 @@ export default function StudentDashboardTabs() {
             onClick={() => setTab('groups')}
             className={`rounded-lg px-3 py-2 text-sm ${tab === 'groups' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`}
           >
-            My Lessons
+            My Classes
           </button>
         )}
         <button

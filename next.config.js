@@ -1,18 +1,5 @@
 /** @type {import('next').NextConfig} */
-const path = require('path');
-const os = require('os');
-
-// In development, relocate the build output outside OneDrive to avoid file-lock
-// + symlink issues. Only apply the workaround when the project actually sits
-// inside a OneDrive-synced folder; otherwise use the standard .next directory.
-const projectRoot = __dirname.toLowerCase();
-const insideOneDrive = /[\\/]onedrive(\b|[\\/])/.test(projectRoot);
-const devDistDir = insideOneDrive
-  ? path.join(os.homedir(), '.itutor-next', 'build')
-  : '.next';
-
 const nextConfig = {
-    distDir: process.env.NODE_ENV === 'production' ? '.next' : devDistDir,
     // Don't try to prerender API routes
     generateBuildId: async () => {
       return 'build-' + Date.now()
@@ -28,7 +15,11 @@ const nextConfig = {
       minimumCacheTTL: 60, // Cache images for 60 seconds
     },
     // Webpack configuration to handle Firebase
-    webpack: (config, { isServer }) => {
+    webpack: (config, { isServer, dev }) => {
+      // Disable filesystem cache in dev to prevent OneDrive EBUSY/ENOENT errors
+      if (dev) {
+        config.cache = false;
+      }
       // Exclude Firebase from server-side bundle
       if (isServer) {
         config.resolve.alias = {

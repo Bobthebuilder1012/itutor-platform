@@ -37,36 +37,42 @@ export async function GET(request: NextRequest) {
     const tutorSearch = searchParams.get('tutor');
     const status = searchParams.get('status');
 
-    // Fetch sessions with student and tutor profile information
+    // Fetch sessions with student and tutor profile information.
+    // NOTE: the legacy `session_date` and `subject_id` columns no longer exist
+    // on the sessions table. Use `scheduled_start_at` and pull the subject from
+    // the parent booking via `booking_id`.
+    // payout_amount_ttd is the canonical column (mig 018 / 129). The legacy
+    // tutor_payout_ttd from mig 020 is still on the table but nothing writes
+    // to it any more, so summing it gave $0 in the totals card.
     let query = supabase
       .from('sessions')
       .select(`
         id,
+        booking_id,
         student_id,
         tutor_id,
-        subject_id,
-        session_date,
+        scheduled_start_at,
         duration_minutes,
         charge_amount_ttd,
         platform_fee_ttd,
+        payout_amount_ttd,
         tutor_payout_ttd,
         status,
         payment_status,
         created_at
       `)
-      .order('session_date', { ascending: false });
+      .order('scheduled_start_at', { ascending: false });
 
-    // Apply filters
     if (status && status !== 'all') {
       query = query.eq('status', status);
     }
 
     if (startDate) {
-      query = query.gte('session_date', startDate);
+      query = query.gte('scheduled_start_at', startDate);
     }
 
     if (endDate) {
-      query = query.lte('session_date', endDate);
+      query = query.lte('scheduled_start_at', endDate);
     }
 
     const { data: sessions, error } = await query;
@@ -92,40 +98,60 @@ export async function GET(request: NextRequest) {
     const studentIds = unique(
       (sessions ?? []).map(s => s.student_id).filter(Boolean)
     );
-    
+
     const tutorIds = unique(
       (sessions ?? []).map(s => s.tutor_id).filter(Boolean)
     );
-    
-    const subjectIds = unique(
-      (sessions ?? []).map(s => s.subject_id).filter(Boolean)
+
+    const bookingIds = unique(
+      (sessions ?? []).map(s => s.booking_id).filter(Boolean)
     );
 
-    // Only fetch if there are IDs to fetch
+    // Subject lives on bookings, not sessions — fetch the bookings first to
+    // get the subject_id, then resolve subject labels.
+    const bookingsData = bookingIds.length > 0
+      ? await supabase.from('bookings').select('id, subject_id').in('id', bookingIds)
+      : { data: [], error: null };
+    const bookingSubjectMap = new Map(
+      (bookingsData.data ?? []).map((b: any) => [b.id, b.subject_id])
+    );
+    const subjectIds = unique(
+      Array.from(bookingSubjectMap.values()).filter(Boolean) as string[]
+    );
+
     const [studentsData, tutorsData, subjectsData] = await Promise.all([
-      studentIds.length > 0 
+      studentIds.length > 0
         ? supabase.from('profiles').select('id, full_name, email, school, country').in('id', studentIds)
         : Promise.resolve({ data: [], error: null }),
       tutorIds.length > 0
         ? supabase.from('profiles').select('id, full_name, email').in('id', tutorIds)
         : Promise.resolve({ data: [], error: null }),
       subjectIds.length > 0
-        ? supabase.from('subjects').select('id, label').in('id', subjectIds)
+        ? supabase.from('subjects').select('id, label, name').in('id', subjectIds)
         : Promise.resolve({ data: [], error: null }),
     ]);
 
-    // Create lookup maps
-    const studentsMap = new Map(studentsData.data?.map(s => [s.id, s]) || []);
-    const tutorsMap = new Map(tutorsData.data?.map(t => [t.id, t]) || []);
-    const subjectsMap = new Map(subjectsData.data?.map(s => [s.id, s]) || []);
+    const studentsMap = new Map(studentsData.data?.map((s: any) => [s.id, s]) || []);
+    const tutorsMap = new Map(tutorsData.data?.map((t: any) => [t.id, t]) || []);
+    const subjectsMap = new Map(subjectsData.data?.map((s: any) => [s.id, s]) || []);
 
-    // Enrich sessions with related data
-    const enrichedSessions = sessions?.map(session => ({
-      ...session,
-      student: studentsMap.get(session.student_id) || null,
-      tutor: tutorsMap.get(session.tutor_id) || null,
-      subject: subjectsMap.get(session.subject_id) || null,
-    })) || [];
+    // Map sessions → response shape expected by the UI. The page currently
+    // reads `session_date`, so we expose `scheduled_start_at` under that key.
+    const enrichedSessions = (sessions ?? []).map((session: any) => {
+      const subjectId = bookingSubjectMap.get(session.booking_id) ?? null;
+      const subjectRow: any = subjectId ? subjectsMap.get(subjectId) || null : null;
+      return {
+        ...session,
+        session_date: session.scheduled_start_at,
+        tutor_payout_ttd:
+          session.payout_amount_ttd ?? session.tutor_payout_ttd ?? 0,
+        student: studentsMap.get(session.student_id) || null,
+        tutor: tutorsMap.get(session.tutor_id) || null,
+        subject: subjectRow
+          ? { ...subjectRow, label: subjectRow.label || subjectRow.name }
+          : null,
+      };
+    });
 
     // Apply client-side filters for school, student, and tutor
     let filteredSessions = enrichedSessions;

@@ -47,7 +47,10 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
   const [recurrenceDays, setRecurrenceDays] = useState<DayOfWeek[]>([]);
   const [startTime, setStartTime] = useState('09:00');
   const [durationMinutes, setDurationMinutes] = useState(60);
+  const [customDuration, setCustomDuration] = useState('');
   const [sessionDate, setSessionDate] = useState(new Date().toISOString().slice(0, 10));
+
+  const effectiveDuration = durationMinutes === -1 ? (parseInt(customDuration) || 0) : durationMinutes;
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -169,7 +172,7 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
         recurrence_type: recurrenceType,
         recurrence_days: recurrenceType === 'weekly' ? recurrenceDays : [],
         start_time: startTime,
-        duration_minutes: durationMinutes,
+        duration_minutes: effectiveDuration,
         starts_on: recurrenceType === 'none' ? sessionDate : today,
         timezone_offset: new Date().getTimezoneOffset(),
       };
@@ -266,6 +269,7 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
                   <label className="block text-sm font-medium text-gray-700 mb-1">Form level</label>
                   <select value={form.form_level ?? 'FORM_4'} onChange={(e) => setForm({ ...form, form_level: e.target.value as any })}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                    <option value="SEA">SEA</option>
                     <option value="FORM_1">Form 1</option><option value="FORM_2">Form 2</option><option value="FORM_3">Form 3</option>
                     <option value="FORM_4">Form 4</option><option value="FORM_5">Form 5</option><option value="CAPE">CAPE</option>
                   </select>
@@ -280,7 +284,10 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Recurrence</label>
                   <div className="flex gap-2">
                     {(['none', 'weekly', 'daily'] as RecurrenceType[]).map((rt) => (
-                      <button key={rt} type="button" onClick={() => setRecurrenceType(rt)}
+                      <button key={rt} type="button" onClick={() => {
+                        setRecurrenceType(rt);
+                        if (rt !== 'none' && durationMinutes === -1) { setDurationMinutes(60); setCustomDuration(''); }
+                      }}
                         className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors capitalize ${recurrenceType === rt ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-400'}`}>
                         {rt === 'none' ? 'One-Time' : rt}
                       </button>
@@ -318,11 +325,33 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
                       className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Duration (min)</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Duration</label>
                     <select value={durationMinutes} onChange={(e) => setDurationMinutes(parseInt(e.target.value))}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                      <option value={30}>30</option><option value={60}>60</option><option value={90}>90</option><option value={120}>120</option>
+                      <option value={30}>30 min</option>
+                      <option value={45}>45 min</option>
+                      <option value={60}>1 hr</option>
+                      <option value={90}>1 hr 30 min</option>
+                      <option value={120}>2 hrs</option>
+                      <option value={150}>2 hrs 30 min</option>
+                      <option value={180}>3 hrs</option>
+                      <option value={210}>3 hrs 30 min</option>
+                      <option value={240}>4 hrs</option>
+                      <option value={270}>4 hrs 30 min</option>
+                      <option value={300}>5 hrs</option>
+                      {recurrenceType === 'none' && <option value={-1}>Custom</option>}
                     </select>
+                    {durationMinutes === -1 && recurrenceType === 'none' && (
+                      <input
+                        type="number"
+                        min={1}
+                        max={600}
+                        placeholder="Enter minutes"
+                        value={customDuration}
+                        onChange={(e) => setCustomDuration(e.target.value)}
+                        className="mt-2 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                    )}
                   </div>
                 </div>
 
@@ -334,7 +363,7 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
                   </p>
                   <div className="text-sm text-gray-900 font-medium">{form.name || 'Your class title'}</div>
                   <div className="text-xs text-gray-500 mt-1">
-                    {formatTime12(startTime)} – {computeEndTime(startTime, durationMinutes)} · {durationMinutes} min
+                    {formatTime12(startTime)} – {computeEndTime(startTime, effectiveDuration)} · {effectiveDuration} min
                   </div>
                   {recurrenceType === 'weekly' && recurrenceDays.length > 0 && (
                     <div className="text-xs text-gray-500 mt-0.5">Every {activeDayLabels}</div>
@@ -376,7 +405,7 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
                     <p className="text-sm font-semibold text-gray-900">
                       {recurrenceType === 'weekly' ? `Weekly · ${activeDayLabels || '—'}` : recurrenceType === 'daily' ? 'Daily' : `One-time · ${sessionDate}`}
                     </p>
-                    <p className="text-sm text-gray-600">{formatTime12(startTime)} – {computeEndTime(startTime, durationMinutes)} · {durationMinutes} min</p>
+                    <p className="text-sm text-gray-600">{formatTime12(startTime)} – {computeEndTime(startTime, effectiveDuration)} · {effectiveDuration} min</p>
                   </div>
                   <button type="button" onClick={() => setStep(2)} className="text-sm font-semibold flex-shrink-0" style={{ color: '#199356', background: 'none', border: 'none', cursor: 'pointer' }}>Edit</button>
                 </div>

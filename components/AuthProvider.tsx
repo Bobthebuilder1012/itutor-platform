@@ -38,13 +38,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
 
           // User has valid session - check which page they're on
-          const publicPages = ['/login', '/signup', '/forgot-password', '/reset-password'];
+          const publicPages = ['/login', '/forgot-password', '/reset-password'];
           const isPublicAuthPage = publicPages.includes(pathname) || pathname.startsWith('/verify-');
           const isResetPasswordPage = pathname === '/reset-password';
+          // Never interrupt the signup or complete-role flows — they manage their own navigation
+          const isSignupFlow = pathname.startsWith('/signup');
           
           // Keep users on reset-password so they can complete recovery flow.
-          // Supabase sets a temporary session for recovery links, which should not trigger a dashboard redirect.
-          if (isResetPasswordPage) {
+          if (isResetPasswordPage || isSignupFlow) {
             setLoading(false);
             return;
           }
@@ -69,7 +70,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 router.replace('/student/dashboard');
                 return;
               } else if (profile.role === 'parent') {
-                router.replace('/parent/dashboard');
+                // Parent accounts not yet live — let them stay on home/public pages
+                // The middleware handles /parent/* routes. No forced redirect here.
+                setLoading(false);
                 return;
               }
             }

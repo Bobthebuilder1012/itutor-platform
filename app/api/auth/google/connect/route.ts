@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { resolveGoogleRedirectUri } from '@/lib/auth/resolveGoogleRedirectUri';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,25 +42,25 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
   }
 
-  // Validate required environment variables (trim to remove any whitespace/newlines)
   const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
-  const redirectUri = process.env.GOOGLE_REDIRECT_URI?.trim();
+  const redirectUri = resolveGoogleRedirectUri(request);
 
   if (!clientId || !redirectUri) {
-    console.error('❌ Missing Google OAuth environment variables:', {
+    console.error('❌ Missing Google OAuth configuration:', {
       hasClientId: !!clientId,
-      hasRedirectUri: !!redirectUri
+      hasRedirectUri: !!redirectUri,
     });
-    return NextResponse.json({ 
+    return NextResponse.json({
       error: 'Server configuration error. Please contact support.',
       details: 'Missing Google OAuth credentials',
-      missing: {
-        clientId: !clientId,
-        redirectUri: !redirectUri
-      },
-      debug: true
+      missing: { clientId: !clientId, redirectUri: !redirectUri },
+      debug: true,
     }, { status: 500 });
   }
+
+  const from = new URL(request.url).searchParams.get('from') || '';
+  // State = "userId|returnPath" — pipe is safe since UUIDs don't contain it
+  const state = from ? `${user.id}|${from}` : user.id;
 
   // Build OAuth URL
   const params = new URLSearchParams({
@@ -69,7 +70,7 @@ export async function GET(request: Request) {
     scope: 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/userinfo.email',
     access_type: 'offline',
     prompt: 'consent',
-    state: user.id // Pass user ID to callback
+    state,
   });
 
   const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;

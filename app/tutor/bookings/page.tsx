@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { getTutorBookings } from '@/lib/services/bookingService';
 import { supabase } from '@/lib/supabase/client';
-import DashboardLayout from '@/components/DashboardLayout';
+import TutorShell from '@/components/tutor/TutorShell';
 import { getDisplayName } from '@/lib/utils/displayName';
 import { Booking, BookingStatus, BookingWithDetails } from '@/lib/types/booking';
 import { formatDateTime, getRelativeTime } from '@/lib/utils/calendar';
@@ -123,7 +123,7 @@ export default function TutorBookingsPage() {
   const filteredBookings = bookings.filter(booking => {
     if (activeTab === 'all') return true;
     if (activeTab === 'pending') {
-      return booking.status === 'PENDING' || booking.status === 'COUNTER_PROPOSED';
+      return booking.status === 'PENDING';
     }
     if (activeTab === 'confirmed') {
       return booking.status === 'CONFIRMED' && !isBookingPast(booking);
@@ -142,7 +142,7 @@ export default function TutorBookingsPage() {
     { 
       key: 'pending', 
       label: 'Pending', 
-      count: bookings.filter(b => b.status === 'PENDING' || b.status === 'COUNTER_PROPOSED').length,
+      count: bookings.filter(b => b.status === 'PENDING').length,
       badge: true
     },
     { key: 'confirmed', label: 'Confirmed', count: bookings.filter(b => b.status === 'CONFIRMED' && !isBookingPast(b)).length },
@@ -158,10 +158,10 @@ export default function TutorBookingsPage() {
     );
   }
 
-  const pendingCount = bookings.filter(b => b.status === 'PENDING' || b.status === 'COUNTER_PROPOSED').length;
+  const pendingCount = bookings.filter(b => b.status === 'PENDING').length;
 
   return (
-    <DashboardLayout role="tutor" userName={getDisplayName(profile)}>
+    <TutorShell>
       <div className="px-4 py-6 sm:px-0 max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-6">
@@ -228,7 +228,7 @@ export default function TutorBookingsPage() {
           <div className="space-y-4">
             {filteredBookings.map(booking => {
               const displayTime = booking.confirmed_start_at || booking.requested_start_at;
-              const isPending = booking.status === 'PENDING' || booking.status === 'COUNTER_PROPOSED';
+              const isPending = booking.status === 'PENDING';
               const now = new Date();
               
               // Determine display status
@@ -378,7 +378,7 @@ export default function TutorBookingsPage() {
           </div>
         )}
       </div>
-    </DashboardLayout>
+    </TutorShell>
   );
 }
 

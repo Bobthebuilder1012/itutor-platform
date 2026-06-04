@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import DashboardLayout from '@/components/DashboardLayout';
+import TutorShell from '@/components/tutor/TutorShell';
 import { useProfile } from '@/lib/hooks/useProfile';
 
 export default function VerificationUploadPage() {
@@ -105,12 +105,11 @@ export default function VerificationUploadPage() {
     );
   }
 
-  const displayName = profile.full_name || profile.email?.split('@')[0] || 'Tutor';
   const hasPendingSubmission = statusData?.has_submission && 
     ['SUBMITTED', 'PROCESSING', 'READY_FOR_REVIEW'].includes(statusData?.request?.status);
 
   return (
-    <DashboardLayout role="tutor" userName={displayName}>
+    <TutorShell>
       <div className="max-w-3xl mx-auto">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">CXC Verification</h1>
         <p className="text-gray-600 mb-8">
@@ -240,7 +239,7 @@ export default function VerificationUploadPage() {
           </div>
         </div>
       </div>
-    </DashboardLayout>
+    </TutorShell>
   );
 }
 

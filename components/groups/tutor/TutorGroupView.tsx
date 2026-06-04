@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { useRouter } from 'next/navigation';
 import Cropper from 'react-easy-crop';
 import type {
@@ -91,10 +92,12 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
     pricing_mode: ((group as any).pricing_mode ?? 'FREE') as 'FREE' | 'PER_SESSION' | 'PER_COURSE',
     price_per_session: (group as any).price_per_session ?? '',
     price_per_course: (group as any).price_per_course ?? '',
+    pricing_model: ((group as any).pricing_model ?? 'FREE') as 'FREE' | 'PER_SESSION' | 'MONTHLY',
+    price_monthly: (group as any).price_monthly?.toString() ?? '',
   });
 
-  const [capEnabled, setCapEnabled] = useState(false);
-  const [capValue, setCapValue] = useState(25);
+  const [capEnabled, setCapEnabled] = useState(!!((group as any).max_students));
+  const [capValue, setCapValue] = useState<number>((group as any).max_students ?? 20);
   const [waitlistEnabled, setWaitlistEnabled] = useState(true);
   const [autoNotify, setAutoNotify] = useState(true);
   const [visibility, setVisibility] = useState<'public' | 'unlisted' | 'private'>('public');
@@ -242,7 +245,11 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
       pricing_mode: ((group as any).pricing_mode ?? 'FREE') as 'FREE' | 'PER_SESSION' | 'PER_COURSE',
       price_per_session: (group as any).price_per_session ?? '',
       price_per_course: (group as any).price_per_course ?? '',
+      pricing_model: ((group as any).pricing_model ?? 'FREE') as 'FREE' | 'PER_SESSION' | 'MONTHLY',
+      price_monthly: (group as any).price_monthly?.toString() ?? '',
     });
+    setCapEnabled(!!((group as any).max_students));
+    setCapValue((group as any).max_students ?? 20);
     setManageError('');
   }, [group]);
 
@@ -279,6 +286,12 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
           manageForm.pricing_mode === 'PER_COURSE' && manageForm.price_per_course !== ''
             ? Number(manageForm.price_per_course)
             : null,
+        pricing_model: manageForm.pricing_model,
+        price_monthly:
+          manageForm.pricing_model === 'MONTHLY' && manageForm.price_monthly !== ''
+            ? Number(manageForm.price_monthly)
+            : null,
+        max_students: capEnabled ? capValue : null,
       };
       const res = await fetch(`/api/groups/${group.id}`, {
         method: 'PATCH',
@@ -306,7 +319,7 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
       const res = await fetch(`/api/groups/${group.id}`, { method: 'DELETE' });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload?.error || 'Failed to delete class');
-      router.push('/lessons');
+      router.push('/tutor/classes');
     } catch (err: any) {
       alert(err?.message || 'Failed to delete class');
       setDeleting(false);
@@ -568,7 +581,7 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mt-0.5">Retention</p>
               </div>
               <div className="relative overflow-hidden py-3.5 px-3 bg-gray-50 rounded-[10px] before:absolute before:top-0 before:left-0 before:right-0 before:h-[3px] before:bg-amber-400 before:rounded-t-[10px]">
-                <p className="text-[20px] font-extrabold leading-tight">${estimatedEarnings.toFixed(0)}</p>
+                <p className="text-[20px] font-extrabold leading-tight">{fmtTTD(estimatedEarnings)}</p>
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mt-0.5">Total Earnings</p>
               </div>
             </div>
@@ -750,15 +763,45 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" /></svg>
                   Monetization
                 </div>
+                {/* Monthly subscription (subscription billing) */}
+                <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                  <div className="flex items-center justify-between mb-1">
+                    <div>
+                      <div className="text-[13px] font-semibold text-emerald-900">Monthly Subscription</div>
+                      <div className="text-[11px] text-emerald-700">Students pay a monthly fee via checkout. Enables the subscribe flow.</div>
+                    </div>
+                    <div
+                      onClick={() => setManageForm((p) => ({ ...p, pricing_model: p.pricing_model === 'MONTHLY' ? 'FREE' : 'MONTHLY' }))}
+                      className={`w-[42px] h-6 rounded-xl cursor-pointer relative transition-colors flex-shrink-0 ${manageForm.pricing_model === 'MONTHLY' ? 'bg-emerald-600' : 'bg-[#d1d5db]'}`}
+                    >
+                      <div className={`absolute top-[3px] w-[18px] h-[18px] rounded-full bg-white shadow-sm transition-all ${manageForm.pricing_model === 'MONTHLY' ? 'left-[21px]' : 'left-[3px]'}`} />
+                    </div>
+                  </div>
+                  {manageForm.pricing_model === 'MONTHLY' && (
+                    <div className="mt-3 flex flex-col gap-1">
+                      <label className="text-[12.5px] font-semibold text-emerald-900">Monthly price (TTD)</label>
+                      <div className="relative max-w-[180px]">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">$</span>
+                        <input
+                          type="number" min={1} step={1}
+                          value={manageForm.price_monthly}
+                          onChange={(e) => setManageForm((p) => ({ ...p, price_monthly: e.target.value }))}
+                          placeholder="e.g. 150"
+                          className={`${inputCls} pl-7`}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-[14px]">
                   <div className="flex flex-col gap-1">
-                    <label className="text-[12.5px] font-semibold">Pricing mode</label>
+                    <label className="text-[12.5px] font-semibold">One-off pricing</label>
                     <select value={manageForm.pricing_mode} onChange={(e) => setManageForm((p) => ({ ...p, pricing_mode: e.target.value as any }))} className={inputCls}>
-                      <option value="FREE">Free</option><option value="PER_SESSION">Per session</option><option value="PER_COURSE">Per month</option>
+                      <option value="FREE">Free</option><option value="PER_SESSION">Per session</option><option value="PER_COURSE">Per course</option>
                     </select>
                   </div>
                   <div className="flex flex-col gap-1"><label className="text-[12.5px] font-semibold">Price per session</label><input type="number" min={0} value={manageForm.price_per_session} onChange={(e) => setManageForm((p) => ({ ...p, price_per_session: e.target.value }))} disabled={manageForm.pricing_mode !== 'PER_SESSION'} className={`${inputCls} disabled:bg-gray-100`} /></div>
-                  <div className="flex flex-col gap-1"><label className="text-[12.5px] font-semibold">Price per month</label><input type="number" min={0} value={manageForm.price_per_course} onChange={(e) => setManageForm((p) => ({ ...p, price_per_course: e.target.value }))} disabled={manageForm.pricing_mode !== 'PER_COURSE'} className={`${inputCls} disabled:bg-gray-100`} /></div>
+                  <div className="flex flex-col gap-1"><label className="text-[12.5px] font-semibold">Price per course</label><input type="number" min={0} value={manageForm.price_per_course} onChange={(e) => setManageForm((p) => ({ ...p, price_per_course: e.target.value }))} disabled={manageForm.pricing_mode !== 'PER_COURSE'} className={`${inputCls} disabled:bg-gray-100`} /></div>
                 </div>
               </div>
             </>

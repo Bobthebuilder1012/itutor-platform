@@ -1,5 +1,7 @@
 'use client';
 
+import { fmtTTD } from '@/lib/utils/formatCurrency';
+
 export type MonthlyRetentionRow = {
   year: number;
   month: number;
@@ -86,7 +88,7 @@ export default function GroupAnalyticsTab({
           <p className="text-[11px] text-slate-500 font-medium mt-1">Retention</p>
         </div>
         <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-4 text-center border-t-[3px] border-t-amber-400">
-          <p className="text-2xl font-extrabold text-emerald-700">${estimatedEarnings.toFixed(0)}</p>
+          <p className="text-2xl font-extrabold text-emerald-700">{fmtTTD(estimatedEarnings)}</p>
           <p className="text-[11px] text-slate-500 font-medium mt-1">Total earnings</p>
         </div>
       </div>

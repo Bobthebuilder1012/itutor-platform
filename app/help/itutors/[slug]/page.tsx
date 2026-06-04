@@ -3,6 +3,7 @@
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { helpArticles } from '@/data/itutorHelpArticles';
+import Footer from '@/components/landing/Footer';
 import ReactMarkdown from 'react-markdown';
 import PublicPageHeader from '@/components/PublicPageHeader';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -118,24 +119,7 @@ export default function HelpArticlePage() {
       </div>
 
       {/* Footer */}
-      <footer className="bg-itutor-black text-itutor-white py-8 mt-16">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <p className="text-itutor-muted">
-            &copy; iTutor. Nora Digital, Ltd.
-          </p>
-          <div className="mt-4 flex justify-center gap-6 text-sm">
-            <Link href="/terms" className="hover:text-itutor-green transition-colors">
-              Terms & Conditions
-            </Link>
-            <Link href="/terms" className="hover:text-itutor-green transition-colors">
-              Privacy Policy
-            </Link>
-            <Link href="/itutors/requirements" className="hover:text-itutor-green transition-colors">
-              iTutor Requirements
-            </Link>
-          </div>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 }

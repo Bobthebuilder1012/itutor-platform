@@ -1,135 +1,167 @@
-import Link from 'next/link';
-import { ChevronRightIcon } from '@heroicons/react/24/outline';
-import FAQAccordion from '@/components/landing/FAQAccordion';
+'use client';
 
-interface FooterProps {
-  role?: 'student' | 'tutor' | 'parent' | 'reviewer' | 'admin' | null;
-}
+import { useState } from 'react';
+import { ChevronDown, Mail } from 'lucide-react';
+import Image from 'next/image';
 
-const offerNav = [
-  { title: 'CSEC Subjects', summary: 'Secondary exams, core & elective subjects', href: '/search' },
-  { title: 'CAPE Subjects', summary: 'Sixth form units & advanced programmes', href: '/search' },
-  { title: 'Exam Preparation', summary: 'Past papers, SBAs & exam strategy', href: '/search' },
-  { title: 'Popular Topics', summary: 'Communities, lessons & study help', href: '/communities' },
+const FacebookIcon = () => (
+  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>
+    <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
+  </svg>
+);
+const InstagramIcon = () => (
+  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <rect width="20" height="20" x="2" y="2" rx="5" ry="5" />
+    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+    <line x1="17.5" x2="17.51" y1="6.5" y2="6.5" />
+  </svg>
+);
+const LinkedinIcon = () => (
+  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>
+    <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z" />
+    <rect width="4" height="12" x="2" y="9" />
+    <circle cx="4" cy="4" r="2" />
+  </svg>
+);
+const TikTokIcon = () => (
+  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>
+    <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5.8 20.1a6.34 6.34 0 0 0 10.86-4.43V8.42a8.16 8.16 0 0 0 4.77 1.52V6.49a4.85 4.85 0 0 1-1.84.2Z" />
+  </svg>
+);
+
+const offers = [
+  'CSEC Subjects',
+  'CAPE Subjects',
+  'SEA Preparation',
+  'Exam Preparation',
+  'Past Papers & SBAs',
 ];
 
-function SocialLinks() {
+const company = [
+  { label: 'About', href: '/about' },
+  { label: 'How it works', href: '/how-it-works' },
+  { label: 'FAQ', href: '/faq' },
+  { label: 'Become a Tutor', href: '/signup?role=tutor' },
+];
+
+const faqs = [
+  { q: 'What is iTutor?', a: 'iTutor is a Caribbean-built platform that connects students with verified 1-on-1 tutors for SEA, CSEC, and CAPE preparation.' },
+  { q: 'Who are the iTutors?', a: 'All tutors are verified Caribbean educators — qualified teachers, top-graded graduates, and subject specialists vetted by our team.' },
+  { q: 'Is iTutor safe for students?', a: 'Yes. Sessions run on Google Meet or Zoom, all tutors are background-checked, and parents can join or review every session.' },
+  { q: 'Is it aligned with CSEC/CAPE?', a: 'Every tutor follows the latest CSEC and CAPE syllabuses, with past-paper practice built into every learning track.' },
+  { q: 'How does booking work?', a: "Browse tutors, pick a time that suits you, and confirm — you'll get a calendar invite with the meeting link instantly." },
+];
+
+function Faq({ q, a }: { q: string; a: string }) {
+  const [open, setOpen] = useState(false);
   return (
-    <div className="flex gap-3">
-      <a
-        href="https://www.facebook.com/share/1E91o2u1yM/"
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label="Facebook"
-        className="flex h-[38px] w-[38px] items-center justify-center rounded-[10px] border border-white/10 text-[#d1d5db] transition-all hover:-translate-y-0.5 hover:border-white/20 hover:bg-[rgba(34,197,94,0.15)]"
-        style={{ background: 'rgba(255,255,255,0.06)' }}
+    <div className="border-b border-white/10">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between py-4 text-left transition-colors hover:text-white"
       >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
-        </svg>
-      </a>
-      <a
-        href="https://www.instagram.com/myitutor?igsh=MXgyNjdrMTR1ampyag%3D%3D&utm_source=qr"
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label="Instagram"
-        className="flex h-[38px] w-[38px] items-center justify-center rounded-[10px] border border-white/10 text-[#d1d5db] transition-all hover:-translate-y-0.5 hover:border-white/20 hover:bg-[rgba(34,197,94,0.15)]"
-        style={{ background: 'rgba(255,255,255,0.06)' }}
-      >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <rect x="2" y="2" width="20" height="20" rx="5" />
-          <circle cx="12" cy="12" r="4" />
-          <circle cx="17.5" cy="6.5" r="1" fill="currentColor" />
-        </svg>
-      </a>
-      <a
-        href="https://www.linkedin.com/company/myitutor/"
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label="LinkedIn"
-        className="flex h-[38px] w-[38px] items-center justify-center rounded-[10px] border border-white/10 text-[#d1d5db] transition-all hover:-translate-y-0.5 hover:border-white/20 hover:bg-[rgba(34,197,94,0.15)]"
-        style={{ background: 'rgba(255,255,255,0.06)' }}
-      >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
-        </svg>
-      </a>
+        <span className="font-medium text-white">{q}</span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-white/60 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      <div className={`grid overflow-hidden text-sm text-white/60 transition-all duration-300 ${open ? 'grid-rows-[1fr] pb-4' : 'grid-rows-[0fr]'}`}>
+        <div className="min-h-0">{a}</div>
+      </div>
     </div>
   );
 }
 
-export default function Footer({ role: _role = null }: FooterProps = {}) {
+const socials = [
+  { Icon: FacebookIcon,  label: 'Facebook',  href: 'https://www.facebook.com/share/18tvYgPa8J/?mibextid=wwXIfr' },
+  { Icon: InstagramIcon, label: 'Instagram', href: 'https://www.instagram.com/itutor.site?igsh=MXgyNjdrMTR1ampyag%3D%3D&utm_source=qr' },
+  { Icon: TikTokIcon,    label: 'TikTok',    href: 'https://www.tiktok.com/@itutor.site?_r=1&_t=ZS-96r391xYFq0' },
+  { Icon: LinkedinIcon,  label: 'LinkedIn',  href: 'https://www.linkedin.com/company/myitutor/' },
+];
+
+export default function Footer() {
   return (
-    <footer
-      className="relative mx-4 mb-4 mt-10 overflow-hidden rounded-[28px] border border-white/[0.08] 2xl:mx-6 2xl:mb-6 2xl:mt-14"
-      style={{
-        background: 'rgba(5,15,10,0.85)',
-        backdropFilter: 'blur(24px) saturate(180%)',
-        WebkitBackdropFilter: 'blur(24px) saturate(180%)',
-      }}
-    >
-      {/* Green glow at top */}
-      <div
-        className="pointer-events-none absolute -top-[150px] left-[20%] h-[400px] w-[400px] rounded-full"
-        style={{ background: 'radial-gradient(circle,rgba(34,197,94,0.15),transparent 70%)' }}
-      />
-
-      <div className="relative z-10 mx-auto max-w-[1280px] px-10 pb-9 pt-[70px] 2xl:px-16 2xl:pb-12 2xl:pt-24">
-        <div className="mb-12 grid grid-cols-1 gap-x-[60px] gap-y-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)] 2xl:mb-20">
-
-          {/* Left: Company */}
-          <div className="flex flex-col">
-            <div>
-              <h3 className="mb-[22px] text-xl font-bold tracking-tight text-white">Company</h3>
-              <div className="flex flex-col gap-0">
-                <Link href="/about" className="block py-[7px] text-[15px] text-[#d1d5db] transition-colors hover:text-[#4ade80]">About</Link>
-                <a href="mailto:support@myitutor.com" className="block py-[7px] text-[15px] text-[#d1d5db] transition-colors hover:text-[#4ade80]">
-                  Contact: support@myitutor.com
-                </a>
-                <Link href="/privacy" className="block py-[7px] text-[15px] text-[#d1d5db] transition-colors hover:text-[#4ade80]">Privacy</Link>
-                <Link href="/terms" className="block py-[7px] text-[15px] text-[#d1d5db] transition-colors hover:text-[#4ade80]">Terms &amp; Conditions</Link>
-              </div>
-            </div>
-            <div className="mt-9 border-t border-white/[0.08] pt-9">
-              <h3 className="mb-[14px] text-xl font-bold tracking-tight text-white">Follow Us</h3>
-              <SocialLinks />
-            </div>
-          </div>
-
-          {/* Centre: Everything We Offer */}
-          <div className="min-w-0 lg:text-center">
-            <h2 className="mb-[22px] text-xl font-bold tracking-tight text-white">Everything We Offer</h2>
-            <nav aria-label="What we offer" className="mx-auto flex max-w-md flex-col lg:max-w-none">
-              {offerNav.map((item) => (
-                <Link
-                  key={item.title}
-                  href={item.href}
-                  className="group flex items-start justify-between gap-2 border-b border-white/[0.08] py-[14px] first:pt-0 transition-all hover:border-[rgba(34,197,94,0.5)] hover:pl-1.5"
+    <footer id="faq" className="bg-black text-white">
+      <div className="mx-auto max-w-7xl px-6 pb-10 pt-20 sm:px-10">
+        <div className="grid gap-12 lg:grid-cols-12">
+          {/* Brand column */}
+          <div className="lg:col-span-4">
+            <Image
+              src="/assets/logo/itutor-logo-new.png"
+              alt="iTutor"
+              width={200}
+              height={52}
+              className="h-12 w-auto object-contain"
+            />
+            <p className="mt-5 max-w-sm text-sm leading-relaxed text-white/60">
+              The Caribbean&apos;s home for verified tutors. Built for SEA, CSEC and CAPE students who want real results.
+            </p>
+            <a
+              href="mailto:support@myitutor.com"
+              className="mt-6 inline-flex items-center gap-2 text-sm text-white/80 hover:text-white transition-colors"
+            >
+              <Mail className="h-4 w-4 text-brand" />
+              support@myitutor.com
+            </a>
+            <div className="mt-6 flex gap-2">
+              {socials.map(({ Icon, label, href }) => (
+                <a
+                  key={label}
+                  href={href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/5 text-white/80 transition-all hover:bg-brand hover:text-white"
+                  aria-label={label}
                 >
-                  <div className="min-w-0 flex-1 text-left">
-                    <span className="block text-[15px] font-semibold text-white transition-colors group-hover:text-[#4ade80]">
-                      {item.title}
-                    </span>
-                    <span className="mt-0.5 block text-[13px] text-[#9ca3af]">{item.summary}</span>
-                  </div>
-                  <span className="mt-0.5 text-[18px] text-[#6b7280] transition-colors group-hover:text-[#4ade80]">›</span>
-                </Link>
+                  <Icon />
+                </a>
               ))}
-            </nav>
+            </div>
           </div>
 
-          {/* Right: FAQ */}
-          <div className="min-w-0">
-            <FAQAccordion embedded />
+          {/* Company */}
+          <div className="lg:col-span-2">
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-white/50">Company</h3>
+            <ul className="mt-5 space-y-3 text-sm">
+              {company.map((c) => (
+                <li key={c.label}>
+                  <a href={c.href} className="text-white/75 transition-colors hover:text-white">
+                    {c.label}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Offers */}
+          <div className="lg:col-span-2">
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-white/50">Programmes</h3>
+            <ul className="mt-5 space-y-3 text-sm">
+              {offers.map((o) => (
+                <li key={o}>
+                  <a href="#" className="text-white/75 transition-colors hover:text-white">
+                    {o}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* FAQ */}
+          <div className="lg:col-span-4">
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-white/50">Frequently Asked</h3>
+            <div className="mt-3">
+              {faqs.map((f) => (
+                <Faq key={f.q} {...f} />
+              ))}
+            </div>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-4 border-t border-white/[0.08] pt-[26px] text-sm text-[#9ca3af]">
-          <div>© iTutor. Nora Digital, Ltd.</div>
-          <div className="flex gap-7">
-            <a href="mailto:support@myitutor.com" className="transition-colors hover:text-white">Help</a>
-            <Link href="/privacy" className="transition-colors hover:text-white">Privacy</Link>
-            <Link href="/terms" className="transition-colors hover:text-white">Terms</Link>
+        <div className="mt-16 flex flex-col items-start justify-between gap-4 border-t border-white/10 pt-6 text-sm text-white/50 sm:flex-row sm:items-center">
+          <p>© {new Date().getFullYear()} iTutor — Astronova Technologies Ltd. All rights reserved.</p>
+          <div className="flex gap-6">
+            <a href="/privacy" className="hover:text-white transition-colors">Privacy</a>
+            <a href="/terms" className="hover:text-white transition-colors">Terms</a>
+            <a href="/help" className="hover:text-white transition-colors">Help</a>
           </div>
         </div>
       </div>

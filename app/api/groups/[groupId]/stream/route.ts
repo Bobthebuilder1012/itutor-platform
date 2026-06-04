@@ -19,7 +19,7 @@ async function ensureGroupAccess(groupId: string, userId: string) {
       .eq('group_id', groupId)
       .eq('user_id', userId)
       .maybeSingle();
-    if (!membership || membership.status !== 'approved') {
+    if (!membership || !['approved', 'active', 'invited'].includes(membership.status)) {
       return { error: 'Forbidden', status: 403 as const };
     }
   }

@@ -33,7 +33,6 @@
     "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
-    "../../../.itutor-next/build/types/**/*.ts",
     ".next/types/**/*.ts"
   ],
   "exclude": [

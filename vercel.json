@@ -5,8 +5,24 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/process-subscriptions",
+      "schedule": "0 12 * * *"
+    },
+    {
       "path": "/api/cron/archive-groups",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/flip-payouts-release-ready",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/escalate-noshow-claims",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/send-onboarding-emails",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

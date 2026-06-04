@@ -278,63 +278,15 @@ function TodayBtn({ onClick, theme = 'dark' }: { onClick: () => void; theme?: 'd
   );
 }
 
-/** Vibrant solid emerald (reference lockup). */
-const ITUTOR_LOGO_GREEN = '#10b981';
-
-/**
- * Dot upper-left + thick pill ~36° CW; sized to align with wordmark cap / ascender band.
- */
-function ITutorMark({ height = 22 }: { height?: number }) {
-  const vbW = 38;
-  const vbH = 24;
-  const width = (height * vbW) / vbH;
-  return (
-    <svg
-      width={width}
-      height={height}
-      viewBox={`0 0 ${vbW} ${vbH}`}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden
-    >
-      <circle cx="10.9" cy="6.55" r="2.8" fill={ITUTOR_LOGO_GREEN} />
-      <rect
-        x="15.5"
-        y="3.45"
-        width="7.15"
-        height="18"
-        rx="3.575"
-        fill={ITUTOR_LOGO_GREEN}
-        transform="rotate(36 19.075 12.45)"
-      />
-    </svg>
-  );
-}
-
 function ITutorLogo({ theme = 'dark' }: { theme?: 'dark' | 'light' }) {
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        fontSize: 18,
-        columnGap: '0.04em',
-      }}
-    >
-      <ITutorMark height={22} />
-      <span
-        style={{
-          fontFamily: "'Oswald', system-ui, sans-serif",
-          fontWeight: 500,
-          fontSize: 'inherit',
-          lineHeight: 1,
-          letterSpacing: '-0.035em',
-          color: theme === 'dark' ? '#ffffff' : '#052e1d',
-          textTransform: 'lowercase',
-        }}
-      >
-        itutor
-      </span>
+    <div style={{ display: 'flex', alignItems: 'center' }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={theme === 'dark' ? '/assets/logo/itutor-logo-dark.png' : '/assets/logo/itutor-logo-light.png'}
+        alt="iTutor"
+        style={{ height: 22, width: 'auto', objectFit: 'contain' }}
+      />
     </div>
   );
 }

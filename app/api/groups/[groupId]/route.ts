@@ -39,27 +39,35 @@ export async function GET(_req: NextRequest, { params }: Params) {
         id, name, description, tutor_id, subject, pricing, created_at, archived_at,
         difficulty, goals, price_per_session, price_monthly, pricing_model, recurrence_type, recurrence_rule,
         form_level, topic, session_length_minutes, session_frequency, price_per_course, pricing_mode, availability_window, media_gallery,
-        timezone, max_students, cover_image, header_image, content_blocks, status, updated_at, whatsapp_link,
+        timezone, max_students, cover_image, header_image, content_blocks, status, updated_at,
+        whatsapp_url, google_classroom_link, primary_channel, meeting_link,
+        require_join_requests, auto_suspend_missed_payment, grace_period_days,
+        visibility, parent_feedback_mode, parent_feedback_price, member_service_fee,
         tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, response_time_minutes),
-        group_members(id, user_id, status, profile:profiles(id, full_name, avatar_url))
+        group_members(id, user_id, status, profile:profiles!group_members_user_id_fkey(id, full_name, avatar_url))
       `,
       `
         id, name, description, tutor_id, subject, pricing, created_at, archived_at,
         form_level, topic, session_length_minutes, session_frequency, price_per_course, pricing_mode, availability_window,
-        cover_image, header_image, whatsapp_link,
+        max_students, price_per_session, price_monthly, cover_image, whatsapp_url, whatsapp_link,
+        google_classroom_link, primary_channel, meeting_link, schedule_display, schedule_data,
+        require_join_requests, auto_suspend_missed_payment, grace_period_days,
+        visibility, parent_feedback_mode, parent_feedback_price, feedback_mode, status,
         tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url),
-        group_members(id, user_id, status, profile:profiles(id, full_name, avatar_url))
+        group_members(id, user_id, status, profile:profiles!group_members_user_id_fkey(id, full_name, avatar_url))
       `,
       `
         id, name, description, tutor_id, subject, pricing, created_at,
-        cover_image, header_image, whatsapp_link,
+        max_students, price_per_session, price_monthly, cover_image, whatsapp_url, whatsapp_link,
+        google_classroom_link, schedule_display, schedule_data, require_join_requests, visibility, status,
         tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url),
-        group_members(id, user_id, status, profile:profiles(id, full_name, avatar_url))
+        group_members(id, user_id, status, profile:profiles!group_members_user_id_fkey(id, full_name, avatar_url))
       `,
       `
         id, name, description, tutor_id, subject, pricing, created_at,
+        max_students, price_per_session, price_monthly, require_join_requests, visibility,
         tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url),
-        group_members(id, user_id, status, profile:profiles(id, full_name, avatar_url))
+        group_members(id, user_id, status, profile:profiles!group_members_user_id_fkey(id, full_name, avatar_url))
       `,
     ];
 
@@ -231,6 +239,28 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const averageRating =
       ratings.length === 0 ? 0 : Math.round((ratings.reduce((acc, n) => acc + n, 0) / ratings.length) * 100) / 100;
 
+    // Fetch active promotion for this group
+    let activePromotion: any = null;
+    try {
+      const { data: promos } = await service
+        .from('group_promotions')
+        .select('id, kind, discount, student_cap, duration_days, created_at')
+        .eq('group_id', groupId)
+        .eq('active', true)
+        .order('created_at', { ascending: false });
+
+      const now = new Date();
+      for (const promo of promos ?? []) {
+        if (promo.kind === 'open-ended') { activePromotion = promo; break; }
+        if (promo.kind === 'early-bird' && promo.student_cap && approvedMembers.length < promo.student_cap) { activePromotion = promo; break; }
+        if (promo.kind === 'time-limited' && promo.duration_days) {
+          const exp = new Date(promo.created_at);
+          exp.setDate(exp.getDate() + promo.duration_days);
+          if (now < exp) { activePromotion = promo; break; }
+        }
+      }
+    } catch { /* non-fatal */ }
+
     let otherGroups: any[] = [];
     let otherGroupsResult = await service
       .from('groups')
@@ -281,6 +311,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
         reviews,
         other_classes_by_tutor: otherGroups,
         key_info: keyInfo,
+        active_promotion: activePromotion,
       },
       data: {
         group: {
@@ -294,6 +325,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
           next_occurrence: nextOccurrence,
           upcoming_sessions: upcomingSessions,
           enrollment_count: approvedMembers.length,
+          active_promotion: activePromotion,
           average_rating: averageRating,
           reviews,
           other_classes_by_tutor: otherGroups,
@@ -332,6 +364,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const updates: Record<string, any> = {};
     if (body.name !== undefined) updates.name = body.name.trim();
     if (body.description !== undefined) updates.description = body.description;
+    if ((body as any).visibility !== undefined) updates.visibility = (body as any).visibility;
+    if ((body as any).primary_channel !== undefined) updates.primary_channel = (body as any).primary_channel;
+    if ((body as any).member_service_fee !== undefined) updates.member_service_fee = (body as any).member_service_fee;
+    if ((body as any).parent_feedback_price !== undefined) updates.parent_feedback_price = (body as any).parent_feedback_price;
     if (body.subject !== undefined) updates.subject = body.subject;
     if ((body as any).topic !== undefined) updates.topic = (body as any).topic;
     if (body.difficulty !== undefined) updates.difficulty = body.difficulty;
@@ -345,12 +381,22 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (body.pricing_model !== undefined) updates.pricing_model = body.pricing_model;
     if ((body as any).pricing_mode !== undefined) updates.pricing_mode = (body as any).pricing_mode;
     if ((body as any).availability_window !== undefined) updates.availability_window = (body as any).availability_window;
-    if ((body as any).whatsapp_link !== undefined) updates.whatsapp_link = (body as any).whatsapp_link;
+    if ((body as any).whatsapp_url !== undefined) updates.whatsapp_url = (body as any).whatsapp_url;
+    if ((body as any).whatsapp_link !== undefined) updates.whatsapp_url = (body as any).whatsapp_link;
+    if ((body as any).google_classroom_link !== undefined) updates.google_classroom_link = (body as any).google_classroom_link;
+    if ((body as any).meeting_link !== undefined) updates.meeting_link = (body as any).meeting_link;
+    if ((body as any).require_join_requests !== undefined) updates.require_join_requests = (body as any).require_join_requests;
+    if ((body as any).auto_suspend_missed_payment !== undefined) updates.auto_suspend_missed_payment = (body as any).auto_suspend_missed_payment;
+    if ((body as any).grace_period_days !== undefined) updates.grace_period_days = (body as any).grace_period_days;
+    if ((body as any).parent_feedback_mode !== undefined) updates.parent_feedback_mode = (body as any).parent_feedback_mode;
+    if ((body as any).feedback_mode !== undefined) updates.parent_feedback_mode = (body as any).feedback_mode;
     if (body.recurrence_type !== undefined) updates.recurrence_type = body.recurrence_type;
     if (body.recurrence_rule !== undefined) updates.recurrence_rule = body.recurrence_rule;
     if (body.timezone !== undefined) updates.timezone = body.timezone;
     if (body.max_students !== undefined) updates.max_students = body.max_students;
     if (body.cover_image !== undefined) updates.cover_image = body.cover_image;
+    if ((body as any).schedule_display !== undefined) updates.schedule_display = (body as any).schedule_display;
+    if ((body as any).schedule_data !== undefined) updates.schedule_data = (body as any).schedule_data;
     if (body.header_image !== undefined) updates.header_image = body.header_image;
     if (body.content_blocks !== undefined) updates.content_blocks = body.content_blocks;
     if (body.status !== undefined) updates.status = body.status;
@@ -375,7 +421,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       ({ data: group, error } = await runUpdate(withoutUpdatedAt));
     }
 
-    // Attempt 3: strip v2/group-marketplace metadata columns when missing
+    // Attempt 3: strip v2/group-marketplace metadata columns + newer settings columns when missing
     const {
       topic: _ignoredTopic,
       form_level: _ignoredFormLevel,
@@ -390,13 +436,27 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       pricing_mode: _ignoredPricingMode,
       availability_window: _ignoredAvailabilityWindow,
       header_image: _ignoredHeaderImage,
-      whatsapp_link: _ignoredWhatsappLink,
+      whatsapp_url: _ignoredWhatsappUrl,
       recurrence_type: _ignoredRecurrenceType,
       recurrence_rule: _ignoredRecurrenceRule,
       timezone: _ignoredTimezone,
       max_students: _ignoredMaxStudents,
       content_blocks: _ignoredContentBlocks,
       status: _ignoredStatus,
+      // migration 128
+      require_join_requests: _ignoredRequireJoinRequests,
+      auto_suspend_missed_payment: _ignoredAutoSuspend,
+      grace_period_days: _ignoredGracePeriodDays,
+      google_classroom_link: _ignoredGoogleClassroomLink,
+      feedback_mode: _ignoredFeedbackMode,
+      // migration 129
+      bio: _ignoredBio,
+      member_service_fee: _ignoredMemberServiceFee,
+      visibility: _ignoredVisibility,
+      primary_channel: _ignoredPrimaryChannel,
+      parent_feedback_price: _ignoredParentFeedbackPrice,
+      // migration 131
+      meeting_link: _ignoredMeetingLink,
       ...legacyCompatibleUpdates
     } = withoutUpdatedAt;
     if (error && isSchemaMismatch(error)) {
@@ -409,14 +469,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       description: legacyDescription,
       subject: legacySubject,
       cover_image: legacyCoverImage,
-      whatsapp_link: legacyWhatsappLink,
+      whatsapp_url: legacyWhatsappUrl,
     } = withoutUpdatedAt;
     const oldestCompatibleUpdates: Record<string, any> = {};
     if (legacyName !== undefined) oldestCompatibleUpdates.name = legacyName;
     if (legacyDescription !== undefined) oldestCompatibleUpdates.description = legacyDescription;
     if (legacySubject !== undefined) oldestCompatibleUpdates.subject = legacySubject;
     if (legacyCoverImage !== undefined) oldestCompatibleUpdates.cover_image = legacyCoverImage;
-    if (legacyWhatsappLink !== undefined) oldestCompatibleUpdates.whatsapp_link = legacyWhatsappLink;
+    if (legacyWhatsappUrl !== undefined) oldestCompatibleUpdates.whatsapp_url = legacyWhatsappUrl;
 
     if (error && isSchemaMismatch(error)) {
       ({ data: group, error } = await runUpdate(oldestCompatibleUpdates));
@@ -458,6 +518,25 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
     if (existingError) throw existingError;
     if (existing.tutor_id !== user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    // Guard: cannot delete a group with active subscriptions
+    const nowIso = new Date().toISOString();
+    const { count: activeSubCount } = await service
+      .from('group_enrollments')
+      .select('id', { count: 'exact', head: true })
+      .eq('group_id', groupId)
+      .eq('enrollment_type', 'SUBSCRIPTION')
+      .or(
+        `status.in.(ACTIVE,GRACE,SUSPENDED),` +
+        `and(status.eq.PENDING_PAYMENT,pending_payment_expires_at.gt.${nowIso})`
+      );
+
+    if ((activeSubCount ?? 0) > 0) {
+      return NextResponse.json(
+        { error: 'Cannot delete a group with active subscriptions.', active_subscriptions: activeSubCount },
+        { status: 409 }
+      );
     }
 
     const deleteByEq = async (table: string, column: string, value: string) => {

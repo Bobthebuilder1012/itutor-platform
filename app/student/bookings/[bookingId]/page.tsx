@@ -7,23 +7,20 @@ import {
   getBooking, 
   getBookingMessages, 
   addBookingMessage,
-  studentAcceptCounter,
-  studentCancelBooking,
   subscribeToBooking,
   subscribeToBookingMessages
 } from '@/lib/services/bookingService';
 import { supabase } from '@/lib/supabase/client';
-import DashboardLayout from '@/components/DashboardLayout';
 import { getDisplayName } from '@/lib/utils/displayName';
-import { Booking, BookingMessage, BookingMessageWithSender } from '@/lib/types/booking';
+import { Booking, BookingMessage, BookingMessageWithSender, BookingStatus } from '@/lib/types/booking';
 import { formatDateTime, formatTimeRange, getRelativeTime } from '@/lib/utils/calendar';
 import { getBookingStatusColor, getBookingStatusLabel } from '@/lib/types/booking';
 import SessionJoinButton from '@/components/sessions/SessionJoinButton';
-import MarkNoShowButtonEnhanced from '@/components/sessions/MarkNoShowButtonEnhanced';
+import ReportNoShowFlow from '@/components/sessions/ReportNoShowFlow';
 import { Session } from '@/lib/types/sessions';
 import { isPaidClassesEnabled } from '@/lib/featureFlags/paidClasses';
 import StudentSessionAttendance, { type SessionAttendanceState } from '@/components/student/StudentSessionAttendance';
-import { BOOKING_CANCELLATION_REASON_LABELS } from '@/lib/constants/bookingCancellationReasons';
+import CancelBookingModal from '@/components/cancellation/CancelBookingModal';
 
 export default function BookingThreadPage() {
   const { profile, loading: profileLoading } = useProfile();
@@ -42,8 +39,7 @@ export default function BookingThreadPage() {
   const [sending, setSending] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
-  const [cancelReason, setCancelReason] = useState('');
-  
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -198,60 +194,6 @@ export default function BookingThreadPage() {
     }
   }
 
-  async function handleAcceptCounter(messageId: string) {
-    if (!confirm('Accept this proposed time? This will confirm your booking.')) return;
-
-    setActionLoading(true);
-    try {
-      await studentAcceptCounter(bookingId, messageId);
-      
-      // Automatically create session for confirmed booking
-      try {
-        const response = await fetch('/api/sessions/create-for-booking', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ booking_id: bookingId })
-        });
-        
-        if (!response.ok) {
-          console.error('Failed to create session:', await response.text());
-          // Don't fail the confirmation if session creation fails - user can still use booking
-        }
-      } catch (sessionError) {
-        console.error('Error creating session:', sessionError);
-        // Continue - session can be created later
-      }
-      
-      alert('Counter-offer accepted! Your booking is confirmed.');
-      await loadBookingData();
-    } catch (error: any) {
-      console.error('Error accepting counter:', error);
-      alert(error.message || 'Failed to accept counter-offer');
-    } finally {
-      setActionLoading(false);
-    }
-  }
-
-  async function submitCancelBooking() {
-    if (!cancelReason) {
-      alert('Please select a reason for cancelling.');
-      return;
-    }
-
-    setActionLoading(true);
-    try {
-      await studentCancelBooking(bookingId, cancelReason);
-      alert('Booking cancelled');
-      setCancelOpen(false);
-      setCancelReason('');
-      await loadBookingData();
-    } catch (error) {
-      console.error('Error cancelling booking:', error);
-      alert('Failed to cancel booking');
-    } finally {
-      setActionLoading(false);
-    }
-  }
 
   if (profileLoading || loading || !profile || !booking) {
     return (
@@ -264,11 +206,21 @@ export default function BookingThreadPage() {
   const displayStartTime = booking.confirmed_start_at || booking.requested_start_at;
   const displayEndTime = booking.confirmed_end_at || booking.requested_end_at;
   const hasSessionStarted = displayStartTime ? new Date(displayStartTime) <= new Date() : false;
-  const canCancel = (booking.status === 'PENDING' || booking.status === 'COUNTER_PROPOSED' || booking.status === 'CONFIRMED') && !hasSessionStarted;
+
+  // If the linked session was cancelled, treat the booking as cancelled
+  // even if bookings.status wasn't updated (e.g. tutor cancelled via message).
+  const effectiveStatus: BookingStatus =
+    session?.status === 'CANCELLED' && booking.status === 'CONFIRMED'
+      ? 'CANCELLED'
+      : booking.status;
+
+  const canCancel = (booking.status === 'PENDING' || booking.status === 'CONFIRMED') &&
+    effectiveStatus !== 'CANCELLED' &&
+    !hasSessionStarted;
   const paidClassesEnabled = isPaidClassesEnabled();
 
   return (
-    <DashboardLayout role="student" userName={getDisplayName(profile)}>
+    
       <div className="px-4 py-6 sm:px-0 max-w-4xl mx-auto">
         {/* Back Button */}
         <button
@@ -290,9 +242,9 @@ export default function BookingThreadPage() {
             </div>
             <span className={`
               px-3 py-1.5 rounded-lg text-sm font-semibold border
-              ${getBookingStatusColor(booking.status)}
+              ${getBookingStatusColor(effectiveStatus)}
             `}>
-              {getBookingStatusLabel(booking.status)}
+              {getBookingStatusLabel(effectiveStatus)}
             </span>
           </div>
 
@@ -359,10 +311,7 @@ export default function BookingThreadPage() {
             <div className="mt-4 pt-4 border-t border-blue-200">
               <button
                 type="button"
-                onClick={() => {
-                  setCancelReason('');
-                  setCancelOpen(true);
-                }}
+                onClick={() => setCancelOpen(true)}
                 disabled={actionLoading}
                 className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium text-sm transition disabled:opacity-50"
               >
@@ -372,61 +321,22 @@ export default function BookingThreadPage() {
           )}
         </div>
 
-        {/* Session Join Button */}
-        {cancelOpen && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-            onClick={() => !actionLoading && setCancelOpen(false)}
-          >
-            <div
-              className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl border border-gray-200"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h3 className="text-lg font-bold text-gray-900 mb-2">Cancel booking</h3>
-              <p className="text-sm text-gray-600 mb-4">Select a reason. Your tutor will be notified.</p>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Reason</label>
-              <select
-                value={cancelReason}
-                onChange={(e) => setCancelReason(e.target.value)}
-                className="w-full mb-4 rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
-              >
-                <option value="">Choose a reason…</option>
-                {BOOKING_CANCELLATION_REASON_LABELS.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
-              <div className="flex gap-2 justify-end">
-                <button
-                  type="button"
-                  disabled={actionLoading}
-                  onClick={() => setCancelOpen(false)}
-                  className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                >
-                  Back
-                </button>
-                <button
-                  type="button"
-                  disabled={actionLoading || !cancelReason}
-                  onClick={() => void submitCancelBooking()}
-                  className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-50"
-                >
-                  {actionLoading ? 'Cancelling…' : 'Confirm cancel'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        <CancelBookingModal
+          open={cancelOpen}
+          bookingId={bookingId}
+          role="student"
+          onClose={() => setCancelOpen(false)}
+          onCancelled={() => loadBookingData()}
+        />
 
         {session && booking.status === 'CONFIRMED' && (
           <div className="mb-6 space-y-4">
             <SessionJoinButton session={session} userRole="student" />
             
-            {/* Mark No Show Button for Student */}
-            <MarkNoShowButtonEnhanced 
-              session={session} 
-              userRole="student" 
+            {/* No-show dispute report */}
+            <ReportNoShowFlow
+              session={session}
+              userRole="student"
               onSuccess={() => loadBookingData()}
             />
 
@@ -464,43 +374,6 @@ export default function BookingThreadPage() {
                   );
                 }
 
-                if (msg.message_type === 'time_proposal') {
-                  return (
-                    <div key={msg.id} className={`flex ${msg.is_own_message ? 'justify-end' : 'justify-start'}`}>
-                      <div className="max-w-md">
-                        <div className="bg-blue-50 border border-blue-300 rounded-lg p-4">
-                          <div className="flex items-center gap-2 mb-2">
-                            <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                            </svg>
-                            <span className="font-semibold text-blue-700">Alternative Time Proposed</span>
-                          </div>
-                          <p className="text-gray-900 font-medium mb-1">
-                            {formatDateTime(msg.proposed_start_at!)}
-                          </p>
-                          <p className="text-gray-600 text-sm mb-3">
-                            {formatTimeRange(msg.proposed_start_at!, msg.proposed_end_at!)}
-                          </p>
-                          {msg.body && (
-                            <p className="text-gray-700 text-sm mb-3">{msg.body}</p>
-                          )}
-                          {!msg.is_own_message && booking.status === 'COUNTER_PROPOSED' && (
-                            <button
-                              onClick={() => handleAcceptCounter(msg.id)}
-                              disabled={actionLoading}
-                              className="w-full bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-white py-2 px-4 rounded-lg font-semibold transition disabled:opacity-50"
-                            >
-                              Accept This Time
-                            </button>
-                          )}
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1 px-2">
-                          {msg.sender_name} • {new Date(msg.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                }
 
                 // Regular text message
                 return (
@@ -548,7 +421,7 @@ export default function BookingThreadPage() {
           )}
         </div>
       </div>
-    </DashboardLayout>
+
   );
 }
 

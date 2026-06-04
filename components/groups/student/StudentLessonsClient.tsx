@@ -72,7 +72,7 @@ function isPaid(g: any): boolean {
 function priceLabel(g: any): { text: string; paid: boolean } {
   if (!isPaid(g)) return { text: 'Free', paid: false };
   const p = g.price_per_session || g.price_per_course || 0;
-  return { text: `$${Number(p).toFixed(0)}`, paid: true };
+  return { text: `TT$${Number(p)}`, paid: true };
 }
 
 function examLevel(subject: string): string {
