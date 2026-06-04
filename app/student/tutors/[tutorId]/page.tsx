@@ -467,7 +467,8 @@ export default function TutorProfilePage() {
   };
 
   const openBookingSheet = () => { setBookingStep(1); setPickedTime(null); setShowBookingSheet(true); };
-  const minPrice = tutor?.subjects.length ? Math.min(...tutor.subjects.map((s) => s.price_per_hour_ttd)) : 0;
+  const pricedSubjects = (tutor?.subjects ?? []).filter((s) => s.price_per_hour_ttd > 0);
+  const minPrice = pricedSubjects.length ? Math.min(...pricedSubjects.map((s) => s.price_per_hour_ttd)) : 0;
   const priceLabel = !paidClassesEnabled ? 'Free' : (minPrice > 0 ? `TT$${minPrice}` : 'Rate not set');
 
   if (profileLoading || loading || !profile) {

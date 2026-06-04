@@ -90,10 +90,23 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Live and sandbox LuniPay use different casing — normalise before comparing.
-  const sessionStatus = String(session?.status ?? '').toUpperCase();
-  const paymentStatus = String(session?.payment_status ?? '').toUpperCase();
+  // Log the raw session so we can see exactly what LuniPay live returns.
+  console.log('[lunipay/finalize] raw session keys:', Object.keys(session ?? {}));
+  console.log('[lunipay/finalize] session status fields:', {
+    status: session?.status,
+    payment_status: session?.payment_status,
+    paymentStatus: session?.paymentStatus,
+    state: session?.state,
+    paid: session?.paid,
+    livemode: session?.livemode,
+  });
+
+  // Accept any recognisable "paid" signal — live and sandbox use different casing.
+  const sessionStatus = String(session?.status ?? session?.state ?? '').toUpperCase();
+  const paymentStatus = String(session?.payment_status ?? session?.paymentStatus ?? '').toUpperCase();
+  const paidBool = session?.paid === true;
   const paid =
+    paidBool ||
     sessionStatus === 'COMPLETE' ||
     sessionStatus === 'COMPLETED' ||
     sessionStatus === 'SUCCESS' ||
@@ -103,12 +116,14 @@ export async function GET(request: NextRequest) {
     paymentStatus === 'SUCCESS';
 
   if (!paid) {
-    console.error('[lunipay/finalize] session not paid:', {
-      status: session?.status,
-      payment_status: session?.payment_status,
-    });
+    console.error('[lunipay/finalize] session not paid — raw session:', JSON.stringify(session));
     return NextResponse.json(
-      { status: 'not_paid', sessionStatus: session?.status, paymentStatus: session?.payment_status },
+      {
+        status: 'not_paid',
+        sessionStatus: session?.status,
+        paymentStatus: session?.payment_status,
+        rawKeys: Object.keys(session ?? {}),
+      },
       { status: 409 }
     );
   }
