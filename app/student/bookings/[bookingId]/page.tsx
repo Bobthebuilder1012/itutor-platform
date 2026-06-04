@@ -12,7 +12,7 @@ import {
 } from '@/lib/services/bookingService';
 import { supabase } from '@/lib/supabase/client';
 import { getDisplayName } from '@/lib/utils/displayName';
-import { Booking, BookingMessage, BookingMessageWithSender } from '@/lib/types/booking';
+import { Booking, BookingMessage, BookingMessageWithSender, BookingStatus } from '@/lib/types/booking';
 import { formatDateTime, formatTimeRange, getRelativeTime } from '@/lib/utils/calendar';
 import { getBookingStatusColor, getBookingStatusLabel } from '@/lib/types/booking';
 import SessionJoinButton from '@/components/sessions/SessionJoinButton';
@@ -206,7 +206,17 @@ export default function BookingThreadPage() {
   const displayStartTime = booking.confirmed_start_at || booking.requested_start_at;
   const displayEndTime = booking.confirmed_end_at || booking.requested_end_at;
   const hasSessionStarted = displayStartTime ? new Date(displayStartTime) <= new Date() : false;
-  const canCancel = (booking.status === 'PENDING' || booking.status === 'CONFIRMED') && !hasSessionStarted;
+
+  // If the linked session was cancelled, treat the booking as cancelled
+  // even if bookings.status wasn't updated (e.g. tutor cancelled via message).
+  const effectiveStatus: BookingStatus =
+    session?.status === 'CANCELLED' && booking.status === 'CONFIRMED'
+      ? 'CANCELLED'
+      : booking.status;
+
+  const canCancel = (booking.status === 'PENDING' || booking.status === 'CONFIRMED') &&
+    effectiveStatus !== 'CANCELLED' &&
+    !hasSessionStarted;
   const paidClassesEnabled = isPaidClassesEnabled();
 
   return (
@@ -232,9 +242,9 @@ export default function BookingThreadPage() {
             </div>
             <span className={`
               px-3 py-1.5 rounded-lg text-sm font-semibold border
-              ${getBookingStatusColor(booking.status)}
+              ${getBookingStatusColor(effectiveStatus)}
             `}>
-              {getBookingStatusLabel(booking.status)}
+              {getBookingStatusLabel(effectiveStatus)}
             </span>
           </div>
 
