@@ -274,15 +274,47 @@ export async function GET(request: NextRequest) {
       estimated_earnings: 0,
     }));
 
+    // Attach active promotions to paginated groups
+    const paginatedGroupIds = paginated.map((g: any) => g.id);
+    const promotionsByGroupId = new Map<string, any>();
+    if (paginatedGroupIds.length > 0) {
+      try {
+        const { data: promos } = await service
+          .from('group_promotions')
+          .select('id, group_id, kind, discount, student_cap, duration_days, created_at')
+          .in('group_id', paginatedGroupIds)
+          .eq('active', true)
+          .order('created_at', { ascending: false });
+        const now = new Date();
+        for (const promo of promos ?? []) {
+          if (promotionsByGroupId.has(promo.group_id)) continue;
+          const enrollmentCount = paginated.find((g: any) => g.id === promo.group_id)?.member_count ?? 0;
+          let valid = false;
+          if (promo.kind === 'open-ended') valid = true;
+          else if (promo.kind === 'early-bird' && promo.student_cap && enrollmentCount < promo.student_cap) valid = true;
+          else if (promo.kind === 'time-limited' && promo.duration_days) {
+            const exp = new Date(promo.created_at);
+            exp.setDate(exp.getDate() + promo.duration_days);
+            if (now < exp) valid = true;
+          }
+          if (valid) promotionsByGroupId.set(promo.group_id, promo);
+        }
+      } catch { /* non-fatal */ }
+    }
+    const paginatedWithPromos = paginated.map((g: any) => ({
+      ...g,
+      active_promotion: promotionsByGroupId.get(g.id) ?? null,
+    }));
+
     return NextResponse.json({
       success: true,
       data: {
-        groups: paginated,
+        groups: paginatedWithPromos,
         total,
         page,
         limit,
       },
-      groups: paginated,
+      groups: paginatedWithPromos,
       total,
     });
   } catch (err) {

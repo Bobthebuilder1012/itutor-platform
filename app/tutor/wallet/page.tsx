@@ -52,8 +52,6 @@ interface WalletPayload {
     available_ttd: number;
     lifetime_paid_ttd: number;
     held_ttd: number;
-    upcoming_ttd: number;
-    pending_deductions_ttd: number;
     last_updated: string | null;
   };
   pending_deductions: PendingDeduction[];
@@ -417,22 +415,6 @@ function WalletContent() {
                 <AlertCircle className="size-4 text-amber-300 shrink-0" />
                 <span className="text-amber-200">
                   TT$ {fmtTTD(balances?.held_ttd ?? 0)} under review — awaiting admin decision
-                </span>
-              </div>
-            )}
-            {(balances?.upcoming_ttd ?? 0) > 0 && (
-              <div className="mt-3 flex items-center gap-2 rounded-xl bg-sky-500/20 px-3 py-2 text-sm">
-                <Clock className="size-4 text-sky-300 shrink-0" />
-                <span className="text-sky-200">
-                  TT$ {fmtTTD(balances?.upcoming_ttd ?? 0)} upcoming — held until your scheduled sessions are confirmed
-                </span>
-              </div>
-            )}
-            {(balances?.pending_deductions_ttd ?? 0) > 0 && (
-              <div className="mt-3 flex items-center gap-2 rounded-xl bg-red-500/20 px-3 py-2 text-sm">
-                <AlertCircle className="size-4 text-red-300 shrink-0" />
-                <span className="text-red-200">
-                  TT$ {fmtTTD(balances?.pending_deductions_ttd ?? 0)} owed to platform — will be recovered from your next payout
                 </span>
               </div>
             )}

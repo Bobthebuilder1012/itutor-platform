@@ -251,16 +251,7 @@ function ClassCard({ g }: { g: GroupListing }) {
         <div className="text-xs text-muted-foreground">by {tutorName}{g.subject ? ` · ${g.subject}` : ''}{g.form_level ? ` · ${g.form_level}` : ''}</div>
 
         <div className="mt-2 flex flex-wrap gap-1">
-          {g.feedback_mode === 'included_free' && (
-            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-brand text-white">
-              <Sparkles className="size-2.5"/> Free parent feedback
-            </span>
-          )}
-          {g.feedback_mode === 'paid_addon' && g.parent_feedback_price && (
-            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800">
-              <Sparkles className="size-2.5"/> Feedback +{fmtTTD(g.parent_feedback_price)}/mo
-            </span>
-          )}
+          {/* Parent feedback hidden — coming soon */}
           {g.require_join_requests && (
             <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full border border-border bg-muted text-muted-foreground">Approval required</span>
           )}

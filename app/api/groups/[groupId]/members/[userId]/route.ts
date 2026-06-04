@@ -7,8 +7,7 @@ type Params = { params: Promise<{ groupId: string; userId: string }> };
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-// PATCH /api/groups/[groupId]/members/[userId] — tutor manages a member's status
-// Handles: approved, active, denied, suspended, banned, removed
+// PATCH /api/groups/[groupId]/members/[userId] - approve or deny a join request (tutor only)
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
     const { groupId, userId } = await params;
@@ -30,41 +29,15 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { status, reason, suspended_until }: { status: string; reason?: string; suspended_until?: string | null } = body;
+    const { status }: { status: 'approved' | 'denied' } = await request.json();
 
-    const allowed = ['approved', 'active', 'denied', 'suspended', 'banned', 'removed'];
-    if (!allowed.includes(status)) {
+    if (!['approved', 'denied'].includes(status)) {
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
     }
 
-    const update: Record<string, unknown> = { status };
-    if (reason !== undefined) update.action_reason = reason || null;
-    if (['suspended', 'banned', 'removed'].includes(status)) {
-      update.actioned_at = new Date().toISOString();
-      update.actioned_by = user.id;
-    }
-    if (status === 'suspended') {
-      update.suspended_until = suspended_until ?? null;
-    }
-    if (status === 'approved' || status === 'active') {
-      update.action_reason = null;
-      update.actioned_at = null;
-      update.actioned_by = null;
-      update.suspended_until = null;
-    }
-
-    const { data: existing } = await service
-      .from('group_members')
-      .select('status')
-      .eq('group_id', groupId)
-      .eq('user_id', userId)
-      .maybeSingle();
-    const previousStatus = (existing as any)?.status ?? null;
-
     const { data: member, error } = await service
       .from('group_members')
-      .update(update)
+      .update({ status })
       .eq('group_id', groupId)
       .eq('user_id', userId)
       .select()
@@ -72,23 +45,20 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
     if (error) throw error;
 
-    const isDecline = status === 'removed' && previousStatus === 'pending';
-    const notifMap: Record<string, { type: string; title: string; message: string }> = {
-      approved:  { type: 'ENROLLMENT_CONFIRMED',   title: `You're in — ${group.name}!`,       message: `Your request to join "${group.name}" has been approved. You can now access the stream and upcoming sessions.` },
-      denied:    { type: 'join_request_declined',  title: 'Request not approved',             message: `Your request to join "${group.name}" was not approved by the tutor.` },
-      suspended: { type: 'group_member_suspended', title: 'Access suspended',                 message: `Your access to "${group.name}" has been suspended${suspended_until ? ` until ${new Date(suspended_until).toLocaleDateString('en-TT', { weekday: 'short', month: 'short', day: 'numeric' })}` : ''}.${reason ? ` Reason: ${reason}` : ''} You can still leave the class at any time.` },
-      banned:    { type: 'group_member_banned',    title: 'Removed from class',               message: `You have been permanently removed from "${group.name}".${reason ? ` Reason: ${reason}` : ''}` },
-      removed:   isDecline
-        ? { type: 'join_request_declined', title: 'Request declined',   message: `Your request to join "${group.name}" was not approved by the tutor.` }
-        : { type: 'group_member_removed',  title: 'Removed from class', message: `You have been removed from "${group.name}".${reason ? ` Reason: ${reason}` : ''}` },
-    };
-    const notif = notifMap[status];
-    if (notif) {
-      try {
-        await service.from('notifications').insert({
-          user_id: userId, ...notif, link: `/student/classes`, group_id: groupId,
-        });
-      } catch { /* Non-critical */ }
+    try {
+      await service.from('notifications').insert({
+        user_id: userId,
+        type: status === 'approved' ? 'ENROLLMENT_CONFIRMED' : 'booking_declined',
+        title: status === 'approved' ? 'Group request approved' : 'Group request declined',
+        message:
+          status === 'approved'
+            ? `Your request to join "${group.name}" has been approved.`
+            : `Your request to join "${group.name}" was not approved.`,
+        link: `/groups`,
+        group_id: groupId,
+      });
+    } catch {
+      // Non-critical
     }
 
     return NextResponse.json({ member });
@@ -114,7 +84,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     const admin = getServiceClient();
     const { data: group } = await admin
       .from('groups')
-      .select('tutor_id, name, whatsapp_link, google_classroom_link')
+      .select('tutor_id, name')
       .eq('id', groupId)
       .single();
 
@@ -192,27 +162,14 @@ async function handleSelfLeave(
 
   if (error) throw error;
 
-  // Notify student + tutor, including WhatsApp/Classroom reminder for tutor
-  try {
-    const { data: studentProfile } = await admin
-      .from('profiles').select('full_name, display_name').eq('id', userId).single();
-    const studentName = (studentProfile as any)?.display_name || (studentProfile as any)?.full_name || 'A student';
-    const channelParts = [(group as any)?.whatsapp_link ? 'WhatsApp group' : null, (group as any)?.google_classroom_link ? 'Google Classroom' : null].filter(Boolean);
-    const channelNote = channelParts.length > 0 ? ` Remember to remove them from your ${channelParts.join(' and ')}.` : '';
-
-    await admin.from('notifications').insert([
-      {
-        user_id: userId, type: 'group_left', title: 'Left class',
-        message: `You have left "${groupName}".`, link: '/student/classes', group_id: groupId,
-      },
-      ...((group as any)?.tutor_id ? [{
-        user_id: (group as any).tutor_id, type: 'student_left_class',
-        title: `${studentName} left ${groupName}`,
-        message: `${studentName} left "${groupName}".${channelNote}`,
-        link: `/tutor/classes/${groupId}`, group_id: groupId,
-      }] : []),
-    ]);
-  } catch { /* ignore */ }
+  await admin.from('notifications').insert({
+    user_id: userId,
+    type: 'group_removal',
+    title: 'Left group',
+    message: `You have left "${groupName}".`,
+    link: `/student/groups`,
+    group_id: groupId,
+  });
 
   return NextResponse.json({ success: true });
 }
@@ -288,55 +245,8 @@ async function handleTutorRemoval(
   );
 
   const refundAmount = Number(paidPayment?.amount_ttd ?? 0);
-  // Tutor debt = what the tutor was actually paid (their payout share, not the
-  // full subscription amount which includes the platform fee).
-  const tutorDebtAmount = Math.round((Number(paidPayment?.tutor_payout_ttd ?? refundAmount)) * 100) / 100;
 
-  // 3b. Check if the tutor's payout for this subscription payment has already
-  // been released. If so, record the debt immediately so it cannot be missed
-  // regardless of when (or whether) admin manually processes the refund.
-  let payoutAlreadyReleased = false;
-  if (paidPayment && refundAmount > 0) {
-    const { data: releasedLedger } = await admin
-      .from('payout_ledger')
-      .select('id')
-      .eq('subscription_payment_id', paidPayment.id)
-      .eq('status', 'released')
-      .maybeSingle();
-
-    payoutAlreadyReleased = !!releasedLedger;
-
-    if (payoutAlreadyReleased) {
-      // Record the debt against the tutor immediately (tutor's payout share only)
-      const { error: deductErr } = await admin.from('tutor_deductions').insert({
-        tutor_id: args.tutorId,
-        amount_ttd: tutorDebtAmount,
-        reason: 'student_removal_refund',
-        source_enrollment_id: subEnrollment.id,
-        source_subscription_payment_id: paidPayment.id,
-        status: 'pending',
-      });
-      if (deductErr) console.error('[handleTutorRemoval] tutor_deductions insert failed:', deductErr);
-
-      // Immediately decrement the tutor's available balance if they have enough;
-      // otherwise the pending deduction will be recovered from the next payout batch.
-      const { data: tutorBal } = await admin
-        .from('tutor_balances')
-        .select('available_ttd')
-        .eq('tutor_id', args.tutorId)
-        .maybeSingle();
-
-      const available = Math.round((Number(tutorBal?.available_ttd ?? 0)) * 100) / 100;
-      if (available >= tutorDebtAmount) {
-        await admin
-          .from('tutor_balances')
-          .update({ available_ttd: available - tutorDebtAmount, last_updated: new Date().toISOString() })
-          .eq('tutor_id', args.tutorId);
-      }
-    }
-  }
-
-  // 4. Create the removal record (refund NOT issued yet — admin approves LuniPay refund to student)
+  // 4. Create the removal record (refund NOT issued yet — admin approves)
   const now = new Date().toISOString();
   const { data: removalRow, error: removalError } = await admin
     .from('group_removals')
@@ -376,51 +286,33 @@ async function handleTutorRemoval(
     return NextResponse.json({ error: `Failed to cancel enrollment: ${enrollError.message}` }, { status: 500 });
   }
 
-  // 6. Remove from group_members — upsert so the row is guaranteed to exist
-  // with status='removed' even if activate_subscription never created it.
+  // 6. Remove from group_members
   const { error: memberError } = await admin
     .from('group_members')
-    .upsert(
-      { group_id: args.groupId, user_id: args.studentId, status: 'removed' },
-      { onConflict: 'group_id,user_id' }
-    );
+    .update({ status: 'removed' })
+    .eq('group_id', args.groupId)
+    .eq('user_id', args.studentId);
 
   if (memberError) {
     console.error('[handleTutorRemoval] member remove failed:', memberError);
     // Non-fatal — enrollment is already cancelled
   }
 
-  // 7. Notify the student + tutor
-  const studentMsg = refundAmount > 0
-    ? `You have been removed from "${args.groupName}". A refund of TT$${refundAmount.toFixed(2)} is pending admin approval.`
-    : `You have been removed from "${args.groupName}".`;
-
-  const tutorDebtMsg = payoutAlreadyReleased && tutorDebtAmount > 0
-    ? `TT$${tutorDebtAmount.toFixed(2)} has been recorded as a deduction against your account for the removal of a student whose payment was already paid out. This will be recovered from your next payout.`
-    : null;
-
-  const notifRows: any[] = [{
+  // 7. Notify the student
+  await admin.from('notifications').insert({
     user_id: args.studentId,
     type: 'subscription_cancellation_finalized',
     title: 'Removed from group',
-    message: studentMsg,
+    message: refundAmount > 0
+      ? `You have been removed from "${args.groupName}". A refund of TT$${refundAmount.toFixed(2)} is pending admin approval.`
+      : `You have been removed from "${args.groupName}".`,
     link: `/student/subscriptions`,
     group_id: args.groupId,
-    metadata: { removal_id: removalRow?.id, refund_amount: refundAmount },
-  }];
-
-  if (tutorDebtMsg) {
-    notifRows.push({
-      user_id: args.tutorId,
-      type: 'tutor_deduction_applied',
-      title: 'Earnings deduction recorded',
-      message: tutorDebtMsg,
-      link: `/tutor/wallet`,
-      group_id: args.groupId,
-    });
-  }
-
-  await admin.from('notifications').insert(notifRows);
+    metadata: {
+      removal_id: removalRow?.id,
+      refund_amount: refundAmount,
+    },
+  });
 
   await promoteNextFromWaitlist(admin, args.groupId);
 
@@ -443,7 +335,7 @@ async function loadCurrentPaidSubscriptionPayment(
   if (activatedSubscriptionPaymentId) {
     const { data } = await admin
       .from('subscription_payments')
-      .select('id, amount_ttd, tutor_payout_ttd, lunipay_transaction_id')
+      .select('id, amount_ttd, lunipay_transaction_id')
       .eq('id', activatedSubscriptionPaymentId)
       .eq('status', 'PAID')
       .maybeSingle();

@@ -59,7 +59,7 @@ async function resolveRedirect(
   role: string,
   profile: { form_level?: string | null; teaching_levels?: string[] | null },
 ) {
-  if (role === 'parent') return '/parent/dashboard';
+  if (role === 'parent') return '/parent/coming-soon';
   if (role === 'student') return profile.form_level ? '/student/dashboard' : null;
   // Tutor is complete once teaching_levels is set on their profile
   if (role === 'tutor') return (profile.teaching_levels && profile.teaching_levels.length > 0) ? '/tutor/dashboard' : null;

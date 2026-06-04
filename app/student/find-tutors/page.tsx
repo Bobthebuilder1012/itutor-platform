@@ -71,7 +71,22 @@ type GroupLesson = {
   requireJoinRequests?: boolean;
   feedbackMode?: string | null;
   parentFeedbackPrice?: number | null;
+  activePromotion?: { id: string; kind: string; discount: number; student_cap: number | null; duration_days: number | null } | null;
 };
+
+function promoLabel(promo: { kind: string; discount: number; student_cap: number | null; duration_days: number | null; created_at?: string; used_count?: number }): string {
+  if (promo.kind === 'early-bird' && promo.student_cap) {
+    const remaining = promo.student_cap - (promo.used_count ?? 0);
+    return `Next ${remaining} student${remaining !== 1 ? 's' : ''} get ${promo.discount}% off`;
+  }
+  if (promo.kind === 'time-limited' && promo.duration_days && promo.created_at) {
+    const exp = new Date(promo.created_at);
+    exp.setDate(exp.getDate() + promo.duration_days);
+    const daysLeft = Math.max(0, Math.ceil((exp.getTime() - Date.now()) / 86400000));
+    return `${promo.discount}% off · ${daysLeft} day${daysLeft !== 1 ? 's' : ''} left`;
+  }
+  return `${promo.discount}% off`;
+}
 
 function formatDuration(mins: number) {
   const h = Math.floor(mins / 60);
@@ -465,8 +480,49 @@ export default function FindTutorsPage() {
           requireJoinRequests: g.require_join_requests ?? false,
           feedbackMode: g.feedback_mode ?? g.parent_feedback_mode ?? null,
           parentFeedbackPrice: g.parent_feedback_price ?? null,
+          activePromotion: null,
         };
       });
+
+      // Fetch active promotions + usage counts for all groups
+      try {
+        const [{ data: promos }, { data: usageRows }] = await Promise.all([
+          supabase
+            .from('group_promotions')
+            .select('id, group_id, kind, discount, student_cap, duration_days, created_at')
+            .in('group_id', groupIds)
+            .eq('active', true)
+            .order('created_at', { ascending: false }),
+          supabase
+            .from('group_enrollments')
+            .select('promotion_id')
+            .in('group_id', groupIds)
+            .not('promotion_id', 'is', null),
+        ]);
+
+        // Count how many enrollments used each promotion
+        const usageByPromoId = new Map<string, number>();
+        for (const row of usageRows ?? []) {
+          if (row.promotion_id) usageByPromoId.set(row.promotion_id, (usageByPromoId.get(row.promotion_id) ?? 0) + 1);
+        }
+
+        const now = new Date();
+        const bestPromoByGroup = new Map<string, any>();
+        for (const promo of promos ?? []) {
+          if (bestPromoByGroup.has(promo.group_id)) continue;
+          const usedCount = usageByPromoId.get(promo.id) ?? 0;
+          let valid = false;
+          if (promo.kind === 'open-ended') valid = true;
+          else if (promo.kind === 'early-bird' && promo.student_cap && usedCount < promo.student_cap) valid = true;
+          else if (promo.kind === 'time-limited' && promo.duration_days) {
+            const exp = new Date(promo.created_at);
+            exp.setDate(exp.getDate() + promo.duration_days);
+            if (now < exp) valid = true;
+          }
+          if (valid) bestPromoByGroup.set(promo.group_id, { ...promo, used_count: usedCount });
+        }
+        mapped.forEach((g) => { g.activePromotion = bestPromoByGroup.get(g.id) ?? null; });
+      } catch { /* non-fatal */ }
 
       // Batch-fetch sessions to get schedule for groups without a manual schedule_display
       try {
@@ -912,16 +968,7 @@ export default function FindTutorsPage() {
                             Approval required
                           </span>
                         )}
-                        {l.feedbackMode === 'included_free' && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-brand text-white">
-                            <Sparkles className="size-3" /> Free parent feedback
-                          </span>
-                        )}
-                        {l.feedbackMode === 'paid_addon' && l.parentFeedbackPrice && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
-                            <Sparkles className="size-3" /> Parent feedback +{fmtTTD(l.parentFeedbackPrice)}/mo
-                          </span>
-                        )}
+                        {/* Parent feedback badges hidden — parent accounts coming soon */}
                         {(lowStock || full) && (
                           <div className={cn('inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full', full ? 'bg-muted text-muted-foreground' : 'bg-coral-soft text-coral')}>
                             <Flame className="size-3.5" />
@@ -968,10 +1015,25 @@ export default function FindTutorsPage() {
                       <div className="flex items-end justify-between pt-3 mt-auto border-t border-border">
                         <div>
                           {l.monthlyPrice > 0 ? (
-                            <>
-                              <span className="text-lg font-bold text-ink">{fmtTTD(l.monthlyPrice)}</span>
-                              <span className="text-xs text-muted-foreground">/month</span>
-                            </>
+                            l.activePromotion ? (
+                              <div>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 whitespace-nowrap">
+                                    {promoLabel(l.activePromotion)}
+                                  </span>
+                                </div>
+                                <div className="flex items-baseline gap-1 mt-0.5">
+                                  <span className="text-lg font-bold text-brand-deep">{fmtTTD(Math.round(l.monthlyPrice * (1 - l.activePromotion.discount / 100)))}</span>
+                                  <span className="text-xs line-through text-muted-foreground">{fmtTTD(l.monthlyPrice)}</span>
+                                  <span className="text-xs text-muted-foreground">/month</span>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <span className="text-lg font-bold text-ink">{fmtTTD(l.monthlyPrice)}</span>
+                                <span className="text-xs text-muted-foreground">/month</span>
+                              </>
+                            )
                           ) : (
                             <span className="text-lg font-bold text-brand-deep">Free</span>
                           )}
@@ -1113,7 +1175,11 @@ export default function FindTutorsPage() {
                   { label: 'Time', value: joinLesson.time, show: !!joinLesson.time },
                   { label: 'Session length', value: joinLesson.sessionLength ? formatDuration(joinLesson.sessionLength) : null, show: !!joinLesson.sessionLength },
                   { label: 'Enrolled', value: joinLesson.seats.total !== null ? `${joinLesson.seats.taken} / ${joinLesson.seats.total}` : `${joinLesson.seats.taken} students`, show: true },
-                  { label: 'Price', value: joinLesson.monthlyPrice > 0 ? `${fmtTTD(joinLesson.monthlyPrice)}/month` : 'Free', show: true },
+                  { label: 'Price', value: joinLesson.monthlyPrice > 0
+                    ? joinLesson.activePromotion
+                      ? `${fmtTTD(Math.round(joinLesson.monthlyPrice * (1 - joinLesson.activePromotion.discount / 100)))}/month (${joinLesson.activePromotion.discount}% off)`
+                      : `${fmtTTD(joinLesson.monthlyPrice)}/month`
+                    : 'Free', show: true },
                 ].filter(r => r.show && r.value).map(({ label, value }) => (
                   <div key={label} className="flex justify-between">
                     <span className="text-muted-foreground">{label}</span>
@@ -1138,7 +1204,11 @@ export default function FindTutorsPage() {
                   className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-brand text-white font-semibold hover:bg-brand-deep transition disabled:opacity-60"
                 >
                   <Check className="size-4" />
-                  {joiningLesson ? 'Enrolling…' : joinLesson.monthlyPrice > 0 ? `Subscribe — ${fmtTTD(joinLesson.monthlyPrice)}/month` : 'Join Free'}
+                  {joiningLesson ? 'Enrolling…' : joinLesson.monthlyPrice > 0
+                    ? joinLesson.activePromotion
+                      ? `Subscribe — ${fmtTTD(Math.round(joinLesson.monthlyPrice * (1 - joinLesson.activePromotion.discount / 100)))}/month`
+                      : `Subscribe — ${fmtTTD(joinLesson.monthlyPrice)}/month`
+                    : 'Join Free'}
                 </button>
               )}
             </div>

@@ -128,19 +128,22 @@ function AddChildModal({ onClose, onAdded }: { onClose: () => void; onAdded: () 
   const [step, setStep] = useState<'form' | 'done'>('form');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [yearLevel, setYearLevel] = useState('');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const [createdName, setCreatedName] = useState('');
 
   const handleCreate = async () => {
-    if (!name.trim() || !email.trim()) return;
+    if (!name.trim() || !email.trim() || !password.trim()) return;
+    if (password.trim().length < 6) { setErr('Password must be at least 6 characters.'); return; }
     setSaving(true); setErr('');
     try {
       const res = await fetch('/api/parent/create-child', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ childName: name.trim(), childEmail: email.trim(), yearLevel: yearLevel.trim() }),
+        body: JSON.stringify({ childName: name.trim(), childEmail: email.trim(), childPassword: password.trim() }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Failed');
@@ -160,7 +163,7 @@ function AddChildModal({ onClose, onAdded }: { onClose: () => void; onAdded: () 
         {step === 'form' ? (
           <div className="p-5 space-y-4">
             <p className="text-sm text-muted-foreground">
-              We'll create a new student account for your child. They'll receive a login link by email to set their password. You stay in control of their class consents and payments.
+              Create a student account for your child. You set the login details — they can sign in right away.
             </p>
             <div>
               <label className="text-xs font-semibold text-ink block mb-1.5">Child's full name <span className="text-rose-500">*</span></label>
@@ -173,15 +176,37 @@ function AddChildModal({ onClose, onAdded }: { onClose: () => void; onAdded: () 
                 className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand"/>
             </div>
             <div>
-              <label className="text-xs font-semibold text-ink block mb-1.5">Year level / form <span className="text-muted-foreground font-normal">(optional)</span></label>
-              <input value={yearLevel} onChange={e=>setYearLevel(e.target.value)} placeholder="e.g. Form 5 · 16 yrs"
-                className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand"/>
+              <label className="text-xs font-semibold text-ink block mb-1.5">Password <span className="text-rose-500">*</span></label>
+              <div className="relative">
+                <input value={password} onChange={e=>setPassword(e.target.value)}
+                  type={showPassword ? 'text' : 'password'} placeholder="Min. 6 characters"
+                  className="w-full px-3 py-2.5 pr-16 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand"/>
+                <button type="button" onClick={()=>setShowPassword(s=>!s)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground hover:text-ink">
+                  {showPassword ? 'Hide' : 'Show'}
+                </button>
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1">Share these credentials with your child so they can log in.</p>
             </div>
-            <div className="rounded-xl bg-brand-soft/50 p-3 text-xs text-brand-deep">
-              A login link will be sent to the email above so your child can access their student account. They won't be charged anything until you approve a class.
+            <div>
+              <label className="text-xs font-semibold text-ink block mb-1.5">Year level / form <span className="text-muted-foreground font-normal">(optional)</span></label>
+              <select value={yearLevel} onChange={e => setYearLevel(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand appearance-none">
+                <option value="">Select year level…</option>
+                <option value="Primary (11 yrs & under)">Primary (11 yrs &amp; under)</option>
+                <option value="SEA / Standard 5 (11 yrs)">SEA / Standard 5 (11 yrs)</option>
+                <option value="Form 1 (11–12 yrs)">Form 1 (11–12 yrs)</option>
+                <option value="Form 2 (12–13 yrs)">Form 2 (12–13 yrs)</option>
+                <option value="Form 3 (13–14 yrs)">Form 3 (13–14 yrs)</option>
+                <option value="Form 4 (14–15 yrs)">Form 4 (14–15 yrs)</option>
+                <option value="Form 5 (15–16 yrs)">Form 5 (15–16 yrs)</option>
+                <option value="Lower 6 / CAPE (16–17 yrs)">Lower 6 / CAPE (16–17 yrs)</option>
+                <option value="Upper 6 / CAPE (17–18 yrs)">Upper 6 / CAPE (17–18 yrs)</option>
+                <option value="University / College">University / College</option>
+              </select>
             </div>
             {err && <p className="text-xs text-rose-600">{err}</p>}
-            <button disabled={!name.trim() || !email.trim() || saving} onClick={handleCreate}
+            <button disabled={!name.trim() || !email.trim() || !password.trim() || saving} onClick={handleCreate}
               className={cn('w-full px-4 py-3 rounded-2xl font-semibold text-sm',
                 name.trim() && email.trim() ? 'bg-brand text-white hover:bg-brand-deep' : 'bg-muted text-muted-foreground cursor-not-allowed')}>
               {saving ? 'Creating account…' : 'Create student account'}
@@ -192,8 +217,12 @@ function AddChildModal({ onClose, onAdded }: { onClose: () => void; onAdded: () 
             <div className="mx-auto size-12 rounded-2xl bg-brand grid place-items-center text-white"><Check className="size-6"/></div>
             <h3 className="font-bold text-ink">{createdName}'s account is ready</h3>
             <p className="text-sm text-muted-foreground">
-              A login link has been sent to <strong>{email}</strong>. Your child can use it to set their password and access their student account.
+              Your child can now log in at <strong>itutor.com</strong> using the email and password you set.
             </p>
+            <div className="rounded-xl bg-muted/50 p-3 text-xs text-left space-y-1">
+              <div><span className="font-semibold text-ink">Email:</span> {email}</div>
+              <div><span className="font-semibold text-ink">Password:</span> the one you just set</div>
+            </div>
             <p className="text-xs text-muted-foreground">You can now browse classes and enroll them from the Find Classes tab.</p>
             <button onClick={onAdded} className="w-full px-4 py-3 rounded-2xl bg-ink text-white font-semibold text-sm">Done</button>
           </div>

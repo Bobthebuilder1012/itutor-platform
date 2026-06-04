@@ -25,18 +25,18 @@ function ToolsContent() {
 
   const tools = [
     {
-      id: 'ai',
-      title: 'iTutor AI',
-      desc: 'Ask questions, generate quizzes, and brainstorm lesson plans powered by AI.',
-      icon: Bot,
-      href: '/tools/ai',
-      available: true,
-    },
-    {
       id: 'marking',
       title: 'AI Marking',
       desc: 'Upload student work and an answer key, get suggested grades and feedback in minutes.',
       icon: FileText,
+      href: '/tools/ai',
+      available: true,
+    },
+    {
+      id: 'lesson-planning',
+      title: 'Lesson Planning',
+      desc: 'Generate structured lesson plans, objectives, and activities tailored to your syllabus.',
+      icon: Bot,
       href: '#',
       available: false,
     },

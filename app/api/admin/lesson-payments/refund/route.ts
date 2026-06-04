@@ -170,46 +170,36 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Check if the debt was already recorded at removal time (handleTutorRemoval).
-  // If so, skip creating a duplicate deduction and avoid double-decrementing the balance.
-  const { data: existingDeduction } = await admin
-    .from('tutor_deductions')
-    .select('id')
-    .eq('source_subscription_payment_id', spId)
-    .eq('reason', 'student_removal_refund')
+  // Create tutor deduction
+  const { error: deductErr } = await admin.from('tutor_deductions').insert({
+    tutor_id: removal.tutor_id,
+    amount_ttd: refundAmount,
+    reason: 'student_removal_refund',
+    source_enrollment_id: enrollment_id,
+    source_subscription_payment_id: spId,
+    status: 'pending',
+  });
+
+  if (deductErr) {
+    console.error('[refund] tutor_deductions insert failed:', deductErr);
+    return NextResponse.json({ error: `Failed to record tutor deduction: ${deductErr.message}` }, { status: 500 });
+  }
+
+  // Deduct from tutor's available balance if possible
+  const { data: tutorBal } = await admin
+    .from('tutor_balances')
+    .select('available_ttd')
+    .eq('tutor_id', removal.tutor_id)
     .maybeSingle();
 
-  if (!existingDeduction) {
-    // Deduction not yet recorded — create it now and adjust balance
-    const { error: deductErr } = await admin.from('tutor_deductions').insert({
-      tutor_id: removal.tutor_id,
-      amount_ttd: refundAmount,
-      reason: 'student_removal_refund',
-      source_enrollment_id: enrollment_id,
-      source_subscription_payment_id: spId,
-      status: 'pending',
-    });
-
-    if (deductErr) {
-      console.error('[refund] tutor_deductions insert failed:', deductErr);
-      return NextResponse.json({ error: `Failed to record tutor deduction: ${deductErr.message}` }, { status: 500 });
-    }
-
-    const { data: tutorBal } = await admin
+  const available = Number(tutorBal?.available_ttd ?? 0);
+  if (available >= refundAmount) {
+    await admin
       .from('tutor_balances')
-      .select('available_ttd')
-      .eq('tutor_id', removal.tutor_id)
-      .maybeSingle();
-
-    const available = Number(tutorBal?.available_ttd ?? 0);
-    if (available >= refundAmount) {
-      await admin
-        .from('tutor_balances')
-        .update({ available_ttd: available - refundAmount, last_updated: new Date().toISOString() })
-        .eq('tutor_id', removal.tutor_id);
-    }
+      .update({ available_ttd: available - refundAmount, last_updated: new Date().toISOString() })
+      .eq('tutor_id', removal.tutor_id);
   }
-  // If deduction already exists, balance was already adjusted at removal time
+  // If not enough, the pending deduction will be recovered from future batches
 
   // Record the refund
   await admin.from('subscription_refunds').insert({

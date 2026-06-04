@@ -4,6 +4,15 @@ import { createServerClient } from '@supabase/ssr';
 const PROTECTED_ADMIN_PATHS = ['/admin'];
 const PROTECTED_REVIEWER_PATHS = ['/reviewer'];
 
+// Parent accounts are not yet live — redirect all /parent/* to coming-soon
+// (except the coming-soon page itself and API routes)
+function isParentPath(pathname: string) {
+  return pathname.startsWith('/parent/') || pathname === '/parent';
+}
+function isParentComingSoon(pathname: string) {
+  return pathname === '/parent/coming-soon';
+}
+
 function isPublicAssetPath(pathname: string) {
   return (
     pathname.startsWith('/_next/') ||
@@ -38,6 +47,11 @@ export async function middleware(request: NextRequest) {
 
   if (isPublicAssetPath(pathname) || isFeedbackExemptPath(pathname) || isApiPath(pathname)) {
     return NextResponse.next();
+  }
+
+  // Parent accounts not yet live — redirect all /parent/* to coming-soon page
+  if (isParentPath(pathname) && !isParentComingSoon(pathname)) {
+    return NextResponse.redirect(new URL('/parent/coming-soon', request.url));
   }
 
   // Block unauthenticated access to admin/reviewer routes at the server level

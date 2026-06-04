@@ -239,6 +239,28 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const averageRating =
       ratings.length === 0 ? 0 : Math.round((ratings.reduce((acc, n) => acc + n, 0) / ratings.length) * 100) / 100;
 
+    // Fetch active promotion for this group
+    let activePromotion: any = null;
+    try {
+      const { data: promos } = await service
+        .from('group_promotions')
+        .select('id, kind, discount, student_cap, duration_days, created_at')
+        .eq('group_id', groupId)
+        .eq('active', true)
+        .order('created_at', { ascending: false });
+
+      const now = new Date();
+      for (const promo of promos ?? []) {
+        if (promo.kind === 'open-ended') { activePromotion = promo; break; }
+        if (promo.kind === 'early-bird' && promo.student_cap && approvedMembers.length < promo.student_cap) { activePromotion = promo; break; }
+        if (promo.kind === 'time-limited' && promo.duration_days) {
+          const exp = new Date(promo.created_at);
+          exp.setDate(exp.getDate() + promo.duration_days);
+          if (now < exp) { activePromotion = promo; break; }
+        }
+      }
+    } catch { /* non-fatal */ }
+
     let otherGroups: any[] = [];
     let otherGroupsResult = await service
       .from('groups')
@@ -289,6 +311,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
         reviews,
         other_classes_by_tutor: otherGroups,
         key_info: keyInfo,
+        active_promotion: activePromotion,
       },
       data: {
         group: {
@@ -302,6 +325,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
           next_occurrence: nextOccurrence,
           upcoming_sessions: upcomingSessions,
           enrollment_count: approvedMembers.length,
+          active_promotion: activePromotion,
           average_rating: averageRating,
           reviews,
           other_classes_by_tutor: otherGroups,

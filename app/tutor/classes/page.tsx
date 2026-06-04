@@ -13,6 +13,7 @@ import { useProfile } from '@/lib/hooks/useProfile';
 import { useTutorCompletion } from '@/lib/hooks/useTutorCompletion';
 import { supabase } from '@/lib/supabase/client';
 import TutorShell from '@/components/tutor/TutorShell';
+import { formatLevel } from '@/lib/utils/formatLevel';
 
 type LessonKind = '1on1-oneoff' | '1on1-recurring' | 'group-oneoff' | 'group-recurring';
 type KindFilter = 'all' | 'group' | '1on1';
@@ -385,7 +386,7 @@ function LessonCard({
       <div className="p-5 flex-1 flex flex-col">
         <div className="flex items-start gap-2 mb-1 flex-wrap">
           <span className="text-[10px] uppercase tracking-wider font-bold text-brand bg-brand/10 px-1.5 py-0.5 rounded">{l.subject}</span>
-          <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">{l.level}</span>
+          <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">{formatLevel(l.level)}</span>
           <span className={cn('text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded', m.chip)}>{m.short}</span>
         </div>
         <h3 className="font-bold text-ink leading-tight truncate">{l.title}</h3>

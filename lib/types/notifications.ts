@@ -2,7 +2,7 @@ import { Profile } from './database';
 
 // ==================== NOTIFICATION TYPES ====================
 
-export type NotificationType = 
+export type NotificationType =
   | 'booking_request'
   | 'booking_accepted'
   | 'booking_declined'
@@ -12,7 +12,14 @@ export type NotificationType =
   | 'payment_received'
   | 'session_reminder'
   | 'rating_received'
-  | 'verification_complete';
+  | 'verification_complete'
+  | 'class_renewal_rate_prompt'
+  | 'NEW_REVIEW'
+  | 'join_request'
+  | 'ENROLLMENT_CONFIRMED'
+  | 'group_join_request_approved'
+  | 'group_join_request_declined'
+  | 'student_left_group';
 
 export interface Notification {
   id: string;
@@ -91,9 +98,18 @@ export function getNotificationIcon(type: NotificationType): string {
     case 'session_reminder':
       return '⏰';
     case 'rating_received':
+    case 'NEW_REVIEW':
       return '⭐';
     case 'verification_complete':
       return '🎉';
+    case 'class_renewal_rate_prompt':
+      return '🏆';
+    case 'join_request':
+    case 'ENROLLMENT_CONFIRMED':
+    case 'group_join_request_approved':
+    case 'group_join_request_declined':
+    case 'student_left_group':
+      return '👥';
     default:
       return '🔔';
   }
@@ -120,7 +136,16 @@ export function getNotificationColor(type: NotificationType): string {
     case 'session_reminder':
       return 'bg-orange-500/20 text-orange-400';
     case 'rating_received':
+    case 'NEW_REVIEW':
       return 'bg-pink-500/20 text-pink-400';
+    case 'class_renewal_rate_prompt':
+      return 'bg-green-500/20 text-green-400';
+    case 'join_request':
+    case 'ENROLLMENT_CONFIRMED':
+    case 'group_join_request_approved':
+    case 'group_join_request_declined':
+    case 'student_left_group':
+      return 'bg-indigo-500/20 text-indigo-400';
     default:
       return 'bg-gray-500/20 text-gray-400';
   }

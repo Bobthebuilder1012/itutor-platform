@@ -63,7 +63,11 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL;
     if (!appUrl) {
-      return NextResponse.json({ error: 'Payments are not configured' }, { status: 500 });
+      return NextResponse.json({ error: 'Payments are not configured' }, { status: 503 });
+    }
+
+    if (!process.env.LUNIPAY_SECRET_KEY) {
+      return NextResponse.json({ error: 'Payment processing is not available on this environment' }, { status: 503 });
     }
 
     // Step 4: Visibility check
@@ -222,18 +226,20 @@ export async function POST(req: NextRequest, { params }: Params) {
       promotionExpiresAt: null,
     };
 
+    let promotions: any[] | null = null;
     if (!isReusingEnrollment) {
-      const { data: promotions } = await admin
+      const { data: promoRows } = await admin
         .from('group_promotions')
         .select('id, kind, discount, student_cap, duration_days')
         .eq('group_id', groupId)
         .eq('active', true)
         .order('created_at', { ascending: false })
         .limit(5);
+      promotions = promoRows;
 
-      if (promotions && promotions.length > 0) {
+      if (promoRows && promoRows.length > 0) {
         // Find first applicable promotion
-        for (const promo of promotions) {
+        for (const promo of promoRows) {
           let applicable = true;
 
           if (promo.kind === 'early-bird' && promo.student_cap) {
@@ -315,6 +321,24 @@ export async function POST(req: NextRequest, { params }: Params) {
         return NextResponse.json({ error: 'Failed to create enrollment' }, { status: 500 });
       }
       enrollmentId = newEnrollment.id;
+
+      // Auto-deactivate early-bird promotion if cap is now reached
+      if (promotionData.promotionId) {
+        const appliedPromo = promotions?.find((p: any) => p.id === promotionData.promotionId);
+        if (appliedPromo?.kind === 'early-bird' && appliedPromo.student_cap) {
+          const { count: newUsedCount } = await admin
+            .from('group_enrollments')
+            .select('id', { count: 'exact', head: true })
+            .eq('promotion_id', promotionData.promotionId)
+            .neq('status', 'ACTIVATION_FAILED');
+          if ((newUsedCount ?? 0) >= appliedPromo.student_cap) {
+            await admin
+              .from('group_promotions')
+              .update({ active: false })
+              .eq('id', promotionData.promotionId);
+          }
+        }
+      }
     } else {
       // Refresh expiry on existing PENDING_PAYMENT enrollment
       await admin

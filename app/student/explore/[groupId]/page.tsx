@@ -12,7 +12,10 @@ import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
+import { formatLevel } from '@/lib/utils/formatLevel';
 import { parseScheduleData, scheduleToDisplay } from '@/lib/utils/scheduleFormat';
+import { RatingBreakdown, type RatingSummary } from '@/components/ratings/RatingBreakdown';
+import { CommentSection } from '@/components/ratings/CommentSection';
 
 type Step = 'detail' | 'join' | 'joined' | 'awaiting-approval';
 
@@ -39,6 +42,7 @@ type GroupData = {
   enrolled: boolean;
   memberStatus: string | null;
   parent_feedback_price: number | null;
+  active_promotion: { id: string; kind: string; discount: number; student_cap: number | null; duration_days: number | null } | null;
 };
 
 const GRADIENTS = [
@@ -46,6 +50,20 @@ const GRADIENTS = [
   'from-orange-500 to-amber-400', 'from-fuchsia-500 to-purple-500',
   'from-rose-500 to-pink-400', 'from-indigo-500 to-blue-500',
 ];
+
+function promoLabel(promo: { kind: string; discount: number; student_cap: number | null; duration_days: number | null; created_at?: string; used_count?: number }): string {
+  if (promo.kind === 'early-bird' && promo.student_cap) {
+    const remaining = promo.student_cap - (promo.used_count ?? 0);
+    return `Next ${remaining} student${remaining !== 1 ? 's' : ''} get ${promo.discount}% off`;
+  }
+  if (promo.kind === 'time-limited' && promo.duration_days && promo.created_at) {
+    const exp = new Date(promo.created_at);
+    exp.setDate(exp.getDate() + promo.duration_days);
+    const daysLeft = Math.max(0, Math.ceil((exp.getTime() - Date.now()) / 86400000));
+    return `${promo.discount}% off · ${daysLeft} day${daysLeft !== 1 ? 's' : ''} left`;
+  }
+  return `${promo.discount}% off`;
+}
 
 function gradientForGroup(name: string): string {
   return GRADIENTS[Math.abs([...name].reduce((a, c) => a + c.charCodeAt(0), 0)) % GRADIENTS.length];
@@ -119,6 +137,7 @@ export default function ExploreClassDetailPage() {
         enrolled,
         memberStatus,
         parent_feedback_price: g.parent_feedback_price ?? null,
+        active_promotion: g.active_promotion ?? null,
       });
 
       // Check if student has a linked parent account
@@ -164,7 +183,25 @@ function Detail({ group, onJoin }: { group: GroupData; onJoin: () => void }) {
   const isFull = spotsLeft <= 0;
   const isLow = spotsLeft > 0 && spotsLeft <= 3;
   const price = group.price_monthly ?? group.price_per_session ?? 0;
+  const promo = group.active_promotion;
+  const discountedPrice = promo ? Math.round(price * (1 - promo.discount / 100)) : null;
   const gradient = gradientForGroup(group.name);
+  const [ratingFilter, setRatingFilter] = useState<number | null>(null);
+  const [ratingSummary, setRatingSummary] = useState<RatingSummary>({ average: 0, total: 0, dist: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } });
+
+  useEffect(() => {
+    fetch(`/api/groups/${group.id}/reviews?limit=100`)
+      .then(r => r.ok ? r.json() : { data: { items: [] } })
+      .then(json => {
+        const items: any[] = json.data?.items ?? json.items ?? [];
+        const dist: Record<1|2|3|4|5, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+        items.forEach(r => { const s = r.rating as 1|2|3|4|5; if (s >= 1 && s <= 5) dist[s]++; });
+        const total = items.length;
+        const average = total ? items.reduce((s, r) => s + r.rating, 0) / total : 0;
+        setRatingSummary({ average, total, dist });
+      })
+      .catch(() => {});
+  }, [group.id]);
   const tutorName = group.tutor?.display_name || group.tutor?.full_name || 'Tutor';
   const tutorInitials = tutorName.replace(/^(Mr\.|Ms\.|Mrs\.|Dr\.)\s*/i, '').split(' ').map((p: string) => p[0]).join('').slice(0, 2);
   const schedule = (() => {
@@ -209,9 +246,14 @@ function Detail({ group, onJoin }: { group: GroupData; onJoin: () => void }) {
         </div>
 
         <div className="relative mt-4 flex flex-wrap gap-2">
+          {promo && (
+            <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-amber-400 text-amber-900 shadow-sm">
+              🏷 {promoLabel(promo)}
+            </span>
+          )}
           {/* Form level badge */}
           {group.form_level && (
-            <span className="text-[11px] font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-white/95 text-ink">{group.form_level.replace('_', ' ')}</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-white/95 text-ink">{formatLevel(group.form_level)}</span>
           )}
           {group.feedback_mode === 'included_free' && (
             <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-brand text-white shadow-sm">
@@ -326,8 +368,8 @@ function Detail({ group, onJoin }: { group: GroupData; onJoin: () => void }) {
         </section>
       )}
 
-      {/* Parent feedback */}
-      {group.feedback_mode && group.feedback_mode !== 'off' && (
+      {/* Parent feedback — hidden until parent accounts launch */}
+      {false && group.feedback_mode && group.feedback_mode !== 'off' && (
         <section className={`rounded-2xl border p-5 space-y-2 ${group.feedback_mode === 'included_free' ? 'border-brand/30 bg-brand-soft/30' : 'border-amber-200 bg-amber-50/40'}`}>
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-3">
@@ -355,6 +397,19 @@ function Detail({ group, onJoin }: { group: GroupData; onJoin: () => void }) {
         </section>
       )}
 
+      {/* Ratings & Reviews */}
+      <section className="space-y-4">
+        <RatingBreakdown summary={ratingSummary} activeFilter={ratingFilter} onFilter={setRatingFilter} />
+        <CommentSection
+          targetKind="class"
+          targetId={group.id}
+          viewerIsOwnerTutor={false}
+          viewerLoggedIn={true}
+          activeRatingFilter={ratingFilter}
+          onClearFilter={() => setRatingFilter(null)}
+        />
+      </section>
+
       {/* Pending request banner */}
       {isPending && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
@@ -373,10 +428,18 @@ function Detail({ group, onJoin }: { group: GroupData; onJoin: () => void }) {
       {/* Sticky CTA */}
       <div className="fixed bottom-0 left-0 right-0 z-40 bg-background border-t border-border p-4 flex items-center gap-4 shadow-xl sm:relative sm:bottom-auto sm:rounded-2xl sm:border sm:shadow-none">
         <div className="flex-1 min-w-0">
-          <div className="flex items-baseline gap-2">
+          <div className="flex items-baseline gap-2 flex-wrap">
             {price > 0 ? (
               <>
-                <span className="text-xl font-bold text-ink">{fmtTTD(price)}</span>
+                {discountedPrice !== null ? (
+                  <>
+                    <span className="text-xl font-bold text-brand-deep">{fmtTTD(discountedPrice)}</span>
+                    <span className="text-sm line-through text-muted-foreground">{fmtTTD(price)}</span>
+                    <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full bg-brand/10 text-brand-deep">{promo!.discount}% off</span>
+                  </>
+                ) : (
+                  <span className="text-xl font-bold text-ink">{fmtTTD(price)}</span>
+                )}
                 <span className="text-xs text-muted-foreground">/{group.price_monthly ? 'mo' : 'session'}</span>
               </>
             ) : (
@@ -430,10 +493,13 @@ function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent }: {
   const isFull = group.max_students - group.member_count <= 0;
   const isRequest = group.require_join_requests;
   const price = group.price_monthly ?? group.price_per_session ?? 0;
-  const hasFeedbackAddon = group.feedback_mode === 'paid_addon' && !!group.parent_feedback_price;
+  const promo = group.active_promotion;
+  const discountedPrice = promo ? Math.round(price * (1 - promo.discount / 100)) : null;
+  const effectivePrice = discountedPrice ?? price;
+  const hasFeedbackAddon = false; // parent accounts coming soon
   const [wantsFeedback, setWantsFeedback] = useState<boolean | null>(null); // null = not yet chosen
   const [submitting, setSubmitting] = useState(false);
-  const totalPrice = price + (wantsFeedback && hasFeedbackAddon ? (group.parent_feedback_price ?? 0) : 0);
+  const totalPrice = effectivePrice + (wantsFeedback && hasFeedbackAddon ? (group.parent_feedback_price ?? 0) : 0);
   const feedbackDecisionRequired = hasFeedbackAddon && hasLinkedParent && wantsFeedback === null;
   const [err, setErr] = useState('');
 
@@ -454,7 +520,8 @@ function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent }: {
         const data = await res.json();
         if (data.checkout_url) { window.location.href = data.checkout_url; return; }
         if (data.waitlisted) { onSuccess('awaiting-approval'); return; }
-        if (!res.ok) throw new Error(data.error || 'Failed');
+        if (res.status === 503) throw new Error('Online payments are not available right now. Please contact the tutor directly.');
+        if (!res.ok) throw new Error(data.error || 'Failed to process enrolment. Please try again.');
       } else {
         const res = await fetch(`/api/groups/${group.id}/members`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
         const data = await res.json();
@@ -500,9 +567,18 @@ function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent }: {
             : 'Free — no payment required'}
         </InfoRow>
         {price > 0 && (
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            You'll be charged {fmtTTD(totalPrice)}{group.price_monthly ? ' each month' : ' per session'}. Cancel any time from your account.
-          </p>
+          <>
+            {promo && discountedPrice !== null && (
+              <div className="flex items-center gap-2 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2">
+                <span className="text-xs font-bold text-amber-700">🏷 {promo.discount}% off applied</span>
+                <span className="text-xs text-muted-foreground line-through">{fmtTTD(price)}</span>
+                <span className="text-xs font-bold text-brand-deep">→ {fmtTTD(discountedPrice)}/mo</span>
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              You'll be charged {fmtTTD(totalPrice)}{group.price_monthly ? ' each month' : ' per session'}. Cancel any time from your account.
+            </p>
+          </>
         )}
       </section>
 
@@ -622,6 +698,8 @@ function JoinedScreen({ group, kind }: { group: GroupData; kind: 'enrolled' | 'a
 function ClassSummaryCard({ group }: { group: GroupData }) {
   const gradient = gradientForGroup(group.name);
   const price = group.price_monthly ?? group.price_per_session ?? 0;
+  const promo = group.active_promotion;
+  const discountedPrice = promo ? Math.round(price * (1 - promo.discount / 100)) : null;
   const tutorName = group.tutor?.display_name || group.tutor?.full_name || 'Tutor';
   const schedule = (() => {
     const entries = parseScheduleData(group.schedule_data);
@@ -641,7 +719,15 @@ function ClassSummaryCard({ group }: { group: GroupData }) {
       </div>
       <div className="text-right shrink-0">
         {price > 0 ? (
-          <><div className="font-bold text-ink">{fmtTTD(price)}</div><div className="text-[11px] text-muted-foreground">/{group.price_monthly ? 'mo' : 'session'}</div></>
+          discountedPrice !== null ? (
+            <>
+              <div className="font-bold text-brand-deep">{fmtTTD(discountedPrice)}</div>
+              <div className="text-[11px] line-through text-muted-foreground">{fmtTTD(price)}</div>
+              <div className="text-[11px] text-muted-foreground">/{group.price_monthly ? 'mo' : 'session'}</div>
+            </>
+          ) : (
+            <><div className="font-bold text-ink">{fmtTTD(price)}</div><div className="text-[11px] text-muted-foreground">/{group.price_monthly ? 'mo' : 'session'}</div></>
+          )
         ) : (
           <div className="font-bold text-brand-deep">Free</div>
         )}

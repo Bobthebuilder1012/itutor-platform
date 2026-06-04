@@ -103,22 +103,6 @@ export async function GET() {
     0
   );
 
-  // -- Upcoming sessions: scheduled but not yet completed/charged.
-  //    Money is held until the session actually occurs. Shown separately
-  //    so tutors can see expected future earnings before they flow into pending.
-  const { data: upcomingSessions } = await admin
-    .from('sessions')
-    .select('payout_amount_ttd, charge_amount_ttd, scheduled_start_at')
-    .eq('tutor_id', user.id)
-    .in('status', ['SCHEDULED', 'JOIN_OPEN'])
-    .is('charged_at', null)
-    .gt('scheduled_start_at', new Date().toISOString());
-
-  const upcomingTtd = (upcomingSessions ?? []).reduce(
-    (s: number, r: any) => s + Number(r.payout_amount_ttd ?? 0),
-    0
-  );
-
   // -- Held amount (admin_hold rows — already excluded from tutor_balances) --
   const { data: heldRows } = await admin
     .from('payout_ledger')
@@ -130,22 +114,6 @@ export async function GET() {
     (s: number, r: any) => s + Number(r.amount_ttd ?? 0),
     0
   );
-
-  // -- Pending deductions (platform recovers these from future payouts) --
-  const { data: deductionRows } = await admin
-    .from('tutor_deductions')
-    .select('id, amount_ttd, reason, status, created_at, source_enrollment_id, source_subscription_payment_id')
-    .eq('tutor_id', user.id)
-    .eq('status', 'pending')
-    .order('created_at', { ascending: false });
-
-  const pendingDeductions = (deductionRows ?? []) as Array<{
-    id: string; amount_ttd: number; reason: string; status: string;
-    created_at: string; source_enrollment_id: string | null; source_subscription_payment_id: string | null;
-  }>;
-  const pendingDeductionTtd = Math.round(
-    pendingDeductions.reduce((s, r) => s + Number(r.amount_ttd ?? 0), 0) * 100
-  ) / 100;
 
   // -- Transaction history (ledger joined with sessions + subscription payments) --
   const { data: ledger } = await admin
@@ -381,13 +349,11 @@ export async function GET() {
 
   return NextResponse.json({
     balances: {
-      pending_ttd:            Math.round((pending + unprocessedPending) * 100) / 100,
-      available_ttd:          available,
-      lifetime_paid_ttd:      Math.round(lifetimePaid * 100) / 100,
-      held_ttd:               Math.round(heldTtd * 100) / 100,
-      upcoming_ttd:           Math.round(upcomingTtd * 100) / 100,
-      pending_deductions_ttd: pendingDeductionTtd,
-      last_updated:           balanceRow?.last_updated ?? null,
+      pending_ttd:       Math.round((pending + unprocessedPending) * 100) / 100,
+      available_ttd:     available,
+      lifetime_paid_ttd: Math.round(lifetimePaid * 100) / 100,
+      held_ttd:          Math.round(heldTtd * 100) / 100,
+      last_updated:      balanceRow?.last_updated ?? null,
     },
     pending_deductions: pendingDeductions,
     history,

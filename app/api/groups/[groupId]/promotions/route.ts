@@ -82,23 +82,12 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     if (error) {
       const msg = String(error?.message ?? '');
-      if (msg.includes('schema cache') || msg.includes('does not exist') || (error as any)?.code === '42P01') {
-        // Schema cache stale — insert with explicit schema hint via raw approach
-        const { data: d2, error: e2 } = await service.rpc('insert_group_promotion', {
-          p_group_id: groupId, p_tutor_id: user.id, p_kind: kind,
-          p_discount: discount,
-          p_student_cap: kind === 'early-bird' ? student_cap : null,
-          p_duration_days: kind === 'time-limited' ? duration_days : null,
-        });
-        if (e2) {
-          return NextResponse.json(
-            { error: 'Table schema cache is stale. Run: NOTIFY pgrst, \'reload schema\'; in the Supabase SQL editor.' },
-            { status: 503 }
-          );
-        }
-        return NextResponse.json({ promotion: d2 }, { status: 201 });
-      }
-      throw error;
+      const code = (error as any)?.code ?? '';
+      console.error('[POST promotions] insert error:', { code, msg, details: (error as any)?.details, hint: (error as any)?.hint });
+      return NextResponse.json(
+        { error: msg || 'Insert failed', code, details: (error as any)?.details, hint: (error as any)?.hint },
+        { status: 500 }
+      );
     }
     return NextResponse.json({ promotion: data }, { status: 201 });
   } catch (err) {

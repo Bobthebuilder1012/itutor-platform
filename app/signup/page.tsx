@@ -272,7 +272,7 @@ export default function SignupPage() {
       if (role === 'student' || role === 'tutor') goto('profile');
       else {
         const redirectUrl = searchParams.get('redirect');
-        router.push(redirectUrl ? decodeURIComponent(redirectUrl) : '/parent/dashboard');
+        router.push(redirectUrl ? decodeURIComponent(redirectUrl) : '/parent/coming-soon');
       }
     }, 1400);
   };
@@ -476,8 +476,19 @@ export default function SignupPage() {
                         icon={<GraduationCap className="h-5 w-5" />} title="I'm a student" desc="Find tutors and join lessons" />
                       <RoleCard active={role === 'tutor'} onClick={() => setRole('tutor')}
                         icon={<UserRound className="h-5 w-5" />} title="I'm an iTutor" desc="Teach 1:1s and run lessons" />
-                      <RoleCard active={role === 'parent'} onClick={() => setRole('parent')}
-                        icon={<Users className="h-5 w-5" />} title="I'm a parent / guardian" desc="Manage my child's learning" />
+                      {/* Parent accounts — coming soon */}
+                      <div className="relative rounded-xl border-2 border-dashed border-border bg-muted/30 p-4 opacity-70 cursor-not-allowed select-none">
+                        <div className="flex items-center gap-3">
+                          <div className="rounded-lg bg-muted p-2"><Users className="h-5 w-5 text-muted-foreground" /></div>
+                          <div className="flex-1">
+                            <div className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
+                              I'm a parent / guardian
+                              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Coming soon</span>
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-0.5">Manage my child's learning</div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                     <button onClick={handleStep2} disabled={!role || loading}
                       className="mt-6 w-full rounded-xl bg-itutor-green py-3 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:opacity-40">
