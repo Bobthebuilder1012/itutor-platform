@@ -70,7 +70,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 router.replace('/student/dashboard');
                 return;
               } else if (profile.role === 'parent') {
-                router.replace('/parent/dashboard');
+                // Parent accounts not yet live — let them stay on home/public pages
+                // The middleware handles /parent/* routes. No forced redirect here.
+                setLoading(false);
                 return;
               }
             }

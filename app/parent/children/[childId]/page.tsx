@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, GraduationCap, FileText, Calendar, Clock, Check, AlertCircle, X, BookOpen, ChevronRight } from 'lucide-react';
+import { ArrowLeft, GraduationCap, FileText, Calendar, Clock, Check, AlertCircle, X, BookOpen, ChevronRight, Trash2 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
@@ -18,6 +19,7 @@ export default function ChildDetailPage() {
 
 function ChildContent() {
   const { childId } = useParams<{ childId: string }>();
+  const router = useRouter();
   const { profile } = useProfile();
   const [tab, setTab] = useState<'classes' | 'feedback'>('classes');
   const [childName, setChildName] = useState('');
@@ -27,6 +29,11 @@ function ChildContent() {
   const [feedback, setFeedback] = useState<FeedbackReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [openReport, setOpenReport] = useState<FeedbackReport | null>(null);
+  const [removeOpen, setRemoveOpen] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmName, setConfirmName] = useState('');
 
   useEffect(() => {
     if (!childId) return;
@@ -53,6 +60,32 @@ function ChildContent() {
 
   const activeCount = enrollments.filter(e => ['approved','active'].includes(e.status)).length;
 
+  const handleRemove = async () => {
+    setRemoving(true);
+    try {
+      const res = await fetch('/api/parent/remove-child', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ childId }),
+      });
+      if (res.ok) router.push('/parent/dashboard');
+    } catch { /* silent */ }
+    finally { setRemoving(false); }
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      const res = await fetch('/api/parent/delete-child-account', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ childId }),
+      });
+      if (res.ok) router.push('/parent/dashboard');
+    } catch { /* silent */ }
+    finally { setDeleting(false); }
+  };
+
   return (
     <div className="space-y-6">
       <Link href="/parent/dashboard" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-ink">
@@ -67,6 +100,7 @@ function ChildContent() {
           <div className="text-sm text-muted-foreground mt-0.5">{activeCount} active class{activeCount !== 1 ? 'es' : ''}</div>
         </div>
       </header>
+
 
       <div className="inline-flex p-1 rounded-2xl bg-muted">
         {(['classes', 'feedback'] as const).map((t) => (
@@ -100,6 +134,85 @@ function ChildContent() {
             <div className="p-6 space-y-4">
               <div className="text-sm text-muted-foreground">From <span className="font-semibold text-ink">{openReport.tutorName}</span></div>
               <p className="text-[15px] leading-relaxed text-ink whitespace-pre-wrap">{openReport.body}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Danger zone ─────────────────────────────── */}
+      <section className="rounded-2xl border border-rose-200 bg-rose-50/40 p-5 space-y-4">
+        <div>
+          <h2 className="font-bold text-rose-900 text-sm">Danger zone</h2>
+          <p className="text-xs text-rose-700 mt-0.5">These actions cannot be undone. Please be certain before proceeding.</p>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-3">
+          {/* Remove link */}
+          <div className="rounded-xl border border-rose-200 bg-white p-4 space-y-2">
+            <div className="font-semibold text-ink text-sm">Remove from my account</div>
+            <p className="text-xs text-muted-foreground">Unlinks {childName} from your parent account. Their student account and all class history stays intact — they can still log in independently.</p>
+            <button onClick={() => setRemoveOpen(true)}
+              className="mt-1 px-3 py-1.5 rounded-lg border border-rose-300 text-rose-700 text-xs font-semibold hover:bg-rose-50 transition">
+              Remove child
+            </button>
+          </div>
+          {/* Delete account */}
+          <div className="rounded-xl border border-rose-300 bg-white p-4 space-y-2">
+            <div className="font-semibold text-rose-800 text-sm">Delete student account</div>
+            <p className="text-xs text-muted-foreground">Permanently deletes {childName}'s iTutor account and all associated data. This cannot be undone.</p>
+            <button onClick={() => { setDeleteOpen(true); setConfirmName(''); }}
+              className="mt-1 px-3 py-1.5 rounded-lg bg-rose-600 text-white text-xs font-semibold hover:bg-rose-700 transition">
+              Delete account
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* Remove confirm */}
+      {removeOpen && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setRemoveOpen(false)}>
+          <div onClick={e => e.stopPropagation()} className="w-full max-w-sm rounded-2xl bg-background border border-border shadow-xl p-6 space-y-4">
+            <div className="font-bold text-ink text-lg">Remove {childName}?</div>
+            <p className="text-sm text-muted-foreground">
+              This removes the link between your parent account and {childName}'s student account. Their account and class history will stay intact — they can still log in independently.
+            </p>
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setRemoveOpen(false)} className="flex-1 px-4 py-2.5 rounded-xl border border-border text-sm font-semibold hover:bg-muted">Cancel</button>
+              <button onClick={handleRemove} disabled={removing}
+                className="flex-1 px-4 py-2.5 rounded-xl border border-rose-300 text-rose-700 text-sm font-semibold hover:bg-rose-50 disabled:opacity-50">
+                {removing ? 'Removing…' : 'Remove child'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete account confirm — requires typing the child's name */}
+      {deleteOpen && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setDeleteOpen(false)}>
+          <div onClick={e => e.stopPropagation()} className="w-full max-w-sm rounded-2xl bg-background border border-border shadow-xl p-6 space-y-4">
+            <div className="font-bold text-ink text-lg">Permanently delete account?</div>
+            <p className="text-sm text-muted-foreground">
+              This will permanently delete <strong>{childName}</strong>'s student account, all class memberships, and their login. <strong>This cannot be undone.</strong>
+            </p>
+            <div>
+              <label className="text-xs font-semibold text-ink block mb-1.5">
+                Type <span className="text-rose-700 font-bold">{childName}</span> to confirm
+              </label>
+              <input
+                value={confirmName}
+                onChange={e => setConfirmName(e.target.value)}
+                placeholder={childName}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
+              />
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setDeleteOpen(false)} className="flex-1 px-4 py-2.5 rounded-xl border border-border text-sm font-semibold hover:bg-muted">Cancel</button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting || confirmName !== childName}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed">
+                {deleting ? 'Deleting…' : 'Delete account'}
+              </button>
             </div>
           </div>
         </div>

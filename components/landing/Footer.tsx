@@ -23,6 +23,11 @@ const LinkedinIcon = () => (
     <circle cx="4" cy="4" r="2" />
   </svg>
 );
+const TikTokIcon = () => (
+  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>
+    <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5.8 20.1a6.34 6.34 0 0 0 10.86-4.43V8.42a8.16 8.16 0 0 0 4.77 1.52V6.49a4.85 4.85 0 0 1-1.84.2Z" />
+  </svg>
+);
 
 const offers = [
   'CSEC Subjects',
@@ -33,9 +38,9 @@ const offers = [
 ];
 
 const company = [
-  { label: 'About', href: '#' },
-  { label: 'How it works', href: '#how' },
-  { label: 'Reviews', href: '#testimonials' },
+  { label: 'About', href: '/about' },
+  { label: 'How it works', href: '/how-it-works' },
+  { label: 'FAQ', href: '/faq' },
   { label: 'Become a Tutor', href: '/signup?role=tutor' },
 ];
 
@@ -65,7 +70,12 @@ function Faq({ q, a }: { q: string; a: string }) {
   );
 }
 
-const socialIcons = [FacebookIcon, InstagramIcon, LinkedinIcon];
+const socials = [
+  { Icon: FacebookIcon,  label: 'Facebook',  href: 'https://www.facebook.com/share/18tvYgPa8J/?mibextid=wwXIfr' },
+  { Icon: InstagramIcon, label: 'Instagram', href: 'https://www.instagram.com/itutor.site?igsh=MXgyNjdrMTR1ampyag%3D%3D&utm_source=qr' },
+  { Icon: TikTokIcon,    label: 'TikTok',    href: 'https://www.tiktok.com/@itutor.site?_r=1&_t=ZS-96r391xYFq0' },
+  { Icon: LinkedinIcon,  label: 'LinkedIn',  href: 'https://www.linkedin.com/company/myitutor/' },
+];
 
 export default function Footer() {
   return (
@@ -92,12 +102,14 @@ export default function Footer() {
               support@myitutor.com
             </a>
             <div className="mt-6 flex gap-2">
-              {socialIcons.map((Icon, i) => (
+              {socials.map(({ Icon, label, href }) => (
                 <a
-                  key={i}
-                  href="#"
+                  key={label}
+                  href={href}
+                  target="_blank"
+                  rel="noreferrer"
                   className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/5 text-white/80 transition-all hover:bg-brand hover:text-white"
-                  aria-label="Social link"
+                  aria-label={label}
                 >
                   <Icon />
                 </a>
@@ -145,11 +157,11 @@ export default function Footer() {
         </div>
 
         <div className="mt-16 flex flex-col items-start justify-between gap-4 border-t border-white/10 pt-6 text-sm text-white/50 sm:flex-row sm:items-center">
-          <p>© {new Date().getFullYear()} iTutor — Nora Digital Ltd. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} iTutor — Astronova Technologies Ltd. All rights reserved.</p>
           <div className="flex gap-6">
-            <a href="#" className="hover:text-white transition-colors">Privacy</a>
-            <a href="#" className="hover:text-white transition-colors">Terms</a>
-            <a href="#" className="hover:text-white transition-colors">Help</a>
+            <a href="/privacy" className="hover:text-white transition-colors">Privacy</a>
+            <a href="/terms" className="hover:text-white transition-colors">Terms</a>
+            <a href="/help" className="hover:text-white transition-colors">Help</a>
           </div>
         </div>
       </div>

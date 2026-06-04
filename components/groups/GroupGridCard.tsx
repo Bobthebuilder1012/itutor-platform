@@ -226,9 +226,23 @@ export default function GroupGridCard({ group, onClick, onAskToJoin }: GroupGrid
               {group.member_count > 0 ? `${group.member_count} members` : 'No members yet'}
             </span>
           </div>
-          <span className={`text-base font-extrabold ${isPaid ? 'text-indigo-600' : 'text-emerald-600'}`}>
-            {isPaid ? `$${Number(effectivePrice)}${priceSuffix}` : 'Free'}
-          </span>
+          <div className="text-right">
+            {isPaid && (group as any).active_promotion ? (
+              <>
+                <div className="flex items-center justify-end gap-1.5">
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">{(group as any).active_promotion.discount}% off</span>
+                  <span className="text-base font-extrabold text-brand-deep">
+                    ${Math.round(Number(effectivePrice) * (1 - (group as any).active_promotion.discount / 100))}{priceSuffix}
+                  </span>
+                </div>
+                <div className="text-xs line-through text-gray-400">${Number(effectivePrice)}{priceSuffix}</div>
+              </>
+            ) : (
+              <span className={`text-base font-extrabold ${isPaid ? 'text-indigo-600' : 'text-emerald-600'}`}>
+                {isPaid ? `$${Number(effectivePrice)}${priceSuffix}` : 'Free'}
+              </span>
+            )}
+          </div>
         </div>
       </div>
     </div>

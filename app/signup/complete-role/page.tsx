@@ -89,7 +89,7 @@ export default function CompleteRolePage() {
           if (data.role !== 'parent') {
             setStep('profile');
           } else {
-            router.replace('/parent/dashboard');
+            router.replace('/parent/coming-soon');
             return;
           }
         }
@@ -125,7 +125,7 @@ export default function CompleteRolePage() {
     setLoading(true);
     try {
       await saveProfile({ role: 'set-role', newRole: role });
-      if (role === 'parent') { router.push('/parent/dashboard'); return; }
+      if (role === 'parent') { router.push('/parent/coming-soon'); return; }
       setStep('profile');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save role. Please try again.');
@@ -202,7 +202,6 @@ export default function CompleteRolePage() {
                   {([
                     { id: 'student' as UserRole, icon: <GraduationCap className="h-5 w-5" />, title: "I'm a student", desc: 'Find tutors and join lessons' },
                     { id: 'tutor' as UserRole, icon: <UserRound className="h-5 w-5" />, title: "I'm an iTutor", desc: 'Teach 1:1s and run lessons' },
-                    { id: 'parent' as UserRole, icon: <Users className="h-5 w-5" />, title: "I'm a parent / guardian", desc: "Manage my child's learning" },
                   ]).map(({ id, icon, title, desc }) => (
                     <button key={id} type="button" onClick={() => { setRole(id); setError(''); }}
                       className={cn('flex w-full items-center gap-4 rounded-2xl border-2 p-4 text-left transition',
@@ -221,6 +220,19 @@ export default function CompleteRolePage() {
                       </div>
                     </button>
                   ))}
+                  {/* Parent — Coming Soon */}
+                  <div className="flex w-full items-center gap-4 rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 p-4 opacity-60 cursor-not-allowed select-none">
+                    <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gray-100 text-gray-400">
+                      <Users className="h-5 w-5" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="font-semibold text-gray-500 flex items-center gap-2">
+                        I&apos;m a parent / guardian
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Coming soon</span>
+                      </div>
+                      <div className="text-sm text-gray-400">Manage my child&apos;s learning</div>
+                    </div>
+                  </div>
                 </div>
                 <button onClick={handleRoleContinue} disabled={!role || loading}
                   className="mt-6 w-full rounded-xl bg-itutor-green py-3 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:opacity-40">
