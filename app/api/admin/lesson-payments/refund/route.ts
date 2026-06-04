@@ -8,7 +8,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/middleware/adminAuth';
 import { getServiceClient } from '@/lib/supabase/server';
-import { createRequiredNotice } from '@/lib/notices/createNotice';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -152,21 +151,6 @@ export async function POST(req: NextRequest) {
     await admin.from('subscription_payments').update({ status: 'REFUNDED' }).eq('id', spId);
     await admin.from('group_enrollments').update({ payment_status: 'REFUNDED' }).eq('id', enrollment_id);
 
-    // Required notice — student must acknowledge refund
-    await createRequiredNotice(admin, {
-      user_id: removal.student_id,
-      type: 'refund_issued',
-      severity: 'success',
-      title: 'Refund issued',
-      message: `A refund of TT$${refundAmount.toFixed(2)} has been approved and will be returned to your original payment method.`,
-      requires_ack: true,
-      related_group_id: removal.group_id,
-      related_group_enrollment_id: enrollment_id,
-      related_group_removal_id: removal_id,
-      related_subscription_payment_id: spId,
-      refund_amount_ttd: refundAmount,
-    });
-
     return NextResponse.json({ success: true, path: 'A', note: 'Ledger reversed, LuniPay refund processed.' });
   }
 
@@ -245,36 +229,6 @@ export async function POST(req: NextRequest) {
 
   await admin.from('subscription_payments').update({ status: 'REFUNDED' }).eq('id', spId);
   await admin.from('group_enrollments').update({ payment_status: 'REFUNDED' }).eq('id', enrollment_id);
-
-  // Required notices — student refund + tutor deduction
-  const tutorPayoutAmount = Number(subPayment.tutor_payout_ttd ?? refundAmount);
-
-  await createRequiredNotice(admin, {
-    user_id: removal.student_id,
-    type: 'refund_issued',
-    severity: 'success',
-    title: 'Refund issued',
-    message: `A refund of TT$${refundAmount.toFixed(2)} has been approved and will be returned to your original payment method.`,
-    requires_ack: true,
-    related_group_id: removal.group_id,
-    related_group_enrollment_id: enrollment_id,
-    related_group_removal_id: removal_id,
-    related_subscription_payment_id: spId,
-    refund_amount_ttd: refundAmount,
-  });
-
-  await createRequiredNotice(admin, {
-    user_id: removal.tutor_id,
-    type: 'payout_held',
-    severity: 'warning',
-    title: 'Earnings deduction applied',
-    message: `TT$${tutorPayoutAmount.toFixed(2)} has been deducted from your earnings because a student who was removed from your group class has been refunded. The refund was paid out by the platform and will be recovered from your next payout.`,
-    requires_ack: true,
-    related_group_id: removal.group_id,
-    related_group_removal_id: removal_id,
-    related_subscription_payment_id: spId,
-    tutor_payout_amount_ttd: tutorPayoutAmount,
-  });
 
   return NextResponse.json({
     success: true,

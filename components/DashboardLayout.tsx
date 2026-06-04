@@ -19,7 +19,6 @@ import { getAdminHomePath, isEmailManagementOnlyAdmin } from '@/lib/auth/adminAc
 import dynamic from 'next/dynamic';
 import UniversalSearchBar from '@/components/UniversalSearchBar';
 import LogoutConfirmModal from '@/components/LogoutConfirmModal';
-import RequiredNoticeModal from '@/components/RequiredNoticeModal';
 
 // Firebase-based push registrar disabled — it conflicts with the Web Push API
 // path in browserPushService.ts (both register a service worker at scope '/').
@@ -524,7 +523,6 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         <main className={`flex-1 ${isGroupsPage ? 'flex flex-col min-h-0' : 'p-5 lg:p-8'}`}>
           {effectiveUserId && <EnableNotificationsPrompt userId={effectiveUserId} />}
           <IOSInstallPrompt />
-          <RequiredNoticeModal />
           {children}
         </main>
       </div>

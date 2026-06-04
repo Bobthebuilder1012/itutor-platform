@@ -25,7 +25,6 @@ import {
   writeCancellationEvent,
   STUDENT_LATE_CANCEL_RETENTION_PCT,
 } from '@/lib/reliability';
-import { createRequiredNotice, fmtTTD } from '@/lib/notices/createNotice';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -232,87 +231,6 @@ export async function POST(request: NextRequest) {
     } catch (e) {
       console.error('student-cancel: notification insert failed', e);
     }
-
-    // ── Required notices ──────────────────────────────────────────────────────
-    // These are fire-and-forget: a log is emitted inside createRequiredNotice on
-    // failure, but we never block the response on them.
-    try {
-      const refundedTtd = refundOutcome?.refunded_ttd ?? 0;
-      const retainedTtd = refundOutcome?.retained_ttd ?? 0;
-
-      if (lateFeeApplies) {
-        // Student: late cancellation — partial refund
-        await createRequiredNotice(admin, {
-          user_id: user.id,
-          type: 'student_late_cancel_partial_refund',
-          severity: 'warning',
-          title: 'Late cancellation — partial refund',
-          message:
-            `You cancelled within 12 hours of the session start. Per our late-cancellation policy, ` +
-            `50% of your payment (${fmtTTD(retainedTtd)}) has been retained and ` +
-            `${fmtTTD(refundedTtd)} will be refunded to your original payment method.`,
-          requires_ack: false,
-          related_booking_id: booking.id,
-          related_session_id: session?.id ?? null,
-          related_payment_id: payment?.id ?? null,
-          refund_amount_ttd: refundedTtd,
-          retained_amount_ttd: retainedTtd,
-        });
-
-        // Tutor: student cancelled late
-        await createRequiredNotice(admin, {
-          user_id: booking.tutor_id,
-          type: 'session_cancelled_by_student',
-          severity: 'info',
-          title: 'Student cancelled late',
-          message:
-            `A student cancelled a session within 12 hours of its start time. ` +
-            `The late-cancellation retention (${fmtTTD(retainedTtd)}) has been applied to your account.`,
-          requires_ack: false,
-          related_booking_id: booking.id,
-          related_session_id: session?.id ?? null,
-          related_payment_id: payment?.id ?? null,
-          retained_amount_ttd: retainedTtd,
-          refund_amount_ttd: refundedTtd,
-        });
-      } else {
-        // Student: early cancellation — full refund
-        await createRequiredNotice(admin, {
-          user_id: user.id,
-          type: 'student_early_cancel_full_refund',
-          severity: 'success',
-          title: 'Session cancelled — full refund',
-          message:
-            `Your session has been cancelled and a full refund of ${fmtTTD(refundedTtd)} ` +
-            `will be returned to your original payment method. ` +
-            `No cancellation fee applies when you cancel more than 12 hours in advance.`,
-          requires_ack: false,
-          related_booking_id: booking.id,
-          related_session_id: session?.id ?? null,
-          related_payment_id: payment?.id ?? null,
-          refund_amount_ttd: refundedTtd,
-        });
-
-        // Tutor: student cancelled (no penalty)
-        await createRequiredNotice(admin, {
-          user_id: booking.tutor_id,
-          type: 'session_cancelled_by_student',
-          severity: 'info',
-          title: 'Session cancelled by student',
-          message:
-            `A student cancelled their upcoming session with you. ` +
-            `The cancellation was made more than 12 hours in advance; no late fee applied.`,
-          requires_ack: false,
-          related_booking_id: booking.id,
-          related_session_id: session?.id ?? null,
-          related_payment_id: payment?.id ?? null,
-          refund_amount_ttd: refundedTtd,
-        });
-      }
-    } catch (e) {
-      console.error('student-cancel: required notice insert failed', e);
-    }
-    // ── End required notices ──────────────────────────────────────────────────
 
     return NextResponse.json({
       success: true,
