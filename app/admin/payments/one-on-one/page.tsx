@@ -68,6 +68,7 @@ interface PendingRefundRow extends PaymentRow {
   refund_reason: string;
   recommended_refund_ttd: number;
   retained_ttd: number;
+  refund_status?: 'pending' | 'issued';
 }
 
 interface CancellationRow {
@@ -878,7 +879,7 @@ export default function OneOnOnePaymentsPage() {
             accent="sky"
           />
           <StatCard
-            label="Pending Refunds"
+            label="Refunds"
             value={String(kpis?.pending_refunds_count ?? '—')}
             sub={fmtTTD(kpis?.pending_refunds_ttd)}
             icon={<AlertTriangle className="size-4" />}
@@ -906,7 +907,7 @@ export default function OneOnOnePaymentsPage() {
             All Payments {kpis ? `(${kpis.total_payments_count})` : ''}
           </Tab>
           <Tab active={tab === 'pending'} onClick={() => setTab('pending')}>
-            Pending Refunds {kpis ? `(${kpis.pending_refunds_count})` : ''}
+            Refunds {kpis ? `(${kpis.pending_refunds_count})` : ''}
           </Tab>
           <Tab active={tab === 'cancelled'} onClick={() => setTab('cancelled')}>
             Canceled {kpis ? `(${kpis.cancelled_count})` : ''}
@@ -1009,9 +1010,9 @@ export default function OneOnOnePaymentsPage() {
               )
             )}
 
-            {/* ── PENDING REFUNDS ── */}
+            {/* ── REFUNDS ── */}
             {tab === 'pending' && (
-              !data?.pending_refunds.length ? <EmptyState message="No pending refunds to approve." /> : (
+              !data?.pending_refunds.length ? <EmptyState message="No refunds found." /> : (
                 <DataTable>
                   <thead>
                     <tr className="text-[11px] font-semibold text-white/30 uppercase tracking-wider">
@@ -1019,15 +1020,20 @@ export default function OneOnOnePaymentsPage() {
                       <th className="px-4 py-3 text-left">Tutor</th>
                       <th className="px-4 py-3 text-left">Session</th>
                       <th className="px-4 py-3 text-right">Amount</th>
-                      <th className="px-4 py-3 text-right">Recommended</th>
+                      <th className="px-4 py-3 text-right">Refund</th>
                       <th className="px-4 py-3 text-right">Retained</th>
                       <th className="px-4 py-3 text-left">Reason</th>
+                      <th className="px-4 py-3 text-center">Status</th>
                       <th className="px-4 py-3 text-center w-36">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
-                    {data.pending_refunds.map((row) => (
-                      <tr key={row.id} className="hover:bg-white/3">
+                    {data.pending_refunds.map((row) => {
+                      const refundIssued = row.refund_status === 'issued' || row.payment_status === 'refunded';
+                      const refundAmount = refundIssued ? row.total_refunded_ttd : row.recommended_refund_ttd;
+
+                      return (
+                        <tr key={row.id} className="hover:bg-white/3">
                         <td className="px-4 py-3">
                           <p className="text-sm font-semibold text-white">{row.student_name ?? '—'}</p>
                           {row.student_email && <p className="text-xs text-white/40">{row.student_email}</p>}
@@ -1035,23 +1041,42 @@ export default function OneOnOnePaymentsPage() {
                         <td className="px-4 py-3 text-sm text-white/70">{row.tutor_name ?? '—'}</td>
                         <td className="px-4 py-3 text-xs text-white/50">{fmtDate(row.scheduled_at)}</td>
                         <td className="px-4 py-3 text-right text-sm text-white tabular-nums">{fmtTTD(row.amount_ttd)}</td>
-                        <td className="px-4 py-3 text-right text-sm text-rose-300 tabular-nums">{fmtTTD(row.recommended_refund_ttd)}</td>
+                        <td className="px-4 py-3 text-right text-sm text-rose-300 tabular-nums">{fmtTTD(refundAmount)}</td>
                         <td className="px-4 py-3 text-right text-xs text-white/40 tabular-nums">
                           {row.retained_ttd > 0 ? fmtTTD(row.retained_ttd) : '—'}
                         </td>
                         <td className="px-4 py-3">
                           <span className="text-xs text-amber-300 capitalize">{row.refund_reason.replace(/_/g, ' ')}</span>
                         </td>
-                        <td className="px-4 py-3">
-                          <button
-                            onClick={() => setRefundTarget(row)}
-                            className="w-full px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition"
-                          >
-                            Issue Refund
-                          </button>
+                        <td className="px-4 py-3 text-center">
+                          {refundIssued ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 text-[11px] font-bold">
+                              <CheckCircle className="size-3" />
+                              Refunded
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-amber-500/15 text-amber-300 text-[11px] font-bold">
+                              Pending
+                            </span>
+                          )}
                         </td>
-                      </tr>
-                    ))}
+                        <td className="px-4 py-3">
+                          {refundIssued ? (
+                            <span className="block text-center text-xs text-white/30">
+                              {row.refunded_at ? fmtDate(row.refunded_at) : 'Completed'}
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => setRefundTarget(row)}
+                              className="w-full px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition"
+                            >
+                              Issue Refund
+                            </button>
+                          )}
+                        </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </DataTable>
               )

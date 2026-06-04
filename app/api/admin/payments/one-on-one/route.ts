@@ -435,20 +435,31 @@ export async function GET() {
   const release_ready_ttd     = unbatched_payout_ttd; // alias — same set
   const owed_payout_ttd       = r2(ledgerOwed.reduce((s: number, l: any) => s + Number(l.amount_ttd ?? 0), 0));
 
-  // Pending refunds: succeeded/partially_refunded payments where the session is
-  // cancelled, or noshow verdict is tutor/tie, or booking is cancelled.
+  // Refunds: open refund work plus resolved no-show claims where a refund was
+  // granted. Fully-refunded no-show rows stay visible here as completed refund
+  // records instead of disappearing after resolution.
   const pending_refunds_rows = all_payments.filter((row) => {
-    if (!['succeeded', 'partially_refunded'].includes(row.payment_status)) return false;
     const isSessionCancelled = row.session_status && ['CANCELLED', 'NO_SHOW_TUTOR', 'MUTUAL_NON_COMPLETION'].includes(row.session_status);
     const isBookingCancelled = row.booking_status === 'CANCELLED';
     const isNoshowTutor      = row.noshow_verdict === 'tutor_noshow' || row.noshow_verdict === 'tie';
-    return isSessionCancelled || isBookingCancelled || isNoshowTutor;
+    const isNoshowRefundSession = row.session_status && ['NO_SHOW_TUTOR', 'MUTUAL_NON_COMPLETION'].includes(row.session_status);
+
+    const needsRefundAction =
+      ['succeeded', 'partially_refunded'].includes(row.payment_status) &&
+      (isSessionCancelled || isBookingCancelled || isNoshowTutor);
+
+    const issuedNoshowRefund =
+      row.payment_status === 'refunded' &&
+      row.total_refunded_ttd > 0 &&
+      (isNoshowTutor || isNoshowRefundSession);
+
+    return needsRefundAction || issuedNoshowRefund;
   });
 
   const pending_refunds_count = pending_refunds_rows.length;
   const pending_refunds_ttd   = r2(pending_refunds_rows.reduce((s, r) => {
-    // Recommended refund = amount - already refunded
-    return s + Math.max(0, r.amount_ttd - r.total_refunded_ttd);
+    const remainingRefund = Math.max(0, r.amount_ttd - r.total_refunded_ttd);
+    return s + (r.payment_status === 'refunded' ? r.total_refunded_ttd : remainingRefund);
   }, 0));
 
   // cancelled_count: use raw cancellation_events — covers cancellations even
@@ -482,7 +493,8 @@ export async function GET() {
   // ─────────────────────────────────────────────────────────────────────────
   // SECTION 3: pending_refunds
   // ─────────────────────────────────────────────────────────────────────────
-  // Filter: payments that need refund action. Enrich with recommended amounts.
+  // Filter: payments that need refund action or already-issued no-show refunds.
+  // Enrich with recommended/issued amounts.
   const pending_refunds = pending_refunds_rows.map((row) => {
     let refund_reason = 'session_cancelled';
     if (row.noshow_verdict === 'tutor_noshow') refund_reason = 'tutor_noshow';
@@ -493,14 +505,25 @@ export async function GET() {
 
     const recommended_refund_ttd = r2(Math.max(0, row.amount_ttd - row.total_refunded_ttd));
     const retained_ttd           = r2(row.retained_amount_ttd);
+    const refund_status          = row.payment_status === 'refunded' ? 'issued' : 'pending';
 
     return {
       ...row,
       refund_reason,
       recommended_refund_ttd,
       retained_ttd,
+      refund_status,
     };
   });
+
+  const refund_granted_noshow_session_ids = new Set(
+    pending_refunds
+      .filter((row) =>
+        row.session_id &&
+        ['tutor_noshow', 'tie'].includes(row.noshow_verdict ?? '')
+      )
+      .map((row) => row.session_id)
+  );
 
   // ─────────────────────────────────────────────────────────────────────────
   // SECTION 4: cancellations
@@ -568,7 +591,14 @@ export async function GET() {
   // ─────────────────────────────────────────────────────────────────────────
   // SECTION 5: noshows
   // ─────────────────────────────────────────────────────────────────────────
-  const noshows = noshowClaims.map((claim: any) => {
+  const noshows = noshowClaims.filter((claim: any) => {
+    const refundGranted = ['tutor_noshow', 'tie'].includes(claim.admin_verdict ?? '');
+    return !(
+      claim.status === 'resolved' &&
+      refundGranted &&
+      refund_granted_noshow_session_ids.has(claim.session_id)
+    );
+  }).map((claim: any) => {
     const session     = sessionsMap.get(claim.session_id)   ?? sessionByBooking.get(claim.booking_id) ?? null;
     const claimant    = profilesById.get(claim.claimant_id) ?? null;
     const defendant   = profilesById.get(claim.defendant_id) ?? null;
