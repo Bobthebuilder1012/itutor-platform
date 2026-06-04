@@ -45,30 +45,38 @@ function MyBusinessContent() {
 
   async function fetchClasses(tutorId: string) {
     try {
+      // Use select('*') to avoid failing if newer optional columns don't exist in this environment
       const { data, error } = await supabase
         .from('groups')
-        .select('id, name, description, subject, form_level, tutor_id, pricing_model, price_monthly, price_per_session, max_students, visibility, archived_at, created_at, cover_image, schedule_display, require_join_requests, feedback_mode, status')
+        .select('*')
         .eq('tutor_id', tutorId)
         .is('archived_at', null)
         .order('created_at', { ascending: false });
-      if (error) throw error;
-      const rows = data ?? [];
 
-      const classIds = rows.map((c) => c.id);
+      if (error) {
+        console.error('[fetchClasses] groups query failed:', error.message);
+        setClasses([]);
+        return;
+      }
+
+      const rows = data ?? [];
+      const classIds = rows.map((c: any) => c.id);
       let promotionsByGroup: Record<string, any> = {};
+
       if (classIds.length > 0) {
         const { data: promoData } = await supabase
           .from('group_promotions')
           .select('*')
           .in('group_id', classIds)
           .eq('active', true);
-        (promoData ?? []).forEach((p) => {
+        (promoData ?? []).forEach((p: any) => {
           if (!promotionsByGroup[p.group_id]) promotionsByGroup[p.group_id] = p;
         });
       }
 
-      setClasses(rows.map((c) => ({ ...c, active_promotion: promotionsByGroup[c.id] ?? null })));
-    } catch {
+      setClasses(rows.map((c: any) => ({ ...c, active_promotion: promotionsByGroup[c.id] ?? null })));
+    } catch (e) {
+      console.error('[fetchClasses] unexpected error:', e);
       setClasses([]);
     } finally {
       setDataLoading(false);
