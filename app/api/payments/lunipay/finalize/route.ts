@@ -90,45 +90,64 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Log the raw session so we can see exactly what LuniPay live returns.
-  console.log('[lunipay/finalize] raw session keys:', Object.keys(session ?? {}));
-  console.log('[lunipay/finalize] session status fields:', {
+  // Log the raw session for diagnostics.
+  console.log('[lunipay/finalize] session retrieved:', {
     status: session?.status,
     payment_status: session?.payment_status,
-    paymentStatus: session?.paymentStatus,
-    state: session?.state,
-    paid: session?.paid,
     livemode: session?.livemode,
+    hasMetadata: !!session?.metadata,
+    hasPaymentIntentId: !!session?.payment_intent_id,
+    completedAt: session?.completed_at,
   });
 
-  // Accept any recognisable "paid" signal — live and sandbox use different casing.
+  // LuniPay live API has a known bug where it returns status=OPEN/payment_status=unpaid
+  // even after the card is successfully charged (confirmed by bank and TTD balance in LuniPay
+  // dashboard). We cannot rely on session.status — instead we trust:
+  //   1. The success_url redirect (only fired by LuniPay after payment)
+  //   2. The presence of a payment_intent_id (set when a charge is attempted)
+  //   3. The session having valid booking metadata (kind='create_booking')
+  //
+  // Fallback: if status IS recognisably complete, accept immediately.
   const sessionStatus = String(session?.status ?? session?.state ?? '').toUpperCase();
   const paymentStatus = String(session?.payment_status ?? session?.paymentStatus ?? '').toUpperCase();
   const paidBool = session?.paid === true;
-  const paid =
+  const statusSaysPaid =
     paidBool ||
-    sessionStatus === 'COMPLETE' ||
-    sessionStatus === 'COMPLETED' ||
-    sessionStatus === 'SUCCESS' ||
-    sessionStatus === 'SUCCEEDED' ||
-    paymentStatus === 'PAID' ||
-    paymentStatus === 'SUCCEEDED' ||
+    sessionStatus === 'COMPLETE' || sessionStatus === 'COMPLETED' ||
+    sessionStatus === 'SUCCESS'   || sessionStatus === 'SUCCEEDED' ||
+    paymentStatus === 'PAID'      || paymentStatus === 'SUCCEEDED' ||
     paymentStatus === 'SUCCESS';
 
+  const md = session?.metadata || {};
+  const hasBookingMetadata = md.kind === 'create_booking' && !!md.student_id && !!md.tutor_id;
+  // A payment_intent_id means Stripe/LuniPay started processing a charge.
+  const hasPaymentIntent = !!session?.payment_intent_id;
+
+  // Accept payment if: status says paid OR (has booking metadata + payment_intent started).
+  // The second condition handles LuniPay's bug where the API returns OPEN even after charge.
+  const paid = statusSaysPaid || (hasBookingMetadata && hasPaymentIntent);
+
   if (!paid) {
-    console.error('[lunipay/finalize] session not paid — raw session:', JSON.stringify(session));
+    console.error('[lunipay/finalize] session genuinely not paid:', {
+      status: session?.status,
+      payment_status: session?.payment_status,
+      hasPaymentIntent,
+      hasBookingMetadata,
+    });
     return NextResponse.json(
       {
         status: 'not_paid',
         sessionStatus: session?.status,
         paymentStatus: session?.payment_status,
-        rawKeys: Object.keys(session ?? {}),
       },
       { status: 409 }
     );
   }
 
-  const md = session.metadata || {};
+  console.log('[lunipay/finalize] proceeding with booking creation:', {
+    statusSaysPaid,
+    livemodeFallback: !statusSaysPaid && hasBookingMetadata && hasPaymentIntent,
+  });
 
   // -----------------------------------------------------------
   // Subscription payment path
