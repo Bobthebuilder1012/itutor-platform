@@ -28,11 +28,14 @@ export async function GET(_req: NextRequest) {
     return NextResponse.json({ error: ledgerErr.message }, { status: 500 });
   }
 
-  // Pending deductions (debts owed to platform)
+  // Pending deductions — SUBSCRIPTION/LESSON only (source_enrollment_id or
+  // source_subscription_payment_id set). 1:1 session debts are handled by
+  // the One-on-One Payments page and excluded here.
   const { data: deductionRows } = await admin
     .from('tutor_deductions')
-    .select('tutor_id, amount_ttd')
-    .eq('status', 'pending');
+    .select('id, tutor_id, amount_ttd, resolved_at')
+    .eq('status', 'pending')
+    .or('source_enrollment_id.not.is.null,source_subscription_payment_id.not.is.null');
 
   // Aggregate per tutor
   const grossByTutor = new Map<string, number>();
@@ -94,5 +97,8 @@ export async function GET(_req: NextRequest) {
   const total_debt_ttd  = Math.round(tutors.reduce((s, t) => s + t.pending_debt_ttd, 0) * 100) / 100;
   const total_net_ttd   = Math.round(tutors.reduce((s, t) => s + t.net_payout_ttd, 0) * 100) / 100;
 
-  return NextResponse.json({ tutors, total_gross_ttd, total_debt_ttd, total_net_ttd });
+  // Include deduction IDs so the UI can mark them as exported
+  const deduction_ids = (deductionRows ?? []).map((d: any) => d.id);
+
+  return NextResponse.json({ tutors, total_gross_ttd, total_debt_ttd, total_net_ttd, deduction_ids });
 }

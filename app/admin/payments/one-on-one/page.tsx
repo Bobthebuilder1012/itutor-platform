@@ -171,7 +171,7 @@ interface PageData {
   unofficial_totals: { total_gross_ttd: number; total_debt_ttd: number; total_net_ttd: number };
 }
 
-type TabId = 'all' | 'pending' | 'cancelled' | 'noshow' | 'ready' | 'failed' | 'unofficial';
+type TabId = 'all' | 'pending' | 'cancelled' | 'noshow' | 'ready' | 'failed' | 'unofficial' | 'csv_history';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -716,6 +716,11 @@ export default function OneOnOnePaymentsPage() {
   // Modals
   const [refundTarget, setRefundTarget] = useState<PendingRefundRow | null>(null);
   const [noshowTarget, setNoshowTarget] = useState<NoshowRow | null>(null);
+  // CSV export state
+  const [exportStep1on1, setExportStep1on1] = useState<0|1|2>(0);
+  const [csvHistory1on1, setCsvHistory1on1] = useState<{ date: string; total_ttd: number; deduction_count: number; tutor_count: number }[]>([]);
+  const [historyLoading1on1, setHistoryLoading1on1] = useState(false);
+
   // Track which cancellation rows have already had a strike issued this session
   const [strikesIssued, setStrikesIssued] = useState<Set<string>>(new Set());
 
@@ -752,6 +757,26 @@ export default function OneOnOnePaymentsPage() {
   }, []);
 
   useEffect(() => { if (!authLoading) loadData(); }, [authLoading, loadData]);
+
+  async function loadCsvHistory1on1() {
+    setHistoryLoading1on1(true);
+    try {
+      const res = await fetch('/api/admin/payouts/csv-history?type=one_on_one');
+      const d = await res.json();
+      if (res.ok) setCsvHistory1on1(d.history ?? []);
+    } catch { /* silent */ } finally { setHistoryLoading1on1(false); }
+  }
+
+  async function markAsExported1on1() {
+    const ids = (data as any)?.unofficial_deduction_ids ?? [];
+    if (ids.length === 0) { setExportStep1on1(2); return; }
+    const res = await fetch('/api/admin/payouts/mark-exported', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deduction_ids: ids }),
+    });
+    if (res.ok) { setExportStep1on1(2); await loadData(); await loadCsvHistory1on1(); }
+  }
 
   // ── Selection helpers ────────────────────────────────────────────────────
   function toggleOne(id: string) {
@@ -885,8 +910,11 @@ export default function OneOnOnePaymentsPage() {
           <Tab active={tab === 'failed'} onClick={() => setTab('failed')}>
             Batch Failed {kpis ? `(${kpis.batch_failed_count})` : ''}
           </Tab>
-          <Tab active={tab === 'unofficial'} onClick={() => setTab('unofficial')}>
+          <Tab active={tab === 'unofficial'} onClick={() => { setTab('unofficial'); setExportStep1on1(0); }}>
             Unofficial CSV
+          </Tab>
+          <Tab active={tab === 'csv_history'} onClick={() => { setTab('csv_history'); loadCsvHistory1on1(); }}>
+            CSV History
           </Tab>
         </div>
 
@@ -1319,6 +1347,30 @@ export default function OneOnOnePaymentsPage() {
                         </span>
                       </div>
                     )}
+                    {/* Move to History — 3-step confirm */}
+                    <div className="flex items-center gap-2 justify-end">
+                      {exportStep1on1 === 0 && (
+                        <button onClick={() => setExportStep1on1(1)}
+                          className="px-4 py-2 rounded-xl border border-white/15 text-white/60 hover:text-white text-sm font-semibold">
+                          Move to CSV History
+                        </button>
+                      )}
+                      {exportStep1on1 === 1 && (
+                        <div className="flex items-center gap-2 px-4 py-2 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-300 text-sm">
+                          <span>Mark these debts as collected and archive to history?</span>
+                          <button onClick={markAsExported1on1}
+                            className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold">
+                            Yes, confirm
+                          </button>
+                          <button onClick={() => setExportStep1on1(0)} className="px-3 py-1 rounded-lg border border-white/15 text-white/50 hover:text-white text-xs">
+                            Cancel
+                          </button>
+                        </div>
+                      )}
+                      {exportStep1on1 === 2 && (
+                        <span className="text-xs text-emerald-400 font-semibold">✓ Moved to CSV History</span>
+                      )}
+                    </div>
 
                     <div className="rounded-xl overflow-hidden border border-white/8">
                       <table className="w-full text-sm">
@@ -1376,6 +1428,43 @@ export default function OneOnOnePaymentsPage() {
                       </table>
                     </div>
                   </>
+                )}
+              </div>
+            )}
+
+            {/* CSV History */}
+            {tab === 'csv_history' && (
+              <div className="space-y-4">
+                <p className="text-sm text-white/50">Previously exported unofficial CSVs — 1:1 session debts archived here after "Move to History".</p>
+                {historyLoading1on1 ? (
+                  <div className="flex items-center justify-center py-16 gap-2 text-white/30">
+                    <Loader2 className="size-5 animate-spin" /><span className="text-sm">Loading…</span>
+                  </div>
+                ) : csvHistory1on1.length === 0 ? (
+                  <EmptyState message="No CSV exports yet. Download the Unofficial CSV and move it to history to see entries here." />
+                ) : (
+                  <div className="rounded-xl overflow-hidden border border-white/8">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-[11px] font-semibold text-white/30 uppercase tracking-wider border-b border-white/8" style={{ background: '#161618' }}>
+                          <th className="px-4 py-3 text-left">Export date</th>
+                          <th className="px-4 py-3 text-right">Total debt collected</th>
+                          <th className="px-4 py-3 text-right">Deductions</th>
+                          <th className="px-4 py-3 text-right">Tutors</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {csvHistory1on1.map((h) => (
+                          <tr key={h.date} className="hover:bg-white/[0.02]" style={{ background: '#0f0f10' }}>
+                            <td className="px-4 py-3 text-white/80 font-medium">{new Date(h.date).toLocaleDateString('en-TT', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
+                            <td className="px-4 py-3 text-right tabular-nums text-rose-400 font-bold">TT$ {h.total_ttd.toFixed(2)}</td>
+                            <td className="px-4 py-3 text-right tabular-nums text-white/60">{h.deduction_count}</td>
+                            <td className="px-4 py-3 text-right tabular-nums text-white/60">{h.tutor_count}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </div>
             )}

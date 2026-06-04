@@ -121,11 +121,15 @@ export async function GET() {
       .order('generated_at', { ascending: false })
       .limit(100),
 
-    // Pending tutor deductions (for unofficial_csv)
+    // Pending tutor deductions — SESSION/1:1 only (source_payment_id set, or
+    // admin_manual/chargeback with no enrollment link). Subscription debts are
+    // handled by the Lesson Payments page.
     admin
       .from('tutor_deductions')
-      .select('tutor_id, amount_ttd, reason, status, created_at')
-      .eq('status', 'pending'),
+      .select('id, tutor_id, amount_ttd, reason, status, created_at')
+      .eq('status', 'pending')
+      .is('source_enrollment_id', null)
+      .is('source_subscription_payment_id', null),
 
     // Open / under_review payout_cases tied to session payments
     admin
@@ -689,6 +693,7 @@ export async function GET() {
     total_debt_ttd:  r2(unofficial_csv.reduce((s, t) => s + t.pending_debt_ttd, 0)),
     total_net_ttd:   r2(unofficial_csv.reduce((s, t) => s + t.net_payout_ttd, 0)),
   };
+  const unofficial_deduction_ids = (deductions as any[]).map((d) => d.id).filter(Boolean);
 
   // ─────────────────────────────────────────────────────────────────────────
   // SECTION 9: recent batches (all, for UI reference)
@@ -718,6 +723,7 @@ export async function GET() {
     batch_failed,
     unofficial_csv,
     unofficial_totals,
+    unofficial_deduction_ids,
     recent_batches,
   });
 }
