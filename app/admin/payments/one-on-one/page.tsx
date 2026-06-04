@@ -584,15 +584,15 @@ function NoshowModal({
             {/* Tie / Mutual */}
             <p className="text-[10px] font-bold text-white/25 uppercase tracking-[.06em] pt-1">Mutual</p>
             <button
-              onClick={() => setVerdict('tie_mutual')}
+              onClick={() => setVerdict('tie')}
               className={`w-full text-left px-4 py-3 rounded-xl border transition ${
-                verdict === 'tie_mutual'
+                verdict === 'tie'
                   ? 'border-white/20 bg-white/8'
                   : 'border-white/6 bg-white/2 hover:bg-white/5'
               }`}
             >
               <div className="flex items-center gap-2 mb-1">
-                {verdict === 'tie_mutual'
+                {verdict === 'tie'
                   ? <CheckCircle className="size-4 text-emerald-400 shrink-0" />
                   : <div className="size-4 rounded-full border border-white/20 shrink-0" />}
                 <span className="text-sm font-semibold text-sky-300">Tie / Mutual Non-completion</span>
