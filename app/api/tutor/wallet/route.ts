@@ -103,6 +103,22 @@ export async function GET() {
     0
   );
 
+  // -- Upcoming sessions: scheduled but not yet completed/charged.
+  //    Money is held until the session actually occurs. Shown separately
+  //    so tutors can see expected future earnings before they flow into pending.
+  const { data: upcomingSessions } = await admin
+    .from('sessions')
+    .select('payout_amount_ttd, charge_amount_ttd, scheduled_start_at')
+    .eq('tutor_id', user.id)
+    .in('status', ['SCHEDULED', 'JOIN_OPEN'])
+    .is('charged_at', null)
+    .gt('scheduled_start_at', new Date().toISOString());
+
+  const upcomingTtd = (upcomingSessions ?? []).reduce(
+    (s: number, r: any) => s + Number(r.payout_amount_ttd ?? 0),
+    0
+  );
+
   // -- Held amount (admin_hold rows — already excluded from tutor_balances) --
   const { data: heldRows } = await admin
     .from('payout_ledger')
@@ -369,6 +385,7 @@ export async function GET() {
       available_ttd:          available,
       lifetime_paid_ttd:      Math.round(lifetimePaid * 100) / 100,
       held_ttd:               Math.round(heldTtd * 100) / 100,
+      upcoming_ttd:           Math.round(upcomingTtd * 100) / 100,
       pending_deductions_ttd: pendingDeductionTtd,
       last_updated:           balanceRow?.last_updated ?? null,
     },

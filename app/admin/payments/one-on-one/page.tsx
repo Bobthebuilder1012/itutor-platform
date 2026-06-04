@@ -25,6 +25,8 @@ interface KPIs {
   cancelled_count: number;
   noshow_count: number;
   batch_failed_count: number;
+  upcoming_sessions_ttd: number;
+  upcoming_sessions_count: number;
 }
 
 interface PaymentRow {
@@ -887,6 +889,13 @@ export default function OneOnOnePaymentsPage() {
             sub={`${kpis?.cancelled_count ?? '—'} cancelled`}
             icon={<Users className="size-4" />}
             accent="rose"
+          />
+          <StatCard
+            label="Upcoming (held)"
+            value={fmtTTD(kpis?.upcoming_sessions_ttd)}
+            sub={`${kpis?.upcoming_sessions_count ?? '—'} sessions pending`}
+            icon={<Clock className="size-4" />}
+            accent="sky"
           />
         </div>
 

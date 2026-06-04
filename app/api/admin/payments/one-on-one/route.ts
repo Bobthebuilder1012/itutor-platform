@@ -61,6 +61,7 @@ export async function GET() {
     deductionRes,
     openCasesRes,
     batchFailedRes,
+    upcomingSessionsRes,
   ] = await Promise.all([
     // All session payments that have been completed (succeeded / partially_refunded / refunded)
     admin
@@ -145,6 +146,14 @@ export async function GET() {
       .in('status', ['cancelled'])
       .order('generated_at', { ascending: false })
       .limit(50),
+
+    // Upcoming sessions: scheduled but not yet held — funds held until session occurs
+    admin
+      .from('sessions')
+      .select('id, tutor_id, student_id, booking_id, scheduled_start_at, payout_amount_ttd, charge_amount_ttd')
+      .in('status', ['SCHEDULED', 'JOIN_OPEN'])
+      .is('charged_at', null)
+      .gt('scheduled_start_at', new Date().toISOString()),
   ]);
 
   // Graceful error handling: log but don't crash — return partial data with error flags
@@ -157,6 +166,9 @@ export async function GET() {
   const deductions      = deductionRes.data       ?? [];
   const openCases       = openCasesRes.data       ?? [];
   const failedBatches   = batchFailedRes.data     ?? [];
+  const upcomingSessions = upcomingSessionsRes.data ?? [];
+  const upcoming_sessions_ttd = r2(upcomingSessions.reduce((s: number, r: any) => s + Number(r.payout_amount_ttd ?? 0), 0));
+  const upcoming_sessions_count = upcomingSessions.length;
 
   if (paymentsRes.error) {
     console.error('[one-on-one] payments fetch error:', paymentsRes.error);
@@ -431,6 +443,8 @@ export async function GET() {
     cancelled_count,
     noshow_count,
     batch_failed_count,
+    upcoming_sessions_ttd,
+    upcoming_sessions_count,
   };
 
   // ─────────────────────────────────────────────────────────────────────────
