@@ -421,20 +421,18 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       ({ data: group, error } = await runUpdate(withoutUpdatedAt));
     }
 
-    // Attempt 3: strip v2/group-marketplace metadata columns + newer settings columns when missing
+    // Attempt 3: strip v2/group-marketplace metadata columns + newer settings columns when missing.
+    // price_monthly, pricing_model, pricing_mode are intentionally kept — they must always be saved.
     const {
       topic: _ignoredTopic,
       form_level: _ignoredFormLevel,
       goals: _ignoredGoals,
       difficulty: _ignoredDifficulty,
       price_per_session: _ignoredPricePerSession,
-      price_monthly: _ignoredPriceMonthly,
-      pricing_model: _ignoredPricingModel,
       session_length_minutes: _ignoredSessionLength,
       session_frequency: _ignoredSessionFrequency,
       price_per_course: _ignoredPricePerCourse,
-      pricing_mode: _ignoredPricingMode,
-      availability_window: _ignoredAvailabilityWindow,
+      availability_window: _ignoredAvailabilityWidth,
       header_image: _ignoredHeaderImage,
       whatsapp_url: _ignoredWhatsappUrl,
       recurrence_type: _ignoredRecurrenceType,

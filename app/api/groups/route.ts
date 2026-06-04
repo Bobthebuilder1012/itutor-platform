@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
 
     const SELECT_TIERS = [
       // Tier 1: full column set (requires migrations 128-132)
-      `id, name, description, tutor_id, subject, pricing, pricing_model, created_at,
+      `id, name, description, tutor_id, subject, pricing, pricing_model, price_per_session, price_monthly, created_at,
        visibility, primary_channel, whatsapp_url, whatsapp_link, google_classroom_link,
        max_students, parent_feedback_mode, parent_feedback_price,
        require_join_requests, auto_suspend_missed_payment, grace_period_days,
@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
        tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, rating_average, rating_count),
        group_members(id, user_id, status)`,
       // Tier 2: drop columns likely missing (parent_feedback_mode → feedback_mode, no archived_reason/whatsapp_url)
-      `id, name, description, tutor_id, subject, pricing, pricing_model, created_at,
+      `id, name, description, tutor_id, subject, pricing, pricing_model, price_per_session, price_monthly, created_at,
        visibility, primary_channel, google_classroom_link,
        max_students, parent_feedback_price,
        require_join_requests, auto_suspend_missed_payment, grace_period_days,
@@ -104,12 +104,12 @@ export async function GET(request: NextRequest) {
        tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, rating_average, rating_count),
        group_members(id, user_id, status)`,
       // Tier 3: drop rating columns from profiles (may live on tutor_profiles instead)
-      `id, name, description, tutor_id, subject, pricing, pricing_model, created_at,
+      `id, name, description, tutor_id, subject, pricing, pricing_model, price_per_session, price_monthly, created_at,
        visibility, max_students, require_join_requests, grace_period_days, archived_at,
        tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url),
        group_members(id, user_id, status)`,
       // Tier 4: bare minimum
-      `id, name, description, tutor_id, subject, pricing, pricing_model, created_at, archived_at,
+      `id, name, description, tutor_id, subject, pricing, pricing_model, price_per_session, price_monthly, created_at, archived_at,
        tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url),
        group_members(id, user_id, status)`,
     ];
@@ -381,6 +381,7 @@ export async function POST(request: NextRequest) {
         pricing_mode: body.pricing_mode ?? body.pricing_model ?? 'FREE',
         pricing_model: body.pricing_model ?? 'FREE',
         price_per_session: body.price_per_session ?? null,
+        price_monthly: (body as any).price_monthly ?? null,
         price_per_course: body.price_per_course ?? null,
         max_students: body.max_students ?? null,
         availability_window: body.availability_window ?? null,
@@ -407,6 +408,7 @@ export async function POST(request: NextRequest) {
           pricing_mode: body.pricing_mode ?? body.pricing_model ?? 'FREE',
           pricing_model: body.pricing_model ?? 'FREE',
           price_per_session: body.price_per_session ?? null,
+          price_monthly: (body as any).price_monthly ?? null,
           price_per_course: body.price_per_course ?? null,
           availability_window: body.availability_window ?? null,
           cover_image: body.cover_image ?? null,
