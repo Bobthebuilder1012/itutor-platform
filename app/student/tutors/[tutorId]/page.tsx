@@ -436,7 +436,7 @@ export default function TutorProfilePage() {
 
   const openBookingSheet = () => { setBookingStep(1); setPickedTime(null); setShowBookingSheet(true); };
   const minPrice = tutor?.subjects.length ? Math.min(...tutor.subjects.map((s) => s.price_per_hour_ttd)) : 0;
-  const priceLabel = paidClassesEnabled ? `TT$${minPrice}` : 'Free';
+  const priceLabel = !paidClassesEnabled ? 'Free' : (minPrice > 0 ? `TT$${minPrice}` : 'Rate not set');
 
   if (profileLoading || loading || !profile) {
     return (
@@ -540,8 +540,10 @@ export default function TutorProfilePage() {
                         <div className="text-xs text-muted-foreground">{s.curriculum}</div>
                       </div>
                       <div className="text-right shrink-0">
-                        <span className="text-sm font-bold text-ink">{paidClassesEnabled ? `TT$${s.price_per_hour_ttd}` : 'Free'}</span>
-                        <span className="text-xs text-muted-foreground">/hr</span>
+                        <span className="text-sm font-bold text-ink">
+                          {!paidClassesEnabled ? 'Free' : s.price_per_hour_ttd > 0 ? `TT$${s.price_per_hour_ttd}` : 'Rate not set'}
+                        </span>
+                        {paidClassesEnabled && s.price_per_hour_ttd > 0 && <span className="text-xs text-muted-foreground">/hr</span>}
                       </div>
                     </li>
                   ))}
