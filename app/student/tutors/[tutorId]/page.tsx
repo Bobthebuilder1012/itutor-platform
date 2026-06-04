@@ -253,7 +253,11 @@ function BookingCard({
 
       <div className="flex items-center justify-between mb-2">
         <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Duration</div>
-        <div className="text-[11px] text-muted-foreground">{pickedSubject ? `TT$${(pickedSubject.price_per_hour_ttd * duration).toFixed(0)} total` : ''}</div>
+        <div className="text-[11px] text-muted-foreground">
+          {pickedSubject && priceLabel !== 'Free' && pickedSubject.price_per_hour_ttd > 0
+            ? `TT$${(pickedSubject.price_per_hour_ttd * duration).toFixed(0)} total`
+            : ''}
+        </div>
       </div>
       <div className="flex gap-1.5 overflow-x-auto pb-2 mb-4 -mx-1 px-1">
         {DURATION_OPTIONS.map((d) => {
@@ -383,7 +387,7 @@ export default function TutorProfilePage() {
             name: subject.label || subject.name,
             curriculum: subject.curriculum || subject.level || '',
             level: subject.level || '',
-            price_per_hour_ttd: paidClassesEnabled ? ts.price_per_hour_ttd : 0,
+            price_per_hour_ttd: ts.price_per_hour_ttd ?? 0,
           } : null;
         })
         .filter((s): s is NonNullable<typeof s> => s !== null);
@@ -718,7 +722,13 @@ export default function TutorProfilePage() {
                     ))}
                     <div className="border-t border-border pt-2 flex justify-between font-semibold text-ink">
                       <span>Total</span>
-                      <span>{paidClassesEnabled ? `TT$${(selectedSubject.price_per_hour_ttd * duration).toFixed(0)}` : 'Free'}</span>
+                      <span>
+                        {!paidClassesEnabled
+                          ? 'Free'
+                          : selectedSubject.price_per_hour_ttd > 0
+                            ? `TT$${(selectedSubject.price_per_hour_ttd * duration).toFixed(0)}`
+                            : <span className="text-red-500 text-sm font-medium">Rate not set</span>}
+                      </span>
                     </div>
                   </div>
                   <div>
@@ -731,10 +741,15 @@ export default function TutorProfilePage() {
                       className="w-full rounded-xl border border-border bg-muted/40 px-3 py-2 text-sm text-ink placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-brand resize-none"
                     />
                   </div>
+                  {paidClassesEnabled && selectedSubject.price_per_hour_ttd <= 0 && (
+                    <p className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+                      This tutor has not set a rate yet. Booking is unavailable until they do.
+                    </p>
+                  )}
                   {confirmError && <p className="text-xs text-red-500">{confirmError}</p>}
                   <p className="text-xs text-muted-foreground">Free cancellation up to 24h before the session.</p>
                   <button
-                    disabled={confirmLoading}
+                    disabled={confirmLoading || (paidClassesEnabled && selectedSubject.price_per_hour_ttd <= 0)}
                     onClick={() => {
                       const minStart = minBookableStartHour(slots[pickedDay].date);
                       if (minStart != null && pickedTime < minStart - 1e-9) {

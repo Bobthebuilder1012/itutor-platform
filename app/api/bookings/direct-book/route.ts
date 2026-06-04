@@ -147,6 +147,22 @@ export async function POST(request: NextRequest) {
     // 5. Compute pricing
     const paidClassesEnabled = isPaidClassesEnabled();
     const hourlyRate = tutorSubject?.price_per_hour_ttd ?? 0;
+
+    if (paidClassesEnabled) {
+      if (!hourlyRate || hourlyRate <= 0) {
+        return NextResponse.json(
+          { error: 'This tutor has not set a rate yet. Booking is not available until they do.' },
+          { status: 400 }
+        );
+      }
+      if (hourlyRate < 5) {
+        return NextResponse.json(
+          { error: "This tutor's rate is below the minimum of TT$5/hr. Please contact support." },
+          { status: 400 }
+        );
+      }
+    }
+
     const priceTtd = paidClassesEnabled ? Number(((hourlyRate / 60) * durationMinutes).toFixed(2)) : 0;
     const commission = paidClassesEnabled
       ? calculateCommission(priceTtd)

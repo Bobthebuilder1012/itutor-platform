@@ -1128,12 +1128,17 @@ export default function FindTutorsPage() {
 
                       <div className="flex items-end justify-between mt-3 pt-3 border-t border-border">
                         <div>
-                          {tutor.subjects.length > 0 && (
-                            <>
-                              <span className="text-base font-bold text-ink">TT${Math.min(...tutor.subjects.map((s) => s.price_per_hour_ttd))}</span>
-                              <span className="text-[11px] text-muted-foreground">/hr</span>
-                            </>
-                          )}
+                          {tutor.subjects.length > 0 && (() => {
+                            const minRate = Math.min(...tutor.subjects.map((s) => s.price_per_hour_ttd ?? 0));
+                            return minRate > 0 ? (
+                              <>
+                                <span className="text-base font-bold text-ink">TT${minRate}</span>
+                                <span className="text-[11px] text-muted-foreground">/hr</span>
+                              </>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">Rate not set</span>
+                            );
+                          })()}
                         </div>
                         <span className="text-xs font-semibold text-brand-deep group-hover:underline">View profile →</span>
                       </div>
