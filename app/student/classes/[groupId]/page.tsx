@@ -898,28 +898,51 @@ function LeaveClassButton({ groupId }: { groupId: string }) {
   const router = useRouter();
   const { profile } = useProfile();
   const [open, setOpen] = useState(false);
-  const [reason, setReason] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState<'cancel' | 'leave' | null>(null);
   const [err, setErr] = useState('');
+  const [periodEnd, setPeriodEnd] = useState<string | null>(null);
+  const [hasSubscription, setHasSubscription] = useState(false);
 
-  const leave = useCallback(async () => {
+  // Fetch enrollment info when modal opens
+  useEffect(() => {
+    if (!open || !profile?.id) return;
+    supabase
+      .from('group_enrollments')
+      .select('id, current_period_end, cancel_at_period_end')
+      .eq('group_id', groupId)
+      .eq('student_id', profile.id)
+      .eq('enrollment_type', 'SUBSCRIPTION')
+      .in('status', ['ACTIVE', 'GRACE'])
+      .maybeSingle()
+      .then(({ data }) => {
+        setHasSubscription(!!data);
+        setPeriodEnd(data?.current_period_end ?? null);
+      });
+  }, [open, profile?.id, groupId]);
+
+  const act = useCallback(async (immediate: boolean) => {
     if (!profile) return;
-    setLoading(true); setErr('');
+    setLoading(immediate ? 'leave' : 'cancel');
+    setErr('');
     try {
       const res = await fetch(`/api/groups/${groupId}/members/${profile.id}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: reason.trim() || undefined }),
+        body: JSON.stringify({ immediate }),
       });
-      if (!res.ok) throw new Error((await res.json())?.error ?? 'Failed to leave');
+      if (!res.ok) throw new Error((await res.json())?.error ?? 'Something went wrong');
       router.push('/student/classes');
     } catch (e: any) {
       setErr(e?.message ?? 'Something went wrong');
-      setLoading(false);
+      setLoading(null);
     }
-  }, [groupId, profile, reason, router]);
+  }, [groupId, profile, router]);
 
-  const close = () => { setOpen(false); setReason(''); setErr(''); };
+  const close = () => { if (loading) return; setOpen(false); setErr(''); };
+
+  const accessDate = periodEnd
+    ? new Date(periodEnd).toLocaleDateString('en-TT', { day: 'numeric', month: 'long', year: 'numeric' })
+    : null;
 
   return (
     <>
@@ -927,31 +950,67 @@ function LeaveClassButton({ groupId }: { groupId: string }) {
         className="text-xs font-semibold text-muted-foreground hover:text-rose-600 transition">
         Leave class
       </button>
+
       {open && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4" onClick={close}>
-          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-2xl bg-background border border-border shadow-xl p-6 space-y-4">
-            <div className="font-bold text-ink text-lg">Leave this class?</div>
-            <p className="text-sm text-muted-foreground">You'll lose access to the stream and sessions. You can rejoin later if the class is open.</p>
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl bg-background border border-border shadow-xl p-6 space-y-4">
             <div>
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Reason <span className="normal-case font-normal">(optional)</span>
-              </label>
-              <textarea
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                placeholder="e.g. Schedule conflict, found another tutor…"
-                rows={2}
-                className="mt-1.5 w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand resize-none"
-              />
+              <div className="font-bold text-ink text-lg">Manage subscription</div>
+              <p className="text-sm text-muted-foreground mt-1">Choose how you'd like to leave this class.</p>
             </div>
+
+            {hasSubscription ? (
+              <div className="space-y-3">
+                {/* Option 1 — Cancel subscription, keep access */}
+                <div className="rounded-xl border border-border p-4 space-y-2">
+                  <div className="font-semibold text-ink text-sm">Cancel subscription</div>
+                  <p className="text-xs text-muted-foreground">
+                    Stops future payments and reminders. You keep full access until
+                    {accessDate ? <strong className="text-ink"> {accessDate}</strong> : ' the end of your paid period'}.
+                  </p>
+                  <button
+                    onClick={() => act(false)}
+                    disabled={!!loading}
+                    className="mt-1 w-full px-4 py-2 rounded-xl border border-rose-300 bg-rose-50 text-rose-700 text-sm font-semibold hover:bg-rose-100 disabled:opacity-50"
+                  >
+                    {loading === 'cancel' ? 'Cancelling…' : 'Cancel subscription'}
+                  </button>
+                </div>
+
+                {/* Option 2 — Cancel and leave immediately */}
+                <div className="rounded-xl border border-border p-4 space-y-2">
+                  <div className="font-semibold text-ink text-sm">Cancel subscription & leave class</div>
+                  <p className="text-xs text-muted-foreground">
+                    Cancels your subscription and removes your access immediately. You will lose access to the stream and sessions right away.
+                  </p>
+                  <button
+                    onClick={() => act(true)}
+                    disabled={!!loading}
+                    className="mt-1 w-full px-4 py-2 rounded-xl bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 disabled:opacity-50"
+                  >
+                    {loading === 'leave' ? 'Leaving…' : 'Cancel subscription & leave class'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* No subscription — single leave option */
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">You'll lose access to the stream and sessions immediately.</p>
+                <button
+                  onClick={() => act(true)}
+                  disabled={!!loading}
+                  className="w-full px-4 py-2 rounded-xl bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 disabled:opacity-50"
+                >
+                  {loading === 'leave' ? 'Leaving…' : 'Leave class'}
+                </button>
+              </div>
+            )}
+
             {err && <p className="text-xs text-rose-600">{err}</p>}
-            <div className="flex justify-end gap-2">
-              <button onClick={close} disabled={loading} className="px-4 py-2 rounded-xl border border-border text-sm font-semibold hover:bg-muted">Cancel</button>
-              <button onClick={leave} disabled={loading}
-                className="px-4 py-2 rounded-xl bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 disabled:opacity-50">
-                {loading ? 'Leaving…' : 'Leave class'}
-              </button>
-            </div>
+
+            <button onClick={close} disabled={!!loading} className="w-full px-4 py-2 rounded-xl border border-border text-sm font-semibold hover:bg-muted disabled:opacity-50">
+              Keep my subscription
+            </button>
           </div>
         </div>
       )}
