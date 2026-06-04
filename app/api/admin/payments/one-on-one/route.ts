@@ -96,8 +96,9 @@ export async function GET() {
       .select(
         `id, session_id, booking_id,
          claimant_id, claimant_role, defendant_id,
-         written_explanation, response_deadline,
-         defendant_response, defendant_responded_at,
+         written_explanation, evidence_files, evidence_type,
+         response_deadline,
+         defendant_response, defendant_evidence_files, defendant_responded_at,
          status, admin_verdict, admin_id, admin_decided_at, admin_notes,
          created_at, updated_at`
       )
@@ -633,14 +634,18 @@ export async function GET() {
       is_within_filing_window,
       tutor_responded,
       response_deadline,
-      defendant_response:     claim.defendant_response ?? null,
-      status:                 claim.status,
-      admin_verdict:          claim.admin_verdict ?? null,
-      admin_decided_at:       claim.admin_decided_at ?? null,
-      admin_notes:            claim.admin_notes ?? null,
-      payout_status:          ledger?.status ?? null,
-      payout_ledger_id:       ledger?.id ?? null,
-      payout_case_id:         openCase?.id ?? null,
+      defendant_response:       claim.defendant_response ?? null,
+      written_explanation:      claim.written_explanation ?? null,
+      evidence_files:           claim.evidence_files ?? [],
+      defendant_evidence_files: claim.defendant_evidence_files ?? [],
+      claimant_role:            claim.claimant_role,
+      status:                   claim.status,
+      admin_verdict:            claim.admin_verdict ?? null,
+      admin_decided_at:         claim.admin_decided_at ?? null,
+      admin_notes:              claim.admin_notes ?? null,
+      payout_status:            ledger?.status ?? null,
+      payout_ledger_id:         ledger?.id ?? null,
+      payout_case_id:           openCase?.id ?? null,
       refund_issued,
     };
   });

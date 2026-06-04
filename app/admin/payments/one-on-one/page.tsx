@@ -111,6 +111,10 @@ interface NoshowRow {
   tutor_responded: boolean;
   response_deadline: string;
   defendant_response: string | null;
+  written_explanation: string | null;
+  evidence_files: any[];
+  defendant_evidence_files: any[];
+  claimant_role: string;
   status: string;
   admin_verdict: string | null;
   admin_decided_at: string | null;
@@ -461,6 +465,7 @@ function NoshowModal({
   const [adminNotes, setAdminNotes] = useState('');
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState('');
+  const [viewDispute, setViewDispute] = useState<'student' | 'tutor' | null>(null);
 
   async function submit() {
     if (!verdict) { setError('Please select a verdict before submitting.'); return; }
@@ -539,6 +544,90 @@ function NoshowModal({
               </div>
             )}
           </div>
+
+          {/* View Dispute buttons */}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setViewDispute(viewDispute === 'student' ? null : 'student')}
+              className={`flex-1 px-3 py-2 rounded-lg text-xs font-semibold border transition ${
+                viewDispute === 'student'
+                  ? 'border-sky-400/40 bg-sky-400/10 text-sky-300'
+                  : 'border-white/10 text-white/50 hover:text-white/80 hover:bg-white/5'
+              }`}
+            >
+              {viewDispute === 'student' ? '▼' : '▶'} View Student Dispute
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewDispute(viewDispute === 'tutor' ? null : 'tutor')}
+              className={`flex-1 px-3 py-2 rounded-lg text-xs font-semibold border transition ${
+                viewDispute === 'tutor'
+                  ? 'border-rose-400/40 bg-rose-400/10 text-rose-300'
+                  : 'border-white/10 text-white/50 hover:text-white/80 hover:bg-white/5'
+              }`}
+            >
+              {viewDispute === 'tutor' ? '▼' : '▶'} View Tutor Dispute
+            </button>
+          </div>
+
+          {/* Student Dispute content */}
+          {viewDispute === 'student' && (
+            <div className="rounded-xl border border-sky-400/20 bg-sky-400/5 p-4 space-y-3">
+              <p className="text-xs font-semibold text-sky-300 uppercase tracking-wider">Student Dispute</p>
+              <div>
+                <p className="text-[10px] text-white/30 uppercase mb-1">Statement</p>
+                <p className="text-sm text-white/80 leading-relaxed">
+                  {claim.claimant_role === 'student'
+                    ? (claim.written_explanation ?? 'No statement provided.')
+                    : (claim.defendant_response ?? 'No response provided.')}
+                </p>
+              </div>
+              {(claim.claimant_role === 'student' ? claim.evidence_files : claim.defendant_evidence_files)?.length > 0 && (
+                <div>
+                  <p className="text-[10px] text-white/30 uppercase mb-2">Evidence Screenshots</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(claim.claimant_role === 'student' ? claim.evidence_files : claim.defendant_evidence_files).map((file: any, i: number) => (
+                      <a key={i} href={typeof file === 'string' ? file : file.url} target="_blank" rel="noopener noreferrer"
+                        className="size-20 rounded-lg border border-white/10 overflow-hidden hover:border-white/30 transition">
+                        <img src={typeof file === 'string' ? file : file.url} alt={`Evidence ${i + 1}`}
+                          className="size-full object-cover" />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tutor Dispute content */}
+          {viewDispute === 'tutor' && (
+            <div className="rounded-xl border border-rose-400/20 bg-rose-400/5 p-4 space-y-3">
+              <p className="text-xs font-semibold text-rose-300 uppercase tracking-wider">Tutor Dispute</p>
+              <div>
+                <p className="text-[10px] text-white/30 uppercase mb-1">Statement</p>
+                <p className="text-sm text-white/80 leading-relaxed">
+                  {claim.claimant_role === 'tutor'
+                    ? (claim.written_explanation ?? 'No statement provided.')
+                    : (claim.defendant_response ?? 'No response provided.')}
+                </p>
+              </div>
+              {(claim.claimant_role === 'tutor' ? claim.evidence_files : claim.defendant_evidence_files)?.length > 0 && (
+                <div>
+                  <p className="text-[10px] text-white/30 uppercase mb-2">Evidence Screenshots</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(claim.claimant_role === 'tutor' ? claim.evidence_files : claim.defendant_evidence_files).map((file: any, i: number) => (
+                      <a key={i} href={typeof file === 'string' ? file : file.url} target="_blank" rel="noopener noreferrer"
+                        className="size-20 rounded-lg border border-white/10 overflow-hidden hover:border-white/30 transition">
+                        <img src={typeof file === 'string' ? file : file.url} alt={`Evidence ${i + 1}`}
+                          className="size-full object-cover" />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="space-y-3">
             <p className="text-xs font-semibold text-white/40 uppercase tracking-wider">Verdict</p>
