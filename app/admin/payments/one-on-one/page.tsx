@@ -248,6 +248,7 @@ function PaymentStatusChip({ status }: { status: string | null | undefined }) {
     refunded:            'bg-rose-500/15 text-rose-300',
     failed:              'bg-rose-600/20 text-rose-400',
     pending:             'bg-sky-500/15 text-sky-300',
+    scheduled:           'bg-violet-500/15 text-violet-300',
   };
   return (
     <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${cfg[status] ?? 'bg-white/10 text-white/60'}`}>
@@ -891,7 +892,7 @@ export default function OneOnOnePaymentsPage() {
             accent="rose"
           />
           <StatCard
-            label="Upcoming (held)"
+            label="Upcoming (not held)"
             value={fmtTTD(kpis?.upcoming_sessions_ttd)}
             sub={`${kpis?.upcoming_sessions_count ?? '—'} sessions pending`}
             icon={<Clock className="size-4" />}

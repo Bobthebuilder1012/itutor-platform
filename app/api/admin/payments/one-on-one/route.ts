@@ -384,9 +384,41 @@ export async function GET() {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // SECTION 1: all_payments
+  // SECTION 1: all_payments (completed payments + upcoming scheduled sessions)
   // ─────────────────────────────────────────────────────────────────────────
   const all_payments = payments.map(buildPaymentRow);
+
+  // Append upcoming sessions as "scheduled" rows so admin can see them
+  // in the All Payments tab before they are charged.
+  const upcomingRows = upcomingSessions.map((s: any) => ({
+    id:                    s.id,
+    payment_id:            null,
+    lunipay_transaction_id: null,
+    student_id:            s.student_id ?? null,
+    student_name:          profilesById.get(s.student_id)?.full_name ?? null,
+    tutor_id:              s.tutor_id ?? null,
+    tutor_name:            profilesById.get(s.tutor_id)?.full_name ?? null,
+    session_id:            s.id,
+    booking_id:            s.booking_id ?? null,
+    scheduled_at:          s.scheduled_start_at ?? null,
+    subject:               null,
+    amount_ttd:            Number(s.charge_amount_ttd ?? 0),
+    platform_fee_ttd:      0,
+    tutor_payout_ttd:      Number(s.payout_amount_ttd ?? 0),
+    payment_status:        'scheduled',
+    payout_status:         'upcoming',
+    refund_status:         null,
+    session_status:        'SCHEDULED',
+    booking_status:        null,
+    booking_payment_status: null,
+    noshow_verdict:        null,
+    has_noshow_claim:      false,
+    has_payout_case:       false,
+    total_refunded_ttd:    0,
+    retained_amount_ttd:   0,
+  }));
+
+  const all_payments_with_upcoming = [...all_payments, ...upcomingRows];
 
   // ─────────────────────────────────────────────────────────────────────────
   // SECTION 2: KPIs
@@ -729,7 +761,7 @@ export async function GET() {
   // ─────────────────────────────────────────────────────────────────────────
   return NextResponse.json({
     kpis,
-    all_payments,
+    all_payments: all_payments_with_upcoming,
     pending_refunds,
     cancellations,
     noshows,
