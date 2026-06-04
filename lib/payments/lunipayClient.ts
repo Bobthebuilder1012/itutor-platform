@@ -54,16 +54,12 @@ export function getLunipayClient(): LuniPay {
 export function mapCheckoutSessionToDbStatus(
   session: Pick<CheckoutSession, 'status' | 'payment_status'>
 ): DbPaymentStatus {
-  if (session.status === 'COMPLETE' && session.payment_status === 'paid') {
-    return 'succeeded';
-  }
-  if (session.status === 'EXPIRED') {
-    return 'cancelled';
-  }
-  if (session.payment_status === 'paid') {
-    // Edge case: status not yet COMPLETE but payment_status flipped.
-    return 'succeeded';
-  }
+  const s = String(session.status ?? '').toUpperCase();
+  const p = String(session.payment_status ?? '').toUpperCase();
+  const isComplete = s === 'COMPLETE' || s === 'COMPLETED' || s === 'SUCCESS' || s === 'SUCCEEDED';
+  const isPaid = p === 'PAID' || p === 'SUCCEEDED' || p === 'SUCCESS';
+  if (isComplete || isPaid) return 'succeeded';
+  if (s === 'EXPIRED') return 'cancelled';
   return 'requires_action';
 }
 

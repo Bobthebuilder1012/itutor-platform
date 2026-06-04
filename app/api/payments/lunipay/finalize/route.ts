@@ -90,9 +90,23 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // Live and sandbox LuniPay use different casing — normalise before comparing.
+  const sessionStatus = String(session?.status ?? '').toUpperCase();
+  const paymentStatus = String(session?.payment_status ?? '').toUpperCase();
   const paid =
-    session?.status === 'COMPLETE' || session?.payment_status === 'paid';
+    sessionStatus === 'COMPLETE' ||
+    sessionStatus === 'COMPLETED' ||
+    sessionStatus === 'SUCCESS' ||
+    sessionStatus === 'SUCCEEDED' ||
+    paymentStatus === 'PAID' ||
+    paymentStatus === 'SUCCEEDED' ||
+    paymentStatus === 'SUCCESS';
+
   if (!paid) {
+    console.error('[lunipay/finalize] session not paid:', {
+      status: session?.status,
+      payment_status: session?.payment_status,
+    });
     return NextResponse.json(
       { status: 'not_paid', sessionStatus: session?.status, paymentStatus: session?.payment_status },
       { status: 409 }
