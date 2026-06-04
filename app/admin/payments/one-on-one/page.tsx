@@ -588,7 +588,7 @@ function NoshowModal({
                   <p className="text-[10px] text-white/30 uppercase mb-2">Evidence Screenshots</p>
                   <div className="flex flex-col gap-1.5">
                     {(claim.claimant_role === 'student' ? claim.evidence_files : claim.defendant_evidence_files).map((file: any, i: number) => (
-                      <a key={i} href={file.signed_url ?? (typeof file === 'string' ? file : '#')} download={file.original_name ?? `evidence-${i + 1}`} target="_blank" rel="noopener noreferrer"
+                      <a key={i} href={`/api/admin/evidence-download?path=${encodeURIComponent(file.path ?? '')}`} download={file.original_name ?? `evidence-${i + 1}`} target="_blank" rel="noopener noreferrer"
                         className="flex items-center gap-2 px-3 py-2 rounded-lg border border-white/10 bg-white/3 hover:bg-white/8 transition text-xs text-white/60 hover:text-white">
                         <svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
                         <span className="truncate">{file.original_name ?? `Evidence ${i + 1}`}</span>
@@ -618,7 +618,7 @@ function NoshowModal({
                   <p className="text-[10px] text-white/30 uppercase mb-2">Evidence Screenshots</p>
                   <div className="flex flex-wrap gap-2">
                     {(claim.claimant_role === 'tutor' ? claim.evidence_files : claim.defendant_evidence_files).map((file: any, i: number) => (
-                      <a key={i} href={file.signed_url ?? (typeof file === 'string' ? file : '#')} download={file.original_name ?? `evidence-${i + 1}`} target="_blank" rel="noopener noreferrer"
+                      <a key={i} href={`/api/admin/evidence-download?path=${encodeURIComponent(file.path ?? '')}`} download={file.original_name ?? `evidence-${i + 1}`} target="_blank" rel="noopener noreferrer"
                         className="flex items-center gap-2 px-3 py-2 rounded-lg border border-white/10 bg-white/3 hover:bg-white/8 transition text-xs text-white/60 hover:text-white">
                         <svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
                         <span className="truncate">{file.original_name ?? `Evidence ${i + 1}`}</span>
