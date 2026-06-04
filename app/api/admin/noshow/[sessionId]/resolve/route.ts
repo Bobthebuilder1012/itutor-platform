@@ -28,6 +28,7 @@ import {
   writeStudentStrike,
   writeSystemRating,
 } from '@/lib/reliability';
+import { createRequiredNotice, fmtTTD } from '@/lib/notices/createNotice';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -246,6 +247,86 @@ export async function POST(
     }
   } catch (e) {
     console.error('[admin/noshow/resolve] payout case auto-close failed (non-blocking):', e);
+  }
+
+  // Required notices — inform both parties of the admin verdict.
+  const resolvedClaimId = body.claimId ?? null;
+  const refundAmt = refundResult?.ok ? refundResult.refundAmountTtd : 0;
+
+  try {
+    if (outcome === 'student_noshow') {
+      await createRequiredNotice(admin, {
+        user_id: session.student_id,
+        type: 'noshow_admin_verdict_student_noshow',
+        severity: 'danger',
+        title: 'No-show case resolved — no refund',
+        message:
+          'An admin has reviewed the no-show dispute and determined that you did not attend the session. No refund will be issued and your payment stands. A strike has been added to your account.',
+        requires_ack: true,
+        related_session_id: session.id,
+        related_noshow_claim_id: resolvedClaimId,
+      });
+      await createRequiredNotice(admin, {
+        user_id: session.tutor_id,
+        type: 'noshow_admin_verdict_student_noshow',
+        severity: 'success',
+        title: 'No-show case resolved in your favor',
+        message:
+          'An admin has reviewed the no-show dispute and found in your favor. The student was determined to be the no-show. Your payout will proceed as normal.',
+        requires_ack: false,
+        related_session_id: session.id,
+        related_noshow_claim_id: resolvedClaimId,
+      });
+    } else if (outcome === 'tutor_noshow') {
+      await createRequiredNotice(admin, {
+        user_id: session.student_id,
+        type: 'noshow_admin_verdict_tutor_noshow',
+        severity: 'success',
+        title: 'No-show case resolved — refund approved',
+        message: `An admin has reviewed the no-show dispute and found in your favor. A full refund of ${fmtTTD(refundAmt)} has been approved and will be returned to your original payment method.`,
+        requires_ack: true,
+        related_session_id: session.id,
+        related_noshow_claim_id: resolvedClaimId,
+        refund_amount_ttd: refundAmt,
+      });
+      await createRequiredNotice(admin, {
+        user_id: session.tutor_id,
+        type: 'noshow_admin_verdict_tutor_noshow',
+        severity: 'danger',
+        title: 'No-show case resolved against you',
+        message: `An admin has reviewed the no-show dispute and determined that you did not attend the session. A full refund of ${fmtTTD(refundAmt)} has been issued to the student. A strike and a 1-star system rating have been recorded on your account.`,
+        requires_ack: true,
+        related_session_id: session.id,
+        related_noshow_claim_id: resolvedClaimId,
+        refund_amount_ttd: refundAmt,
+      });
+    } else {
+      // tie
+      await createRequiredNotice(admin, {
+        user_id: session.student_id,
+        type: 'noshow_admin_verdict_tie',
+        severity: 'success',
+        title: 'No-show case — refund approved',
+        message: `An admin reviewed the no-show dispute and was unable to determine fault. As a result, a full refund of ${fmtTTD(refundAmt)} has been approved and will be returned to your original payment method.`,
+        requires_ack: true,
+        related_session_id: session.id,
+        related_noshow_claim_id: resolvedClaimId,
+        refund_amount_ttd: refundAmt,
+      });
+      await createRequiredNotice(admin, {
+        user_id: session.tutor_id,
+        type: 'noshow_admin_verdict_tie',
+        severity: 'warning',
+        title: 'No-show case — split decision',
+        message: `An admin reviewed the no-show dispute and was unable to determine fault. A full refund of ${fmtTTD(refundAmt)} has been issued to the student and your payout for this session has been reversed.`,
+        requires_ack: true,
+        related_session_id: session.id,
+        related_noshow_claim_id: resolvedClaimId,
+        refund_amount_ttd: refundAmt,
+      });
+    }
+  } catch (e) {
+    console.error('[admin/noshow/resolve] required notices insert failed (non-blocking):', e);
   }
 
   return NextResponse.json({

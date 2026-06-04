@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { promoteNextFromWaitlist } from '@/lib/services/waitlistService';
+import { createRequiredNotice } from '@/lib/notices/createNotice';
 
 type Params = { params: Promise<{ groupId: string; userId: string }> };
 
@@ -421,6 +422,45 @@ async function handleTutorRemoval(
   }
 
   await admin.from('notifications').insert(notifRows);
+
+  // Required notices — must-acknowledge banners surfaced in the app UI
+  const { data: studentProfile } = await admin
+    .from('profiles')
+    .select('full_name, display_name')
+    .eq('id', args.studentId)
+    .maybeSingle();
+  const studentDisplayName =
+    (studentProfile as any)?.display_name ||
+    (studentProfile as any)?.full_name ||
+    'A student';
+
+  const studentNoticeMsg = refundAmount > 0
+    ? `You have been removed from "${args.groupName}". A refund of TT$${refundAmount.toFixed(2)} is pending admin approval and will be returned to your original payment method.`
+    : `You have been removed from "${args.groupName}" by the tutor.`;
+
+  await createRequiredNotice(admin, {
+    user_id: args.studentId,
+    type: 'student_removed_from_group',
+    severity: 'danger',
+    title: 'You were removed from a group class',
+    message: studentNoticeMsg,
+    requires_ack: true,
+    related_group_id: args.groupId,
+    related_group_enrollment_id: subEnrollment.id,
+    related_group_removal_id: removalRow?.id ?? null,
+    refund_amount_ttd: refundAmount > 0 ? refundAmount : null,
+  });
+
+  await createRequiredNotice(admin, {
+    user_id: args.tutorId,
+    type: 'student_removed_from_group',
+    severity: 'info',
+    title: 'Student removed from group',
+    message: `${studentDisplayName} has been removed from "${args.groupName}".`,
+    requires_ack: false,
+    related_group_id: args.groupId,
+    related_group_removal_id: removalRow?.id ?? null,
+  });
 
   await promoteNextFromWaitlist(admin, args.groupId);
 

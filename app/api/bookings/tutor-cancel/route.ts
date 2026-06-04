@@ -23,6 +23,7 @@ import {
   writeTutorStrike,
   writeSystemRating,
 } from '@/lib/reliability';
+import { createRequiredNotice, fmtTTD } from '@/lib/notices/createNotice';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -209,6 +210,76 @@ export async function POST(request: NextRequest) {
     } catch (e) {
       console.error('tutor-cancel: notification insert failed', e);
     }
+
+    // ── Required notices ──────────────────────────────────────────────────────
+    try {
+      const refundedTtd = refundOutcome?.refunded_ttd ?? 0;
+
+      // Student notice: always warn that tutor cancelled and confirm refund
+      await createRequiredNotice(admin, {
+        user_id: booking.student_id,
+        type: 'tutor_cancelled_student_refund',
+        severity: 'warning',
+        title: 'Your tutor cancelled this session',
+        message:
+          `We're sorry — your tutor had to cancel this session. ` +
+          (refundedTtd > 0
+            ? `A full refund of ${fmtTTD(refundedTtd)} has been issued to your original payment method.`
+            : `No charge was made for this session.`),
+        requires_ack: true,
+        related_booking_id: booking.id,
+        related_session_id: session?.id ?? null,
+        related_payment_id: payment?.id ?? null,
+        refund_amount_ttd: refundedTtd > 0 ? refundedTtd : null,
+      });
+
+      // Tutor notice: severity/title depends on timing
+      if (timing.isSuperLate) {
+        await createRequiredNotice(admin, {
+          user_id: booking.tutor_id,
+          type: 'session_cancelled_by_tutor',
+          severity: 'danger',
+          title: 'Super-late cancellation penalty',
+          message:
+            `You cancelled a session within 15 minutes of its start time. ` +
+            `A reliability strike has been recorded on your account and an automatic ` +
+            `2-star system rating has been applied. You may appeal the rating from your dashboard.`,
+          requires_ack: false,
+          related_booking_id: booking.id,
+          related_session_id: session?.id ?? null,
+        });
+      } else if (timing.isLate) {
+        await createRequiredNotice(admin, {
+          user_id: booking.tutor_id,
+          type: 'session_cancelled_by_tutor',
+          severity: 'warning',
+          title: 'Late cancellation — strike applied',
+          message:
+            `You cancelled a session within 12 hours of its start time. ` +
+            `A reliability strike has been recorded on your account. ` +
+            `Repeated late cancellations may affect your standing on the platform.`,
+          requires_ack: false,
+          related_booking_id: booking.id,
+          related_session_id: session?.id ?? null,
+        });
+      } else {
+        await createRequiredNotice(admin, {
+          user_id: booking.tutor_id,
+          type: 'session_cancelled_by_tutor',
+          severity: 'info',
+          title: 'You cancelled a session',
+          message:
+            `Your session has been cancelled and the student has been notified. ` +
+            `A reliability strike has been recorded as per platform policy.`,
+          requires_ack: false,
+          related_booking_id: booking.id,
+          related_session_id: session?.id ?? null,
+        });
+      }
+    } catch (e) {
+      console.error('tutor-cancel: required notice insert failed', e);
+    }
+    // ── End required notices ──────────────────────────────────────────────────
 
     return NextResponse.json({
       success: true,

@@ -18,6 +18,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { NOSHOW_RESPONSE_WINDOW_HOURS, NOSHOW_CLAIM_FILING_WINDOW_HOURS } from '@/lib/reliability';
+import { createRequiredNotice } from '@/lib/notices/createNotice';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -149,6 +150,32 @@ export async function POST(request: NextRequest) {
       });
     } catch (e) {
       console.error('noshow-claims/file: notification insert failed', e);
+    }
+
+    // Required notices — claimant confirmation + defendant action required.
+    try {
+      await createRequiredNotice(admin, {
+        user_id: user.id,
+        type: 'noshow_claim_filed',
+        severity: 'info',
+        title: 'No-show claim filed',
+        message: `Your no-show claim has been submitted. The other party has ${NOSHOW_RESPONSE_WINDOW_HOURS} hours to respond before the case is escalated to an admin for review.`,
+        requires_ack: false,
+        related_session_id: session.id,
+        related_noshow_claim_id: inserted.id,
+      });
+      await createRequiredNotice(admin, {
+        user_id: defendantId,
+        type: 'noshow_awaiting_response',
+        severity: 'warning',
+        title: 'No-show claim filed against you — response required',
+        message: `A no-show claim has been filed against you for a recent session. You have ${NOSHOW_RESPONSE_WINDOW_HOURS} hours to submit your response. If you do not respond in time, the case will be escalated to an admin.`,
+        requires_ack: true,
+        related_session_id: session.id,
+        related_noshow_claim_id: inserted.id,
+      });
+    } catch (e) {
+      console.error('noshow-claims/file: required notices insert failed (non-blocking)', e);
     }
 
     // Hold or pre-register the payout when a student files a claim.
