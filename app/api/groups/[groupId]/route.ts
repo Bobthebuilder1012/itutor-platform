@@ -432,7 +432,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       session_length_minutes: _ignoredSessionLength,
       session_frequency: _ignoredSessionFrequency,
       price_per_course: _ignoredPricePerCourse,
-      availability_window: _ignoredAvailabilityWidth,
+      availability_window: _ignoredAvailabilityWindow,
       header_image: _ignoredHeaderImage,
       whatsapp_url: _ignoredWhatsappUrl,
       recurrence_type: _ignoredRecurrenceType,

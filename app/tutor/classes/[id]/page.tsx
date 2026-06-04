@@ -1925,10 +1925,6 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
           subject: draft.subject && draft.subject !== '—' ? draft.subject : null,
           form_level: draft.level && draft.level !== '—' ? draft.level : null,
           max_students: draft.capacity > 0 ? draft.capacity : 20,
-          price_per_session: draft.billingModel !== 'per-month' ? (draft.pricePerSession ?? null) : null,
-          price_monthly: draft.billingModel === 'per-month' ? (draft.pricePerSession ?? null) : null,
-          member_service_fee: draft.memberServiceFee ?? 0,
-          pricing_model: pricingModelMap[draft.billingModel] ?? 'FREE',
           status: draft.visibility === 'private' ? 'DRAFT' : 'PUBLISHED',
         }),
       });
@@ -1950,6 +1946,9 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
           meeting_link: draft.meetingLink || null,
           parent_feedback_mode: draft.feedbackMode,
           parent_feedback_price: draft.feedbackMode === 'paid_addon' ? (draft.parentFeedbackPrice ?? 0) : null,
+          price_monthly: draft.pricePerSession ?? 0,
+          pricing_model: 'MONTHLY',
+          member_service_fee: draft.memberServiceFee ?? 0,
         }),
       });
       const settingsJson = await settingsRes.json().catch(() => ({}));
