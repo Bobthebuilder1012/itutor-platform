@@ -588,9 +588,9 @@ function NoshowModal({
                   <p className="text-[10px] text-white/30 uppercase mb-2">Evidence Screenshots</p>
                   <div className="flex flex-wrap gap-2">
                     {(claim.claimant_role === 'student' ? claim.evidence_files : claim.defendant_evidence_files).map((file: any, i: number) => (
-                      <a key={i} href={typeof file === 'string' ? file : file.url} target="_blank" rel="noopener noreferrer"
+                      <a key={i} href={file.signed_url ?? (typeof file === 'string' ? file : '#')} target="_blank" rel="noopener noreferrer"
                         className="size-20 rounded-lg border border-white/10 overflow-hidden hover:border-white/30 transition">
-                        <img src={typeof file === 'string' ? file : file.url} alt={`Evidence ${i + 1}`}
+                        <img src={file.signed_url ?? (typeof file === 'string' ? file : '')} alt={`Evidence ${i + 1}`}
                           className="size-full object-cover" />
                       </a>
                     ))}
@@ -617,9 +617,9 @@ function NoshowModal({
                   <p className="text-[10px] text-white/30 uppercase mb-2">Evidence Screenshots</p>
                   <div className="flex flex-wrap gap-2">
                     {(claim.claimant_role === 'tutor' ? claim.evidence_files : claim.defendant_evidence_files).map((file: any, i: number) => (
-                      <a key={i} href={typeof file === 'string' ? file : file.url} target="_blank" rel="noopener noreferrer"
+                      <a key={i} href={file.signed_url ?? (typeof file === 'string' ? file : '#')} target="_blank" rel="noopener noreferrer"
                         className="size-20 rounded-lg border border-white/10 overflow-hidden hover:border-white/30 transition">
-                        <img src={typeof file === 'string' ? file : file.url} alt={`Evidence ${i + 1}`}
+                        <img src={file.signed_url ?? (typeof file === 'string' ? file : '')} alt={`Evidence ${i + 1}`}
                           className="size-full object-cover" />
                       </a>
                     ))}
