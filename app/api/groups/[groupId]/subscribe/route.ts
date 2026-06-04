@@ -62,7 +62,11 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL;
     if (!appUrl) {
-      return NextResponse.json({ error: 'Payments are not configured' }, { status: 500 });
+      return NextResponse.json({ error: 'Payments are not configured' }, { status: 503 });
+    }
+
+    if (!process.env.LUNIPAY_SECRET_KEY) {
+      return NextResponse.json({ error: 'Payment processing is not available on this environment' }, { status: 503 });
     }
 
     // Step 4: Visibility check
