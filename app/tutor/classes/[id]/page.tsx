@@ -18,19 +18,12 @@ import { useUnsavedGuard } from '@/lib/hooks/useUnsavedGuard';
 import { UnsavedBar } from '@/components/UnsavedBar';
 import { supabase } from '@/lib/supabase/client';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
+import { formatLevel, LEVEL_LABELS } from '@/lib/utils/formatLevel';
 import TutorShell from '@/components/tutor/TutorShell';
 
 type DbSubject = { id: string; name: string; label: string; curriculum: string };
 
-const LEVEL_OPTIONS = [
-  { value: 'SEA',    label: 'SEA' },
-  { value: 'FORM_1', label: 'Form 1' },
-  { value: 'FORM_2', label: 'Form 2' },
-  { value: 'FORM_3', label: 'Form 3' },
-  { value: 'FORM_4', label: 'Form 4' },
-  { value: 'FORM_5', label: 'Form 5' },
-  { value: 'CAPE',   label: 'CAPE' },
-];
+const LEVEL_OPTIONS = Object.entries(LEVEL_LABELS).map(([value, label]) => ({ value, label }));
 
 type Tab = 'stream' | 'sessions' | 'roster' | 'payments' | 'settings' | 'analytics';
 
@@ -119,6 +112,7 @@ type GroupDetail = {
   coverImage?: string;
   scheduleDisplay?: string;
   scheduleData?: ScheduleEntry[];
+  activePromotion?: { id: string; kind: string; discount: number; student_cap: number | null; duration_days: number | null } | null;
 };
 
 export default function TutorLessonDetailPage() {
@@ -180,13 +174,17 @@ function ClassHubContent() {
   async function fetchAll(groupId: string) {
     setDataLoading(true);
     try {
-      // Fetch group directly — more reliable than API route
-      const { data: g } = await supabase.from('groups').select('*').eq('id', groupId).single();
+      // Fetch group + active promotion in parallel
+      const [{ data: g }, { data: promoRows }] = await Promise.all([
+        supabase.from('groups').select('*').eq('id', groupId).single(),
+        supabase.from('group_promotions').select('*').eq('group_id', groupId).eq('active', true).limit(1),
+      ]);
       if (g) {
         const pricingModel = g.pricing_model ?? 'FREE';
         const billingModel: GroupDetail['billingModel'] = 'per-month'; // Only monthly billing supported
         const visibilityVal: GroupDetail['visibility'] =
           g.visibility === 'private' ? 'private' : 'public';
+        const activePromotion = (promoRows && promoRows.length > 0) ? promoRows[0] : null;
 
         setGroup({
           id: g.id,
@@ -221,6 +219,7 @@ function ClassHubContent() {
           meetingLink: g.meeting_link ?? '',
           rating: null,
           reviewCount: 0,
+          activePromotion,
         });
       }
 
@@ -375,12 +374,22 @@ function ClassHubContent() {
                 )}
               </div>
               <h1 className="mt-2 text-2xl lg:text-3xl font-bold truncate">{group.title}</h1>
-              <div className="mt-1 text-sm text-white/85">{group.subject} · {group.level}{group.recurrenceRule ? ` · ${group.recurrenceRule}` : ''}</div>
+              <div className="mt-1 text-sm text-white/85">{group.subject} · {formatLevel(group.level)}{group.recurrenceRule ? ` · ${group.recurrenceRule}` : ''}</div>
             </div>
             <div className="flex items-center gap-3">
               <div className="rounded-xl bg-white/95 text-ink px-4 py-2 text-right">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">per session</div>
-                <div className="text-lg font-bold">TTD {group.pricePerSession ?? 0}</div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">{group.billingModel === 'per-month' ? 'per month' : 'per session'}</div>
+                {group.activePromotion ? (
+                  <>
+                    <div className="flex items-center gap-1.5 justify-end">
+                      <span className="text-sm font-bold px-2.5 py-1 rounded-full bg-amber-400 text-amber-900">{group.activePromotion.discount}% off</span>
+                      <span className="text-lg font-bold text-brand-deep">TTD {Math.round((group.pricePerSession ?? 0) * (1 - group.activePromotion.discount / 100))}</span>
+                    </div>
+                    <div className="text-[11px] text-muted-foreground line-through">TTD {group.pricePerSession ?? 0}</div>
+                  </>
+                ) : (
+                  <div className="text-lg font-bold">TTD {group.pricePerSession ?? 0}</div>
+                )}
               </div>
               {!isOneOnOne && (
                 <div className="rounded-xl bg-white/95 text-ink px-4 py-2 text-right">
@@ -534,7 +543,8 @@ function StreamTab({ group, posts, setPosts }: { group: GroupDetail; posts: Stre
 
       <aside className="space-y-4">
         <SideCard title="Class info">
-          <InfoRow label="Subject" value={`${group.subject} · ${group.level}`} />
+          <InfoRow label="Subject" value={group.subject} />
+          <InfoRow label="Level" value={formatLevel(group.level)} />
           <InfoRow label="Video" value={group.videoProvider ?? '—'} />
           <InfoRow label="Status" value={group.status} />
         </SideCard>
@@ -561,7 +571,7 @@ function StreamCard({ post, onPin, onRemove }: { post: StreamPost; onPin: () => 
     link:         { icon: LinkIcon,  cls: 'bg-sky-100 text-sky-700',       tag: 'Link' },
     'ai-recap':   { icon: Sparkles,  cls: 'bg-emerald-100 text-emerald-700', tag: 'AI Recap' },
   };
-  const M = meta[post.kind];
+  const M = meta[post.kind] ?? { icon: Bell, cls: 'bg-muted text-muted-foreground', tag: post.kind };
   const Icon = M.icon;
   return (
     <div className={cn('rounded-2xl bg-card border p-5', post.pinned ? 'border-rose-200 ring-1 ring-rose-100' : 'border-border')}>
@@ -2184,24 +2194,21 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
 
           {section === 'feedback' && (
             <>
-              <SettingsHead title="Parent feedback" desc="Optional monthly reports you send to each student's parent." />
-              <SetField label="Mode" infoTitle="Parent feedback" infoBlurb="A short monthly report you write for each student's parent. AI can optionally polish your wording. Charge for it as a paid add-on or include it free.">
-                <div className="grid grid-cols-3 gap-2">
-                  {(['off', 'included_free', 'paid_addon'] as const).map((f) => (
-                    <button key={f} onClick={() => d('feedbackMode', f)}
-                      className={cn('px-3 py-2 rounded-lg border text-xs font-semibold capitalize transition-colors',
-                        draft.feedbackMode === f ? 'bg-brand-soft border-brand text-brand-deep' : 'bg-background text-muted-foreground border-border hover:text-ink')}>
-                      {f === 'off' ? 'Off' : f === 'included_free' ? 'Included free' : 'Paid add-on'}
-                    </button>
-                  ))}
+              <SettingsHead title="Parent feedback" desc="Monthly reports you send to each student's parent." />
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 flex items-start gap-4">
+                <div className="size-10 rounded-xl bg-amber-100 grid place-items-center shrink-0">
+                  <Clock className="size-5 text-amber-700" />
                 </div>
-              </SetField>
-              {draft.feedbackMode === 'paid_addon' && (
-                <SetField label="Parent feedback add-on (TTD)" infoTitle="Parent feedback add-on" infoBlurb="This is an extra amount charged on top of your standard class fee. For example, if your class costs TT$200/mo and you set TT$50 here, parents will pay TT$250/mo total — TT$200 for the class plus TT$50 for the monthly feedback report.">
-                  <input type="number" min={0} required value={draft.parentFeedbackPrice} onChange={(e) => d('parentFeedbackPrice', Number(e.target.value))}
-                    className="w-32 px-3 py-2 rounded-lg border border-border bg-background text-sm" />
-                </SetField>
-              )}
+                <div>
+                  <div className="font-bold text-amber-900 flex items-center gap-2">
+                    Parent feedback
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-200 text-amber-800">Coming soon</span>
+                  </div>
+                  <p className="text-sm text-amber-800 mt-1">
+                    Parent accounts are launching soon. Once live, you'll be able to send monthly feedback reports directly to your students' parents — included free or as a paid add-on.
+                  </p>
+                </div>
+              </div>
             </>
           )}
 
@@ -2435,7 +2442,7 @@ function ClassPreviewCard({ draft, enrolledCount }: { draft: any; enrolledCount:
           </span>
         </div>
         <div className="text-xs text-muted-foreground">
-          {draft.subject || 'Subject'}{draft.level ? ` · ${draft.level}` : ''}
+          {draft.subject || 'Subject'}{draft.level ? ` · ${formatLevel(draft.level)}` : ''}
         </div>
         {draft.description && <p className="text-xs text-muted-foreground line-clamp-2">{draft.description}</p>}
         <div className="flex flex-wrap gap-1.5">
@@ -2580,7 +2587,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between text-sm py-1.5 border-b border-border last:border-b-0">
       <span className="text-muted-foreground">{label}</span>
-      <span className="text-ink font-semibold capitalize">{value}</span>
+      <span className="text-ink font-semibold">{value}</span>
     </div>
   );
 }

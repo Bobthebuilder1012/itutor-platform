@@ -10,7 +10,6 @@ type Params = { params: Promise<{ groupId: string }> };
 const createSchema = z.object({
   rating: z.number().int().min(1).max(5),
   comment: z.string().optional(),
-  sessionId: z.string().uuid(),
 });
 
 const querySchema = z.object({
@@ -32,23 +31,12 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     const service = getServiceClient();
 
-    const { data: enrollment } = await service
-      .from('group_enrollments')
-      .select('id')
-      .eq('group_id', groupId)
-      .eq('student_id', user.id)
-      .eq('status', 'ACTIVE')
-      .maybeSingle();
-    if (!enrollment) return fail('Active enrollment required', 403);
-
-    const { data: attendance } = await service
-      .from('group_attendance_records')
-      .select('id')
-      .eq('session_id', parsed.data.sessionId)
-      .eq('student_id', user.id)
-      .eq('status', 'PRESENT')
-      .maybeSingle();
-    if (!attendance) return fail('Verified attendance is required', 403);
+    // Require active enrollment (or approved group_members row)
+    const [{ data: enrollment }, { data: membership }] = await Promise.all([
+      service.from('group_enrollments').select('id').eq('group_id', groupId).eq('student_id', user.id).in('status', ['ACTIVE', 'GRACE']).maybeSingle(),
+      service.from('group_members').select('id').eq('group_id', groupId).eq('user_id', user.id).in('status', ['approved', 'active']).maybeSingle(),
+    ]);
+    if (!enrollment && !membership) return fail('You must be enrolled to leave a review', 403);
 
     const { data: existing } = await service
       .from('group_reviews')
@@ -59,11 +47,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       .maybeSingle();
     if (existing) return fail('You already reviewed this group', 409);
 
-    const { data: group } = await service
-      .from('groups')
-      .select('tutor_id')
-      .eq('id', groupId)
-      .single();
+    const { data: group } = await service.from('groups').select('tutor_id').eq('id', groupId).single();
     if (!group) return fail('Group not found', 404);
 
     const { data: review, error } = await service
@@ -72,25 +56,24 @@ export async function POST(req: NextRequest, { params }: Params) {
         reviewer_id: user.id,
         tutor_id: group.tutor_id,
         group_id: groupId,
-        session_id: parsed.data.sessionId,
         rating: parsed.data.rating,
         comment: parsed.data.comment ?? null,
-        is_verified: true,
       })
       .select()
       .single();
     if (error) return fail(error.message, 500);
 
     await recalculateRating(group.tutor_id);
-    await service.from('notifications').insert({
-      user_id: group.tutor_id,
-      type: 'NEW_REVIEW',
-      title: 'New Review Received',
-      message: 'A student left a new review on your group.',
-      group_id: groupId,
-      session_occurrence_id: parsed.data.sessionId,
-      metadata: { groupId, sessionId: parsed.data.sessionId, rating: parsed.data.rating },
-    });
+    try {
+      await service.from('notifications').insert({
+        user_id: group.tutor_id,
+        type: 'NEW_REVIEW',
+        title: 'New Review Received',
+        message: 'A student left a new review on your class.',
+        group_id: groupId,
+        metadata: { groupId, rating: parsed.data.rating },
+      });
+    } catch { /* non-critical */ }
 
     return ok(review, 201);
   } catch (error: any) {

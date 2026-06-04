@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { GroupFilters } from '@/lib/types/groups';
 import SubjectMultiSelect from '@/components/SubjectMultiSelect';
+import { LEVEL_LABELS } from '@/lib/utils/formatLevel';
 
 interface GroupFiltersProps {
   filters: GroupFilters;
@@ -89,12 +90,9 @@ export default function GroupFiltersPanel({ filters, onChange }: GroupFiltersPro
                 className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 <option value="">Any level</option>
-                <option value="FORM_1">Form 1</option>
-                <option value="FORM_2">Form 2</option>
-                <option value="FORM_3">Form 3</option>
-                <option value="FORM_4">Form 4</option>
-                <option value="FORM_5">Form 5</option>
-                <option value="CAPE">CAPE</option>
+                {Object.entries(LEVEL_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
               </select>
             </div>
             <div>
