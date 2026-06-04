@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, Users, User as UserIcon, ChevronRight, Check, X,
-  Globe, Lock, MessageSquare, Sparkles, DollarSign, Info,
+  Globe, Lock, DollarSign, Info,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -19,8 +19,6 @@ const LEVEL_OPTIONS = Object.entries(LEVEL_LABELS).map(([value, label]) => ({ va
 
 type ClassType = 'group' | 'recurring-1on1';
 type Visibility = 'public' | 'private';
-type PrimaryChannel = 'native' | 'whatsapp' | 'classroom';
-type FeedbackMode = 'off' | 'included' | 'paid';
 
 export default function CreateLessonPage() {
   return (
@@ -55,9 +53,6 @@ function CreateClassContent() {
   const [graceDays, setGraceDays] = useState(7);
   const [whatsapp, setWhatsapp] = useState('');
   const [classroom, setClassroom] = useState('');
-  const [primary, setPrimary] = useState<PrimaryChannel>('native');
-  const [feedback, setFeedback] = useState<FeedbackMode>('off');
-  const [feedbackPrice, setFeedbackPrice] = useState(50);
 
   useEffect(() => {
     supabase
@@ -118,9 +113,6 @@ function CreateClassContent() {
           grace_period_days: graceDays,
           whatsapp_url: whatsapp,
           google_classroom_link: classroom,
-          primary_channel: primary,
-          feedback_mode: feedback === 'included' ? 'included_free' : feedback === 'paid' ? 'paid_addon' : 'off',
-          parent_feedback_price: feedback === 'paid' ? feedbackPrice : 0,
         }),
       });
       if (res.ok) {
@@ -312,38 +304,14 @@ function CreateClassContent() {
               <input value={classroom} onChange={(e) => setClassroom(e.target.value)} placeholder="https://classroom.google.com/c/…"
                 className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
             </Field>
-            <Field label="Primary channel" infoTitle="Primary channel" infoBlurb="Where students receive class updates and resources. iTutor is the in-app stream; WhatsApp and Classroom redirect students to those platforms.">
-              <div className="grid grid-cols-3 gap-2">
-                {(['native', 'whatsapp', 'classroom'] as PrimaryChannel[]).map((c) => (
-                  <button key={c} onClick={() => setPrimary(c)}
-                    className={cn('px-3 py-2 rounded-lg border text-xs font-semibold capitalize inline-flex items-center justify-center gap-1.5',
-                      primary === c ? 'bg-brand/10 border-brand text-brand-deep' : 'border-border bg-background text-muted-foreground hover:text-ink')}>
-                    {c === 'whatsapp' ? <MessageSquare className="size-3.5" /> : c === 'classroom' ? <Globe className="size-3.5" /> : <Sparkles className="size-3.5" />}
-                    {c === 'native' ? 'iTutor' : c}
-                  </button>
-                ))}
-              </div>
-            </Field>
           </Card>
 
           <Card title="Parent feedback">
-            <Field label="Mode" hint="AI drafts a monthly report. You review and approve before it's sent." infoTitle="Parent feedback" infoBlurb="Send monthly progress reports to parents. Included free adds no extra charge; Paid add-on lets you charge parents separately per report.">
-              <div className="grid grid-cols-3 gap-2">
-                {(['off', 'included', 'paid'] as FeedbackMode[]).map((m) => (
-                  <button key={m} onClick={() => setFeedback(m)}
-                    className={cn('px-3 py-2 rounded-lg border text-xs font-semibold',
-                      feedback === m ? 'bg-brand/10 border-brand text-brand-deep' : 'border-border bg-background text-muted-foreground hover:text-ink')}>
-                    {m === 'included' ? 'Included free' : m === 'paid' ? 'Paid add-on' : 'Off'}
-                  </button>
-                ))}
-              </div>
-            </Field>
-            {feedback === 'paid' && (
-              <Field label="Price per report (TTD)">
-                <input type="number" value={feedbackPrice} onChange={(e) => setFeedbackPrice(Number(e.target.value))}
-                  className="w-32 px-3 py-2 rounded-lg border border-border bg-background text-sm" />
-              </Field>
-            )}
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-ink">Monthly progress reports for parents</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Coming Soon</span>
+            </div>
+            <p className="text-xs text-muted-foreground">AI-drafted monthly reports reviewed and approved by you before being sent to parents. Available soon.</p>
           </Card>
 
           <div className="flex justify-between items-center">
