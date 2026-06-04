@@ -53,6 +53,7 @@ interface WalletPayload {
     lifetime_paid_ttd: number;
     held_ttd: number;
     last_updated: string | null;
+    pending_deductions_ttd?: number;
   };
   pending_deductions: PendingDeduction[];
   history: WalletHistoryRow[];

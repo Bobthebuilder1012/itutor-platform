@@ -355,7 +355,7 @@ export async function GET() {
       held_ttd:          Math.round(heldTtd * 100) / 100,
       last_updated:      balanceRow?.last_updated ?? null,
     },
-    pending_deductions: pendingDeductions,
+    pending_deductions: [],
     history,
   });
 }
