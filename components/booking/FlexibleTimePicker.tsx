@@ -11,6 +11,8 @@ interface FlexibleTimePickerProps {
   sessionDurations: { label: string; minutes: number }[];
 }
 
+const MIN_BOOKING_LEAD_MINUTES = 15;
+
 export default function FlexibleTimePicker({
   date,
   availabilityWindows,
@@ -22,6 +24,11 @@ export default function FlexibleTimePicker({
   const [selectedDuration, setSelectedDuration] = useState<number>(60); // Default 1 hour
   const [availableStartTimes, setAvailableStartTimes] = useState<string[]>([]);
   const [error, setError] = useState<string>('');
+
+  useEffect(() => {
+    setSelectedStartTime('');
+    setError('');
+  }, [date]);
 
   // Generate 15-minute interval start times within availability windows
   useEffect(() => {
@@ -40,9 +47,9 @@ export default function FlexibleTimePicker({
 
       // Generate 15-minute intervals
       let currentTime = new Date(windowStart);
-      const now = new Date();
-      if (currentTime < now) {
-        const ms = now.getTime();
+      const earliestStart = new Date(Date.now() + MIN_BOOKING_LEAD_MINUTES * 60 * 1000);
+      if (currentTime < earliestStart) {
+        const ms = earliestStart.getTime();
         const rounded = Math.ceil(ms / (15 * 60 * 1000)) * (15 * 60 * 1000);
         currentTime = new Date(rounded);
         if (currentTime < windowStart) {

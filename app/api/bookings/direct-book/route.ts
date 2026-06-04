@@ -20,6 +20,8 @@ type Body = {
   durationMinutes?: number;
 };
 
+const MIN_BOOKING_LEAD_MS = 15 * 60 * 1000;
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await getServerClient();
@@ -34,6 +36,24 @@ export async function POST(request: NextRequest) {
 
     if (!tutorId || !subjectId || !requestedStartAt || !requestedEndAt) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    const requestedStartDate = new Date(requestedStartAt);
+    const requestedEndDate = new Date(requestedEndAt);
+
+    if (
+      !Number.isFinite(requestedStartDate.getTime()) ||
+      !Number.isFinite(requestedEndDate.getTime()) ||
+      requestedEndDate <= requestedStartDate
+    ) {
+      return NextResponse.json({ error: 'Invalid booking time' }, { status: 400 });
+    }
+
+    if (requestedStartDate.getTime() < Date.now() + MIN_BOOKING_LEAD_MS) {
+      return NextResponse.json(
+        { error: 'Please select a time at least 15 minutes from now' },
+        { status: 409 }
+      );
     }
 
     const admin = getServiceClient();
@@ -83,8 +103,8 @@ export async function POST(request: NextRequest) {
     // rules whose window_start is before p_range_start — causing false negatives.
     {
       // Convert UTC to Trinidad time (UTC-4, no DST) for day-of-week and time comparisons
-      const startDate = new Date(requestedStartAt);
-      const endDate = new Date(requestedEndAt);
+      const startDate = requestedStartDate;
+      const endDate = requestedEndDate;
       const OFFSET_MS = 4 * 60 * 60 * 1000; // 4 hours in ms
       const startTrinidad = new Date(startDate.getTime() - OFFSET_MS);
       const endTrinidad = new Date(endDate.getTime() - OFFSET_MS);

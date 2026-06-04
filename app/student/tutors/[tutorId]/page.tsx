@@ -55,6 +55,7 @@ type Window = { start: number; end: number };
 type DayAvail = { date: Date; windows: Window[]; booked: Window[] };
 
 const SLOT_STEP = 0.5;
+const MIN_BOOKING_LEAD_MINUTES = 15;
 const DURATION_OPTIONS = [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5];
 
 function fmtTime(h: number) {
@@ -79,12 +80,29 @@ function effectiveWindows(windows: Window[], booked: Window[]): Window[] {
   return out.filter((w) => w.end - w.start >= SLOT_STEP);
 }
 
-function startsForDuration(eff: Window[], duration: number): number[] {
+function minBookableStartHour(date: Date): number | null {
+  const cutoff = new Date(Date.now() + MIN_BOOKING_LEAD_MINUTES * 60 * 1000);
+  const day = new Date(date);
+  day.setHours(0, 0, 0, 0);
+  const cutoffDay = new Date(cutoff);
+  cutoffDay.setHours(0, 0, 0, 0);
+
+  if (day < cutoffDay) return Number.POSITIVE_INFINITY;
+  if (day > cutoffDay) return null;
+
+  const cutoffHour = cutoff.getHours() + cutoff.getMinutes() / 60;
+  return Math.ceil(cutoffHour / SLOT_STEP) * SLOT_STEP;
+}
+
+function startsForDuration(eff: Window[], duration: number, date: Date): number[] {
   const out: number[] = [];
+  const minStart = minBookableStartHour(date);
   for (const w of eff) {
     let t = Math.ceil(w.start / SLOT_STEP) * SLOT_STEP;
     while (t + duration <= w.end + 1e-9) {
-      out.push(Number(t.toFixed(2)));
+      if (minStart == null || t >= minStart - 1e-9) {
+        out.push(Number(t.toFixed(2)));
+      }
       t += SLOT_STEP;
     }
   }
@@ -174,11 +192,21 @@ function BookingCard({
   const day = slots[pickedDay];
   const eff = effectiveWindows(day.windows, day.booked);
   const longestWindow = eff.reduce((m, w) => Math.max(m, w.end - w.start), 0);
-  const starts = startsForDuration(eff, duration);
+  const starts = startsForDuration(eff, duration, day.date);
 
   useEffect(() => {
     if (pickedTime != null && !starts.includes(pickedTime)) setPickedTime(null);
   }, [pickedTime, starts, setPickedTime]);
+
+  function continueWithCurrentSelection() {
+    if (pickedTime == null || pickedSubject == null) return;
+    const minStart = minBookableStartHour(day.date);
+    if (minStart != null && pickedTime < minStart - 1e-9) {
+      setPickedTime(null);
+      return;
+    }
+    onContinue?.();
+  }
 
   return (
     <div className={cn(!embedded && 'rounded-3xl bg-background border border-border p-5')}>
@@ -194,7 +222,7 @@ function BookingCard({
           <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Subject</div>
           <div className="flex flex-wrap gap-1.5 mb-4">
             {subjects.map((s) => (
-              <button key={s.id} onClick={() => setPickedSubject(s)} className={cn('px-3 py-1.5 rounded-full text-xs font-semibold border transition', pickedSubject?.id === s.id ? 'bg-ink text-white border-ink' : 'border-border text-muted-foreground hover:border-ink/30')}>
+              <button key={s.id} onClick={() => { setPickedSubject(s); setPickedTime(null); }} className={cn('px-3 py-1.5 rounded-full text-xs font-semibold border transition', pickedSubject?.id === s.id ? 'bg-ink text-white border-ink' : 'border-border text-muted-foreground hover:border-ink/30')}>
                 {s.name}
               </button>
             ))}
@@ -268,7 +296,7 @@ function BookingCard({
 
       <button
         disabled={pickedTime == null || pickedSubject == null}
-        onClick={onContinue}
+        onClick={continueWithCurrentSelection}
         className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-brand text-white font-semibold hover:bg-brand-deep transition disabled:opacity-50"
       >
         <Video className="size-4" />
@@ -638,7 +666,7 @@ export default function TutorProfilePage() {
               {bookingStep === 1 && (
                 <div className="space-y-2">
                   {tutor.subjects.map((s) => (
-                    <button key={s.id} onClick={() => { setSelectedSubject(s); setBookingStep(2); }} className={cn('w-full text-left px-4 py-3 rounded-2xl border flex items-center justify-between transition', selectedSubject?.id === s.id ? 'border-brand bg-brand-soft' : 'border-border hover:border-brand/50')}>
+                    <button key={s.id} onClick={() => { setSelectedSubject(s); setPickedTime(null); setBookingStep(2); }} className={cn('w-full text-left px-4 py-3 rounded-2xl border flex items-center justify-between transition', selectedSubject?.id === s.id ? 'border-brand bg-brand-soft' : 'border-border hover:border-brand/50')}>
                       <div>
                         <div className="font-semibold text-ink text-sm">{s.name}</div>
                         <div className="text-xs text-muted-foreground">{s.curriculum} · {paidClassesEnabled ? `TT$${s.price_per_hour_ttd}/hr` : 'Free'}</div>
@@ -708,6 +736,13 @@ export default function TutorProfilePage() {
                   <button
                     disabled={confirmLoading}
                     onClick={() => {
+                      const minStart = minBookableStartHour(slots[pickedDay].date);
+                      if (minStart != null && pickedTime < minStart - 1e-9) {
+                        setPickedTime(null);
+                        setBookingStep(2);
+                        setConfirmError('Please select a later time.');
+                        return;
+                      }
                       const { start, end } = slotToISO(slots[pickedDay].date, pickedTime, duration);
                       confirmBooking(start, end);
                     }}

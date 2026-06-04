@@ -503,7 +503,10 @@ export default function PublicTutorProfilePage() {
                   {tutor.subjects.map((subject) => (
                     <button
                       key={subject.id}
-                      onClick={() => setSelectedSubject(subject)}
+                      onClick={() => {
+                        setSelectedSubject(subject);
+                        setSelectedTimeSlot(null);
+                      }}
                       className={`p-4 rounded-xl border-2 transition-all duration-200 text-left shadow-md ${
                         selectedSubject?.id === subject.id
                           ? 'border-itutor-green bg-gradient-to-br from-green-50 to-emerald-50 shadow-lg shadow-itutor-green/30 scale-105'
@@ -560,6 +563,7 @@ export default function PublicTutorProfilePage() {
                   <TutorCalendarWidget
                     tutorId={tutorId}
                     onSlotSelect={(startAt, endAt) => setSelectedTimeSlot({ start: startAt, end: endAt })}
+                    onSlotClear={() => setSelectedTimeSlot(null)}
                   />
                   <button
                     onClick={handleBookSession}
