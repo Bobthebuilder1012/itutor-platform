@@ -95,10 +95,10 @@ export async function DELETE(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    await req.json().catch(() => ({}));
+    const body = await req.json().catch(() => ({}));
 
     if (isSelf) {
-      return handleSelfLeave(admin as any, groupId, userId, group as any);
+      return handleSelfLeave(admin as any, groupId, userId, group as any, !!body.immediate);
     }
 
     return handleTutorRemoval(admin as any, {
@@ -117,7 +117,8 @@ async function handleSelfLeave(
   admin: any,
   groupId: string,
   userId: string,
-  group: any
+  group: any,
+  immediate: boolean = false,
 ) {
   const groupName: string = group?.name ?? 'this group';
   const { data: subEnrollment } = await admin
@@ -130,6 +131,41 @@ async function handleSelfLeave(
     .maybeSingle();
 
   if (subEnrollment) {
+    if (immediate) {
+      // Cancel subscription AND remove access immediately
+      await admin
+        .from('group_enrollments')
+        .update({
+          status: 'CANCELLED',
+          cancel_at_period_end: false,
+          cancelled_at: new Date().toISOString(),
+        })
+        .eq('id', subEnrollment.id);
+
+      await admin
+        .from('group_members')
+        .delete()
+        .eq('group_id', groupId)
+        .eq('user_id', userId);
+
+      await admin.from('notifications').insert({
+        user_id: userId,
+        type: 'group_removal',
+        title: 'Left class',
+        message: `You have left "${groupName}" and your subscription has been cancelled.`,
+        link: `/student/classes`,
+        group_id: groupId,
+        metadata: { enrollment_id: subEnrollment.id },
+      });
+
+      return NextResponse.json({
+        success: true,
+        immediate: true,
+        note: 'Subscription cancelled and access removed immediately.',
+      });
+    }
+
+    // Cancel subscription only — keep access until period end
     if (!subEnrollment.cancel_at_period_end) {
       await admin
         .from('group_enrollments')
@@ -137,23 +173,29 @@ async function handleSelfLeave(
         .eq('id', subEnrollment.id);
     }
 
+    const accessUntil = subEnrollment.current_period_end
+      ? new Date(subEnrollment.current_period_end).toLocaleDateString('en-TT')
+      : 'the end of your paid period';
+
     await admin.from('notifications').insert({
       user_id: userId,
       type: 'subscription_cancellation_scheduled',
-      title: 'Left group',
-      message: `You have left the group. You still have access until ${subEnrollment.current_period_end ? new Date(subEnrollment.current_period_end).toLocaleDateString('en-TT') : 'the end of your paid period'}.`,
-      link: `/student/subscriptions`,
+      title: 'Subscription cancelled',
+      message: `Your subscription to "${groupName}" has been cancelled. You still have access until ${accessUntil}.`,
+      link: `/student/classes`,
       group_id: groupId,
       metadata: { enrollment_id: subEnrollment.id },
     });
 
     return NextResponse.json({
       success: true,
+      immediate: false,
       access_until: subEnrollment.current_period_end,
       note: 'Subscription cancellation scheduled. Access continues until period end.',
     });
   }
 
+  // No active subscription — just remove from class immediately
   const { error } = await admin
     .from('group_members')
     .delete()
@@ -165,13 +207,13 @@ async function handleSelfLeave(
   await admin.from('notifications').insert({
     user_id: userId,
     type: 'group_removal',
-    title: 'Left group',
+    title: 'Left class',
     message: `You have left "${groupName}".`,
-    link: `/student/groups`,
+    link: `/student/classes`,
     group_id: groupId,
   });
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: true, immediate: true });
 }
 
 // ─── Tutor removal ─────────────────────────────────────────────────────────────

@@ -5,28 +5,20 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, Users, User as UserIcon, ChevronRight, Check, X,
-  Globe, Lock, Eye, MessageSquare, Sparkles, DollarSign, ChevronDown,
+  Globe, Lock, MessageSquare, Sparkles, DollarSign, Info,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import TutorShell from '@/components/tutor/TutorShell';
+import { LEVEL_LABELS } from '@/lib/utils/formatLevel';
 
 type DbSubject = { id: string; name: string; label: string; curriculum: string };
 
-const LEVEL_OPTIONS = [
-  { value: 'SEA',    label: 'SEA' },
-  { value: 'FORM_1', label: 'Form 1' },
-  { value: 'FORM_2', label: 'Form 2' },
-  { value: 'FORM_3', label: 'Form 3' },
-  { value: 'FORM_4', label: 'Form 4' },
-  { value: 'FORM_5', label: 'Form 5' },
-  { value: 'CAPE',   label: 'CAPE' },
-];
+const LEVEL_OPTIONS = Object.entries(LEVEL_LABELS).map(([value, label]) => ({ value, label }));
 
 type ClassType = 'group' | 'recurring-1on1';
-type BillingModel = 'per-session' | 'per-month' | 'prepaid';
-type Visibility = 'public' | 'unlisted' | 'private';
+type Visibility = 'public' | 'private';
 type PrimaryChannel = 'native' | 'whatsapp' | 'classroom';
 type FeedbackMode = 'off' | 'included' | 'paid';
 
@@ -45,21 +37,18 @@ function CreateClassContent() {
   const [type, setType] = useState<ClassType | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Subject search state
   const [allSubjects, setAllSubjects] = useState<DbSubject[]>([]);
   const [subjectSearch, setSubjectSearch] = useState('');
   const [subjectDropdownOpen, setSubjectDropdownOpen] = useState(false);
   const subjectRef = useRef<HTMLDivElement>(null);
 
-  // Step 2 fields
   const [title, setTitle] = useState('');
   const [subject, setSubject] = useState('');
   const [level, setLevel] = useState('');
   const [bio, setBio] = useState('');
   const [studentLimit, setStudentLimit] = useState(8);
-  const [billingModel, setBillingModel] = useState<BillingModel>('per-session');
   const [price, setPrice] = useState(120);
-  const [memberFee, setMemberFee] = useState(5);
+  const [memberFee, setMemberFee] = useState(0);
   const [visibility, setVisibility] = useState<Visibility>('public');
   const [joinRequests, setJoinRequests] = useState(false);
   const [autoSuspend, setAutoSuspend] = useState(true);
@@ -79,7 +68,6 @@ function CreateClassContent() {
       .then(({ data }) => setAllSubjects((data ?? []).map((s: any) => ({ id: s.id, name: s.name, label: s.label || s.name, curriculum: s.curriculum || '' }))));
   }, []);
 
-  // Close dropdown on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (subjectRef.current && !subjectRef.current.contains(e.target as Node)) {
@@ -121,8 +109,18 @@ function CreateClassContent() {
           form_level: level,
           description: bio,
           maxStudents: type === 'recurring-1on1' ? 1 : studentLimit,
-          pricePerSession: price,
+          price_monthly: price,
+          member_service_fee: memberFee,
+          pricing_model: 'MONTHLY',
           isPublic: visibility === 'public',
+          require_join_requests: joinRequests,
+          auto_suspend_missed_payment: autoSuspend,
+          grace_period_days: graceDays,
+          whatsapp_url: whatsapp,
+          google_classroom_link: classroom,
+          primary_channel: primary,
+          feedback_mode: feedback === 'included' ? 'included_free' : feedback === 'paid' ? 'paid_addon' : 'off',
+          parent_feedback_price: feedback === 'paid' ? feedbackPrice : 0,
         }),
       });
       if (res.ok) {
@@ -159,7 +157,7 @@ function CreateClassContent() {
               onClick={() => setType('group')}
               icon={Users}
               title="Group"
-              caption="2+ students, shared schedule, recurring or one-off."
+              caption="2+ students, shared schedule, recurring sessions."
               badges={['Marketplace ready', 'Roster & payments grid', 'Stream + analytics']}
             />
             <TypeCard
@@ -238,41 +236,35 @@ function CreateClassContent() {
             </div>
             <Field label="Class bio">
               <textarea value={bio} onChange={(e) => setBio(e.target.value)}
+                placeholder="Tell students what this class covers, who it's for, and what they'll achieve…"
                 className="w-full min-h-24 px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
             </Field>
           </Card>
 
-          <Card title="Capacity & billing">
+          <Card title="Capacity & pricing">
             {type === 'group' && (
-              <Field label="Student limit">
+              <Field label="Student limit" hint="Min 2 · Max 500.">
                 <div className="inline-flex items-center gap-2">
-                  <button onClick={() => setStudentLimit(Math.max(2, studentLimit - 1))} className="size-9 grid place-items-center rounded-lg border border-border hover:bg-muted">−</button>
+                  <button onClick={() => setStudentLimit(Math.max(2, studentLimit - 1))} className="size-9 grid place-items-center rounded-lg border border-border hover:bg-muted text-lg font-semibold">−</button>
                   <input type="number" value={studentLimit} onChange={(e) => setStudentLimit(Math.max(2, Math.min(500, Number(e.target.value))))}
                     className="w-20 text-center px-3 py-2 rounded-lg border border-border bg-background text-sm" />
-                  <button onClick={() => setStudentLimit(Math.min(500, studentLimit + 1))} className="size-9 grid place-items-center rounded-lg border border-border hover:bg-muted">+</button>
+                  <button onClick={() => setStudentLimit(Math.min(500, studentLimit + 1))} className="size-9 grid place-items-center rounded-lg border border-border hover:bg-muted text-lg font-semibold">+</button>
                 </div>
               </Field>
             )}
-            <Field label="Billing model">
-              <div className="grid grid-cols-3 gap-2">
-                {(['per-session', 'per-month', 'prepaid'] as BillingModel[]).map((b) => (
-                  <button key={b} onClick={() => setBillingModel(b)}
-                    className={cn('px-3 py-2 rounded-lg border text-xs font-semibold capitalize',
-                      billingModel === b ? 'bg-brand/10 border-brand text-brand-deep' : 'border-border bg-background text-muted-foreground hover:text-ink')}>
-                    {b.replace('-', ' ')}
-                  </button>
-                ))}
-              </div>
-            </Field>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Price (TTD)">
+              <Field label="Monthly price (TTD)">
                 <div className="relative">
                   <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
                   <input type="number" value={price} onChange={(e) => setPrice(Number(e.target.value))}
                     className="w-full pl-8 pr-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
                 </div>
               </Field>
-              <Field label="Per-member service fee (TTD)">
+              <Field
+                label="Per-member service fee (TTD)"
+                infoTitle="Service fee"
+                infoBlurb="A small flat fee added to each member's bill — useful to cover materials, platform costs, or admin overhead."
+              >
                 <input type="number" value={memberFee} onChange={(e) => setMemberFee(Number(e.target.value))}
                   className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
               </Field>
@@ -280,21 +272,31 @@ function CreateClassContent() {
           </Card>
 
           <Card title="Access & policies">
-            <Field label="Visibility">
-              <div className="grid grid-cols-3 gap-2">
-                {(['public', 'unlisted', 'private'] as Visibility[]).map((v) => (
+            <Field label="Visibility" hint="Public classes appear in the marketplace. Private classes are invite-only.">
+              <div className="grid grid-cols-2 gap-2">
+                {(['public', 'private'] as Visibility[]).map((v) => (
                   <button key={v} onClick={() => setVisibility(v)}
                     className={cn('px-3 py-2 rounded-lg border text-xs font-semibold capitalize inline-flex items-center justify-center gap-1.5',
                       visibility === v ? 'bg-brand/10 border-brand text-brand-deep' : 'border-border bg-background text-muted-foreground hover:text-ink')}>
-                    {v === 'public' ? <Globe className="size-3.5" /> : v === 'private' ? <Lock className="size-3.5" /> : <Eye className="size-3.5" />} {v}
+                    {v === 'public' ? <Globe className="size-3.5" /> : <Lock className="size-3.5" />} {v}
                   </button>
                 ))}
               </div>
             </Field>
-            <Toggle label="Enable join requests" hint="Members must request approval before joining." value={joinRequests} onChange={setJoinRequests} />
-            <Toggle label="Auto-suspend on overdue payment" value={autoSuspend} onChange={setAutoSuspend} />
+            <Toggle
+              label="Enable join requests"
+              hint="Students must request approval before joining."
+              value={joinRequests}
+              onChange={setJoinRequests}
+            />
+            <Toggle
+              label="Auto-suspend on missed payment"
+              hint="Automatically suspend access when a payment is overdue."
+              value={autoSuspend}
+              onChange={setAutoSuspend}
+            />
             {autoSuspend && (
-              <Field label="Grace window (days)">
+              <Field label="Grace window (days)" infoTitle="Grace period" infoBlurb="How many days after a missed payment before access is suspended. Gives students time to pay without being cut off immediately.">
                 <input type="number" value={graceDays} onChange={(e) => setGraceDays(Number(e.target.value))}
                   className="w-32 px-3 py-2 rounded-lg border border-border bg-background text-sm" />
               </Field>
@@ -310,7 +312,7 @@ function CreateClassContent() {
               <input value={classroom} onChange={(e) => setClassroom(e.target.value)} placeholder="https://classroom.google.com/c/…"
                 className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
             </Field>
-            <Field label="Primary channel">
+            <Field label="Primary channel" infoTitle="Primary channel" infoBlurb="Where students receive class updates and resources. iTutor is the in-app stream; WhatsApp and Classroom redirect students to those platforms.">
               <div className="grid grid-cols-3 gap-2">
                 {(['native', 'whatsapp', 'classroom'] as PrimaryChannel[]).map((c) => (
                   <button key={c} onClick={() => setPrimary(c)}
@@ -325,7 +327,7 @@ function CreateClassContent() {
           </Card>
 
           <Card title="Parent feedback">
-            <Field label="Mode" hint="AI drafts a monthly report. You review and approve before send.">
+            <Field label="Mode" hint="AI drafts a monthly report. You review and approve before it's sent." infoTitle="Parent feedback" infoBlurb="Send monthly progress reports to parents. Included free adds no extra charge; Paid add-on lets you charge parents separately per report.">
               <div className="grid grid-cols-3 gap-2">
                 {(['off', 'included', 'paid'] as FeedbackMode[]).map((m) => (
                   <button key={m} onClick={() => setFeedback(m)}
@@ -408,13 +410,41 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
   );
 }
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Field({ label, hint, infoTitle, infoBlurb, children }: {
+  label: string; hint?: string; infoTitle?: string; infoBlurb?: string; children: React.ReactNode;
+}) {
   return (
     <div>
-      <div className="text-sm font-semibold text-ink">{label}</div>
-      {hint && <div className="text-xs text-muted-foreground mt-0.5 mb-2">{hint}</div>}
-      <div className={cn(!hint && 'mt-2')}>{children}</div>
+      <div className="text-sm font-semibold text-ink inline-flex items-center gap-1.5 mb-1">
+        {label}
+        {infoTitle && infoBlurb && <InfoPop title={infoTitle} blurb={infoBlurb} />}
+      </div>
+      {hint && <div className="text-xs text-muted-foreground mb-2">{hint}</div>}
+      <div>{children}</div>
     </div>
+  );
+}
+
+function InfoPop({ title, blurb }: { title: string; blurb: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative inline-flex">
+      <button
+        type="button"
+        onClick={(e) => { e.preventDefault(); setOpen((o) => !o); }}
+        onBlur={() => setTimeout(() => setOpen(false), 120)}
+        className="size-4 grid place-items-center rounded-full text-muted-foreground hover:text-brand-deep"
+        aria-label={`About ${title}`}
+      >
+        <Info className="size-3.5" />
+      </button>
+      {open && (
+        <span className="absolute z-20 left-1/2 -translate-x-1/2 top-6 w-56 rounded-lg border border-border bg-background shadow-pop p-3 text-left">
+          <span className="block text-[11px] font-bold uppercase tracking-wider text-ink">{title}</span>
+          <span className="block text-xs text-muted-foreground mt-1 font-normal normal-case">{blurb}</span>
+        </span>
+      )}
+    </span>
   );
 }
 
