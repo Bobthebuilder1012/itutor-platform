@@ -192,6 +192,15 @@ function fmtDate(iso: string | null | undefined) {
   return new Date(iso).toLocaleDateString('en-TT', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+function lunipayFee(baseTtd: number): number {
+  const gross = (baseTtd + 1.00) / (1 - 0.03);
+  return Math.round((gross - baseTtd) * 100) / 100;
+}
+
+function grossCharged(baseTtd: number): number {
+  return Math.round(((baseTtd + 1.00) / (1 - 0.03)) * 100) / 100;
+}
+
 function fmtDateTime(iso: string | null | undefined) {
   if (!iso) return '—';
   return new Date(iso).toLocaleString('en-TT', {
@@ -1073,11 +1082,11 @@ export default function OneOnOnePaymentsPage() {
                       <th className="px-4 py-3 text-left">Student</th>
                       <th className="px-4 py-3 text-left">Tutor</th>
                       <th className="px-4 py-3 text-left">Session Date</th>
-                      <th className="px-4 py-3 text-left">Subject</th>
+                      <th className="px-4 py-3 text-right">Total Paid</th>
                       <th className="px-4 py-3 text-right">Amount</th>
                       <th className="px-4 py-3 text-right">Platform Fee</th>
                       <th className="px-4 py-3 text-right">Payout</th>
-                      <th className="px-4 py-3 text-center">Payment</th>
+                      <th className="px-4 py-3 text-right">LuniPay Fee</th>
                       <th className="px-4 py-3 text-center">Payout Status</th>
                       <th className="px-4 py-3 text-center w-32">Actions</th>
                     </tr>
@@ -1091,11 +1100,11 @@ export default function OneOnOnePaymentsPage() {
                         </td>
                         <td className="px-4 py-3 text-sm text-white/70">{row.tutor_name ?? '—'}</td>
                         <td className="px-4 py-3 text-xs text-white/50">{fmtDate(row.scheduled_at)}</td>
-                        <td className="px-4 py-3 text-sm text-white/60">{row.subject ?? '—'}</td>
-                        <td className="px-4 py-3 text-right text-sm text-white tabular-nums">{fmtTTD(row.amount_ttd)}</td>
+                        <td className="px-4 py-3 text-right text-sm font-semibold text-white tabular-nums">{fmtTTD(grossCharged(row.amount_ttd))}</td>
+                        <td className="px-4 py-3 text-right text-sm text-white/70 tabular-nums">{fmtTTD(row.amount_ttd)}</td>
                         <td className="px-4 py-3 text-right text-xs text-white/40 tabular-nums">{fmtTTD(row.platform_fee_ttd)}</td>
                         <td className="px-4 py-3 text-right text-sm text-emerald-300 tabular-nums">{fmtTTD(row.tutor_payout_ttd)}</td>
-                        <td className="px-4 py-3 text-center"><PaymentStatusChip status={row.payment_status} /></td>
+                        <td className="px-4 py-3 text-right text-xs text-rose-300/70 tabular-nums">{fmtTTD(lunipayFee(row.amount_ttd))}</td>
                         <td className="px-4 py-3 text-center"><PayoutChip status={row.payout_status} /></td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-center gap-1.5">
