@@ -77,9 +77,9 @@ export default function SubscriptionConfirmedPage() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 px-4">
         <AlertCircle className="size-12 text-amber-500" />
-        <h1 className="text-xl font-bold text-ink text-center">Payment received — activation pending</h1>
+        <h1 className="text-xl font-bold text-ink text-center">Something went wrong</h1>
         <p className="text-sm text-muted-foreground text-center max-w-sm">
-          Your payment was successful. Access is being set up — this can take a moment. Do not pay again.
+          Your payment was received but we could not confirm your enrolment. Please contact support — do not pay again.
         </p>
         {errorMsg && (
           <p className="text-xs text-red-400 text-center max-w-xs">{errorMsg}</p>
