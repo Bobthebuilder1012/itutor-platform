@@ -89,12 +89,22 @@ export interface HandleSubscriptionPaymentParams {
   source: 'webhook' | 'finalize';
 }
 
+export interface SubscriptionReceipt {
+  amountTtd: number;
+  groupName: string;
+  periodStart: string;
+  periodEnd: string;
+  paymentId: string;
+  paidAt: string;
+}
+
 export interface HandleSubscriptionPaymentResult {
   ok: boolean;
   idempotent?: boolean;
   enrollmentId?: string;
   error?: string;
   exceptionId?: string;
+  receipt?: SubscriptionReceipt;
 }
 
 export async function handleSubscriptionPayment(
@@ -113,7 +123,7 @@ export async function handleSubscriptionPayment(
         id, status, payment_status, current_period_end,
         pending_payment_expires_at, group_id,
         group:groups!group_id (
-          tutor_id, grace_period_days, max_students
+          tutor_id, grace_period_days, max_students, name
         )
       )
     `)
@@ -127,7 +137,18 @@ export async function handleSubscriptionPayment(
 
   // Idempotency: already activated
   if (sp.status === 'PAID') {
-    return { ok: true, idempotent: true, enrollmentId: sp.enrollment_id };
+    const group = (sp as any).enrollment?.group as any;
+    return {
+      ok: true, idempotent: true, enrollmentId: sp.enrollment_id,
+      receipt: {
+        amountTtd: sp.amount_ttd,
+        groupName: group?.name ?? '',
+        periodStart: sp.period_start ?? '',
+        periodEnd: sp.period_end ?? '',
+        paymentId: sp.id,
+        paidAt: new Date().toISOString(),
+      },
+    };
   }
 
   const enrollment = sp.enrollment as any;
@@ -232,6 +253,16 @@ export async function handleSubscriptionPayment(
     .eq('id', subscriptionPaymentId)
     .neq('status', 'PAID'); // no-op if already set
 
+  const group = (enrollment as any).group as any;
+  const receipt: SubscriptionReceipt = {
+    amountTtd: sp.amount_ttd,
+    groupName: group?.name ?? '',
+    periodStart: periodStart.toISOString(),
+    periodEnd: periodEnd.toISOString(),
+    paymentId: sp.id,
+    paidAt: now.toISOString(),
+  };
+
   // Ensure group_members row is approved
   await admin
     .from('group_members')
@@ -253,7 +284,7 @@ export async function handleSubscriptionPayment(
     if (ne) console.warn('[handleSubscriptionPayment] notification insert failed:', ne);
   });
 
-  return { ok: true, enrollmentId: sp.enrollment_id };
+  return { ok: true, enrollmentId: sp.enrollment_id, receipt };
 }
 
 async function markActivationFailed(

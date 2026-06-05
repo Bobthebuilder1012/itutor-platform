@@ -187,9 +187,24 @@ export async function GET(request: NextRequest) {
       .maybeSingle();
 
     if (existingSp?.status === 'PAID') {
+      // Fetch receipt data for the already-processed case
+      const { data: spData } = await admin
+        .from('subscription_payments')
+        .select('id, amount_ttd, period_start, period_end, updated_at, enrollment:group_enrollments!enrollment_id(group:groups!group_id(name))')
+        .eq('id', subscriptionPaymentId)
+        .maybeSingle();
+      const groupName = (spData as any)?.enrollment?.group?.name ?? '';
       return NextResponse.json({
         status: 'already_processed',
         enrollment_id: existingSp.enrollment_id,
+        receipt: {
+          amountTtd: spData?.amount_ttd ?? 0,
+          groupName,
+          periodStart: spData?.period_start ?? '',
+          periodEnd: spData?.period_end ?? '',
+          paymentId: existingSp.id,
+          paidAt: spData?.updated_at ?? new Date().toISOString(),
+        },
       });
     }
 
@@ -209,6 +224,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       status: result.ok ? 'activated' : 'activation_pending',
       enrollment_id: result.enrollmentId,
+      receipt: result.receipt ?? null,
     });
   }
 
