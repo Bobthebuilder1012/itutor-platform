@@ -30,7 +30,9 @@ export async function GET(request: NextRequest) {
   }
 
   const graceHoursRaw = process.env.PAYOUT_GRACE_HOURS;
-  const graceHours = graceHoursRaw ? parseInt(graceHoursRaw, 10) : 168;
+  // Default 0 — release ALL completed sessions on Fridays (no grace window).
+  // Set PAYOUT_GRACE_HOURS to override.
+  const graceHours = graceHoursRaw ? parseInt(graceHoursRaw, 10) : 0;
 
   if (!Number.isFinite(graceHours) || graceHours < 0) {
     return NextResponse.json(

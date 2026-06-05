@@ -14,7 +14,7 @@
     },
     {
       "path": "/api/cron/flip-payouts-release-ready",
-      "schedule": "0 4 * * *"
+      "schedule": "0 4 * * 5"
     },
     {
       "path": "/api/cron/escalate-noshow-claims",
