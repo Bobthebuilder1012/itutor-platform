@@ -29,28 +29,41 @@ async function handlePost(request: NextRequest) {
   if (auth.error) return auth.error;
 
   const body = await request.json().catch(() => ({}));
+
+  // Two modes:
+  //   payout_ledger_ids   — direct ledger IDs (1:1 session payouts)
+  //   subscription_payment_ids — look up ledger rows by subscription payment (subscriptions)
+  const ledgerIds: string[] | null = Array.isArray(body?.payout_ledger_ids) && body.payout_ledger_ids.length > 0
+    ? body.payout_ledger_ids
+    : null;
   const spIds: string[] = Array.isArray(body?.subscription_payment_ids)
     ? body.subscription_payment_ids
     : [];
 
-  if (spIds.length === 0) {
+  if (!ledgerIds && spIds.length === 0) {
     return NextResponse.json(
-      { error: 'subscription_payment_ids must be a non-empty array' },
+      { error: 'Provide payout_ledger_ids (1:1 payouts) or subscription_payment_ids (subscription payouts)' },
       { status: 400 }
     );
   }
-  if (spIds.length > 200) {
+  if ((ledgerIds?.length ?? spIds.length) > 200) {
     return NextResponse.json({ error: 'Maximum 200 IDs per batch' }, { status: 400 });
   }
 
   const admin = getServiceClient();
 
-  // ── Load payout_ledger rows for the selected subscription payments ────────
-  const { data: ledgerRows, error: ledgerErr } = await admin
-    .from('payout_ledger')
-    .select('id, status, amount_ttd, tutor_id, batch_id')
-    .in('subscription_payment_id', spIds)
-    .not('status', 'in', '(reversed,admin_hold,released)');
+  // ── Load payout_ledger rows ───────────────────────────────────────────────
+  const { data: ledgerRows, error: ledgerErr } = ledgerIds
+    ? await admin
+        .from('payout_ledger')
+        .select('id, status, amount_ttd, tutor_id, batch_id')
+        .in('id', ledgerIds)
+        .not('status', 'in', '(reversed,admin_hold,released)')
+    : await admin
+        .from('payout_ledger')
+        .select('id, status, amount_ttd, tutor_id, batch_id')
+        .in('subscription_payment_id', spIds)
+        .not('status', 'in', '(reversed,admin_hold,released)');
 
   if (ledgerErr) {
     return NextResponse.json({ error: ledgerErr.message }, { status: 500 });
