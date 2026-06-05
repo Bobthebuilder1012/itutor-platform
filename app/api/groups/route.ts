@@ -349,6 +349,7 @@ export async function POST(request: NextRequest) {
       ...rawBody,
       max_students: rawBody.max_students ?? rawBody.maxStudents ?? undefined,
       price_per_session: rawBody.price_per_session ?? rawBody.pricePerSession ?? undefined,
+      price_monthly: rawBody.price_monthly ?? rawBody.priceMonthly ?? undefined,
       form_level: rawBody.form_level ?? rawBody.formLevel ?? undefined,
       pricing_model: rawBody.pricing_model ?? rawBody.billingModel ?? undefined,
     };
@@ -379,9 +380,13 @@ export async function POST(request: NextRequest) {
         tutor_id: user.id,
         pricing: 'free',
         pricing_mode: body.pricing_mode ?? body.pricing_model ?? 'FREE',
-        pricing_model: body.pricing_model ?? 'FREE',
+        pricing_model: body.pricing_model ?? (
+          (body.price_monthly ?? body.price_per_session ?? body.price_per_course) ? 'MONTHLY' : 'FREE'
+        ),
         price_per_session: body.price_per_session ?? null,
         price_per_course: body.price_per_course ?? null,
+        price_monthly: body.price_monthly ?? null,
+        member_service_fee: body.member_service_fee ?? 0,
         max_students: body.max_students ?? null,
         availability_window: body.availability_window ?? null,
         cover_image: body.cover_image ?? null,
@@ -405,9 +410,13 @@ export async function POST(request: NextRequest) {
           tutor_id: user.id,
           pricing: 'free',
           pricing_mode: body.pricing_mode ?? body.pricing_model ?? 'FREE',
-          pricing_model: body.pricing_model ?? 'FREE',
+          pricing_model: body.pricing_model ?? (
+            (body.price_monthly ?? body.price_per_session ?? body.price_per_course) ? 'MONTHLY' : 'FREE'
+          ),
           price_per_session: body.price_per_session ?? null,
           price_per_course: body.price_per_course ?? null,
+          price_monthly: body.price_monthly ?? null,
+          member_service_fee: body.member_service_fee ?? 0,
           availability_window: body.availability_window ?? null,
           cover_image: body.cover_image ?? null,
         })
