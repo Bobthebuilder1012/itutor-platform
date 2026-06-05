@@ -545,9 +545,10 @@ export default function FindTutorsPage() {
           setGroupLessons(mapped.map((l) => {
             const s = sessionByGroup.get(l.id);
             if (!s) return l;
+            const recType = (s.recurrence_type ?? '').toUpperCase();
             const days = Array.isArray(s.recurrence_days) && s.recurrence_days.length
               ? s.recurrence_days.map((d: number) => dayNames[d] ?? '').filter(Boolean).join(', ')
-              : s.recurrence_type === 'DAILY' ? 'Daily' : null;
+              : recType === 'DAILY' ? 'Daily' : recType === 'WEEKLY' ? 'Weekly' : recType === 'MONTHLY' ? 'Monthly' : null;
             const time = s.start_time
               ? new Date(`2000-01-01T${s.start_time}`).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
               : '';

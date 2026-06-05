@@ -24,17 +24,25 @@ export async function GET(req: NextRequest) {
 
     const admin = getServiceClient();
 
-    const { data, error } = await admin
-      .from('group_enrollments')
-      .select('group_id')
-      .in('group_id', groupIds)
-      .eq('enrollment_type', 'SUBSCRIPTION')
-      .in('status', ['ACTIVE', 'GRACE', 'SUSPENDED']);
+    // Count both subscription enrollments AND direct group members
+    const [{ data: enrollmentRows, error: eErr }, { data: memberRows, error: mErr }] = await Promise.all([
+      admin
+        .from('group_enrollments')
+        .select('group_id')
+        .in('group_id', groupIds)
+        .in('status', ['ACTIVE', 'GRACE', 'SUSPENDED']),
+      admin
+        .from('group_members')
+        .select('group_id')
+        .in('group_id', groupIds)
+        .in('status', ['active', 'approved']),
+    ]);
 
-    if (error) throw error;
+    if (eErr) console.error('[member-counts] enrollments error:', eErr.message);
+    if (mErr) console.error('[member-counts] members error:', mErr.message);
 
     const counts: Record<string, number> = {};
-    for (const row of data ?? []) {
+    for (const row of [...(enrollmentRows ?? []), ...(memberRows ?? [])]) {
       counts[row.group_id] = (counts[row.group_id] ?? 0) + 1;
     }
 
