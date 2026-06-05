@@ -118,7 +118,7 @@ export async function refundPayment(opts: RefundOptions): Promise<RefundResult> 
   const { data: payment, error: lookupError } = await admin
     .from('payments')
     .select(
-      'id, status, amount_ttd, total_refunded_ttd, payer_id, booking_id, lunipay_payment_id, raw_provider_payload'
+      'id, status, amount_ttd, total_refunded_ttd, payer_id, booking_id, lunipay_payment_id, lunipay_payment_intent_id, raw_provider_payload'
     )
     .eq('id', opts.paymentId)
     .maybeSingle();
@@ -129,12 +129,20 @@ export async function refundPayment(opts: RefundOptions): Promise<RefundResult> 
   if (!payment) {
     return fail('payment_not_found', 404, `Payment ${opts.paymentId} not found`);
   }
-  if (!payment.lunipay_payment_id) {
+  // LuniPay live API has a known bug where payment_id is null even after a
+  // successful charge (status returns OPEN). Fall back to payment_intent_id
+  // which IS populated when a charge is attempted.
+  const effectiveLunipayId = payment.lunipay_payment_id || payment.lunipay_payment_intent_id;
+  if (!effectiveLunipayId) {
     return fail(
       'payment_not_refundable',
       400,
       'Payment has no LuniPay payment id (was it ever captured?)'
     );
+  }
+  // Patch the in-memory payment object so the rest of the function uses the fallback
+  if (!payment.lunipay_payment_id && payment.lunipay_payment_intent_id) {
+    payment.lunipay_payment_id = payment.lunipay_payment_intent_id;
   }
   if (!['succeeded', 'partially_refunded'].includes(payment.status)) {
     return fail(

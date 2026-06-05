@@ -245,6 +245,13 @@ export async function GET() {
   const allProfileIds = uniq([
     // from payments → bookings
     ...(bookingsRes.data ?? []).flatMap((b: any) => [b.student_id, b.tutor_id].filter(Boolean)),
+    // from upcoming sessions (synthetic rows — not in bookingsRes)
+    ...upcomingSessions.flatMap((s: any) => [s.student_id, s.tutor_id].filter(Boolean)),
+    // from ALL payments (now includes non-succeeded rows)
+    ...payments.flatMap((p: any) => {
+      const b = bookingsMap.get(p.booking_id);
+      return b ? [b.student_id, b.tutor_id].filter(Boolean) : [];
+    }),
     // from noshow claims
     ...noshowClaims.flatMap((n: any) => [n.claimant_id, n.defendant_id].filter(Boolean)),
     // from cancellation events
