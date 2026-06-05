@@ -219,6 +219,19 @@ export async function handleSubscriptionPayment(
     return { ok: false, error: errorMsg };
   }
 
+  // Explicitly mark subscription_payment as PAID (defensive — RPC should do this
+  // but we ensure it regardless so the tutor wallet reflects the payment).
+  await admin
+    .from('subscription_payments')
+    .update({
+      status: 'PAID',
+      paid_at: now.toISOString(),
+      period_start: periodStart.toISOString(),
+      period_end: periodEnd.toISOString(),
+    })
+    .eq('id', subscriptionPaymentId)
+    .neq('status', 'PAID'); // no-op if already set
+
   // Ensure group_members row is approved
   await admin
     .from('group_members')

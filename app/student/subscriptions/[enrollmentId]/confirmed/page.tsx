@@ -31,7 +31,12 @@ export default function SubscriptionConfirmedPage() {
 
         if (!res.ok) {
           // If already activated (idempotent) still treat as success
-          if (data?.already_activated || data?.status === 'already_active') {
+          if (
+            data?.already_activated ||
+            data?.status === 'already_active' ||
+            data?.status === 'already_processed' ||
+            data?.status === 'activated'
+          ) {
             setState('success');
             setGroupName(data?.group_name ?? '');
             return;
