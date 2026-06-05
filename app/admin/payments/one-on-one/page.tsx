@@ -1413,6 +1413,7 @@ export default function OneOnOnePaymentsPage() {
                         <Download className="size-4" /> Generate Batch CSV ({selected.size})
                       </button>
                     )}
+                    <ClearReadyCsvButton allReady={data?.ready_for_csv ?? []} onSuccess={loadData} />
                   </div>
                 )}
                 {!data?.ready_for_csv.length ? <EmptyState message="No payouts ready for CSV export." /> : (
@@ -1546,28 +1547,28 @@ export default function OneOnOnePaymentsPage() {
                         </span>
                       </div>
                     )}
-                    {/* Move to History — 3-step confirm */}
+                    {/* Clear CSV — 2-step confirm */}
                     <div className="flex items-center gap-2 justify-end">
                       {exportStep1on1 === 0 && (
                         <button onClick={() => setExportStep1on1(1)}
-                          className="px-4 py-2 rounded-xl border border-white/15 text-white/60 hover:text-white text-sm font-semibold">
-                          Move to CSV History
+                          className="px-4 py-2 rounded-xl border border-rose-500/30 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 text-sm font-semibold transition">
+                          Clear CSV
                         </button>
                       )}
                       {exportStep1on1 === 1 && (
-                        <div className="flex items-center gap-2 px-4 py-2 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-300 text-sm">
-                          <span>Mark these debts as collected and archive to history?</span>
+                        <div className="flex items-center gap-3 px-4 py-2 rounded-xl border border-rose-500/40 bg-rose-500/10 text-rose-200 text-sm">
+                          <span className="font-semibold">Archive {data.unofficial_csv.length} payout{data.unofficial_csv.length !== 1 ? 's' : ''} to CSV History?</span>
                           <button onClick={markAsExported1on1}
-                            className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold">
-                            Yes, confirm
+                            className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition">
+                            Confirm Clear
                           </button>
-                          <button onClick={() => setExportStep1on1(0)} className="px-3 py-1 rounded-lg border border-white/15 text-white/50 hover:text-white text-xs">
+                          <button onClick={() => setExportStep1on1(0)} className="px-3 py-1.5 rounded-lg border border-white/15 text-white/50 hover:text-white text-xs transition">
                             Cancel
                           </button>
                         </div>
                       )}
                       {exportStep1on1 === 2 && (
-                        <span className="text-xs text-emerald-400 font-semibold">✓ Moved to CSV History</span>
+                        <span className="text-xs text-emerald-400 font-semibold">✓ Cleared — moved to CSV History</span>
                       )}
                     </div>
 
@@ -1698,6 +1699,62 @@ export default function OneOnOnePaymentsPage() {
           onSuccess={() => { setBatchOpen(false); loadData(); }}
         />
       )}
+    </div>
+  );
+}
+
+function ClearReadyCsvButton({ allReady, onSuccess }: { allReady: ReadyForCsvRow[]; onSuccess: () => void }) {
+  const [step, setStep] = useState<0 | 1>(0);
+  const [loading, setLoading] = useState(false);
+
+  if (!allReady.length) return null;
+
+  async function confirm() {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/admin/payouts/create-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payout_ledger_ids: allReady.map((r) => r.ledger_id) }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? 'Clear failed');
+      onSuccess();
+      setStep(0);
+    } catch (e: any) {
+      alert('Failed to clear: ' + e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (step === 0) {
+    return (
+      <button
+        onClick={() => setStep(1)}
+        className="px-4 py-2 rounded-xl border border-rose-500/30 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 text-sm font-semibold transition"
+      >
+        Clear CSV
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-3 px-4 py-2 rounded-xl border border-rose-500/40 bg-rose-500/10 text-rose-200 text-sm">
+      <span className="font-semibold">Mark all {allReady.length} payout{allReady.length !== 1 ? 's' : ''} as exported?</span>
+      <button
+        onClick={confirm}
+        disabled={loading}
+        className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition disabled:opacity-50"
+      >
+        {loading ? 'Clearing…' : 'Confirm Clear'}
+      </button>
+      <button
+        onClick={() => setStep(0)}
+        className="px-3 py-1.5 rounded-lg border border-white/15 text-white/50 hover:text-white text-xs transition"
+      >
+        Cancel
+      </button>
     </div>
   );
 }
