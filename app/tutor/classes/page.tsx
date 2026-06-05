@@ -81,84 +81,42 @@ function LessonsContent() {
 
   async function fetchLessons(tutorId: string) {
     try {
-      let { data: groups, error: gErr } = await supabase
-        .from('groups')
-        .select('*')
-        .eq('tutor_id', tutorId)
-        .is('archived_at', null)
-        .order('created_at', { ascending: false });
-
-      if (gErr) {
-        const fallback = await supabase
-          .from('groups')
-          .select('*')
-          .eq('tutor_id', tutorId)
-          .order('created_at', { ascending: false });
-        if (fallback.error) { setLessons([]); return; }
-        groups = fallback.data;
+      // Use the API endpoint (service client) so session counts + next occurrence
+      // are computed server-side, bypassing RLS on group_sessions.
+      const apiRes = await fetch(
+        `/api/groups?tutor_id=${encodeURIComponent(tutorId)}&limit=100&sortBy=latest`,
+        { cache: 'no-store' }
+      );
+      let apiGroups: any[] = [];
+      if (apiRes.ok) {
+        const json = await apiRes.json();
+        apiGroups = json.groups ?? json.data ?? [];
       }
 
-      if (!groups || groups.length === 0) { setLessons([]); return; }
-
-      const ids = groups.map((g: any) => g.id);
-
-      const now = new Date();
-
-      // Fetch member counts via API (service client bypasses RLS) + sessions in parallel
-      const [memberResults, { data: sessionRows }] = await Promise.all([
-        Promise.all(ids.map((id: string) =>
-          fetch(`/api/groups/${id}/members`)
-            .then((r) => r.ok ? r.json() : { members: [] })
-            .then((j) => ({ groupId: id, members: j.members ?? [] }))
-            .catch(() => ({ groupId: id, members: [] }))
-        )),
-        supabase.from('group_sessions').select('id, group_id').in('group_id', ids).limit(500),
-      ]);
-
-      const memberCountMap: Record<string, number> = {};
-      for (const { groupId: gid, members } of memberResults) {
-        memberCountMap[gid] = (members as any[]).filter((m: any) =>
-          ['active', 'approved'].includes(m.status)
-        ).length;
+      // Fallback: direct Supabase query if API fails
+      if (apiGroups.length === 0) {
+        const { data: groups } = await supabase
+          .from('groups').select('*').eq('tutor_id', tutorId)
+          .is('archived_at', null).order('created_at', { ascending: false });
+        apiGroups = groups ?? [];
       }
 
-      // Build next upcoming occurrence per group via two separate queries to avoid RLS embedding issues
-      const nextOccMap: Record<string, string> = {};
-      const sessionIds = (sessionRows ?? []).map((s: any) => s.id);
-      if (sessionIds.length > 0) {
-        const sessionGroupMap: Record<string, string> = {};
-        for (const s of sessionRows ?? []) sessionGroupMap[s.id] = s.group_id;
+      if (apiGroups.length === 0) { setLessons([]); return; }
 
-        const { data: occurrences } = await supabase
-          .from('group_session_occurrences')
-          .select('group_session_id, scheduled_start_at')
-          .in('group_session_id', sessionIds)
-          .eq('status', 'upcoming')
-          .gte('scheduled_start_at', now.toISOString())
-          .order('scheduled_start_at', { ascending: true });
-
-        for (const o of occurrences ?? []) {
-          const groupId = sessionGroupMap[o.group_session_id];
-          if (groupId && !nextOccMap[groupId]) {
-            nextOccMap[groupId] = o.scheduled_start_at;
-          }
-        }
-      }
-
-      setLessons(groups.map((g: any, i: number): Lesson => ({
+      setLessons(apiGroups.map((g: any, i: number): Lesson => ({
         id: g.id,
         title: g.name || 'Untitled class',
         subject: g.subject || '—',
-        level: g.form_level || '—',
-        kind: (g.max_students ?? 20) === 1 ? '1on1-recurring' : 'group-recurring',
-        capacity: g.max_students ?? 0,
-        enrolled: memberCountMap[g.id] ?? 0,
+        level: g.form_level || g.level || '—',
+        kind: (g.max_students ?? g.maxStudents ?? 20) === 1 ? '1on1-recurring' : 'group-recurring',
+        capacity: g.max_students ?? g.maxStudents ?? 0,
+        enrolled: g.member_count ?? g.enrollmentCount ?? 0,
         pricePerSession: g.price_per_session ?? g.price_monthly ?? null,
         visibility: g.visibility === 'private' ? 'private' : 'public',
         thumbnailGradient: GRADIENTS[i % GRADIENTS.length],
-        totalSessionsRun: 0,
-        earningsTtd: 0,
-        nextSessionDate: nextOccMap[g.id] ?? null,
+        totalSessionsRun: g.session_count ?? 0,
+        earningsTtd: g.estimated_earnings ?? 0,
+        nextSessionDate: g.nextSession?.scheduledAt ?? g.next_occurrence?.scheduled_start_at ?? null,
         createdAt: g.created_at,
       })));
     } catch (e) {

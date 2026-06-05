@@ -45,8 +45,9 @@ export async function GET(request: NextRequest) {
       sortBy: z.enum(['latest', 'rating', 'members', 'price', 'nextSession']).default('latest'),
       sortDir: z.enum(['asc', 'desc']).default('desc'),
       page: z.coerce.number().min(1).default(1),
-      limit: z.coerce.number().min(1).max(50).default(12),
+      limit: z.coerce.number().min(1).max(200).default(12),
       tutor_name: z.string().optional(),
+      tutor_id: z.string().uuid().optional(),
       archived: z.enum(['true', 'false']).optional(),
     });
     const parsed = querySchema.safeParse(
@@ -71,6 +72,7 @@ export async function GET(request: NextRequest) {
       page,
       limit,
       tutor_name: tutorName,
+      tutor_id: filterTutorId,
       archived: archivedParam,
     } = parsed.data;
 
@@ -135,6 +137,7 @@ export async function GET(request: NextRequest) {
 
     const applyFilters = (query: any) => {
       let q = query;
+      if (filterTutorId) q = q.eq('tutor_id', filterTutorId);
       if (subject) q = q.ilike('subject', `%${subject}%`);
       if (search) q = q.or(`name.ilike.%${search}%,subject.ilike.%${search}%`);
       return q;
