@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { Search, Star, Heart, Calendar, Clock, SlidersHorizontal, Users, GraduationCap, Flame, X, Check, Video, Sparkles } from 'lucide-react';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { parseScheduleData, scheduleToDisplay } from '@/lib/utils/scheduleFormat';
+import { formatLevel } from '@/lib/utils/formatLevel';
 
 type Tutor = {
   id: string;
@@ -461,7 +462,7 @@ export default function FindTutorsPage() {
           tutorId: g.tutor_id,
           tutorHue: 145,
           subject: g.subject || 'General',
-          level: g.form_level || g.difficulty || '',
+          level: formatLevel(g.form_level || g.difficulty || ''),
           day: (() => {
             const entries = parseScheduleData(g.schedule_data);
             if (entries.length) return scheduleToDisplay(entries);

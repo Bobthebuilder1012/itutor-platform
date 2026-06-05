@@ -51,11 +51,15 @@ export default function GroupGridCard({ group, onClick, onAskToJoin }: GroupGrid
     pricingMode === 'PER_SESSION'
       ? (group as any).pricePerSession ?? (group as any).price_per_session ?? null
       : pricingMode === 'PER_COURSE'
-        ? (group as any).pricePerCourse ?? (group as any).price_per_course ?? null
-        : (group as any).pricePerSession ??
-          (group as any).price_per_session ??
+        ? (group as any).price_monthly ??
+          (group as any).priceMonthly ??
           (group as any).pricePerCourse ??
           (group as any).price_per_course ??
+          null
+        : (group as any).price_monthly ??
+          (group as any).priceMonthly ??
+          (group as any).pricePerSession ??
+          (group as any).price_per_session ??
           null;
   const isPaid =
     pricingMode !== 'FREE' && effectivePrice != null && Number(effectivePrice) > 0;

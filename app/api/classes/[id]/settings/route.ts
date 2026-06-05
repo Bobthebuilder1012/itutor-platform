@@ -75,6 +75,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (input.parent_feedback_mode !== undefined) updates.feedback_mode = input.parent_feedback_mode;
     if (input.parent_feedback_price !== undefined) updates.parent_feedback_price = input.parent_feedback_price;
     if (input.meeting_link !== undefined) updates.meeting_link = input.meeting_link || null;
+    if (input.price_monthly !== undefined) updates.price_monthly = input.price_monthly;
+    if (input.pricing_model !== undefined) updates.pricing_model = input.pricing_model;
+    if (input.member_service_fee !== undefined) updates.member_service_fee = input.member_service_fee;
 
     const { data: updated, error: updateError } = await supabase
       .from('groups')
