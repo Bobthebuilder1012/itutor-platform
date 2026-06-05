@@ -230,7 +230,7 @@ function RefundModal({
             <div className="text-xs text-amber-300/80 mt-2">
               {sp?.lunipay_transaction_id
                 ? 'Refund will be processed via LuniPay. If the payout was already released to the tutor, the amount will be recovered from future earnings.'
-                : 'No LuniPay transaction found. The refund must be processed manually.'}
+                : 'No LuniPay transaction found. Platform credits will be issued to the student\'s account.'}
             </div>
           </div>
         </div>

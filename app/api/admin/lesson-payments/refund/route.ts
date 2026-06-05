@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/middleware/adminAuth';
 import { getServiceClient } from '@/lib/supabase/server';
+import { recordCreditRefund } from '@/lib/payments/creditRefundService';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -115,7 +116,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Refund via LuniPay
+    // Refund via LuniPay if we have a transaction ID, otherwise issue platform credits
     if (subPayment.lunipay_transaction_id) {
       try {
         const { getLunipayClient, ttdToCents } = await import('@/lib/payments/lunipayClient');
@@ -129,7 +130,18 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: `LuniPay refund failed: ${e.message}` }, { status: 500 });
       }
     } else {
-      console.warn('[refund] No LuniPay transaction ID — skipping gateway refund');
+      // No LuniPay transaction — issue platform credits to the student
+      await recordCreditRefund({
+        admin,
+        userId: removal.student_id,
+        userRole: 'student',
+        scenario: 'class_removed',
+        reason: 'No LuniPay transaction available — credit issued by admin',
+        creditAmountTtd: refundAmount,
+        originalAmountTtd: Number(subPayment.amount_ttd),
+        classId: removal.group_id,
+        originalPaymentId: spId,
+      });
     }
 
     // Record the refund
@@ -155,7 +167,6 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Path B: Payout already released — refund from platform, deduct tutor ──
-  // Refund via LuniPay from platform balance
   if (subPayment.lunipay_transaction_id) {
     try {
       const { getLunipayClient, ttdToCents } = await import('@/lib/payments/lunipayClient');
@@ -168,6 +179,19 @@ export async function POST(req: NextRequest) {
       console.error('[refund] LuniPay refund failed:', e);
       return NextResponse.json({ error: `LuniPay refund failed: ${e.message}` }, { status: 500 });
     }
+  } else {
+    // No LuniPay transaction — issue platform credits to the student
+    await recordCreditRefund({
+      admin,
+      userId: removal.student_id,
+      userRole: 'student',
+      scenario: 'class_removed',
+      reason: 'No LuniPay transaction available — credit issued by admin',
+      creditAmountTtd: refundAmount,
+      originalAmountTtd: Number(subPayment.amount_ttd),
+      classId: removal.group_id,
+      originalPaymentId: spId,
+    });
   }
 
   // Create tutor deduction
