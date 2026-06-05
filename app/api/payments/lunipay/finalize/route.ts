@@ -127,40 +127,19 @@ export async function GET(request: NextRequest) {
   // A payment_intent_id means Stripe/LuniPay started processing a charge.
   const hasPaymentIntent = !!session?.payment_intent_id;
 
-  // For subscriptions: check DB before relying on LuniPay status (LuniPay returns OPEN
-  // even after a successful charge — the success_url redirect is the reliable signal).
-  if (md.type && SUBSCRIPTION_TYPES.has(md.type as string) && md.payment_id) {
-    const { data: subCheck } = await admin
-      .from('subscription_payments')
-      .select('id, status, enrollment_id')
-      .eq('id', md.payment_id as string)
-      .maybeSingle();
+  // Subscriptions have valid type + student_id + payment_id in metadata (set by the
+  // subscribe route). LuniPay live mode returns OPEN/unpaid even after charging, so
+  // we cannot rely on session.status. Trust the combination: subscription metadata +
+  // payment_intent_id (confirms a charge was attempted) + success_url redirect.
+  const hasSubscriptionMetadata = !!(
+    md.type &&
+    SUBSCRIPTION_TYPES.has(md.type as string) &&
+    md.student_id &&
+    md.payment_id
+  );
 
-    if (subCheck?.status === 'PAID') {
-      // Webhook already activated — return success immediately
-      return NextResponse.json({ status: 'already_processed', enrollment_id: subCheck.enrollment_id });
-    }
-    // Row exists and is PENDING → payment was legitimately initiated; trust the redirect
-    if (subCheck && !statusSaysPaid) {
-      // Fall through to subscription handler below with paid = true
-      const result = await handleSubscriptionPayment({
-        admin: admin as any,
-        subscriptionPaymentId: md.payment_id as string,
-        lunipaySessionId: session.id,
-        lunipayTransactionId: (session as any).payment_id ?? null,
-        receiptUrl: (session as any).receipt_url ?? null,
-        source: 'finalize',
-      });
-      if (result.ok || result.idempotent) {
-        return NextResponse.json({ status: result.idempotent ? 'already_processed' : 'activated', enrollment_id: result.enrollmentId });
-      }
-      return NextResponse.json({ error: result.error ?? 'Activation failed' }, { status: 500 });
-    }
-  }
-
-  // Accept payment if: status says paid OR (has booking metadata + payment_intent started).
-  // The second condition handles LuniPay's bug where the API returns OPEN even after charge.
-  const paid = statusSaysPaid || (hasBookingMetadata && hasPaymentIntent);
+  // Accept payment if: status says paid OR booking metadata + intent OR subscription + intent.
+  const paid = statusSaysPaid || (hasBookingMetadata && hasPaymentIntent) || (hasSubscriptionMetadata && hasPaymentIntent);
 
   if (!paid) {
     console.error('[lunipay/finalize] session genuinely not paid:', {
@@ -168,6 +147,7 @@ export async function GET(request: NextRequest) {
       payment_status: session?.payment_status,
       hasPaymentIntent,
       hasBookingMetadata,
+      hasSubscriptionMetadata,
     });
     return NextResponse.json(
       {
