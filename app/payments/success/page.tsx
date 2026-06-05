@@ -134,7 +134,10 @@ export default function PaymentSuccess() {
       .limit(1);
 
     if (sessionId) {
-      q = q.eq('lunipay_checkout_session_id', sessionId);
+      // LuniPay redirects with the bare UUID but may store with "cs_" prefix — check both.
+      const sidWithPrefix = sessionId.startsWith('cs_') ? sessionId : `cs_${sessionId}`;
+      const sidBare = sessionId.startsWith('cs_') ? sessionId.slice(3) : sessionId;
+      q = q.or(`lunipay_checkout_session_id.eq.${sidBare},lunipay_checkout_session_id.eq.${sidWithPrefix}`);
     } else if (bookingId) {
       q = q.eq('booking_id', bookingId);
     }
