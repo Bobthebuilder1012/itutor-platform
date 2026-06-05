@@ -321,7 +321,8 @@ export async function POST(req: NextRequest, { params }: Params) {
 
       if (enrollErr || !newEnrollment) {
         console.error('[subscribe] Failed to create enrollment:', enrollErr);
-        return NextResponse.json({ error: 'Failed to create enrollment', detail: enrollErr?.message ?? enrollErr?.code ?? null }, { status: 500 });
+        const detail = enrollErr ? (enrollErr.message || enrollErr.code || JSON.stringify(enrollErr)) : 'no row returned';
+        return NextResponse.json({ error: 'Failed to create enrollment', detail }, { status: 500 });
       }
       enrollmentId = newEnrollment.id;
 
