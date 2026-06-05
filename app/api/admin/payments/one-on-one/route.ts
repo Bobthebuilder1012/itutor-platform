@@ -68,7 +68,7 @@ export async function GET() {
       .from('payments')
       .select(
         `id, booking_id, payer_id,
-         amount_ttd, platform_fee_ttd, refund_amount_ttd,
+         amount_ttd, refund_amount_ttd,
          retained_amount_ttd, total_refunded_ttd,
          status, lunipay_payment_id, paid_at, refunded_at, created_at, updated_at`
       )
@@ -352,7 +352,7 @@ export async function GET() {
       payment_id:              payment.id,
       lunipay_transaction_id:  payment.lunipay_payment_id ?? null,
       amount_ttd:              Number(payment.amount_ttd ?? 0),
-      platform_fee_ttd:        Number(payment.platform_fee_ttd ?? 0),
+      platform_fee_ttd:        Number(booking?.platform_fee_ttd ?? 0),
       tutor_payout_ttd:        Number(booking?.tutor_payout_ttd ?? session?.payout_amount_ttd ?? 0),
       total_refunded_ttd:      Number(payment.total_refunded_ttd ?? 0),
       retained_amount_ttd:     Number(payment.retained_amount_ttd ?? 0),
