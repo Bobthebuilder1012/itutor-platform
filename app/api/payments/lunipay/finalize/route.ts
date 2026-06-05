@@ -54,18 +54,22 @@ export async function GET(request: NextRequest) {
 
   const admin = getAdminClient();
 
-  // Idempotency: if a payment already exists for this session, the
-  // webhook (or a prior finalize call) already ran. Just return the
-  // current state.
-  // Note: `currency` is not a column on payments — payments are TTD-only.
-  // We tack 'TTD' onto the response so the success page receipt renders
-  // without a separate query.
-  const { data: existing } = await admin
-    .from('payments')
-    .select('id, booking_id, status, amount_ttd, provider_reference, created_at')
-    .eq('lunipay_checkout_session_id', sessionId)
-    .maybeSingle();
+  // LuniPay redirects with the bare UUID (e.g. "abc123") but the API
+  // returns the session with a "cs_" prefix ("cs_abc123"). Check both
+  // so the idempotency lookup works regardless of which format was stored.
+  const sessionIdWithPrefix = sessionId.startsWith('cs_') ? sessionId : `cs_${sessionId}`;
+  const sessionIdBare = sessionId.startsWith('cs_') ? sessionId.slice(3) : sessionId;
 
+  async function findExistingPayment() {
+    const { data } = await admin
+      .from('payments')
+      .select('id, booking_id, status, amount_ttd, provider_reference, created_at')
+      .or(`lunipay_checkout_session_id.eq.${sessionIdBare},lunipay_checkout_session_id.eq.${sessionIdWithPrefix}`)
+      .maybeSingle();
+    return data;
+  }
+
+  const existing = await findExistingPayment();
   if (existing) {
     return NextResponse.json({
       status: existing.booking_id ? 'already_processed' : 'slot_conflict_needs_refund',
@@ -264,14 +268,29 @@ export async function GET(request: NextRequest) {
   );
 
   if (rpcError || !rpcResult) {
-    console.error('[lunipay/finalize] materialize_paid_booking failed:', rpcError);
+    console.error('[lunipay/finalize] materialize_paid_booking failed:', rpcError?.code, rpcError?.message);
 
-    // EXCLUDE constraint (mig 155) hit: someone else booked this slot
-    // between the soft re-check above and the RPC. Convert to a slot-
-    // conflict refund stub instead of failing — the LuniPay payment
-    // already cleared.
     const code = (rpcError as any)?.code as string | undefined;
     const msg = rpcError?.message ?? '';
+
+    // Duplicate key / unique violation: the booking was already created
+    // (e.g. by a previous finalize call or manual recovery). Look it up
+    // and return it so the success page can render the receipt.
+    const isDuplicate = code === '23505' || msg.includes('duplicate key') || msg.includes('unique');
+    if (isDuplicate) {
+      const recovered = await findExistingPayment();
+      if (recovered?.booking_id) {
+        return NextResponse.json({
+          status: 'already_processed',
+          paymentId: recovered.id,
+          bookingId: recovered.booking_id,
+          paymentStatus: recovered.status,
+          payment: { ...recovered, currency: 'TTD' },
+        });
+      }
+    }
+
+    // EXCLUDE constraint (mig 155) hit: someone else booked this slot.
     const isExclusion =
       code === '23P01' ||
       msg.includes('bookings_tutor_no_overlap') ||
