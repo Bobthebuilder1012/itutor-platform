@@ -20,6 +20,7 @@ import {
   TUTOR_SUPER_LATE_CANCEL_WINDOW_MINUTES,
 } from '@/lib/reliability';
 import { calculateCommission } from '@/lib/utils/commissionCalculator';
+import { CREDIT_DISCLAIMER } from '@/lib/payments/creditRefundService';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -111,8 +112,14 @@ export async function GET(request: NextRequest) {
         will_charge_fee: chargeFee,
         refund_ttd: refundTtd,
         retained_ttd: retainedTtd,
+        refund_method: hasCapturedPayment ? 'credits' : 'none',
         tutor_payout_on_retention_ttd: split?.payoutAmount ?? 0,
         platform_fee_on_retention_ttd: split?.platformFee ?? 0,
+        credit_disclaimer: chargeFee
+          ? CREDIT_DISCLAIMER.student_late_cancel
+          : hasCapturedPayment
+            ? CREDIT_DISCLAIMER.student
+            : null,
         policy:
           chargeFee
             ? 'Late cancellation while under reliability warning — 50% retention applies.'

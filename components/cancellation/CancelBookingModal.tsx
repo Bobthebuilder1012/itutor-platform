@@ -16,6 +16,8 @@ type StudentPreview = {
   will_charge_fee: boolean;
   refund_ttd: number;
   retained_ttd: number;
+  refund_method?: 'credits' | 'card' | 'none';
+  credit_disclaimer?: string | null;
   tutor_payout_on_retention_ttd: number;
   platform_fee_on_retention_ttd: number;
   policy: string;
@@ -33,6 +35,7 @@ type TutorPreview = {
   will_record_strike: boolean;
   will_record_system_rating: boolean;
   system_rating_stars: number | null;
+  credit_disclaimer?: string | null;
   policy: string;
 };
 
@@ -186,9 +189,15 @@ export default function CancelBookingModal({ open, bookingId, role, onClose, onC
                   <div className="flex justify-between border-t pt-2 mt-2">
                     <span className="font-semibold">Your refund</span>
                     <span className="font-bold text-lg text-green-700">
-                      {fmtTTD(preview.refund_ttd)}
+                      {preview.refund_ttd > 0 ? fmtTTD(preview.refund_ttd) : 'None'}
                     </span>
                   </div>
+                  {preview.refund_method === 'credits' && preview.refund_ttd > 0 && (
+                    <div className="flex justify-between text-xs text-amber-700">
+                      <span>Refund method</span>
+                      <span className="font-semibold">Credits (not card)</span>
+                    </div>
+                  )}
                   {preview.cancel_state.count_30d > 0 && (
                     <div className="text-xs text-gray-500 pt-1">
                       You have {preview.cancel_state.count_30d} cancellation
@@ -231,6 +240,13 @@ export default function CancelBookingModal({ open, bookingId, role, onClose, onC
               <div className="rounded-lg bg-blue-50 border-l-4 border-blue-500 p-3 text-xs text-gray-700">
                 {preview.policy}
               </div>
+
+              {preview.credit_disclaimer && (
+                <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800">
+                  <p className="font-semibold mb-1">About your refund</p>
+                  {preview.credit_disclaimer}
+                </div>
+              )}
             </>
           )}
 

@@ -30,6 +30,13 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { getServiceClient } from '@/lib/supabase/server';
 import { getLunipayClient, ttdToCents } from '@/lib/payments/lunipayClient';
 import { calculateCommission } from '@/lib/utils/commissionCalculator';
+import { recordCreditRefund, type CreditRefundScenario } from '@/lib/payments/creditRefundService';
+
+// ── TEMPORARY: LuniPay refund API is broken ──────────────────────────────────
+// All refunds are recorded as credit liabilities in credit_refund_liabilities
+// instead of being processed through LuniPay. Set this to false once LuniPay
+// fixes their refund API and the credit system is live.
+const REFUND_AS_CREDITS = true;
 
 type AnyClient = SupabaseClient<any, 'public', 'public', any, any>;
 
@@ -196,6 +203,84 @@ export async function refundPayment(opts: RefundOptions): Promise<RefundResult> 
       }
     }
   }
+
+  // ---- CREDIT BYPASS (TEMPORARY) ------------------------------------
+  // LuniPay refund API is currently broken. Record a credit liability
+  // instead of attempting a real refund. Remove when fixed.
+  if (REFUND_AS_CREDITS) {
+    const scenarioMap: Record<string, CreditRefundScenario> = {
+      student_cancelled: 'student_cancelled',
+      student_late_cancel: 'student_late_cancel',
+      tutor_cancelled: 'tutor_cancelled',
+      tutor_noshow: 'noshow_tutor',
+      tie_inconclusive: 'noshow_tie',
+      slot_conflict: 'slot_conflict',
+      admin_manual: 'admin_manual',
+      student_noshow: 'student_cancelled',
+    };
+    const scenario: CreditRefundScenario = scenarioMap[opts.reason] ?? 'admin_manual';
+
+    // For late student cancel: student gets credit_amount, tutor gets cash payout.
+    const tutorCashPayoutTtd = opts.reason === 'student_late_cancel' ? retainedAmountTtd : 0;
+
+    const creditResult = await recordCreditRefund({
+      admin,
+      userId: payment.payer_id,
+      userRole: 'student',
+      scenario,
+      reason: opts.reason,
+      creditAmountTtd: refundAmountTtd,
+      originalAmountTtd: amountTtd,
+      tutorCashPayoutTtd,
+      bookingId: payment.booking_id ?? null,
+      originalPaymentId: payment.id,
+      originalLunipayTransactionId: payment.lunipay_payment_id ?? null,
+      metadata: { actor_id: opts.actorId, session_status_override: opts.sessionStatusOverride },
+    });
+
+    if (!creditResult.ok) {
+      return fail('side_effects_failed', 500, creditResult.message);
+    }
+
+    // Mark payment as refunded in our DB so the booking can cancel cleanly.
+    const newStatus = refundAmountTtd >= remaining ? 'refunded' : 'partially_refunded';
+    await admin.from('payments').update({
+      status: newStatus,
+      total_refunded_ttd: +(alreadyRefunded + refundAmountTtd).toFixed(2),
+      cancel_reason: opts.reason,
+      updated_at: new Date().toISOString(),
+    }).eq('id', payment.id);
+
+    // Apply session/ledger side-effects via RPC (without the LuniPay refund object).
+    const rpcPayload: Record<string, unknown> = {
+      payment_id: payment.id,
+      refund_amount_ttd: refundAmountTtd,
+      retained_amount_ttd: retainedAmountTtd,
+      retained_payout_ttd: tutorCashPayoutTtd,
+      retained_platform_fee_ttd: 0,
+      reason: opts.reason,
+      refund_payload: { credit_liability_id: creditResult.liabilityId, credits_only: true },
+    };
+    if (opts.sessionStatusOverride) {
+      rpcPayload.session_status_override = opts.sessionStatusOverride;
+    }
+    const { error: rpcError } = await admin.rpc('apply_refund_side_effects', { p_payload: rpcPayload });
+    if (rpcError) {
+      console.warn('[refundService] apply_refund_side_effects warning (credits path):', rpcError.message);
+    }
+
+    return {
+      ok: true,
+      paymentId: payment.id,
+      newPaymentStatus: newStatus,
+      ledgerAction: 'no_session',
+      refundAmountTtd,
+      retainedAmountTtd,
+      totalRefundedTtd: +(alreadyRefunded + refundAmountTtd).toFixed(2),
+      refund: { credit_liability_id: creditResult.liabilityId, credits_only: true },
+    };
+  }
+  // ---- END CREDIT BYPASS --------------------------------------------
 
   // ---- 3. Compute commission split for retained share ----------------
   let retainedPayoutTtd = 0;
