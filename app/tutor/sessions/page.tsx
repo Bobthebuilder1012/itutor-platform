@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Video, MessageSquare, CheckCircle2, XCircle, Star, Users, Calendar } from 'lucide-react';
+import { Video, MessageSquare, CheckCircle2, Star, Users, Calendar, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -25,14 +25,6 @@ type SessionRow = {
   reviewed: boolean;
 };
 
-export default function TutorSessionsPage() {
-  return (
-    <TutorShell>
-      <SessionsContent />
-    </TutorShell>
-  );
-}
-
 type ClassSessionRow = {
   id: string;
   groupId: string;
@@ -42,12 +34,28 @@ type ClassSessionRow = {
   type: 'class';
 };
 
+type GroupFolder = {
+  groupId: string;
+  className: string;
+  sessions: ClassSessionRow[];
+  nextDate: string;
+};
+
+export default function TutorSessionsPage() {
+  return (
+    <TutorShell>
+      <SessionsContent />
+    </TutorShell>
+  );
+}
+
 function SessionsContent() {
   const { profile } = useProfile();
   const [tab, setTab] = useState<'upcoming' | 'past' | 'pending'>('upcoming');
   const [rows, setRows] = useState<SessionRow[]>([]);
   const [classSessions, setClassSessions] = useState<ClassSessionRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!profile?.id) return;
@@ -57,14 +65,12 @@ function SessionsContent() {
 
   async function fetchClassSessions(tutorId: string) {
     try {
-      // Query only THIS tutor's groups directly — avoids the public groups API
       const { data: groups, error } = await supabase
         .from('groups')
         .select('id, name')
         .eq('tutor_id', tutorId)
         .is('archived_at', null);
       if (error || !groups?.length) return;
-      const now = new Date();
       const all: ClassSessionRow[] = [];
       await Promise.all(groups.map(async (grp: any) => {
         try {
@@ -102,7 +108,6 @@ function SessionsContent() {
     return rows
       .filter((r) => r.status === tab)
       .sort((a, b) => {
-        // Cancelled rows always sink to the bottom, regardless of date.
         if (a.cancelled !== b.cancelled) return a.cancelled ? 1 : -1;
         return tab === 'past'
           ? new Date(b.date).getTime() - new Date(a.date).getTime()
@@ -114,9 +119,56 @@ function SessionsContent() {
   const upcomingClassSessions = classSessions.filter((cs) => new Date(cs.date) > now);
   const pastClassSessions = classSessions.filter((cs) => new Date(cs.date) <= now);
 
+  // Build group folders from class sessions for the current tab
+  const activeClassSessions = tab === 'upcoming' ? upcomingClassSessions : tab === 'past' ? pastClassSessions : [];
+  const groupMap = new Map<string, GroupFolder>();
+  for (const cs of activeClassSessions) {
+    if (!groupMap.has(cs.groupId)) {
+      groupMap.set(cs.groupId, { groupId: cs.groupId, className: cs.className, sessions: [], nextDate: cs.date });
+    }
+    groupMap.get(cs.groupId)!.sessions.push(cs);
+  }
+  const groupFolders = Array.from(groupMap.values()).map((g) => ({
+    ...g,
+    sessions: g.sessions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()),
+    nextDate: g.sessions[0]?.date ?? '',
+  }));
+
+  // Unified list sorted by nearest date
+  type ListItem =
+    | { kind: 'group'; folder: GroupFolder; sortDate: string }
+    | { kind: 'session'; row: SessionRow; sortDate: string };
+
+  const listItems: ListItem[] = [
+    ...(tab !== 'pending' ? groupFolders.map((f) => ({ kind: 'group' as const, folder: f, sortDate: f.nextDate })) : []),
+    ...filtered.map((r) => ({ kind: 'session' as const, row: r, sortDate: r.date })),
+  ].sort((a, b) => {
+    const ta = a.sortDate ? new Date(a.sortDate).getTime() : Infinity;
+    const tb = b.sortDate ? new Date(b.sortDate).getTime() : Infinity;
+    return tab === 'past' ? tb - ta : ta - tb;
+  });
+
   const counts = {
-    upcoming: rows.filter((r) => r.status === 'upcoming').length + upcomingClassSessions.length,
-    past: rows.filter((r) => r.status === 'past').length + pastClassSessions.length,
+    upcoming: rows.filter((r) => r.status === 'upcoming').length + groupFolders.filter(() => tab === 'upcoming').length,
+    past: rows.filter((r) => r.status === 'past').length + (tab === 'past' ? groupFolders.length : pastClassSessions.length > 0 ? 1 : 0),
+    pending: rows.filter((r) => r.status === 'pending').length,
+  };
+
+  // Recompute counts properly outside of tab dependency
+  const upcomingGroupCount = (() => {
+    const m = new Map<string, boolean>();
+    upcomingClassSessions.forEach((cs) => m.set(cs.groupId, true));
+    return m.size;
+  })();
+  const pastGroupCount = (() => {
+    const m = new Map<string, boolean>();
+    pastClassSessions.forEach((cs) => m.set(cs.groupId, true));
+    return m.size;
+  })();
+
+  const tabCounts = {
+    upcoming: rows.filter((r) => r.status === 'upcoming').length + upcomingGroupCount,
+    past: rows.filter((r) => r.status === 'past').length + pastGroupCount,
     pending: rows.filter((r) => r.status === 'pending').length,
   };
 
@@ -133,7 +185,7 @@ function SessionsContent() {
             className={cn('inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold capitalize',
               tab === t ? 'bg-brand text-white' : 'text-muted-foreground hover:text-ink')}>
             {t}
-            <span className={cn('text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded-full', tab === t ? 'bg-white/20 text-white' : 'bg-muted text-muted-foreground')}>{counts[t]}</span>
+            <span className={cn('text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded-full', tab === t ? 'bg-white/20 text-white' : 'bg-muted text-muted-foreground')}>{tabCounts[t]}</span>
           </button>
         ))}
       </div>
@@ -141,109 +193,150 @@ function SessionsContent() {
       <div className="rounded-2xl border border-border bg-card divide-y divide-border">
         {loading ? (
           <div className="p-10 text-center text-sm text-muted-foreground">Loading sessions…</div>
-        ) : filtered.length === 0 && (tab === 'pending' || (tab === 'upcoming' ? upcomingClassSessions.length === 0 : pastClassSessions.length === 0)) ? (
+        ) : listItems.length === 0 ? (
           <div className="p-10 text-center text-sm text-muted-foreground">
             {tab === 'upcoming' ? 'No upcoming sessions.' : tab === 'past' ? 'No past sessions yet.' : 'No pending requests.'}
           </div>
         ) : (
           <>
-            {/* Class sessions */}
-            {tab !== 'pending' && (tab === 'upcoming' ? upcomingClassSessions : pastClassSessions).map((cs) => {
-              const d = new Date(cs.date);
-              const durLabel = cs.durationMin < 60 ? `${cs.durationMin}m` : cs.durationMin % 60 === 0 ? `${cs.durationMin / 60}h` : `${Math.floor(cs.durationMin / 60)}h ${cs.durationMin % 60}m`;
+            {listItems.map((item) => {
+              if (item.kind === 'group') {
+                const { folder } = item;
+                const isExpanded = expandedGroups.has(folder.groupId);
+                const nextD = folder.nextDate ? new Date(folder.nextDate) : null;
+                const nextLabel = nextD
+                  ? `${nextD.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · ${nextD.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+                  : '';
+                return (
+                  <div key={`group-${folder.groupId}`} className="overflow-hidden">
+                    {/* Folder header */}
+                    <button
+                      className="w-full p-4 flex items-center gap-3 text-left hover:bg-muted/30 transition"
+                      onClick={() => setExpandedGroups((prev) => {
+                        const next = new Set(prev);
+                        isExpanded ? next.delete(folder.groupId) : next.add(folder.groupId);
+                        return next;
+                      })}
+                    >
+                      <div className="size-12 rounded-xl grid place-items-center text-center shrink-0 bg-brand/10 text-brand-deep">
+                        <Users className="size-5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-ink flex items-center gap-2">
+                          {folder.className}
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-brand-soft text-forest flex items-center gap-1">
+                            <Users className="size-3" /> Group class
+                          </span>
+                        </div>
+                        {nextLabel && (
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
+                            <Calendar className="size-3" />
+                            Next: {nextLabel} · {folder.sessions.length} session{folder.sessions.length !== 1 ? 's' : ''}
+                          </div>
+                        )}
+                      </div>
+                      <div className="shrink-0 text-muted-foreground">
+                        {isExpanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+                      </div>
+                    </button>
+
+                    {/* Expanded sessions */}
+                    {isExpanded && (
+                      <div className="border-t border-border divide-y divide-border">
+                        {folder.sessions.map((cs) => {
+                          const d = new Date(cs.date);
+                          const durLabel = cs.durationMin < 60 ? `${cs.durationMin}m` : cs.durationMin % 60 === 0 ? `${cs.durationMin / 60}h` : `${Math.floor(cs.durationMin / 60)}h ${cs.durationMin % 60}m`;
+                          return (
+                            <div key={cs.id} className="px-4 py-3 flex items-center gap-3 bg-muted/20">
+                              <div className="size-10 rounded-lg grid place-items-center text-center shrink-0 bg-brand/10 text-brand-deep text-[11px]">
+                                <div className="leading-tight">
+                                  <div className="font-bold uppercase">{d.toLocaleString(undefined, { month: 'short' })}</div>
+                                  <div className="font-bold tabular-nums">{d.getDate()}</div>
+                                </div>
+                              </div>
+                              <div className="flex-1 min-w-0 text-xs text-muted-foreground">
+                                {d.toLocaleDateString(undefined, { weekday: 'short' })} · {d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · {durLabel}
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <TutorClassJoinButton groupId={cs.groupId} />
+                                <a href={`/tutor/classes/${cs.groupId}`}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-semibold hover:bg-muted">
+                                  View class
+                                </a>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
+              // 1:1 session row
+              const s = item.row;
+              const d = new Date(s.date);
               return (
-                <div key={`class-${cs.id}`} className="p-4 flex flex-col sm:flex-row sm:items-center gap-3 bg-brand/5">
+                <div key={s.id} className={cn('p-4 flex flex-col sm:flex-row sm:items-center gap-3', s.cancelled && 'opacity-60')}>
                   <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <div className="size-12 rounded-xl grid place-items-center text-center shrink-0 bg-brand/10 text-brand-deep">
+                    <div className={cn(
+                      'size-12 rounded-xl grid place-items-center text-center shrink-0',
+                      s.cancelled ? 'bg-coral-soft text-coral' : 'bg-brand/10 text-brand-deep'
+                    )}>
                       <div className="leading-tight">
                         <div className="text-[10px] uppercase font-bold">{d.toLocaleString(undefined, { month: 'short' })}</div>
                         <div className="text-base font-bold tabular-nums">{d.getDate()}</div>
                       </div>
                     </div>
                     <div className="min-w-0">
-                      <div className="font-semibold text-ink flex items-center gap-2">
-                        {cs.className}
-                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-brand-soft text-forest flex items-center gap-1">
-                          <Users className="size-3" /> Group class
-                        </span>
+                      <div className={cn('font-semibold truncate flex items-center gap-2', s.cancelled ? 'text-muted-foreground line-through' : 'text-ink')}>
+                        {s.subject}
+                        {s.cancelled && <span className="no-underline text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-coral-soft text-coral">Cancelled</span>}
+                        {!s.cancelled && s.attendance === 'no_show' && <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-coral-soft text-coral">No-show</span>}
+                        {!s.cancelled && s.attendance === 'attended' && <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-brand-soft text-brand-deep">Attended</span>}
                       </div>
-                      <div className="text-xs text-muted-foreground">
-                        {d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · {durLabel}
+                      <div className={cn('text-xs text-muted-foreground truncate', s.cancelled && 'line-through')}>
+                        {s.studentName} · {d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · {s.durationMin}m
+                        {!s.cancelled && s.paymentStatus && <> · <PayPill status={s.paymentStatus} /></>}
                       </div>
                     </div>
                   </div>
-                  <TutorClassJoinButton groupId={cs.groupId} />
-                  <a href={`/tutor/classes/${cs.groupId}`}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-sm font-semibold hover:bg-muted">
-                    View class
-                  </a>
+                  <div className="flex items-center gap-2">
+                    {s.cancelled ? (
+                      <Link href={`/tutor/bookings/${s.bookingId}`} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-sm font-semibold hover:bg-muted">View</Link>
+                    ) : (
+                      <>
+                        {tab === 'upcoming' && (
+                          <>
+                            <Link href={`/tutor/bookings/${s.bookingId}`} className="size-9 grid place-items-center rounded-lg border border-border hover:bg-muted text-muted-foreground" title="Open thread">
+                              <MessageSquare className="size-4" />
+                            </Link>
+                            {s.joinUrl ? (
+                              <a href={s.joinUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand/90">
+                                <Video className="size-4" /> Join
+                              </a>
+                            ) : (
+                              <span className="text-xs text-muted-foreground px-3">No link</span>
+                            )}
+                          </>
+                        )}
+                        {tab === 'past' && (
+                          <>
+                            {!s.reviewed && <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Star className="size-3.5" /> Awaiting review</span>}
+                            <Link href={`/tutor/bookings/${s.bookingId}`} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-sm font-semibold hover:bg-muted">View</Link>
+                          </>
+                        )}
+                        {tab === 'pending' && (
+                          <Link href={`/tutor/bookings/${s.bookingId}`} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand/90">
+                            <CheckCircle2 className="size-4" /> Review request
+                          </Link>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
               );
             })}
-            {/* 1-on-1 sessions */}
-            {filtered.map((s) => {
-            const d = new Date(s.date);
-            return (
-              <div key={s.id} className={cn('p-4 flex flex-col sm:flex-row sm:items-center gap-3', s.cancelled && 'opacity-60')}>
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className={cn(
-                    'size-12 rounded-xl grid place-items-center text-center shrink-0',
-                    s.cancelled ? 'bg-coral-soft text-coral' : 'bg-brand/10 text-brand-deep'
-                  )}>
-                    <div className="leading-tight">
-                      <div className="text-[10px] uppercase font-bold">{d.toLocaleString(undefined, { month: 'short' })}</div>
-                      <div className="text-base font-bold tabular-nums">{d.getDate()}</div>
-                    </div>
-                  </div>
-                  <div className="min-w-0">
-                    <div className={cn('font-semibold truncate flex items-center gap-2', s.cancelled ? 'text-muted-foreground line-through' : 'text-ink')}>
-                      {s.subject}
-                      {s.cancelled && <span className="no-underline text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-coral-soft text-coral">Cancelled</span>}
-                      {!s.cancelled && s.attendance === 'no_show' && <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-coral-soft text-coral">No-show</span>}
-                      {!s.cancelled && s.attendance === 'attended' && <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-brand-soft text-brand-deep">Attended</span>}
-                    </div>
-                    <div className={cn('text-xs text-muted-foreground truncate', s.cancelled && 'line-through')}>
-                      {s.studentName} · {d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · {s.durationMin}m
-                      {!s.cancelled && s.paymentStatus && <> · <PayPill status={s.paymentStatus} /></>}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {s.cancelled ? (
-                    <Link href={`/tutor/bookings/${s.bookingId}`} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-sm font-semibold hover:bg-muted">View</Link>
-                  ) : (
-                    <>
-                      {tab === 'upcoming' && (
-                        <>
-                          <Link href={`/tutor/bookings/${s.bookingId}`} className="size-9 grid place-items-center rounded-lg border border-border hover:bg-muted text-muted-foreground" title="Open thread">
-                            <MessageSquare className="size-4" />
-                          </Link>
-                          {s.joinUrl ? (
-                            <a href={s.joinUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand/90">
-                              <Video className="size-4" /> Join
-                            </a>
-                          ) : (
-                            <span className="text-xs text-muted-foreground px-3">No link</span>
-                          )}
-                        </>
-                      )}
-                      {tab === 'past' && (
-                        <>
-                          {!s.reviewed && <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Star className="size-3.5" /> Awaiting review</span>}
-                          <Link href={`/tutor/bookings/${s.bookingId}`} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-sm font-semibold hover:bg-muted">View</Link>
-                        </>
-                      )}
-                      {tab === 'pending' && (
-                        <Link href={`/tutor/bookings/${s.bookingId}`} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand/90">
-                          <CheckCircle2 className="size-4" /> Review request
-                        </Link>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-            );
-          })}
           </>
         )}
       </div>
@@ -276,7 +369,7 @@ function TutorClassJoinButton({ groupId }: { groupId: string }) {
 
   return (
     <button onClick={join} disabled={loading}
-      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand/90 disabled:opacity-60">
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90 disabled:opacity-60">
       <Video className="size-4" /> {loading ? 'Getting link…' : 'Join'}
     </button>
   );
