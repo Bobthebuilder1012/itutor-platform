@@ -112,7 +112,7 @@ function LessonsContent() {
             .then((j) => ({ groupId: id, members: j.members ?? [] }))
             .catch(() => ({ groupId: id, members: [] }))
         )),
-        supabase.from('group_sessions').select('id, group_id').in('group_id', ids),
+        supabase.from('group_sessions').select('id, group_id').in('group_id', ids).limit(500),
       ]);
 
       const memberCountMap: Record<string, number> = {};
