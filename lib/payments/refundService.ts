@@ -129,21 +129,11 @@ export async function refundPayment(opts: RefundOptions): Promise<RefundResult> 
   if (!payment) {
     return fail('payment_not_found', 404, `Payment ${opts.paymentId} not found`);
   }
-  // LuniPay live API has a known bug where payment_id is null even after a
-  // successful charge (status returns OPEN). Fall back to payment_intent_id
-  // which IS populated when a charge is attempted.
-  const effectiveLunipayId = payment.lunipay_payment_id || payment.lunipay_payment_intent_id;
-  if (!effectiveLunipayId) {
-    return fail(
-      'payment_not_refundable',
-      400,
-      'Payment has no LuniPay payment id (was it ever captured?)'
-    );
-  }
-  // Patch the in-memory payment object so the rest of the function uses the fallback
-  if (!payment.lunipay_payment_id && payment.lunipay_payment_intent_id) {
-    payment.lunipay_payment_id = payment.lunipay_payment_intent_id;
-  }
+  // LuniPay live API has a known bug: payment_id is null even after a
+  // successful charge (status returns OPEN). When this happens we skip
+  // the LuniPay API refund call and flag it for manual processing from
+  // the LuniPay dashboard. The booking cancellation still proceeds.
+  const needsManualRefund = !payment.lunipay_payment_id;
   if (!['succeeded', 'partially_refunded'].includes(payment.status)) {
     return fail(
       'payment_not_refundable',
@@ -226,35 +216,40 @@ export async function refundPayment(opts: RefundOptions): Promise<RefundResult> 
   const idempotencyKey = `refund-${payment.id}-${priorRefunds + 1}`;
 
   // ---- 5. LuniPay call ------------------------------------------------
+  // Skip if payment_id is null (LuniPay live bug — card charged but API
+  // returns OPEN). The cancellation proceeds; admin must refund manually
+  // from the LuniPay dashboard.
   const isFullRefund = Math.abs(refundAmountTtd - remaining) < 0.005;
   const refundAmountCents = isFullRefund ? undefined : ttdToCents(refundAmountTtd);
 
-  let refund: any;
-  try {
-    const lunipay = getLunipayClient();
-    refund = await lunipay.payments.refund(
-      payment.lunipay_payment_id,
-      {
-        amount: refundAmountCents,
-        reason: 'requested_by_customer',
-        metadata: {
-          internal_payment_id: payment.id,
-          refund_reason: opts.reason,
-          refunded_by: opts.actorId,
-          retained_amount_ttd: retainedAmountTtd,
-        },
-      } as any,
-      { idempotencyKey }
-    );
-  } catch (err) {
-    const isApiError = err instanceof LuniPayError;
-    console.error('[refundService] LuniPay refund failed:', err);
-    return fail(
-      'lunipay_refund_failed',
-      502,
-      isApiError ? (err as LuniPayError).message : (err as Error).message,
-      { code: isApiError ? (err as LuniPayError).code : undefined }
-    );
+  let refund: any = needsManualRefund ? { manual_refund_required: true } : null;
+  if (!needsManualRefund) {
+    try {
+      const lunipay = getLunipayClient();
+      refund = await lunipay.payments.refund(
+        payment.lunipay_payment_id,
+        {
+          amount: refundAmountCents,
+          reason: 'requested_by_customer',
+          metadata: {
+            internal_payment_id: payment.id,
+            refund_reason: opts.reason,
+            refunded_by: opts.actorId,
+            retained_amount_ttd: retainedAmountTtd,
+          },
+        } as any,
+        { idempotencyKey }
+      );
+    } catch (err) {
+      const isApiError = err instanceof LuniPayError;
+      console.error('[refundService] LuniPay refund failed:', err);
+      return fail(
+        'lunipay_refund_failed',
+        502,
+        isApiError ? (err as LuniPayError).message : (err as Error).message,
+        { code: isApiError ? (err as LuniPayError).code : undefined }
+      );
+    }
   }
 
   // ---- 6. Atomic side effects via RPC --------------------------------
