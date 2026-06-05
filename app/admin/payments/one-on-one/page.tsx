@@ -1527,6 +1527,9 @@ export default function OneOnOnePaymentsPage() {
                         <FileSpreadsheet className="size-4" /> Download CSV
                       </button>
                     )}
+                    {(data?.unofficial_csv.length ?? 0) > 0 && (
+                      <TransferToReadyButton onSuccess={() => { loadData(); setTab('ready'); }} />
+                    )}
                   </div>
                 </div>
 
@@ -1699,6 +1702,56 @@ export default function OneOnOnePaymentsPage() {
           onSuccess={() => { setBatchOpen(false); loadData(); }}
         />
       )}
+    </div>
+  );
+}
+
+function TransferToReadyButton({ onSuccess }: { onSuccess: () => void }) {
+  const [step, setStep] = useState<0 | 1>(0);
+  const [loading, setLoading] = useState(false);
+
+  async function confirm() {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/admin/payouts/force-release', { method: 'POST' });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? 'Transfer failed');
+      onSuccess();
+      setStep(0);
+    } catch (e: any) {
+      alert('Transfer failed: ' + e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (step === 0) {
+    return (
+      <button
+        onClick={() => setStep(1)}
+        className="px-4 py-2 rounded-xl bg-emerald-600/20 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-600/30 text-sm font-bold flex items-center gap-2 transition"
+      >
+        <CheckCircle className="size-4" /> Transfer to Ready for CSV
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-3 px-4 py-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-emerald-200 text-sm">
+      <span className="font-semibold">Move all owed payouts to Ready for CSV?</span>
+      <button
+        onClick={confirm}
+        disabled={loading}
+        className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition disabled:opacity-50"
+      >
+        {loading ? 'Transferring…' : 'Confirm Transfer'}
+      </button>
+      <button
+        onClick={() => setStep(0)}
+        className="px-3 py-1.5 rounded-lg border border-white/15 text-white/50 hover:text-white text-xs transition"
+      >
+        Cancel
+      </button>
     </div>
   );
 }
