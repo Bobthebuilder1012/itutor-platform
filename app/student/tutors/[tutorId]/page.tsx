@@ -383,7 +383,7 @@ export default function TutorProfilePage() {
             name: subject.label || subject.name,
             curriculum: subject.curriculum || subject.level || '',
             level: subject.level || '',
-            price_per_hour_ttd: paidClassesEnabled ? ts.price_per_hour_ttd : 0,
+            price_per_hour_ttd: ts.price_per_hour_ttd ?? 0,
           } : null;
         })
         .filter((s): s is NonNullable<typeof s> => s !== null);
