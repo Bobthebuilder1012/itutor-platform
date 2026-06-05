@@ -146,7 +146,7 @@ export default function Hero() {
           <div className="absolute -inset-6 -z-10 rounded-[3rem] bg-gradient-to-br from-brand/30 via-coral/20 to-brand/0 blur-2xl" />
           <div className="relative overflow-hidden rounded-[2rem] shadow-pop ring-1 ring-ink/5">
             <Image
-              src="/assets/hero-tutor.jpg"
+              src="/assets/hero-student.png"
               alt="Caribbean tutor working with a student on a laptop"
               width={1280}
               height={1280}

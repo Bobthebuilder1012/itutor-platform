@@ -390,9 +390,8 @@ export async function POST(request: NextRequest) {
           (body.price_monthly ?? body.price_per_session ?? body.price_per_course) ? 'MONTHLY' : 'FREE'
         ),
         price_per_session: body.price_per_session ?? null,
-        price_monthly: (body as any).price_monthly ?? null,
-        price_per_course: body.price_per_course ?? null,
         price_monthly: body.price_monthly ?? null,
+        price_per_course: body.price_per_course ?? null,
         member_service_fee: body.member_service_fee ?? 0,
         max_students: body.max_students ?? null,
         availability_window: body.availability_window ?? null,
@@ -421,9 +420,8 @@ export async function POST(request: NextRequest) {
             (body.price_monthly ?? body.price_per_session ?? body.price_per_course) ? 'MONTHLY' : 'FREE'
           ),
           price_per_session: body.price_per_session ?? null,
-          price_monthly: (body as any).price_monthly ?? null,
-          price_per_course: body.price_per_course ?? null,
           price_monthly: body.price_monthly ?? null,
+          price_per_course: body.price_per_course ?? null,
           member_service_fee: body.member_service_fee ?? 0,
           availability_window: body.availability_window ?? null,
           cover_image: body.cover_image ?? null,
