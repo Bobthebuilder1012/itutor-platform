@@ -127,16 +127,14 @@ export async function GET(request: NextRequest) {
   // A payment_intent_id means Stripe/LuniPay started processing a charge.
   const hasPaymentIntent = !!session?.payment_intent_id;
 
-  // Subscriptions have valid type + student_id + payment_id in metadata (set by the
-  // subscribe route). LuniPay live mode returns OPEN/unpaid even after charging, so
-  // we cannot rely on session.status. Trust the combination: subscription metadata +
-  // payment_intent_id (confirms a charge was attempted) + success_url redirect.
-  const hasSubscriptionMetadata = !!(
-    md.type &&
-    SUBSCRIPTION_TYPES.has(md.type as string) &&
-    md.student_id &&
-    md.payment_id
-  );
+  // Log metadata keys for diagnostics (values may contain PII so just log keys + type)
+  console.log('[lunipay/finalize] metadata keys:', Object.keys(md), '| type:', md.type ?? 'none');
+
+  // Subscriptions: LuniPay live mode returns OPEN/unpaid even after charging.
+  // Trust the combination of subscription type in metadata + payment_intent_id.
+  // Only require md.type to be a subscription type — don't gate on payment_id
+  // since LuniPay may transform metadata keys.
+  const hasSubscriptionMetadata = !!(md.type && SUBSCRIPTION_TYPES.has(md.type as string));
 
   // Accept payment if: status says paid OR booking metadata + intent OR subscription + intent.
   const paid = statusSaysPaid || (hasBookingMetadata && hasPaymentIntent) || (hasSubscriptionMetadata && hasPaymentIntent);
@@ -148,6 +146,7 @@ export async function GET(request: NextRequest) {
       hasPaymentIntent,
       hasBookingMetadata,
       hasSubscriptionMetadata,
+      metadataKeys: Object.keys(md),
     });
     return NextResponse.json(
       {
