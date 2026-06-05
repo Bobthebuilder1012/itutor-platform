@@ -153,7 +153,7 @@ function LessonsContent() {
         kind: (g.max_students ?? 20) === 1 ? '1on1-recurring' : 'group-recurring',
         capacity: g.max_students ?? 0,
         enrolled: memberCountMap[g.id] ?? 0,
-        pricePerSession: g.price_per_session ?? null,
+        pricePerSession: g.price_per_session ?? g.price_monthly ?? null,
         visibility: g.visibility === 'private' ? 'private' : 'public',
         thumbnailGradient: GRADIENTS[i % GRADIENTS.length],
         totalSessionsRun: 0,
@@ -398,12 +398,21 @@ function LessonCard({
           <Stat label="Next" value={upcoming ? next!.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—'} tint={upcoming ? 'brand' : undefined} />
         </div>
 
-        {/* Earnings */}
+        {/* Price + Earnings */}
         <div className="mt-3 rounded-xl bg-brand/5 px-3 py-2 flex items-center justify-between">
           <span className="text-[10px] uppercase tracking-wider text-brand font-bold inline-flex items-center gap-1.5">
             <TrendingUp className="size-3" /> Earnings
           </span>
-          <span className="text-sm font-bold text-brand tabular-nums">TTD {(l.earningsTtd ?? 0).toLocaleString()}</span>
+          <div className="flex items-center gap-3">
+            {l.pricePerSession != null && l.pricePerSession > 0 ? (
+              <span className="text-xs font-semibold text-muted-foreground tabular-nums">
+                TT${l.pricePerSession}/mo
+              </span>
+            ) : (
+              <span className="text-xs font-medium text-amber-600">Free</span>
+            )}
+            <span className="text-sm font-bold text-brand tabular-nums">TTD {(l.earningsTtd ?? 0).toLocaleString()}</span>
+          </div>
         </div>
 
         {/* Footer actions */}
