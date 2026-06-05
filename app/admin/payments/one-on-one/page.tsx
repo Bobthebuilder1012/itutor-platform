@@ -854,6 +854,22 @@ export default function OneOnOnePaymentsPage() {
   // Selection for ready-for-csv tab
   const [selected, setSelected]   = useState<Set<string>>(new Set());
   const [batchOpen, setBatchOpen] = useState(false);
+  const [forceReleasing, setForceReleasing] = useState(false);
+
+  async function forceReleaseOwed() {
+    if (!confirm('Move all owed payouts to release_ready so they appear in Ready for CSV?')) return;
+    setForceReleasing(true);
+    try {
+      const res = await fetch('/api/admin/payouts/force-release', { method: 'POST' });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? 'Failed');
+      await loadData();
+    } catch (e: any) {
+      alert('Force release failed: ' + e.message);
+    } finally {
+      setForceReleasing(false);
+    }
+  }
 
   // Modals
   const [refundTarget, setRefundTarget] = useState<PendingRefundRow | null>(null);
@@ -1039,7 +1055,8 @@ export default function OneOnOnePaymentsPage() {
           />
         </div>
 
-        {/* Tabs */}
+        {/* Tabs + Force Release */}
+        <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-1 flex-wrap p-1 rounded-xl border border-white/8 w-fit" style={{ background: '#161618' }}>
           <Tab active={tab === 'all'} onClick={() => setTab('all')}>
             Upcoming {kpis ? `(${kpis.total_payments_count})` : ''}
@@ -1065,6 +1082,15 @@ export default function OneOnOnePaymentsPage() {
           <Tab active={tab === 'failed'} onClick={() => setTab('failed')}>
             Batch Failed {kpis ? `(${kpis.batch_failed_count})` : ''}
           </Tab>
+        </div>
+        <button
+          onClick={forceReleaseOwed}
+          disabled={forceReleasing}
+          className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold flex items-center gap-2 disabled:opacity-50 transition"
+        >
+          {forceReleasing ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle className="size-4" />}
+          Force Release Payouts
+        </button>
         </div>
 
         {loading ? (

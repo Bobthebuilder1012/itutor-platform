@@ -710,11 +710,12 @@ export async function GET() {
   // ─────────────────────────────────────────────────────────────────────────
   // SECTION 8: unofficial_csv
   // ─────────────────────────────────────────────────────────────────────────
-  // Per-tutor totals: release_ready ledger rows minus pending tutor_deductions.
-  // Same logic as /api/admin/payouts/unofficial but scoped to session payouts only.
+  // Per-tutor totals: all unbatched session payout_ledger rows (owed + release_ready)
+  // minus pending tutor_deductions. Shows the full picture of pending payouts.
   const grossByTutor = new Map<string, number>();
-  for (const l of ledgerReady) {
+  for (const l of [...ledgerReady, ...ledgerOwed]) {
     if (!l.session_id) continue; // skip subscription rows
+    if (l.batch_id) continue;    // skip already-batched rows
     const prev = grossByTutor.get(l.tutor_id) ?? 0;
     grossByTutor.set(l.tutor_id, prev + Number(l.amount_ttd ?? 0));
   }
