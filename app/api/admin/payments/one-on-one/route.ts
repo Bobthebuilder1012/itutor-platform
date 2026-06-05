@@ -202,7 +202,7 @@ export async function GET() {
             `id, student_id, tutor_id, subject_id,
              status, payment_status, price_ttd,
              platform_fee_ttd, tutor_payout_ttd,
-             cancellation_reason, cancelled_at,
+             cancellation_reason,
              requested_start_at, confirmed_start_at, created_at`
           )
           .in('id', bookingIds)
@@ -229,7 +229,7 @@ export async function GET() {
             `id, student_id, tutor_id, subject_id,
              status, payment_status, price_ttd,
              platform_fee_ttd, tutor_payout_ttd,
-             cancellation_reason, cancelled_at,
+             cancellation_reason,
              requested_start_at, confirmed_start_at`
           )
           .in('id', cancelBookingIds)
