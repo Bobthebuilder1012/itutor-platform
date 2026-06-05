@@ -289,6 +289,29 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  // LuniPay live bug: payment_id is null when session status shows OPEN
+  // even after a successful charge. Try to resolve it by listing recent
+  // payments and matching the checkout session ID — this gives us a real
+  // payment_id so refunds can be processed automatically.
+  let resolvedPaymentId: string | null = session.payment_id ?? null;
+  if (!resolvedPaymentId) {
+    try {
+      const lunipay = getLunipayClient();
+      const paymentList = await (lunipay as any).payments.list({ limit: 20 });
+      const matched = (paymentList?.data ?? []).find(
+        (p: any) =>
+          p.checkout_session_id === sessionIdBare ||
+          p.checkout_session_id === sessionIdWithPrefix
+      );
+      if (matched?.id) {
+        resolvedPaymentId = matched.id;
+        console.log('[lunipay/finalize] resolved payment_id from list:', resolvedPaymentId);
+      }
+    } catch (err) {
+      console.warn('[lunipay/finalize] could not resolve payment_id from list:', err);
+    }
+  }
+
   // Atomic booking + payment insert via materialize_paid_booking RPC
   const { data: rpcResult, error: rpcError } = await admin.rpc(
     'materialize_paid_booking',
@@ -307,7 +330,7 @@ export async function GET(request: NextRequest) {
       p_tutor_payout_ttd: tutorPayoutTtd,
       p_student_notes: studentNotes,
       p_lunipay_session_id: session.id,
-      p_lunipay_payment_id: session.payment_id,
+      p_lunipay_payment_id: resolvedPaymentId,
       p_lunipay_payment_intent_id: session.payment_intent_id,
       p_provider_reference: session.id,
       p_amount_ttd: priceTtd,
