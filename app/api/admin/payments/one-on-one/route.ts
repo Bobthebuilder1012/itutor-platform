@@ -63,7 +63,7 @@ export async function GET() {
     batchFailedRes,
     upcomingSessionsRes,
   ] = await Promise.all([
-    // All session payments that have been completed (succeeded / partially_refunded / refunded)
+    // All session payments (all statuses) so cancelled/pending rows still appear in the Upcoming tab
     admin
       .from('payments')
       .select(
@@ -72,9 +72,9 @@ export async function GET() {
          retained_amount_ttd, total_refunded_ttd,
          status, lunipay_payment_id, paid_at, refunded_at, created_at, updated_at`
       )
-      .in('status', ['succeeded', 'partially_refunded', 'refunded'])
       .not('booking_id', 'is', null)
-      .order('paid_at', { ascending: false })
+      .order('paid_at', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false })
       .limit(500),
 
     // release_ready unbatched payout_ledger rows (for ready_for_csv + KPI)
@@ -148,13 +148,12 @@ export async function GET() {
       .order('generated_at', { ascending: false })
       .limit(50),
 
-    // Upcoming sessions: scheduled but not yet held — funds held until session occurs
+    // Sessions that are scheduled/open and not yet charged (funds held)
     admin
       .from('sessions')
       .select('id, tutor_id, student_id, booking_id, scheduled_start_at, payout_amount_ttd, charge_amount_ttd')
       .in('status', ['SCHEDULED', 'JOIN_OPEN'])
-      .is('charged_at', null)
-      .gt('scheduled_start_at', new Date().toISOString()),
+      .is('charged_at', null),
   ]);
 
   // Graceful error handling: log but don't crash — return partial data with error flags
