@@ -521,7 +521,7 @@ function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent }: {
         if (data.checkout_url) { window.location.href = data.checkout_url; return; }
         if (data.waitlisted) { onSuccess('awaiting-approval'); return; }
         if (res.status === 503) throw new Error('Online payments are not available right now. Please contact the tutor directly.');
-        if (!res.ok) throw new Error(data.error || 'Failed to process enrolment. Please try again.');
+        if (!res.ok) throw new Error(data.detail ? `${data.error}: ${data.detail}` : (data.error || 'Failed to process enrolment. Please try again.'));
       } else {
         const res = await fetch(`/api/groups/${group.id}/members`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
         const data = await res.json();
