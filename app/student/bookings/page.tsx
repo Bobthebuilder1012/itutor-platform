@@ -10,7 +10,7 @@ import { getDisplayName } from '@/lib/utils/displayName';
 import type { BookingWithDetails } from '@/lib/types/booking';
 import { getBookingStatusLabel } from '@/lib/types/booking';
 import { formatDateTime } from '@/lib/utils/calendar';
-import { Calendar, Video, MoreHorizontal, RotateCcw, Star, Clock, Users } from 'lucide-react';
+import { Calendar, Video, MoreHorizontal, RotateCcw, Star, Clock, Users, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type TabType = 'upcoming' | 'past';
@@ -35,6 +35,7 @@ export default function StudentBookingsPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('upcoming');
   const [paidClassesEnabled, setPaidClassesEnabled] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (profileLoading) return;
@@ -168,8 +169,56 @@ export default function StudentBookingsPage() {
     return { label: getBookingStatusLabel(booking.status), cls: 'bg-muted text-muted-foreground' };
   };
 
+  // Build group folders from classSessions
+  type GroupFolder = {
+    groupId: string;
+    className: string;
+    tutorName: string;
+    sessions: ClassSession[];
+    nextDate: string;
+  };
+
+  const groupMap = new Map<string, GroupFolder>();
+  for (const cs of classSessions) {
+    if (!groupMap.has(cs.groupId)) {
+      groupMap.set(cs.groupId, { groupId: cs.groupId, className: cs.className, tutorName: cs.tutorName, sessions: [], nextDate: cs.date });
+    }
+    groupMap.get(cs.groupId)!.sessions.push(cs);
+  }
+  const groupFolders = Array.from(groupMap.values()).map((g) => ({
+    ...g,
+    sessions: g.sessions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()),
+    nextDate: g.sessions[0]?.date ?? '',
+  }));
+
+  // Unified sorted list: group folders + 1:1 bookings, ordered by nearest session date
+  type ListItem =
+    | { kind: 'group'; folder: GroupFolder; sortDate: string }
+    | { kind: 'booking'; booking: (typeof displayed)[0]; sortDate: string };
+
+  const listItems: ListItem[] = [
+    ...(activeTab === 'upcoming'
+      ? groupFolders.map((f) => ({ kind: 'group' as const, folder: f, sortDate: f.nextDate }))
+      : []),
+    ...displayed.map((b) => ({
+      kind: 'booking' as const,
+      booking: b,
+      sortDate:
+        (b as any).session?.scheduled_start_at ||
+        (b as any).confirmed_start_at ||
+        (b as any).requested_start_at ||
+        '',
+    })),
+  ].sort((a, b) => {
+    const ta = a.sortDate ? new Date(a.sortDate).getTime() : Infinity;
+    const tb = b.sortDate ? new Date(b.sortDate).getTime() : Infinity;
+    return activeTab === 'past' ? tb - ta : ta - tb;
+  });
+
+  const totalUpcoming = upcoming.length + groupFolders.length;
+
   const tabs: { key: TabType; label: string; count: number }[] = [
-    { key: 'upcoming', label: 'Upcoming', count: upcoming.length + classSessions.length },
+    { key: 'upcoming', label: 'Upcoming', count: totalUpcoming },
     { key: 'past', label: 'Past', count: past.length },
   ];
 
@@ -214,7 +263,7 @@ export default function StudentBookingsPage() {
         <div className="space-y-3">
           {[1, 2, 3].map(i => <div key={i} className="h-32 rounded-2xl bg-muted animate-pulse" />)}
         </div>
-      ) : displayed.length === 0 && (activeTab !== 'upcoming' || classSessions.length === 0) ? (
+      ) : listItems.length === 0 ? (
         <div className="text-center py-16 rounded-3xl bg-background border border-border">
           <div className="size-14 mx-auto rounded-2xl bg-brand-soft grid place-items-center mb-3">
             <Calendar className="size-6 text-brand-deep" />
@@ -229,49 +278,88 @@ export default function StudentBookingsPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {/* Class sessions — upcoming tab only */}
-          {activeTab === 'upcoming' && classSessions.map((cs) => {
-            const d = new Date(cs.date);
-            const durLabel = cs.durationMin < 60 ? `${cs.durationMin}m` : cs.durationMin % 60 === 0 ? `${cs.durationMin / 60}h` : `${Math.floor(cs.durationMin / 60)}h ${cs.durationMin % 60}m`;
-            return (
-              <div key={cs.id} className="rounded-2xl bg-background border border-border p-4 hover:shadow-card transition hover:border-brand/30">
-                <div className="flex items-start gap-4">
-                  <div className="size-12 rounded-2xl bg-gradient-to-br from-brand to-emerald-400 grid place-items-center text-white font-semibold flex-shrink-0">
-                    <Users className="size-5" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-semibold text-ink truncate">{cs.className}</h3>
-                      <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wider bg-sky/40 text-forest">Group class</span>
+          {listItems.map((item) => {
+            if (item.kind === 'group') {
+              const { folder } = item;
+              const isExpanded = expandedGroups.has(folder.groupId);
+              const nextD = folder.nextDate ? new Date(folder.nextDate) : null;
+              const nextLabel = nextD
+                ? `${nextD.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · ${nextD.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+                : '';
+              return (
+                <div key={`group-${folder.groupId}`} className="rounded-2xl bg-background border border-border overflow-hidden hover:border-brand/30 transition">
+                  {/* Folder header */}
+                  <button
+                    className="w-full p-4 flex items-center gap-4 text-left"
+                    onClick={() => setExpandedGroups((prev) => {
+                      const next = new Set(prev);
+                      isExpanded ? next.delete(folder.groupId) : next.add(folder.groupId);
+                      return next;
+                    })}
+                  >
+                    <div className="size-12 rounded-2xl bg-gradient-to-br from-brand to-emerald-400 grid place-items-center text-white flex-shrink-0">
+                      <Users className="size-5" />
                     </div>
-                    <div className="text-sm text-muted-foreground mt-1">{cs.tutorName}</div>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
-                      <Calendar className="size-3.5" />
-                      {d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · {d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · {durLabel}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-semibold text-ink">{folder.className}</h3>
+                        <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wider bg-sky/40 text-forest">Group class</span>
+                      </div>
+                      <div className="text-sm text-muted-foreground mt-0.5">{folder.tutorName}</div>
+                      {nextLabel && (
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-1">
+                          <Calendar className="size-3.5" />
+                          Next: {nextLabel} · {folder.sessions.length} session{folder.sessions.length !== 1 ? 's' : ''}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {cs.meetingLink ? (
-                      <a href={cs.meetingLink} target="_blank" rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90">
-                        <Video className="size-3.5" /> Join
-                      </a>
-                    ) : (
-                      <ClassJoinButton groupId={cs.groupId} />
-                    )}
-                    <Link href={`/student/classes/${cs.groupId}`}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-semibold hover:bg-muted">
-                      View class
-                    </Link>
-                  </div>
+                    <div className="shrink-0 text-muted-foreground">
+                      {isExpanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+                    </div>
+                  </button>
+
+                  {/* Expanded sessions */}
+                  {isExpanded && (
+                    <div className="border-t border-border divide-y divide-border">
+                      {folder.sessions.map((cs) => {
+                        const d = new Date(cs.date);
+                        const durLabel = cs.durationMin < 60 ? `${cs.durationMin}m` : cs.durationMin % 60 === 0 ? `${cs.durationMin / 60}h` : `${Math.floor(cs.durationMin / 60)}h ${cs.durationMin % 60}m`;
+                        return (
+                          <div key={cs.id} className="px-4 py-3 flex items-center gap-3 bg-muted/30">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                <Calendar className="size-3.5" />
+                                {d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · {d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · {durLabel}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {cs.meetingLink ? (
+                                <a href={cs.meetingLink} target="_blank" rel="noreferrer"
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90">
+                                  <Video className="size-3.5" /> Join
+                                </a>
+                              ) : (
+                                <ClassJoinButton groupId={cs.groupId} />
+                              )}
+                              <Link href={`/student/classes/${cs.groupId}`}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-semibold hover:bg-muted bg-background">
+                                View class
+                              </Link>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              </div>
-            );
-          })}
-          {displayed.map((booking) => {
-            const displayTime = (booking as any).session?.scheduled_start_at || (booking as any).confirmed_start_at || (booking as any).requested_start_at;
+              );
+            }
+
+            // 1:1 booking card
+            const booking = item.booking;
+            const displayTime = item.sortDate;
             const { label: statusLabel, cls: statusCls } = getStatusConfig(booking);
-            const past = isBookingPast(booking);
+            const isPastBooking = isBookingPast(booking);
             const soon = isBookingSoon(booking);
             const initials = ((booking as any).tutor_name || 'T').split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase();
 
@@ -303,14 +391,10 @@ export default function StudentBookingsPage() {
                   </Link>
                 </div>
                 <div className="flex gap-2 mt-4">
-                  {!past && soon && (
+                  {!isPastBooking && soon && (
                     (booking as any).session?.join_url ? (
-                      <a
-                        href={(booking as any).session.join_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-brand text-white font-semibold text-sm hover:bg-brand-deep"
-                      >
+                      <a href={(booking as any).session.join_url} target="_blank" rel="noopener noreferrer"
+                        className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-brand text-white font-semibold text-sm hover:bg-brand-deep">
                         <Video className="size-4" /> Join now
                       </a>
                     ) : (
@@ -319,18 +403,16 @@ export default function StudentBookingsPage() {
                       </span>
                     )
                   )}
-                  {!past && !soon && booking.status === 'CONFIRMED' && (
+                  {!isPastBooking && !soon && booking.status === 'CONFIRMED' && (
                     <Link href={`/student/bookings/${booking.id}`} className="flex-1 inline-flex items-center justify-center px-4 py-2.5 rounded-xl border border-border font-semibold text-sm hover:bg-muted">
                       View details
                     </Link>
                   )}
-                  {past && ((booking.status as string) === 'COMPLETED' || (booking.status as string) === 'COMPLETED_ASSUMED') && (
+                  {isPastBooking && ((booking.status as string) === 'COMPLETED' || (booking.status as string) === 'COMPLETED_ASSUMED') && (
                     <>
                       {(booking as any).session?.id ? (
-                        <Link
-                          href={`/feedback/student/${(booking as any).session.id}`}
-                          className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-coral-soft text-coral font-semibold text-sm hover:bg-coral hover:text-white"
-                        >
+                        <Link href={`/feedback/student/${(booking as any).session.id}`}
+                          className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-coral-soft text-coral font-semibold text-sm hover:bg-coral hover:text-white">
                           <Star className="size-4" /> Rate session
                         </Link>
                       ) : (
@@ -338,7 +420,7 @@ export default function StudentBookingsPage() {
                           <Star className="size-4" /> Rate session
                         </button>
                       )}
-                      <Link href={`/student/find-tutors`} className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-border font-semibold text-sm hover:bg-muted">
+                      <Link href="/student/find-tutors" className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-border font-semibold text-sm hover:bg-muted">
                         <RotateCcw className="size-4" /> Rebook
                       </Link>
                     </>
