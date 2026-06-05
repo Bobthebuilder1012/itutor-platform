@@ -134,7 +134,10 @@ export async function POST(req: NextRequest, { params }: Params) {
     let enrollmentId: string | null = null;
     let isReusingEnrollment = false;
 
-    if (pendingEnrollment && new Date(pendingEnrollment.pending_payment_expires_at ?? 0) > now) {
+    // Always reuse any existing PENDING_PAYMENT enrollment regardless of expiry.
+    // Inserting a new row would violate the unique index on (student_id, group_id)
+    // for non-cancelled subscriptions. The expiry and checkout session are refreshed below.
+    if (pendingEnrollment) {
       enrollmentId = pendingEnrollment.id;
       isReusingEnrollment = true;
     }
