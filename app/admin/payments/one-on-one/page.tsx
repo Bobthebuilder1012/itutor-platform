@@ -1042,28 +1042,28 @@ export default function OneOnOnePaymentsPage() {
         {/* Tabs */}
         <div className="flex items-center gap-1 flex-wrap p-1 rounded-xl border border-white/8 w-fit" style={{ background: '#161618' }}>
           <Tab active={tab === 'all'} onClick={() => setTab('all')}>
-            All Payments {kpis ? `(${kpis.total_payments_count})` : ''}
-          </Tab>
-          <Tab active={tab === 'pending'} onClick={() => setTab('pending')}>
-            Refunds {kpis ? `(${kpis.pending_refunds_count})` : ''}
-          </Tab>
-          <Tab active={tab === 'cancelled'} onClick={() => setTab('cancelled')}>
-            Canceled {kpis ? `(${kpis.cancelled_count})` : ''}
-          </Tab>
-          <Tab active={tab === 'noshow'} onClick={() => setTab('noshow')}>
-            No-Show {kpis ? `(${kpis.noshow_count})` : ''}
-          </Tab>
-          <Tab active={tab === 'ready'} onClick={() => setTab('ready')}>
-            Ready for CSV {data ? `(${data.ready_for_csv.length})` : ''}
-          </Tab>
-          <Tab active={tab === 'failed'} onClick={() => setTab('failed')}>
-            Batch Failed {kpis ? `(${kpis.batch_failed_count})` : ''}
+            Upcoming {kpis ? `(${kpis.total_payments_count})` : ''}
           </Tab>
           <Tab active={tab === 'unofficial'} onClick={() => { setTab('unofficial'); setExportStep1on1(0); }}>
             Unofficial CSV
           </Tab>
+          <Tab active={tab === 'ready'} onClick={() => setTab('ready')}>
+            Ready for CSV {data ? `(${data.ready_for_csv.length})` : ''}
+          </Tab>
           <Tab active={tab === 'csv_history'} onClick={() => { setTab('csv_history'); loadCsvHistory1on1(); }}>
             CSV History
+          </Tab>
+          <Tab active={tab === 'noshow'} onClick={() => setTab('noshow')}>
+            No-Show {kpis ? `(${kpis.noshow_count})` : ''}
+          </Tab>
+          <Tab active={tab === 'cancelled'} onClick={() => setTab('cancelled')}>
+            Canceled {kpis ? `(${kpis.cancelled_count})` : ''}
+          </Tab>
+          <Tab active={tab === 'pending'} onClick={() => setTab('pending')}>
+            Refunds {kpis ? `(${kpis.pending_refunds_count})` : ''}
+          </Tab>
+          <Tab active={tab === 'failed'} onClick={() => setTab('failed')}>
+            Batch Failed {kpis ? `(${kpis.batch_failed_count})` : ''}
           </Tab>
         </div>
 
