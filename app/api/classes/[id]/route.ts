@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerClient } from '@/lib/supabase/server';
+import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
 type Params = { params: Promise<{ id: string }> };
 
 // DELETE /api/classes/[id] — soft-delete via archive_class RPC
+// force=true bypasses the RPC and archives directly, cancelling all future sessions first
 export async function DELETE(req: NextRequest, { params }: Params) {
   try {
     const { id: classId } = await params;
@@ -20,17 +21,45 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     const reason: string | null = body.reason ?? null;
     const force: boolean = body.force === true;
 
-    // When force=true, cancel all future occurrences so archive_class passes
     if (force) {
-      const { getServiceClient } = await import('@/lib/supabase/server');
+      // Bypass the RPC entirely — archive manually so no future-session checks block us
       const admin = getServiceClient();
       const now = new Date().toISOString();
+
+      // Verify ownership
+      const { data: grp } = await admin
+        .from('groups')
+        .select('tutor_id')
+        .eq('id', classId)
+        .single();
+
+      if (!grp || grp.tutor_id !== user.id) {
+        return NextResponse.json({ ok: false, error: 'forbidden' }, { status: 403 });
+      }
+
+      // Cancel all upcoming session occurrences
       await admin
         .from('group_session_occurrences')
         .update({ status: 'cancelled' })
         .eq('group_id', classId)
-        .gt('scheduled_start_at', now)
         .neq('status', 'cancelled');
+
+      // Cancel all recurring session templates
+      await admin
+        .from('group_sessions')
+        .update({ status: 'cancelled' })
+        .eq('group_id', classId)
+        .neq('status', 'cancelled');
+
+      // Archive the group
+      const { error: archiveErr } = await admin
+        .from('groups')
+        .update({ archived_at: now, status: 'ARCHIVED' })
+        .eq('id', classId);
+
+      if (archiveErr) throw archiveErr;
+
+      return NextResponse.json({ ok: true });
     }
 
     const { data, error } = await supabase.rpc('archive_class', {
@@ -41,8 +70,6 @@ export async function DELETE(req: NextRequest, { params }: Params) {
 
     if (error) throw error;
 
-    // archive_class returns JSONB — normalise across possible shapes:
-    // { status, count? } | [{ status, count? }] | "ok" | null (null = success on some DB versions)
     const raw = Array.isArray(data) ? data[0] : data;
     let result: { status?: string; count?: number; message?: string } = {};
     if (raw === null || raw === undefined) {
@@ -71,7 +98,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     }
     if (status === 'has_future_sessions') {
       return NextResponse.json(
-        { ok: false, error: 'has_future_sessions', count: result.count ?? 0, message: `You have ${result.count ?? 'upcoming'} upcoming sessions. Cancel them first.` },
+        { ok: false, error: 'has_future_sessions', count: result.count ?? 0 },
         { status: 409 },
       );
     }
