@@ -96,6 +96,7 @@ export async function GET(request: NextRequest) {
        price_per_session, price_monthly, price_per_course, member_service_fee,
        require_join_requests, auto_suspend_missed_payment, grace_period_days,
        archived_at, archived_reason, cover_image, form_level, session_length_minutes, schedule_display, schedule_data,
+       estimated_earnings,
        tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, rating_average, rating_count),
        group_members(id, user_id, status)`,
       // Tier 2: drop columns likely missing (parent_feedback_mode → feedback_mode, no archived_reason/whatsapp_url)
@@ -104,17 +105,17 @@ export async function GET(request: NextRequest) {
        max_students, parent_feedback_price,
        price_per_session, price_monthly, price_per_course, member_service_fee,
        require_join_requests, auto_suspend_missed_payment, grace_period_days,
-       archived_at, schedule_display,
+       archived_at, schedule_display, estimated_earnings,
        tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, rating_average, rating_count),
        group_members(id, user_id, status)`,
       // Tier 3: drop rating columns from profiles (may live on tutor_profiles instead)
       `id, name, description, tutor_id, subject, pricing, pricing_model, price_per_session, price_monthly, created_at,
        visibility, max_students, require_join_requests, grace_period_days, archived_at,
-       price_per_session, price_monthly, schedule_display,
+       price_per_session, price_monthly, schedule_display, estimated_earnings,
        tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url),
        group_members(id, user_id, status)`,
       // Tier 4: bare minimum
-      `id, name, description, tutor_id, subject, pricing, pricing_model, price_per_session, price_monthly, created_at, archived_at,
+      `id, name, description, tutor_id, subject, pricing, pricing_model, price_per_session, price_monthly, created_at, archived_at, estimated_earnings,
        tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url),
        group_members(id, user_id, status)`,
     ];
@@ -277,7 +278,7 @@ export async function GET(request: NextRequest) {
       maxStudents: g.max_students,
       enrollmentCount: g.member_count,
       nextSession: g.next_occurrence ? { scheduledAt: g.next_occurrence.scheduled_start_at } : null,
-      estimated_earnings: 0,
+      estimated_earnings: g.estimated_earnings ?? 0,
     }));
 
     // Attach active promotions to paginated groups
