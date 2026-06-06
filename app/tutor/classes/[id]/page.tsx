@@ -686,12 +686,7 @@ function SessionRow({ s, groupId, meetingLink, selected, onSelect, onCancel }: {
           </div>
         </div>
 
-        <div className="flex flex-1 items-center gap-2 flex-wrap">
-          <Pill tone={s.attendanceStatus === 'attended' ? 'emerald' : s.attendanceStatus === 'no-show' ? 'rose' : 'slate'}
-            label={`Attendance: ${s.attendanceStatus ?? (future ? '—' : 'pending')}`} />
-          <Pill tone={s.paymentStatus === 'paid' ? 'emerald' : s.paymentStatus === 'overdue' ? 'rose' : 'amber'}
-            label={`Payment: ${s.paymentStatus ?? 'pending'}`} />
-        </div>
+        <div className="flex flex-1 items-center gap-2 flex-wrap" />
 
         <div className="flex items-center gap-2 shrink-0">
           <button
