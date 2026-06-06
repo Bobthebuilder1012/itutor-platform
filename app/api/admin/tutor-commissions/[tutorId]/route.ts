@@ -25,7 +25,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
   if (!['constant', 'reflexive'].includes(commission_mode)) {
     return NextResponse.json({ error: 'Invalid commission mode' }, { status: 400 });
   }
-  if (commission_mode === 'constant' && (commission_rate == null || commission_rate <= 0)) {
+  if (commission_mode === 'constant' && (commission_rate == null || commission_rate < 0)) {
     return NextResponse.json({ error: 'commission_rate required for constant mode' }, { status: 400 });
   }
 
