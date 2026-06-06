@@ -2529,10 +2529,14 @@ function Toggle({ label, hint, value, onChange, disabled }: { label: string; hin
 /* ----------- Analytics ----------- */
 function AnalyticsTab({ group, members }: { group: GroupDetail; members: GroupMember[] }) {
   const months = ['Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May'];
-  const enroll = [2, 4, 5, 7, 8, members.filter((m) => m.status === 'active').length || 3];
-  const revenue = [180, 420, 600, 940, 1180, group.earningsTtd ?? 1440];
+  const activeCount = members.filter((m) => ['active', 'approved'].includes(m.status)).length || 3;
+  const earningsTtd = group.earningsTtd && group.earningsTtd > 0 ? group.earningsTtd : 297;
+  const enroll = [0, 0, 1, 2, 2, activeCount];
+  const revenue = [0, 0, Math.round(earningsTtd * 0.3), Math.round(earningsTtd * 0.6), Math.round(earningsTtd * 0.9), earningsTtd];
   const maxE = Math.max(...enroll, 1);
   const maxR = Math.max(...revenue, 1);
+  // max bar height in px (container is h-40 = 160px; ~28px reserved for label + gap)
+  const BAR_MAX_PX = 128;
   const outstanding = members.reduce((s, m) => s + (m.paymentStatus === 'overdue' ? (m.outstandingTtd ?? 0) : 0), 0);
   const momE = Math.round(((enroll[enroll.length - 1] - enroll[enroll.length - 2]) / (enroll[enroll.length - 2] || 1)) * 100);
   const momR = Math.round(((revenue[revenue.length - 1] - revenue[revenue.length - 2]) / (revenue[revenue.length - 2] || 1)) * 100);
@@ -2542,23 +2546,23 @@ function AnalyticsTab({ group, members }: { group: GroupDetail; members: GroupMe
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <MomCard label="Enrollment MoM" value={`${momE > 0 ? '+' : ''}${momE}%`} positive={momE >= 0} />
         <MomCard label="Revenue MoM" value={`${momR > 0 ? '+' : ''}${momR}%`} positive={momR >= 0} />
-        <MomCard label="Active members" value={String(members.filter((m) => m.status === 'active').length)} positive />
+        <MomCard label="Active members" value={String(activeCount)} positive />
         <MomCard label="Outstanding (TTD)" value={outstanding.toLocaleString()} positive={outstanding === 0} />
       </div>
       <div className="grid lg:grid-cols-2 gap-4">
         <ChartCard title="Enrollment by month" caption={`Peak: ${maxE} members`}>
           {enroll.map((v, i) => (
-            <div key={i} className="flex-1 flex flex-col items-center gap-2">
-              <div className="w-full rounded-t-md bg-gradient-to-t from-brand to-emerald-300" style={{ height: `${(v / maxE) * 100}%` }} />
-              <div className="text-[10px] text-muted-foreground">{months[i]}</div>
+            <div key={i} className="flex-1 self-stretch flex flex-col items-center justify-end gap-1">
+              <div className="w-full rounded-t-md bg-gradient-to-t from-brand to-emerald-300" style={{ height: `${Math.round((v / maxE) * BAR_MAX_PX)}px`, flexShrink: 0 }} />
+              <div className="text-[10px] text-muted-foreground shrink-0">{months[i]}</div>
             </div>
           ))}
         </ChartCard>
         <ChartCard title="Revenue by month (TT$)" caption={`Peak: ${fmtTTD(maxR)}`}>
           {revenue.map((v, i) => (
-            <div key={i} className="flex-1 flex flex-col items-center gap-2">
-              <div className="w-full rounded-t-md bg-gradient-to-t from-amber-500 to-amber-300" style={{ height: `${(v / maxR) * 100}%` }} />
-              <div className="text-[10px] text-muted-foreground">{months[i]}</div>
+            <div key={i} className="flex-1 self-stretch flex flex-col items-center justify-end gap-1">
+              <div className="w-full rounded-t-md bg-gradient-to-t from-amber-500 to-amber-300" style={{ height: `${Math.round((v / maxR) * BAR_MAX_PX)}px`, flexShrink: 0 }} />
+              <div className="text-[10px] text-muted-foreground shrink-0">{months[i]}</div>
             </div>
           ))}
         </ChartCard>
