@@ -304,7 +304,7 @@ async function main() {
     const subjectId = subjectByName[g.subject];
 
     // Create group
-    const { data: group } = await admin.from('groups').insert({
+    const { data: group, error: groupErr } = await admin.from('groups').insert({
       tutor_id: tutorId,
       name: g.name,
       description: g.description,
@@ -316,10 +316,8 @@ async function main() {
       status: 'PUBLISHED',
       visibility: 'public',
       require_join_requests: false,
-      grace_period_days: 7,
-      schedule_display: g.schedule_display,
     }).select('id').single();
-    if (!group) { console.error(`  ❌ Failed to create group ${g.name}`); continue; }
+    if (!group) { console.error(`  ❌ Failed to create group ${g.name}:`, JSON.stringify(groupErr)); continue; }
     console.log(`  ✅  Group: "${g.name}" (${group.id})`);
 
     // Create recurring session template
@@ -360,31 +358,32 @@ async function main() {
       if (!studentId) continue;
 
       // group_members (approved membership)
-      await admin.from('group_members').upsert({
+      const { error: gmErr } = await admin.from('group_members').upsert({
         group_id: group.id,
         user_id: studentId,
         status: 'approved',
         joined_at: daysAgo(14).toISOString(),
       }, { onConflict: 'group_id,user_id' });
+      if (gmErr) console.error(`     ⚠️  group_members:`, JSON.stringify(gmErr));
 
       // group_enrollment
       const periodStart = daysAgo(14);
       const periodEnd = daysFromNow(16);
-      const { data: enrollment } = await admin.from('group_enrollments').insert({
+      const { data: enrollment, error: enrollErr } = await admin.from('group_enrollments').insert({
         student_id: studentId,
         group_id: group.id,
+        enrollment_type: 'SUBSCRIPTION',
         status: 'ACTIVE',
         payment_status: 'PAID',
         plan_price_ttd: g.price_monthly,
         last_paid_at: daysAgo(14).toISOString(),
         expires_at: periodEnd.toISOString(),
       }).select('id').single();
-      if (!enrollment) continue;
+      if (!enrollment) { console.error(`     ⚠️  group_enrollments:`, JSON.stringify(enrollErr)); continue; }
 
       // subscription_payment (PAID)
       const platformFee = Math.round(g.price_monthly * 0.2 * 100) / 100;
-      const tutorPayout = Math.round((g.price_monthly - platformFee) * 100) / 100;
-      const { data: subPayment } = await admin.from('subscription_payments').insert({
+      const { data: subPayment, error: spErr } = await admin.from('subscription_payments').insert({
         enrollment_id: enrollment.id,
         group_id: group.id,
         student_id: studentId,
@@ -398,6 +397,7 @@ async function main() {
         period_end: periodEnd.toISOString(),
         paid_at: daysAgo(14).toISOString(),
       }).select('id').single();
+      if (!subPayment) { console.error(`     ⚠️  subscription_payments:`, JSON.stringify(spErr)); }
 
       if (subPayment) {
         // payout_ledger entry (released = already counted in lifetime earnings)
@@ -455,7 +455,7 @@ async function main() {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
   const byGroup = DEMO_GROUPS.map((g, i) => {
-    const count = GROUP_STUDENT_MAP[i].filter(Boolean).length;
+    const count = GROUP_STUDENT_MAP[i].filter(si => studentIds[si]).length;
     const payout = count * g.tutor_payout_per_student;
     return `   ${g.name.padEnd(28)} ${count} students  TT$ ${payout}`;
   });
