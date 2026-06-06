@@ -54,6 +54,56 @@ export async function DELETE() {
     // Delete related data first (to respect foreign keys)
     // Using admin client to bypass RLS
     try {
+      // ── Subscription data (must be cleared before profile cascade) ──────────
+      // 1. Fetch student's enrollment IDs so we can clean their dependencies
+      const { data: enrollments } = await supabaseAdmin
+        .from('group_enrollments')
+        .select('id')
+        .eq('student_id', user.id);
+      const enrollmentIds = (enrollments ?? []).map((e: any) => e.id);
+
+      if (enrollmentIds.length > 0) {
+        // 2. Fetch subscription_payment IDs for those enrollments
+        const { data: subPayments } = await supabaseAdmin
+          .from('subscription_payments')
+          .select('id')
+          .in('enrollment_id', enrollmentIds);
+        const subPaymentIds = (subPayments ?? []).map((p: any) => p.id);
+
+        // 3. Delete payout_ledger rows that reference those subscription payments
+        if (subPaymentIds.length > 0) {
+          await supabaseAdmin
+            .from('payout_ledger')
+            .delete()
+            .in('subscription_payment_id', subPaymentIds);
+        }
+
+        // 4. Delete credit refund liabilities for this student
+        await supabaseAdmin
+          .from('credit_refund_liabilities')
+          .delete()
+          .eq('student_id', user.id);
+
+        // 5. Delete subscription refund requests for these enrollments
+        await supabaseAdmin
+          .from('subscription_refund_requests')
+          .delete()
+          .in('enrollment_id', enrollmentIds);
+
+        // 6. Delete the subscription payments
+        await supabaseAdmin
+          .from('subscription_payments')
+          .delete()
+          .in('enrollment_id', enrollmentIds);
+
+        // 7. Now safe to delete enrollments
+        await supabaseAdmin
+          .from('group_enrollments')
+          .delete()
+          .eq('student_id', user.id);
+      }
+
+      // ── Standard user data ───────────────────────────────────────────────────
       await supabaseAdmin.from('booking_messages').delete().eq('sender_id', user.id);
       await supabaseAdmin.from('ratings').delete().eq('tutor_id', user.id);
       await supabaseAdmin.from('ratings').delete().eq('student_id', user.id);
