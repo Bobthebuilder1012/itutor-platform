@@ -1969,21 +1969,24 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
     setSubjectSearch(parsed.subject && parsed.subject !== '—' ? parsed.subject : '');
   };
 
-  const handleDelete = async () => {
+  const handleDelete = async (force = false) => {
     setDeleting(true);
     setDeleteError('');
     try {
       const res = await fetch(`/api/classes/${group.id}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: deleteReason || null }),
+        body: JSON.stringify({ reason: deleteReason || null, force }),
       });
       const json = await res.json().catch(() => ({}));
       if (res.ok) {
         router.replace('/tutor/classes');
         return;
       }
-      if (res.status === 409) {
+      if (res.status === 409 && json.error === 'has_future_sessions') {
+        const count = json.count ?? 'upcoming';
+        setDeleteError(`This class has ${count} upcoming session${count === 1 ? '' : 's'}. Click "Delete anyway" to cancel them all and delete the class.`);
+      } else if (res.status === 409) {
         setDeleteError(json.message ?? 'Cannot delete class — resolve outstanding items first.');
       } else {
         setDeleteError(json.error ?? 'Failed to delete. Please try again.');
@@ -2262,10 +2265,18 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
               <input value={deleteReason} onChange={(e) => setDeleteReason(e.target.value)} placeholder="e.g. Course completed, consolidating classes…"
                 className="mt-1.5 w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
             </div>
-            {deleteError && <div className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-sm text-rose-700">{deleteError}</div>}
+            {deleteError && (
+              <div className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-sm text-rose-700">{deleteError}</div>
+            )}
             <div className="flex gap-2 justify-end">
               <button onClick={() => setDeleteOpen(false)} className="px-4 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted">Cancel</button>
-              <button onClick={handleDelete} disabled={deleteConfirmText !== group.title || deleting}
+              {deleteError.includes('Delete anyway') && (
+                <button onClick={() => handleDelete(true)} disabled={deleting}
+                  className="px-4 py-2 rounded-lg bg-rose-700 text-white text-sm font-semibold hover:bg-rose-800 disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
+                  {deleting ? <><span className="size-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />Deleting…</> : 'Delete anyway'}
+                </button>
+              )}
+              <button onClick={() => handleDelete(false)} disabled={deleteConfirmText.trim() !== group.title.trim() || deleting}
                 className="px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
                 {deleting ? <><span className="size-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />Deleting…</> : 'Delete class'}
               </button>

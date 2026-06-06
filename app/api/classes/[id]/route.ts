@@ -18,6 +18,20 @@ export async function DELETE(req: NextRequest, { params }: Params) {
 
     const body = await req.json().catch(() => ({}));
     const reason: string | null = body.reason ?? null;
+    const force: boolean = body.force === true;
+
+    // When force=true, cancel all future occurrences so archive_class passes
+    if (force) {
+      const { getServiceClient } = await import('@/lib/supabase/server');
+      const admin = getServiceClient();
+      const now = new Date().toISOString();
+      await admin
+        .from('group_session_occurrences')
+        .update({ status: 'cancelled' })
+        .eq('group_id', classId)
+        .gt('scheduled_start_at', now)
+        .neq('status', 'cancelled');
+    }
 
     const { data, error } = await supabase.rpc('archive_class', {
       p_group_id: classId,
