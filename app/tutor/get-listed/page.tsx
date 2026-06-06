@@ -83,6 +83,10 @@ function GetListedContent() {
   const { profile, loading, refresh: refreshProfile } = useProfile();
   const completion = useTutorCompletion(profile);
 
+  // Display name
+  const [displayName, setDisplayName] = useState('');
+  const [savingName, setSavingName] = useState(false);
+
   // Bio
   const [bio, setBio] = useState('');
   const [savingBio, setSavingBio] = useState(false);
@@ -133,6 +137,11 @@ function GetListedContent() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (profile?.display_name) setDisplayName(profile.display_name);
+    else if (profile?.full_name) setDisplayName(profile.full_name);
+  }, [profile?.display_name, profile?.full_name]);
 
   useEffect(() => {
     if (profile?.bio) setBio(profile.bio);
@@ -195,6 +204,17 @@ function GetListedContent() {
       console.error(e);
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function saveDisplayNameField() {
+    if (!profile) return;
+    setSavingName(true);
+    try {
+      await supabase.from('profiles').update({ display_name: displayName.trim() || null }).eq('id', profile.id);
+      await refreshProfile();
+    } finally {
+      setSavingName(false);
     }
   }
 
@@ -338,7 +358,29 @@ function GetListedContent() {
         </div>
       </SectionShell>
 
-      {/* 2. Bio */}
+      {/* 2. Display name */}
+      <SectionShell done={!!profile.display_name || !!profile.full_name} title="Your name" subtitle="This is how your name appears on your profile and classes. Your username stays private.">
+        <div className="flex gap-3">
+          <input
+            type="text"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            maxLength={60}
+            placeholder="e.g. Kelon Rashad"
+            className="flex-1 px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand"
+          />
+          <button
+            onClick={saveDisplayNameField}
+            disabled={savingName || !displayName.trim()}
+            className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-deep disabled:opacity-50 whitespace-nowrap"
+          >
+            {savingName ? 'Saving…' : 'Save name'}
+          </button>
+        </div>
+        <p className="mt-1.5 text-xs text-muted-foreground">Shown publicly on your tutor profile and group classes. Not your login username.</p>
+      </SectionShell>
+
+      {/* 3. Bio */}
       <SectionShell done={completion.bio} title="Bio / About you" subtitle="Tell students about your experience, teaching style and personality.">
         <textarea
           value={bio}
