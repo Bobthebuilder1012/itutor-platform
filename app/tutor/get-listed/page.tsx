@@ -517,17 +517,16 @@ function GetListedContent() {
                 <div className="text-xs text-muted-foreground">Connect your Google account</div>
               </div>
             </button>
-            <button
-              onClick={() => { setVideoConnecting(true); window.location.href = '/api/auth/zoom/connect?from=/tutor/get-listed'; }}
-              disabled={videoConnecting}
-              className="flex items-center gap-3 rounded-xl border border-border p-3 hover:border-brand/60 hover:bg-brand/5 transition text-left disabled:opacity-60"
-            >
+            <div className="flex items-center gap-3 rounded-xl border border-border p-3 opacity-50 cursor-not-allowed select-none">
               <ZoomLogo className="size-9 shrink-0" />
               <div>
-                <div className="text-sm font-semibold text-ink">Zoom</div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-ink">Zoom</span>
+                  <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 uppercase tracking-wide">Coming soon</span>
+                </div>
                 <div className="text-xs text-muted-foreground">Connect your Zoom account</div>
               </div>
-            </button>
+            </div>
           </div>
         )}
       </SectionShell>
