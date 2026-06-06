@@ -74,19 +74,23 @@ function ReviewsContent() {
   async function fetchAll(tutorId: string) {
     setDataLoading(true);
     try {
-      const [{ data: ratings }, { data: groupRaw }] = await Promise.all([
-        supabase
-          .from('ratings')
-          .select('id, stars, comment, created_at, tutor_reply, tutor_replied_at, student:profiles!ratings_student_id_fkey(full_name, avatar_url), session:sessions(booking:bookings(subjects(label,name)))')
-          .eq('tutor_id', tutorId)
-          .order('created_at', { ascending: false }),
-        supabase
+      // Run independently so a missing group_reviews table doesn't block 1:1 ratings
+      const { data: ratings } = await supabase
+        .from('ratings')
+        .select('id, stars, comment, created_at, tutor_reply, tutor_replied_at, student:profiles!ratings_student_id_fkey(full_name, avatar_url)')
+        .eq('tutor_id', tutorId)
+        .order('created_at', { ascending: false });
+
+      let groupRaw: any[] | null = null;
+      try {
+        const { data: gData } = await supabase
           .from('group_reviews')
           .select('id, rating, comment, created_at, tutor_reply, tutor_replied_at, reviewer_id, group_id, reviewer:profiles!group_reviews_reviewer_id_fkey(full_name, avatar_url), group:groups!group_reviews_group_id_fkey(id, name)')
           .eq('tutor_id', tutorId)
           .is('deleted_at', null)
-          .order('created_at', { ascending: false }),
-      ]);
+          .order('created_at', { ascending: false });
+        groupRaw = gData;
+      } catch { /* group_reviews table may not exist on this environment */ }
 
       setOneOnOneReviews((ratings ?? []).map((r: any): OneOnOneReview => {
         const s = Array.isArray(r.student) ? r.student[0] : r.student;
