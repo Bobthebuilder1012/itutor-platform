@@ -98,7 +98,7 @@ export default function ReliabilityPanel({ role }: Props) {
   const nothingToShow =
     activeStrikes === 0 &&
     ratings.length === 0 &&
-    (!studentData || (studentData.cancel_state.count_30d === 0 && !studentData.cancel_state.is_warned));
+    (!studentData || !studentData.cancel_state.is_warned);
 
   if (nothingToShow) {
     return null;
