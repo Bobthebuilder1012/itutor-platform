@@ -983,6 +983,7 @@ function PayoutsTab() {
   const [verified, setVerified] = useState(false);
   const [payoutName, setPayoutName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
+  const [showAccountNumber, setShowAccountNumber] = useState(false);
   const [bankName, setBankName] = useState('');
   const [branch, setBranch] = useState('');
   const [accountType, setAccountType] = useState('chequing');
@@ -1092,9 +1093,34 @@ function PayoutsTab() {
         </div>
         <div>
           <label className="block text-xs font-medium text-ink mb-1.5">Account number</label>
-          <input type="text" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)}
-            inputMode="numeric"
-            className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+          <div className="relative">
+            <input
+              type={showAccountNumber ? 'text' : 'password'}
+              value={accountNumber}
+              onChange={(e) => setAccountNumber(e.target.value)}
+              inputMode="numeric"
+              className="w-full px-3 py-2.5 pr-10 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand"
+            />
+            <button
+              type="button"
+              onClick={() => setShowAccountNumber((v) => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-ink transition-colors"
+              aria-label={showAccountNumber ? 'Hide account number' : 'Show account number'}
+            >
+              {showAccountNumber ? (
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                  <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                  <line x1="1" y1="1" x2="23" y2="23" />
+                </svg>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              )}
+            </button>
+          </div>
         </div>
         <div>
           <label className="block text-xs font-medium text-ink mb-1.5">Account type</label>
