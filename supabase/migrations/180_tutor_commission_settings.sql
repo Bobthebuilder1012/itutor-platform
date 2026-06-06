@@ -30,11 +30,13 @@ CREATE TABLE IF NOT EXISTS public.tutor_commission_settings (
 ALTER TABLE public.global_commission_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tutor_commission_settings   ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "admin_global_commission" ON public.global_commission_settings;
 CREATE POLICY "admin_global_commission" ON public.global_commission_settings
   FOR ALL USING (
     EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
   );
 
+DROP POLICY IF EXISTS "admin_tutor_commission" ON public.tutor_commission_settings;
 CREATE POLICY "admin_tutor_commission" ON public.tutor_commission_settings
   FOR ALL USING (
     EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
