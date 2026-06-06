@@ -12,7 +12,8 @@
     "communities:migrate": "npx ts-node scripts/run-migration-088.ts",
     "stream:migrate": "npx ts-node scripts/run-migration-092.ts",
     "migrate:097": "node scripts/run-migration-097.js",
-    "seed:groups": "npx ts-node prisma/seeds/groupSessions.seed.ts"
+    "seed:groups": "npx ts-node prisma/seeds/groupSessions.seed.ts",
+    "seed:demo-tutor": "npx ts-node scripts/seed-demo-tutor.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
