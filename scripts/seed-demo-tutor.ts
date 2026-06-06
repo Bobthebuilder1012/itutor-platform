@@ -302,6 +302,7 @@ async function main() {
   for (let gi = 0; gi < DEMO_GROUPS.length; gi++) {
     const g = DEMO_GROUPS[gi];
     const subjectId = subjectByName[g.subject];
+    let groupEarnings = 0;
 
     // Create group
     const { data: group, error: groupErr } = await admin.from('groups').insert({
@@ -408,6 +409,7 @@ async function main() {
           status: 'released',
         });
         totalPayoutTtd += g.tutor_payout_per_student;
+        groupEarnings += g.tutor_payout_per_student;
       }
 
       // User subject link
@@ -419,7 +421,12 @@ async function main() {
       }
     }
 
-    console.log(`     └ ${enrolledIndexes.length} students enrolled`);
+    // Update estimated_earnings on the group (column added via migration 181)
+    if (groupEarnings > 0 && group) {
+      await admin.from('groups').update({ estimated_earnings: groupEarnings }).eq('id', group.id);
+    }
+
+    console.log(`     └ ${enrolledIndexes.length} students enrolled, TT$ ${groupEarnings} earned`);
   }
 
   // ── 7. Insert payout ledger entries ───────────────────────────────────────
