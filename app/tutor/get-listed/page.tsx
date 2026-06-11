@@ -74,7 +74,8 @@ function slotsToRules(slots: Slot[]): { day_of_week: number; start_time: string;
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────────
-type SubjectRow = { id: string | null; subject_id: string; subjects: { name: string; label?: string | null } | null; price_per_hour_ttd: number | null };
+type SubjectRow = { id: string | null; subject_id: string; subjects: { name: string; label?: string | null; curriculum?: string | null } | null; price_per_hour_ttd: number | null };
+type SubjectSearchResult = { id: string; name: string; curriculum: string; level: string; label: string | null };
 
 // ── Main content ───────────────────────────────────────────────────────────────
 function GetListedContent() {
@@ -110,6 +111,13 @@ function GetListedContent() {
   const [availRules, setAvailRules] = useState<TutorAvailabilityRule[]>([]);
   const [availOpen, setAvailOpen] = useState(false);
   const [availError, setAvailError] = useState('');
+
+  // Subject search (for adding/removing subjects on this page)
+  const [subjectQuery, setSubjectQuery] = useState('');
+  const [subjectResults, setSubjectResults] = useState<SubjectSearchResult[]>([]);
+  const [showSubjectDropdown, setShowSubjectDropdown] = useState(false);
+  const [searchingSubjects, setSearchingSubjects] = useState(false);
+  const [subjectChangeInFlight, setSubjectChangeInFlight] = useState(false);
 
   // Payout account gate
   const [hasPayoutAccount, setHasPayoutAccount] = useState<boolean | null>(null);
@@ -155,7 +163,7 @@ function GetListedContent() {
 
   async function fetchData(tutorId: string) {
     const [{ data: subjs }, rules, { data: vidConn }, { data: payoutAcc }] = await Promise.all([
-      supabase.from('tutor_subjects').select('id, subject_id, price_per_hour_ttd, subjects(name, label)').eq('tutor_id', tutorId),
+      supabase.from('tutor_subjects').select('id, subject_id, price_per_hour_ttd, subjects(name, label, curriculum)').eq('tutor_id', tutorId),
       getTutorAvailabilityRules(tutorId),
       supabase.from('tutor_video_provider_connections').select('provider, provider_account_email').eq('tutor_id', tutorId).maybeSingle(),
       supabase.from('tutor_payout_accounts').select('payout_account_identifier').eq('tutor_id', tutorId).maybeSingle(),
@@ -169,7 +177,7 @@ function GetListedContent() {
     if (tutorSubjects.length === 0) {
       const { data: userSubjs } = await supabase
         .from('user_subjects')
-        .select('subject_id, subjects(name, label)')
+        .select('subject_id, subjects(name, label, curriculum)')
         .eq('user_id', tutorId);
 
       tutorSubjects = (userSubjs ?? []).map((s: any) => ({
@@ -287,6 +295,59 @@ function GetListedContent() {
       notifyCompletionUpdated();
     } finally {
       setSavingAvail(false);
+    }
+  }
+
+  // Subject search debounce
+  useEffect(() => {
+    if (!subjectQuery.trim()) { setSubjectResults([]); setShowSubjectDropdown(false); return; }
+    const t = setTimeout(async () => {
+      setSearchingSubjects(true);
+      const safe = subjectQuery.trim().replace(/%/g, '').replace(/,/g, '');
+      const { data } = await supabase
+        .from('subjects')
+        .select('id, name, curriculum, level, label')
+        .or(`name.ilike.%${safe}%,label.ilike.%${safe}%`)
+        .order('name')
+        .limit(10);
+      const currentIds = new Set(subjects.map((s) => s.subject_id));
+      setSubjectResults(((data ?? []) as SubjectSearchResult[]).filter((s) => !currentIds.has(s.id)));
+      setShowSubjectDropdown(true);
+      setSearchingSubjects(false);
+    }, 300);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subjectQuery, subjects]);
+
+  async function addSubjectById(subjectId: string) {
+    if (!profile) return;
+    setSubjectChangeInFlight(true);
+    try {
+      await supabase.from('tutor_subjects').upsert(
+        { tutor_id: profile.id, subject_id: subjectId, price_per_hour_ttd: 100, mode: 'either' },
+        { onConflict: 'tutor_id,subject_id' }
+      );
+      await fetchData(profile.id);
+      notifyCompletionUpdated();
+      setSubjectQuery('');
+      setSubjectResults([]);
+      setShowSubjectDropdown(false);
+    } finally {
+      setSubjectChangeInFlight(false);
+    }
+  }
+
+  async function removeSubjectById(subjectId: string) {
+    if (!profile) return;
+    setSubjectChangeInFlight(true);
+    try {
+      await supabase.from('tutor_subjects').delete()
+        .eq('tutor_id', profile.id)
+        .eq('subject_id', subjectId);
+      await fetchData(profile.id);
+      notifyCompletionUpdated();
+    } finally {
+      setSubjectChangeInFlight(false);
     }
   }
 
@@ -461,7 +522,74 @@ function GetListedContent() {
         )}
       </SectionShell>
 
-      {/* 4. Rate */}
+      {/* 4. Subjects */}
+      <SectionShell done={completion.subjects} title="Your subjects" subtitle="Search and add the subjects you teach. You can add or remove them at any time.">
+        {/* Current subjects as chips */}
+        {subjects.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-4">
+            {subjects.map((s) => {
+              const label = s.subjects?.label || s.subjects?.name || 'Subject';
+              return (
+                <span key={s.subject_id} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-brand/10 text-brand-deep border border-brand/20">
+                  {label}
+                  <button
+                    type="button"
+                    onClick={() => removeSubjectById(s.subject_id)}
+                    disabled={subjectChangeInFlight}
+                    aria-label={`Remove ${label}`}
+                    className="hover:bg-brand/20 rounded-full p-0.5 transition disabled:opacity-40"
+                  >
+                    <svg className="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </span>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Subject search */}
+        <div className="relative">
+          <input
+            type="text"
+            value={subjectQuery}
+            onChange={(e) => setSubjectQuery(e.target.value)}
+            onFocus={() => { if (subjectResults.length > 0) setShowSubjectDropdown(true); }}
+            placeholder="Search subjects (e.g. CAPE Chemistry, CSEC Mathematics)…"
+            disabled={subjectChangeInFlight}
+            className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand disabled:opacity-50"
+          />
+          {showSubjectDropdown && subjectQuery.trim() && (
+            <div className="absolute z-10 w-full mt-1 bg-card border border-border rounded-xl shadow-lg max-h-60 overflow-y-auto">
+              {searchingSubjects ? (
+                <div className="p-4 text-center text-sm text-muted-foreground">Searching…</div>
+              ) : subjectResults.length > 0 ? (
+                subjectResults.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => addSubjectById(s.id)}
+                    className="w-full text-left px-4 py-2.5 hover:bg-brand/5 text-sm flex items-center justify-between border-b border-border last:border-b-0"
+                  >
+                    <span className="font-medium text-ink">{s.label || s.name}</span>
+                    <span className={cn('text-xs px-2 py-0.5 rounded font-medium', s.curriculum === 'CSEC' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700')}>
+                      {s.curriculum} {s.level}
+                    </span>
+                  </button>
+                ))
+              ) : (
+                <div className="p-4 text-sm text-muted-foreground text-center">No subjects found for "{subjectQuery}"</div>
+              )}
+            </div>
+          )}
+        </div>
+        {showSubjectDropdown && (
+          <div className="fixed inset-0 z-0" onClick={() => setShowSubjectDropdown(false)} />
+        )}
+      </SectionShell>
+
+      {/* 5. Rate */}
       <SectionShell done={completion.rate} title="Hourly rate" subtitle="Set your rate per subject (TTD). Each subject can have a different rate.">
         {hasPayoutAccount === false && (
           <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
