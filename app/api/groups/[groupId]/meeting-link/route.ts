@@ -128,14 +128,11 @@ export async function POST(_req: NextRequest, { params }: Params) {
     try {
       meetingInfo = await createMeeting(sessionForMeeting);
     } catch (tokenErr: any) {
-      const msg: string = tokenErr?.message ?? '';
-      if (msg.toLowerCase().includes('refresh') || msg.toLowerCase().includes('token') || msg.toLowerCase().includes('auth')) {
-        return NextResponse.json(
-          { error: 'token_expired', reconnectUrl: `/api/auth/google/connect?from=/tutor/classes/${groupId}` },
-          { status: 401 }
-        );
-      }
-      throw tokenErr;
+      // Any failure generating the meeting link means the provider needs reconnecting
+      return NextResponse.json(
+        { error: 'token_expired', reconnectUrl: `/api/auth/google/connect?from=/tutor/classes/${groupId}` },
+        { status: 401 }
+      );
     }
 
     const joinUrl = meetingInfo.join_url;
