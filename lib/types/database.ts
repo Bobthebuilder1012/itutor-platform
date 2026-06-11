@@ -42,6 +42,7 @@ export interface Profile {
   suspension_lifted_at?: string;
   suspension_lifted_by?: string;
   allow_same_day_bookings?: boolean;
+  is_dev_account?: boolean;
 }
 
 export interface ParentChildLink {

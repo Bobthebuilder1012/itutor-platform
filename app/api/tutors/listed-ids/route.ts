@@ -39,11 +39,25 @@ export async function GET() {
       return NextResponse.json({ ids: [] });
     }
 
-    // Also require avatar_url and bio from profiles
-    const { data: profiles } = await service
+    // Check whether the requesting user is a dev account
+    const { data: requesterProfile } = await service
       .from('profiles')
-      .select('id, avatar_url, bio')
+      .select('is_dev_account')
+      .eq('id', user.id)
+      .single();
+    const requesterIsDev = requesterProfile?.is_dev_account === true;
+
+    // Also require avatar_url and bio from profiles; exclude dev accounts for non-dev viewers
+    let profileQuery = service
+      .from('profiles')
+      .select('id, avatar_url, bio, is_dev_account')
       .in('id', candidates);
+
+    if (!requesterIsDev) {
+      profileQuery = profileQuery.neq('is_dev_account', true);
+    }
+
+    const { data: profiles } = await profileQuery;
 
     const listedIds = (profiles ?? [])
       .filter(p => p.avatar_url && p.bio?.trim()?.length > 0)

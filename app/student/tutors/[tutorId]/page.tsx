@@ -365,10 +365,20 @@ export default function TutorProfilePage() {
     try {
       const { data: tutorData, error: tutorError } = await supabase
         .from('profiles')
-        .select('id, full_name, username, display_name, avatar_url, school, institution_id, country, bio, tutor_verification_status, created_at')
+        .select('id, full_name, username, display_name, avatar_url, school, institution_id, country, bio, tutor_verification_status, created_at, is_dev_account')
         .eq('id', tutorId).eq('role', 'tutor').single();
       if (tutorError) throw tutorError;
       if (!tutorData) { alert('Tutor not found'); router.push('/student/find-tutors'); return; }
+
+      // Hide dev tutor profiles from non-dev viewers
+      if (tutorData.is_dev_account) {
+        const { data: viewerProfile } = await supabase
+          .from('profiles').select('is_dev_account').eq('id', profile!.id).single();
+        if (!viewerProfile?.is_dev_account) {
+          router.push('/student/find-tutors');
+          return;
+        }
+      }
 
       const { data: tutorSubjects, error: subjectsError } = await supabase
         .from('tutor_subjects').select('subject_id, price_per_hour_ttd').eq('tutor_id', tutorId);

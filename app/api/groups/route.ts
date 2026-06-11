@@ -82,11 +82,22 @@ export async function GET(request: NextRequest) {
 
     const { data: profile } = await service
       .from('profiles')
-      .select('role')
+      .select('role, is_dev_account')
       .eq('id', user.id)
       .maybeSingle();
 
     const isTutor = profile?.role === 'tutor';
+    const viewerIsDev = profile?.is_dev_account === true;
+
+    // Collect dev tutor IDs so their groups can be hidden from non-dev viewers
+    let devTutorIds: string[] = [];
+    if (!viewerIsDev) {
+      const { data: devProfiles } = await service
+        .from('profiles')
+        .select('id')
+        .eq('is_dev_account', true);
+      devTutorIds = (devProfiles ?? []).map((p: { id: string }) => p.id);
+    }
 
     const SELECT_TIERS = [
       // Tier 1: full column set (requires migrations 128-132)
@@ -135,6 +146,10 @@ export async function GET(request: NextRequest) {
             q = q.or('visibility.neq.private,visibility.is.null');
           }
         }
+      }
+      // Hide groups owned by dev accounts from non-dev viewers
+      if (devTutorIds.length > 0) {
+        q = q.not('tutor_id', 'in', `(${devTutorIds.join(',')})`);
       }
       return q;
     };
