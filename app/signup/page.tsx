@@ -59,7 +59,7 @@ const TUTOR_SUBJECT_LIST = [
   'CAPE Biology', 'CAPE Computer Science', 'CAPE Economics', 'CAPE Accounting',
   'CAPE Management of Business', 'CAPE Sociology', 'CAPE Literatures in English',
   'CAPE Communication Studies', 'CAPE Caribbean Studies', 'CAPE Law', 'CAPE History',
-  'CAPE Geography', 'CAPE Information Technology Unit 1', 'CAPE Information Technology Unit 2',
+  'CAPE Geography', 'CAPE Information Technology',
   'SEA Mathematics', 'SEA English', 'SEA Creative Writing', 'SEA Science',
 ];
 
