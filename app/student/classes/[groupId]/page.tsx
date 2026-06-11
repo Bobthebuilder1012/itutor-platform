@@ -354,41 +354,30 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
 
 /* ─── Join session button ───────────────────────────── */
 
-function JoinSessionButton({ groupId, staticLink }: { groupId: string; staticLink: string | null }) {
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState('');
-
-  const handleClick = async () => {
-    if (staticLink) { window.open(staticLink, '_blank', 'noreferrer'); return; }
-    setLoading(true); setErr('');
-    try {
-      const res = await fetch(`/api/groups/${groupId}/meeting-link`);
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error ?? 'No link available yet');
-      const url = json?.join_url;
-      if (url) window.open(url, '_blank', 'noreferrer');
-      else throw new Error('Meeting link not set up yet. Check back closer to the session.');
-    } catch (e: any) {
-      setErr(e?.message ?? 'Could not get link');
-    } finally {
-      setLoading(false);
-    }
-  };
+function JoinSessionButton({ groupId: _groupId, staticLink }: { groupId: string; staticLink: string | null }) {
+  if (!staticLink) {
+    return (
+      <div className="shrink-0">
+        <button
+          disabled
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-muted text-muted-foreground font-semibold text-sm cursor-not-allowed opacity-60"
+        >
+          <Video className="size-4" /> Link not ready yet
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="shrink-0">
-      <button
-        onClick={handleClick}
-        disabled={loading}
-        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-ink text-white font-semibold text-sm hover:bg-forest disabled:opacity-60 transition"
+      <a
+        href={staticLink}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-brand text-white font-semibold text-sm hover:bg-brand/90 transition"
       >
-        <Video className="size-4" /> {loading ? 'Getting link…' : 'Join next session'}
-      </button>
-      {err && (
-        <div className="absolute mt-2 max-w-xs rounded-xl bg-background border border-border shadow-lg p-3 text-xs text-muted-foreground z-50">
-          {err}
-        </div>
-      )}
+        <Video className="size-4" /> Join next session
+      </a>
     </div>
   );
 }

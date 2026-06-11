@@ -124,7 +124,20 @@ export async function POST(_req: NextRequest, { params }: Params) {
       charged_at: null,
     } as unknown as Session;
 
-    const meetingInfo = await createMeeting(sessionForMeeting);
+    let meetingInfo: Awaited<ReturnType<typeof createMeeting>>;
+    try {
+      meetingInfo = await createMeeting(sessionForMeeting);
+    } catch (tokenErr: any) {
+      const msg: string = tokenErr?.message ?? '';
+      if (msg.toLowerCase().includes('refresh') || msg.toLowerCase().includes('token') || msg.toLowerCase().includes('auth')) {
+        return NextResponse.json(
+          { error: 'token_expired', reconnectUrl: `/api/auth/google/connect?from=/tutor/classes/${groupId}` },
+          { status: 401 }
+        );
+      }
+      throw tokenErr;
+    }
+
     const joinUrl = meetingInfo.join_url;
 
     if (!joinUrl) {

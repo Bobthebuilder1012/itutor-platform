@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft, Users, UserPlus, Copy, Check, Star,
   Bell, X, Plus, ExternalLink, Trash2, Globe, Eye,
@@ -126,8 +126,10 @@ export default function TutorLessonDetailPage() {
 function ClassHubContent() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const id = params?.id as string | undefined;
   const { profile, loading } = useProfile();
+  const reconnectedFromOAuth = searchParams?.get('success') === 'true';
 
   const [group, setGroup] = useState<GroupDetail | null>(null);
   const [members, setMembers] = useState<GroupMember[]>([]);
@@ -417,7 +419,7 @@ function ClassHubContent() {
 
         <div className="mt-6">
           {tab === 'stream'    && <StreamTab group={group} posts={posts} setPosts={setPosts} />}
-          {tab === 'sessions'  && <SessionsTab sessions={sessions} groupId={group.id} setSessions={setSessions} meetingLink={group.meetingLink ?? ''} />}
+          {tab === 'sessions'  && <SessionsTab sessions={sessions} groupId={group.id} setSessions={setSessions} meetingLink={group.meetingLink ?? ''} reconnected={reconnectedFromOAuth} />}
           {tab === 'roster'    && <RosterTab members={members} setMembers={setMembers} group={group} isOneOnOne={isOneOnOne} atCapacity={atCapacity} onMemberRemoved={() => setSubsKey((k) => k + 1)} />}
           {tab === 'payments'  && (group.billingModel === 'per-month' ? <SubscribersTab key={subsKey} group={group} onMemberRemoved={() => setSubsKey((k) => k + 1)} /> : <PaymentsTab members={members} group={group} />)}
           {tab === 'settings'  && <SettingsTab group={group} setGroup={setGroup} isOneOnOne={isOneOnOne} onDirtyChange={setSettingsDirty} enrolledCount={enrolledCount} />}
@@ -625,7 +627,7 @@ const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
   return { value, label };
 });
 
-function SessionRow({ s, groupId, meetingLink, selected, onSelect, onCancel }: { s: GroupSession; groupId: string; meetingLink: string; selected: boolean; onSelect: () => void; onCancel: () => void }) {
+function SessionRow({ s, groupId, meetingLink, selected, onSelect, onCancel, reconnected }: { s: GroupSession; groupId: string; meetingLink: string; selected: boolean; onSelect: () => void; onCancel: () => void; reconnected?: boolean }) {
   const d = new Date(s.date);
   const valid = !isNaN(d.getTime());
   const future = valid && d > new Date();
@@ -644,6 +646,10 @@ function SessionRow({ s, groupId, meetingLink, selected, onSelect, onCancel }: {
         headers: { 'Content-Type': 'application/json' },
       });
       const json = await res.json();
+      if (res.status === 401 && json?.error === 'token_expired') {
+        window.location.href = json.reconnectUrl;
+        return;
+      }
       if (!res.ok) throw new Error(json?.error ?? 'Could not generate link');
       const url = json?.join_url;
       if (url) window.open(url, '_blank', 'noreferrer');
@@ -693,7 +699,7 @@ function SessionRow({ s, groupId, meetingLink, selected, onSelect, onCancel }: {
             onClick={handleJoin}
             disabled={joiningLink}
             className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90 disabled:opacity-60">
-            <Video className="size-3.5" /> {joiningLink ? 'Getting link…' : 'Join'}
+            <Video className="size-3.5" /> {joiningLink ? 'Getting link…' : reconnected ? 'Generate' : 'Join'}
           </button>
           <button
             onClick={() => setConfirmCancel(true)}
@@ -736,7 +742,7 @@ function SessionRow({ s, groupId, meetingLink, selected, onSelect, onCancel }: {
   );
 }
 
-function SessionsTab({ sessions, groupId, setSessions, meetingLink }: { sessions: GroupSession[]; groupId: string; setSessions: React.Dispatch<React.SetStateAction<GroupSession[]>>; meetingLink: string }) {
+function SessionsTab({ sessions, groupId, setSessions, meetingLink, reconnected }: { sessions: GroupSession[]; groupId: string; setSessions: React.Dispatch<React.SetStateAction<GroupSession[]>>; meetingLink: string; reconnected?: boolean }) {
   const upcoming = sessions.filter((s) => s.status === 'upcoming');
   const [addOpen, setAddOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1033,6 +1039,7 @@ function SessionsTab({ sessions, groupId, setSessions, meetingLink }: { sessions
             selected={selectedIds.has(s.id)}
             onSelect={() => toggleSelect(s.id)}
             onCancel={() => { setSessions((prev) => prev.filter((x) => x.id !== s.id)); setSelectedIds((p) => { const n = new Set(p); n.delete(s.id); return n; }); }}
+            reconnected={reconnected}
           />
         ))}
       </div>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { Session } from '@/lib/types/sessions';
 
 type SessionJoinButtonProps = {
@@ -14,6 +14,7 @@ export default function SessionJoinButton({ session, userRole, onRetrySuccess }:
   const [retrying, setRetrying] = useState(false);
   const [needsReconnect, setNeedsReconnect] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
   async function handleRetryMeetingLink() {
     setRetrying(true);
     setNeedsReconnect(false);
@@ -51,7 +52,8 @@ export default function SessionJoinButton({ session, userRole, onRetrySuccess }:
   }
 
   function handleReconnect() {
-    router.push('/tutor/video-setup');
+    const from = pathname ?? '/tutor/video-setup';
+    window.location.href = `/api/auth/google/connect?from=${encodeURIComponent(from)}`;
   }
 
   const terminalStatuses = new Set(['COMPLETED_ASSUMED', 'NO_SHOW_STUDENT', 'EARLY_END_SHORT', 'CANCELLED']);
@@ -80,7 +82,11 @@ export default function SessionJoinButton({ session, userRole, onRetrySuccess }:
       <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-6">
         <div className="flex items-center justify-between">
           <p className="text-gray-800 font-medium">
-            {needsReconnect ? 'Video provider needs reconnection' : 'Meeting link is being generated...'}
+            {userRole === 'student'
+              ? 'Waiting for tutor to generate link'
+              : needsReconnect
+              ? 'Google Meet needs to be reconnected'
+              : 'No meeting link yet'}
           </p>
           {userRole === 'tutor' && (
             <div className="flex gap-2">
@@ -89,7 +95,7 @@ export default function SessionJoinButton({ session, userRole, onRetrySuccess }:
                   onClick={handleReconnect}
                   className="px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition-colors"
                 >
-                  Reconnect Video Provider
+                  Reconnect Google Meet
                 </button>
               ) : (
                 <button
@@ -97,7 +103,7 @@ export default function SessionJoinButton({ session, userRole, onRetrySuccess }:
                   disabled={retrying}
                   className="px-6 py-2.5 bg-yellow-600 hover:bg-yellow-700 disabled:bg-yellow-400 text-white font-semibold rounded-lg transition-colors"
                 >
-                  {retrying ? 'Retrying...' : 'Retry Now'}
+                  {retrying ? 'Generating…' : 'Generate link'}
                 </button>
               )}
             </div>
