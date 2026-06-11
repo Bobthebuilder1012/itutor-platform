@@ -118,6 +118,16 @@ export async function DELETE() {
       await supabaseAdmin.from('messages').delete().eq('receiver_id', user.id);
       await supabaseAdmin.from('parent_child_links').delete().eq('parent_id', user.id);
       await supabaseAdmin.from('parent_child_links').delete().eq('child_id', user.id);
+      // ── Tutor-specific data ──────────────────────────────────────────────────
+      await supabaseAdmin.from('tutor_earnings').delete().eq('tutor_id', user.id);
+      await supabaseAdmin.from('tutor_availability_rules').delete().eq('tutor_id', user.id);
+      await supabaseAdmin.from('tutor_video_provider_connections').delete().eq('tutor_id', user.id);
+      await supabaseAdmin.from('tutor_payout_accounts').delete().eq('tutor_id', user.id);
+      await supabaseAdmin.from('tutor_verification').delete().eq('tutor_id', user.id);
+      await supabaseAdmin.from('group_members').delete().eq('user_id', user.id);
+      await supabaseAdmin.from('group_reviews').delete().eq('tutor_id', user.id);
+      await supabaseAdmin.from('group_reviews').delete().eq('student_id', user.id);
+      await supabaseAdmin.from('fcm_tokens').delete().eq('user_id', user.id);
     } catch (relatedError) {
       console.error('Error deleting related data:', relatedError);
       // Continue anyway - profile deletion might still work
