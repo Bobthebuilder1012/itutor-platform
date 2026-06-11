@@ -522,41 +522,70 @@ function GetListedContent() {
         )}
       </SectionShell>
 
-      {/* 4. Subjects */}
-      <SectionShell done={completion.subjects} title="Your subjects" subtitle="Search and add the subjects you teach. You can add or remove them at any time.">
-        {/* Current subjects as chips */}
+      {/* 4. Rate */}
+      <SectionShell done={completion.rate} title="Hourly rate" subtitle="Set your rate per subject (TTD). Each subject can have a different rate.">
+        {hasPayoutAccount === false && (
+          <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <svg className="mt-0.5 size-4 shrink-0 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3m0 3h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+            <span>
+              You need to <a href="/tutor/wallet" className="font-semibold underline underline-offset-2 hover:text-amber-900">set up your payout account</a> before you can set rates or receive payments.
+            </span>
+          </div>
+        )}
+
+        {/* Subject rows */}
         {subjects.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-4">
+          <div className="space-y-3 mb-4">
             {subjects.map((s) => {
               const label = s.subjects?.label || s.subjects?.name || 'Subject';
+              const isSaving = savingRateId === s.subject_id;
               return (
-                <span key={s.subject_id} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-brand/10 text-brand-deep border border-brand/20">
-                  {label}
+                <div key={s.subject_id} className="flex items-center gap-3 flex-wrap">
+                  <span className="w-36 text-sm font-medium text-ink truncate">{label}</span>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground">TTD</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={rateInputs[s.subject_id] ?? ''}
+                      onChange={(e) => setRateInputs((prev) => ({ ...prev, [s.subject_id]: e.target.value }))}
+                      onKeyDown={(e) => e.key === 'Enter' && saveSubjectRate(s.subject_id)}
+                      placeholder="150"
+                      className="w-32 rounded-lg border border-border bg-background pl-12 pr-3 py-2 text-sm focus:outline-none focus:border-brand"
+                    />
+                  </div>
+                  <span className="text-sm text-muted-foreground">/ hr</span>
                   <button
-                    type="button"
+                    onClick={() => saveSubjectRate(s.subject_id)}
+                    disabled={isSaving || !rateInputs[s.subject_id] || !hasPayoutAccount}
+                    className="px-3 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-deep disabled:opacity-50"
+                  >
+                    {isSaving ? 'Saving…' : 'Save'}
+                  </button>
+                  <button
                     onClick={() => removeSubjectById(s.subject_id)}
                     disabled={subjectChangeInFlight}
                     aria-label={`Remove ${label}`}
-                    className="hover:bg-brand/20 rounded-full p-0.5 transition disabled:opacity-40"
+                    className="ml-auto p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 transition disabled:opacity-40"
                   >
-                    <svg className="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <svg className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>
-                </span>
+                </div>
               );
             })}
           </div>
         )}
 
-        {/* Subject search */}
+        {/* Add subject search */}
         <div className="relative">
           <input
             type="text"
             value={subjectQuery}
             onChange={(e) => setSubjectQuery(e.target.value)}
             onFocus={() => { if (subjectResults.length > 0) setShowSubjectDropdown(true); }}
-            placeholder="Search subjects (e.g. CAPE Chemistry, CSEC Mathematics)…"
+            placeholder="Search to add a subject (e.g. CAPE Chemistry, CSEC Mathematics)…"
             disabled={subjectChangeInFlight}
             className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand disabled:opacity-50"
           />
@@ -587,53 +616,7 @@ function GetListedContent() {
         {showSubjectDropdown && (
           <div className="fixed inset-0 z-0" onClick={() => setShowSubjectDropdown(false)} />
         )}
-      </SectionShell>
 
-      {/* 5. Rate */}
-      <SectionShell done={completion.rate} title="Hourly rate" subtitle="Set your rate per subject (TTD). Each subject can have a different rate.">
-        {hasPayoutAccount === false && (
-          <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            <svg className="mt-0.5 size-4 shrink-0 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3m0 3h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
-            <span>
-              You need to <a href="/tutor/wallet" className="font-semibold underline underline-offset-2 hover:text-amber-900">set up your payout account</a> before you can set rates or receive payments.
-            </span>
-          </div>
-        )}
-        {subjects.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Add subjects first to set rates.</p>
-        ) : (
-          <div className="space-y-3">
-            {subjects.map((s) => {
-              const label = s.subjects?.label || s.subjects?.name || 'Subject';
-              const isSaving = savingRateId === s.subject_id;
-              return (
-                <div key={s.subject_id} className="flex items-center gap-3 flex-wrap">
-                  <span className="w-36 text-sm font-medium text-ink truncate">{label}</span>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground">TTD</span>
-                    <input
-                      type="number"
-                      min={0}
-                      value={rateInputs[s.subject_id] ?? ''}
-                      onChange={(e) => setRateInputs((prev) => ({ ...prev, [s.subject_id]: e.target.value }))}
-                      onKeyDown={(e) => e.key === 'Enter' && saveSubjectRate(s.subject_id)}
-                      placeholder="150"
-                      className="w-32 rounded-lg border border-border bg-background pl-12 pr-3 py-2 text-sm focus:outline-none focus:border-brand"
-                    />
-                  </div>
-                  <span className="text-sm text-muted-foreground">/ hr</span>
-                  <button
-                    onClick={() => saveSubjectRate(s.subject_id)}
-                    disabled={isSaving || !rateInputs[s.subject_id] || !hasPayoutAccount}
-                    className="px-3 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-deep disabled:opacity-50"
-                  >
-                    {isSaving ? 'Saving…' : 'Save'}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        )}
         {subjects.length > 1 && (
           <div className="mt-4 pt-4 border-t border-border flex items-center gap-3 flex-wrap">
             <span className="text-xs text-muted-foreground shrink-0">Apply same rate to all:</span>
