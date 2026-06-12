@@ -352,7 +352,7 @@ function LessonCard({
         {/* Stat strip */}
         <div className="mt-4 grid grid-cols-3 divide-x divide-border rounded-xl border border-border overflow-hidden text-center bg-background">
           <Stat label="Members" value={`${l.enrolled}/${l.capacity || '∞'}`} />
-          <Stat label="Sessions" value={(l.totalSessionsRun ?? 0).toString()} />
+          <Stat label="Upcoming" value={(l.totalSessionsRun ?? 0).toString()} />
           <Stat label="Next" value={upcoming ? next!.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—'} tint={upcoming ? 'brand' : undefined} />
         </div>
 
