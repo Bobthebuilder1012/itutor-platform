@@ -323,9 +323,27 @@ export async function GET(request: NextRequest) {
         }
       } catch { /* non-fatal */ }
     }
+    // Batch-count upcoming sessions per group
+    const sessionCountByGroupId = new Map<string, number>();
+    if (paginatedGroupIds.length > 0) {
+      try {
+        const now = new Date().toISOString();
+        const { data: sessionRows } = await service
+          .from('group_session_occurrences')
+          .select('group_id')
+          .in('group_id', paginatedGroupIds)
+          .gte('scheduled_start_at', now)
+          .neq('status', 'cancelled');
+        for (const row of sessionRows ?? []) {
+          sessionCountByGroupId.set(row.group_id, (sessionCountByGroupId.get(row.group_id) ?? 0) + 1);
+        }
+      } catch { /* non-fatal — session count stays 0 */ }
+    }
+
     const paginatedWithPromos = paginated.map((g: any) => ({
       ...g,
       active_promotion: promotionsByGroupId.get(g.id) ?? null,
+      session_count: sessionCountByGroupId.get(g.id) ?? 0,
     }));
 
     return NextResponse.json({
