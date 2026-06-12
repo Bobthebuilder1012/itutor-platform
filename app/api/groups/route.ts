@@ -126,7 +126,7 @@ export async function GET(request: NextRequest) {
        tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url),
        group_members(id, user_id, status)`,
       // Tier 4: bare minimum
-      `id, name, description, tutor_id, subject, pricing, pricing_model, price_per_session, price_monthly, created_at, archived_at, estimated_earnings,
+      `id, name, description, tutor_id, subject, pricing, pricing_model, price_per_session, price_monthly, max_students, created_at, archived_at, estimated_earnings,
        tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url),
        group_members(id, user_id, status)`,
     ];
