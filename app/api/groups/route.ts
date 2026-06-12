@@ -323,17 +323,20 @@ export async function GET(request: NextRequest) {
         }
       } catch { /* non-fatal */ }
     }
-    // Batch-count sessions per group (group_session_occurrences links via group_sessions, not directly)
+    // Batch-count upcoming sessions per group
     const sessionCountByGroupId = new Map<string, number>();
     if (paginatedGroupIds.length > 0) {
       try {
+        const nowIso = new Date().toISOString();
         const { data: sessionRows } = await service
           .from('group_sessions')
-          .select('group_id, group_session_occurrences(id)')
+          .select('group_id, group_session_occurrences(id, scheduled_start_at, status)')
           .in('group_id', paginatedGroupIds);
         for (const row of sessionRows ?? []) {
-          const count = (row.group_session_occurrences as any[])?.length ?? 0;
-          sessionCountByGroupId.set(row.group_id, (sessionCountByGroupId.get(row.group_id) ?? 0) + count);
+          const upcoming = ((row.group_session_occurrences as any[]) ?? []).filter(
+            (o: any) => o.status !== 'cancelled' && o.scheduled_start_at > nowIso
+          ).length;
+          sessionCountByGroupId.set(row.group_id, (sessionCountByGroupId.get(row.group_id) ?? 0) + upcoming);
         }
       } catch { /* non-fatal — session count stays 0 */ }
     }
