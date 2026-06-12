@@ -418,7 +418,7 @@ export default function FindTutorsPage() {
       // Fetch tutor names, enrollment status, and server-side member counts in parallel
       const [{ data: tutorProfiles }, { data: memberRows }, { data: subEnrollments }, countsRes] = await Promise.all([
         tutorIds.length
-          ? supabase.from('profiles').select('id, full_name, display_name').in('id', tutorIds)
+          ? supabase.from('profiles').select('id, full_name, display_name, is_dev_account').in('id', tutorIds)
           : Promise.resolve({ data: [] as any[] }),
         supabase.from('group_members').select('group_id, user_id, status').in('group_id', groupIds),
         supabase
@@ -429,6 +429,10 @@ export default function FindTutorsPage() {
           .in('status', ['ACTIVE', 'GRACE', 'SUSPENDED', 'PENDING_PAYMENT']),
         fetch(`/api/groups/member-counts?ids=${groupIds.join(',')}`).then((r) => r.json()).catch(() => ({ counts: {} })),
       ]);
+
+      // Remove groups owned by dev accounts
+      const devTutorIdSet = new Set((tutorProfiles ?? []).filter((p: any) => p.is_dev_account).map((p: any) => p.id));
+      if (devTutorIdSet.size > 0) groups = groups.filter((g: any) => !devTutorIdSet.has(g.tutor_id));
 
       const tutorMap = new Map((tutorProfiles ?? []).map((p: any) => [p.id, p]));
       // Server-side counts (service role, accurate) take priority over RLS-limited client query
