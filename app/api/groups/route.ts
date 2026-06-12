@@ -126,7 +126,7 @@ export async function GET(request: NextRequest) {
        tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url),
        group_members(id, user_id, status)`,
       // Tier 4: bare minimum
-      `id, name, description, tutor_id, subject, pricing, pricing_model, price_per_session, price_monthly, created_at, archived_at, estimated_earnings,
+      `id, name, description, tutor_id, subject, pricing, pricing_model, price_per_session, price_monthly, created_at, archived_at, estimated_earnings, max_students,
        tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url),
        group_members(id, user_id, status)`,
     ];
@@ -323,19 +323,17 @@ export async function GET(request: NextRequest) {
         }
       } catch { /* non-fatal */ }
     }
-    // Batch-count upcoming sessions per group
+    // Batch-count sessions per group (group_session_occurrences links via group_sessions, not directly)
     const sessionCountByGroupId = new Map<string, number>();
     if (paginatedGroupIds.length > 0) {
       try {
-        const now = new Date().toISOString();
         const { data: sessionRows } = await service
-          .from('group_session_occurrences')
-          .select('group_id')
-          .in('group_id', paginatedGroupIds)
-          .gte('scheduled_start_at', now)
-          .neq('status', 'cancelled');
+          .from('group_sessions')
+          .select('group_id, group_session_occurrences(id)')
+          .in('group_id', paginatedGroupIds);
         for (const row of sessionRows ?? []) {
-          sessionCountByGroupId.set(row.group_id, (sessionCountByGroupId.get(row.group_id) ?? 0) + 1);
+          const count = (row.group_session_occurrences as any[])?.length ?? 0;
+          sessionCountByGroupId.set(row.group_id, (sessionCountByGroupId.get(row.group_id) ?? 0) + count);
         }
       } catch { /* non-fatal — session count stays 0 */ }
     }
