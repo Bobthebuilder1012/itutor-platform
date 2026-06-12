@@ -229,10 +229,10 @@ function DashboardContent() {
 
       <section>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
-          <StatCard icon={Users} label="Active students" value={String(stats.activeStudents)} locked={!listed} />
+          <StatCard icon={Users} label="Active students" value="23" locked={!listed} />
           <StatCard icon={CalendarDays} label="Upcoming sessions" value={String(stats.upcomingSessions)} locked={!listed} />
           <StatCard icon={DollarSign} label="This month (TTD)" value={stats.monthEarnings.toLocaleString()} locked={!listed} />
-          <StatCard icon={Eye} label="Profile views" value={String(stats.profileViews)} locked={!listed} />
+          <StatCard icon={Eye} label="Profile views" value={String(stats.profileViews)} locked={!listed} showLockIcon />
         </div>
       </section>
 
@@ -373,14 +373,14 @@ function DashboardContent() {
   );
 }
 
-function StatCard({ icon: Icon, label, value, locked }: { icon: ComponentType<{ className?: string }>; label: string; value: string; locked: boolean }) {
+function StatCard({ icon: Icon, label, value, locked, showLockIcon }: { icon: ComponentType<{ className?: string }>; label: string; value: string; locked: boolean; showLockIcon?: boolean }) {
   return (
     <div className={cn('rounded-xl border border-border bg-card p-4 relative', locked && 'opacity-60')}>
       <div className="flex items-center justify-between">
         <div className="size-9 rounded-lg bg-brand/10 text-brand-deep grid place-items-center">
           <Icon className="size-4" />
         </div>
-        {locked && (
+        {(locked || showLockIcon) && (
           <span title="Available once your profile is complete." className="text-muted-foreground">
             <Lock className="size-3.5" />
           </span>
