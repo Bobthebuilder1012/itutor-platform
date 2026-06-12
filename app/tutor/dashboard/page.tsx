@@ -374,13 +374,21 @@ function DashboardContent() {
 }
 
 function StatCard({ icon: Icon, label, value, locked, showLockIcon }: { icon: ComponentType<{ className?: string }>; label: string; value: string; locked: boolean; showLockIcon?: boolean }) {
+  if (showLockIcon && !locked) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-4 flex flex-col items-center justify-center gap-1.5 min-h-[100px]">
+        <Lock className="size-5 text-muted-foreground" />
+        <div className="text-xs text-muted-foreground">{label}</div>
+      </div>
+    );
+  }
   return (
     <div className={cn('rounded-xl border border-border bg-card p-4 relative', locked && 'opacity-60')}>
       <div className="flex items-center justify-between">
         <div className="size-9 rounded-lg bg-brand/10 text-brand-deep grid place-items-center">
           <Icon className="size-4" />
         </div>
-        {(locked || showLockIcon) && (
+        {locked && (
           <span title="Available once your profile is complete." className="text-muted-foreground">
             <Lock className="size-3.5" />
           </span>
