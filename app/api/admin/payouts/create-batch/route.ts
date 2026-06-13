@@ -247,6 +247,20 @@ async function handlePost(request: NextRequest) {
     ].join(','));
   }
 
+  const csvBody = csvRows.join('\r\n') + '\r\n';
+
+  // Retain the CSV server-side so the batch satisfies the mark-paid
+  // download gate (mig 186) and the file can be re-downloaded later.
+  // batch_type follows the mode: subscription IDs → lesson, else 1:1.
+  await admin
+    .from('payout_batches')
+    .update({
+      csv_body: csvBody,
+      csv_generated_at: new Date().toISOString(),
+      batch_type: ledgerIds ? 'one_on_one' : 'lesson',
+    })
+    .eq('id', rpc.batch_id);
+
   return NextResponse.json({
     ok: true,
     batch: {
@@ -257,7 +271,7 @@ async function handlePost(request: NextRequest) {
       status:           rpc.status,
       csv_filename:     filename,
     },
-    csv:      csvRows.join('\r\n') + '\r\n',
+    csv:      csvBody,
     filename,
     stamped_count: stampedIds.size,
     deductions_applied_ttd: +Array.from(deductionByTutor.values()).reduce((s, amount) => s + amount, 0).toFixed(2),
