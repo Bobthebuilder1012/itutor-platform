@@ -19,7 +19,7 @@ import {
   STUDENT_LATE_CANCEL_RETENTION_PCT,
   TUTOR_SUPER_LATE_CANCEL_WINDOW_MINUTES,
 } from '@/lib/reliability';
-import { calculateCommission } from '@/lib/utils/commissionCalculator';
+import { calculateCommissionForTutor } from '@/lib/utils/commissionCalculator';
 import { CREDIT_DISCLAIMER } from '@/lib/payments/creditRefundService';
 
 export const dynamic = 'force-dynamic';
@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
         retainedTtd = +(remaining * STUDENT_LATE_CANCEL_RETENTION_PCT).toFixed(2);
         refundTtd = +(remaining - retainedTtd).toFixed(2);
       }
-      const split = retainedTtd > 0 ? calculateCommission(retainedTtd) : null;
+      const split = retainedTtd > 0 ? await calculateCommissionForTutor(admin, booking.tutor_id, retainedTtd) : null;
 
       const standardPolicy = hasCapturedPayment
         ? 'Standard cancellation — full refund applies.'

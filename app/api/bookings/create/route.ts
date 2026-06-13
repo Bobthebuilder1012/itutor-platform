@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { isPaidClassesEnabled } from '@/lib/featureFlags/paidClasses';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
-import { calculateCommission } from '@/lib/utils/commissionCalculator';
+import { calculateCommissionForTutor } from '@/lib/utils/commissionCalculator';
 
 type Body = {
   studentId?: string;
@@ -137,7 +137,7 @@ async function createParentBooking(
   const priceTtd = Number(((hourlyRate / 60) * durationMinutes).toFixed(2));
   const paidClassesEnabled = isPaidClassesEnabled();
   const commission = paidClassesEnabled
-    ? calculateCommission(priceTtd)
+    ? await calculateCommissionForTutor(admin, body.tutorId, priceTtd)
     : { platformFee: 0, payoutAmount: 0, commissionRate: 0 };
   const initialStatus = paidClassesEnabled ? 'PARENT_APPROVED' : 'PENDING';
 

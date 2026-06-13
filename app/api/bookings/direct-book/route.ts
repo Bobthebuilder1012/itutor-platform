@@ -3,7 +3,7 @@ import { LuniPayError } from 'lunipay';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { createSessionForBooking } from '@/lib/services/sessionService';
 import { isPaidClassesEnabled } from '@/lib/featureFlags/paidClasses';
-import { calculateCommission } from '@/lib/utils/commissionCalculator';
+import { calculateCommissionForTutor } from '@/lib/utils/commissionCalculator';
 import { getLunipayClient, ttdToCents } from '@/lib/payments/lunipayClient';
 import { calculateGrossAmount } from '@/lib/payments/grossUp';
 import { resolvePayer } from '@/lib/payments/resolvePayer';
@@ -165,7 +165,7 @@ export async function POST(request: NextRequest) {
 
     const priceTtd = paidClassesEnabled ? Number(((hourlyRate / 60) * durationMinutes).toFixed(2)) : 0;
     const commission = paidClassesEnabled
-      ? calculateCommission(priceTtd)
+      ? await calculateCommissionForTutor(admin, tutorId, priceTtd)
       : { platformFee: 0, payoutAmount: 0, commissionRate: 0 };
 
     // 5b. Paid path: NO booking row is created here. We create a LuniPay

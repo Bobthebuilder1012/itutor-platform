@@ -7,7 +7,7 @@
 // =====================================================
 
 import { type SupabaseClient } from '@supabase/supabase-js';
-import { calculateCommission } from '@/lib/utils/commissionCalculator';
+import { calculateCommissionForTutor } from '@/lib/utils/commissionCalculator';
 import type { SubscriptionPaymentType } from '@/lib/types/groups';
 
 export interface CreatePendingPaymentParams {
@@ -41,7 +41,17 @@ export async function createPendingSubscriptionPayment(
   admin: SupabaseClient,
   params: CreatePendingPaymentParams
 ): Promise<PendingPaymentRow> {
-  const { platformFee, payoutAmount } = calculateCommission(params.amountTtd);
+  // Honor the group tutor's per-tutor / global commission override.
+  const { data: grp } = await admin
+    .from('groups')
+    .select('tutor_id')
+    .eq('id', params.groupId)
+    .maybeSingle();
+  const { platformFee, payoutAmount } = await calculateCommissionForTutor(
+    admin,
+    (grp as any)?.tutor_id ?? null,
+    params.amountTtd
+  );
   const checkoutExpiresAt = new Date(Date.now() + CHECKOUT_WINDOW_MS).toISOString();
 
   const { data, error } = await admin
@@ -188,8 +198,14 @@ export async function handleSubscriptionPayment(
     periodEnd.setMonth(periodEnd.getMonth() + 1);
   }
 
-  // Recalculate commission with final amount (in case it changed)
-  const { platformFee, payoutAmount } = calculateCommission(sp.amount_ttd);
+  // Recalculate commission with final amount (in case it changed),
+  // honoring the tutor's per-tutor / global commission override.
+  const tutorIdForCommission = (enrollment.group as any)?.tutor_id ?? null;
+  const { platformFee, payoutAmount } = await calculateCommissionForTutor(
+    admin,
+    tutorIdForCommission,
+    sp.amount_ttd
+  );
 
   // Always re-check capacity for initial subscriptions at activation time.
   // Guards the TOCTOU race where two students complete checkout simultaneously

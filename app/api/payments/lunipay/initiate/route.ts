@@ -20,7 +20,7 @@ import { getLunipayClient, ttdToCents } from '@/lib/payments/lunipayClient';
 import { calculateGrossAmount } from '@/lib/payments/grossUp';
 import { isPaidClassesEnabled } from '@/lib/featureFlags/paidClasses';
 import { paidClassesForbiddenResponse } from '@/lib/featureFlags/http';
-import { calculateCommission } from '@/lib/utils/commissionCalculator';
+import { calculateCommissionForTutor } from '@/lib/utils/commissionCalculator';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -215,7 +215,7 @@ export async function POST(request: NextRequest) {
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
-    const commission = calculateCommission(priceTtd);
+    const commission = await calculateCommissionForTutor(admin, booking.tutor_id, priceTtd);
     const { grossAmount, processingFee } = calculateGrossAmount(priceTtd);
     const amountCents = ttdToCents(grossAmount);
 

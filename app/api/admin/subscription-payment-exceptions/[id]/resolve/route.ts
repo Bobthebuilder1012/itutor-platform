@@ -8,7 +8,7 @@ import { LuniPayError } from 'lunipay';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { getLunipayClient, ttdToCents } from '@/lib/payments/lunipayClient';
 import { handleSubscriptionPayment } from '@/lib/services/subscriptionPayments';
-import { calculateCommission } from '@/lib/utils/commissionCalculator';
+import { calculateCommissionForTutor } from '@/lib/utils/commissionCalculator';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -106,7 +106,16 @@ export async function POST(req: NextRequest, { params }: Params) {
       }
 
       const amountTtd = Number(sp.amount_ttd ?? 0);
-      const { platformFee, payoutAmount } = calculateCommission(amountTtd);
+      const { data: grpRow } = await admin
+        .from('groups')
+        .select('tutor_id')
+        .eq('id', exception.group_id)
+        .maybeSingle();
+      const { platformFee, payoutAmount } = await calculateCommissionForTutor(
+        admin,
+        (grpRow as any)?.tutor_id ?? null,
+        amountTtd
+      );
       const periodStart = new Date();
       const periodEnd = new Date(periodStart);
       periodEnd.setMonth(periodEnd.getMonth() + 1);

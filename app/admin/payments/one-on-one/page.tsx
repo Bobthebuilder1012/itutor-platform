@@ -225,13 +225,17 @@ function fmtDate(iso: string | null | undefined) {
   return new Date(iso).toLocaleDateString('en-TT', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+// Display-only estimate of the LuniPay processing fee. Mirrors the real
+// gross-up in lib/payments/grossUp.ts (10% + US$0.60 ≈ TT$4.08).
+const LUNIPAY_PCT = 0.10;
+const LUNIPAY_FIXED_TTD = 4.08;
 function lunipayFee(baseTtd: number): number {
-  const gross = (baseTtd + 1.00) / (1 - 0.03);
+  const gross = (baseTtd + LUNIPAY_FIXED_TTD) / (1 - LUNIPAY_PCT);
   return Math.round((gross - baseTtd) * 100) / 100;
 }
 
 function grossCharged(baseTtd: number): number {
-  return Math.round(((baseTtd + 1.00) / (1 - 0.03)) * 100) / 100;
+  return Math.round(((baseTtd + LUNIPAY_FIXED_TTD) / (1 - LUNIPAY_PCT)) * 100) / 100;
 }
 
 function fmtDateTime(iso: string | null | undefined) {
