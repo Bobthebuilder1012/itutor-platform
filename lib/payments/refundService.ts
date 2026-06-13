@@ -29,7 +29,7 @@ import { LuniPayError } from 'lunipay';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getServiceClient } from '@/lib/supabase/server';
 import { getLunipayClient, ttdToCents } from '@/lib/payments/lunipayClient';
-import { calculateCommission } from '@/lib/utils/commissionCalculator';
+import { calculateCommissionForTutor } from '@/lib/utils/commissionCalculator';
 import { recordCreditRefund, type CreditRefundScenario } from '@/lib/payments/creditRefundService';
 
 // ── TEMPORARY: LuniPay refund API is broken ──────────────────────────────────
@@ -180,12 +180,15 @@ export async function refundPayment(opts: RefundOptions): Promise<RefundResult> 
   }
 
   // ---- 2. Pre-flight: ledger past 'owed'? ----------------------------
+  let refundTutorId: string | null = null;
   if (payment.booking_id) {
     const { data: sessionRow } = await admin
       .from('sessions')
       .select('id, tutor_id, status')
       .eq('booking_id', payment.booking_id)
       .maybeSingle();
+
+    refundTutorId = (sessionRow as any)?.tutor_id ?? null;
 
     if (sessionRow?.id) {
       const { data: ledgerRow } = await admin
@@ -286,7 +289,7 @@ export async function refundPayment(opts: RefundOptions): Promise<RefundResult> 
   let retainedPayoutTtd = 0;
   let retainedPlatformFeeTtd = 0;
   if (retainedAmountTtd > 0) {
-    const { platformFee, payoutAmount } = calculateCommission(retainedAmountTtd);
+    const { platformFee, payoutAmount } = await calculateCommissionForTutor(admin, refundTutorId, retainedAmountTtd);
     retainedPlatformFeeTtd = platformFee;
     retainedPayoutTtd = payoutAmount;
   }

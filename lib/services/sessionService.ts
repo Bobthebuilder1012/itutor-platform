@@ -8,7 +8,7 @@ import { getServiceClient } from '@/lib/supabase/server';
 import { scheduleSessionReminders } from '@/lib/reminders/scheduleReminders';
 import type { Session, SessionRules } from '@/lib/types/sessions';
 import { calculateSessionRules } from '@/lib/types/sessions';
-import { calculateCommission } from '@/lib/utils/commissionCalculator';
+import { calculateCommissionForTutor } from '@/lib/utils/commissionCalculator';
 import { refundPayment } from '@/lib/payments/refundService';
 import { ensureTutorConnected, createMeeting, getMeetingState } from './videoProviders';
 
@@ -120,7 +120,7 @@ export async function createSessionForBooking(bookingId: string): Promise<Sessio
   const bookingPlatformFee = Number(booking.platform_fee_ttd ?? 0);
   const bookingPayout = Number(booking.tutor_payout_ttd ?? 0);
   const hasStoredCommission = bookingPlatformFee + bookingPayout > 0;
-  const recomputed = calculateCommission(chargeAmount);
+  const recomputed = await calculateCommissionForTutor(supabase, booking.tutor_id, chargeAmount);
   const platformFee = hasStoredCommission ? bookingPlatformFee : recomputed.platformFee;
   const payoutAmount = hasStoredCommission ? bookingPayout : recomputed.payoutAmount;
 
@@ -421,7 +421,7 @@ export async function processScheduledCharges(): Promise<void> {
           platformFee = storedPlatformFee;
           payoutAmount = storedPayout;
         } else {
-          const commission = calculateCommission(chargeAmount);
+          const commission = await calculateCommissionForTutor(supabase, session.tutor_id, chargeAmount);
           platformFee = commission.platformFee;
           payoutAmount = commission.payoutAmount;
         }
