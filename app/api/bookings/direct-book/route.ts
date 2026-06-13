@@ -241,10 +241,14 @@ export async function POST(request: NextRequest) {
               student_notes: truncatedNotes,
             },
           },
-          // Idempotency: double-clicking returns the SAME hosted URL
-          // instead of starting a second session for the same slot.
+          // Idempotency: a genuine double-click (identical slot, duration AND
+          // amount) returns the SAME hosted URL. amountCents is part of the key
+          // so any change to time, duration, price, or processing fee starts a
+          // FRESH session instead of colliding with a prior attempt — LuniPay
+          // rejects a reused key whose request parameters changed (→ 502) and
+          // would otherwise serve a stale session at the old amount.
           {
-            idempotencyKey: `book-${user.id}-${tutorId}-${requestedStartAt}`,
+            idempotencyKey: `book-${user.id}-${tutorId}-${requestedStartAt}-${requestedEndAt}-${amountCents}`,
           }
         );
 
