@@ -116,10 +116,10 @@ export async function GET() {
       .order('cancelled_at', { ascending: false })
       .limit(200),
 
-    // All recent payout batches (for context + batch_failed)
+    // All recent payout batches (for context + batch_failed + this-week)
     admin
       .from('payout_batches')
-      .select('id, generated_at, paid_at, cancelled_at, total_amount_ttd, line_count, status, csv_filename, notes, generated_by')
+      .select('id, generated_at, paid_at, cancelled_at, total_amount_ttd, line_count, status, csv_filename, csv_generated_at, batch_type, window_start, window_end, notes, generated_by')
       .order('generated_at', { ascending: false })
       .limit(100),
 
@@ -799,6 +799,29 @@ export async function GET() {
   }));
 
   // ─────────────────────────────────────────────────────────────────────────
+  // SECTION 10: this_week_batches
+  // ─────────────────────────────────────────────────────────────────────────
+  // 1:1 batches isolated by the Friday MOVE that are not yet paid:
+  //   pending_download — moved, CSV not downloaded yet (mark-paid locked)
+  //   exported         — CSV downloaded + retained, ready to mark paid
+  const this_week_batches = batches
+    .filter((b: any) =>
+      (b.batch_type ?? 'one_on_one') === 'one_on_one' &&
+      ['pending_download', 'exported'].includes(b.status)
+    )
+    .map((b: any) => ({
+      batch_id:         b.id,
+      generated_at:     b.generated_at,
+      status:           b.status,
+      total_amount_ttd: r2(Number(b.total_amount_ttd ?? 0)),
+      line_count:       b.line_count ?? 0,
+      csv_filename:     b.csv_filename ?? null,
+      csv_downloaded:   !!b.csv_generated_at,
+      window_start:     b.window_start ?? null,
+      window_end:       b.window_end ?? null,
+    }));
+
+  // ─────────────────────────────────────────────────────────────────────────
   // Response
   // ─────────────────────────────────────────────────────────────────────────
   return NextResponse.json({
@@ -813,5 +836,6 @@ export async function GET() {
     unofficial_totals,
     unofficial_deduction_ids,
     recent_batches,
+    this_week_batches,
   });
 }

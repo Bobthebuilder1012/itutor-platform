@@ -181,6 +181,13 @@ export async function POST() {
 
   const csv = rows.join('\r\n') + '\r\n';
 
+  // Retain the CSV server-side so the batch satisfies the mark-paid
+  // download gate (mig 186) and the file can be re-downloaded later.
+  await admin
+    .from('payout_batches')
+    .update({ csv_body: csv, csv_generated_at: new Date().toISOString() })
+    .eq('id', batch.id);
+
   return NextResponse.json({
     batch,
     csv,

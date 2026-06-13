@@ -36,9 +36,12 @@ export async function POST(
   if (!batch) {
     return NextResponse.json({ error: 'Batch not found' }, { status: 404 });
   }
-  if (batch.status !== 'exported') {
+  // Both a not-yet-downloaded weekly draft ('pending_download') and a
+  // downloaded-but-unpaid batch ('exported') can be scrapped; their rows
+  // return to the live "Ready for CSV" view (release_ready, unbatched).
+  if (!['exported', 'pending_download'].includes(batch.status)) {
     return NextResponse.json(
-      { error: `Batch is ${batch.status}, only exported batches can be cancelled` },
+      { error: `Batch is ${batch.status}, only pending_download or exported batches can be cancelled` },
       { status: 400 }
     );
   }
@@ -46,7 +49,7 @@ export async function POST(
   const now = new Date().toISOString();
   const { error: ledgerError } = await admin
     .from('payout_ledger')
-    .update({ batch_id: null, updated_at: now })
+    .update({ batch_id: null, isolated_at: null, updated_at: now })
     .eq('batch_id', params.batchId);
 
   if (ledgerError) {

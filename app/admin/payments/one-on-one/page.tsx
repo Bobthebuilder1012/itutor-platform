@@ -166,6 +166,38 @@ interface UnofficialRow {
   net_payout_ttd: number;
 }
 
+interface ThisWeekBatchRow {
+  batch_id: string;
+  generated_at: string;
+  status: 'pending_download' | 'exported';
+  total_amount_ttd: number;
+  line_count: number;
+  csv_filename: string | null;
+  csv_downloaded: boolean;
+  window_start: string | null;
+  window_end: string | null;
+}
+
+interface CsvHistoryBatch {
+  batch_id: string;
+  generated_at: string;
+  paid_at: string | null;
+  status: string;
+  total_amount_ttd: number;
+  line_count: number;
+  csv_filename: string | null;
+  csv_available: boolean;
+}
+
+interface CsvHistoryWeek {
+  week_start: string;
+  week_end: string;
+  label: string;
+  total_ttd: number;
+  batch_count: number;
+  batches: CsvHistoryBatch[];
+}
+
 interface PageData {
   kpis: KPIs;
   all_payments: PaymentRow[];
@@ -176,9 +208,10 @@ interface PageData {
   batch_failed: BatchFailedRow[];
   unofficial_csv: UnofficialRow[];
   unofficial_totals: { total_gross_ttd: number; total_debt_ttd: number; total_net_ttd: number };
+  this_week_batches: ThisWeekBatchRow[];
 }
 
-type TabId = 'all' | 'pending' | 'cancelled' | 'noshow' | 'ready' | 'failed' | 'unofficial' | 'csv_history';
+type TabId = 'all' | 'pending' | 'cancelled' | 'noshow' | 'ready' | 'failed' | 'unofficial' | 'csv_history' | 'this_week';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -876,8 +909,11 @@ export default function OneOnOnePaymentsPage() {
   const [noshowTarget, setNoshowTarget] = useState<NoshowRow | null>(null);
   // CSV export state
   const [exportStep1on1, setExportStep1on1] = useState<0|1|2>(0);
-  const [csvHistory1on1, setCsvHistory1on1] = useState<{ date: string; total_ttd: number; deduction_count: number; tutor_count: number }[]>([]);
+  const [csvHistory1on1, setCsvHistory1on1] = useState<CsvHistoryWeek[]>([]);
   const [historyLoading1on1, setHistoryLoading1on1] = useState(false);
+  const [expandedWeeks, setExpandedWeeks] = useState<Set<string>>(new Set());
+  // Per-batch action in flight (batch_id → 'download' | 'paid' | 'cancel')
+  const [batchBusy, setBatchBusy] = useState<Record<string, string>>({});
 
   // Track which cancellation rows have already had a strike issued this session
   const [strikesIssued, setStrikesIssued] = useState<Set<string>>(new Set());
@@ -921,8 +957,90 @@ export default function OneOnOnePaymentsPage() {
     try {
       const res = await fetch('/api/admin/payouts/csv-history?type=one_on_one');
       const d = await res.json();
-      if (res.ok) setCsvHistory1on1(d.history ?? []);
+      if (res.ok) setCsvHistory1on1(d.weeks ?? []);
     } catch { /* silent */ } finally { setHistoryLoading1on1(false); }
+  }
+
+  function toggleWeek(key: string) {
+    setExpandedWeeks((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  }
+
+  // ── Per-batch actions (This Week's Batch + CSV History) ────────────────────
+  async function downloadBatchCsv(batchId: string, filename?: string | null) {
+    setBatchBusy((p) => ({ ...p, [batchId]: 'download' }));
+    try {
+      const res = await fetch(`/api/admin/payouts/${batchId}/download`, { method: 'POST' });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? 'Download failed');
+      if (d.csv) {
+        const blob = new Blob([d.csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = d.filename ?? filename ?? `itutor-payouts-${batchId.slice(0, 8)}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+      await loadData();
+      await loadCsvHistory1on1();
+    } catch (e: any) {
+      alert('Download failed: ' + e.message);
+    } finally {
+      setBatchBusy((p) => { const n = { ...p }; delete n[batchId]; return n; });
+    }
+  }
+
+  async function markBatchPaid(batchId: string) {
+    if (!confirm('Mark this batch as paid? This releases the funds and cannot be undone.')) return;
+    setBatchBusy((p) => ({ ...p, [batchId]: 'paid' }));
+    try {
+      const res = await fetch(`/api/admin/payouts/${batchId}/mark-paid`, { method: 'POST' });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? 'Mark paid failed');
+      await loadData();
+      await loadCsvHistory1on1();
+    } catch (e: any) {
+      alert('Mark paid failed: ' + e.message);
+    } finally {
+      setBatchBusy((p) => { const n = { ...p }; delete n[batchId]; return n; });
+    }
+  }
+
+  const [runningMove, setRunningMove] = useState(false);
+  async function runWeeklyMove() {
+    if (!confirm('Re-run the Friday move now? Releases completed sessions and isolates them into a new This Week\'s Batch. Safe to run if the 4am job failed.')) return;
+    setRunningMove(true);
+    try {
+      const res = await fetch('/api/admin/payouts/run-weekly-move', { method: 'POST' });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? 'Move failed');
+      const moved = d.move?.moved ?? 0;
+      alert(moved > 0 ? `Moved ${moved} payout row(s) into this week's batch.` : 'Nothing to move — no new release-ready payouts.');
+      await loadData();
+    } catch (e: any) {
+      alert('Run failed: ' + e.message);
+    } finally {
+      setRunningMove(false);
+    }
+  }
+
+  async function cancelBatch(batchId: string) {
+    if (!confirm('Cancel this batch? Its payouts return to the live Ready-for-CSV view.')) return;
+    setBatchBusy((p) => ({ ...p, [batchId]: 'cancel' }));
+    try {
+      const res = await fetch(`/api/admin/payouts/${batchId}/cancel`, { method: 'POST' });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? 'Cancel failed');
+      await loadData();
+    } catch (e: any) {
+      alert('Cancel failed: ' + e.message);
+    } finally {
+      setBatchBusy((p) => { const n = { ...p }; delete n[batchId]; return n; });
+    }
   }
 
   async function markAsExported1on1() {
@@ -1066,6 +1184,9 @@ export default function OneOnOnePaymentsPage() {
           </Tab>
           <Tab active={tab === 'ready'} onClick={() => setTab('ready')}>
             Ready for CSV {data ? `(${data.ready_for_csv.length})` : ''}
+          </Tab>
+          <Tab active={tab === 'this_week'} onClick={() => setTab('this_week')}>
+            This Week&apos;s Batch {data ? `(${data.this_week_batches.length})` : ''}
           </Tab>
           <Tab active={tab === 'csv_history'} onClick={() => { setTab('csv_history'); loadCsvHistory1on1(); }}>
             CSV History
@@ -1413,7 +1534,6 @@ export default function OneOnOnePaymentsPage() {
                         <Download className="size-4" /> Generate Batch CSV ({selected.size})
                       </button>
                     )}
-                    <ClearReadyCsvButton allReady={data?.ready_for_csv ?? []} onSuccess={loadData} />
                   </div>
                 )}
                 {!data?.ready_for_csv.length ? <EmptyState message="No payouts ready for CSV export." /> : (
@@ -1635,38 +1755,186 @@ export default function OneOnOnePaymentsPage() {
               </div>
             )}
 
-            {/* CSV History */}
-            {tab === 'csv_history' && (
+            {/* ── THIS WEEK'S BATCH ── */}
+            {tab === 'this_week' && (
               <div className="space-y-4">
-                <p className="text-sm text-white/50">Previously exported unofficial CSVs — 1:1 session debts archived here after "Move to History".</p>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3 rounded-xl border border-sky-500/20 bg-sky-500/5 px-4 py-3 text-sm text-sky-200">
+                    <Clock className="size-4 mt-0.5 shrink-0" />
+                    <span>
+                      Payouts moved here by the Friday 4am run. <strong className="text-sky-100">Download the CSV</strong> (it is
+                      retained on the server) to unlock <strong className="text-sky-100">Mark paid</strong>. Nothing leaves the
+                      payable view by time alone — each step is confirmed by you.
+                    </span>
+                  </div>
+                  <button
+                    onClick={runWeeklyMove}
+                    disabled={runningMove}
+                    title="Re-run the Friday flip + move (use if the 4am job failed)"
+                    className="shrink-0 px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-sm font-bold flex items-center gap-2 disabled:opacity-50 transition"
+                  >
+                    {runningMove ? <Loader2 className="size-4 animate-spin" /> : <RefreshCcw className="size-4" />}
+                    Run weekly move now
+                  </button>
+                </div>
+                {!data?.this_week_batches.length ? (
+                  <EmptyState message="No batches awaiting payout. New payments accumulate under Ready for CSV until the Friday move." />
+                ) : (
+                  <DataTable>
+                    <thead>
+                      <tr className="text-[11px] font-semibold text-white/30 uppercase tracking-wider">
+                        <th className="px-4 py-3 text-left">Batch</th>
+                        <th className="px-4 py-3 text-left">Week</th>
+                        <th className="px-4 py-3 text-right">Amount</th>
+                        <th className="px-4 py-3 text-right">Tutors</th>
+                        <th className="px-4 py-3 text-center">Status</th>
+                        <th className="px-4 py-3 text-center w-64">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {data.this_week_batches.map((b) => {
+                        const busy = batchBusy[b.batch_id];
+                        return (
+                          <tr key={b.batch_id} className="hover:bg-white/3">
+                            <td className="px-4 py-3 font-mono text-xs text-white/60">{b.batch_id.slice(0, 8)}…</td>
+                            <td className="px-4 py-3 text-xs text-white/50">
+                              {b.window_start ? `${fmtDate(b.window_start)} – ${fmtDate(b.window_end)}` : fmtDate(b.generated_at)}
+                            </td>
+                            <td className="px-4 py-3 text-right text-sm text-emerald-300 tabular-nums font-semibold">{fmtTTD(b.total_amount_ttd)}</td>
+                            <td className="px-4 py-3 text-right text-sm text-white/60 tabular-nums">{b.line_count}</td>
+                            <td className="px-4 py-3 text-center">
+                              {b.csv_downloaded ? (
+                                <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-300">Downloaded</span>
+                              ) : (
+                                <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/15 text-amber-300">Awaiting download</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center justify-center gap-1.5">
+                                <button
+                                  onClick={() => downloadBatchCsv(b.batch_id, b.csv_filename)}
+                                  disabled={!!busy}
+                                  className="px-2.5 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 transition"
+                                >
+                                  {busy === 'download' ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+                                  {b.csv_downloaded ? 'Re-download' : 'Download'}
+                                </button>
+                                <button
+                                  onClick={() => markBatchPaid(b.batch_id)}
+                                  disabled={!!busy || !b.csv_downloaded}
+                                  title={b.csv_downloaded ? 'Mark paid' : 'Download the CSV first'}
+                                  className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                                >
+                                  {busy === 'paid' ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle className="size-3.5" />}
+                                  Mark paid
+                                </button>
+                                <button
+                                  onClick={() => cancelBatch(b.batch_id)}
+                                  disabled={!!busy}
+                                  title="Return to Ready for CSV"
+                                  className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-rose-500/20 text-rose-300 text-xs font-bold disabled:opacity-50 transition"
+                                >
+                                  {busy === 'cancel' ? <Loader2 className="size-3.5 animate-spin" /> : <Ban className="size-3.5" />}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </DataTable>
+                )}
+              </div>
+            )}
+
+            {/* ── CSV HISTORY (weekly folders) ── */}
+            {tab === 'csv_history' && (
+              <div className="space-y-3">
+                <p className="text-sm text-white/50">Exported &amp; paid payout batches, grouped by week. Expand a week to download its CSVs or mark a downloaded batch paid.</p>
                 {historyLoading1on1 ? (
                   <div className="flex items-center justify-center py-16 gap-2 text-white/30">
                     <Loader2 className="size-5 animate-spin" /><span className="text-sm">Loading…</span>
                   </div>
                 ) : csvHistory1on1.length === 0 ? (
-                  <EmptyState message="No CSV exports yet. Download the Unofficial CSV and move it to history to see entries here." />
+                  <EmptyState message="No exported batches yet. Batches appear here once their CSV has been generated." />
                 ) : (
-                  <div className="rounded-xl overflow-hidden border border-white/8">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="text-[11px] font-semibold text-white/30 uppercase tracking-wider border-b border-white/8" style={{ background: '#161618' }}>
-                          <th className="px-4 py-3 text-left">Export date</th>
-                          <th className="px-4 py-3 text-right">Total debt collected</th>
-                          <th className="px-4 py-3 text-right">Deductions</th>
-                          <th className="px-4 py-3 text-right">Tutors</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-white/5">
-                        {csvHistory1on1.map((h) => (
-                          <tr key={h.date} className="hover:bg-white/[0.02]" style={{ background: '#0f0f10' }}>
-                            <td className="px-4 py-3 text-white/80 font-medium">{new Date(h.date).toLocaleDateString('en-TT', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
-                            <td className="px-4 py-3 text-right tabular-nums text-rose-400 font-bold">TT$ {h.total_ttd.toFixed(2)}</td>
-                            <td className="px-4 py-3 text-right tabular-nums text-white/60">{h.deduction_count}</td>
-                            <td className="px-4 py-3 text-right tabular-nums text-white/60">{h.tutor_count}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <div className="space-y-2">
+                    {csvHistory1on1.map((wk) => {
+                      const open = expandedWeeks.has(wk.week_start);
+                      return (
+                        <div key={wk.week_start} className="rounded-xl border border-white/8 overflow-hidden" style={{ background: '#161618' }}>
+                          <button
+                            onClick={() => toggleWeek(wk.week_start)}
+                            className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/3 transition text-left"
+                          >
+                            <div className="flex items-center gap-3">
+                              <span className="text-white/40 text-xs">{open ? '▼' : '▶'}</span>
+                              <span className="text-sm font-semibold text-white">{wk.label}</span>
+                              <span className="text-xs text-white/40">{wk.batch_count} batch{wk.batch_count !== 1 ? 'es' : ''}</span>
+                            </div>
+                            <span className="text-sm font-bold text-emerald-300 tabular-nums">{fmtTTD(wk.total_ttd)}</span>
+                          </button>
+                          {open && (
+                            <table className="w-full text-sm border-t border-white/8">
+                              <thead>
+                                <tr className="text-[11px] font-semibold text-white/30 uppercase tracking-wider">
+                                  <th className="px-4 py-2 text-left">Batch</th>
+                                  <th className="px-4 py-2 text-left">Generated</th>
+                                  <th className="px-4 py-2 text-right">Amount</th>
+                                  <th className="px-4 py-2 text-right">Tutors</th>
+                                  <th className="px-4 py-2 text-center">Status</th>
+                                  <th className="px-4 py-2 text-center w-56">Actions</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-white/5">
+                                {wk.batches.map((b) => {
+                                  const busy = batchBusy[b.batch_id];
+                                  return (
+                                    <tr key={b.batch_id} className="hover:bg-white/[0.02]" style={{ background: '#0f0f10' }}>
+                                      <td className="px-4 py-2.5 font-mono text-xs text-white/60">{b.batch_id.slice(0, 8)}…</td>
+                                      <td className="px-4 py-2.5 text-xs text-white/50">{fmtDate(b.generated_at)}</td>
+                                      <td className="px-4 py-2.5 text-right text-sm text-white tabular-nums">{fmtTTD(b.total_amount_ttd)}</td>
+                                      <td className="px-4 py-2.5 text-right text-sm text-white/60 tabular-nums">{b.line_count}</td>
+                                      <td className="px-4 py-2.5 text-center">
+                                        <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${b.status === 'paid' ? 'bg-purple-500/15 text-purple-300' : 'bg-emerald-500/15 text-emerald-300'}`}>
+                                          {b.status === 'paid' ? `Paid${b.paid_at ? ' · ' + fmtDate(b.paid_at) : ''}` : 'Exported'}
+                                        </span>
+                                      </td>
+                                      <td className="px-4 py-2.5">
+                                        <div className="flex items-center justify-center gap-1.5">
+                                          {/* Always offer download: the route rebuilds + retains the CSV
+                                              from the batch's ledger rows even for legacy batches that
+                                              never had one. csv_available just hints it's already retained. */}
+                                          <button
+                                            onClick={() => downloadBatchCsv(b.batch_id, b.csv_filename)}
+                                            disabled={!!busy}
+                                            title={b.csv_available ? 'Download retained CSV' : 'Generate & download CSV'}
+                                            className="px-2.5 py-1.5 rounded-lg bg-sky-600/80 hover:bg-sky-500 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 transition"
+                                          >
+                                            {busy === 'download' ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+                                            CSV
+                                          </button>
+                                          {b.status === 'exported' && (
+                                            <button
+                                              onClick={() => markBatchPaid(b.batch_id)}
+                                              disabled={!!busy}
+                                              className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 transition"
+                                            >
+                                              {busy === 'paid' ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle className="size-3.5" />}
+                                              Mark paid
+                                            </button>
+                                          )}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -1756,58 +2024,3 @@ function TransferToReadyButton({ onSuccess }: { onSuccess: () => void }) {
   );
 }
 
-function ClearReadyCsvButton({ allReady, onSuccess }: { allReady: ReadyForCsvRow[]; onSuccess: () => void }) {
-  const [step, setStep] = useState<0 | 1>(0);
-  const [loading, setLoading] = useState(false);
-
-  if (!allReady.length) return null;
-
-  async function confirm() {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/admin/payouts/create-batch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ payout_ledger_ids: allReady.map((r) => r.ledger_id) }),
-      });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error ?? 'Clear failed');
-      onSuccess();
-      setStep(0);
-    } catch (e: any) {
-      alert('Failed to clear: ' + e.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  if (step === 0) {
-    return (
-      <button
-        onClick={() => setStep(1)}
-        className="px-4 py-2 rounded-xl border border-rose-500/30 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 text-sm font-semibold transition"
-      >
-        Clear CSV
-      </button>
-    );
-  }
-
-  return (
-    <div className="flex items-center gap-3 px-4 py-2 rounded-xl border border-rose-500/40 bg-rose-500/10 text-rose-200 text-sm">
-      <span className="font-semibold">Mark all {allReady.length} payout{allReady.length !== 1 ? 's' : ''} as exported?</span>
-      <button
-        onClick={confirm}
-        disabled={loading}
-        className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition disabled:opacity-50"
-      >
-        {loading ? 'Clearing…' : 'Confirm Clear'}
-      </button>
-      <button
-        onClick={() => setStep(0)}
-        className="px-3 py-1.5 rounded-lg border border-white/15 text-white/50 hover:text-white text-xs transition"
-      >
-        Cancel
-      </button>
-    </div>
-  );
-}
