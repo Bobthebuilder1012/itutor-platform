@@ -83,16 +83,19 @@ export async function GET() {
       .limit(200),
   ]);
 
-  // ── Filter active: enrollment must be ACTIVE, payout not reversed/batched ──
+  // ── Filter active: enrollment ACTIVE + payout still BATCHABLE ──────────────
+  // Only owed / release_ready, unbatched rows can be transferred to a CSV
+  // batch. Released (already paid out), reversed, admin_hold, or already-batched
+  // rows are excluded — otherwise they show up as selectable and create-batch
+  // rejects them with "No unbatched payout ledger rows found".
   const allActive = (activeRes.data ?? []) as any[];
   const active = allActive.filter((sp) => {
     const enrollment = Array.isArray(sp.enrollment) ? sp.enrollment[0] : sp.enrollment;
     if (enrollment?.status !== 'ACTIVE') return false;
     const ledger = Array.isArray(sp.payout_ledger) ? sp.payout_ledger[0] : sp.payout_ledger;
-    if (!ledger) return true;
-    if (ledger.status === 'reversed') return false;
+    if (!ledger) return true; // ledger not created yet → still payable
     if (ledger.batch_id !== null && ledger.batch_id !== undefined) return false;
-    return true;
+    return ['owed', 'release_ready'].includes(ledger.status);
   });
 
   // ── Filter pending refunds: must have a PAID subscription_payment ──────────
