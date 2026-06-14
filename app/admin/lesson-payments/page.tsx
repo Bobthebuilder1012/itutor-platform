@@ -63,6 +63,26 @@ interface Stats {
   pending_refund_ttd: number;
 }
 
+interface CsvHistoryBatch {
+  batch_id: string;
+  generated_at: string;
+  paid_at: string | null;
+  status: string;
+  total_amount_ttd: number;
+  line_count: number;
+  csv_filename: string | null;
+  csv_available: boolean;
+}
+
+interface CsvHistoryWeek {
+  week_start: string;
+  week_end: string;
+  label: string;
+  total_ttd: number;
+  batch_count: number;
+  batches: CsvHistoryBatch[];
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmtTTD(n: number | null | undefined) {
@@ -374,7 +394,7 @@ export default function LessonPaymentsPage() {
   const router = useRouter();
   const [authLoading, setAuthLoading] = useState(true);
 
-  const [tab, setTab]         = useState<'active' | 'pending' | 'cancelled'>('active');
+  const [tab, setTab]         = useState<'active' | 'pending' | 'cancelled' | 'history'>('active');
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
 
@@ -386,6 +406,12 @@ export default function LessonPaymentsPage() {
   const [selected, setSelected]   = useState<Set<string>>(new Set());
   const [batchOpen, setBatchOpen] = useState(false);
   const [refundTarget, setRefundTarget] = useState<PendingRefund | null>(null);
+
+  // CSV History (group/lesson batches, sourced from payout_batches)
+  const [csvHistory, setCsvHistory]       = useState<CsvHistoryWeek[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [expandedWeeks, setExpandedWeeks]   = useState<Set<string>>(new Set());
+  const [batchBusy, setBatchBusy]           = useState<Record<string, string>>({});
 
   // ── Auth guard ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -423,6 +449,62 @@ export default function LessonPaymentsPage() {
   }, []);
 
   useEffect(() => { if (!authLoading) loadData(); }, [authLoading, loadData]);
+
+  async function loadCsvHistory() {
+    setHistoryLoading(true);
+    try {
+      const res = await fetch('/api/admin/payouts/csv-history?type=lesson');
+      const d = await res.json();
+      if (res.ok) setCsvHistory(d.weeks ?? []);
+    } catch { /* silent */ } finally { setHistoryLoading(false); }
+  }
+
+  function toggleWeek(key: string) {
+    setExpandedWeeks((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  }
+
+  async function downloadBatchCsv(batchId: string, filename?: string | null) {
+    setBatchBusy((p) => ({ ...p, [batchId]: 'download' }));
+    try {
+      const res = await fetch(`/api/admin/payouts/${batchId}/download`, { method: 'POST' });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? 'Download failed');
+      if (d.csv) {
+        const blob = new Blob([d.csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = d.filename ?? filename ?? `itutor-lesson-payouts-${batchId.slice(0, 8)}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+      await loadCsvHistory();
+    } catch (e: any) {
+      alert('Download failed: ' + e.message);
+    } finally {
+      setBatchBusy((p) => { const n = { ...p }; delete n[batchId]; return n; });
+    }
+  }
+
+  async function markBatchPaid(batchId: string) {
+    if (!confirm('Mark this batch as paid? This releases the funds and cannot be undone.')) return;
+    setBatchBusy((p) => ({ ...p, [batchId]: 'paid' }));
+    try {
+      const res = await fetch(`/api/admin/payouts/${batchId}/mark-paid`, { method: 'POST' });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? 'Mark paid failed');
+      await loadCsvHistory();
+      await loadData();
+    } catch (e: any) {
+      alert('Mark paid failed: ' + e.message);
+    } finally {
+      setBatchBusy((p) => { const n = { ...p }; delete n[batchId]; return n; });
+    }
+  }
 
   function toggleOne(id: string) {
     setSelected((prev) => {
@@ -493,6 +575,9 @@ export default function LessonPaymentsPage() {
           </Tab>
           <Tab active={tab === 'cancelled'} onClick={() => setTab('cancelled')}>
             Cancelled — Left {stats ? `(${stats.cancelled_left_count})` : ''}
+          </Tab>
+          <Tab active={tab === 'history'} onClick={() => { setTab('history'); loadCsvHistory(); }}>
+            CSV History
           </Tab>
         </div>
 
@@ -654,6 +739,96 @@ export default function LessonPaymentsPage() {
                 </Table>
               )
             )}
+
+            {/* CSV History — weekly folders (group/lesson batches) */}
+            {tab === 'history' && (
+              <div className="space-y-3">
+                <p className="text-sm text-white/50">Exported &amp; paid group payout batches, grouped by week. Expand a week to download its CSVs or mark a downloaded batch paid.</p>
+                {historyLoading ? (
+                  <div className="flex items-center justify-center py-16 gap-2 text-white/30">
+                    <Loader2 className="size-5 animate-spin" /><span className="text-sm">Loading…</span>
+                  </div>
+                ) : csvHistory.length === 0 ? (
+                  <EmptyState message="No exported batches yet. Transfer payouts to a CSV batch to see them here." />
+                ) : (
+                  <div className="space-y-2">
+                    {csvHistory.map((wk) => {
+                      const open = expandedWeeks.has(wk.week_start);
+                      return (
+                        <div key={wk.week_start} className="rounded-xl border border-white/8 overflow-hidden" style={{ background: '#161618' }}>
+                          <button
+                            onClick={() => toggleWeek(wk.week_start)}
+                            className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/3 transition text-left"
+                          >
+                            <div className="flex items-center gap-3">
+                              <span className="text-white/40 text-xs">{open ? '▼' : '▶'}</span>
+                              <span className="text-sm font-semibold text-white">{wk.label}</span>
+                              <span className="text-xs text-white/40">{wk.batch_count} batch{wk.batch_count !== 1 ? 'es' : ''}</span>
+                            </div>
+                            <span className="text-sm font-bold text-emerald-300 tabular-nums">{fmtTTD(wk.total_ttd)}</span>
+                          </button>
+                          {open && (
+                            <table className="w-full text-sm border-t border-white/8">
+                              <thead>
+                                <tr className="text-[11px] font-semibold text-white/30 uppercase tracking-wider">
+                                  <th className="px-4 py-2 text-left">Batch</th>
+                                  <th className="px-4 py-2 text-left">Generated</th>
+                                  <th className="px-4 py-2 text-right">Amount</th>
+                                  <th className="px-4 py-2 text-right">Tutors</th>
+                                  <th className="px-4 py-2 text-center">Status</th>
+                                  <th className="px-4 py-2 text-center w-56">Actions</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-white/5">
+                                {wk.batches.map((b) => {
+                                  const busy = batchBusy[b.batch_id];
+                                  return (
+                                    <tr key={b.batch_id} className="hover:bg-white/[0.02]" style={{ background: '#0f0f10' }}>
+                                      <td className="px-4 py-2.5 font-mono text-xs text-white/60">{b.batch_id.slice(0, 8)}…</td>
+                                      <td className="px-4 py-2.5 text-xs text-white/50">{fmtDate(b.generated_at)}</td>
+                                      <td className="px-4 py-2.5 text-right text-sm text-white tabular-nums">{fmtTTD(b.total_amount_ttd)}</td>
+                                      <td className="px-4 py-2.5 text-right text-sm text-white/60 tabular-nums">{b.line_count}</td>
+                                      <td className="px-4 py-2.5 text-center">
+                                        <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${b.status === 'paid' ? 'bg-purple-500/15 text-purple-300' : 'bg-emerald-500/15 text-emerald-300'}`}>
+                                          {b.status === 'paid' ? `Paid${b.paid_at ? ' · ' + fmtDate(b.paid_at) : ''}` : 'Exported'}
+                                        </span>
+                                      </td>
+                                      <td className="px-4 py-2.5">
+                                        <div className="flex items-center justify-center gap-1.5">
+                                          <button
+                                            onClick={() => downloadBatchCsv(b.batch_id, b.csv_filename)}
+                                            disabled={!!busy}
+                                            title={b.csv_available ? 'Download retained CSV' : 'Generate & download CSV'}
+                                            className="px-2.5 py-1.5 rounded-lg bg-sky-600/80 hover:bg-sky-500 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 transition"
+                                          >
+                                            {busy === 'download' ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+                                            CSV
+                                          </button>
+                                          {b.status === 'exported' && (
+                                            <button
+                                              onClick={() => markBatchPaid(b.batch_id)}
+                                              disabled={!!busy}
+                                              className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 transition"
+                                            >
+                                              {busy === 'paid' ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle className="size-3.5" />}
+                                              Mark paid
+                                            </button>
+                                          )}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </>
         )}
       </div>
@@ -661,7 +836,7 @@ export default function LessonPaymentsPage() {
       {batchOpen && (
         <BatchModal selected={selected} allActive={active}
           onClose={() => setBatchOpen(false)}
-          onSuccess={() => { setBatchOpen(false); loadData(); }} />
+          onSuccess={() => { setBatchOpen(false); loadData(); loadCsvHistory(); }} />
       )}
 
       {refundTarget && (
