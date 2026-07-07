@@ -10,12 +10,9 @@ import AiMaintenanceNotice from '@/components/AiMaintenanceNotice';
 import { isAiFeatureInMaintenance } from '@/lib/featureFlags/aiFeature';
 
 export default function TutorToolsPage() {
-  if (isAiFeatureInMaintenance()) {
-    return <AiMaintenanceNotice />;
-  }
   return (
     <TutorShell>
-      <ToolsContent />
+      {isAiFeatureInMaintenance() ? <AiMaintenanceNotice embedded /> : <ToolsContent />}
     </TutorShell>
   );
 }

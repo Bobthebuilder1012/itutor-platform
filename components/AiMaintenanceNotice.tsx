@@ -1,8 +1,15 @@
 'use client';
 
-export default function AiMaintenanceNotice() {
+/**
+ * @param embedded - render inside an app shell (transparent background, centers
+ *   within the content area) rather than as a full-viewport standalone screen.
+ */
+export default function AiMaintenanceNotice({ embedded = false }: { embedded?: boolean }) {
+  const outer = embedded
+    ? {minHeight:'calc(100vh - 12rem)',display:'flex',flexDirection:'column' as const,alignItems:'center',justifyContent:'center',padding:'1rem',textAlign:'center' as const}
+    : {minHeight:'100vh',display:'flex',flexDirection:'column' as const,alignItems:'center',justifyContent:'center',padding:'1rem',textAlign:'center' as const,background:'#f9fafb'};
   return (
-    <div style={{minHeight:'100vh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'1rem',textAlign:'center',background:'#f9fafb'}}>
+    <div style={outer}>
       <div style={{maxWidth:'28rem',gap:'1.25rem',display:'flex',flexDirection:'column',alignItems:'center'}}>
         <div style={{width:'5rem',height:'5rem',borderRadius:'1.5rem',background:'#f3f4f6',display:'grid',placeItems:'center'}}>
           <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">

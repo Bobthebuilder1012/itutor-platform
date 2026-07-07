@@ -104,7 +104,11 @@ const AI_USE_LIMIT = 2;
 
 export default function ToolsAiPage() {
   if (isAiFeatureInMaintenance()) {
-    return <AiMaintenanceNotice />;
+    return (
+      <TutorShell>
+        <AiMaintenanceNotice embedded />
+      </TutorShell>
+    );
   }
   return <ToolsAiPageContent />;
 }
