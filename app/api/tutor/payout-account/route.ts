@@ -41,7 +41,7 @@ export async function GET() {
   const admin = getServiceClient();
   const { data, error } = await admin
     .from('tutor_payout_accounts')
-    .select('payout_name, payout_account_identifier, bank_name, branch, account_type, verified_at, updated_at')
+    .select('payout_name, payout_account_identifier, bank_name, account_type, verified_at, updated_at')
     .eq('tutor_id', auth.user.id)
     .maybeSingle();
 
@@ -62,12 +62,11 @@ export async function POST(request: NextRequest) {
   const payoutName = (body.payout_name ?? '').toString().trim();
   const accountNumber = (body.payout_account_identifier ?? '').toString().trim();
   const bankName = (body.bank_name ?? '').toString().trim();
-  const branch = (body.branch ?? '').toString().trim();
   const accountType = (body.account_type ?? '').toString().trim();
 
-  if (!payoutName || !accountNumber || !bankName || !branch) {
+  if (!payoutName || !accountNumber || !bankName) {
     return NextResponse.json(
-      { error: 'payout_name, account number, bank name, and branch are required' },
+      { error: 'payout_name, account number, and bank name are required' },
       { status: 400 }
     );
   }
@@ -89,7 +88,6 @@ export async function POST(request: NextRequest) {
         payout_name: payoutName,
         payout_account_identifier: accountNumber,
         bank_name: bankName,
-        branch,
         account_type: accountType || null,
         verified_at: null,
         updated_at: new Date().toISOString(),

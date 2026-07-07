@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerClient } from '@/lib/supabase/server';
+import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,7 +41,8 @@ export async function DELETE(req: NextRequest, { params }: Params) {
 
     console.log('[DELETE /api/classes/[id]] archive_class raw:', JSON.stringify(data), 'normalised:', result);
 
-    const status = result.status ?? 'ok';
+    // RPC may return { error: '...' } instead of { status: '...' } — normalise both shapes
+    const status = (result as any).status ?? (result as any).error ?? ((result as any).ok === false ? 'error' : 'ok');
 
     if (status === 'ok') {
       return NextResponse.json({ ok: true });
@@ -56,10 +57,47 @@ export async function DELETE(req: NextRequest, { params }: Params) {
       return NextResponse.json({ ok: false, error: 'forbidden' }, { status: 403 });
     }
     if (status === 'has_future_sessions') {
-      return NextResponse.json(
-        { ok: false, error: 'has_future_sessions', count: result.count ?? 0, message: `You have ${result.count ?? 'upcoming'} upcoming sessions. Cancel them first.` },
-        { status: 409 },
-      );
+      // Auto-cancel future sessions, then retry archive
+      try {
+        const service = getServiceClient();
+        const now = new Date().toISOString();
+
+        // Cancel future occurrences on the occurrence-level table
+        const { data: sessionRows } = await service
+          .from('group_sessions')
+          .select('id')
+          .eq('group_id', classId);
+
+        const sessionIds = (sessionRows ?? []).map((s: any) => s.id);
+        if (sessionIds.length > 0) {
+          await service
+            .from('group_session_occurrences')
+            .update({ status: 'CANCELLED', cancelled_at: now })
+            .in('group_session_id', sessionIds)
+            .gt('scheduled_start_at', now);
+        }
+
+        // Also end the session series so the RPC sees no future recurrences
+        await service
+          .from('group_sessions')
+          .update({ ends_on: now })
+          .eq('group_id', classId);
+
+        // Retry archive
+        const { data: retryData, error: retryError } = await supabase.rpc('archive_class', {
+          p_group_id: classId,
+          p_actor_id: user.id,
+          p_reason: reason,
+        });
+        if (retryError) throw retryError;
+        const retryRaw = Array.isArray(retryData) ? retryData[0] : retryData;
+        const retryStatus = (retryRaw as any)?.status ?? (retryRaw as any)?.error ?? 'ok';
+        if (!retryStatus || retryStatus === 'ok') return NextResponse.json({ ok: true });
+        throw new Error(`archive_class retry: ${retryStatus}`);
+      } catch (retryErr) {
+        console.error('[DELETE /api/classes/[id]] retry after session cancel failed:', retryErr);
+        return NextResponse.json({ ok: false, error: 'internal_error' }, { status: 500 });
+      }
     }
     if (status === 'has_unpaid_dues') {
       return NextResponse.json(

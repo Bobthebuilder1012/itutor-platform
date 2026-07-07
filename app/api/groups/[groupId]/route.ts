@@ -264,22 +264,42 @@ export async function GET(_req: NextRequest, { params }: Params) {
     let otherGroups: any[] = [];
     let otherGroupsResult = await service
       .from('groups')
-      .select('id, name, subject, cover_image, created_at')
+      .select('id, name, subject, cover_image, form_level, price_monthly, price_per_session, max_students')
       .eq('tutor_id', group.tutor_id)
       .neq('id', groupId)
       .is('archived_at', null)
-      .limit(6);
+      .limit(4);
     if (isSchemaMismatch(otherGroupsResult.error)) {
       otherGroupsResult = await service
         .from('groups')
-        .select('id, name, subject, cover_image, created_at')
+        .select('id, name, subject, cover_image')
         .eq('tutor_id', group.tutor_id)
         .neq('id', groupId)
         .is('archived_at', null)
-        .limit(6);
+        .limit(4);
     }
     if (!otherGroupsResult.error) {
       otherGroups = otherGroupsResult.data ?? [];
+      if (otherGroups.length > 0) {
+        const otherIds = otherGroups.map((g: any) => g.id);
+        const [{ data: otherMembers }, { data: otherRatings }] = await Promise.all([
+          service.from('group_members').select('group_id').in('group_id', otherIds).eq('status', 'approved'),
+          service.from('group_reviews').select('group_id, rating').in('group_id', otherIds).is('deleted_at', null),
+        ]);
+        const memberCounts = new Map<string, number>();
+        for (const m of otherMembers ?? []) memberCounts.set(m.group_id, (memberCounts.get(m.group_id) ?? 0) + 1);
+        const ratingsByGroup = new Map<string, number[]>();
+        for (const r of otherRatings ?? []) {
+          if (!ratingsByGroup.has(r.group_id)) ratingsByGroup.set(r.group_id, []);
+          ratingsByGroup.get(r.group_id)!.push(Number(r.rating));
+        }
+        otherGroups = otherGroups.map((g: any) => {
+          const count = memberCounts.get(g.id) ?? 0;
+          const rs = ratingsByGroup.get(g.id) ?? [];
+          const avg = rs.length ? Math.round((rs.reduce((a: number, b: number) => a + b, 0) / rs.length) * 100) / 100 : 0;
+          return { ...g, member_count: count, average_rating: avg, total_reviews: rs.length };
+        });
+      }
     }
 
     const keyInfo = {

@@ -44,6 +44,9 @@ function SettingsContent() {
   const [school, setSchool] = useState('');
   const [country, setCountry] = useState('');
   const [bio, setBio] = useState('');
+  const [introVideoUrl, setIntroVideoUrl] = useState('');
+  const [savedIntroVideoUrl, setSavedIntroVideoUrl] = useState('');
+  const [savingVideo, setSavingVideo] = useState(false);
   const [allowSameDay, setAllowSameDay] = useState(false);
 
   const [currentPassword, setCurrentPassword] = useState('');
@@ -80,7 +83,9 @@ function SettingsContent() {
     const sc = profile.school || '';
     const co = profile.country || '';
     const bi = profile.bio || '';
+    const vid = (profile as any).intro_video_url || '';
     setUsername(u); setDisplayName(dn); setEmail(em); setSchool(sc); setCountry(co); setBio(bi);
+    setIntroVideoUrl(vid); setSavedIntroVideoUrl(vid);
     setSaved({ username: u, displayName: dn, email: em, school: sc, country: co, bio: bi });
     if (profile.email === 'jovangoodluck@myitutor.com') {
       setAllowSameDay(profile.allow_same_day_bookings || false);
@@ -128,6 +133,22 @@ function SettingsContent() {
       setError((e as Error).message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSaveVideo = async () => {
+    setError(''); setMessage(''); setSavingVideo(true);
+    try {
+      const url = introVideoUrl.trim() || null;
+      const { error: updErr } = await supabase.from('profiles').update({ intro_video_url: url } as any).eq('id', profile!.id);
+      if (updErr) throw new Error(updErr.message);
+      setSavedIntroVideoUrl(url ?? '');
+      setMessage(url ? 'Intro video saved!' : 'Intro video removed.');
+      setTimeout(() => setMessage(''), 3000);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSavingVideo(false);
     }
   };
 
@@ -323,6 +344,47 @@ function SettingsContent() {
                   </div>
                 </div>
               </Link>
+              {/* Intro video */}
+              <div className="rounded-xl border border-border p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Video className="size-4 text-brand-deep shrink-0" />
+                  <div>
+                    <div className="font-semibold text-ink text-sm">Intro video</div>
+                    <div className="text-xs text-muted-foreground">Paste a YouTube, Vimeo, or direct video URL. Students see this at the top of your profile.</div>
+                  </div>
+                </div>
+                <input
+                  type="url"
+                  value={introVideoUrl}
+                  onChange={(e) => setIntroVideoUrl(e.target.value)}
+                  placeholder="https://youtube.com/watch?v=…"
+                  className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent"
+                />
+                {savedIntroVideoUrl && (
+                  <div className="text-xs text-brand-deep flex items-center gap-1.5">
+                    <span className="inline-block size-1.5 rounded-full bg-brand-deep" />
+                    Video saved — visible on your student profile
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleSaveVideo}
+                    disabled={savingVideo || introVideoUrl.trim() === savedIntroVideoUrl}
+                    className="px-4 py-2 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep disabled:opacity-50 transition"
+                  >
+                    {savingVideo ? 'Saving…' : 'Save video'}
+                  </button>
+                  {savedIntroVideoUrl && (
+                    <button
+                      onClick={() => { setIntroVideoUrl(''); }}
+                      className="px-4 py-2 rounded-xl border border-border text-sm font-semibold text-muted-foreground hover:bg-muted transition"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+              </div>
+
               <div>
                 <label className="text-sm font-medium text-ink mb-1.5 block">Bio</label>
                 <textarea value={bio} onChange={(e) => setBio(e.target.value)} rows={5} maxLength={500}
@@ -568,7 +630,6 @@ function PayoutAccountForm() {
   const [payoutName, setPayoutName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [bankName, setBankName] = useState('');
-  const [branch, setBranch] = useState('');
   const [accountType, setAccountType] = useState('chequing');
 
   useEffect(() => {
@@ -584,7 +645,6 @@ function PayoutAccountForm() {
           setPayoutName(json.account.payout_name ?? '');
           setAccountNumber(json.account.payout_account_identifier ?? '');
           setBankName(json.account.bank_name ?? '');
-          setBranch(json.account.branch ?? '');
           setAccountType(json.account.account_type ?? 'chequing');
         }
       } catch (err: any) {
@@ -606,7 +666,6 @@ function PayoutAccountForm() {
           payout_name: payoutName,
           payout_account_identifier: accountNumber,
           bank_name: bankName,
-          branch,
           account_type: accountType,
         }),
       });
@@ -650,7 +709,7 @@ function PayoutAccountForm() {
         </div>
         <div>
           <label className="block text-xs font-medium text-ink mb-1.5">Bank</label>
-          <select value={bankName} onChange={(e) => { setBankName(e.target.value); setBranch(''); }}
+          <select value={bankName} onChange={(e) => setBankName(e.target.value)}
             className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand">
             <option value="">Select bank…</option>
             {Object.keys(TT_BANKS).map((name) => (
@@ -662,17 +721,6 @@ function PayoutAccountForm() {
               SWIFT: {TT_BANKS[bankName].swift} · Bank code: {TT_BANKS[bankName].code}
             </div>
           )}
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-ink mb-1.5">Branch</label>
-          <select value={branch} onChange={(e) => setBranch(e.target.value)}
-            disabled={!bankName || !TT_BANKS[bankName]}
-            className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand disabled:opacity-60">
-            <option value="">{bankName ? 'Select branch…' : 'Select bank first…'}</option>
-            {(TT_BANKS[bankName]?.branches ?? []).map((b) => (
-              <option key={b} value={b}>{b}</option>
-            ))}
-          </select>
         </div>
         <div>
           <label className="block text-xs font-medium text-ink mb-1.5">Account number</label>

@@ -2,233 +2,226 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { getConversations } from '@/lib/services/notificationService';
-import TutorShell from '@/components/tutor/TutorShell';
 import { getDisplayName } from '@/lib/utils/displayName';
 import type { ConversationWithParticipant } from '@/lib/types/notifications';
 import { getRelativeTime } from '@/lib/utils/calendar';
-import { getAvatarColor } from '@/lib/utils/avatarColors';
-import UserAvatar from '@/components/UserAvatar';
+import ConversationView from '@/components/ConversationView';
+import TutorShell from '@/components/tutor/TutorShell';
+import { Search, MessageSquare, ArrowLeft } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+function hashHue(str: string): number {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) & 0x7fffffff;
+  return h % 360;
+}
+
+function ConvAvatar({ name, userId }: { name: string; userId: string }) {
+  const hue = hashHue(userId || name);
+  const initials = name.replace(/^(Mr\.|Ms\.|Mrs\.|Dr\.)\s*/i, '').split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+  return (
+    <div
+      className="size-11 rounded-full grid place-items-center text-white font-bold text-sm shrink-0"
+      style={{ background: `linear-gradient(135deg, oklch(0.62 0.16 ${hue}), oklch(0.45 0.2 ${hue}))` }}
+    >
+      {initials}
+    </div>
+  );
+}
 
 export default function TutorMessagesPage() {
   const { profile, loading: profileLoading } = useProfile();
   const router = useRouter();
-  
   const [conversations, setConversations] = useState<ConversationWithParticipant[]>([]);
-  const [filteredConversations, setFilteredConversations] = useState<ConversationWithParticipant[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [loading, setLoading] = useState(true);
+  const [activeId, setActiveId] = useState<string | null>(null);
 
   useEffect(() => {
     if (profileLoading) return;
-    
-    if (!profile || profile.role !== 'tutor') {
-      router.push('/login');
-      return;
-    }
-
+    if (!profile || profile.role !== 'tutor') { router.push('/login'); return; }
     loadConversations();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile, profileLoading, router]);
-
-  useEffect(() => {
-    // Filter conversations based on search and filter
-    let filtered = conversations;
-
-    // Apply unread filter
-    if (filter === 'unread') {
-      filtered = filtered.filter(c => c.unread_count > 0);
-    }
-
-    // Apply search query
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(c => {
-        const otherUserName = getDisplayName(c.other_participant).toLowerCase();
-        const lastMessage = c.last_message_preview?.toLowerCase() || '';
-        return otherUserName.includes(query) || lastMessage.includes(query);
-      });
-    }
-
-    setFilteredConversations(filtered);
-  }, [conversations, searchQuery, filter]);
 
   async function loadConversations() {
     if (!profile) return;
-
     setLoading(true);
     try {
       const data = await getConversations(profile.id);
       setConversations(data);
-      setFilteredConversations(data);
-    } catch (error) {
-      console.error('Error loading conversations:', error);
+      if (data.length > 0) setActiveId(data[0].id);
+    } catch (err) {
+      console.error('Error loading conversations:', err);
     } finally {
       setLoading(false);
     }
   }
 
-  const unreadCount = conversations.filter(c => c.unread_count > 0).length;
-
   if (profileLoading || !profile) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-itutor-green"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand" />
       </div>
     );
   }
 
+  const filtered = conversations
+    .filter(c => filter === 'unread' ? c.unread_count > 0 : true)
+    .filter(c => {
+      if (!searchQuery) return true;
+      const name = getDisplayName(c.other_participant).toLowerCase();
+      return name.includes(searchQuery.toLowerCase()) || (c.last_message_preview || '').toLowerCase().includes(searchQuery.toLowerCase());
+    });
+
+  const activeConv = conversations.find(c => c.id === activeId);
+  const unreadCount = conversations.filter(c => c.unread_count > 0).length;
+
   return (
     <TutorShell>
-      <div className="px-4 py-6 sm:px-0 max-w-5xl mx-auto">
-        {/* Header */}
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">Messages</h1>
-              <p className="text-gray-600">Conversations with your students</p>
-            </div>
-            {unreadCount > 0 && (
-              <div className="px-4 py-2 bg-red-100 border-2 border-red-300 rounded-lg">
-                <p className="text-sm font-semibold text-red-800">
-                  {unreadCount} unread {unreadCount === 1 ? 'conversation' : 'conversations'}
-                </p>
+      <div className="h-[calc(100vh-7rem)]">
+        <div className="h-full rounded-2xl border border-border overflow-hidden grid md:grid-cols-[320px_1fr] bg-background shadow-card">
+
+          {/* ── LEFT: Conversation list ── */}
+          <div className={cn('flex flex-col border-r border-border bg-background', activeId && 'hidden md:flex')}>
+
+            <div className="p-4 border-b border-border space-y-3">
+              <div className="flex items-center justify-between">
+                <h1 className="text-xl font-bold text-ink">Messages</h1>
+                {unreadCount > 0 && (
+                  <span className="text-xs font-bold text-white bg-brand rounded-full px-2.5 py-0.5">
+                    {unreadCount} unread
+                  </span>
+                )}
               </div>
-            )}
-          </div>
 
-          {/* Search and Filters */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            {/* Search Bar */}
-            <div className="flex-1 relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+                <input
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="Search conversations…"
+                  className="w-full pl-9 pr-3 py-2 rounded-xl bg-muted text-sm focus:outline-none focus:ring-2 focus:ring-brand"
+                />
               </div>
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search conversations..."
-                className="w-full pl-10 pr-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-itutor-green focus:border-itutor-green outline-none transition"
-              />
+
+              <div className="flex gap-1.5">
+                {(['all', 'unread'] as const).map(f => (
+                  <button
+                    key={f}
+                    onClick={() => setFilter(f)}
+                    className={cn(
+                      'px-3 py-1 rounded-full text-xs font-semibold transition',
+                      filter === f ? 'bg-ink text-white' : 'bg-muted text-muted-foreground hover:text-ink'
+                    )}
+                  >
+                    {f === 'all' ? `All (${conversations.length})` : `Unread (${unreadCount})`}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* Filter Buttons */}
-            <div className="flex gap-2">
-              <button
-                onClick={() => setFilter('all')}
-                className={`px-4 py-3 rounded-lg font-medium transition-all ${
-                  filter === 'all'
-                    ? 'bg-itutor-green text-white shadow-lg'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-              >
-                All ({conversations.length})
-              </button>
-              <button
-                onClick={() => setFilter('unread')}
-                className={`px-4 py-3 rounded-lg font-medium transition-all ${
-                  filter === 'unread'
-                    ? 'bg-itutor-green text-white shadow-lg'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-              >
-                Unread ({unreadCount})
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Conversations List */}
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-itutor-green"></div>
-            <span className="ml-3 text-gray-600">Loading messages...</span>
-          </div>
-        ) : filteredConversations.length === 0 ? (
-          /* Empty State */
-          <div className="text-center py-12 bg-gradient-to-br from-gray-50 to-gray-100 border-2 border-gray-200 rounded-2xl">
-            <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-            </svg>
-            {searchQuery || filter === 'unread' ? (
-              <>
-                <p className="text-gray-600 mb-4 font-medium">No conversations found</p>
-                <p className="text-sm text-gray-500">Try adjusting your search or filter</p>
-              </>
-            ) : (
-              <>
-                <p className="text-gray-600 mb-4 font-medium">No messages yet</p>
-                <p className="text-sm text-gray-500">Students will be able to message you once they book a session!</p>
-              </>
-            )}
-          </div>
-        ) : (
-          /* Conversations */
-          <div className="space-y-3">
-            {filteredConversations.map((conversation) => {
-              const otherUser = conversation.other_participant;
-              const hasUnread = conversation.unread_count > 0;
-
-              return (
-                <Link
-                  key={conversation.id}
-                  href={`/tutor/messages/${conversation.id}`}
-                  className={`
-                    block bg-white border-2 rounded-xl p-4 
-                    hover:shadow-lg transition-all duration-300 hover:scale-[1.01]
-                    ${hasUnread ? 'border-itutor-green/50 bg-green-50/30' : 'border-gray-200'}
-                  `}
-                >
-                  <div className="flex items-center gap-4">
-                    {/* Avatar */}
-                    <div className="relative flex-shrink-0">
-                      <UserAvatar avatarUrl={otherUser?.avatar_url} name={getDisplayName(otherUser)} size={56} />
-                      {hasUnread && (
-                        <div className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-lg">
-                          {conversation.unread_count > 9 ? '9+' : conversation.unread_count}
-                        </div>
+            <div className="flex-1 overflow-y-auto">
+              {loading ? (
+                <div className="space-y-px p-3">
+                  {[1, 2, 3, 4].map(i => <div key={i} className="h-[68px] rounded-xl bg-muted animate-pulse" />)}
+                </div>
+              ) : filtered.length === 0 ? (
+                <div className="text-center py-16 px-4">
+                  <MessageSquare className="size-10 mx-auto mb-3 text-muted-foreground/25" />
+                  <p className="text-sm font-semibold text-ink">
+                    {filter === 'unread' ? 'No unread messages' : 'No messages yet'}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {filter === 'unread' ? 'You\'re all caught up!' : 'Students who message you will appear here'}
+                  </p>
+                </div>
+              ) : (
+                filtered.map(conv => {
+                  const other = conv.other_participant;
+                  const name = getDisplayName(other);
+                  const isActive = conv.id === activeId;
+                  const hasUnread = conv.unread_count > 0;
+                  return (
+                    <button
+                      key={conv.id}
+                      onClick={() => {
+                        setActiveId(conv.id);
+                        if (window.innerWidth < 768) router.push(`/tutor/messages/${conv.id}`);
+                      }}
+                      className={cn(
+                        'w-full flex items-center gap-3 px-3 py-3.5 text-left border-b border-border/50 hover:bg-muted/50 transition-colors',
+                        isActive && 'bg-brand-soft border-l-[3px] border-l-brand'
                       )}
-                    </div>
-
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-1">
-                        <h3 className={`text-lg font-semibold truncate ${hasUnread ? 'text-gray-900' : 'text-gray-700'}`}>
-                          {getDisplayName(otherUser)}
-                        </h3>
-                        {conversation.last_message_at && (
-                          <span className="text-xs text-gray-500 flex-shrink-0 ml-2">
-                            {getRelativeTime(conversation.last_message_at)}
+                    >
+                      <ConvAvatar name={name} userId={other?.id || name} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline justify-between gap-1">
+                          <span className={cn('text-sm truncate', hasUnread ? 'font-bold text-ink' : 'font-semibold text-ink')}>
+                            {name}
                           </span>
+                          {conv.last_message_at && (
+                            <span className="text-[10px] text-muted-foreground shrink-0">
+                              {getRelativeTime(conv.last_message_at)}
+                            </span>
+                          )}
+                        </div>
+                        {conv.last_message_preview ? (
+                          <p className={cn('text-xs truncate mt-0.5', hasUnread ? 'text-ink font-medium' : 'text-muted-foreground')}>
+                            {conv.last_message_preview}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground/50 mt-0.5 italic">No messages yet</p>
+                        )}
+                        {other?.role && (
+                          <span className="text-[10px] text-muted-foreground/60 capitalize">{other.role}</span>
                         )}
                       </div>
-                      {conversation.last_message_preview && (
-                        <p className={`text-sm truncate ${hasUnread ? 'text-gray-700 font-medium' : 'text-gray-500'}`}>
-                          {conversation.last_message_preview}
-                        </p>
-                      )}
-                      {otherUser?.role && (
-                        <span className="inline-block mt-1 px-2 py-0.5 text-xs bg-blue-100 text-blue-700 rounded-full font-medium capitalize">
-                          {otherUser.role}
+                      {hasUnread && (
+                        <span className="size-5 rounded-full bg-brand text-white text-[10px] font-bold grid place-items-center shrink-0">
+                          {conv.unread_count > 9 ? '9+' : conv.unread_count}
                         </span>
                       )}
-                    </div>
-
-                    {/* Arrow */}
-                    <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
-                </Link>
-              );
-            })}
+                    </button>
+                  );
+                })
+              )}
+            </div>
           </div>
-        )}
+
+          {/* ── RIGHT: Chat panel ── */}
+          <div className={cn('flex flex-col', !activeId && 'hidden md:flex')}>
+            {activeId && (
+              <button
+                onClick={() => setActiveId(null)}
+                className="md:hidden flex items-center gap-2 px-4 py-3 text-sm font-semibold text-ink border-b border-border hover:bg-muted"
+              >
+                <ArrowLeft className="size-4" /> Back to messages
+              </button>
+            )}
+
+            {activeConv && profile ? (
+              <ConversationView
+                conversationId={activeConv.id}
+                currentUserId={profile.id}
+                otherUserId={activeConv.other_participant?.id ?? ''}
+              />
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8 text-center">
+                <div className="size-20 rounded-3xl bg-muted grid place-items-center">
+                  <MessageSquare className="size-9 text-muted-foreground/30" />
+                </div>
+                <div>
+                  <p className="text-base font-semibold text-ink">Your messages</p>
+                  <p className="text-sm text-muted-foreground mt-1">Select a conversation from the left to start chatting</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </TutorShell>
   );

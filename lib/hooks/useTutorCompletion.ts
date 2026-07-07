@@ -20,6 +20,7 @@ export type TutorCompletion = {
   availability: boolean;
   rate: boolean;
   videoProvider: boolean;
+  payoutAccount: boolean;
   completed: number;
   total: number;
   listed: boolean;
@@ -27,27 +28,31 @@ export type TutorCompletion = {
 };
 
 const EMPTY: TutorCompletion = {
-  avatar: false, bio: false, subjects: false, availability: false, rate: false, videoProvider: false,
-  completed: 0, total: 5, listed: false, loading: true,
+  avatar: false, bio: false, subjects: false, availability: false, rate: false, videoProvider: false, payoutAccount: false,
+  completed: 0, total: 6, listed: false, loading: true,
 };
 
 export function useTutorCompletion(profile: Profile | null, refreshKey = 0): TutorCompletion {
-  const [extras, setExtras] = useState({ subjects: false, availability: false, rate: false, videoProvider: false });
+  const [extras, setExtras] = useState({ bio: false, subjects: false, availability: false, rate: false, videoProvider: false, payoutAccount: false });
   const [loading, setLoading] = useState(true);
   const [internalKey, setInternalKey] = useState(0);
 
   const query = useCallback(async (id: string) => {
-    const [subjects, avail, video] = await Promise.all([
+    const [profileRow, subjects, avail, video, payout] = await Promise.all([
+      supabase.from('profiles').select('bio').eq('id', id).single(),
       supabase.from('tutor_subjects').select('price_per_hour_ttd').eq('tutor_id', id),
       supabase.from('tutor_availability_rules').select('id', { count: 'exact', head: true }).eq('tutor_id', id),
       supabase.from('tutor_video_provider_connections').select('id', { count: 'exact', head: true }).eq('tutor_id', id),
+      supabase.from('tutor_payout_accounts').select('tutor_id', { count: 'exact', head: true }).eq('tutor_id', id),
     ]);
     const subjectRows = subjects.data ?? [];
     setExtras({
+      bio: (profileRow.data?.bio?.trim().length ?? 0) > 0,
       subjects: subjectRows.length > 0,
       availability: (avail.count ?? 0) > 0,
       rate: subjectRows.some((s) => (s.price_per_hour_ttd ?? 0) > 0),
       videoProvider: (video.count ?? 0) > 0,
+      payoutAccount: (payout.count ?? 0) > 0,
     });
     setLoading(false);
   }, []);
@@ -71,21 +76,20 @@ export function useTutorCompletion(profile: Profile | null, refreshKey = 0): Tut
   if (!profile) return EMPTY;
 
   const avatar = Boolean(profile.avatar_url);
-  const bio = (profile.bio?.trim().length ?? 0) > 0;
-  // subjects is tracked for reference but not counted — captured during signup
-  // video provider is the 5th required step
-  const requiredSteps = [avatar, bio, extras.availability, extras.rate];
+  const requiredSteps = [avatar, extras.bio, extras.availability, extras.rate, extras.payoutAccount];
   const allSteps = [...requiredSteps, extras.videoProvider];
   const completed = allSteps.filter(Boolean).length;
 
   return {
-    avatar, bio,
+    avatar,
+    bio: extras.bio,
     subjects: extras.subjects,
     availability: extras.availability,
     rate: extras.rate,
     videoProvider: extras.videoProvider,
+    payoutAccount: extras.payoutAccount,
     completed,
-    total: 5,
+    total: 6,
     listed: requiredSteps.every(Boolean),
     loading,
   };

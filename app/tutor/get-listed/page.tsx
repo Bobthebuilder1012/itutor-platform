@@ -26,6 +26,18 @@ export default function TutorGetListedPage() {
   );
 }
 
+// ── Banks ──────────────────────────────────────────────────────────────────────
+const TT_BANKS: Record<string, { swift: string; code: string }> = {
+  'Republic Bank': { swift: 'RBNKTTPS', code: '003' },
+  'First Citizens Bank': { swift: 'FCTTTTPX', code: '005' },
+  'Scotiabank Trinidad': { swift: 'NOSCTTPS', code: '004' },
+  'RBC Royal Bank': { swift: 'ROYCTTPS', code: '006' },
+  'JMMB Bank': { swift: 'JMMBTTPS', code: '022' },
+  'Citibank N.A.': { swift: 'CITITTPS', code: '014' },
+  'Trinidad and Tobago Unit Trust Corporation': { swift: 'UTCTTTPS', code: '053' },
+  'Agricultural Development Bank': { swift: 'ADEVTTP1', code: '017' },
+};
+
 // ── Availability grid helpers ──────────────────────────────────────────────────
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const HOURS = Array.from({ length: 23 }, (_, i) => i + 1); // 1am–11pm
@@ -112,6 +124,15 @@ function GetListedContent() {
   const [videoConnecting, setVideoConnecting] = useState(false);
   const [videoMsg, setVideoMsg] = useState('');
 
+  // Payout account
+  const [payoutName, setPayoutName] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+  const [accountType, setAccountType] = useState('chequing');
+  const [savingPayout, setSavingPayout] = useState(false);
+  const [payoutError, setPayoutError] = useState('');
+  const [payoutMsg, setPayoutMsg] = useState('');
+
   useEffect(() => {
     if (!loading && (!profile || profile.role !== 'tutor')) router.push('/login');
   }, [loading, profile, router]);
@@ -142,11 +163,20 @@ function GetListedContent() {
   }, [profile?.id]);
 
   async function fetchData(tutorId: string) {
-    const [{ data: subjs }, rules, { data: vidConn }] = await Promise.all([
+    const [{ data: subjs }, rules, { data: vidConn }, payoutRes] = await Promise.all([
       supabase.from('tutor_subjects').select('id, subject_id, price_per_hour_ttd, subjects(name, label)').eq('tutor_id', tutorId),
       getTutorAvailabilityRules(tutorId),
       supabase.from('tutor_video_provider_connections').select('provider, provider_account_email').eq('tutor_id', tutorId).maybeSingle(),
+      fetch('/api/tutor/payout-account'),
     ]);
+
+    const payoutJson = payoutRes.ok ? await payoutRes.json() : null;
+    if (payoutJson?.account) {
+      setPayoutName(payoutJson.account.payout_name ?? '');
+      setBankName(payoutJson.account.bank_name ?? '');
+      setAccountNumber(payoutJson.account.payout_account_identifier ?? '');
+      setAccountType(payoutJson.account.account_type ?? 'chequing');
+    }
 
     let tutorSubjects = (subjs ?? []) as unknown as SubjectRow[];
 
@@ -173,6 +203,29 @@ function GetListedContent() {
     setAvailRules(rules);
     setSlots(rulesToSlots(rules));
     setVideoConnection(vidConn ? { provider: vidConn.provider, email: vidConn.provider_account_email } : null);
+  }
+
+  async function savePayoutAccount() {
+    if (!payoutName.trim() || !bankName || !accountNumber.trim()) {
+      setPayoutError('Please fill in account holder name, bank, and account number.');
+      return;
+    }
+    setSavingPayout(true); setPayoutError(''); setPayoutMsg('');
+    try {
+      const res = await fetch('/api/tutor/payout-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payout_name: payoutName.trim(), payout_account_identifier: accountNumber.trim(), bank_name: bankName, account_type: accountType }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Failed to save');
+      setPayoutMsg('Bank details saved.');
+      notifyCompletionUpdated();
+    } catch (err: any) {
+      setPayoutError(err.message);
+    } finally {
+      setSavingPayout(false);
+    }
   }
 
   async function handleAvatar(file: File) {
@@ -477,7 +530,56 @@ function GetListedContent() {
         <p className="mt-3 text-xs text-muted-foreground">Average for CSEC tutors in Trinidad: <span className="font-semibold text-ink">TT$120–250 / hr</span></p>
       </SectionShell>
 
-      {/* 5. Video provider (optional) */}
+      {/* 5. Payout account */}
+      <SectionShell done={completion.payoutAccount} title="Bank details" subtitle="Add your bank account so we know where to send your earnings.">
+        {payoutError && <div className="mb-3 rounded-xl bg-coral/10 border border-coral/30 p-3 text-sm text-coral">{payoutError}</div>}
+        {payoutMsg && <div className="mb-3 rounded-xl bg-mint border border-brand/30 p-3 text-sm text-ink">{payoutMsg}</div>}
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-ink mb-1.5">Account holder name</label>
+            <input type="text" value={payoutName} onChange={(e) => setPayoutName(e.target.value)}
+              placeholder="As it appears on your bank statement"
+              className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-ink mb-1.5">Bank</label>
+            <select value={bankName} onChange={(e) => setBankName(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand">
+              <option value="">Select bank…</option>
+              {Object.keys(TT_BANKS).map((name) => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+            {bankName && TT_BANKS[bankName] && (
+              <div className="mt-1.5 text-[11px] text-muted-foreground font-mono">
+                SWIFT: {TT_BANKS[bankName].swift} · Bank code: {TT_BANKS[bankName].code}
+              </div>
+            )}
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-ink mb-1.5">Account number</label>
+            <input type="text" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)}
+              inputMode="numeric"
+              className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-ink mb-1.5">Account type</label>
+            <select value={accountType} onChange={(e) => setAccountType(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand">
+              <option value="chequing">Chequing</option>
+              <option value="savings">Savings</option>
+            </select>
+          </div>
+        </div>
+        <div className="mt-4 flex justify-end">
+          <button onClick={savePayoutAccount} disabled={savingPayout}
+            className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-deep disabled:opacity-50">
+            {savingPayout ? 'Saving…' : completion.payoutAccount ? 'Update bank details' : 'Save bank details'}
+          </button>
+        </div>
+      </SectionShell>
+
+      {/* 6. Video provider (optional) */}
       <SectionShell done={completion.videoProvider} title="Video lesson provider" subtitle="Connect Zoom or Google Meet so students get the right join link." optional>
         {videoMsg && (
           <p className={`mb-3 text-sm font-medium ${videoMsg.includes('success') ? 'text-brand-deep' : 'text-red-500'}`}>{videoMsg}</p>

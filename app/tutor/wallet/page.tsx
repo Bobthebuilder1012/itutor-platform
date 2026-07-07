@@ -947,7 +947,6 @@ function PayoutsTab() {
   const [payoutName, setPayoutName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [bankName, setBankName] = useState('');
-  const [branch, setBranch] = useState('');
   const [accountType, setAccountType] = useState('chequing');
 
   useEffect(() => {
@@ -963,7 +962,6 @@ function PayoutsTab() {
           setPayoutName(json.account.payout_name ?? '');
           setAccountNumber(json.account.payout_account_identifier ?? '');
           setBankName(json.account.bank_name ?? '');
-          setBranch(json.account.branch ?? '');
           setAccountType(json.account.account_type ?? 'chequing');
         }
       } catch {
@@ -981,7 +979,7 @@ function PayoutsTab() {
       const res = await fetch('/api/tutor/payout-account', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ payout_name: payoutName, payout_account_identifier: accountNumber, bank_name: bankName, branch, account_type: accountType }),
+        body: JSON.stringify({ payout_name: payoutName, payout_account_identifier: accountNumber, bank_name: bankName, account_type: accountType }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Failed to save');
@@ -1029,7 +1027,7 @@ function PayoutsTab() {
         </div>
         <div>
           <label className="block text-xs font-medium text-ink mb-1.5">Bank</label>
-          <select value={bankName} onChange={(e) => { setBankName(e.target.value); setBranch(''); }}
+          <select value={bankName} onChange={(e) => setBankName(e.target.value)}
             className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand">
             <option value="">Select bank…</option>
             {Object.keys(TT_BANKS).map((name) => (
@@ -1041,17 +1039,6 @@ function PayoutsTab() {
               SWIFT: {TT_BANKS[bankName].swift} · Bank code: {TT_BANKS[bankName].code}
             </div>
           )}
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-ink mb-1.5">Branch</label>
-          <select value={branch} onChange={(e) => setBranch(e.target.value)}
-            disabled={!bankName || !TT_BANKS[bankName]}
-            className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand disabled:opacity-60">
-            <option value="">{bankName ? 'Select branch…' : 'Select bank first…'}</option>
-            {(TT_BANKS[bankName]?.branches ?? []).map((b) => (
-              <option key={b} value={b}>{b}</option>
-            ))}
-          </select>
         </div>
         <div>
           <label className="block text-xs font-medium text-ink mb-1.5">Account number</label>

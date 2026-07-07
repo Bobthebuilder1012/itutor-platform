@@ -5,14 +5,16 @@ import { useRouter, useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import { getDisplayName } from '@/lib/utils/displayName';
 import TutorCalendarWidget from '@/components/booking/TutorCalendarWidget';
-import VerifiedBadge from '@/components/VerifiedBadge';
 import VerifiedSubjectsButton from '@/components/tutor/VerifiedSubjectsButton';
 import VerifiedSubjectsModal from '@/components/tutor/VerifiedSubjectsModal';
-import RatingComment from '@/components/tutor/RatingComment';
 import AuthPromptModal from '@/components/AuthPromptModal';
 import { useAuthPrompt } from '@/hooks/useAuthPrompt';
-import { getAvatarColor } from '@/lib/utils/avatarColors';
 import Link from 'next/link';
+import {
+  ArrowLeft, Star, Heart, Share2, MessageSquare, Play, Sparkles,
+  TrendingUp, ShieldCheck, GraduationCap, Smile, Target, MessageCircle, Pencil,
+  BadgeCheck,
+} from 'lucide-react';
 
 type TutorProfile = {
   id: string;
@@ -45,12 +47,54 @@ type TutorProfile = {
   }>;
 };
 
+function hashHue(str: string): number {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) & 0x7fffffff;
+  return h % 360;
+}
+
+function TutorSquareAvatar({ name, hue, size = 88 }: { name: string; hue: number; size?: number }) {
+  const initials = name
+    .replace(/^(Mr\.|Ms\.|Mrs\.|Dr\.)\s*/i, '')
+    .split(' ')
+    .map((p: string) => p[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+  return (
+    <div
+      className="grid place-items-center font-bold shrink-0 rounded-2xl"
+      style={{
+        width: size,
+        height: size,
+        background: `oklch(0.85 0.1 ${hue})`,
+        color: `oklch(0.28 0.07 ${hue})`,
+        fontSize: size * 0.36,
+      }}
+    >
+      {initials}
+    </div>
+  );
+}
+
+function RatingTile({ icon: Icon, label, value }: { icon: any; label: string; value: number | null }) {
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white p-4">
+      <div className="flex items-start justify-between">
+        <div className="text-2xl font-bold text-gray-900">{value !== null ? value.toFixed(1) : '—'}</div>
+        <Icon className="w-5 h-5 text-gray-500" />
+      </div>
+      <div className="mt-2 text-sm font-semibold text-gray-900">{label}</div>
+    </div>
+  );
+}
+
 export default function PublicTutorProfilePage() {
   const router = useRouter();
   const params = useParams();
   const tutorId = params.tutorId as string;
   const { isOpen: authPromptOpen, action: authAction, redirectUrl, promptAuth, closePrompt } = useAuthPrompt();
-  
+
   const [tutor, setTutor] = useState<TutorProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -62,7 +106,7 @@ export default function PublicTutorProfilePage() {
   const [capeSubjects, setCapeSubjects] = useState<any[]>([]);
   const [showBookingPrompt, setShowBookingPrompt] = useState(false);
   const [completedSessions, setCompletedSessions] = useState(0);
-  const [showAboutMenu, setShowAboutMenu] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     fetchTutorProfile();
@@ -77,29 +121,12 @@ export default function PublicTutorProfilePage() {
       return;
     }
     setIsAuthenticated(true);
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', session.user.id)
-      .single();
-
-    if (!profile) return;
-
-    if (profile.role === 'student') {
-      router.replace(`/student/tutors/${tutorId}`);
-    } else if (profile.role === 'parent') {
-      router.replace(`/student/tutors/${tutorId}`);
-    } else if (profile.role === 'tutor') {
-      router.replace(`/student/tutors/${tutorId}`);
-    }
   }
 
   async function fetchVerifiedSubjects() {
     try {
       const res = await fetch(`/api/public/tutors/${tutorId}/verified-subjects`);
       const data = await res.json();
-      
       if (data.is_verified) {
         setVerifiedSubjects(data.subjects || []);
         setCsecSubjects(data.grouped?.CSEC || []);
@@ -112,7 +139,6 @@ export default function PublicTutorProfilePage() {
 
   async function fetchTutorProfile() {
     try {
-      // Fetch tutor profile
       const { data: tutorData, error: tutorError } = await supabase
         .from('profiles')
         .select('id, full_name, username, display_name, avatar_url, institution_id, country, bio, tutor_verification_status, created_at')
@@ -127,7 +153,6 @@ export default function PublicTutorProfilePage() {
         return;
       }
 
-      // Fetch tutor subjects
       const { data: tutorSubjects, error: subjectsError } = await supabase
         .from('tutor_subjects')
         .select('subject_id, price_per_hour_ttd')
@@ -135,7 +160,6 @@ export default function PublicTutorProfilePage() {
 
       if (subjectsError) throw subjectsError;
 
-      // Fetch subjects details
       const { data: allSubjects, error: allSubjectsError } = await supabase
         .from('subjects')
         .select('id, name, label, curriculum, level');
@@ -152,12 +176,11 @@ export default function PublicTutorProfilePage() {
             name: subject.label || subject.name,
             curriculum: subject.curriculum || subject.level || '',
             level: subject.level || '',
-            price_per_hour_ttd: ts.price_per_hour_ttd
+            price_per_hour_ttd: ts.price_per_hour_ttd,
           } : null;
         })
         .filter((s): s is NonNullable<typeof s> => s !== null);
 
-      // Fetch ratings sorted by popularity
       const { data: ratingsData, error: ratingsError } = await supabase
         .from('ratings')
         .select('id, stars, comment, created_at, student_id, helpful_count')
@@ -166,20 +189,9 @@ export default function PublicTutorProfilePage() {
         .order('helpful_count', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false });
 
-      if (ratingsError) {
-        console.error('Error fetching ratings:', ratingsError);
-      }
+      if (ratingsError) console.error('Error fetching ratings:', ratingsError);
 
-      // Fetch student names for ratings
-      let ratings: Array<{
-        id: string;
-        stars: number;
-        comment: string | null;
-        created_at: string;
-        student_name: string;
-        helpful_count: number;
-      }> = [];
-      
+      let ratings: TutorProfile['ratings'] = [];
       let avgRating = null;
 
       if (ratingsData && ratingsData.length > 0) {
@@ -189,9 +201,7 @@ export default function PublicTutorProfilePage() {
           .select('id, full_name, username, display_name')
           .in('id', studentIds);
 
-        if (studentsError) {
-          console.error('Error fetching student names:', studentsError);
-        }
+        if (studentsError) console.error('Error fetching student names:', studentsError);
 
         const studentsMap = new Map(students?.map(s => [s.id, s]) || []);
 
@@ -203,14 +213,13 @@ export default function PublicTutorProfilePage() {
             comment: r.comment,
             created_at: r.created_at,
             student_name: student ? getDisplayName(student) : 'Anonymous',
-            helpful_count: r.helpful_count || 0
+            helpful_count: r.helpful_count || 0,
           };
         });
 
         avgRating = ratingsData.reduce((sum, r) => sum + r.stars, 0) / ratingsData.length;
       }
 
-      // Fetch completed sessions count
       const { count, error: sessionsError } = await supabase
         .from('sessions')
         .select('*', { count: 'exact', head: true })
@@ -226,7 +235,7 @@ export default function PublicTutorProfilePage() {
         subjects,
         average_rating: avgRating,
         total_reviews: ratings.length,
-        ratings
+        ratings,
       });
     } catch (error) {
       console.error('Error fetching tutor profile:', error);
@@ -241,14 +250,12 @@ export default function PublicTutorProfilePage() {
       alert('Please select a subject and time slot');
       return;
     }
-
-    // Check if user is authenticated
     if (!isAuthenticated) {
       promptAuth('book', `/tutors/${tutorId}`);
       return;
     }
-
-    setShowBookingPrompt(true);
+    // Authenticated users go straight to the student booking page
+    router.push(`/student/tutors/${tutorId}#book`);
   };
 
   if (loading) {
@@ -268,31 +275,28 @@ export default function PublicTutorProfilePage() {
   }
 
   const displayName = getDisplayName(tutor);
+  const hue = hashHue(tutor.id);
+  const minPrice = tutor.subjects.length > 0
+    ? Math.min(...tutor.subjects.map(s => s.price_per_hour_ttd))
+    : 0;
+  const isVerified = tutor.tutor_verification_status === 'verified';
+
+  const scrollToBook = () => document.getElementById('book')?.scrollIntoView({ behavior: 'smooth' });
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header with Logo and Auth Buttons - Black like dashboard */}
+    <div className="min-h-screen bg-gray-50 pb-20 lg:pb-0">
+      {/* Header */}
       <header className="sticky top-0 z-40 border-b border-black bg-black shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <Link href="/" className="flex-shrink-0">
-              <img
-                src="/assets/logo/itutor-logo-dark.png"
-                alt="iTutor"
-                className="h-12 w-auto"
-              />
+              <img src="/assets/logo/itutor-logo-dark.png" alt="iTutor" className="h-12 w-auto" />
             </Link>
             <div className="flex items-center gap-3">
-              <Link
-                href="/signup"
-                className="px-4 py-2 text-sm font-semibold text-white hover:text-itutor-green transition-colors"
-              >
+              <Link href="/signup" className="px-4 py-2 text-sm font-semibold text-white hover:text-itutor-green transition-colors">
                 Sign Up
               </Link>
-              <Link
-                href="/login"
-                className="px-4 py-2 text-sm font-semibold text-gray-900 bg-itutor-green hover:bg-emerald-500 rounded-lg transition-colors"
-              >
+              <Link href="/login" className="px-4 py-2 text-sm font-semibold text-gray-900 bg-itutor-green hover:bg-emerald-500 rounded-lg transition-colors">
                 Log In
               </Link>
             </div>
@@ -300,263 +304,259 @@ export default function PublicTutorProfilePage() {
         </div>
       </header>
 
-      <div className="max-w-6xl mx-auto px-4 py-6 sm:px-0">
-        {/* Back to Search Button */}
+      <div className="max-w-6xl mx-auto px-4 py-6">
         <button
-          onClick={() => router.push('/')}
-          className="mb-6 text-itutor-green hover:text-emerald-600 flex items-center gap-2 transition-colors font-medium"
+          onClick={() => router.back()}
+          className="mb-6 text-gray-500 hover:text-gray-900 inline-flex items-center gap-2 text-sm transition-colors"
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-          </svg>
-          Back to Search
+          <ArrowLeft className="w-4 h-4" /> Back to tutors
         </button>
 
-        {/* Profile Header — full width */}
-        <div className="bg-white border-2 border-indigo-200 shadow-xl rounded-2xl p-8 mb-6 hover:shadow-indigo-300/50 transition-all duration-300">
-          <div className="flex flex-col md:flex-row gap-6 items-start">
-            {/* Avatar */}
-            <div className={`w-32 h-32 rounded-full bg-gradient-to-br ${getAvatarColor(tutor.id)} flex items-center justify-center text-white font-bold text-4xl flex-shrink-0 shadow-lg`}>
-              {tutor.avatar_url ? (
-                <img src={tutor.avatar_url} alt={displayName} className="w-full h-full rounded-full object-cover" />
-              ) : (
-                displayName.charAt(0).toUpperCase()
-              )}
+        <div className="grid lg:grid-cols-[1fr_360px] gap-6 items-start">
+          {/* LEFT */}
+          <div className="space-y-8">
+
+            {/* Video intro banner */}
+            <div
+              className="relative aspect-video rounded-3xl overflow-hidden border border-gray-200"
+              style={{ background: `linear-gradient(135deg, oklch(0.85 0.1 ${hue}), oklch(0.6 0.15 ${hue}))` }}
+            >
+              <div className="absolute inset-0 grid place-items-center">
+                <button className="w-20 h-20 rounded-full bg-itutor-green text-white grid place-items-center shadow-lg hover:scale-105 transition-transform">
+                  <Play className="w-9 h-9 fill-white ml-1" />
+                </button>
+              </div>
+              <div className="absolute top-4 left-4 flex items-center gap-2 bg-black/40 backdrop-blur text-white px-3 py-1.5 rounded-full text-xs font-semibold">
+                <Play className="w-3 h-3 fill-white" /> iTutor introduction
+              </div>
             </div>
 
-            {/* Info */}
-            <div className="flex-1">
-              <div className="flex items-start justify-between mb-2">
-                <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+            {/* Identity */}
+            <div className="flex items-start gap-4">
+              <TutorSquareAvatar name={displayName} hue={hue} size={88} />
+              <div className="flex-1 min-w-0 pt-1">
+                <h1 className="text-4xl font-bold text-gray-900 leading-tight flex items-center gap-2 flex-wrap">
                   {displayName}
-                  {tutor.tutor_verification_status === 'verified' && <VerifiedBadge size="lg" />}
+                  {isVerified && <BadgeCheck className="w-7 h-7 text-itutor-green shrink-0" />}
                 </h1>
-
-                {/* Three-dots menu */}
-                <div className="relative">
-                  <button
-                    onClick={() => setShowAboutMenu(!showAboutMenu)}
-                    className="p-2 hover:bg-gray-100 rounded-full transition"
-                  >
-                    <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                    </svg>
-                  </button>
-                  {showAboutMenu && (
-                    <>
-                      <div className="fixed inset-0 z-10" onClick={() => setShowAboutMenu(false)} />
-                      <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-20">
-                        <button
-                          onClick={() => {
-                            setShowAboutMenu(false);
-                            document.getElementById('about-section')?.scrollIntoView({ behavior: 'smooth' });
-                          }}
-                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          About
-                        </button>
-                      </div>
-                    </>
-                  )}
+                <div className="mt-1 text-sm text-gray-500 flex items-center gap-1.5 flex-wrap">
+                  {tutor.subjects.length > 0 && <span>{tutor.subjects[0].name} tutor</span>}
+                  {tutor.subjects.length > 0 && tutor.country && <span>·</span>}
+                  {tutor.country && <span>From {tutor.country}</span>}
                 </div>
-              </div>
-
-              {tutor.username && (
-                <p className="text-gray-600 mb-2">@{tutor.username}</p>
-              )}
-
-              <div className="mb-4">
-                <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">
-                  {completedSessions} Completed {completedSessions === 1 ? 'Session' : 'Sessions'}
-                </span>
-              </div>
-
-              <div className="flex flex-wrap gap-4 text-sm text-gray-600 mb-4">
-                {tutor.school && (
-                  <span className="flex items-center gap-1">
-                    <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                    </svg>
-                    {tutor.school}
-                  </span>
+                {tutor.average_rating !== null && (
+                  <div className="mt-2 flex items-center gap-1.5">
+                    <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                    <span className="text-sm font-bold text-gray-900">{tutor.average_rating.toFixed(1)}</span>
+                    <span className="text-sm text-gray-500">({tutor.total_reviews} reviews)</span>
+                  </div>
                 )}
-                <span className="flex items-center gap-1">
-                  <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  {tutor.country}
-                </span>
               </div>
-
-              {tutor.average_rating !== null ? (
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="flex text-2xl">
-                    {[1, 2, 3, 4, 5].map(star => (
-                      <span key={star} className={star <= Math.round(tutor.average_rating!) ? 'text-yellow-400' : 'text-gray-300'}>★</span>
-                    ))}
-                  </div>
-                  <span className="text-lg font-semibold text-gray-900">{tutor.average_rating.toFixed(1)}</span>
-                  <span className="text-sm text-gray-600">({tutor.total_reviews} {tutor.total_reviews === 1 ? 'review' : 'reviews'})</span>
-                </div>
-              ) : (
-                <div className="text-sm text-gray-600 mb-4">No reviews yet</div>
-              )}
-
-              {tutor.bio && (
-                <div className="mt-4 pt-4 border-t border-gray-200">
-                  <div className="flex items-start gap-2">
-                    <svg className="h-4 w-4 text-itutor-green flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
-                    <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{tutor.bio}</p>
-                  </div>
-                </div>
-              )}
-
-              {tutor.tutor_verification_status === 'verified' && (
-                <div className="mt-4 pt-4 border-t border-gray-200">
-                  <VerifiedSubjectsButton onClick={() => setVerifiedSubjectsModalOpen(true)} variant="secondary" />
-                </div>
-              )}
             </div>
-          </div>
-        </div>
 
-        {/* Two-column: left = CXC + subjects + calendar, right = reviews */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2">
-            {/* Verified CXC Results */}
-            {tutor.tutor_verification_status === 'verified' && verifiedSubjects.length > 0 && (
-              <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-300 shadow-xl rounded-2xl p-6 mb-6 hover:shadow-green-300/50 transition-all duration-300">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center">
-                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
-                    </svg>
-                  </div>
-                  <h2 className="text-2xl font-bold text-gray-900">Verified CXC Results</h2>
+            {/* Highlights */}
+            {(isVerified || tutor.subjects.length > 0 || completedSessions > 0) && (
+              <div>
+                <div className="inline-flex items-center gap-2 text-sm font-bold text-gray-900">
+                  <Sparkles className="w-4 h-4 text-itutor-green" />
+                  {displayName.split(' ')[0]}&apos;s highlights
                 </div>
-                <div className="space-y-6">
-                  {csecSubjects.length > 0 && (
-                    <div>
-                      <div className="flex items-center gap-2 mb-3">
-                        <h3 className="text-lg font-bold text-gray-900">CSEC</h3>
-                        <span className="bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-1 rounded">
-                          {csecSubjects.length} {csecSubjects.length === 1 ? 'subject' : 'subjects'}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {csecSubjects.map((subject) => (
-                          <div key={subject.id} className="bg-white border-2 border-gray-200 rounded-lg p-4 hover:border-green-400 hover:shadow-md transition-all">
-                            <h4 className="font-semibold text-gray-900 mb-2">{subject.subject_name}</h4>
-                            <span className="inline-flex items-center gap-1 text-sm font-bold text-green-700">
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-                              </svg>
-                              Grade {subject.grade}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {isVerified && (
+                    <span className="rounded-lg px-3 py-1.5 text-sm font-semibold bg-green-100 text-green-800">
+                      Verified Tutor
+                    </span>
                   )}
-                  {capeSubjects.length > 0 && (
-                    <div>
-                      <div className="flex items-center gap-2 mb-3">
-                        <h3 className="text-lg font-bold text-gray-900">CAPE</h3>
-                        <span className="bg-purple-100 text-purple-800 text-xs font-semibold px-2 py-1 rounded">
-                          {capeSubjects.length} {capeSubjects.length === 1 ? 'subject' : 'subjects'}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {capeSubjects.map((subject) => (
-                          <div key={subject.id} className="bg-white border-2 border-gray-200 rounded-lg p-4 hover:border-green-400 hover:shadow-md transition-all">
-                            <h4 className="font-semibold text-gray-900 mb-2">{subject.subject_name}</h4>
-                            <span className="inline-flex items-center gap-1 text-sm font-bold text-green-700">
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-                              </svg>
-                              Grade {subject.grade}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                  {tutor.subjects.slice(0, 4).map(s => (
+                    <span key={s.id} className="rounded-lg px-3 py-1.5 text-sm font-semibold bg-blue-50 text-blue-800">
+                      {s.name}
+                    </span>
+                  ))}
+                  {completedSessions > 0 && (
+                    <span className="rounded-lg px-3 py-1.5 text-sm font-semibold bg-purple-50 text-purple-800">
+                      {completedSessions} sessions
+                    </span>
                   )}
                 </div>
-                <p className="text-xs text-gray-500 mt-4 text-center">
-                  Results verified by iTutor. CXC is a trademark of the Caribbean Examinations Council.
-                </p>
               </div>
             )}
 
-            {/* Select a Subject to Book */}
-            <div className="bg-white border-2 border-blue-200 shadow-xl rounded-2xl p-6 mb-6 hover:shadow-blue-300/50 transition-all duration-300">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">Select a Subject to Book</h2>
-              {tutor.subjects.length === 0 ? (
-                <p className="text-gray-600">No subjects listed</p>
+            {/* More about me */}
+            <section>
+              <h2 className="text-2xl font-bold text-gray-900">More about me</h2>
+              {tutor.bio ? (
+                <p className="mt-3 text-sm text-gray-800 leading-relaxed">{tutor.bio}</p>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {tutor.subjects.map((subject) => (
-                    <button
-                      key={subject.id}
-                      onClick={() => setSelectedSubject(subject)}
-                      className={`p-4 rounded-xl border-2 transition-all duration-200 text-left shadow-md ${
-                        selectedSubject?.id === subject.id
-                          ? 'border-itutor-green bg-gradient-to-br from-green-50 to-emerald-50 shadow-lg shadow-itutor-green/30 scale-105'
-                          : 'border-gray-300 bg-white hover:border-itutor-green hover:shadow-lg'
-                      }`}
-                    >
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <h3 className="font-bold text-gray-900 mb-1">{subject.name}</h3>
-                          <p className="text-sm text-gray-600">{subject.curriculum}</p>
-                        </div>
-                        <div className="text-right ml-2">
-                          <p className="text-lg font-bold text-itutor-green">
-                            {process.env.NEXT_PUBLIC_ENABLE_PAID_SESSIONS === 'true' ? `$${subject.price_per_hour_ttd}` : '$0.00'}
-                          </p>
-                          <p className="text-xs text-gray-600">per hour</p>
-                        </div>
-                      </div>
-                      {selectedSubject?.id === subject.id && (
-                        <div className="mt-2 flex items-center gap-1 text-xs text-itutor-green font-semibold">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                          Selected
-                        </div>
-                      )}
-                    </button>
-                  ))}
+                <p className="mt-3 text-sm text-gray-500">No bio provided yet.</p>
+              )}
+              <div className="mt-4 space-y-2 text-sm">
+                {tutor.subjects.length > 0 && (
+                  <div className="flex items-center gap-2 text-gray-900">
+                    <GraduationCap className="w-4 h-4 text-gray-500 shrink-0" />
+                    I teach:{' '}
+                    <span className="font-semibold underline">{tutor.subjects.map(s => s.name).join(', ')}</span>
+                  </div>
+                )}
+                {tutor.country && (
+                  <div className="flex items-center gap-2 text-gray-900">
+                    <span className="w-4 text-center text-gray-500 shrink-0 text-xs">🌍</span>
+                    Based in {tutor.country}
+                  </div>
+                )}
+              </div>
+            </section>
+
+            {/* Lesson rating tiles */}
+            <section>
+              <h2 className="text-2xl font-bold text-gray-900">Lesson rating</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+                <RatingTile icon={Smile} label="Reassurance" value={tutor.average_rating} />
+                <RatingTile icon={MessageCircle} label="Clarity" value={tutor.average_rating} />
+                <RatingTile icon={Target} label="Progress" value={tutor.average_rating} />
+                <RatingTile icon={Pencil} label="Preparation" value={tutor.average_rating} />
+              </div>
+              <div className="mt-3 text-xs text-gray-500">
+                Based on {tutor.total_reviews} student {tutor.total_reviews === 1 ? 'review' : 'reviews'}
+              </div>
+            </section>
+
+            {/* Reviews */}
+            <section>
+              <h2 className="text-2xl font-bold text-gray-900">What my students say</h2>
+              {tutor.average_rating !== null && (
+                <div className="flex items-center gap-4 mt-4">
+                  <span className="text-6xl font-bold text-gray-900 leading-none">
+                    {tutor.average_rating.toFixed(1)}
+                  </span>
+                  <div className="w-14 h-14 rounded-full bg-amber-400 grid place-items-center shadow-md">
+                    <Star className="w-8 h-8 fill-amber-600 text-amber-600" />
+                  </div>
                 </div>
               )}
-            </div>
+              <div className="text-sm text-gray-500 mt-2">
+                Based on {tutor.total_reviews} student {tutor.total_reviews === 1 ? 'review' : 'reviews'}
+              </div>
 
-            {/* Available Times */}
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">Available Times</h2>
-              {!selectedSubject ? (
-                <div className="bg-white border-2 border-purple-200 shadow-xl rounded-2xl p-12 text-center hover:shadow-purple-300/50 transition-all duration-300">
-                  <svg className="w-16 h-16 text-purple-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                  </svg>
-                  <p className="text-gray-700 mb-2 text-lg font-semibold">Select a subject above to view available times</p>
-                  <p className="text-gray-600 text-sm">Choose what you'd like to learn</p>
+              {tutor.ratings.length > 0 ? (
+                <div className="grid sm:grid-cols-2 gap-x-8 gap-y-6 mt-6">
+                  {tutor.ratings.slice(0, 4).map(rating => (
+                    <div key={rating.id}>
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="w-10 h-10 rounded-xl grid place-items-center font-bold text-sm shrink-0"
+                          style={{
+                            background: `oklch(0.85 0.1 ${hashHue(rating.student_name)})`,
+                            color: `oklch(0.28 0.07 ${hashHue(rating.student_name)})`,
+                          }}
+                        >
+                          {rating.student_name.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <div className="font-bold text-gray-900 text-sm">{rating.student_name}</div>
+                          <div className="text-xs text-gray-500">
+                            {new Date(rating.created_at).toLocaleDateString('en-US', {
+                              month: 'long',
+                              day: 'numeric',
+                              year: 'numeric',
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <Star
+                            key={i}
+                            className={`w-3.5 h-3.5 ${i < rating.stars ? 'fill-amber-400 text-amber-400' : 'text-gray-200'}`}
+                          />
+                        ))}
+                      </div>
+                      {rating.comment && (
+                        <p className="text-sm text-gray-800 mt-2 leading-relaxed">{rating.comment}</p>
+                      )}
+                    </div>
+                  ))}
                 </div>
               ) : (
-                <>
-                  <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-itutor-green rounded-xl p-4 mb-4 shadow-md">
-                    <div className="flex items-center gap-2 text-itutor-green text-sm font-semibold">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      Booking: {selectedSubject.name} • {process.env.NEXT_PUBLIC_ENABLE_PAID_SESSIONS === 'true' ? `$${selectedSubject.price_per_hour_ttd}` : '$0.00'}/hour
+                <div className="mt-6 py-8 text-center text-gray-500 text-sm">No reviews yet</div>
+              )}
+            </section>
+
+            {/* Verified CXC Results */}
+            {isVerified && verifiedSubjects.length > 0 && (
+              <section>
+                <h2 className="text-2xl font-bold text-gray-900 mb-4">Verified CXC Results</h2>
+                {csecSubjects.length > 0 && (
+                  <div className="mb-4">
+                    <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">CSEC</h3>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {csecSubjects.map((s: any) => (
+                        <div key={s.id} className="bg-white border border-gray-200 rounded-xl p-3">
+                          <div className="font-semibold text-gray-900 text-sm">{s.subject_name}</div>
+                          <div className="text-xs text-itutor-green font-bold mt-0.5">Grade {s.grade}</div>
+                        </div>
+                      ))}
                     </div>
                   </div>
+                )}
+                {capeSubjects.length > 0 && (
+                  <div className="mb-4">
+                    <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">CAPE</h3>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {capeSubjects.map((s: any) => (
+                        <div key={s.id} className="bg-white border border-gray-200 rounded-xl p-3">
+                          <div className="font-semibold text-gray-900 text-sm">{s.subject_name}</div>
+                          <div className="text-xs text-purple-600 font-bold mt-0.5">Grade {s.grade}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <VerifiedSubjectsButton onClick={() => setVerifiedSubjectsModalOpen(true)} variant="secondary" />
+              </section>
+            )}
+
+            {/* Book a lesson */}
+            <section id="book" className="scroll-mt-20 space-y-5">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">Book a lesson</h2>
+                <p className="text-sm text-gray-500 mt-1">Pick a subject and time for your first lesson.</p>
+              </div>
+
+              {/* Subject selector */}
+              {tutor.subjects.length > 0 && (
+                <div>
+                  <div className="text-sm font-semibold text-gray-700 mb-2">Select a subject</div>
+                  <div className="flex flex-wrap gap-2">
+                    {tutor.subjects.map(s => (
+                      <button
+                        key={s.id}
+                        onClick={() => {
+                          setSelectedSubject(s);
+                          setSelectedTimeSlot(null);
+                        }}
+                        className={`px-4 py-2 rounded-xl text-sm font-semibold border-2 transition-all ${
+                          selectedSubject?.id === s.id
+                            ? 'bg-itutor-green text-white border-itutor-green'
+                            : 'bg-white text-gray-700 border-gray-200 hover:border-itutor-green hover:text-itutor-green'
+                        }`}
+                      >
+                        {s.name} · TTD ${s.price_per_hour_ttd}/hr
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Calendar */}
+              {!selectedSubject ? (
+                <div className="bg-white border border-gray-200 rounded-3xl p-12 text-center">
+                  <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto mb-4 grid place-items-center">
+                    <GraduationCap className="w-8 h-8 text-gray-400" />
+                  </div>
+                  <p className="text-gray-600 font-medium">Select a subject above to view available times</p>
+                </div>
+              ) : (
+                <div className="bg-white border border-gray-200 rounded-3xl p-5">
                   <TutorCalendarWidget
                     tutorId={tutorId}
                     onSlotSelect={(startAt, endAt) => setSelectedTimeSlot({ start: startAt, end: endAt })}
@@ -564,82 +564,148 @@ export default function PublicTutorProfilePage() {
                   <button
                     onClick={handleBookSession}
                     disabled={!selectedTimeSlot}
-                    className={`w-full mt-6 py-4 rounded-lg font-bold text-white transition shadow-lg text-lg ${
+                    className={`lg:hidden w-full mt-4 py-3.5 rounded-2xl font-bold text-base transition ${
                       selectedTimeSlot
-                        ? 'bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green shadow-green-300'
-                        : 'bg-gray-300 cursor-not-allowed'
+                        ? 'bg-itutor-green text-white hover:bg-emerald-700'
+                        : 'bg-gray-100 text-gray-400 cursor-not-allowed'
                     }`}
                   >
-                    {selectedTimeSlot ? '✓ Confirm Booking' : 'Select a time slot'}
+                    {selectedTimeSlot ? 'Continue to booking' : 'Pick a time to continue'}
                   </button>
-                </>
+                </div>
               )}
-            </div>
+            </section>
           </div>
 
-          {/* Reviews — right column */}
-          <div className="lg:col-span-1">
-            <div className="bg-white border-2 border-yellow-200 shadow-xl rounded-2xl p-6 hover:shadow-yellow-300/50 transition-all duration-300">
-              <div className="flex items-center gap-2 mb-4">
-                <svg className="w-6 h-6 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                </svg>
-                <h2 className="text-xl font-bold text-gray-900">Reviews</h2>
+          {/* RIGHT — sticky booking sidebar */}
+          <aside className="lg:sticky lg:top-20 self-start">
+            <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-lg space-y-4">
+              <div className="flex items-baseline gap-2">
+                <span className="text-3xl font-bold text-gray-900">TTD ${minPrice}</span>
+                <span className="text-sm text-gray-500">per hour</span>
               </div>
-              {tutor.ratings.length === 0 ? (
-                <div className="text-center py-8">
-                  <svg className="w-12 h-12 text-gray-300 mx-auto mb-2" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                  </svg>
-                  <p className="text-gray-600 text-sm">No reviews yet</p>
+
+              <div className="grid grid-cols-2 gap-4 pb-3 border-b border-gray-100">
+                <div>
+                  {tutor.average_rating !== null ? (
+                    <>
+                      <div className="flex items-center gap-1">
+                        <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                        <span className="text-xl font-bold text-gray-900">{tutor.average_rating.toFixed(1)}</span>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-0.5">{tutor.total_reviews} reviews</div>
+                    </>
+                  ) : (
+                    <div className="text-sm text-gray-400">No reviews yet</div>
+                  )}
                 </div>
+                <div>
+                  <div className="text-xl font-bold text-gray-900">{completedSessions.toLocaleString()}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">sessions</div>
+                </div>
+              </div>
+
+              {/* Selection display */}
+              <div className="rounded-2xl bg-gray-50 p-3 text-sm">
+                <div className="text-xs text-gray-500">Your selection</div>
+                {selectedSubject && selectedTimeSlot ? (
+                  <div className="font-semibold text-gray-900 mt-1">
+                    {selectedSubject.name} ·{' '}
+                    {new Date(selectedTimeSlot.start).toLocaleDateString('en-US', {
+                      weekday: 'short',
+                      month: 'short',
+                      day: 'numeric',
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-gray-400 mt-1">
+                    {!selectedSubject ? 'Pick a subject and time below' : 'Pick a time from the schedule below'}
+                  </div>
+                )}
+              </div>
+
+              {/* CTA */}
+              {selectedSubject && selectedTimeSlot ? (
+                <button
+                  onClick={handleBookSession}
+                  className="w-full py-3.5 rounded-2xl bg-itutor-green text-white font-bold hover:bg-emerald-700 transition"
+                >
+                  Continue to checkout
+                </button>
               ) : (
-                <div className="space-y-4">
-                  {tutor.ratings.map((rating) => (
-                    <RatingComment key={rating.id} rating={rating} onReactionUpdate={fetchTutorProfile} />
-                  ))}
+                <button
+                  onClick={scrollToBook}
+                  className="w-full py-3.5 rounded-2xl bg-itutor-green text-white font-bold hover:bg-emerald-700 transition"
+                >
+                  Book trial lesson
+                </button>
+              )}
+
+              {/* Quick actions */}
+              <div className="grid grid-cols-3 gap-2">
+                <Link
+                  href="/messages"
+                  className="rounded-xl border border-gray-200 py-3 grid place-items-center hover:bg-gray-50 transition"
+                  title="Message"
+                >
+                  <MessageSquare className="w-4 h-4 text-gray-600" />
+                </Link>
+                <button
+                  onClick={() => setSaved(!saved)}
+                  className="rounded-xl border border-gray-200 py-3 grid place-items-center hover:bg-gray-50 transition"
+                  title={saved ? 'Saved' : 'Save tutor'}
+                >
+                  <Heart className={`w-4 h-4 ${saved ? 'fill-red-500 text-red-500' : 'text-gray-600'}`} />
+                </button>
+                <button
+                  onClick={() => {
+                    if (typeof window !== 'undefined') {
+                      navigator.clipboard?.writeText(window.location.href);
+                    }
+                  }}
+                  className="rounded-xl border border-gray-200 py-3 grid place-items-center hover:bg-gray-50 transition"
+                  title="Share"
+                >
+                  <Share2 className="w-4 h-4 text-gray-600" />
+                </button>
+              </div>
+
+              {/* Trust block */}
+              <div className="rounded-2xl bg-green-50 p-4">
+                <div className="flex items-center gap-2 font-bold text-green-900">
+                  <ShieldCheck className="w-4 h-4 text-itutor-green" />
+                  Not a match?
+                </div>
+                <div className="text-sm text-green-800 mt-1">You still have 2 free tutor trials.</div>
+              </div>
+
+              {/* Popularity */}
+              {completedSessions > 0 && (
+                <div className="flex items-start gap-2 text-sm">
+                  <TrendingUp className="w-4 h-4 text-gray-900 mt-0.5 shrink-0" />
+                  <div>
+                    <div className="font-bold text-gray-900">Popular tutor</div>
+                    <div className="text-gray-500 text-xs">{completedSessions} sessions completed.</div>
+                  </div>
                 </div>
               )}
             </div>
-          </div>
+          </aside>
         </div>
+      </div>
 
-        {/* About Section */}
-        <div id="about-section" className="bg-white rounded-2xl shadow-lg border-2 border-gray-200 p-6 mt-6 mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <svg className="w-6 h-6 text-itutor-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            About
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-lg">
-              <div className="w-10 h-10 bg-itutor-green/10 rounded-full flex items-center justify-center flex-shrink-0">
-                <svg className="w-5 h-5 text-itutor-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 mb-1">Member Since</p>
-                <p className="text-sm font-semibold text-gray-900">
-                  {tutor.created_at ? new Date(tutor.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 'N/A'}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-lg">
-              <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
-                <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 mb-1">Completed Sessions</p>
-                <p className="text-sm font-semibold text-gray-900">{completedSessions}</p>
-              </div>
-            </div>
-          </div>
+      {/* Mobile floating bar */}
+      <div className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur border-t border-gray-200 px-4 py-3 flex items-center justify-between">
+        <div>
+          <div className="text-lg font-bold text-gray-900">TTD ${minPrice}</div>
+          <div className="text-[11px] text-gray-500">per hour</div>
         </div>
-
+        <button
+          onClick={selectedSubject && selectedTimeSlot ? handleBookSession : scrollToBook}
+          className="rounded-full bg-itutor-green text-white px-6 py-2.5 text-sm font-bold"
+        >
+          {selectedSubject && selectedTimeSlot ? 'Continue' : 'Book trial lesson'}
+        </button>
       </div>
 
       {/* Verified Subjects Modal */}
@@ -662,8 +728,8 @@ export default function PublicTutorProfilePage() {
 
       {/* Sign Up Prompt Modal */}
       {showBookingPrompt && selectedSubject && selectedTimeSlot && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-white rounded-2xl p-8 max-w-md w-full relative border-4 border-itutor-green shadow-2xl shadow-itutor-green/30">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full relative border-4 border-itutor-green shadow-2xl">
             <button
               onClick={() => setShowBookingPrompt(false)}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition"
@@ -672,26 +738,16 @@ export default function PublicTutorProfilePage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
-
             <div className="text-center mb-6">
-              <div className="w-20 h-20 bg-gradient-to-br from-itutor-green to-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
+              <div className="w-20 h-20 bg-itutor-green rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
                 <svg className="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
               </div>
-              <h3 className="text-3xl font-bold text-gray-900 mb-2">🎓 Almost there!</h3>
-              <p className="text-gray-600 mb-6">
-                Sign up or log in to complete your booking
-              </p>
-
-              {/* Booking Summary */}
-              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-5 mb-6 text-left">
-                <h4 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
-                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                  </svg>
-                  Booking Summary
-                </h4>
+              <h3 className="text-3xl font-bold text-gray-900 mb-2">Almost there!</h3>
+              <p className="text-gray-600 mb-6">Sign up or log in to complete your booking</p>
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 mb-6 text-left">
+                <h4 className="font-bold text-gray-900 mb-3">Booking Summary</h4>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-gray-600">Tutor:</span>
@@ -708,27 +764,23 @@ export default function PublicTutorProfilePage() {
                   <div className="flex justify-between">
                     <span className="text-gray-600">Time:</span>
                     <span className="font-semibold text-gray-900">
-                      {new Date(selectedTimeSlot.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(selectedTimeSlot.end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {new Date(selectedTimeSlot.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} &ndash;{' '}
+                      {new Date(selectedTimeSlot.end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
-                  <div className="flex justify-between pt-2 border-t border-blue-300">
+                  <div className="flex justify-between pt-2 border-t border-gray-200">
                     <span className="text-gray-600">Price:</span>
-                    <span className="font-bold text-itutor-green text-lg">
-                      {process.env.NEXT_PUBLIC_ENABLE_PAID_SESSIONS === 'true' 
-                        ? `$${selectedSubject.price_per_hour_ttd}/hr`
-                        : '$0.00/hr'}
-                    </span>
+                    <span className="font-bold text-itutor-green text-lg">TTD ${selectedSubject.price_per_hour_ttd}/hr</span>
                   </div>
                 </div>
               </div>
             </div>
-
             <div className="flex flex-col gap-3">
               <Link
                 href="/signup"
-                className="w-full px-6 py-4 bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-white font-bold rounded-lg transition shadow-lg shadow-itutor-green/30 text-center"
+                className="w-full px-6 py-4 bg-itutor-green hover:bg-emerald-700 text-white font-bold rounded-lg transition text-center"
               >
-                🚀 Sign Up to Book
+                Sign Up to Book
               </Link>
               <Link
                 href="/login"
@@ -743,4 +795,3 @@ export default function PublicTutorProfilePage() {
     </div>
   );
 }
-
