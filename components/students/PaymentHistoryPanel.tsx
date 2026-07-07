@@ -9,7 +9,7 @@ import {
   generateHistoryForMember,
   getPaymentStatus,
   getLatestCycle,
-  deriveMembershipStatus,
+  getMembershipStatus,
   STATUS_META,
   MEMBERSHIP_META,
   GRACE_PERIOD_DAYS,
@@ -43,7 +43,7 @@ export default function PaymentHistoryPanel({ open, onClose, name, email, billin
   const cycles = useMemo(() => generateHistoryForMember(billing), [billing]);
   const latest = getLatestCycle(cycles);
   const currentStatus = latest ? getPaymentStatus(latest) : null;
-  const membership = currentStatus ? deriveMembershipStatus(currentStatus) : 'ACTIVE';
+  const membership = currentStatus ? getMembershipStatus(currentStatus) : 'ACTIVE';
   const joined = billing.joinedAt ? new Date(billing.joinedAt) : null;
   const initials = name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
 

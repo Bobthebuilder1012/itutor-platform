@@ -22,6 +22,7 @@ import { formatLevel, LEVEL_LABELS } from '@/lib/utils/formatLevel';
 import TutorShell from '@/components/tutor/TutorShell';
 import { uploadStreamAttachment } from '@/lib/utils/streamAttachments';
 import PaymentHistoryPanel from '@/components/students/PaymentHistoryPanel';
+import { generateHistoryForMember, getPaymentStatus, getMembershipStatus, MEMBERSHIP_META, type MemberBilling } from '@/lib/utils/paymentCycles';
 
 type DbSubject = { id: string; name: string; label: string; curriculum: string };
 
@@ -1591,16 +1592,27 @@ function RosterRow({ m, groupId, onUpdate, onRemoved, externalChannels }: { m: G
     }
   };
 
-  const statusMeta: Record<string, { label: string; chip: string }> = {
-    pending_approval: { label: 'Pending',   chip: 'bg-amber-100 text-amber-800 border-amber-200' },
-    invited:          { label: 'Invited',   chip: 'bg-sky-100 text-sky-700 border-sky-200' },
-    active:           { label: 'Active',    chip: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
-    approved:         { label: 'Active',    chip: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
-    suspended:        { label: 'Suspended', chip: 'bg-amber-100 text-amber-800 border-amber-200' },
-    banned:           { label: 'Banned',    chip: 'bg-rose-100 text-rose-700 border-rose-200' },
-    removed:          { label: 'Removed',   chip: 'bg-muted text-muted-foreground border-border' },
+  // Billing seed shared by the table Membership badge AND the Payment History
+  // panel — both consume the SAME getMembershipStatus() derivation so they can
+  // never drift. Manual Ban/Suspend sit on top of this payment-driven default.
+  const billing: MemberBilling = {
+    studentId: m.studentId,
+    joinedAt: m.joinedAt,
+    status: m.subscription?.status ?? null,
+    amount: m.subscription?.plan_price_ttd ?? null,
+    lastPaidAt: m.subscription?.last_paid_at ?? null,
   };
-  const sm = statusMeta[m.status] ?? statusMeta.active;
+  const currentCycle = generateHistoryForMember(billing)[0];
+  const payMembership = currentCycle ? getMembershipStatus(getPaymentStatus(currentCycle)) : 'ACTIVE';
+
+  // Manual overrides win over the payment-derived default; otherwise Membership
+  // is payment-driven (OVERDUE current cycle → Suspended, automatically).
+  const membershipView =
+    m.status === 'banned'
+      ? { label: 'Banned', chip: 'bg-rose-100 text-rose-700 border-rose-200' }
+      : (m.status === 'suspended' || payMembership === 'SUSPENDED')
+      ? { label: MEMBERSHIP_META.SUSPENDED.label, chip: 'bg-red-50 text-red-700 border-red-200' }
+      : { label: MEMBERSHIP_META.ACTIVE.label, chip: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
 
   const isOverdue = m.paymentStatus === 'overdue';
   const confirmCopy = {
@@ -1651,7 +1663,7 @@ function RosterRow({ m, groupId, onUpdate, onRemoved, externalChannels }: { m: G
           ) : <span className="text-muted-foreground">—</span>}
         </td>
         <td className="px-4 py-3">
-          <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border', sm.chip)}>{sm.label}</span>
+          <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border', membershipView.chip)}>{membershipView.label}</span>
         </td>
         <td className="px-4 py-3">
           {m.subscription ? (
@@ -1767,13 +1779,7 @@ function RosterRow({ m, groupId, onUpdate, onRemoved, externalChannels }: { m: G
         onClose={() => { setHistoryOpen(false); infoRef.current?.focus(); }}
         name={m.name}
         email={m.email}
-        billing={{
-          studentId: m.studentId,
-          joinedAt: m.joinedAt,
-          status: m.subscription?.status ?? null,
-          amount: m.subscription?.plan_price_ttd ?? null,
-          lastPaidAt: m.subscription?.last_paid_at ?? null,
-        }}
+        billing={billing}
       />
     </>
   );

@@ -52,8 +52,13 @@ export function getPaymentStatus(
   return isCurrentCycle && today.getTime() > gracePeriodEnd.getTime() ? 'OVERDUE' : 'DUE';
 }
 
-/** A student is suspended exactly when their current cycle is OVERDUE. */
-export function deriveMembershipStatus(status: PaymentStatus): MembershipStatus {
+/**
+ * Payment-derived membership: a student is suspended exactly when their current
+ * cycle is OVERDUE. This is the single shared derivation consumed by BOTH the
+ * Students table's Membership column and the Payment History panel, so the two
+ * can never drift. Manual Ban/Remove sit on top of this as separate layers.
+ */
+export function getMembershipStatus(status: PaymentStatus): MembershipStatus {
   return status === 'OVERDUE' ? 'SUSPENDED' : 'ACTIVE';
 }
 
