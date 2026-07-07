@@ -21,6 +21,7 @@ import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { formatLevel, LEVEL_LABELS } from '@/lib/utils/formatLevel';
 import TutorShell from '@/components/tutor/TutorShell';
 import { uploadStreamAttachment } from '@/lib/utils/streamAttachments';
+import PaymentHistoryPanel from '@/components/students/PaymentHistoryPanel';
 
 type DbSubject = { id: string; name: string; label: string; curriculum: string };
 
@@ -1422,8 +1423,6 @@ function RosterTab({ members, setMembers, group, isOneOnOne, atCapacity, onRefre
                 <th className="text-left font-bold px-4 py-2">Contact</th>
                 <th className="text-left font-bold px-4 py-2">Membership</th>
                 <th className="text-left font-bold px-4 py-2">Subscription</th>
-                <th className="text-left font-bold px-4 py-2">Next due</th>
-                <th className="text-left font-bold px-4 py-2">Last paid</th>
                 <th className="text-left font-bold px-4 py-2">Joined</th>
                 <th className="px-4 py-2"></th>
               </tr>
@@ -1536,6 +1535,8 @@ function RosterRow({ m, groupId, onUpdate, onRemoved, externalChannels }: { m: G
   const [suspendedUntil, setSuspendedUntil] = useState('');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const infoRef = useRef<HTMLButtonElement>(null);
 
   // Default suspension end: 7 days from now
   const defaultSuspendUntil = (() => {
@@ -1663,22 +1664,25 @@ function RosterRow({ m, groupId, onUpdate, onRemoved, externalChannels }: { m: G
             </div>
           ) : <span className="text-muted-foreground text-xs">—</span>}
         </td>
-        <td className="px-4 py-3 text-xs">
-          {!m.subscription ? <span className="text-muted-foreground">—</span>
-            : m.subscription.status === 'GRACE'
-            ? <span className="text-rose-600 font-semibold">Overdue</span>
-            : <span className="text-muted-foreground">{fmtShortDate(m.subscription.next_payment_due_at)}</span>}
-        </td>
-        <td className="px-4 py-3 text-xs text-muted-foreground">
-          {m.subscription ? fmtShortDate(m.subscription.last_paid_at) : '—'}
-        </td>
         <td className="px-4 py-3 text-xs text-muted-foreground">
           {m.joinedAt ? new Date(m.joinedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—'}
         </td>
         <td className="px-4 py-3 text-right">
+          <div className="flex items-center justify-end gap-1">
+          <button
+            ref={infoRef}
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setHistoryOpen(true); }}
+            aria-label={`View payment history for ${m.name}`}
+            title="Payment history"
+            className="size-8 grid place-items-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+          >
+            <Info className="size-[18px]" />
+          </button>
           <button ref={btnRef} onClick={openMenu} className="size-8 grid place-items-center rounded-md hover:bg-muted text-muted-foreground">
             <MoreVertical className="size-4" />
           </button>
+          </div>
           {menu && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setMenu(false)} />
@@ -1700,7 +1704,7 @@ function RosterRow({ m, groupId, onUpdate, onRemoved, externalChannels }: { m: G
       </tr>
 
       {confirm && conf && (
-        <tr><td colSpan={8} className="p-0">
+        <tr><td colSpan={6} className="p-0">
           <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4" onClick={closeConfirm}>
             <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl bg-background border border-border shadow-xl p-6 space-y-4">
               <div className="font-bold text-ink text-lg">{conf.title}</div>
@@ -1757,6 +1761,20 @@ function RosterRow({ m, groupId, onUpdate, onRemoved, externalChannels }: { m: G
           </div>
         </td></tr>
       )}
+
+      <PaymentHistoryPanel
+        open={historyOpen}
+        onClose={() => { setHistoryOpen(false); infoRef.current?.focus(); }}
+        name={m.name}
+        email={m.email}
+        billing={{
+          studentId: m.studentId,
+          joinedAt: m.joinedAt,
+          status: m.subscription?.status ?? null,
+          amount: m.subscription?.plan_price_ttd ?? null,
+          lastPaidAt: m.subscription?.last_paid_at ?? null,
+        }}
+      />
     </>
   );
 }
