@@ -1,6 +1,8 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerClient, getServiceClient } from "@/lib/supabase/server";
+import { isAiFeatureInMaintenance } from "@/lib/featureFlags/aiFeature";
+import { aiFeatureForbiddenResponse } from "@/lib/featureFlags/http";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
@@ -64,6 +66,9 @@ function capMarks(parsed: Record<string, unknown>, totalMarks: number) {
 }
 
 export async function POST(req: NextRequest) {
+  if (isAiFeatureInMaintenance()) {
+    return aiFeatureForbiddenResponse();
+  }
   try {
     const supabase = await getServerClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();

@@ -4,6 +4,8 @@ import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useProfile } from '@/lib/hooks/useProfile';
 import TutorShell from '@/components/tutor/TutorShell';
+import AiMaintenanceNotice from '@/components/AiMaintenanceNotice';
+import { isAiFeatureInMaintenance } from '@/lib/featureFlags/aiFeature';
 
 type QuestionResult = {
   question: string;
@@ -101,6 +103,13 @@ function saveSessions(sessions: GradingSession[]) {
 const AI_USE_LIMIT = 2;
 
 export default function ToolsAiPage() {
+  if (isAiFeatureInMaintenance()) {
+    return <AiMaintenanceNotice />;
+  }
+  return <ToolsAiPageContent />;
+}
+
+function ToolsAiPageContent() {
   const { profile, loading } = useProfile();
   const router = useRouter();
 

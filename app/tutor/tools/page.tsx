@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Sparkles, ArrowRight, Bot, Calculator, FileText } from 'lucide-react';
 import { useProfile } from '@/lib/hooks/useProfile';
 import TutorShell from '@/components/tutor/TutorShell';
+import { isAiFeatureInMaintenance } from '@/lib/featureFlags/aiFeature';
 
 export default function TutorToolsPage() {
   return (
@@ -23,6 +24,8 @@ function ToolsContent() {
     if (!loading && (!profile || profile.role !== 'tutor')) router.push('/login');
   }, [loading, profile, router]);
 
+  const aiInMaintenance = isAiFeatureInMaintenance();
+
   const tools = [
     {
       id: 'marking',
@@ -30,7 +33,8 @@ function ToolsContent() {
       desc: 'Upload student work and an answer key, get suggested grades and feedback in minutes.',
       icon: FileText,
       href: '/tools/ai',
-      available: true,
+      available: !aiInMaintenance,
+      badge: 'Under Maintenance',
     },
     {
       id: 'lesson-planning',
@@ -39,6 +43,7 @@ function ToolsContent() {
       icon: Bot,
       href: '#',
       available: false,
+      badge: 'Soon',
     },
     {
       id: 'grader',
@@ -47,6 +52,7 @@ function ToolsContent() {
       icon: Calculator,
       href: '#',
       available: false,
+      badge: 'Soon',
     },
   ];
 
@@ -70,7 +76,7 @@ function ToolsContent() {
               </div>
               <div className="mt-3 flex items-center gap-2">
                 <div className="font-semibold text-ink">{t.title}</div>
-                {!t.available && <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-peach text-ink">Soon</span>}
+                {!t.available && <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-peach text-ink">{t.badge}</span>}
               </div>
               <p className="text-xs text-muted-foreground mt-1">{t.desc}</p>
               {t.available && (
