@@ -799,9 +799,7 @@ function SessionsTab({ groupId, userId }: { groupId: string; userId: string }) {
                 <Pill tone="emerald" icon={Check} label="Attended" />
               ) : att === 'missed' ? (
                 <Pill tone="rose"    icon={X}     label="Missed" />
-              ) : (
-                <Pill tone="slate"               label="Pending" />
-              )}
+              ) : null}
             </div>
 
             <div className="flex items-center gap-1.5">
