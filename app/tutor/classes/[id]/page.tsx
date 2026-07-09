@@ -67,6 +67,7 @@ type StreamPost = {
   pinned?: boolean;
   pendingApproval?: boolean;
   attachmentName?: string;
+  attachmentUrl?: string;
   linkUrl?: string;
 };
 
@@ -330,7 +331,8 @@ function ClassHubContent() {
               at: formatRelative(p.created_at),
               pinned: !!(p.pinned_at ?? p.is_pinned ?? p.pinned),
               pendingApproval: p.pending_approval ?? false,
-              attachmentName: p.attachment_name,
+              attachmentName: p.attachments?.[0]?.file_name ?? p.attachment_name,
+              attachmentUrl: p.attachments?.[0]?.file_url ?? p.attachment_url,
               linkUrl: p.link_url,
             };
           }));
@@ -607,7 +609,8 @@ function ClassPostComposer({ group, onPosted }: { group: GroupDetail; onPosted: 
         at: 'Just now',
         pinned: false,
         pendingApproval: false,
-        attachmentName: kind === 'attachment' ? files[0]?.name : undefined,
+        attachmentName: kind === 'attachment' ? (p?.attachments?.[0]?.file_name ?? files[0]?.name) : undefined,
+        attachmentUrl: kind === 'attachment' ? p?.attachments?.[0]?.file_url : undefined,
         linkUrl: kind === 'link' ? url.trim() : undefined,
       });
       reset();
@@ -745,7 +748,16 @@ function StreamCard({ post, onPin, onRemove }: { post: StreamPost; onPin: () => 
           </div>
           <div className="mt-1 font-semibold text-ink">{post.title}</div>
           <p className="text-sm text-muted-foreground mt-1">{post.body}</p>
-          {post.attachmentName && (
+          {post.attachmentName && post.attachmentUrl && (
+            <a
+              href={post.attachmentUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-muted/40 text-xs font-semibold hover:bg-muted">
+              <Paperclip className="size-3.5" /> {post.attachmentName}
+            </a>
+          )}
+          {post.attachmentName && !post.attachmentUrl && (
             <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-muted/40 text-xs font-semibold">
               <Paperclip className="size-3.5" /> {post.attachmentName}
             </div>
