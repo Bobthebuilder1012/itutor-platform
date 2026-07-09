@@ -374,7 +374,7 @@ function JoinSessionButton({ groupId: _groupId, staticLink }: { groupId: string;
         rel="noopener noreferrer"
         className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-brand text-white font-semibold text-sm hover:bg-brand/90 transition"
       >
-        <Video className="size-4" /> Join next session
+        <Video className="size-4" /> Join Now
       </a>
     </div>
   );
