@@ -68,15 +68,23 @@ export async function POST(_req: NextRequest, { params }: Params) {
     const service = getServiceClient();
     const currentMonth = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
 
-    // Try to read cached link + month (meeting_link_month may not exist yet)
-    const { data: group } = await service
+    // Read cached link + month. meeting_link_month may not exist yet, in which
+    // case the combined select returns an error object (PostgREST does NOT
+    // throw) — so fall back to reading meeting_link alone.
+    let cachedLink: string | null = null;
+    let cachedMonth: string | null = null;
+    const cacheRead = await service
       .from('groups')
       .select('meeting_link, meeting_link_month')
       .eq('id', groupId)
       .single();
-
-    const cachedLink = (group as any)?.meeting_link;
-    const cachedMonth = (group as any)?.meeting_link_month;
+    if (cacheRead.error) {
+      const base = await service.from('groups').select('meeting_link').eq('id', groupId).single();
+      cachedLink = (base.data as any)?.meeting_link ?? null;
+    } else {
+      cachedLink = (cacheRead.data as any)?.meeting_link ?? null;
+      cachedMonth = (cacheRead.data as any)?.meeting_link_month ?? null;
+    }
 
     // Return cached link if it's from the current month
     if (cachedLink && cachedMonth === currentMonth) {
@@ -141,12 +149,21 @@ export async function POST(_req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Meeting provider returned no link' }, { status: 500 });
     }
 
-    // Save back to groups — try with meeting_link_month first, fall back without it
-    const updatePayload: Record<string, string> = { meeting_link: joinUrl };
-    try {
-      await service.from('groups').update({ ...updatePayload, meeting_link_month: currentMonth }).eq('id', groupId);
-    } catch {
-      await service.from('groups').update(updatePayload).eq('id', groupId);
+    // Persist the link so students (and the month cache) can read it. Try with
+    // meeting_link_month first; if that column doesn't exist the update returns
+    // an error object (supabase-js does NOT throw), so check .error explicitly
+    // and fall back to saving just the link — otherwise the link is silently
+    // never persisted and students never receive it.
+    const withMonth = await service
+      .from('groups')
+      .update({ meeting_link: joinUrl, meeting_link_month: currentMonth })
+      .eq('id', groupId);
+    if (withMonth.error) {
+      const baseSave = await service.from('groups').update({ meeting_link: joinUrl }).eq('id', groupId);
+      if (baseSave.error) {
+        console.error('[POST meeting-link] failed to persist meeting_link', baseSave.error);
+        return NextResponse.json({ error: 'Failed to save meeting link' }, { status: 500 });
+      }
     }
 
     return NextResponse.json({ join_url: joinUrl, cached: false });
