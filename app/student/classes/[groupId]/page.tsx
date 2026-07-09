@@ -127,7 +127,6 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
   const [rawMemberStatus, setRawMemberStatus] = useState<string | null>(null);
   const [actionReason, setActionReason] = useState<string | null>(null);
   const [suspendedUntil, setSuspendedUntil] = useState<Date | null>(null);
-  const [hasNextSession, setHasNextSession] = useState(false);
   const [nextMeetingLink, setNextMeetingLink] = useState<string | null>(null);
 
   useEffect(() => {
@@ -169,10 +168,9 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
         ? grp.average_rating
         : null;
 
-      const nextOcc = grp.next_occurrence;
-      const isReallyUpcoming = nextOcc?.scheduled_start_at && new Date(nextOcc.scheduled_start_at) > new Date();
-      setHasNextSession(Boolean(isReallyUpcoming));
-      setNextMeetingLink(grp.meeting_link ?? nextOcc?.meeting_link ?? null);
+      // One durable class link (groups.meeting_link) — shown whenever present,
+      // never gated on whether a session happens to be upcoming.
+      setNextMeetingLink(grp.meeting_link ?? null);
 
       const tutorObj = Array.isArray(grp.tutor) ? grp.tutor[0] : grp.tutor;
       const tutor = tutorObj
@@ -254,7 +252,7 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
               )}
             </div>
           </div>
-          {!blocked && hasNextSession && (
+          {!blocked && (
             <JoinSessionButton groupId={groupId} staticLink={nextMeetingLink} />
           )}
         </div>
@@ -764,7 +762,7 @@ function SessionsTab({ groupId, userId }: { groupId: string; userId: string }) {
     <div className="space-y-3">
       <div className="rounded-xl border border-dashed border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground flex items-start gap-2">
         <Video className="size-3.5 mt-0.5 shrink-0 text-brand-deep" />
-        <span>Meeting links are generated automatically from your tutor's connected Zoom or Google Meet account when each session starts.</span>
+        <span>Your tutor's Zoom / Google Meet link for this class. The same link is reused for every session — join any time it's available.</span>
       </div>
 
       {sessions.map((s, i) => {
@@ -807,7 +805,7 @@ function SessionsTab({ groupId, userId }: { groupId: string; userId: string }) {
             </div>
 
             <div className="flex items-center gap-1.5">
-              {future && meetingLink && (
+              {meetingLink && (
                 <a
                   href={meetingLink}
                   target="_blank"
@@ -816,7 +814,7 @@ function SessionsTab({ groupId, userId }: { groupId: string; userId: string }) {
                   <Video className="size-3.5" /> Join
                 </a>
               )}
-              {future && !meetingLink && (
+              {!meetingLink && (
                 <span className="text-[11px] text-muted-foreground italic">No link set</span>
               )}
             </div>

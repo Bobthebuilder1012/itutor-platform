@@ -65,8 +65,6 @@ function formatCountdown(startIso: string): string {
   return `in ${days} ${days === 1 ? 'day' : 'days'}`;
 }
 
-const JOIN_WINDOW_MS = 15 * 60 * 1000;
-
 export default function SessionsList({ sessions, groupId, onRefresh }: SessionsListProps) {
   const [filter, setFilter] = useState<FilterKey>('all');
   const [busyOccurrenceId, setBusyOccurrenceId] = useState<string | null>(null);
@@ -343,13 +341,8 @@ export default function SessionsList({ sessions, groupId, onRefresh }: SessionsL
 
         <div className="flex items-center gap-2 flex-shrink-0 pt-[2px]">
           {isUpcoming && (() => {
-            const startMs = new Date(occ.scheduled_start_at).getTime();
-            const endMs = new Date(occ.scheduled_end_at).getTime();
-            const nowMsLocal = Date.now();
-            const joinOpen =
-              nowMsLocal >= startMs - JOIN_WINDOW_MS && nowMsLocal <= endMs;
             const isJoining = joiningOccurrenceId === occ.id;
-            return joinOpen ? (
+            return (
               <button
                 onClick={() => handleJoin(row)}
                 disabled={isJoining}
@@ -361,18 +354,6 @@ export default function SessionsList({ sessions, groupId, onRefresh }: SessionsL
                   <line x1="15" y1="12" x2="3" y2="12" />
                 </svg>
                 {isJoining ? 'Opening…' : 'Join'}
-              </button>
-            ) : (
-              <button
-                disabled
-                title="Opens 15 minutes before the start time"
-                className="inline-flex items-center gap-1.5 px-3.5 py-[5px] rounded-[7px] text-[12px] font-semibold bg-[#f4f6f8] text-[#d1d5db] border border-[#e5e9ee] cursor-not-allowed whitespace-nowrap"
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                  <rect x="3" y="11" width="18" height="11" rx="2" />
-                  <path d="M7 11V7a5 5 0 0110 0v4" />
-                </svg>
-                Join
               </button>
             );
           })()}
@@ -489,7 +470,7 @@ export default function SessionsList({ sessions, groupId, onRefresh }: SessionsL
             <line x1="12" y1="8" x2="12" y2="12" />
             <line x1="12" y1="16" x2="12.01" y2="16" />
           </svg>
-          Upcoming session rooms open 15 minutes before the scheduled start time.
+          The same meeting link is reused for every session in this series — it's available to join any time.
         </div>
       )}
 

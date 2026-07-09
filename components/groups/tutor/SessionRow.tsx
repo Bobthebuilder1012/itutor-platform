@@ -15,17 +15,18 @@ const DAY_LABELS: Record<number, string> = {
 
 const ACCENT_COLORS = ['#6366f1', '#10b981', '#f97316', '#f59e0b', '#ef4444', '#0891b2'];
 
-type OccurrenceStatus = 'too_early' | 'live' | 'ended';
+type OccurrenceStatus = 'upcoming' | 'live' | 'ended';
 
+// No join-window gating: an occurrence is joinable any time before it ends.
+// 'live' (currently in progress) only drives the pulse styling.
 function getOccurrenceStatus(occ: GroupOccurrence): OccurrenceStatus {
   const start = new Date(occ.scheduled_start_at).getTime();
   const end = new Date(occ.scheduled_end_at).getTime();
   const now = Date.now();
-  const joinWindowMs = 15 * 60 * 1000;
 
-  if (now < start - joinWindowMs) return 'too_early';
   if (now > end) return 'ended';
-  return 'live';
+  if (now >= start) return 'live';
+  return 'upcoming';
 }
 
 function getSessionColor(session: GroupSessionWithOccurrences): string {
@@ -244,7 +245,9 @@ export default function SessionRow({ session, groupId, onRefresh }: SessionRowPr
 
                   {/* Status + Actions */}
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    {isOccLive ? (
+                    {isEnded ? (
+                      <span className="text-[12px] font-medium px-2.5 py-1 rounded-md bg-[#f4f6fa] text-[#64748b]">Session ended</span>
+                    ) : (
                       <button
                         onClick={() => handleJoinOccurrence(occ.id)}
                         disabled={joiningOccurrenceId === occ.id}
@@ -252,10 +255,6 @@ export default function SessionRow({ session, groupId, onRefresh }: SessionRowPr
                       >
                         {joiningOccurrenceId === occ.id ? 'Opening…' : 'Join Session'}
                       </button>
-                    ) : isEnded ? (
-                      <span className="text-[12px] font-medium px-2.5 py-1 rounded-md bg-[#f4f6fa] text-[#64748b]">Session ended</span>
-                    ) : (
-                      <span className="text-[12px] font-medium px-2.5 py-1 rounded-md bg-[#dbeafe] text-[#2563eb]">Opens 15 min before</span>
                     )}
                     {!isEnded && (
                       <button

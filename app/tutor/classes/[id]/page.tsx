@@ -788,7 +788,6 @@ const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
 function SessionRow({ s, groupId, meetingLink, selected, onSelect, onCancel, reconnected }: { s: GroupSession; groupId: string; meetingLink: string; selected: boolean; onSelect: () => void; onCancel: () => void; reconnected?: boolean }) {
   const d = new Date(s.date);
   const valid = !isNaN(d.getTime());
-  const future = valid && d > new Date();
   const durationMin = s.durationMin ?? 60;
   const durLabel = durationMin < 60 ? `${durationMin}m` : durationMin % 60 === 0 ? `${durationMin / 60}hr` : `${Math.floor(durationMin / 60)}h ${durationMin % 60}m`;
   const [cancelling, setCancelling] = useState(false);

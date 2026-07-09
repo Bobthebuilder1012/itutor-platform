@@ -11,7 +11,7 @@ interface StudentSessionsTabProps {
   joiningOccurrenceId: string | null;
 }
 
-type OccStatus = 'too_early' | 'live' | 'ended';
+type OccStatus = 'upcoming' | 'live' | 'ended';
 type RsvpStatus = 'attending' | 'not_attending';
 type RsvpMap = Record<string, { status: RsvpStatus; reason: string | null }>;
 
@@ -19,9 +19,10 @@ function occStatus(occ: GroupOccurrence): OccStatus {
   const s = new Date(occ.scheduled_start_at).getTime();
   const e = new Date(occ.scheduled_end_at).getTime();
   const now = Date.now();
-  if (now < s - 15 * 60 * 1000) return 'too_early';
-  if (now > e + 30 * 60 * 1000) return 'ended';
-  return 'live';
+  // No join-window gating: joinable any time before it ends.
+  if (now > e) return 'ended';
+  if (now >= s) return 'live';
+  return 'upcoming';
 }
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -237,25 +238,17 @@ export default function StudentSessionsTab({ sessions, loading, groupId, onJoin,
                   <p className="text-[14px] font-bold text-[#14532d]">{fmtDateLong(nextOcc.scheduled_start_at)}</p>
                   <p className="text-[12px] text-[#166534] mt-px">
                     {fmtTime(nextOcc.scheduled_start_at)} – {fmtTime(nextOcc.scheduled_end_at)}
-                    {nextStatus !== 'live' && ' · Meeting link opens 15 min before'}
                   </p>
                 </div>
                 {nextStatus !== 'live' && <Countdown target={new Date(nextOcc.scheduled_start_at)} />}
-                {nextStatus === 'live' ? (
-                  <button
-                    onClick={() => onJoin(s.id, nextOcc.id)}
-                    disabled={joiningOccurrenceId === nextOcc.id}
-                    className="px-5 py-[9px] rounded-[10px] bg-[#0d9668] text-white text-[12px] font-semibold flex items-center gap-1.5 shadow-[0_2px_8px_rgba(13,150,104,0.25)] hover:bg-[#047857] hover:-translate-y-px transition-all disabled:opacity-40 disabled:transform-none flex-shrink-0 ml-3"
-                  >
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M15 10l4.553-2.069A1 1 0 0121 8.876v6.248a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" /></svg>
-                    {joiningOccurrenceId === nextOcc.id ? 'Opening…' : 'Join Now'}
-                  </button>
-                ) : (
-                  <button disabled className="px-5 py-[9px] rounded-[10px] bg-[#0d9668] text-white text-[12px] font-semibold flex items-center gap-1.5 opacity-40 cursor-not-allowed flex-shrink-0 ml-3">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M15 10l5 5-5 5" /><path d="M20 15H8a4 4 0 01-4-4V4" /></svg>
-                    Not yet open
-                  </button>
-                )}
+                <button
+                  onClick={() => onJoin(s.id, nextOcc.id)}
+                  disabled={joiningOccurrenceId === nextOcc.id}
+                  className="px-5 py-[9px] rounded-[10px] bg-[#0d9668] text-white text-[12px] font-semibold flex items-center gap-1.5 shadow-[0_2px_8px_rgba(13,150,104,0.25)] hover:bg-[#047857] hover:-translate-y-px transition-all disabled:opacity-40 disabled:transform-none flex-shrink-0 ml-3"
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M15 10l4.553-2.069A1 1 0 0121 8.876v6.248a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" /></svg>
+                  {joiningOccurrenceId === nextOcc.id ? 'Opening…' : nextStatus === 'live' ? 'Join Now' : 'Join'}
+                </button>
               </div>
             )}
 
@@ -365,22 +358,15 @@ export default function StudentSessionsTab({ sessions, loading, groupId, onJoin,
                         Absent
                       </button>
 
-                      {/* Status badge */}
-                      {status === 'live' ? (
-                        <button
-                          onClick={() => onJoin(s.id, occ.id)}
-                          disabled={joiningOccurrenceId === occ.id}
-                          className="px-3.5 py-[5px] rounded-md bg-[#0d9668] hover:bg-[#047857] text-white text-[11px] font-semibold transition-colors disabled:opacity-40 flex items-center gap-1"
-                        >
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M15 10l4.553-2.069A1 1 0 0121 8.876v6.248a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" /></svg>
-                          {joiningOccurrenceId === occ.id ? 'Opening…' : 'Join'}
-                        </button>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-3 py-[5px] rounded-md text-[11px] font-semibold bg-[#f5f7fa] text-[#6b7280] flex-shrink-0">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
-                          Not yet open
-                        </span>
-                      )}
+                      {/* Join — no time gating, link reused for the whole series */}
+                      <button
+                        onClick={() => onJoin(s.id, occ.id)}
+                        disabled={joiningOccurrenceId === occ.id}
+                        className="px-3.5 py-[5px] rounded-md bg-[#0d9668] hover:bg-[#047857] text-white text-[11px] font-semibold transition-colors disabled:opacity-40 flex items-center gap-1"
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M15 10l4.553-2.069A1 1 0 0121 8.876v6.248a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" /></svg>
+                        {joiningOccurrenceId === occ.id ? 'Opening…' : 'Join'}
+                      </button>
                     </div>
                   </div>
                 );
