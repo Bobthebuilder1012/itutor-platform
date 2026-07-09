@@ -625,12 +625,14 @@ function StreamTab({ groupId, group, tutorName }: { groupId: string; group: Grou
                 </div>
                 <div className="mt-1 font-semibold text-ink">{p.title}</div>
                 <p className="text-sm text-muted-foreground mt-1">{p.body}</p>
-                {p.attachmentName && (
-                  <button
-                    onClick={() => p.attachmentUrl && window.open(p.attachmentUrl, '_blank')}
+                {p.attachmentName && p.attachmentUrl && (
+                  <a
+                    href={p.attachmentUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-muted/40 text-xs font-semibold text-ink hover:bg-muted">
                     <Download className="size-3.5" /> {p.attachmentName}
-                  </button>
+                  </a>
                 )}
                 {p.linkUrl && (
                   <a href={p.linkUrl} target="_blank" rel="noreferrer"
