@@ -66,6 +66,7 @@ function SettingsContent() {
   useUnsavedGuard(dirty);
 
   const [saving, setSaving] = useState(false);
+  const [savedFlash, setSavedFlash] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
   const [sendingResetEmail, setSendingResetEmail] = useState(false);
   const [message, setMessage] = useState('');
@@ -89,8 +90,9 @@ function SettingsContent() {
 
   const initials = (profile?.display_name || profile?.full_name || profile?.email || 'T').split(' ').map((s) => s[0]).join('').slice(0, 2).toUpperCase();
 
-  const handleSaveProfile = async () => {
-    setError(''); setMessage('');
+  const handleSaveProfile = async (opts: { auto?: boolean } = {}) => {
+    setError('');
+    if (!opts.auto) setMessage('');
     if (email !== profile?.email) { setPendingEmail(email); setShowEmailPasswordPrompt(true); return; }
     setSaving(true);
     try {
@@ -107,8 +109,13 @@ function SettingsContent() {
       const { error: updateError } = await supabase.from('profiles').update(updates).eq('id', profile!.id);
       if (updateError) throw new Error(updateError.code === '23505' ? 'This username is already taken' : updateError.message);
       setSaved((s) => ({ ...s, username: username.trim(), displayName: displayName.trim(), email, school, country }));
-      setMessage('Profile updated successfully!');
-      setTimeout(() => window.location.reload(), 800);
+      if (opts.auto) {
+        setSavedFlash(true);
+        setTimeout(() => setSavedFlash(false), 1500);
+      } else {
+        setMessage('Profile updated successfully!');
+        setTimeout(() => window.location.reload(), 800);
+      }
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -116,20 +123,51 @@ function SettingsContent() {
     }
   };
 
-  const handleSaveTeaching = async () => {
-    setError(''); setMessage('');
+  const handleSaveTeaching = async (opts: { auto?: boolean } = {}) => {
+    setError('');
+    if (!opts.auto) setMessage('');
     setSaving(true);
     try {
       const { error: updErr } = await supabase.from('profiles').update({ bio: bio.trim() || null }).eq('id', profile!.id);
       if (updErr) throw new Error(updErr.message);
       setSaved((s) => ({ ...s, bio: bio.trim() }));
-      setMessage('Teaching info updated!');
+      if (opts.auto) {
+        setSavedFlash(true);
+        setTimeout(() => setSavedFlash(false), 1500);
+      } else {
+        setMessage('Teaching info updated!');
+      }
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setSaving(false);
     }
   };
+
+  // Auto-save the Profile section (username/display name/school/country/
+  // same-day toggle) shortly after the user stops typing. Email is excluded —
+  // changing it requires an explicit password-confirmation step, which
+  // shouldn't pop up automatically mid-edit.
+  useEffect(() => {
+    if (section !== 'profile' || !profile) return;
+    if (email !== saved.email) return;
+    const profileDirty =
+      username !== saved.username || displayName !== saved.displayName ||
+      school !== saved.school || country !== saved.country;
+    if (!profileDirty || saving) return;
+    const t = setTimeout(() => { handleSaveProfile({ auto: true }); }, 1200);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [username, displayName, school, country, allowSameDay, section]);
+
+  // Auto-save the Teaching section's bio shortly after the user stops typing.
+  useEffect(() => {
+    if (section !== 'teaching' || !profile) return;
+    if (bio === saved.bio || saving) return;
+    const t = setTimeout(() => { handleSaveTeaching({ auto: true }); }, 1200);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bio, section]);
 
   const handleConfirmEmailChange = async () => {
     setError(''); setMessage('');
@@ -299,7 +337,7 @@ function SettingsContent() {
                 <ToggleRow label="Allow same-day bookings" desc="Bypass the 24-hour advance notice for testing." checked={allowSameDay} onChange={setAllowSameDay} />
               )}
 
-              <SaveBar onSave={handleSaveProfile} saving={saving} />
+              <SaveBar onSave={() => handleSaveProfile()} saving={saving} savedFlash={savedFlash} />
             </>
           )}
 
@@ -330,7 +368,7 @@ function SettingsContent() {
                   placeholder="Tell students about your teaching style, qualifications, and experience…" />
                 <div className="text-xs text-muted-foreground mt-1">{bio.length}/500 · 150 characters minimum to get listed.</div>
               </div>
-              <SaveBar onSave={handleSaveTeaching} saving={saving} />
+              <SaveBar onSave={() => handleSaveTeaching()} saving={saving} savedFlash={savedFlash} />
             </>
           )}
 
@@ -426,7 +464,8 @@ function SettingsContent() {
       <UnsavedBar
         dirty={dirty}
         saving={saving}
-        onSave={section === 'teaching' ? handleSaveTeaching : handleSaveProfile}
+        variant="secondary"
+        onSave={() => (section === 'teaching' ? handleSaveTeaching() : handleSaveProfile())}
         onDiscard={() => {
           setUsername(saved.username); setDisplayName(saved.displayName);
           setEmail(saved.email); setSchool(saved.school); setCountry(saved.country); setBio(saved.bio);
@@ -462,10 +501,12 @@ function ToggleRow({ label, desc, checked, onChange }: { label: string; desc: st
   );
 }
 
-function SaveBar({ onSave, saving, label = 'Save changes' }: { onSave: () => void; saving: boolean; label?: string }) {
+function SaveBar({ onSave, saving, label = 'Save changes', savedFlash = false }: { onSave: () => void; saving: boolean; label?: string; savedFlash?: boolean }) {
   return (
-    <div className="flex justify-end gap-2 pt-4 border-t border-border">
-      <button onClick={onSave} disabled={saving} className="px-4 py-2 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep disabled:opacity-50">
+    <div className="flex justify-end items-center gap-2 pt-4 border-t border-border">
+      {savedFlash && <span className="text-xs font-medium text-emerald-600">Saved</span>}
+      <button onClick={onSave} disabled={saving}
+        className="px-4 py-2 rounded-xl border border-border bg-background text-ink text-sm font-semibold hover:bg-muted disabled:opacity-50">
         {saving ? 'Saving…' : label}
       </button>
     </div>

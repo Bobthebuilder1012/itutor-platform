@@ -549,24 +549,25 @@ function StreamTab({ groupId, group, tutorName }: { groupId: string; group: Grou
       .then(d => {
         const raw: any[] = d.posts ?? d.data ?? [];
         setPosts(raw.map((p: any) => {
-          const kind: StreamPost['kind'] =
-            p.post_type === 'attachment' ? 'attachment'
-            : p.post_type === 'link'     ? 'link'
-            : 'announcement';
-
           const firstAttachment = (p.attachments ?? [])[0];
+          const attachmentName = firstAttachment?.file_name ?? p.attachment_name ?? null;
+          const attachmentUrl = firstAttachment?.file_url ?? p.attachment_url ?? null;
 
           const body = p.message_body ?? p.body ?? p.content ?? '';
           const lines = body.split('\n').filter(Boolean);
           const title = p.title ?? p.heading ?? lines[0] ?? '';
           const bodyText = lines.length > 1 ? lines.slice(1).join('\n') : body;
 
-          const isLinked = kind === 'link';
           const linkUrl =
             p.link_url ?? p.url
             ?? (URL_LINE_RE.test(bodyText.trim()) ? bodyText.trim()
               : URL_LINE_RE.test(title.trim()) ? title.trim()
-              : (isLinked ? (p.metadata?.url ?? null) : null));
+              : null);
+
+          // post_type is 'content' for BOTH attachment and link posts, so
+          // derive the display kind from what the post actually contains
+          // instead of trusting post_type directly.
+          const kind: StreamPost['kind'] = attachmentName ? 'attachment' : linkUrl ? 'link' : 'announcement';
 
           return {
             id: p.id,
@@ -577,8 +578,8 @@ function StreamTab({ groupId, group, tutorName }: { groupId: string; group: Grou
               ? new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
               : '',
             pinned: p.pinned_at !== null && p.pinned_at !== undefined,
-            attachmentName: firstAttachment?.file_name ?? p.attachment_name ?? null,
-            attachmentUrl:  firstAttachment?.file_url  ?? p.attachment_url  ?? null,
+            attachmentName,
+            attachmentUrl,
             linkUrl,
           };
         }));

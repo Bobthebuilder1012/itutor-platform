@@ -335,15 +335,25 @@ function ClassHubContent() {
               ?? (URL_LINE_RE.test(derivedBody) ? derivedBody
                 : URL_LINE_RE.test(derivedTitle) ? derivedTitle
                 : undefined);
+            const derivedAttachmentName = p.attachments?.[0]?.file_name ?? p.attachment_name;
+            // post_type is 'content' for BOTH attachment and link posts (and
+            // 'announcement' for announcements) — it can't distinguish
+            // attachment from link, so derive the display kind from what the
+            // post actually contains instead of trusting post_type directly.
+            const derivedKind: StreamPost['kind'] = derivedAttachmentName
+              ? 'attachment'
+              : derivedLinkUrl
+              ? 'link'
+              : 'announcement';
             return {
               id: p.id,
-              kind: (p.post_type ?? p.kind ?? 'announcement') as StreamPost['kind'],
+              kind: derivedKind,
               title: derivedTitle,
               body: derivedBody,
               at: formatRelative(p.created_at),
               pinned: !!(p.pinned_at ?? p.is_pinned ?? p.pinned),
               pendingApproval: p.pending_approval ?? false,
-              attachmentName: p.attachments?.[0]?.file_name ?? p.attachment_name,
+              attachmentName: derivedAttachmentName,
               attachmentUrl: p.attachments?.[0]?.file_url ?? p.attachment_url,
               linkUrl: derivedLinkUrl,
             };
