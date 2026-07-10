@@ -535,6 +535,10 @@ function ChannelJoinBanner({ group, tutorName }: { group: Group; tutorName: stri
 
 /* ─── Stream ─────────────────────────────────────────── */
 
+// Link posts have no dedicated link_url column — the composer writes the raw
+// URL as its own line in message_body, so detect a line that IS a bare URL.
+const URL_LINE_RE = /^https?:\/\/\S+$/;
+
 function StreamTab({ groupId, group, tutorName }: { groupId: string; group: Group; tutorName: string }) {
   const [posts, setPosts] = useState<StreamPost[]>([]);
   const [loading, setLoading] = useState(true);
@@ -558,7 +562,11 @@ function StreamTab({ groupId, group, tutorName }: { groupId: string; group: Grou
           const bodyText = lines.length > 1 ? lines.slice(1).join('\n') : body;
 
           const isLinked = kind === 'link';
-          const linkUrl = p.link_url ?? p.url ?? (isLinked ? (p.metadata?.url ?? null) : null);
+          const linkUrl =
+            p.link_url ?? p.url
+            ?? (URL_LINE_RE.test(bodyText.trim()) ? bodyText.trim()
+              : URL_LINE_RE.test(title.trim()) ? title.trim()
+              : (isLinked ? (p.metadata?.url ?? null) : null));
 
           return {
             id: p.id,

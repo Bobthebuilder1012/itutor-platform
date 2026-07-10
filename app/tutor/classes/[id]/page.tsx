@@ -84,6 +84,10 @@ import { type ScheduleEntry, formatScheduleEntry, scheduleToDisplay } from '@/li
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+// Link posts have no dedicated link_url column — the composer writes the raw
+// URL as its own line in message_body, so detect a line that IS a bare URL.
+const URL_LINE_RE = /^https?:\/\/\S+$/;
+
 type GroupDetail = {
   id: string;
   title: string;
@@ -323,6 +327,14 @@ function ClassHubContent() {
             const lines = msgBody.split('\n');
             const derivedTitle = lines[0]?.slice(0, 80) ?? '';
             const derivedBody = lines.slice(1).join('\n').trim();
+            // Link posts have no dedicated link_url column — the composer
+            // writes the raw URL as its own line in message_body, so detect
+            // a line that IS a bare URL.
+            const derivedLinkUrl =
+              p.link_url
+              ?? (URL_LINE_RE.test(derivedBody) ? derivedBody
+                : URL_LINE_RE.test(derivedTitle) ? derivedTitle
+                : undefined);
             return {
               id: p.id,
               kind: (p.post_type ?? p.kind ?? 'announcement') as StreamPost['kind'],
@@ -333,7 +345,7 @@ function ClassHubContent() {
               pendingApproval: p.pending_approval ?? false,
               attachmentName: p.attachments?.[0]?.file_name ?? p.attachment_name,
               attachmentUrl: p.attachments?.[0]?.file_url ?? p.attachment_url,
-              linkUrl: p.link_url,
+              linkUrl: derivedLinkUrl,
             };
           }));
         }
