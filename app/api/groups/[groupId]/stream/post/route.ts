@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
-import { signAttachmentList } from '@/lib/utils/signedAttachmentUrl';
 import type { CreateStreamPostInput, StreamPostType } from '@/lib/types/groupStream';
-
-const ATTACHMENTS_BUCKET = 'message-attachments';
 
 type Params = { params: Promise<{ groupId: string }> };
 
@@ -115,7 +112,11 @@ export async function POST(req: NextRequest, { params }: Params) {
       .from('stream_attachments')
       .select('id, post_id, file_name, file_url, file_type, file_size_bytes, created_at')
       .eq('post_id', post.id);
-    const attachments = await signAttachmentList(ATTACHMENTS_BUCKET, rawAttachments ?? []);
+    // Serve via the same-origin proxy route rather than the raw storage URL.
+    const attachments = (rawAttachments ?? []).map((a: any) => ({
+      ...a,
+      file_url: `/api/groups/${groupId}/stream/attachment/${a.id}`,
+    }));
 
     // Notify approved members (not the author)
     try {

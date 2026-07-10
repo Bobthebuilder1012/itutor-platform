@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
-import { signAttachmentList } from '@/lib/utils/signedAttachmentUrl';
-
-const ATTACHMENTS_BUCKET = 'message-attachments';
 
 type Params = { params: Promise<{ groupId: string }> };
 
@@ -158,12 +155,18 @@ export async function GET(req: NextRequest, { params }: Params) {
       return roots as { id: string; author_id: string; message_body: string; parent_reply_id: string | null; created_at: string; updated_at: string; author: unknown; replies: unknown[] }[];
     }
 
-    const postsWithMeta = await Promise.all((posts ?? []).map(async (p: any) => ({
+    // Serve attachments through the same-origin proxy route (keeps the storage
+    // URL hidden and re-checks access on every open) rather than a raw/signed
+    // Supabase URL.
+    const postsWithMeta = (posts ?? []).map((p: any) => ({
       ...p,
       author: profileMap.get(p.author_id) ?? { id: p.author_id, full_name: 'Unknown', avatar_url: null },
-      attachments: await signAttachmentList(ATTACHMENTS_BUCKET, (attachmentsByPost.get(p.id) ?? []) as { file_url?: string | null }[]),
+      attachments: (attachmentsByPost.get(p.id) ?? []).map((a: any) => ({
+        ...a,
+        file_url: `/api/groups/${groupId}/stream/attachment/${a.id}`,
+      })),
       replies: nestReplies(repliesByPost.get(p.id) ?? []),
-    })));
+    }));
 
     const hasMore = (posts ?? []).length === limit;
 
