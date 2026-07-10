@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { signAttachmentList } from '@/lib/utils/signedAttachmentUrl';
 import type { CreateStreamPostInput, StreamPostType } from '@/lib/types/groupStream';
+
+const ATTACHMENTS_BUCKET = 'message-attachments';
 
 type Params = { params: Promise<{ groupId: string }> };
 
@@ -108,10 +111,11 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
 
     const { data: author } = await service.from('profiles').select('id, full_name, avatar_url').eq('id', user.id).single();
-    const { data: attachments } = await service
+    const { data: rawAttachments } = await service
       .from('stream_attachments')
       .select('id, post_id, file_name, file_url, file_type, file_size_bytes, created_at')
       .eq('post_id', post.id);
+    const attachments = await signAttachmentList(ATTACHMENTS_BUCKET, rawAttachments ?? []);
 
     // Notify approved members (not the author)
     try {

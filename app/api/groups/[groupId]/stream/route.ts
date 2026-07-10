@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { signAttachmentList } from '@/lib/utils/signedAttachmentUrl';
+
+const ATTACHMENTS_BUCKET = 'message-attachments';
 
 type Params = { params: Promise<{ groupId: string }> };
 
@@ -155,12 +158,12 @@ export async function GET(req: NextRequest, { params }: Params) {
       return roots as { id: string; author_id: string; message_body: string; parent_reply_id: string | null; created_at: string; updated_at: string; author: unknown; replies: unknown[] }[];
     }
 
-    const postsWithMeta = (posts ?? []).map((p: any) => ({
+    const postsWithMeta = await Promise.all((posts ?? []).map(async (p: any) => ({
       ...p,
       author: profileMap.get(p.author_id) ?? { id: p.author_id, full_name: 'Unknown', avatar_url: null },
-      attachments: attachmentsByPost.get(p.id) ?? [],
+      attachments: await signAttachmentList(ATTACHMENTS_BUCKET, (attachmentsByPost.get(p.id) ?? []) as { file_url?: string | null }[]),
       replies: nestReplies(repliesByPost.get(p.id) ?? []),
-    }));
+    })));
 
     const hasMore = (posts ?? []).length === limit;
 
