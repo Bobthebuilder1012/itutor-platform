@@ -34,6 +34,7 @@ type Group = {
   tutor_rating?: number;
   tutor_reviews?: number;
   enrollment_count?: number;
+  meeting_link?: string | null;
   upcoming_sessions?: SessionRow[];
 };
 
@@ -191,7 +192,7 @@ export default function StudentGroupPage({ params }: { params: { groupId: string
           id, name, description, subject, tutor_id, max_students,
           require_join_requests, feedback_mode, primary_channel,
           whatsapp_link, google_classroom_link, pricing, pricing_model,
-          visibility, archived_at,
+          visibility, archived_at, meeting_link,
           tutor:profiles!groups_tutor_id_fkey(full_name, display_name)
         `)
         .eq('id', groupId)
@@ -225,7 +226,7 @@ export default function StudentGroupPage({ params }: { params: { groupId: string
       // Fetch upcoming sessions
       const { data: occurrences } = await supabase
         .from('group_session_occurrences')
-        .select('id, scheduled_start_at, duration_minutes, meeting_link')
+        .select('id, scheduled_start_at, duration_minutes')
         .gte('scheduled_start_at', new Date().toISOString())
         .order('scheduled_start_at', { ascending: true })
         .limit(5);
@@ -678,8 +679,6 @@ function ClassHomepage({ group, memberStatus, userId, subscriptionAccess }: { gr
   const isBanned = memberStatus === 'banned' || memberStatus === 'removed' || memberStatus === 'rejected';
   const blocked = isSuspended || isBanned;
 
-  const nextSession = group.upcoming_sessions?.[0];
-
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="flex items-center justify-between gap-3">
@@ -706,9 +705,9 @@ function ClassHomepage({ group, memberStatus, userId, subscriptionAccess }: { gr
               )}
             </div>
           </div>
-          {!blocked && nextSession && (
-            <a href={nextSession.meeting_link || '#'}
-              target={nextSession.meeting_link ? '_blank' : undefined}
+          {!blocked && group.meeting_link && (
+            <a href={group.meeting_link}
+              target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white text-ink font-semibold text-sm hover:bg-white/90 shrink-0 transition">
               <Video className="size-4" /> Join next session
@@ -918,6 +917,7 @@ function SessionsTab({ groupId }: { groupId: string }) {
     fetch(`/api/groups/${groupId}/sessions`, { cache: 'no-store' })
       .then((r) => r.json())
       .then((d) => {
+        const groupLink: string | null = d.meeting_link ?? null;
         const raw: any[] = d.sessions ?? d.data ?? d ?? [];
         const occurrences: any[] = raw.flatMap((s: any) =>
           (s.occurrences ?? [s]).map((o: any) => ({
@@ -925,7 +925,7 @@ function SessionsTab({ groupId }: { groupId: string }) {
             topic: o.topic ?? s.title ?? s.topic ?? 'Class session',
             scheduled_start_at: o.scheduled_start_at ?? s.scheduled_start_at,
             duration_minutes: o.duration_minutes ?? s.duration_minutes ?? 60,
-            meeting_link: o.meeting_link ?? s.meeting_link ?? null,
+            meeting_link: groupLink,
           }))
         );
         occurrences.sort((a, b) => new Date(b.scheduled_start_at).getTime() - new Date(a.scheduled_start_at).getTime());
@@ -950,7 +950,7 @@ function SessionsTab({ groupId }: { groupId: string }) {
     <div className="space-y-3">
       <div className="rounded-xl border border-dashed border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground flex items-start gap-2">
         <Video className="size-3.5 mt-0.5 shrink-0 text-brand-deep" />
-        <span>Meeting links are generated automatically from your tutor's connected Zoom or Google Meet account when each session starts.</span>
+        <span>Your tutor's Zoom / Google Meet link for this class. The same link is reused for every session — join any time it's available.</span>
       </div>
 
       {sessions.map((s) => {
@@ -983,7 +983,7 @@ function SessionsTab({ groupId }: { groupId: string }) {
                 </span>
               )}
             </div>
-            {future && s.meeting_link && (
+            {s.meeting_link && (
               <a href={s.meeting_link} target="_blank" rel="noreferrer"
                 className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand-deep shrink-0">
                 <Video className="size-3.5" /> Join

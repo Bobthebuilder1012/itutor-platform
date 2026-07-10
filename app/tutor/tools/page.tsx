@@ -6,11 +6,13 @@ import { useRouter } from 'next/navigation';
 import { Sparkles, ArrowRight, Bot, Calculator, FileText } from 'lucide-react';
 import { useProfile } from '@/lib/hooks/useProfile';
 import TutorShell from '@/components/tutor/TutorShell';
+import AiMaintenanceNotice from '@/components/AiMaintenanceNotice';
+import { isAiFeatureInMaintenance } from '@/lib/featureFlags/aiFeature';
 
 export default function TutorToolsPage() {
   return (
     <TutorShell>
-      <ToolsContent />
+      {isAiFeatureInMaintenance() ? <AiMaintenanceNotice embedded /> : <ToolsContent />}
     </TutorShell>
   );
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticateUser, requireGroupOwner } from '@/lib/api/groupAuth';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { createMeeting } from '@/lib/services/videoProviders';
+import { isLinkStillValid } from '@/lib/utils/meetingLink';
 import type { Session, VideoProvider } from '@/lib/types/sessions';
 
 type Params = { params: Promise<{ groupId: string }> };
@@ -53,9 +54,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
 }
 
 // POST /api/groups/[groupId]/meeting-link
-// Returns the current month's cached link, or generates a new one.
-// Stored on groups.meeting_link + groups.meeting_link_month ('YYYY-MM').
-// If meeting_link_month column doesn't exist yet, falls back to always generating.
+// Returns the cached link if it was generated less than 30 days ago, otherwise
+// generates a fresh one. Stored on groups.meeting_link + the generated-at
+// timestamp groups.meeting_link_generated_at (migration 188). If that column
+// doesn't exist yet, falls back to reusing any stored link.
 export async function POST(_req: NextRequest, { params }: Params) {
   try {
     const user = await authenticateUser();
@@ -66,20 +68,30 @@ export async function POST(_req: NextRequest, { params }: Params) {
     if (!isOwner) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const service = getServiceClient();
-    const currentMonth = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
 
-    // Try to read cached link + month (meeting_link_month may not exist yet)
-    const { data: group } = await service
+    // Read cached link + when it was generated. meeting_link_generated_at may
+    // not exist yet, in which case the combined select returns an error object
+    // (PostgREST does NOT throw) — so fall back to reading meeting_link alone.
+    let cachedLink: string | null = null;
+    let cachedGeneratedAt: string | null = null;
+    const cacheRead = await service
       .from('groups')
-      .select('meeting_link, meeting_link_month')
+      .select('meeting_link, meeting_link_generated_at')
       .eq('id', groupId)
       .single();
+    if (cacheRead.error) {
+      const base = await service.from('groups').select('meeting_link').eq('id', groupId).single();
+      cachedLink = (base.data as any)?.meeting_link ?? null;
+    } else {
+      cachedLink = (cacheRead.data as any)?.meeting_link ?? null;
+      cachedGeneratedAt = (cacheRead.data as any)?.meeting_link_generated_at ?? null;
+    }
 
-    const cachedLink = (group as any)?.meeting_link;
-    const cachedMonth = (group as any)?.meeting_link_month;
-
-    // Return cached link if it's from the current month
-    if (cachedLink && cachedMonth === currentMonth) {
+    // Reuse the cached link for 30 days from when it was generated. When the
+    // generated-at timestamp is missing (pre-migration rows) keep reusing any
+    // stored link rather than minting a new one on every click.
+    const stillValid = cachedGeneratedAt ? isLinkStillValid(cachedGeneratedAt) : Boolean(cachedLink);
+    if (cachedLink && stillValid) {
       return NextResponse.json({ join_url: cachedLink, cached: true });
     }
 
@@ -103,7 +115,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
     const now = new Date();
 
     const sessionForMeeting = {
-      id: `${groupId}-${currentMonth}`,
+      id: `group-${groupId}-meeting`,
       booking_id: '',
       tutor_id: user.id,
       student_id: '',
@@ -141,12 +153,22 @@ export async function POST(_req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Meeting provider returned no link' }, { status: 500 });
     }
 
-    // Save back to groups — try with meeting_link_month first, fall back without it
-    const updatePayload: Record<string, string> = { meeting_link: joinUrl };
-    try {
-      await service.from('groups').update({ ...updatePayload, meeting_link_month: currentMonth }).eq('id', groupId);
-    } catch {
-      await service.from('groups').update(updatePayload).eq('id', groupId);
+    // Persist the link + generated-at so students can read it and the 30-day
+    // reuse window is anchored. meeting_link_generated_at may not exist yet;
+    // supabase-js returns an { error } object (it does NOT throw), so check
+    // .error explicitly and fall back to saving just the link — otherwise the
+    // link is silently never persisted and students never receive it.
+    const nowIso = new Date().toISOString();
+    const withTs = await service
+      .from('groups')
+      .update({ meeting_link: joinUrl, meeting_link_generated_at: nowIso })
+      .eq('id', groupId);
+    if (withTs.error) {
+      const baseSave = await service.from('groups').update({ meeting_link: joinUrl }).eq('id', groupId);
+      if (baseSave.error) {
+        console.error('[POST meeting-link] failed to persist meeting_link', baseSave.error);
+        return NextResponse.json({ error: 'Failed to save meeting link' }, { status: 500 });
+      }
     }
 
     return NextResponse.json({ join_url: joinUrl, cached: false });

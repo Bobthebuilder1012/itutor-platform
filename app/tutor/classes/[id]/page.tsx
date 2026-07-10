@@ -6,10 +6,10 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft, Users, UserPlus, Copy, Check, Star,
   Bell, X, Plus, ExternalLink, Trash2, Globe, Eye,
-  Video, MoreVertical, Pin, Sparkles, Link as LinkIcon, Paperclip, AlertTriangle, ShieldAlert,
+  Video, MoreVertical, Pin, Sparkles, Link as LinkIcon, Paperclip, UploadCloud, AlertTriangle, ShieldAlert,
   Mail, MessageSquare, DollarSign, BarChart3, ArrowUp, ArrowDown, Lock,
   Calendar as CalendarIcon, BookOpen, Ban, Repeat, Clock, Info, ArrowUpRight, ChevronRight,
-  CreditCard, RefreshCw,
+  RefreshCw,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -20,44 +20,15 @@ import { supabase } from '@/lib/supabase/client';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { formatLevel, LEVEL_LABELS } from '@/lib/utils/formatLevel';
 import TutorShell from '@/components/tutor/TutorShell';
+import { uploadStreamAttachment } from '@/lib/utils/streamAttachments';
+import PaymentHistoryPanel from '@/components/students/PaymentHistoryPanel';
+import { generateHistoryForMember, getPaymentStatus, getMembershipStatus, MEMBERSHIP_META, type MemberBilling } from '@/lib/utils/paymentCycles';
 
 type DbSubject = { id: string; name: string; label: string; curriculum: string };
 
 const LEVEL_OPTIONS = Object.entries(LEVEL_LABELS).map(([value, label]) => ({ value, label }));
 
 type Tab = 'stream' | 'sessions' | 'roster' | 'payments' | 'settings' | 'analytics';
-
-type GroupMember = {
-  id: string;
-  studentId: string;
-  name: string;
-  paymentStatus: 'paid' | 'pending' | 'overdue';
-  status: 'active' | 'approved' | 'invited' | 'pending' | 'suspended' | 'banned' | 'removed';
-  joinedAt: string | null;
-  outstandingTtd?: number;
-  email?: string | null;
-};
-
-type StreamPost = {
-  id: string;
-  kind: 'announcement' | 'attachment' | 'link' | 'ai-recap';
-  title: string;
-  body: string;
-  at: string;
-  pinned?: boolean;
-  pendingApproval?: boolean;
-  attachmentName?: string;
-  linkUrl?: string;
-};
-
-type GroupSession = {
-  id: string;
-  date: string;
-  durationMin: number;
-  status: 'upcoming' | 'past';
-  attendanceStatus?: string;
-  paymentStatus?: string;
-};
 
 type Subscriber = {
   id: string;
@@ -75,9 +46,47 @@ type Subscriber = {
   student: { id: string; full_name: string | null; avatar_url: string | null; email: string | null } | null;
 };
 
+type GroupMember = {
+  id: string;
+  studentId: string;
+  name: string;
+  paymentStatus: 'paid' | 'pending' | 'overdue';
+  status: 'active' | 'approved' | 'invited' | 'pending' | 'suspended' | 'banned' | 'removed';
+  joinedAt: string | null;
+  outstandingTtd?: number;
+  email?: string | null;
+  subscription?: Subscriber | null;
+};
+
+type StreamPost = {
+  id: string;
+  kind: 'announcement' | 'attachment' | 'link';
+  title: string;
+  body: string;
+  at: string;
+  pinned?: boolean;
+  pendingApproval?: boolean;
+  attachmentName?: string;
+  attachmentUrl?: string;
+  linkUrl?: string;
+};
+
+type GroupSession = {
+  id: string;
+  date: string;
+  durationMin: number;
+  status: 'upcoming' | 'past';
+  attendanceStatus?: string;
+  paymentStatus?: string;
+};
+
 import { type ScheduleEntry, formatScheduleEntry, scheduleToDisplay } from '@/lib/utils/scheduleFormat';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+// Link posts have no dedicated link_url column — the composer writes the raw
+// URL as its own line in message_body, so detect a line that IS a bare URL.
+const URL_LINE_RE = /^https?:\/\/\S+$/;
 
 type GroupDetail = {
   id: string;
@@ -138,7 +147,6 @@ function ClassHubContent() {
   const [dataLoading, setDataLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('stream');
   const [settingsDirty, setSettingsDirty] = useState(false);
-  const [subsKey, setSubsKey] = useState(0);
 
   const switchTab = (next: Tab) => {
     if (tab === 'settings' && settingsDirty) {
@@ -255,15 +263,20 @@ function ClassHubContent() {
         return 'pending';
       }
 
-      setMembers(rawMembers.map((m: any): GroupMember => ({
-        id: m.id,
-        studentId: m.user_id,
-        name: m.profile?.full_name || m.profile?.display_name || 'Student',
-        paymentStatus: derivePaymentStatus(subMap.get(m.user_id)),
-        status: m.status ?? 'active',
-        joinedAt: m.joined_at ?? null,
-        email: m.profile?.email ?? null,
-      })));
+      setMembers(rawMembers.map((m: any): GroupMember => {
+        const sub = (subMap.get(m.user_id) ?? null) as Subscriber | null;
+        return {
+          id: m.id,
+          studentId: m.user_id,
+          name: m.profile?.full_name || m.profile?.display_name || 'Student',
+          paymentStatus: derivePaymentStatus(sub),
+          status: m.status ?? 'active',
+          joinedAt: m.joined_at ?? null,
+          email: m.profile?.email ?? null,
+          subscription: sub,
+          outstandingTtd: sub?.plan_price_ttd ?? 0,
+        };
+      }));
       if (g) setGroup((prev) => prev ? { ...prev, enrolled: rawMembers.filter((m: any) => ['approved', 'active'].includes(m.status)).length } : prev);
 
       // Fetch sessions via API (it handles occurrences)
@@ -314,16 +327,35 @@ function ClassHubContent() {
             const lines = msgBody.split('\n');
             const derivedTitle = lines[0]?.slice(0, 80) ?? '';
             const derivedBody = lines.slice(1).join('\n').trim();
+            // Link posts have no dedicated link_url column — the composer
+            // writes the raw URL as its own line in message_body, so detect
+            // a line that IS a bare URL.
+            const derivedLinkUrl =
+              p.link_url
+              ?? (URL_LINE_RE.test(derivedBody) ? derivedBody
+                : URL_LINE_RE.test(derivedTitle) ? derivedTitle
+                : undefined);
+            const derivedAttachmentName = p.attachments?.[0]?.file_name ?? p.attachment_name;
+            // post_type is 'content' for BOTH attachment and link posts (and
+            // 'announcement' for announcements) — it can't distinguish
+            // attachment from link, so derive the display kind from what the
+            // post actually contains instead of trusting post_type directly.
+            const derivedKind: StreamPost['kind'] = derivedAttachmentName
+              ? 'attachment'
+              : derivedLinkUrl
+              ? 'link'
+              : 'announcement';
             return {
               id: p.id,
-              kind: (p.post_type ?? p.kind ?? 'announcement') as StreamPost['kind'],
+              kind: derivedKind,
               title: derivedTitle,
               body: derivedBody,
               at: formatRelative(p.created_at),
               pinned: !!(p.pinned_at ?? p.is_pinned ?? p.pinned),
               pendingApproval: p.pending_approval ?? false,
-              attachmentName: p.attachment_name,
-              linkUrl: p.link_url,
+              attachmentName: derivedAttachmentName,
+              attachmentUrl: p.attachments?.[0]?.file_url ?? p.attachment_url,
+              linkUrl: derivedLinkUrl,
             };
           }));
         }
@@ -347,8 +379,7 @@ function ClassHubContent() {
   const tabs: { key: Tab; label: string }[] = [
     { key: 'stream', label: 'Stream' },
     { key: 'sessions', label: 'Sessions' },
-    { key: 'roster', label: 'Roster' },
-    { key: 'payments', label: group.billingModel === 'per-month' ? 'Subscribers' : 'Payments' },
+    { key: 'roster', label: 'Students' },
     { key: 'settings', label: 'Settings' },
     ...(isOneOnOne ? [] : [{ key: 'analytics' as Tab, label: 'Analytics' }]),
   ];
@@ -420,8 +451,8 @@ function ClassHubContent() {
         <div className="mt-6">
           {tab === 'stream'    && <StreamTab group={group} posts={posts} setPosts={setPosts} />}
           {tab === 'sessions'  && <SessionsTab sessions={sessions} groupId={group.id} setSessions={setSessions} meetingLink={group.meetingLink ?? ''} reconnected={reconnectedFromOAuth} />}
-          {tab === 'roster'    && <RosterTab members={members} setMembers={setMembers} group={group} isOneOnOne={isOneOnOne} atCapacity={atCapacity} onMemberRemoved={() => setSubsKey((k) => k + 1)} />}
-          {tab === 'payments'  && (group.billingModel === 'per-month' ? <SubscribersTab key={subsKey} group={group} onMemberRemoved={() => setSubsKey((k) => k + 1)} /> : <PaymentsTab members={members} group={group} />)}
+          {tab === 'roster'    && <RosterTab members={members} setMembers={setMembers} group={group} isOneOnOne={isOneOnOne} atCapacity={atCapacity} onRefresh={() => fetchAll(group.id)} />}
+          {tab === 'payments'  && <PaymentsTab members={members} group={group} />}
           {tab === 'settings'  && <SettingsTab group={group} setGroup={setGroup} isOneOnOne={isOneOnOne} onDirtyChange={setSettingsDirty} enrolledCount={enrolledCount} />}
           {tab === 'analytics' && !isOneOnOne && <AnalyticsTab group={group} members={members} />}
         </div>
@@ -432,47 +463,7 @@ function ClassHubContent() {
 
 /* ----------- Stream ----------- */
 function StreamTab({ group, posts, setPosts }: { group: GroupDetail; posts: StreamPost[]; setPosts: React.Dispatch<React.SetStateAction<StreamPost[]>> }) {
-  const [composer, setComposer] = useState<null | StreamPost['kind']>(null);
-  const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
-
   const sorted = [...posts].sort((a, b) => (a.pinned ? -1 : 0) - (b.pinned ? -1 : 0));
-
-  const submit = async () => {
-    if (!title.trim()) return;
-    // Combine title + body into message_body (title on first line)
-    const message_body = body.trim() ? `${title.trim()}\n${body.trim()}` : title.trim();
-    // Map UI kind → DB post_type
-    const postTypeMap: Record<string, string> = {
-      announcement: 'announcement',
-      attachment: 'content',
-      link: 'content',
-      'ai-recap': 'content',
-    };
-    const post_type = postTypeMap[composer ?? ''] ?? 'announcement';
-    try {
-      const res = await fetch(`/api/groups/${group.id}/stream/post`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ post_type, message_body }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error ?? 'Failed to post');
-      const p = json.post;
-      setPosts([{
-        id: p?.id ?? `tmp-${Date.now()}`,
-        kind: composer!,
-        title: title.trim(),
-        body: body.trim(),
-        at: 'Just now',
-        pinned: false,
-        pendingApproval: false,
-      }, ...posts]);
-    } catch (e: any) {
-      alert(e?.message ?? 'Failed to create post');
-    }
-    setTitle(''); setBody(''); setComposer(null);
-  };
 
   const togglePin = async (id: string) => {
     const post = posts.find(p => p.id === id);
@@ -504,41 +495,7 @@ function StreamTab({ group, posts, setPosts }: { group: GroupDetail; posts: Stre
   return (
     <div className="grid lg:grid-cols-[1fr,280px] gap-6">
       <div className="space-y-4">
-        <div className="rounded-2xl bg-card border border-border p-5 space-y-3">
-          <div className="text-xs uppercase tracking-wider font-bold text-muted-foreground">Post to your class</div>
-          <div className="flex items-center gap-2 flex-wrap">
-            {([
-              { kind: 'announcement' as const, color: 'amber', label: 'Announcement', icon: Bell },
-              { kind: 'attachment' as const, color: 'violet', label: 'File attachment', icon: Paperclip },
-              { kind: 'link' as const, color: 'sky', label: 'Link', icon: LinkIcon },
-              { kind: 'ai-recap' as const, color: 'emerald', label: 'AI recap', icon: Sparkles },
-            ]).map(({ kind, color, label, icon: Icon }) => (
-              <button key={kind} onClick={() => setComposer(kind)}
-                className={cn('inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border',
-                  {
-                    amber:   'bg-amber-50 text-amber-700 border-amber-200',
-                    violet:  'bg-violet-50 text-violet-700 border-violet-200',
-                    sky:     'bg-sky-50 text-sky-700 border-sky-200',
-                    emerald: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-                  }[color],
-                  composer === kind && 'ring-2 ring-brand')}>
-                <Icon className="size-3.5" /> {label}
-              </button>
-            ))}
-          </div>
-          {composer && (
-            <div className="space-y-2 pt-2">
-              <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title"
-                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
-              <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="Write a message to your students…"
-                className="w-full min-h-24 px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
-              <div className="flex justify-end gap-2">
-                <button onClick={() => { setComposer(null); setTitle(''); setBody(''); }} className="px-3 py-1.5 rounded-lg text-sm text-muted-foreground hover:bg-muted">Cancel</button>
-                <button onClick={submit} className="px-4 py-1.5 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand/90">Post</button>
-              </div>
-            </div>
-          )}
-        </div>
+        <ClassPostComposer group={group} onPosted={(post) => setPosts((prev) => [post, ...prev])} />
 
         {sorted.length === 0 && <EmptyState icon={Bell} title="No posts yet" body="Start the conversation with an announcement or share a file." />}
         {sorted.map((p) => <StreamCard key={p.id} post={p} onPin={() => togglePin(p.id)} onRemove={() => remove(p.id)} />)}
@@ -567,12 +524,238 @@ function StreamTab({ group, posts, setPosts }: { group: GroupDetail; posts: Stre
   );
 }
 
+type ComposerKind = 'announcement' | 'attachment' | 'link';
+
+const COMPOSER_THEME: Record<ComposerKind, {
+  label: string; icon: any; heading: string; desc: string; cta: string;
+  pillActive: string; cardBorder: string; cardBg: string; iconBox: string; button: string; ring: string;
+}> = {
+  announcement: {
+    label: 'Announcement', icon: Bell,
+    heading: 'New announcement', desc: 'Broadcast a message to everyone in this class.', cta: 'Post announcement',
+    pillActive: 'bg-amber-50 text-amber-700 border-amber-300 ring-1 ring-amber-200',
+    cardBorder: 'border-amber-200', cardBg: 'bg-amber-50/50', iconBox: 'bg-amber-100 text-amber-600',
+    button: 'bg-amber-500 hover:bg-amber-600 text-white', ring: 'focus:ring-amber-300',
+  },
+  attachment: {
+    label: 'File attachment', icon: Paperclip,
+    heading: 'Share files', desc: 'Drop worksheets, PDFs, or images for your class.', cta: 'Attach',
+    pillActive: 'bg-violet-50 text-violet-700 border-violet-300 ring-1 ring-violet-200',
+    cardBorder: 'border-violet-200', cardBg: 'bg-violet-50/50', iconBox: 'bg-violet-100 text-violet-600',
+    button: 'bg-violet-500 hover:bg-violet-600 text-white', ring: 'focus:ring-violet-300',
+  },
+  link: {
+    label: 'Link', icon: LinkIcon,
+    heading: 'Share a link', desc: 'Paste a URL to a video, article, or resource.', cta: 'Share link',
+    pillActive: 'bg-blue-50 text-blue-700 border-blue-300 ring-1 ring-blue-200',
+    cardBorder: 'border-blue-200', cardBg: 'bg-blue-50/50', iconBox: 'bg-blue-100 text-blue-600',
+    button: 'bg-blue-500 hover:bg-blue-600 text-white', ring: 'focus:ring-blue-300',
+  },
+};
+
+const COMPOSER_MAX_MB = 20;
+
+function ClassPostComposer({ group, onPosted }: { group: GroupDetail; onPosted: (post: StreamPost) => void }) {
+  const { profile } = useProfile();
+  const [kind, setKind] = useState<ComposerKind>('announcement');
+  const [title, setTitle] = useState('');
+  const [message, setMessage] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
+  const [dragActive, setDragActive] = useState(false);
+  const [url, setUrl] = useState('');
+  const [note, setNote] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const reset = () => { setTitle(''); setMessage(''); setFiles([]); setUrl(''); setNote(''); setError(''); };
+
+  const switchKind = (k: ComposerKind) => { setKind(k); setError(''); };
+
+  const addFiles = (list: FileList | null) => {
+    if (!list?.length) return;
+    const maxBytes = COMPOSER_MAX_MB * 1024 * 1024;
+    const accepted: File[] = [];
+    for (let i = 0; i < list.length; i++) {
+      const f = list[i];
+      if (f.size > maxBytes) { setError(`${f.name} exceeds ${COMPOSER_MAX_MB} MB`); continue; }
+      accepted.push(f);
+    }
+    if (accepted.length) { setError(''); setFiles((prev) => [...prev, ...accepted]); }
+  };
+
+  const canSubmit =
+    kind === 'announcement' ? title.trim().length > 0 :
+    kind === 'attachment'   ? files.length > 0 :
+                              url.trim().length > 0;
+
+  const submit = async () => {
+    if (!canSubmit || submitting) return;
+    setSubmitting(true);
+    setError('');
+    try {
+      let post_type = 'announcement';
+      let message_body = '';
+      let attachment_urls: { file_name: string; file_url: string; file_type?: string; file_size_bytes?: number }[] | undefined;
+
+      if (kind === 'announcement') {
+        post_type = 'announcement';
+        message_body = message.trim() ? `${title.trim()}\n${message.trim()}` : title.trim();
+      } else if (kind === 'attachment') {
+        if (!profile?.id) { setError('Still loading your account — try again in a moment.'); setSubmitting(false); return; }
+        post_type = 'content';
+        attachment_urls = [];
+        for (const f of files) {
+          attachment_urls.push(await uploadStreamAttachment(profile.id, group.id, f));
+        }
+        message_body = message.trim() || 'Shared files';
+      } else {
+        post_type = 'content';
+        message_body = note.trim() ? `${note.trim()}\n${url.trim()}` : url.trim();
+      }
+
+      const res = await fetch(`/api/groups/${group.id}/stream/post`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ post_type, message_body, attachment_urls }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error ?? 'Failed to post');
+      const p = json.post;
+      const lines = message_body.split('\n');
+      onPosted({
+        id: p?.id ?? `tmp-${Date.now()}`,
+        kind,
+        title: lines[0]?.slice(0, 80) ?? '',
+        body: lines.slice(1).join('\n').trim(),
+        at: 'Just now',
+        pinned: false,
+        pendingApproval: false,
+        attachmentName: kind === 'attachment' ? (p?.attachments?.[0]?.file_name ?? files[0]?.name) : undefined,
+        attachmentUrl: kind === 'attachment' ? p?.attachments?.[0]?.file_url : undefined,
+        linkUrl: kind === 'link' ? url.trim() : undefined,
+      });
+      reset();
+    } catch (e: any) {
+      setError(e?.message ?? 'Failed to post');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const t = COMPOSER_THEME[kind];
+  const HeadingIcon = t.icon;
+
+  return (
+    <div className="rounded-2xl bg-card border border-border p-5 space-y-4">
+      <div className="text-xs uppercase tracking-wider font-bold text-muted-foreground">Post to your class</div>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        {(['announcement', 'attachment', 'link'] as ComposerKind[]).map((k) => {
+          const th = COMPOSER_THEME[k];
+          const Icon = th.icon;
+          const active = kind === k;
+          return (
+            <button key={k} type="button" onClick={() => switchKind(k)}
+              className={cn('inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold border transition',
+                active ? th.pillActive : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300')}>
+              <Icon className="size-3.5" /> {th.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className={cn('rounded-xl border p-4 space-y-3', t.cardBorder, t.cardBg)}>
+        <div className="flex items-start gap-3">
+          <div className={cn('size-9 rounded-lg grid place-items-center shrink-0', t.iconBox)}>
+            <HeadingIcon className="size-4" />
+          </div>
+          <div>
+            <div className="font-semibold text-ink">{t.heading}</div>
+            <div className="text-sm text-muted-foreground">{t.desc}</div>
+          </div>
+        </div>
+
+        {kind === 'announcement' && (
+          <>
+            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Announcement title"
+              className={cn('w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2', t.ring)} />
+            <textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Write a message to your students…"
+              className={cn('w-full min-h-28 px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2', t.ring)} />
+          </>
+        )}
+
+        {kind === 'attachment' && (
+          <>
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+              onDragLeave={(e) => { e.preventDefault(); setDragActive(false); }}
+              onDrop={(e) => { e.preventDefault(); setDragActive(false); addFiles(e.dataTransfer.files); }}
+              className={cn('rounded-xl border-2 border-dashed grid place-items-center text-center px-4 py-8 cursor-pointer transition',
+                dragActive ? 'border-violet-400 bg-violet-50' : 'border-violet-200 hover:border-violet-300 bg-white/40')}>
+              <UploadCloud className="size-6 text-violet-500" />
+              <div className="mt-2 text-sm font-semibold text-ink">
+                Drag &amp; drop files here, or <span className="text-violet-600 underline">browse</span>
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">PDF, DOCX, PNG, JPG up to {COMPOSER_MAX_MB} MB each</div>
+            </div>
+            <input ref={fileInputRef} type="file" multiple className="hidden"
+              accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp,.gif,image/*,application/pdf"
+              onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }} />
+            {files.length > 0 && (
+              <ul className="flex flex-wrap gap-1.5">
+                {files.map((f, i) => (
+                  <li key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-violet-200 bg-white text-xs">
+                    <Paperclip className="size-3 text-violet-500" />
+                    <span className="truncate max-w-[160px]">{f.name}</span>
+                    <button type="button" onClick={() => setFiles(files.filter((_, j) => j !== i))}
+                      className="text-slate-400 hover:text-rose-500" aria-label="Remove">
+                      <X className="size-3" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Add a message to go with these files…"
+              className={cn('w-full min-h-20 px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2', t.ring)} />
+          </>
+        )}
+
+        {kind === 'link' && (
+          <>
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1">URL</label>
+              <div className="relative">
+                <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/resource"
+                  className={cn('w-full pl-9 pr-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2', t.ring)} />
+              </div>
+            </div>
+            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional note for your students"
+              className={cn('w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2', t.ring)} />
+          </>
+        )}
+
+        {error && <p className="text-xs text-rose-500">{error}</p>}
+
+        <div className="flex justify-end items-center gap-2 pt-1">
+          <button type="button" onClick={reset} className="px-3 py-1.5 rounded-lg text-sm text-muted-foreground hover:bg-muted">Cancel</button>
+          <button type="button" onClick={submit} disabled={!canSubmit || submitting}
+            className={cn('px-4 py-1.5 rounded-lg text-sm font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed', t.button)}>
+            {submitting ? 'Posting…' : t.cta}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function StreamCard({ post, onPin, onRemove }: { post: StreamPost; onPin: () => void; onRemove: () => void }) {
   const meta: Record<StreamPost['kind'], { icon: any; cls: string; tag: string }> = {
     announcement: { icon: Bell,      cls: 'bg-amber-100 text-amber-700',   tag: 'Announcement' },
     attachment:   { icon: Paperclip, cls: 'bg-violet-100 text-violet-700', tag: 'Attachment' },
-    link:         { icon: LinkIcon,  cls: 'bg-sky-100 text-sky-700',       tag: 'Link' },
-    'ai-recap':   { icon: Sparkles,  cls: 'bg-emerald-100 text-emerald-700', tag: 'AI Recap' },
+    link:         { icon: LinkIcon,  cls: 'bg-blue-100 text-blue-700',     tag: 'Link' },
   };
   const M = meta[post.kind] ?? { icon: Bell, cls: 'bg-muted text-muted-foreground', tag: post.kind };
   const Icon = M.icon;
@@ -587,7 +770,16 @@ function StreamCard({ post, onPin, onRemove }: { post: StreamPost; onPin: () => 
           </div>
           <div className="mt-1 font-semibold text-ink">{post.title}</div>
           <p className="text-sm text-muted-foreground mt-1">{post.body}</p>
-          {post.attachmentName && (
+          {post.attachmentName && post.attachmentUrl && (
+            <a
+              href={post.attachmentUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-muted/40 text-xs font-semibold hover:bg-muted">
+              <Paperclip className="size-3.5" /> {post.attachmentName}
+            </a>
+          )}
+          {post.attachmentName && !post.attachmentUrl && (
             <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-muted/40 text-xs font-semibold">
               <Paperclip className="size-3.5" /> {post.attachmentName}
             </div>
@@ -630,7 +822,6 @@ const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
 function SessionRow({ s, groupId, meetingLink, selected, onSelect, onCancel, reconnected }: { s: GroupSession; groupId: string; meetingLink: string; selected: boolean; onSelect: () => void; onCancel: () => void; reconnected?: boolean }) {
   const d = new Date(s.date);
   const valid = !isNaN(d.getTime());
-  const future = valid && d > new Date();
   const durationMin = s.durationMin ?? 60;
   const durLabel = durationMin < 60 ? `${durationMin}m` : durationMin % 60 === 0 ? `${durationMin / 60}hr` : `${Math.floor(durationMin / 60)}h ${durationMin % 60}m`;
   const [cancelling, setCancelling] = useState(false);
@@ -1082,10 +1273,25 @@ function SessionsTab({ sessions, groupId, setSessions, meetingLink, reconnected 
   );
 }
 
-/* ----------- Roster ----------- */
-function RosterTab({ members, setMembers, group, isOneOnOne, atCapacity, onMemberRemoved }: {
+/* ----------- Students (roster + subscription billing) ----------- */
+
+// Subscription-status chip styling, shared by the merged Students table.
+const SUB_STATUS_CFG: Record<string, { label: string; cls: string }> = {
+  ACTIVE:             { label: 'Active',      cls: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
+  GRACE:              { label: 'Grace',       cls: 'bg-amber-100 text-amber-800 border-amber-200' },
+  SUSPENDED:          { label: 'Suspended',   cls: 'bg-rose-100 text-rose-800 border-rose-200' },
+  CANCELLED:          { label: 'Cancelled',   cls: 'bg-zinc-100 text-zinc-600 border-zinc-200' },
+  PENDING_PAYMENT:    { label: 'Pending',     cls: 'bg-blue-100 text-blue-800 border-blue-200' },
+  ACTIVATION_FAILED:  { label: 'Activating',  cls: 'bg-blue-100 text-blue-800 border-blue-200' },
+  WAITLISTED:         { label: 'Waitlisted',  cls: 'bg-purple-100 text-purple-800 border-purple-200' },
+};
+
+const fmtShortDate = (d: string | null | undefined) =>
+  d ? new Date(d).toLocaleDateString('en-TT', { day: 'numeric', month: 'short' }) : '—';
+
+function RosterTab({ members, setMembers, group, isOneOnOne, atCapacity, onRefresh }: {
   members: GroupMember[]; setMembers: React.Dispatch<React.SetStateAction<GroupMember[]>>;
-  group: GroupDetail; isOneOnOne: boolean; atCapacity: boolean; onMemberRemoved?: () => void;
+  group: GroupDetail; isOneOnOne: boolean; atCapacity: boolean; onRefresh?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [inviteOpen, setInviteOpen] = useState<null | 'link' | 'user'>(null);
@@ -1138,6 +1344,14 @@ function RosterTab({ members, setMembers, group, isOneOnOne, atCapacity, onMembe
   const pending = members.filter((m) => m.status === 'pending');
   const visible = members.filter((m) => m.status !== 'removed' && m.status !== 'pending');
 
+  // Subscription summary (derived from the joined member data — no extra fetch)
+  const withSub = visible.filter((m) => m.subscription);
+  const activeSubs = withSub.filter((m) => ['ACTIVE', 'GRACE', 'SUSPENDED'].includes(m.subscription!.status)).length;
+  const graceSubs = withSub.filter((m) => m.subscription!.status === 'GRACE').length;
+  const billingSummary = withSub.length > 0
+    ? ` · ${activeSubs} active${graceSubs > 0 ? ` · ${graceSubs} in grace period` : ''}`
+    : '';
+
   return (
     <div className="space-y-4">
       {/* Pending join requests */}
@@ -1164,25 +1378,33 @@ function RosterTab({ members, setMembers, group, isOneOnOne, atCapacity, onMembe
 
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="text-lg font-bold text-ink">Roster</h2>
+          <h2 className="text-lg font-bold text-ink">Students</h2>
           <p className="text-xs text-muted-foreground">
-            {isOneOnOne ? '1:1 — your recurring student.' : `${visible.length} of ${group.capacity} seats filled.`}
+            {isOneOnOne ? '1:1 — your recurring student.' : `${visible.length} of ${group.capacity} seats filled`}{billingSummary}
           </p>
         </div>
-        {!isOneOnOne && (
-          <div className="flex items-center gap-2">
-            <button disabled={atCapacity} onClick={() => setInviteOpen('link')}
-              className={cn('inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-semibold',
-                atCapacity ? 'border-border text-muted-foreground cursor-not-allowed' : 'border-border bg-background hover:bg-muted')}>
-              <LinkIcon className="size-3.5" /> Invite by Link
+        <div className="flex items-center gap-2">
+          {onRefresh && (
+            <button onClick={onRefresh}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border bg-background text-xs font-semibold hover:bg-muted">
+              <RefreshCw className="size-3.5" /> Refresh
             </button>
-            <button disabled={atCapacity} onClick={() => setInviteOpen('user')}
-              className={cn('inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold',
-                atCapacity ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'bg-brand text-white hover:bg-brand/90')}>
-              <UserPlus className="size-3.5" /> Invite by User
-            </button>
-          </div>
-        )}
+          )}
+          {!isOneOnOne && (
+            <>
+              <button disabled={atCapacity} onClick={() => setInviteOpen('link')}
+                className={cn('inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-semibold',
+                  atCapacity ? 'border-border text-muted-foreground cursor-not-allowed' : 'border-border bg-background hover:bg-muted')}>
+                <LinkIcon className="size-3.5" /> Invite by Link
+              </button>
+              <button disabled={atCapacity} onClick={() => setInviteOpen('user')}
+                className={cn('inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold',
+                  atCapacity ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'bg-brand text-white hover:bg-brand/90')}>
+                <UserPlus className="size-3.5" /> Invite by User
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {atCapacity && (
@@ -1233,15 +1455,15 @@ function RosterTab({ members, setMembers, group, isOneOnOne, atCapacity, onMembe
               <tr>
                 <th className="text-left font-bold px-4 py-2">Member</th>
                 <th className="text-left font-bold px-4 py-2">Contact</th>
-                <th className="text-left font-bold px-4 py-2">Status</th>
-                <th className="text-left font-bold px-4 py-2">Payment</th>
+                <th className="text-left font-bold px-4 py-2">Membership</th>
+                <th className="text-left font-bold px-4 py-2">Subscription</th>
                 <th className="text-left font-bold px-4 py-2">Joined</th>
                 <th className="px-4 py-2"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {visible.map((m) => (
-                <RosterRow key={m.studentId} m={m} groupId={group.id} onUpdate={(p) => updateMember(m.studentId, p)} onRemoved={onMemberRemoved} externalChannels={[group.whatsappLink && 'WhatsApp', group.googleClassroomLink && 'Google Classroom'].filter(Boolean).join(' and ') || undefined} />
+                <RosterRow key={m.studentId} m={m} groupId={group.id} onUpdate={(p) => updateMember(m.studentId, p)} onRemoved={onRefresh} externalChannels={[group.whatsappLink && 'WhatsApp', group.googleClassroomLink && 'Google Classroom'].filter(Boolean).join(' and ') || undefined} />
               ))}
             </tbody>
           </table>
@@ -1347,6 +1569,8 @@ function RosterRow({ m, groupId, onUpdate, onRemoved, externalChannels }: { m: G
   const [suspendedUntil, setSuspendedUntil] = useState('');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const infoRef = useRef<HTMLButtonElement>(null);
 
   // Default suspension end: 7 days from now
   const defaultSuspendUntil = (() => {
@@ -1401,16 +1625,27 @@ function RosterRow({ m, groupId, onUpdate, onRemoved, externalChannels }: { m: G
     }
   };
 
-  const statusMeta: Record<string, { label: string; chip: string }> = {
-    pending_approval: { label: 'Pending',   chip: 'bg-amber-100 text-amber-800 border-amber-200' },
-    invited:          { label: 'Invited',   chip: 'bg-sky-100 text-sky-700 border-sky-200' },
-    active:           { label: 'Active',    chip: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
-    approved:         { label: 'Active',    chip: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
-    suspended:        { label: 'Suspended', chip: 'bg-amber-100 text-amber-800 border-amber-200' },
-    banned:           { label: 'Banned',    chip: 'bg-rose-100 text-rose-700 border-rose-200' },
-    removed:          { label: 'Removed',   chip: 'bg-muted text-muted-foreground border-border' },
+  // Billing seed shared by the table Membership badge AND the Payment History
+  // panel — both consume the SAME getMembershipStatus() derivation so they can
+  // never drift. Manual Ban/Suspend sit on top of this payment-driven default.
+  const billing: MemberBilling = {
+    studentId: m.studentId,
+    joinedAt: m.joinedAt,
+    status: m.subscription?.status ?? null,
+    amount: m.subscription?.plan_price_ttd ?? null,
+    lastPaidAt: m.subscription?.last_paid_at ?? null,
   };
-  const sm = statusMeta[m.status] ?? statusMeta.active;
+  const currentCycle = generateHistoryForMember(billing)[0];
+  const payMembership = currentCycle ? getMembershipStatus(getPaymentStatus(currentCycle)) : 'ACTIVE';
+
+  // Manual overrides win over the payment-derived default; otherwise Membership
+  // is payment-driven (OVERDUE current cycle → Suspended, automatically).
+  const membershipView =
+    m.status === 'banned'
+      ? { label: 'Banned', chip: 'bg-rose-100 text-rose-700 border-rose-200' }
+      : (m.status === 'suspended' || payMembership === 'SUSPENDED')
+      ? { label: MEMBERSHIP_META.SUSPENDED.label, chip: 'bg-red-50 text-red-700 border-red-200' }
+      : { label: MEMBERSHIP_META.ACTIVE.label, chip: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
 
   const isOverdue = m.paymentStatus === 'overdue';
   const confirmCopy = {
@@ -1428,7 +1663,9 @@ function RosterRow({ m, groupId, onUpdate, onRemoved, externalChannels }: { m: G
     },
     remove: {
       title: `Remove ${m.name}?`,
-      body: `${m.name} will lose access immediately. They can be re-invited later.`,
+      body: (m.subscription && ['ACTIVE', 'GRACE', 'SUSPENDED'].includes(m.subscription.status))
+        ? `${m.name} will be removed and their subscription cancelled with a refund for the current month. If the tutor payout was already released, iTutor recovers it from future earnings.`
+        : `${m.name} will lose access immediately. They can be re-invited later.`,
       action: 'Remove', tone: 'rose' as const,
     },
   };
@@ -1445,6 +1682,11 @@ function RosterRow({ m, groupId, onUpdate, onRemoved, externalChannels }: { m: G
             <div>
               <div className="font-semibold text-ink">{m.name}</div>
               {m.paymentStatus === 'overdue' && <div className="text-[11px] text-rose-600 font-semibold">Outstanding {fmtTTD(m.outstandingTtd ?? 0)}</div>}
+              {m.subscription?.cancel_at_period_end && (
+                <div className="text-[10px] text-zinc-500 font-medium flex items-center gap-1">
+                  <X className="size-2.5" /> Cancels {fmtShortDate(m.subscription.current_period_end)}
+                </div>
+              )}
             </div>
           </div>
         </td>
@@ -1454,18 +1696,38 @@ function RosterRow({ m, groupId, onUpdate, onRemoved, externalChannels }: { m: G
           ) : <span className="text-muted-foreground">—</span>}
         </td>
         <td className="px-4 py-3">
-          <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border', sm.chip)}>{sm.label}</span>
+          <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border', membershipView.chip)}>{membershipView.label}</span>
         </td>
         <td className="px-4 py-3">
-          <Pill tone={m.paymentStatus === 'paid' ? 'emerald' : m.paymentStatus === 'overdue' ? 'rose' : 'amber'} label={m.paymentStatus} />
+          {m.subscription ? (
+            <div className="space-y-1">
+              <span className={cn('inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border',
+                (SUB_STATUS_CFG[m.subscription.status] ?? { cls: 'bg-zinc-100 text-zinc-600 border-zinc-200' }).cls)}>
+                {(SUB_STATUS_CFG[m.subscription.status] ?? { label: m.subscription.status }).label}
+              </span>
+              <div className="text-[11px] text-muted-foreground">{m.subscription.plan_price_ttd ? fmtTTD(m.subscription.plan_price_ttd) : '—'}</div>
+            </div>
+          ) : <span className="text-muted-foreground text-xs">—</span>}
         </td>
         <td className="px-4 py-3 text-xs text-muted-foreground">
           {m.joinedAt ? new Date(m.joinedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—'}
         </td>
         <td className="px-4 py-3 text-right">
+          <div className="flex items-center justify-end gap-1">
+          <button
+            ref={infoRef}
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setHistoryOpen(true); }}
+            aria-label={`View payment history for ${m.name}`}
+            title="Payment history"
+            className="size-8 grid place-items-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+          >
+            <Info className="size-[18px]" />
+          </button>
           <button ref={btnRef} onClick={openMenu} className="size-8 grid place-items-center rounded-md hover:bg-muted text-muted-foreground">
             <MoreVertical className="size-4" />
           </button>
+          </div>
           {menu && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setMenu(false)} />
@@ -1487,7 +1749,7 @@ function RosterRow({ m, groupId, onUpdate, onRemoved, externalChannels }: { m: G
       </tr>
 
       {confirm && conf && (
-        <tr><td colSpan={5} className="p-0">
+        <tr><td colSpan={6} className="p-0">
           <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4" onClick={closeConfirm}>
             <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl bg-background border border-border shadow-xl p-6 space-y-4">
               <div className="font-bold text-ink text-lg">{conf.title}</div>
@@ -1544,6 +1806,14 @@ function RosterRow({ m, groupId, onUpdate, onRemoved, externalChannels }: { m: G
           </div>
         </td></tr>
       )}
+
+      <PaymentHistoryPanel
+        open={historyOpen}
+        onClose={() => { setHistoryOpen(false); infoRef.current?.focus(); }}
+        name={m.name}
+        email={m.email}
+        billing={billing}
+      />
     </>
   );
 }
@@ -1618,194 +1888,6 @@ function PaymentsTab({ members, group }: { members: GroupMember[]; group: GroupD
               ))}
             </tbody>
           </table>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ----------- Subscribers (monthly groups) ----------- */
-function SubscribersTab({ group, onMemberRemoved }: { group: GroupDetail; onMemberRemoved?: () => void }) {
-  const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [removeTarget, setRemoveTarget] = useState<Subscriber | null>(null);
-  const [removing, setRemoving] = useState(false);
-  const [removeError, setRemoveError] = useState('');
-
-  useEffect(() => { fetchSubs(); }, [group.id]);
-
-  async function fetchSubs() {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/groups/${group.id}/subscribers`);
-      if (res.ok) {
-        const json = await res.json();
-        setSubscribers(json.subscribers ?? []);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleRemove() {
-    if (!removeTarget) return;
-    setRemoving(true);
-    setRemoveError('');
-    try {
-      const res = await fetch(`/api/groups/${group.id}/members/${removeTarget.student_id}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error ?? `Failed (${res.status})`);
-
-      setSubscribers((subs) => subs.map((s) =>
-        s.id === removeTarget.id
-          ? { ...s, status: 'CANCELLED' }
-          : s
-      ));
-      setRemoveTarget(null);
-    } catch (e: any) {
-      setRemoveError(e?.message ?? 'Removal failed. Please try again.');
-    } finally {
-      setRemoving(false);
-    }
-  }
-
-  const fmtDate = (d: string | null) => d ? new Date(d).toLocaleDateString('en-TT', { day: 'numeric', month: 'short' }) : '—';
-
-  const statusCfg: Record<string, { label: string; cls: string }> = {
-    ACTIVE:             { label: 'Active',      cls: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
-    GRACE:              { label: 'Grace',        cls: 'bg-amber-100 text-amber-800 border-amber-200' },
-    SUSPENDED:          { label: 'Suspended',   cls: 'bg-rose-100 text-rose-800 border-rose-200' },
-    CANCELLED:          { label: 'Cancelled',   cls: 'bg-zinc-100 text-zinc-600 border-zinc-200' },
-    PENDING_PAYMENT:    { label: 'Pending',      cls: 'bg-blue-100 text-blue-800 border-blue-200' },
-    ACTIVATION_FAILED:  { label: 'Activating',  cls: 'bg-blue-100 text-blue-800 border-blue-200' },
-    WAITLISTED:         { label: 'Waitlisted',  cls: 'bg-purple-100 text-purple-800 border-purple-200' },
-  };
-
-  const visibleSubs = subscribers.filter((s) => !['CANCELLED', 'ACTIVATION_FAILED'].includes(s.status));
-  const activeCount = visibleSubs.filter((s) => ['ACTIVE', 'GRACE', 'SUSPENDED'].includes(s.status)).length;
-  const overdueCount = visibleSubs.filter((s) => s.status === 'GRACE').length;
-
-  if (loading) return (
-    <div className="flex justify-center py-12">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand" />
-    </div>
-  );
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h2 className="text-lg font-bold text-ink">Subscribers</h2>
-          <p className="text-xs text-muted-foreground">{activeCount} active · {overdueCount} in grace period</p>
-        </div>
-        <button onClick={fetchSubs} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-xs font-semibold hover:bg-muted">
-          <RefreshCw className="size-3.5" /> Refresh
-        </button>
-      </div>
-
-      {visibleSubs.length === 0 ? (
-        <EmptyState icon={CreditCard} title="No subscribers yet" body="When students subscribe to this class, they will appear here." />
-      ) : (
-        <div className="rounded-2xl border border-border bg-card overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="text-left font-bold px-4 py-2">Student</th>
-                <th className="text-left font-bold px-4 py-2">Status</th>
-                <th className="text-left font-bold px-4 py-2">Price</th>
-                <th className="text-left font-bold px-4 py-2">Next due</th>
-                <th className="text-left font-bold px-4 py-2">Last paid</th>
-                <th className="px-4 py-2"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {visibleSubs.map((sub) => {
-                const sc = statusCfg[sub.status] ?? { label: sub.status, cls: 'bg-zinc-100 text-zinc-600 border-zinc-200' };
-                const isRemovable = ['ACTIVE', 'GRACE', 'SUSPENDED'].includes(sub.status);
-                const displayName = sub.student?.full_name ?? 'Student';
-                return (
-                  <tr key={sub.id} className={cn(
-                    sub.status === 'GRACE' && 'bg-amber-50/40',
-                    sub.status === 'SUSPENDED' && 'bg-rose-50/40',
-                    sub.status === 'CANCELLED' && 'opacity-60',
-                  )}>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="size-8 rounded-full bg-gradient-to-br from-brand to-emerald-400 grid place-items-center text-xs font-bold text-white">
-                          {displayName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
-                        </div>
-                        <div>
-                          <div className="font-semibold text-ink">{displayName}</div>
-                          {sub.cancel_at_period_end && (
-                            <div className="text-[10px] text-zinc-500 font-medium flex items-center gap-1">
-                              <X className="size-2.5" /> Cancels {fmtDate(sub.current_period_end)}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border', sc.cls)}>{sc.label}</span>
-                    </td>
-                    <td className="px-4 py-3 text-xs font-medium text-ink">
-                      {sub.plan_price_ttd ? fmtTTD(sub.plan_price_ttd) : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">
-                      {sub.status === 'GRACE' ? (
-                        <span className="text-amber-700 font-semibold flex items-center gap-1">
-                          <AlertTriangle className="size-3" /> Overdue
-                        </span>
-                      ) : fmtDate(sub.next_payment_due_at)}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">{fmtDate(sub.last_paid_at)}</td>
-                    <td className="px-4 py-3 text-right">
-                      {isRemovable && (
-                        <button
-                          onClick={() => { setRemoveTarget(sub); setRemoveError(''); }}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-rose-200 text-rose-600 text-[11px] font-semibold hover:bg-rose-50 transition">
-                          <Trash2 className="size-3" /> Remove
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Remove modal */}
-      {removeTarget && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4" onClick={() => !removing && setRemoveTarget(null)}>
-          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl bg-background border border-border shadow-xl p-6 space-y-4">
-            <div>
-              <div className="font-bold text-ink">Remove {removeTarget.student?.full_name ?? 'this student'}?</div>
-              <div className="text-xs text-muted-foreground mt-0.5">
-                The student will be removed from this class and receive a full refund for the current month.
-              </div>
-            </div>
-
-            <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
-              If the tutor payout was already released, iTutor will refund the student now and recover the amount from future tutor earnings.
-            </div>
-
-            {removeError && <div className="text-xs text-rose-600 font-medium">{removeError}</div>}
-
-            <div className="flex gap-2 justify-end">
-              <button onClick={() => setRemoveTarget(null)} className="px-4 py-2 rounded-xl border border-border text-sm text-muted-foreground hover:bg-muted">Cancel</button>
-              <button onClick={handleRemove} disabled={removing}
-                className="px-4 py-2 rounded-xl text-white text-sm font-semibold inline-flex items-center gap-1.5 disabled:opacity-50 bg-rose-600 hover:bg-rose-700">
-                {removing
-                  ? <><span className="size-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />Removing...</>
-                  : 'Confirm removal'}
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </div>
@@ -2579,11 +2661,6 @@ function AnalyticsTab({ group, members }: { group: GroupDetail; members: GroupMe
 }
 
 /* ----------- Atom components ----------- */
-function Pill({ tone, label }: { tone: 'emerald' | 'rose' | 'amber' | 'slate'; label: string }) {
-  const cls = { emerald: 'bg-emerald-100 text-emerald-700', rose: 'bg-rose-100 text-rose-700', amber: 'bg-amber-100 text-amber-800', slate: 'bg-slate-100 text-slate-600' }[tone];
-  return <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full', cls)}>{label}</span>;
-}
-
 function Banner({ tone, icon: Icon, title, body }: { tone: 'rose' | 'amber'; icon: any; title: string; body: string }) {
   const cls = { rose: 'border-rose-200 bg-rose-50 text-rose-900', amber: 'border-amber-200 bg-amber-50 text-amber-900' }[tone];
   return (

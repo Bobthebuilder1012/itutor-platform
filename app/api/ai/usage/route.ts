@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
 import { getServerClient, getServiceClient } from "@/lib/supabase/server";
+import { isAiFeatureInMaintenance } from "@/lib/featureFlags/aiFeature";
+import { aiFeatureForbiddenResponse } from "@/lib/featureFlags/http";
 
 export const dynamic = "force-dynamic";
 
 const AI_USE_LIMIT = 2;
 
 export async function GET() {
+  if (isAiFeatureInMaintenance()) {
+    return aiFeatureForbiddenResponse();
+  }
   const supabase = await getServerClient();
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {
