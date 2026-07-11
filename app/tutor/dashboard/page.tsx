@@ -229,7 +229,7 @@ function DashboardContent() {
 
       <section>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
-          <StatCard icon={Users} label="Active students" value="23" locked={!listed} />
+          <StatCard icon={Users} label="Active students" value={String(stats.activeStudents)} locked={!listed} />
           <StatCard icon={CalendarDays} label="Upcoming sessions" value={String(stats.upcomingSessions)} locked={!listed} />
           <StatCard icon={DollarSign} label="This month (TTD)" value={stats.monthEarnings.toLocaleString()} locked={!listed} />
           <StatCard icon={Eye} label="Profile views" value={String(stats.profileViews)} locked={!listed} showLockIcon />
