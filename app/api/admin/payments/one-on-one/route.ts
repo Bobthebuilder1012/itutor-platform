@@ -804,10 +804,31 @@ export async function GET() {
   // 1:1 batches isolated by the Friday MOVE that are not yet paid:
   //   pending_download — moved, CSV not downloaded yet (mark-paid locked)
   //   exported         — CSV downloaded + retained, ready to mark paid
-  const this_week_batches = batches
+  // Only batches that still hold payable (release_ready) ledger rows are
+  // surfaced — older/orphaned batches whose lines were refunded or
+  // re-released have nothing to download and would just error.
+  const candidateBatchIds = batches
     .filter((b: any) =>
       (b.batch_type ?? 'one_on_one') === 'one_on_one' &&
       ['pending_download', 'exported'].includes(b.status)
+    )
+    .map((b: any) => b.id);
+
+  let payableBatchIds = new Set<string>();
+  if (candidateBatchIds.length > 0) {
+    const { data: batchedRows } = await admin
+      .from('payout_ledger')
+      .select('batch_id')
+      .eq('status', 'release_ready')
+      .in('batch_id', candidateBatchIds);
+    payableBatchIds = new Set((batchedRows ?? []).map((r: any) => r.batch_id));
+  }
+
+  const this_week_batches = batches
+    .filter((b: any) =>
+      (b.batch_type ?? 'one_on_one') === 'one_on_one' &&
+      ['pending_download', 'exported'].includes(b.status) &&
+      payableBatchIds.has(b.id)
     )
     .map((b: any) => ({
       batch_id:         b.id,

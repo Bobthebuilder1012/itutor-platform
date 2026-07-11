@@ -8,12 +8,15 @@ export function UnsavedBar({
   onDiscard,
   saveLabel = 'Save changes',
   saving = false,
+  variant = 'primary',
 }: {
   dirty: boolean;
   onSave: () => void;
   onDiscard: () => void;
   saveLabel?: string;
   saving?: boolean;
+  /** 'secondary' de-emphasizes the Save button — use when saving already happens automatically and this is just a manual fallback. */
+  variant?: 'primary' | 'secondary';
 }) {
   return (
     <div className={cn(
@@ -22,13 +25,20 @@ export function UnsavedBar({
     )}>
       <div className="rounded-2xl border border-amber-200 bg-amber-50/95 backdrop-blur shadow-lg px-4 py-3 flex items-center gap-3">
         <AlertCircle className="size-4 text-amber-700 shrink-0" />
-        <div className="text-sm font-semibold text-amber-900 flex-1">You have unsaved changes</div>
+        <div className="text-sm font-semibold text-amber-900 flex-1">
+          {variant === 'secondary' ? 'Saving automatically…' : 'You have unsaved changes'}
+        </div>
         <button type="button" onClick={onDiscard}
           className="px-3 py-1.5 rounded-lg text-sm font-semibold text-amber-900 hover:bg-amber-100">
           Discard
         </button>
         <button type="button" onClick={onSave} disabled={saving}
-          className="px-4 py-1.5 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand/90 disabled:opacity-60">
+          className={cn(
+            'px-4 py-1.5 rounded-lg text-sm font-semibold disabled:opacity-60',
+            variant === 'secondary'
+              ? 'border border-amber-300 text-amber-900 bg-amber-50 hover:bg-amber-100'
+              : 'bg-brand text-white hover:bg-brand/90',
+          )}>
           {saving ? 'Saving…' : saveLabel}
         </button>
       </div>

@@ -52,7 +52,6 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     const authorRole = isTutor ? 'tutor' : 'student';
 
-    // Try inserting with assignment columns; fall back to base columns if migration not run.
     const basePayload = {
       group_id: groupId,
       author_id: user.id,
@@ -61,24 +60,32 @@ export async function POST(req: NextRequest, { params }: Params) {
       message_body: messageBody,
     };
 
-    const fullPayload = postType === 'assignment'
-      ? { ...basePayload, marks_available: body.marks_available ?? null, due_date: body.due_date ?? null }
-      : basePayload;
+    const BASE_SELECT = 'id, group_id, author_id, author_role, post_type, message_body, created_at, updated_at';
+    const FULL_SELECT = 'id, group_id, author_id, author_role, post_type, message_body, marks_available, due_date, created_at, updated_at';
 
-    // First attempt: full payload + full select
-    let result = await service
-      .from('stream_posts')
-      .insert(fullPayload)
-      .select('id, group_id, author_id, author_role, post_type, message_body, marks_available, due_date, created_at, updated_at')
-      .single();
-
-    if (result.error?.code === 'PGRST204') {
-      // Assignment columns not yet in DB (migration pending) — insert base-only payload
+    // Only assignment posts use the marks_available/due_date columns. Selecting
+    // those columns when the assignment migration hasn't run errors — and the
+    // error code is 42703 ("column does not exist") for the SELECT, or PGRST204
+    // for the INSERT payload — so non-assignment posts must NOT select them at
+    // all (otherwise every announcement/content/link post 500s), and the
+    // assignment path falls back to base columns when they're missing.
+    let result;
+    if (postType === 'assignment') {
       result = await service
         .from('stream_posts')
-        .insert(basePayload)
-        .select('id, group_id, author_id, author_role, post_type, message_body, created_at, updated_at')
+        .insert({ ...basePayload, marks_available: body.marks_available ?? null, due_date: body.due_date ?? null })
+        .select(FULL_SELECT)
         .single();
+      const missingCols = !!result.error && (
+        result.error.code === 'PGRST204' ||
+        result.error.code === '42703' ||
+        /marks_available|due_date/.test(result.error.message ?? '')
+      );
+      if (missingCols) {
+        result = await service.from('stream_posts').insert(basePayload).select(BASE_SELECT).single();
+      }
+    } else {
+      result = await service.from('stream_posts').insert(basePayload).select(BASE_SELECT).single();
     }
 
     if (result.error) throw result.error;
@@ -86,7 +93,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     const attachmentUrls = body.attachment_urls ?? [];
     if (attachmentUrls.length > 0) {
-      await service.from('stream_attachments').insert(
+      const { error: attachErr } = await service.from('stream_attachments').insert(
         attachmentUrls.map((a) => ({
           post_id: post.id,
           file_name: a.file_name,
@@ -95,13 +102,21 @@ export async function POST(req: NextRequest, { params }: Params) {
           file_size_bytes: a.file_size_bytes ?? null,
         }))
       );
+      // Non-blocking: the post is already created; surface attachment failures
+      // in logs rather than 500-ing and orphaning the post.
+      if (attachErr) console.error('[POST stream/post] attachment insert failed', attachErr);
     }
 
     const { data: author } = await service.from('profiles').select('id, full_name, avatar_url').eq('id', user.id).single();
-    const { data: attachments } = await service
+    const { data: rawAttachments } = await service
       .from('stream_attachments')
       .select('id, post_id, file_name, file_url, file_type, file_size_bytes, created_at')
       .eq('post_id', post.id);
+    // Serve via the same-origin proxy route rather than the raw storage URL.
+    const attachments = (rawAttachments ?? []).map((a: any) => ({
+      ...a,
+      file_url: `/api/groups/${groupId}/stream/attachment/${a.id}`,
+    }));
 
     // Notify approved members (not the author)
     try {

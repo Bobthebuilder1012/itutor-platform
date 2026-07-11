@@ -127,7 +127,6 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
   const [rawMemberStatus, setRawMemberStatus] = useState<string | null>(null);
   const [actionReason, setActionReason] = useState<string | null>(null);
   const [suspendedUntil, setSuspendedUntil] = useState<Date | null>(null);
-  const [hasNextSession, setHasNextSession] = useState(false);
   const [nextMeetingLink, setNextMeetingLink] = useState<string | null>(null);
 
   useEffect(() => {
@@ -169,10 +168,9 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
         ? grp.average_rating
         : null;
 
-      const nextOcc = grp.next_occurrence;
-      const isReallyUpcoming = nextOcc?.scheduled_start_at && new Date(nextOcc.scheduled_start_at) > new Date();
-      setHasNextSession(Boolean(isReallyUpcoming));
-      setNextMeetingLink(grp.meeting_link ?? nextOcc?.meeting_link ?? null);
+      // One durable class link (groups.meeting_link) — shown whenever present,
+      // never gated on whether a session happens to be upcoming.
+      setNextMeetingLink(grp.meeting_link ?? null);
 
       const tutorObj = Array.isArray(grp.tutor) ? grp.tutor[0] : grp.tutor;
       const tutor = tutorObj
@@ -254,7 +252,7 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
               )}
             </div>
           </div>
-          {!blocked && hasNextSession && (
+          {!blocked && (
             <JoinSessionButton groupId={groupId} staticLink={nextMeetingLink} />
           )}
         </div>
@@ -376,7 +374,7 @@ function JoinSessionButton({ groupId: _groupId, staticLink }: { groupId: string;
         rel="noopener noreferrer"
         className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-brand text-white font-semibold text-sm hover:bg-brand/90 transition"
       >
-        <Video className="size-4" /> Join next session
+        <Video className="size-4" /> Join Now
       </a>
     </div>
   );
@@ -537,6 +535,10 @@ function ChannelJoinBanner({ group, tutorName }: { group: Group; tutorName: stri
 
 /* ─── Stream ─────────────────────────────────────────── */
 
+// Link posts have no dedicated link_url column — the composer writes the raw
+// URL as its own line in message_body, so detect a line that IS a bare URL.
+const URL_LINE_RE = /^https?:\/\/\S+$/;
+
 function StreamTab({ groupId, group, tutorName }: { groupId: string; group: Group; tutorName: string }) {
   const [posts, setPosts] = useState<StreamPost[]>([]);
   const [loading, setLoading] = useState(true);
@@ -547,20 +549,25 @@ function StreamTab({ groupId, group, tutorName }: { groupId: string; group: Grou
       .then(d => {
         const raw: any[] = d.posts ?? d.data ?? [];
         setPosts(raw.map((p: any) => {
-          const kind: StreamPost['kind'] =
-            p.post_type === 'attachment' ? 'attachment'
-            : p.post_type === 'link'     ? 'link'
-            : 'announcement';
-
           const firstAttachment = (p.attachments ?? [])[0];
+          const attachmentName = firstAttachment?.file_name ?? p.attachment_name ?? null;
+          const attachmentUrl = firstAttachment?.file_url ?? p.attachment_url ?? null;
 
           const body = p.message_body ?? p.body ?? p.content ?? '';
-          const lines = body.split('\n').filter(Boolean);
-          const title = p.title ?? p.heading ?? lines[0] ?? '';
-          const bodyText = lines.length > 1 ? lines.slice(1).join('\n') : body;
+          const rawLines = body.split('\n').filter(Boolean);
+          // A bare-URL line is shown as the clickable chip below, so keep it
+          // out of the title/body text to avoid rendering the link twice.
+          const urlLine = rawLines.find((l: string) => URL_LINE_RE.test(l.trim()));
+          const linkUrl = p.link_url ?? p.url ?? (urlLine ? urlLine.trim() : null);
+          const textLines = rawLines.filter((l: string) => !URL_LINE_RE.test(l.trim()));
+          const hasExplicitTitle = !!(p.title ?? p.heading);
+          const title = p.title ?? p.heading ?? textLines[0] ?? (linkUrl ? 'Shared a link' : '');
+          const bodyText = (hasExplicitTitle ? textLines : textLines.slice(1)).join('\n');
 
-          const isLinked = kind === 'link';
-          const linkUrl = p.link_url ?? p.url ?? (isLinked ? (p.metadata?.url ?? null) : null);
+          // post_type is 'content' for BOTH attachment and link posts, so
+          // derive the display kind from what the post actually contains
+          // instead of trusting post_type directly.
+          const kind: StreamPost['kind'] = attachmentName ? 'attachment' : linkUrl ? 'link' : 'announcement';
 
           return {
             id: p.id,
@@ -571,8 +578,8 @@ function StreamTab({ groupId, group, tutorName }: { groupId: string; group: Grou
               ? new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
               : '',
             pinned: p.pinned_at !== null && p.pinned_at !== undefined,
-            attachmentName: firstAttachment?.file_name ?? p.attachment_name ?? null,
-            attachmentUrl:  firstAttachment?.file_url  ?? p.attachment_url  ?? null,
+            attachmentName,
+            attachmentUrl,
             linkUrl,
           };
         }));
@@ -626,13 +633,15 @@ function StreamTab({ groupId, group, tutorName }: { groupId: string; group: Grou
                   )}
                 </div>
                 <div className="mt-1 font-semibold text-ink">{p.title}</div>
-                <p className="text-sm text-muted-foreground mt-1">{p.body}</p>
-                {p.attachmentName && (
-                  <button
-                    onClick={() => p.attachmentUrl && window.open(p.attachmentUrl, '_blank')}
+                {p.body && <p className="text-sm text-muted-foreground mt-1">{p.body}</p>}
+                {p.attachmentName && p.attachmentUrl && (
+                  <a
+                    href={p.attachmentUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-muted/40 text-xs font-semibold text-ink hover:bg-muted">
                     <Download className="size-3.5" /> {p.attachmentName}
-                  </button>
+                  </a>
                 )}
                 {p.linkUrl && (
                   <a href={p.linkUrl} target="_blank" rel="noreferrer"
@@ -764,7 +773,7 @@ function SessionsTab({ groupId, userId }: { groupId: string; userId: string }) {
     <div className="space-y-3">
       <div className="rounded-xl border border-dashed border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground flex items-start gap-2">
         <Video className="size-3.5 mt-0.5 shrink-0 text-brand-deep" />
-        <span>Meeting links are generated automatically from your tutor's connected Zoom or Google Meet account when each session starts.</span>
+        <span>Your tutor's Zoom / Google Meet link for this class. The same link is reused for every session — join any time it's available.</span>
       </div>
 
       {sessions.map((s, i) => {
@@ -801,13 +810,11 @@ function SessionsTab({ groupId, userId }: { groupId: string; userId: string }) {
                 <Pill tone="emerald" icon={Check} label="Attended" />
               ) : att === 'missed' ? (
                 <Pill tone="rose"    icon={X}     label="Missed" />
-              ) : (
-                <Pill tone="slate"               label="Pending" />
-              )}
+              ) : null}
             </div>
 
             <div className="flex items-center gap-1.5">
-              {future && meetingLink && (
+              {meetingLink && (
                 <a
                   href={meetingLink}
                   target="_blank"
@@ -816,7 +823,7 @@ function SessionsTab({ groupId, userId }: { groupId: string; userId: string }) {
                   <Video className="size-3.5" /> Join
                 </a>
               )}
-              {future && !meetingLink && (
+              {!meetingLink && (
                 <span className="text-[11px] text-muted-foreground italic">No link set</span>
               )}
             </div>

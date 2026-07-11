@@ -155,10 +155,16 @@ export async function GET(req: NextRequest, { params }: Params) {
       return roots as { id: string; author_id: string; message_body: string; parent_reply_id: string | null; created_at: string; updated_at: string; author: unknown; replies: unknown[] }[];
     }
 
+    // Serve attachments through the same-origin proxy route (keeps the storage
+    // URL hidden and re-checks access on every open) rather than a raw/signed
+    // Supabase URL.
     const postsWithMeta = (posts ?? []).map((p: any) => ({
       ...p,
       author: profileMap.get(p.author_id) ?? { id: p.author_id, full_name: 'Unknown', avatar_url: null },
-      attachments: attachmentsByPost.get(p.id) ?? [],
+      attachments: (attachmentsByPost.get(p.id) ?? []).map((a: any) => ({
+        ...a,
+        file_url: `/api/groups/${groupId}/stream/attachment/${a.id}`,
+      })),
       replies: nestReplies(repliesByPost.get(p.id) ?? []),
     }));
 

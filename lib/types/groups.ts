@@ -108,6 +108,13 @@ export interface GroupSession {
   recurrence_rule?: string | null;
   timezone?: string;
   meeting_platform?: 'ZOOM' | 'GOOGLE_MEET' | 'INTERNAL' | null;
+  // Series-level cached meeting link (migrations 090 + 188). One link per
+  // series, reused for 30 days from meeting_link_generated_at.
+  meeting_provider?: string | null;
+  meeting_external_id?: string | null;
+  meeting_join_url?: string | null;
+  meeting_created_at?: string | null;
+  meeting_link_generated_at?: string | null;
   created_at: string;
   updated_at?: string;
 }
