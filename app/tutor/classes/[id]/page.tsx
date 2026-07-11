@@ -324,17 +324,15 @@ function ClassHubContent() {
           const pJson = await pRes.json();
           setPosts((pJson.posts ?? []).map((p: any): StreamPost => {
             const msgBody: string = p.message_body ?? p.body ?? p.content ?? '';
-            const lines = msgBody.split('\n');
-            const derivedTitle = lines[0]?.slice(0, 80) ?? '';
-            const derivedBody = lines.slice(1).join('\n').trim();
-            // Link posts have no dedicated link_url column — the composer
-            // writes the raw URL as its own line in message_body, so detect
-            // a line that IS a bare URL.
-            const derivedLinkUrl =
-              p.link_url
-              ?? (URL_LINE_RE.test(derivedBody) ? derivedBody
-                : URL_LINE_RE.test(derivedTitle) ? derivedTitle
-                : undefined);
+            const rawLines = msgBody.split('\n').filter(Boolean);
+            // Link posts have no dedicated link_url column — the composer writes
+            // the raw URL as its own line in message_body. Pull that line out so
+            // it renders ONLY as the clickable chip, not also as body text.
+            const urlLine = rawLines.find((l: string) => URL_LINE_RE.test(l.trim()));
+            const derivedLinkUrl = p.link_url ?? (urlLine ? urlLine.trim() : undefined);
+            const textLines = rawLines.filter((l: string) => !URL_LINE_RE.test(l.trim()));
+            const derivedTitle = (textLines[0] ?? (derivedLinkUrl ? 'Shared a link' : '')).slice(0, 80);
+            const derivedBody = textLines.slice(1).join('\n').trim();
             const derivedAttachmentName = p.attachments?.[0]?.file_name ?? p.attachment_name;
             // post_type is 'content' for BOTH attachment and link posts (and
             // 'announcement' for announcements) — it can't distinguish
@@ -622,12 +620,12 @@ function ClassPostComposer({ group, onPosted }: { group: GroupDetail; onPosted: 
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error ?? 'Failed to post');
       const p = json.post;
-      const lines = message_body.split('\n');
+      const optLines = message_body.split('\n').filter(Boolean).filter((l) => !URL_LINE_RE.test(l.trim()));
       onPosted({
         id: p?.id ?? `tmp-${Date.now()}`,
         kind,
-        title: lines[0]?.slice(0, 80) ?? '',
-        body: lines.slice(1).join('\n').trim(),
+        title: (optLines[0] ?? (kind === 'link' ? 'Shared a link' : '')).slice(0, 80),
+        body: optLines.slice(1).join('\n').trim(),
         at: 'Just now',
         pinned: false,
         pendingApproval: false,
@@ -769,7 +767,7 @@ function StreamCard({ post, onPin, onRemove }: { post: StreamPost; onPin: () => 
             {post.pinned && <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-100 text-rose-600">Pinned</span>}
           </div>
           <div className="mt-1 font-semibold text-ink">{post.title}</div>
-          <p className="text-sm text-muted-foreground mt-1">{post.body}</p>
+          {post.body && <p className="text-sm text-muted-foreground mt-1">{post.body}</p>}
           {post.attachmentName && post.attachmentUrl && (
             <a
               href={post.attachmentUrl}

@@ -554,15 +554,15 @@ function StreamTab({ groupId, group, tutorName }: { groupId: string; group: Grou
           const attachmentUrl = firstAttachment?.file_url ?? p.attachment_url ?? null;
 
           const body = p.message_body ?? p.body ?? p.content ?? '';
-          const lines = body.split('\n').filter(Boolean);
-          const title = p.title ?? p.heading ?? lines[0] ?? '';
-          const bodyText = lines.length > 1 ? lines.slice(1).join('\n') : body;
-
-          const linkUrl =
-            p.link_url ?? p.url
-            ?? (URL_LINE_RE.test(bodyText.trim()) ? bodyText.trim()
-              : URL_LINE_RE.test(title.trim()) ? title.trim()
-              : null);
+          const rawLines = body.split('\n').filter(Boolean);
+          // A bare-URL line is shown as the clickable chip below, so keep it
+          // out of the title/body text to avoid rendering the link twice.
+          const urlLine = rawLines.find((l: string) => URL_LINE_RE.test(l.trim()));
+          const linkUrl = p.link_url ?? p.url ?? (urlLine ? urlLine.trim() : null);
+          const textLines = rawLines.filter((l: string) => !URL_LINE_RE.test(l.trim()));
+          const hasExplicitTitle = !!(p.title ?? p.heading);
+          const title = p.title ?? p.heading ?? textLines[0] ?? (linkUrl ? 'Shared a link' : '');
+          const bodyText = (hasExplicitTitle ? textLines : textLines.slice(1)).join('\n');
 
           // post_type is 'content' for BOTH attachment and link posts, so
           // derive the display kind from what the post actually contains
@@ -633,7 +633,7 @@ function StreamTab({ groupId, group, tutorName }: { groupId: string; group: Grou
                   )}
                 </div>
                 <div className="mt-1 font-semibold text-ink">{p.title}</div>
-                <p className="text-sm text-muted-foreground mt-1">{p.body}</p>
+                {p.body && <p className="text-sm text-muted-foreground mt-1">{p.body}</p>}
                 {p.attachmentName && p.attachmentUrl && (
                   <a
                     href={p.attachmentUrl}
