@@ -254,31 +254,39 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
       case 'reviewer': return [
         { label: 'Review', items: [
           { href: '/reviewer/dashboard', label: 'Dashboard', icon: icons.dashboard },
-          { href: '/reviewer/verification/queue', label: 'Verification Queue', icon: icons.queue },
-          { href: '/reviewer/verified-tutors', label: 'Verified iTutors', icon: icons.shield },
-          { href: '/reviewer/accounts', label: 'Account Management', icon: icons.users },
-          { href: '/reviewer/payments', label: 'Payments & Revenue', icon: icons.creditCard },
+          { href: '/admin/verification/queue', label: 'Verification Queue', icon: icons.queue },
+          { href: '/admin/verified-tutors', label: 'Verified iTutors', icon: icons.shield },
+          { href: '/admin/accounts', label: 'Account Management', icon: icons.users },
         ]},
       ];
       case 'admin': return [
         { label: 'Operations', items: [
           { href: '/admin/dashboard', label: 'Dashboard', icon: icons.dashboard },
-          { href: '/reviewer/verification/queue', label: 'Verification Queue', icon: icons.queue },
-          { href: '/reviewer/verified-tutors', label: 'Verified iTutors', icon: icons.shield },
-          { href: '/reviewer/accounts', label: 'Account Management', icon: icons.users },
+          { href: '/admin/accounts', label: 'Accounts', icon: icons.users },
+          { href: '/admin/verification/queue', label: 'Verification Queue', icon: icons.queue },
+          { href: '/admin/verified-tutors', label: 'Verified iTutors', icon: icons.shield },
+          { href: '/admin/degrees', label: 'Degree Verification', icon: icons.shield },
+          { href: '/admin/signups', label: 'Signups & Onboarding', icon: icons.userPlus },
         ]},
         { label: 'Finance', items: [
-          { href: '/reviewer/payments', label: 'Payments & Revenue', icon: icons.creditCard },
           { href: '/admin/payments', label: 'Payments Overview', icon: icons.creditCard },
           { href: '/admin/payments/one-on-one', label: 'One-on-One Payments', icon: icons.creditCard },
           { href: '/admin/lesson-payments', label: 'Lesson Payments', icon: icons.banknote },
           { href: '/admin/tutor-commissions', label: 'Tutor Commissions', icon: icons.banknote },
           { href: '/admin/payouts', label: 'Payouts', icon: icons.banknote },
+          { href: '/admin/payout-cases', label: 'Payout Cases', icon: icons.banknote },
           { href: '/admin/refunds', label: 'Refunds', icon: icons.refund },
+        ]},
+        { label: 'Trust & Safety', items: [
           { href: '/admin/disputes', label: 'Disputes & Reliability', icon: icons.shield },
+          { href: '/admin/strikes', label: 'Strikes & Warnings', icon: icons.shield },
+          { href: '/admin/no-shows', label: 'No-Show Resolution', icon: icons.shield },
+          { href: '/admin/rating-appeals', label: 'Rating Appeals', icon: icons.shield },
         ]},
         { label: 'System', items: [
           { href: '/admin/emails', label: 'Email Management', icon: icons.mail },
+          { href: '/admin/classes', label: 'Class Admin', icon: icons.book },
+          { href: '/admin/settings', label: 'Settings & Roles', icon: icons.settings },
         ]},
       ];
       default: return [];
@@ -336,8 +344,13 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto py-4 px-2">
-          {navSections.map((section) => (
-            <div key={section.label}>
+          {navSections.map((section, sectionIdx) => (
+            <div key={section.label} className={sectionIdx > 0 ? 'mt-4' : ''}>
+              {role === 'admin' && !collapsed && (
+                <p className="px-3 pt-1 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-600">
+                  {section.label}
+                </p>
+              )}
               {section.items.map((item) => {
                 if ('children' in item) {
                   const groupAnyActive = item.children.some(

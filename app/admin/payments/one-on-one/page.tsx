@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import { isEmailManagementOnlyAdmin } from '@/lib/auth/adminAccess';
+import AdminBreadcrumb from '@/components/admin/AdminBreadcrumb';
 import {
   DollarSign, AlertTriangle, Loader2,
   CheckSquare, Square, Download, RefreshCcw,
@@ -1117,6 +1118,11 @@ export default function OneOnOnePaymentsPage() {
   return (
     <div className="min-h-screen" style={{ background: '#0f0f10', color: '#fff' }}>
       <div className="max-w-7xl mx-auto p-6 space-y-6">
+
+        <AdminBreadcrumb
+          tone="dark"
+          items={[{ label: 'Finance', href: '/admin/payments' }, { label: 'One-on-One Payments' }]}
+        />
 
         {/* Header */}
         <div className="flex items-center justify-between">

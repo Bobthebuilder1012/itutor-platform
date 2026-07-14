@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
+import AdminBreadcrumb from '@/components/admin/AdminBreadcrumb';
 import { isEmailManagementOnlyAdmin } from '@/lib/auth/adminAccess';
 import {
   Percent, Users, ShieldCheck, Search, Loader2,
@@ -478,6 +479,8 @@ export default function TutorCommissionsPage() {
   return (
     <DashboardLayout role="admin" userName="Admin">
       <div className="mx-auto max-w-6xl space-y-8 px-4 py-8 sm:px-6">
+
+        <AdminBreadcrumb items={[{ label: 'Finance' }, { label: 'Tutor Commissions' }]} />
 
         {/* Header */}
         <div>

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
+import AdminBreadcrumb from '@/components/admin/AdminBreadcrumb';
 import Link from 'next/link';
 import { isEmailManagementOnlyAdmin } from '@/lib/auth/adminAccess';
 
@@ -289,9 +290,10 @@ export default function AdminDashboardPage() {
   return (
     <DashboardLayout role="admin" userName="Admin">
       <div className="p-6">
+        <AdminBreadcrumb items={[{ label: 'Operations' }, { label: 'Dashboard' }]} />
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-          <p className="text-gray-600 mt-2">Welcome to the iTutor admin panel</p>
+          <p className="text-gray-600 mt-2">Accounts, verification, and session activity at a glance</p>
         </div>
 
         {/* Stats Grid */}
@@ -520,7 +522,7 @@ export default function AdminDashboardPage() {
           <h2 className="text-2xl font-bold mb-6 text-gray-900">Admin Tools</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <Link
-              href="/reviewer/verification/queue"
+              href="/admin/verification/queue"
               className="flex items-center gap-4 p-6 border-2 border-gray-200 rounded-xl hover:border-yellow-500 hover:bg-yellow-50 transition-all group hover:shadow-lg"
             >
               <div className="bg-yellow-100 rounded-lg p-4 group-hover:bg-yellow-200 transition-colors">
@@ -535,7 +537,7 @@ export default function AdminDashboardPage() {
             </Link>
 
             <Link
-              href="/reviewer/accounts"
+              href="/admin/accounts"
               className="flex items-center gap-4 p-6 border-2 border-gray-200 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all group hover:shadow-lg"
             >
               <div className="bg-blue-100 rounded-lg p-4 group-hover:bg-blue-200 transition-colors">
@@ -546,21 +548,6 @@ export default function AdminDashboardPage() {
               <div>
                 <h3 className="font-bold text-gray-900 text-lg">Account Management</h3>
                 <p className="text-sm text-gray-600">Suspend & manage users</p>
-              </div>
-            </Link>
-
-            <Link
-              href="/reviewer/payments"
-              className="flex items-center gap-4 p-6 border-2 border-gray-200 rounded-xl hover:border-indigo-500 hover:bg-indigo-50 transition-all group hover:shadow-lg"
-            >
-              <div className="bg-indigo-100 rounded-lg p-4 group-hover:bg-indigo-200 transition-colors">
-                <svg className="w-8 h-8 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="font-bold text-gray-900 text-lg">Payments & Revenue</h3>
-                <p className="text-sm text-gray-600">View financial data</p>
               </div>
             </Link>
 
@@ -580,7 +567,7 @@ export default function AdminDashboardPage() {
             </Link>
 
             <Link
-              href="/reviewer/verified-tutors"
+              href="/admin/verified-tutors"
               className="flex items-center gap-4 p-6 border-2 border-gray-200 rounded-xl hover:border-purple-500 hover:bg-purple-50 transition-all group hover:shadow-lg"
             >
               <div className="bg-purple-100 rounded-lg p-4 group-hover:bg-purple-200 transition-colors">
@@ -591,81 +578,6 @@ export default function AdminDashboardPage() {
               <div>
                 <h3 className="font-bold text-gray-900 text-lg">Verified iTutors</h3>
                 <p className="text-sm text-gray-600">View all verified tutors</p>
-              </div>
-            </Link>
-
-            <Link
-              href="/admin/payouts"
-              className="flex items-center gap-4 p-6 border-2 border-gray-200 rounded-xl hover:border-emerald-500 hover:bg-emerald-50 transition-all group hover:shadow-lg"
-            >
-              <div className="bg-emerald-100 rounded-lg p-4 group-hover:bg-emerald-200 transition-colors">
-                <svg className="w-8 h-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h.01M12 15h.01M17 15h.01M3 6h18a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V7a1 1 0 011-1z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="font-bold text-gray-900 text-lg">Payouts</h3>
-                <p className="text-sm text-gray-600">Generate bank CSV & reconcile transfers</p>
-              </div>
-            </Link>
-
-            <Link
-              href="/admin/payout-cases"
-              className="flex items-center gap-4 p-6 border-2 border-gray-200 rounded-xl hover:border-amber-500 hover:bg-amber-50 transition-all group hover:shadow-lg"
-            >
-              <div className="bg-amber-100 rounded-lg p-4 group-hover:bg-amber-200 transition-colors">
-                <svg className="w-8 h-8 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="font-bold text-gray-900 text-lg">Payout Cases</h3>
-                <p className="text-sm text-gray-600">Review and resolve held tutor payouts</p>
-              </div>
-            </Link>
-
-            <Link
-              href="/admin/payments"
-              className="flex items-center gap-4 p-6 border-2 border-gray-200 rounded-xl hover:border-teal-500 hover:bg-teal-50 transition-all group hover:shadow-lg"
-            >
-              <div className="bg-teal-100 rounded-lg p-4 group-hover:bg-teal-200 transition-colors">
-                <svg className="w-8 h-8 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="font-bold text-gray-900 text-lg">Payments Overview</h3>
-                <p className="text-sm text-gray-600">Revenue, fees, and payout pipeline stats</p>
-              </div>
-            </Link>
-
-            <Link
-              href="/admin/tutor-commissions"
-              className="flex items-center gap-4 p-6 border-2 border-gray-200 rounded-xl hover:border-green-500 hover:bg-green-50 transition-all group hover:shadow-lg"
-            >
-              <div className="bg-green-100 rounded-lg p-4 group-hover:bg-green-200 transition-colors">
-                <svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="font-bold text-gray-900 text-lg">Tutor Commissions</h3>
-                <p className="text-sm text-gray-600">Set per-tutor commission rates and exceptions</p>
-              </div>
-            </Link>
-
-            <Link
-              href="/admin/refunds"
-              className="flex items-center gap-4 p-6 border-2 border-gray-200 rounded-xl hover:border-rose-500 hover:bg-rose-50 transition-all group hover:shadow-lg"
-            >
-              <div className="bg-rose-100 rounded-lg p-4 group-hover:bg-rose-200 transition-colors">
-                <svg className="w-8 h-8 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="font-bold text-gray-900 text-lg">Refunds</h3>
-                <p className="text-sm text-gray-600">Issue refunds for stuck payments</p>
               </div>
             </Link>
 
@@ -696,7 +608,7 @@ export default function AdminDashboardPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <p className="text-sm text-blue-700">
-                <strong>Tip:</strong> Use the navigation menu above to access all admin features including verification queue, account management, payments tracking, and email campaigns.
+                <strong>Tip:</strong> Finance tools (payments, payouts, refunds, commissions) now live under the <strong>Finance</strong> section in the sidebar. Use the navigation menu to reach every admin area.
               </p>
             </div>
           </div>

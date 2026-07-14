@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import { isEmailManagementOnlyAdmin } from '@/lib/auth/adminAccess';
+import AdminBreadcrumb from '@/components/admin/AdminBreadcrumb';
 import {
   BookOpen, DollarSign, AlertTriangle, Loader2,
   CheckSquare, Square, Download, RefreshCcw,
@@ -532,6 +533,11 @@ export default function LessonPaymentsPage() {
   return (
     <div className="min-h-screen" style={{ background: '#0f0f10', color: '#fff' }}>
       <div className="max-w-6xl mx-auto p-6 space-y-6">
+
+        <AdminBreadcrumb
+          tone="dark"
+          items={[{ label: 'Finance', href: '/admin/payments' }, { label: 'Lesson Payments' }]}
+        />
 
         {/* Header */}
         <div className="flex items-center justify-between">
