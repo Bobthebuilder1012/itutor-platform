@@ -430,9 +430,12 @@ export default function FindTutorsPage() {
         fetch(`/api/groups/member-counts?ids=${groupIds.join(',')}`).then((r) => r.json()).catch(() => ({ counts: {} })),
       ]);
 
-      // Remove groups owned by dev accounts
+      // Remove groups owned by dev-account tutors — but dev-account viewers
+      // (test/QA students) still see them, mirroring the viewer is_dev_account
+      // gates in /api/groups, /api/tutors/listed-ids and the tutor profile page.
+      const viewerIsDev = profile?.is_dev_account === true;
       const devTutorIdSet = new Set((tutorProfiles ?? []).filter((p: any) => p.is_dev_account).map((p: any) => p.id));
-      if (devTutorIdSet.size > 0) groups = groups.filter((g: any) => !devTutorIdSet.has(g.tutor_id));
+      if (!viewerIsDev && devTutorIdSet.size > 0) groups = groups.filter((g: any) => !devTutorIdSet.has(g.tutor_id));
 
       const tutorMap = new Map((tutorProfiles ?? []).map((p: any) => [p.id, p]));
       // Server-side counts (service role, accurate) take priority over RLS-limited client query

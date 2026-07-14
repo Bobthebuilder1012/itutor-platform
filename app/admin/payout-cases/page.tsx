@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
+import AdminBreadcrumb from '@/components/admin/AdminBreadcrumb';
 import { isEmailManagementOnlyAdmin } from '@/lib/auth/adminAccess';
 import {
   AlertCircle, ChevronDown, ChevronUp, Clock, ShieldAlert,
@@ -184,6 +185,7 @@ export default function AdminPayoutCasesPage() {
   return (
     <DashboardLayout role="admin" userName="Admin">
       <div className="max-w-6xl mx-auto space-y-6 p-6">
+        <AdminBreadcrumb items={[{ label: 'Finance' }, { label: 'Payout Cases' }]} />
 
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-3">

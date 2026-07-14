@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
+import AdminBreadcrumb from '@/components/admin/AdminBreadcrumb';
 import { isEmailManagementOnlyAdmin } from '@/lib/auth/adminAccess';
 
 interface PendingTutor {
@@ -196,6 +197,7 @@ export default function AdminPayoutsPage() {
   return (
     <DashboardLayout role="admin" userName="Admin">
       <div className="p-6 max-w-6xl mx-auto space-y-6">
+        <AdminBreadcrumb items={[{ label: 'Finance' }, { label: 'Payouts' }]} />
         <div className="flex items-baseline justify-between">
           <div>
             <h1 className="text-2xl font-bold text-ink">Payouts</h1>

@@ -156,7 +156,7 @@ export default function ReviewerDashboard() {
           {/* Quick Links Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-12 max-w-4xl mx-auto">
             <a
-              href="/reviewer/verification/queue"
+              href="/admin/verification/queue"
               className="group bg-white hover:bg-gradient-to-br hover:from-blue-50 hover:to-blue-100 border-2 border-gray-200 hover:border-blue-300 rounded-xl p-6 transition-all duration-300 shadow-md hover:shadow-xl transform hover:-translate-y-1"
             >
               <div className="flex flex-col items-center gap-3">
@@ -170,7 +170,7 @@ export default function ReviewerDashboard() {
             </a>
 
             <a
-              href="/reviewer/accounts"
+              href="/admin/accounts"
               className="group bg-white hover:bg-gradient-to-br hover:from-purple-50 hover:to-purple-100 border-2 border-gray-200 hover:border-purple-300 rounded-xl p-6 transition-all duration-300 shadow-md hover:shadow-xl transform hover:-translate-y-1"
             >
               <div className="flex flex-col items-center gap-3">
@@ -184,21 +184,7 @@ export default function ReviewerDashboard() {
             </a>
 
             <a
-              href="/reviewer/payments"
-              className="group bg-white hover:bg-gradient-to-br hover:from-green-50 hover:to-green-100 border-2 border-gray-200 hover:border-green-300 rounded-xl p-6 transition-all duration-300 shadow-md hover:shadow-xl transform hover:-translate-y-1"
-            >
-              <div className="flex flex-col items-center gap-3">
-                <div className="bg-green-100 group-hover:bg-green-200 rounded-full p-3 transition-colors">
-                  <svg className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <span className="font-semibold text-gray-900">Payments</span>
-              </div>
-            </a>
-
-            <a
-              href="/reviewer/verified-tutors"
+              href="/admin/verified-tutors"
               className="group bg-white hover:bg-gradient-to-br hover:from-emerald-50 hover:to-emerald-100 border-2 border-gray-200 hover:border-emerald-300 rounded-xl p-6 transition-all duration-300 shadow-md hover:shadow-xl transform hover:-translate-y-1"
             >
               <div className="flex flex-col items-center gap-3">
