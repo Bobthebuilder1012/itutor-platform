@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import { isEmailManagementOnlyAdmin } from '@/lib/auth/adminAccess';
 import AdminBreadcrumb from '@/components/admin/AdminBreadcrumb';
+import DashboardLayout from '@/components/DashboardLayout';
 import {
   DollarSign, AlertTriangle, Loader2,
   CheckSquare, Square, Download, RefreshCcw,
@@ -255,18 +256,18 @@ function StatCard({ label, value, sub, icon, accent }: {
   accent: 'emerald' | 'amber' | 'sky' | 'rose';
 }) {
   const map = {
-    emerald: 'text-emerald-400 bg-emerald-400/10',
-    amber:   'text-amber-400 bg-amber-400/10',
-    sky:     'text-sky-400 bg-sky-400/10',
-    rose:    'text-rose-400 bg-rose-400/10',
+    emerald: 'text-emerald-600 bg-emerald-50',
+    amber:   'text-amber-600 bg-amber-50',
+    sky:     'text-sky-600 bg-sky-50',
+    rose:    'text-rose-600 bg-rose-50',
   };
   return (
-    <div className="rounded-xl border border-white/8 p-5" style={{ background: '#161618' }}>
+    <div className="rounded-xl border border-gray-200 p-5" style={{ background: '#ffffff' }}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[11px] font-semibold text-white/40 uppercase tracking-wider truncate">{label}</p>
-          <p className="text-2xl font-bold text-white mt-1 tabular-nums">{value}</p>
-          {sub && <p className="text-[11px] text-white/40 mt-0.5">{sub}</p>}
+          <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider truncate">{label}</p>
+          <p className="text-2xl font-bold text-gray-900 mt-1 tabular-nums">{value}</p>
+          {sub && <p className="text-[11px] text-gray-500 mt-0.5">{sub}</p>}
         </div>
         <div className={`size-9 rounded-lg flex items-center justify-center shrink-0 ${map[accent]}`}>
           {icon}
@@ -277,33 +278,33 @@ function StatCard({ label, value, sub, icon, accent }: {
 }
 
 function PayoutChip({ status }: { status: string | null | undefined }) {
-  if (!status) return <span className="text-white/30 text-xs">—</span>;
+  if (!status) return <span className="text-gray-400 text-xs">—</span>;
   const cfg: Record<string, string> = {
-    owed:          'bg-sky-500/15 text-sky-300',
-    release_ready: 'bg-emerald-500/15 text-emerald-300',
-    admin_hold:    'bg-amber-500/15 text-amber-300',
-    released:      'bg-purple-500/15 text-purple-300',
-    reversed:      'bg-rose-500/15 text-rose-300',
+    owed:          'bg-sky-100 text-sky-700',
+    release_ready: 'bg-emerald-100 text-emerald-700',
+    admin_hold:    'bg-amber-100 text-amber-700',
+    released:      'bg-purple-100 text-purple-700',
+    reversed:      'bg-rose-100 text-rose-700',
   };
   return (
-    <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${cfg[status] ?? 'bg-white/10 text-white/60'}`}>
+    <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${cfg[status] ?? 'bg-gray-100 text-gray-600'}`}>
       {status.replace(/_/g, ' ')}
     </span>
   );
 }
 
 function PaymentStatusChip({ status }: { status: string | null | undefined }) {
-  if (!status) return <span className="text-white/30 text-xs">—</span>;
+  if (!status) return <span className="text-gray-400 text-xs">—</span>;
   const cfg: Record<string, string> = {
-    succeeded:           'bg-emerald-500/15 text-emerald-300',
-    partially_refunded:  'bg-amber-500/15 text-amber-300',
-    refunded:            'bg-rose-500/15 text-rose-300',
-    failed:              'bg-rose-600/20 text-rose-400',
-    pending:             'bg-sky-500/15 text-sky-300',
-    scheduled:           'bg-violet-500/15 text-violet-300',
+    succeeded:           'bg-emerald-100 text-emerald-700',
+    partially_refunded:  'bg-amber-100 text-amber-700',
+    refunded:            'bg-rose-100 text-rose-700',
+    failed:              'bg-rose-100 text-rose-600',
+    pending:             'bg-sky-100 text-sky-700',
+    scheduled:           'bg-violet-100 text-violet-700',
   };
   return (
-    <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${cfg[status] ?? 'bg-white/10 text-white/60'}`}>
+    <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${cfg[status] ?? 'bg-gray-100 text-gray-600'}`}>
       {status.replace(/_/g, ' ')}
     </span>
   );
@@ -311,19 +312,19 @@ function PaymentStatusChip({ status }: { status: string | null | undefined }) {
 
 function NoshowStatusChip({ status, verdict }: { status: string; verdict: string | null }) {
   if (verdict) {
-    if (verdict === 'student_noshow') return <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/15 text-amber-300">Student No-show</span>;
-    if (verdict === 'tutor_noshow')   return <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-500/15 text-rose-300">Tutor No-show</span>;
-    if (verdict === 'tie')            return <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-purple-500/15 text-purple-300">Tie / Mutual</span>;
+    if (verdict === 'student_noshow') return <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700">Student No-show</span>;
+    if (verdict === 'tutor_noshow')   return <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-100 text-rose-700">Tutor No-show</span>;
+    if (verdict === 'tie')            return <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-purple-100 text-purple-700">Tie / Mutual</span>;
   }
   const cfg: Record<string, string> = {
-    resolved:           'bg-emerald-500/15 text-emerald-300',
-    escalated:          'bg-rose-500/15 text-rose-300',
-    pending:            'bg-amber-500/15 text-amber-300',
-    awaiting_response:  'bg-amber-500/15 text-amber-300',
-    open:               'bg-sky-500/15 text-sky-300',
+    resolved:           'bg-emerald-100 text-emerald-700',
+    escalated:          'bg-rose-100 text-rose-700',
+    pending:            'bg-amber-100 text-amber-700',
+    awaiting_response:  'bg-amber-100 text-amber-700',
+    open:               'bg-sky-100 text-sky-700',
   };
   return (
-    <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${cfg[status] ?? 'bg-white/10 text-white/60'}`}>
+    <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${cfg[status] ?? 'bg-gray-100 text-gray-600'}`}>
       {status.replace(/_/g, ' ')}
     </span>
   );
@@ -335,8 +336,8 @@ function Tab({ active, onClick, children }: { active: boolean; onClick: () => vo
       onClick={onClick}
       className={`px-4 py-2.5 text-sm font-semibold rounded-lg transition ${
         active
-          ? 'bg-white/10 text-white'
-          : 'text-white/50 hover:text-white/80 hover:bg-white/5'
+          ? 'bg-gray-100 text-gray-900'
+          : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
       }`}
     >
       {children}
@@ -346,7 +347,7 @@ function Tab({ active, onClick, children }: { active: boolean; onClick: () => vo
 
 function DataTable({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-white/8 overflow-x-auto" style={{ background: '#161618' }}>
+    <div className="rounded-xl border border-gray-200 overflow-x-auto" style={{ background: '#ffffff' }}>
       <table className="w-full">{children}</table>
     </div>
   );
@@ -354,7 +355,7 @@ function DataTable({ children }: { children: React.ReactNode }) {
 
 function EmptyState({ message }: { message: string }) {
   return (
-    <div className="flex flex-col items-center py-20 text-white/30 gap-2">
+    <div className="flex flex-col items-center py-20 text-gray-400 gap-2">
       <AlertTriangle className="size-10" />
       <p className="text-sm">{message}</p>
     </div>
@@ -403,48 +404,48 @@ function RefundModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70" onClick={onClose}>
-      <div className="w-full max-w-lg rounded-2xl border border-white/10 shadow-2xl" style={{ background: '#161618' }} onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between p-5 border-b border-white/8">
-          <h2 className="text-base font-bold text-white">Issue Refund</h2>
-          <button onClick={onClose} className="text-white/40 hover:text-white"><X className="size-5" /></button>
+      <div className="w-full max-w-lg rounded-2xl border border-gray-200 shadow-2xl" style={{ background: '#ffffff' }} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-5 border-b border-gray-200">
+          <h2 className="text-base font-bold text-gray-900">Issue Refund</h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-900"><X className="size-5" /></button>
         </div>
 
         <div className="p-5 space-y-4">
           {error && (
-            <div className="rounded-lg bg-rose-500/10 border border-rose-500/20 p-3 text-sm text-rose-300">{error}</div>
+            <div className="rounded-lg bg-rose-50 border border-rose-200 p-3 text-sm text-rose-700">{error}</div>
           )}
 
-          <div className="rounded-xl border border-white/8 p-4 space-y-2" style={{ background: '#0f0f10' }}>
+          <div className="rounded-xl border border-gray-200 p-4 space-y-2" style={{ background: '#f9fafb' }}>
             <div className="flex justify-between text-sm">
-              <span className="text-white/50">Student</span>
-              <span className="text-white font-semibold">{row.student_name ?? '—'}</span>
+              <span className="text-gray-500">Student</span>
+              <span className="text-gray-900 font-semibold">{row.student_name ?? '—'}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-white/50">Tutor</span>
-              <span className="text-white">{row.tutor_name ?? '—'}</span>
+              <span className="text-gray-500">Tutor</span>
+              <span className="text-gray-900">{row.tutor_name ?? '—'}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-white/50">Session</span>
-              <span className="text-white">{fmtDate(row.scheduled_at)}</span>
+              <span className="text-gray-500">Session</span>
+              <span className="text-gray-900">{fmtDate(row.scheduled_at)}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-white/50">Reason</span>
-              <span className="text-amber-300 capitalize">{row.refund_reason.replace(/_/g, ' ')}</span>
+              <span className="text-gray-500">Reason</span>
+              <span className="text-amber-700 capitalize">{row.refund_reason.replace(/_/g, ' ')}</span>
             </div>
-            <div className="flex justify-between text-sm font-bold border-t border-white/8 pt-2 mt-2">
-              <span className="text-white/70">Recommended refund</span>
-              <span className="text-rose-300 tabular-nums">{fmtTTD(fullAmount)}</span>
+            <div className="flex justify-between text-sm font-bold border-t border-gray-200 pt-2 mt-2">
+              <span className="text-gray-700">Recommended refund</span>
+              <span className="text-rose-700 tabular-nums">{fmtTTD(fullAmount)}</span>
             </div>
             {row.retained_ttd > 0 && (
               <div className="flex justify-between text-xs">
-                <span className="text-white/40">Already retained</span>
-                <span className="text-white/60 tabular-nums">{fmtTTD(row.retained_ttd)}</span>
+                <span className="text-gray-500">Already retained</span>
+                <span className="text-gray-600 tabular-nums">{fmtTTD(row.retained_ttd)}</span>
               </div>
             )}
           </div>
 
           <div className="space-y-2">
-            <p className="text-xs font-semibold text-white/40 uppercase tracking-wider">Refund amount</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Refund amount</p>
             {([
               { key: 'full' as RefundType, label: 'Full refund', amount: fullAmount, color: 'rose' },
               { key: 'half' as RefundType, label: '50% refund', amount: halfAmount, color: 'amber' },
@@ -455,14 +456,14 @@ function RefundModal({
                 onClick={() => setRefundType(key)}
                 className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border transition text-sm font-semibold ${
                   refundType === key
-                    ? 'border-white/20 bg-white/8 text-white'
-                    : 'border-white/6 bg-white/2 text-white/50 hover:text-white hover:bg-white/5'
+                    ? 'border-gray-300 bg-gray-100 text-gray-900'
+                    : 'border-gray-200 bg-gray-50 text-gray-500 hover:text-gray-900 hover:bg-gray-100'
                 }`}
               >
                 <div className="flex items-center gap-2">
                   {refundType === key
-                    ? <CheckCircle className="size-4 text-emerald-400" />
-                    : <div className="size-4 rounded-full border border-white/20" />}
+                    ? <CheckCircle className="size-4 text-emerald-600" />
+                    : <div className="size-4 rounded-full border border-gray-300" />}
                   <span>{label}</span>
                 </div>
                 {amount != null && (
@@ -473,17 +474,17 @@ function RefundModal({
           </div>
         </div>
 
-        <div className="flex gap-3 p-5 border-t border-white/8">
-          <button onClick={onClose} className="flex-1 px-4 py-2 rounded-xl border border-white/10 text-sm font-semibold text-white/60 hover:text-white hover:bg-white/5">
+        <div className="flex gap-3 p-5 border-t border-gray-200">
+          <button onClick={onClose} className="flex-1 px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100">
             Cancel
           </button>
           <button
             onClick={submit}
             disabled={loading}
-            className={`flex-1 px-4 py-2 rounded-xl text-white text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50 transition ${
+            className={`flex-1 px-4 py-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50 transition ${
               refundType === 'reject'
-                ? 'bg-white/10 hover:bg-white/15'
-                : 'bg-rose-600 hover:bg-rose-500'
+                ? 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                : 'bg-rose-600 hover:bg-rose-500 text-white'
             }`}
           >
             {loading ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle className="size-4" />}
@@ -556,38 +557,38 @@ function NoshowModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70" onClick={onClose}>
-      <div className="w-full max-w-lg rounded-2xl border border-white/10 shadow-2xl" style={{ background: '#161618' }} onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between p-5 border-b border-white/8">
-          <h2 className="text-base font-bold text-white">Resolve No-show Claim</h2>
-          <button onClick={onClose} className="text-white/40 hover:text-white"><X className="size-5" /></button>
+      <div className="w-full max-w-lg rounded-2xl border border-gray-200 shadow-2xl" style={{ background: '#ffffff' }} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-5 border-b border-gray-200">
+          <h2 className="text-base font-bold text-gray-900">Resolve No-show Claim</h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-900"><X className="size-5" /></button>
         </div>
 
         <div className="p-5 space-y-4">
           {error && (
-            <div className="rounded-lg bg-rose-500/10 border border-rose-500/20 p-3 text-sm text-rose-300">{error}</div>
+            <div className="rounded-lg bg-rose-50 border border-rose-200 p-3 text-sm text-rose-700">{error}</div>
           )}
 
-          <div className="rounded-xl border border-white/8 p-4 space-y-2" style={{ background: '#0f0f10' }}>
+          <div className="rounded-xl border border-gray-200 p-4 space-y-2" style={{ background: '#f9fafb' }}>
             <div className="flex justify-between text-sm">
-              <span className="text-white/50">Student</span>
-              <span className="text-white font-semibold">{claim.student_name ?? '—'}</span>
+              <span className="text-gray-500">Student</span>
+              <span className="text-gray-900 font-semibold">{claim.student_name ?? '—'}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-white/50">Tutor</span>
-              <span className="text-white">{claim.tutor_name ?? '—'}</span>
+              <span className="text-gray-500">Tutor</span>
+              <span className="text-gray-900">{claim.tutor_name ?? '—'}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-white/50">Scheduled</span>
-              <span className="text-white">{fmtDateTime(claim.scheduled_at)}</span>
+              <span className="text-gray-500">Scheduled</span>
+              <span className="text-gray-900">{fmtDateTime(claim.scheduled_at)}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-white/50">Filed by</span>
-              <span className="text-white capitalize">{claim.filed_by}</span>
+              <span className="text-gray-500">Filed by</span>
+              <span className="text-gray-900 capitalize">{claim.filed_by}</span>
             </div>
             {claim.defendant_response && (
-              <div className="border-t border-white/8 pt-2 mt-2">
-                <p className="text-xs text-white/40 mb-1">Tutor response</p>
-                <p className="text-sm text-white/70 leading-relaxed">{claim.defendant_response}</p>
+              <div className="border-t border-gray-200 pt-2 mt-2">
+                <p className="text-xs text-gray-500 mb-1">Tutor response</p>
+                <p className="text-sm text-gray-700 leading-relaxed">{claim.defendant_response}</p>
               </div>
             )}
           </div>
@@ -599,8 +600,8 @@ function NoshowModal({
               onClick={() => setViewDispute(viewDispute === 'student' ? null : 'student')}
               className={`flex-1 px-3 py-2 rounded-lg text-xs font-semibold border transition ${
                 viewDispute === 'student'
-                  ? 'border-sky-400/40 bg-sky-400/10 text-sky-300'
-                  : 'border-white/10 text-white/50 hover:text-white/80 hover:bg-white/5'
+                  ? 'border-sky-200 bg-sky-50 text-sky-700'
+                  : 'border-gray-200 text-gray-500 hover:text-gray-700 hover:bg-gray-100'
               }`}
             >
               {viewDispute === 'student' ? '▼' : '▶'} View Student Dispute
@@ -610,8 +611,8 @@ function NoshowModal({
               onClick={() => setViewDispute(viewDispute === 'tutor' ? null : 'tutor')}
               className={`flex-1 px-3 py-2 rounded-lg text-xs font-semibold border transition ${
                 viewDispute === 'tutor'
-                  ? 'border-rose-400/40 bg-rose-400/10 text-rose-300'
-                  : 'border-white/10 text-white/50 hover:text-white/80 hover:bg-white/5'
+                  ? 'border-rose-200 bg-rose-50 text-rose-700'
+                  : 'border-gray-200 text-gray-500 hover:text-gray-700 hover:bg-gray-100'
               }`}
             >
               {viewDispute === 'tutor' ? '▼' : '▶'} View Tutor Dispute
@@ -620,11 +621,11 @@ function NoshowModal({
 
           {/* Student Dispute content */}
           {viewDispute === 'student' && (
-            <div className="rounded-xl border border-sky-400/20 bg-sky-400/5 p-4 space-y-3">
-              <p className="text-xs font-semibold text-sky-300 uppercase tracking-wider">Student Dispute</p>
+            <div className="rounded-xl border border-sky-200 bg-sky-400/5 p-4 space-y-3">
+              <p className="text-xs font-semibold text-sky-700 uppercase tracking-wider">Student Dispute</p>
               <div>
-                <p className="text-[10px] text-white/30 uppercase mb-1">Statement</p>
-                <p className="text-sm text-white/80 leading-relaxed">
+                <p className="text-[10px] text-gray-400 uppercase mb-1">Statement</p>
+                <p className="text-sm text-gray-700 leading-relaxed">
                   {claim.claimant_role === 'student'
                     ? (claim.written_explanation ?? 'No statement provided.')
                     : (claim.defendant_response ?? 'No response provided.')}
@@ -632,11 +633,11 @@ function NoshowModal({
               </div>
               {(claim.claimant_role === 'student' ? claim.evidence_files : claim.defendant_evidence_files)?.length > 0 && (
                 <div>
-                  <p className="text-[10px] text-white/30 uppercase mb-2">Evidence Screenshots</p>
+                  <p className="text-[10px] text-gray-400 uppercase mb-2">Evidence Screenshots</p>
                   <div className="flex flex-col gap-1.5">
                     {(claim.claimant_role === 'student' ? claim.evidence_files : claim.defendant_evidence_files).map((file: any, i: number) => (
                       <a key={i} href={`/api/admin/evidence-download?path=${encodeURIComponent(file.path ?? '')}`} download={file.original_name ?? `evidence-${i + 1}`} target="_blank" rel="noopener noreferrer"
-                        className="flex items-center gap-2 px-3 py-2 rounded-lg border border-white/10 bg-white/3 hover:bg-white/8 transition text-xs text-white/60 hover:text-white">
+                        className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 transition text-xs text-gray-600 hover:text-gray-900">
                         <svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
                         <span className="truncate">{file.original_name ?? `Evidence ${i + 1}`}</span>
                         <svg className="size-3.5 shrink-0 ml-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
@@ -650,11 +651,11 @@ function NoshowModal({
 
           {/* Tutor Dispute content */}
           {viewDispute === 'tutor' && (
-            <div className="rounded-xl border border-rose-400/20 bg-rose-400/5 p-4 space-y-3">
-              <p className="text-xs font-semibold text-rose-300 uppercase tracking-wider">Tutor Dispute</p>
+            <div className="rounded-xl border border-rose-200 bg-rose-400/5 p-4 space-y-3">
+              <p className="text-xs font-semibold text-rose-700 uppercase tracking-wider">Tutor Dispute</p>
               <div>
-                <p className="text-[10px] text-white/30 uppercase mb-1">Statement</p>
-                <p className="text-sm text-white/80 leading-relaxed">
+                <p className="text-[10px] text-gray-400 uppercase mb-1">Statement</p>
+                <p className="text-sm text-gray-700 leading-relaxed">
                   {claim.claimant_role === 'tutor'
                     ? (claim.written_explanation ?? 'No statement provided.')
                     : (claim.defendant_response ?? 'No response provided.')}
@@ -662,11 +663,11 @@ function NoshowModal({
               </div>
               {(claim.claimant_role === 'tutor' ? claim.evidence_files : claim.defendant_evidence_files)?.length > 0 && (
                 <div>
-                  <p className="text-[10px] text-white/30 uppercase mb-2">Evidence Screenshots</p>
+                  <p className="text-[10px] text-gray-400 uppercase mb-2">Evidence Screenshots</p>
                   <div className="flex flex-wrap gap-2">
                     {(claim.claimant_role === 'tutor' ? claim.evidence_files : claim.defendant_evidence_files).map((file: any, i: number) => (
                       <a key={i} href={`/api/admin/evidence-download?path=${encodeURIComponent(file.path ?? '')}`} download={file.original_name ?? `evidence-${i + 1}`} target="_blank" rel="noopener noreferrer"
-                        className="flex items-center gap-2 px-3 py-2 rounded-lg border border-white/10 bg-white/3 hover:bg-white/8 transition text-xs text-white/60 hover:text-white">
+                        className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 transition text-xs text-gray-600 hover:text-gray-900">
                         <svg className="size-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
                         <span className="truncate">{file.original_name ?? `Evidence ${i + 1}`}</span>
                         <svg className="size-3.5 shrink-0 ml-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
@@ -679,80 +680,80 @@ function NoshowModal({
           )}
 
           <div className="space-y-3">
-            <p className="text-xs font-semibold text-white/40 uppercase tracking-wider">Verdict</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Verdict</p>
 
             {/* Student Dispute — student filed the claim (tutor didn't show) */}
-            <p className="text-[10px] font-bold text-white/25 uppercase tracking-[.06em] pt-1">Student Dispute</p>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[.06em] pt-1">Student Dispute</p>
             <button
               onClick={() => setVerdict('tutor_noshow')}
               className={`w-full text-left px-4 py-3 rounded-xl border transition ${
                 verdict === 'tutor_noshow'
-                  ? 'border-white/20 bg-white/8'
-                  : 'border-white/6 bg-white/2 hover:bg-white/5'
+                  ? 'border-gray-300 bg-gray-100'
+                  : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
               }`}
             >
               <div className="flex items-center gap-2 mb-1">
                 {verdict === 'tutor_noshow'
-                  ? <CheckCircle className="size-4 text-emerald-400 shrink-0" />
-                  : <div className="size-4 rounded-full border border-white/20 shrink-0" />}
-                <span className="text-sm font-semibold text-rose-300">Tutor No-show</span>
+                  ? <CheckCircle className="size-4 text-emerald-600 shrink-0" />
+                  : <div className="size-4 rounded-full border border-gray-300 shrink-0" />}
+                <span className="text-sm font-semibold text-rose-700">Tutor No-show</span>
               </div>
-              <p className="text-xs text-white/40 ml-6">Full refund to student. Tutor strike + 1-star system rating.</p>
+              <p className="text-xs text-gray-500 ml-6">Full refund to student. Tutor strike + 1-star system rating.</p>
             </button>
 
             {/* Tutor Dispute — tutor filed the claim (student didn't show) */}
-            <p className="text-[10px] font-bold text-white/25 uppercase tracking-[.06em] pt-1">Tutor Dispute</p>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[.06em] pt-1">Tutor Dispute</p>
             <button
               onClick={() => setVerdict('student_noshow')}
               className={`w-full text-left px-4 py-3 rounded-xl border transition ${
                 verdict === 'student_noshow'
-                  ? 'border-white/20 bg-white/8'
-                  : 'border-white/6 bg-white/2 hover:bg-white/5'
+                  ? 'border-gray-300 bg-gray-100'
+                  : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
               }`}
             >
               <div className="flex items-center gap-2 mb-1">
                 {verdict === 'student_noshow'
-                  ? <CheckCircle className="size-4 text-emerald-400 shrink-0" />
-                  : <div className="size-4 rounded-full border border-white/20 shrink-0" />}
-                <span className="text-sm font-semibold text-amber-300">Student No-show</span>
+                  ? <CheckCircle className="size-4 text-emerald-600 shrink-0" />
+                  : <div className="size-4 rounded-full border border-gray-300 shrink-0" />}
+                <span className="text-sm font-semibold text-amber-700">Student No-show</span>
               </div>
-              <p className="text-xs text-white/40 ml-6">No refund. Tutor payout proceeds. Student receives a strike.</p>
+              <p className="text-xs text-gray-500 ml-6">No refund. Tutor payout proceeds. Student receives a strike.</p>
             </button>
 
             {/* Tie / Mutual */}
-            <p className="text-[10px] font-bold text-white/25 uppercase tracking-[.06em] pt-1">Mutual</p>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[.06em] pt-1">Mutual</p>
             <button
               onClick={() => setVerdict('tie')}
               className={`w-full text-left px-4 py-3 rounded-xl border transition ${
                 verdict === 'tie'
-                  ? 'border-white/20 bg-white/8'
-                  : 'border-white/6 bg-white/2 hover:bg-white/5'
+                  ? 'border-gray-300 bg-gray-100'
+                  : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
               }`}
             >
               <div className="flex items-center gap-2 mb-1">
                 {verdict === 'tie'
-                  ? <CheckCircle className="size-4 text-emerald-400 shrink-0" />
-                  : <div className="size-4 rounded-full border border-white/20 shrink-0" />}
-                <span className="text-sm font-semibold text-sky-300">Tie / Mutual Non-completion</span>
+                  ? <CheckCircle className="size-4 text-emerald-600 shrink-0" />
+                  : <div className="size-4 rounded-full border border-gray-300 shrink-0" />}
+                <span className="text-sm font-semibold text-sky-700">Tie / Mutual Non-completion</span>
               </div>
-              <p className="text-xs text-white/40 ml-6">Full refund. No penalties for either side.</p>
+              <p className="text-xs text-gray-500 ml-6">Full refund. No penalties for either side.</p>
             </button>
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-white/40 uppercase tracking-wider">Admin notes (optional)</label>
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Admin notes (optional)</label>
             <textarea
               value={adminNotes}
               onChange={(e) => setAdminNotes(e.target.value)}
               placeholder="Add context for this decision…"
               rows={3}
-              className="w-full px-3 py-2 rounded-xl border border-white/10 bg-white/4 text-sm text-white placeholder-white/20 resize-none focus:outline-none focus:border-white/20"
+              className="w-full px-3 py-2 rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-900 placeholder-gray-400 resize-none focus:outline-none focus:border-gray-300"
             />
           </div>
         </div>
 
-        <div className="flex gap-3 p-5 border-t border-white/8">
-          <button onClick={onClose} className="flex-1 px-4 py-2 rounded-xl border border-white/10 text-sm font-semibold text-white/60 hover:text-white hover:bg-white/5">
+        <div className="flex gap-3 p-5 border-t border-gray-200">
+          <button onClick={onClose} className="flex-1 px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100">
             Cancel
           </button>
           <button
@@ -817,50 +818,50 @@ function BatchModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
-      <div className="w-full max-w-lg rounded-2xl border border-white/10 shadow-2xl" style={{ background: '#161618' }}>
-        <div className="flex items-center justify-between p-5 border-b border-white/8">
-          <h2 className="text-base font-bold text-white">Generate Batch CSV</h2>
-          <button onClick={onClose} className="text-white/40 hover:text-white"><X className="size-5" /></button>
+      <div className="w-full max-w-lg rounded-2xl border border-gray-200 shadow-2xl" style={{ background: '#ffffff' }}>
+        <div className="flex items-center justify-between p-5 border-b border-gray-200">
+          <h2 className="text-base font-bold text-gray-900">Generate Batch CSV</h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-900"><X className="size-5" /></button>
         </div>
 
         <div className="p-5 space-y-4">
           {error && (
-            <div className="rounded-lg bg-rose-500/10 border border-rose-500/20 p-3 text-sm text-rose-300">{error}</div>
+            <div className="rounded-lg bg-rose-50 border border-rose-200 p-3 text-sm text-rose-700">{error}</div>
           )}
 
-          <div className="rounded-xl border border-white/8 p-4 space-y-2" style={{ background: '#0f0f10' }}>
+          <div className="rounded-xl border border-gray-200 p-4 space-y-2" style={{ background: '#f9fafb' }}>
             <div className="flex justify-between text-sm">
-              <span className="text-white/50">Selected payouts</span>
-              <span className="text-white font-semibold">{rows.length}</span>
+              <span className="text-gray-500">Selected payouts</span>
+              <span className="text-gray-900 font-semibold">{rows.length}</span>
             </div>
-            <div className="flex justify-between text-sm font-bold border-t border-white/8 pt-2 mt-2">
-              <span className="text-white/70">Total payout</span>
-              <span className="text-emerald-300 tabular-nums">{fmtTTD(totalPayout)}</span>
+            <div className="flex justify-between text-sm font-bold border-t border-gray-200 pt-2 mt-2">
+              <span className="text-gray-700">Total payout</span>
+              <span className="text-emerald-700 tabular-nums">{fmtTTD(totalPayout)}</span>
             </div>
           </div>
 
           <div className="max-h-48 overflow-y-auto space-y-1">
             {rows.map((r) => (
-              <div key={r.ledger_id} className="flex items-center justify-between py-1.5 px-2 rounded-lg bg-white/4 text-xs">
+              <div key={r.ledger_id} className="flex items-center justify-between py-1.5 px-2 rounded-lg bg-gray-50 text-xs">
                 <div className="min-w-0">
-                  <p className="text-white/70 truncate">{r.tutor_name ?? '—'}</p>
-                  <p className="text-white/40">{fmtDate(r.scheduled_at)} · {r.bank_name ?? 'No bank on file'}</p>
+                  <p className="text-gray-700 truncate">{r.tutor_name ?? '—'}</p>
+                  <p className="text-gray-500">{fmtDate(r.scheduled_at)} · {r.bank_name ?? 'No bank on file'}</p>
                 </div>
-                <span className="text-emerald-300 tabular-nums ml-3 shrink-0">{fmtTTD(r.amount_ttd)}</span>
+                <span className="text-emerald-700 tabular-nums ml-3 shrink-0">{fmtTTD(r.amount_ttd)}</span>
               </div>
             ))}
           </div>
 
           {rows.some((r) => !r.has_bank_details) && (
-            <div className="flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+            <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
               <AlertTriangle className="size-3.5 mt-0.5 shrink-0" />
               <span>Some tutors have no bank details on file. Their rows will export with blank account fields.</span>
             </div>
           )}
         </div>
 
-        <div className="flex gap-3 p-5 border-t border-white/8">
-          <button onClick={onClose} className="flex-1 px-4 py-2 rounded-xl border border-white/10 text-sm font-semibold text-white/60 hover:text-white hover:bg-white/5">
+        <div className="flex gap-3 p-5 border-t border-gray-200">
+          <button onClick={onClose} className="flex-1 px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100">
             Cancel
           </button>
           <button
@@ -1109,31 +1110,32 @@ export default function OneOnOnePaymentsPage() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: '#0f0f10' }}>
-        <Loader2 className="size-6 animate-spin text-white/30" />
-      </div>
+      <DashboardLayout role="admin" userName="Admin">
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="size-6 animate-spin text-gray-400" />
+        </div>
+      </DashboardLayout>
     );
   }
 
   return (
-    <div className="min-h-screen" style={{ background: '#0f0f10', color: '#fff' }}>
+    <DashboardLayout role="admin" userName="Admin">
       <div className="max-w-7xl mx-auto p-6 space-y-6">
 
         <AdminBreadcrumb
-          tone="dark"
           items={[{ label: 'Finance', href: '/admin/payments' }, { label: 'One-on-One Payments' }]}
         />
 
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-white">One-on-One Payments</h1>
-            <p className="text-sm text-white/40 mt-0.5">Session payments, refunds, no-shows, and tutor payouts</p>
+            <h1 className="text-xl font-bold text-gray-900">One-on-One Payments</h1>
+            <p className="text-sm text-gray-500 mt-0.5">Session payments, refunds, no-shows, and tutor payouts</p>
           </div>
           <button
             onClick={loadData}
             disabled={loading}
-            className="px-3 py-1.5 rounded-lg border border-white/10 text-white/60 hover:text-white hover:bg-white/5 text-sm flex items-center gap-1.5"
+            className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:text-gray-900 hover:bg-gray-100 text-sm flex items-center gap-1.5"
           >
             <RefreshCcw className={`size-4 ${loading ? 'animate-spin' : ''}`} />
             Refresh
@@ -1141,7 +1143,7 @@ export default function OneOnOnePaymentsPage() {
         </div>
 
         {error && (
-          <div className="rounded-xl bg-rose-500/10 border border-rose-500/20 p-3 text-sm text-rose-300">{error}</div>
+          <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-sm text-rose-700">{error}</div>
         )}
 
         {/* KPI Stats — 4 cards */}
@@ -1185,7 +1187,7 @@ export default function OneOnOnePaymentsPage() {
 
         {/* Tabs + Force Release */}
         <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-1 flex-wrap p-1 rounded-xl border border-white/8 w-fit" style={{ background: '#161618' }}>
+        <div className="flex items-center gap-1 flex-wrap p-1 rounded-xl border border-gray-200 w-fit" style={{ background: '#ffffff' }}>
           <Tab active={tab === 'all'} onClick={() => setTab('all')}>
             Upcoming {kpis ? `(${kpis.total_payments_count})` : ''}
           </Tab>
@@ -1225,7 +1227,7 @@ export default function OneOnOnePaymentsPage() {
         </div>
 
         {loading ? (
-          <div className="flex items-center justify-center py-20 gap-2 text-white/30">
+          <div className="flex items-center justify-center py-20 gap-2 text-gray-400">
             <Loader2 className="size-5 animate-spin" /><span className="text-sm">Loading…</span>
           </div>
         ) : (
@@ -1235,7 +1237,7 @@ export default function OneOnOnePaymentsPage() {
               !data?.all_payments.length ? <EmptyState message="No payments found." /> : (
                 <DataTable>
                   <thead>
-                    <tr className="text-[11px] font-semibold text-white/30 uppercase tracking-wider">
+                    <tr className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
                       <th className="px-4 py-3 text-left">Student</th>
                       <th className="px-4 py-3 text-left">Tutor</th>
                       <th className="px-4 py-3 text-left">Session Date</th>
@@ -1250,31 +1252,31 @@ export default function OneOnOnePaymentsPage() {
                   </thead>
                   <tbody className="divide-y divide-white/5">
                     {data.all_payments.map((row) => (
-                      <tr key={row.id} className="hover:bg-white/3">
+                      <tr key={row.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3">
-                          <p className="text-sm font-semibold text-white">{row.student_name ?? '—'}</p>
-                          {row.student_email && <p className="text-xs text-white/40">{row.student_email}</p>}
+                          <p className="text-sm font-semibold text-gray-900">{row.student_name ?? '—'}</p>
+                          {row.student_email && <p className="text-xs text-gray-500">{row.student_email}</p>}
                         </td>
-                        <td className="px-4 py-3 text-sm text-white/70">{row.tutor_name ?? '—'}</td>
-                        <td className="px-4 py-3 text-xs text-white/50">{fmtDate(row.scheduled_at)}</td>
-                        <td className="px-4 py-3 text-right text-sm font-semibold text-white tabular-nums">{fmtTTD(grossCharged(row.amount_ttd))}</td>
-                        <td className="px-4 py-3 text-right text-sm text-white/70 tabular-nums">{fmtTTD(row.amount_ttd)}</td>
-                        <td className="px-4 py-3 text-right text-xs text-white/40 tabular-nums">{fmtTTD(row.platform_fee_ttd)}</td>
-                        <td className="px-4 py-3 text-right text-sm text-emerald-300 tabular-nums">{fmtTTD(row.tutor_payout_ttd)}</td>
-                        <td className="px-4 py-3 text-right text-xs text-rose-300/70 tabular-nums">{fmtTTD(lunipayFee(row.amount_ttd))}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700">{row.tutor_name ?? '—'}</td>
+                        <td className="px-4 py-3 text-xs text-gray-500">{fmtDate(row.scheduled_at)}</td>
+                        <td className="px-4 py-3 text-right text-sm font-semibold text-gray-900 tabular-nums">{fmtTTD(grossCharged(row.amount_ttd))}</td>
+                        <td className="px-4 py-3 text-right text-sm text-gray-700 tabular-nums">{fmtTTD(row.amount_ttd)}</td>
+                        <td className="px-4 py-3 text-right text-xs text-gray-500 tabular-nums">{fmtTTD(row.platform_fee_ttd)}</td>
+                        <td className="px-4 py-3 text-right text-sm text-emerald-700 tabular-nums">{fmtTTD(row.tutor_payout_ttd)}</td>
+                        <td className="px-4 py-3 text-right text-xs text-rose-700/70 tabular-nums">{fmtTTD(lunipayFee(row.amount_ttd))}</td>
                         <td className="px-4 py-3 text-center"><PayoutChip status={row.payout_status} /></td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-center gap-1.5">
                             <button
                               title="View details"
-                              className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/50 hover:text-white transition"
+                              className="p-1.5 rounded-lg bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-gray-900 transition"
                             >
                               <Eye className="size-3.5" />
                             </button>
                             {!row.has_payout_case && row.payout_status !== 'admin_hold' && (
                               <button
                                 title="Place hold"
-                                className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 transition"
+                                className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-500/20 text-amber-600 transition"
                               >
                                 <PauseCircle className="size-3.5" />
                               </button>
@@ -1291,7 +1293,7 @@ export default function OneOnOnePaymentsPage() {
                                     retained_ttd: row.retained_amount_ttd,
                                   });
                                 }}
-                                className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition"
+                                className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-500/20 text-rose-600 transition"
                               >
                                 <XCircle className="size-3.5" />
                               </button>
@@ -1310,7 +1312,7 @@ export default function OneOnOnePaymentsPage() {
               !data?.pending_refunds.length ? <EmptyState message="No refunds found." /> : (
                 <DataTable>
                   <thead>
-                    <tr className="text-[11px] font-semibold text-white/30 uppercase tracking-wider">
+                    <tr className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
                       <th className="px-4 py-3 text-left">Student</th>
                       <th className="px-4 py-3 text-left">Tutor</th>
                       <th className="px-4 py-3 text-left">Session</th>
@@ -1328,36 +1330,36 @@ export default function OneOnOnePaymentsPage() {
                       const refundAmount = refundIssued ? row.total_refunded_ttd : row.recommended_refund_ttd;
 
                       return (
-                        <tr key={row.id} className="hover:bg-white/3">
+                        <tr key={row.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3">
-                          <p className="text-sm font-semibold text-white">{row.student_name ?? '—'}</p>
-                          {row.student_email && <p className="text-xs text-white/40">{row.student_email}</p>}
+                          <p className="text-sm font-semibold text-gray-900">{row.student_name ?? '—'}</p>
+                          {row.student_email && <p className="text-xs text-gray-500">{row.student_email}</p>}
                         </td>
-                        <td className="px-4 py-3 text-sm text-white/70">{row.tutor_name ?? '—'}</td>
-                        <td className="px-4 py-3 text-xs text-white/50">{fmtDate(row.scheduled_at)}</td>
-                        <td className="px-4 py-3 text-right text-sm text-white tabular-nums">{fmtTTD(row.amount_ttd)}</td>
-                        <td className="px-4 py-3 text-right text-sm text-rose-300 tabular-nums">{fmtTTD(refundAmount)}</td>
-                        <td className="px-4 py-3 text-right text-xs text-white/40 tabular-nums">
+                        <td className="px-4 py-3 text-sm text-gray-700">{row.tutor_name ?? '—'}</td>
+                        <td className="px-4 py-3 text-xs text-gray-500">{fmtDate(row.scheduled_at)}</td>
+                        <td className="px-4 py-3 text-right text-sm text-gray-900 tabular-nums">{fmtTTD(row.amount_ttd)}</td>
+                        <td className="px-4 py-3 text-right text-sm text-rose-700 tabular-nums">{fmtTTD(refundAmount)}</td>
+                        <td className="px-4 py-3 text-right text-xs text-gray-500 tabular-nums">
                           {row.retained_ttd > 0 ? fmtTTD(row.retained_ttd) : '—'}
                         </td>
                         <td className="px-4 py-3">
-                          <span className="text-xs text-amber-300 capitalize">{row.refund_reason.replace(/_/g, ' ')}</span>
+                          <span className="text-xs text-amber-700 capitalize">{row.refund_reason.replace(/_/g, ' ')}</span>
                         </td>
                         <td className="px-4 py-3 text-center">
                           {refundIssued ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 text-[11px] font-bold">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-700 text-[11px] font-bold">
                               <CheckCircle className="size-3" />
                               Refunded
                             </span>
                           ) : (
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-amber-500/15 text-amber-300 text-[11px] font-bold">
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-amber-100 text-amber-700 text-[11px] font-bold">
                               Pending
                             </span>
                           )}
                         </td>
                         <td className="px-4 py-3">
                           {refundIssued ? (
-                            <span className="block text-center text-xs text-white/30">
+                            <span className="block text-center text-xs text-gray-400">
                               {row.refunded_at ? fmtDate(row.refunded_at) : 'Completed'}
                             </span>
                           ) : (
@@ -1382,7 +1384,7 @@ export default function OneOnOnePaymentsPage() {
               !data?.cancellations.length ? <EmptyState message="No cancellation events found." /> : (
                 <DataTable>
                   <thead>
-                    <tr className="text-[11px] font-semibold text-white/30 uppercase tracking-wider">
+                    <tr className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
                       <th className="px-4 py-3 text-left">Student</th>
                       <th className="px-4 py-3 text-left">Tutor</th>
                       <th className="px-4 py-3 text-left">Scheduled At</th>
@@ -1395,37 +1397,37 @@ export default function OneOnOnePaymentsPage() {
                   </thead>
                   <tbody className="divide-y divide-white/5">
                     {data.cancellations.map((row) => (
-                      <tr key={row.event_id} className="hover:bg-white/3">
+                      <tr key={row.event_id} className="hover:bg-gray-50">
                         <td className="px-4 py-3">
-                          <p className="text-sm font-semibold text-white">{row.student_name ?? '—'}</p>
+                          <p className="text-sm font-semibold text-gray-900">{row.student_name ?? '—'}</p>
                         </td>
-                        <td className="px-4 py-3 text-sm text-white/70">{row.tutor_name ?? '—'}</td>
-                        <td className="px-4 py-3 text-xs text-white/50">{fmtDateTime(row.session_time)}</td>
-                        <td className="px-4 py-3 text-sm capitalize text-white/60">{row.cancelled_by}</td>
-                        <td className="px-4 py-3 text-right text-sm tabular-nums text-white/60">
+                        <td className="px-4 py-3 text-sm text-gray-700">{row.tutor_name ?? '—'}</td>
+                        <td className="px-4 py-3 text-xs text-gray-500">{fmtDateTime(row.session_time)}</td>
+                        <td className="px-4 py-3 text-sm capitalize text-gray-600">{row.cancelled_by}</td>
+                        <td className="px-4 py-3 text-right text-sm tabular-nums text-gray-600">
                           {row.hours_before > 0 ? `${row.hours_before.toFixed(1)}h` : '—'}
                         </td>
                         <td className="px-4 py-3">
                           {row.is_late ? (
-                            <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/15 text-amber-300">Late cancel (&lt;12h)</span>
+                            <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700">Late cancel (&lt;12h)</span>
                           ) : (
-                            <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-white/8 text-white/50">Early cancel</span>
+                            <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-gray-100 text-gray-500">Early cancel</span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-xs text-white/50 capitalize">
+                        <td className="px-4 py-3 text-xs text-gray-500 capitalize">
                           {row.recommended_action.replace(/_/g, ' ')}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-center gap-1.5">
                             {/* Refunds for student cancellations are processed automatically — no admin action needed */}
                             {row.booking_payment_status === 'REFUNDED' || row.booking_payment_status === 'PARTIALLY_REFUNDED' ? (
-                              <span className="px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-400 text-[11px] font-bold">Auto-refunded</span>
+                              <span className="px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-600 text-[11px] font-bold">Auto-refunded</span>
                             ) : (
-                              <span className="px-2.5 py-1 rounded-lg bg-white/5 text-white/30 text-[11px]">Pending refund</span>
+                              <span className="px-2.5 py-1 rounded-lg bg-gray-50 text-gray-400 text-[11px]">Pending refund</span>
                             )}
                             {row.is_late && row.student_id && (
                               strikesIssued.has(row.event_id) ? (
-                                <span className="px-2.5 py-1 rounded-lg bg-white/5 text-white/30 text-[11px] font-bold cursor-default">
+                                <span className="px-2.5 py-1 rounded-lg bg-gray-50 text-gray-400 text-[11px] font-bold cursor-default">
                                   Strike issued
                                 </span>
                               ) : (
@@ -1449,7 +1451,7 @@ export default function OneOnOnePaymentsPage() {
                                       alert('Failed to issue strike.');
                                     }
                                   }}
-                                  className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-[11px] font-bold transition"
+                                  className="px-2.5 py-1 rounded-lg bg-amber-100 hover:bg-amber-500/25 text-amber-700 text-[11px] font-bold transition"
                                 >
                                   Issue Strike
                                 </button>
@@ -1469,7 +1471,7 @@ export default function OneOnOnePaymentsPage() {
               !data?.noshows.length ? <EmptyState message="No no-show claims found." /> : (
                 <DataTable>
                   <thead>
-                    <tr className="text-[11px] font-semibold text-white/30 uppercase tracking-wider">
+                    <tr className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
                       <th className="px-4 py-3 text-left">Student</th>
                       <th className="px-4 py-3 text-left">Tutor</th>
                       <th className="px-4 py-3 text-left">Scheduled At</th>
@@ -1483,19 +1485,19 @@ export default function OneOnOnePaymentsPage() {
                   </thead>
                   <tbody className="divide-y divide-white/5">
                     {data.noshows.map((row) => (
-                      <tr key={row.claim_id} className="hover:bg-white/3">
-                        <td className="px-4 py-3 text-sm font-semibold text-white">{row.student_name ?? '—'}</td>
-                        <td className="px-4 py-3 text-sm text-white/70">{row.tutor_name ?? '—'}</td>
-                        <td className="px-4 py-3 text-xs text-white/50">{fmtDateTime(row.scheduled_at)}</td>
-                        <td className="px-4 py-3 text-sm capitalize text-white/60">{row.filed_by}</td>
-                        <td className="px-4 py-3 text-xs text-white/40">{fmtDate(row.filed_at)}</td>
+                      <tr key={row.claim_id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm font-semibold text-gray-900">{row.student_name ?? '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700">{row.tutor_name ?? '—'}</td>
+                        <td className="px-4 py-3 text-xs text-gray-500">{fmtDateTime(row.scheduled_at)}</td>
+                        <td className="px-4 py-3 text-sm capitalize text-gray-600">{row.filed_by}</td>
+                        <td className="px-4 py-3 text-xs text-gray-500">{fmtDate(row.filed_at)}</td>
                         <td className="px-4 py-3">
                           {row.tutor_responded ? (
-                            <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-300">Responded</span>
+                            <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-700">Responded</span>
                           ) : row.is_within_filing_window ? (
-                            <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/15 text-amber-300">Awaiting</span>
+                            <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700">Awaiting</span>
                           ) : (
-                            <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-white/8 text-white/40">No response</span>
+                            <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-gray-100 text-gray-500">No response</span>
                           )}
                         </td>
                         <td className="px-4 py-3">
@@ -1512,7 +1514,7 @@ export default function OneOnOnePaymentsPage() {
                             </button>
                           )}
                           {row.status === 'resolved' && (
-                            <span className="text-xs text-white/30">Done</span>
+                            <span className="text-xs text-gray-400">Done</span>
                           )}
                         </td>
                       </tr>
@@ -1527,14 +1529,14 @@ export default function OneOnOnePaymentsPage() {
               <div className="space-y-3">
                 {(data?.ready_for_csv.length ?? 0) > 0 && (
                   <div className="flex items-center justify-between">
-                    <button onClick={toggleAll} className="flex items-center gap-2 text-sm text-white/50 hover:text-white">
+                    <button onClick={toggleAll} className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900">
                       {selected.size === (data?.ready_for_csv.length ?? 0) ? (
-                        <CheckSquare className="size-4 text-emerald-400" />
+                        <CheckSquare className="size-4 text-emerald-600" />
                       ) : (
                         <Square className="size-4" />
                       )}
                       {selected.size === (data?.ready_for_csv.length ?? 0) ? 'Deselect all' : 'Select all'}
-                      {selected.size > 0 && <span className="text-white/30">({selected.size} selected)</span>}
+                      {selected.size > 0 && <span className="text-gray-400">({selected.size} selected)</span>}
                     </button>
                     {selected.size > 0 && (
                       <button
@@ -1549,7 +1551,7 @@ export default function OneOnOnePaymentsPage() {
                 {!data?.ready_for_csv.length ? <EmptyState message="No payouts ready for CSV export." /> : (
                   <DataTable>
                     <thead>
-                      <tr className="text-[11px] font-semibold text-white/30 uppercase tracking-wider">
+                      <tr className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
                         <th className="px-4 py-3 text-left w-8" />
                         <th className="px-4 py-3 text-left">Tutor</th>
                         <th className="px-4 py-3 text-left">Student / Session Date</th>
@@ -1565,29 +1567,29 @@ export default function OneOnOnePaymentsPage() {
                           <tr
                             key={row.ledger_id}
                             onClick={() => toggleOne(row.ledger_id)}
-                            className={`cursor-pointer transition ${isSelected ? 'bg-emerald-500/8' : 'hover:bg-white/3'}`}
+                            className={`cursor-pointer transition ${isSelected ? 'bg-emerald-500/8' : 'hover:bg-gray-50'}`}
                           >
                             <td className="px-4 py-3">
                               {isSelected
-                                ? <CheckSquare className="size-4 text-emerald-400" />
-                                : <Square className="size-4 text-white/20" />}
+                                ? <CheckSquare className="size-4 text-emerald-600" />
+                                : <Square className="size-4 text-gray-300" />}
                             </td>
                             <td className="px-4 py-3">
-                              <p className="text-sm font-semibold text-white">{row.tutor_name ?? '—'}</p>
-                              {row.tutor_email && <p className="text-xs text-white/40">{row.tutor_email}</p>}
+                              <p className="text-sm font-semibold text-gray-900">{row.tutor_name ?? '—'}</p>
+                              {row.tutor_email && <p className="text-xs text-gray-500">{row.tutor_email}</p>}
                             </td>
-                            <td className="px-4 py-3 text-xs text-white/50">
+                            <td className="px-4 py-3 text-xs text-gray-500">
                               {fmtDate(row.scheduled_at)}
-                              {row.payment_date && <span className="block text-white/30">Paid {fmtDate(row.payment_date)}</span>}
+                              {row.payment_date && <span className="block text-gray-400">Paid {fmtDate(row.payment_date)}</span>}
                             </td>
-                            <td className="px-4 py-3 text-right text-sm text-emerald-300 tabular-nums font-semibold">{fmtTTD(row.amount_ttd)}</td>
-                            <td className="px-4 py-3 text-sm text-white/60">
-                              {row.bank_name ?? <span className="text-white/25 italic">No bank</span>}
-                              {row.branch && <span className="text-white/35"> · {row.branch}</span>}
+                            <td className="px-4 py-3 text-right text-sm text-emerald-700 tabular-nums font-semibold">{fmtTTD(row.amount_ttd)}</td>
+                            <td className="px-4 py-3 text-sm text-gray-600">
+                              {row.bank_name ?? <span className="text-gray-400 italic">No bank</span>}
+                              {row.branch && <span className="text-gray-900/35"> · {row.branch}</span>}
                             </td>
-                            <td className="px-4 py-3 text-xs text-white/50 font-mono">
-                              {row.account_number ?? <span className="text-white/25 not-italic font-sans">—</span>}
-                              {row.account_type && <span className="ml-1 text-white/30 font-sans">({row.account_type})</span>}
+                            <td className="px-4 py-3 text-xs text-gray-500 font-mono">
+                              {row.account_number ?? <span className="text-gray-400 not-italic font-sans">—</span>}
+                              {row.account_type && <span className="ml-1 text-gray-400 font-sans">({row.account_type})</span>}
                             </td>
                           </tr>
                         );
@@ -1603,7 +1605,7 @@ export default function OneOnOnePaymentsPage() {
               !data?.batch_failed.length ? <EmptyState message="No failed or cancelled batches." /> : (
                 <DataTable>
                   <thead>
-                    <tr className="text-[11px] font-semibold text-white/30 uppercase tracking-wider">
+                    <tr className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
                       <th className="px-4 py-3 text-left">Batch ID</th>
                       <th className="px-4 py-3 text-right">Amount</th>
                       <th className="px-4 py-3 text-right">Lines</th>
@@ -1615,18 +1617,18 @@ export default function OneOnOnePaymentsPage() {
                   </thead>
                   <tbody className="divide-y divide-white/5">
                     {data.batch_failed.map((row) => (
-                      <tr key={row.batch_id} className="hover:bg-white/3">
-                        <td className="px-4 py-3 font-mono text-xs text-white/60">{row.batch_id.slice(0, 8)}…</td>
-                        <td className="px-4 py-3 text-right text-sm text-white tabular-nums">{fmtTTD(row.total_amount_ttd)}</td>
-                        <td className="px-4 py-3 text-right text-sm text-white/60 tabular-nums">{row.line_count}</td>
+                      <tr key={row.batch_id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 font-mono text-xs text-gray-600">{row.batch_id.slice(0, 8)}…</td>
+                        <td className="px-4 py-3 text-right text-sm text-gray-900 tabular-nums">{fmtTTD(row.total_amount_ttd)}</td>
+                        <td className="px-4 py-3 text-right text-sm text-gray-600 tabular-nums">{row.line_count}</td>
                         <td className="px-4 py-3 text-center">
-                          <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-500/15 text-rose-300">
+                          <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-100 text-rose-700">
                             {row.status}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-xs text-white/40">{fmtDate(row.generated_at)}</td>
-                        <td className="px-4 py-3 text-xs text-white/40">{fmtDate(row.cancelled_at)}</td>
-                        <td className="px-4 py-3 text-xs text-white/40 max-w-[200px] truncate">{row.notes ?? '—'}</td>
+                        <td className="px-4 py-3 text-xs text-gray-500">{fmtDate(row.generated_at)}</td>
+                        <td className="px-4 py-3 text-xs text-gray-500">{fmtDate(row.cancelled_at)}</td>
+                        <td className="px-4 py-3 text-xs text-gray-500 max-w-[200px] truncate">{row.notes ?? '—'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1638,14 +1640,14 @@ export default function OneOnOnePaymentsPage() {
             {tab === 'unofficial' && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between flex-wrap gap-3">
-                  <p className="text-sm text-white/50">
+                  <p className="text-sm text-gray-500">
                     Per-tutor payout totals with pending debts deducted. Not yet an official batch.
                   </p>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={loadData}
                       disabled={loading}
-                      className="px-3 py-2 rounded-xl border border-white/10 text-white/70 hover:text-white text-sm flex items-center gap-2"
+                      className="px-3 py-2 rounded-xl border border-gray-200 text-gray-700 hover:text-gray-900 text-sm flex items-center gap-2"
                     >
                       <RefreshCcw className="size-3.5" /> Refresh
                     </button>
@@ -1668,7 +1670,7 @@ export default function OneOnOnePaymentsPage() {
                 ) : (
                   <>
                     {(data.unofficial_totals.total_debt_ttd > 0) && (
-                      <div className="flex items-start gap-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
+                      <div className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
                         <TrendingDown className="size-4 mt-0.5 shrink-0" />
                         <span>
                           <strong className="text-rose-200">
@@ -1684,76 +1686,76 @@ export default function OneOnOnePaymentsPage() {
                     <div className="flex items-center gap-2 justify-end">
                       {exportStep1on1 === 0 && (
                         <button onClick={() => setExportStep1on1(1)}
-                          className="px-4 py-2 rounded-xl border border-rose-500/30 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 text-sm font-semibold transition">
+                          className="px-4 py-2 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-500/20 text-sm font-semibold transition">
                           Clear CSV
                         </button>
                       )}
                       {exportStep1on1 === 1 && (
-                        <div className="flex items-center gap-3 px-4 py-2 rounded-xl border border-rose-500/40 bg-rose-500/10 text-rose-200 text-sm">
+                        <div className="flex items-center gap-3 px-4 py-2 rounded-xl border border-rose-500/40 bg-rose-50 text-rose-200 text-sm">
                           <span className="font-semibold">Archive {data.unofficial_csv.length} payout{data.unofficial_csv.length !== 1 ? 's' : ''} to CSV History?</span>
                           <button onClick={markAsExported1on1}
                             className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition">
                             Confirm Clear
                           </button>
-                          <button onClick={() => setExportStep1on1(0)} className="px-3 py-1.5 rounded-lg border border-white/15 text-white/50 hover:text-white text-xs transition">
+                          <button onClick={() => setExportStep1on1(0)} className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-gray-900 text-xs transition">
                             Cancel
                           </button>
                         </div>
                       )}
                       {exportStep1on1 === 2 && (
-                        <span className="text-xs text-emerald-400 font-semibold">✓ Cleared — moved to CSV History</span>
+                        <span className="text-xs text-emerald-600 font-semibold">✓ Cleared — moved to CSV History</span>
                       )}
                     </div>
 
-                    <div className="rounded-xl overflow-hidden border border-white/8">
+                    <div className="rounded-xl overflow-hidden border border-gray-200">
                       <table className="w-full text-sm">
                         <thead>
-                          <tr className="text-[11px] font-semibold text-white/30 uppercase tracking-wider border-b border-white/8" style={{ background: '#161618' }}>
+                          <tr className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-200" style={{ background: '#ffffff' }}>
                             <th className="px-4 py-3 text-left">Tutor</th>
                             <th className="px-4 py-3 text-left">Bank / Account</th>
                             <th className="px-4 py-3 text-right">Gross payout</th>
-                            <th className="px-4 py-3 text-right text-rose-400">Platform debt</th>
-                            <th className="px-4 py-3 text-right text-emerald-400">Net payout</th>
+                            <th className="px-4 py-3 text-right text-rose-600">Platform debt</th>
+                            <th className="px-4 py-3 text-right text-emerald-600">Net payout</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5">
                           {data.unofficial_csv.map((t) => (
-                            <tr key={t.tutor_id} className="hover:bg-white/[0.02]" style={{ background: '#0f0f10' }}>
+                            <tr key={t.tutor_id} className="hover:bg-gray-50" style={{ background: '#f9fafb' }}>
                               <td className="px-4 py-3">
-                                <div className="font-semibold text-white">{t.tutor_name ?? '—'}</div>
-                                {t.email && <div className="text-xs text-white/40">{t.email}</div>}
+                                <div className="font-semibold text-gray-900">{t.tutor_name ?? '—'}</div>
+                                {t.email && <div className="text-xs text-gray-500">{t.email}</div>}
                               </td>
-                              <td className="px-4 py-3 text-white/60 text-xs">
+                              <td className="px-4 py-3 text-gray-600 text-xs">
                                 {t.bank_name ?? '—'}{t.branch ? ` · ${t.branch}` : ''}<br />
                                 <span className="font-mono">{t.account_number ?? '—'}</span>
-                                {t.account_type ? <span className="ml-1 text-white/30">({t.account_type})</span> : null}
+                                {t.account_type ? <span className="ml-1 text-gray-400">({t.account_type})</span> : null}
                               </td>
-                              <td className="px-4 py-3 text-right tabular-nums text-white/70">
+                              <td className="px-4 py-3 text-right tabular-nums text-gray-700">
                                 TT$ {t.gross_payout_ttd.toFixed(2)}
                               </td>
                               <td className="px-4 py-3 text-right tabular-nums">
                                 {t.pending_debt_ttd > 0
-                                  ? <span className="text-rose-400">− TT$ {t.pending_debt_ttd.toFixed(2)}</span>
-                                  : <span className="text-white/20">—</span>}
+                                  ? <span className="text-rose-600">− TT$ {t.pending_debt_ttd.toFixed(2)}</span>
+                                  : <span className="text-gray-300">—</span>}
                               </td>
-                              <td className="px-4 py-3 text-right tabular-nums font-bold text-emerald-400">
+                              <td className="px-4 py-3 text-right tabular-nums font-bold text-emerald-600">
                                 TT$ {t.net_payout_ttd.toFixed(2)}
                               </td>
                             </tr>
                           ))}
                         </tbody>
-                        <tfoot className="border-t border-white/10">
-                          <tr style={{ background: '#161618' }}>
-                            <td colSpan={2} className="px-4 py-3 text-xs font-semibold text-white/40 uppercase tracking-wider">Totals</td>
-                            <td className="px-4 py-3 text-right tabular-nums text-white/60 font-semibold">
+                        <tfoot className="border-t border-gray-200">
+                          <tr style={{ background: '#ffffff' }}>
+                            <td colSpan={2} className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Totals</td>
+                            <td className="px-4 py-3 text-right tabular-nums text-gray-600 font-semibold">
                               TT$ {data.unofficial_totals.total_gross_ttd.toFixed(2)}
                             </td>
-                            <td className="px-4 py-3 text-right tabular-nums text-rose-400 font-semibold">
+                            <td className="px-4 py-3 text-right tabular-nums text-rose-600 font-semibold">
                               {data.unofficial_totals.total_debt_ttd > 0
                                 ? `− TT$ ${data.unofficial_totals.total_debt_ttd.toFixed(2)}`
                                 : '—'}
                             </td>
-                            <td className="px-4 py-3 text-right tabular-nums text-emerald-400 font-bold">
+                            <td className="px-4 py-3 text-right tabular-nums text-emerald-600 font-bold">
                               TT$ {data.unofficial_totals.total_net_ttd.toFixed(2)}
                             </td>
                           </tr>
@@ -1769,7 +1771,7 @@ export default function OneOnOnePaymentsPage() {
             {tab === 'this_week' && (
               <div className="space-y-4">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3 rounded-xl border border-sky-500/20 bg-sky-500/5 px-4 py-3 text-sm text-sky-200">
+                  <div className="flex items-start gap-3 rounded-xl border border-sky-200 bg-sky-500/5 px-4 py-3 text-sm text-sky-200">
                     <Clock className="size-4 mt-0.5 shrink-0" />
                     <span>
                       Payouts moved here by the Friday 4am run. <strong className="text-sky-100">Download the CSV</strong> (it is
@@ -1792,7 +1794,7 @@ export default function OneOnOnePaymentsPage() {
                 ) : (
                   <DataTable>
                     <thead>
-                      <tr className="text-[11px] font-semibold text-white/30 uppercase tracking-wider">
+                      <tr className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
                         <th className="px-4 py-3 text-left">Batch</th>
                         <th className="px-4 py-3 text-left">Week</th>
                         <th className="px-4 py-3 text-right">Amount</th>
@@ -1805,18 +1807,18 @@ export default function OneOnOnePaymentsPage() {
                       {data.this_week_batches.map((b) => {
                         const busy = batchBusy[b.batch_id];
                         return (
-                          <tr key={b.batch_id} className="hover:bg-white/3">
-                            <td className="px-4 py-3 font-mono text-xs text-white/60">{b.batch_id.slice(0, 8)}…</td>
-                            <td className="px-4 py-3 text-xs text-white/50">
+                          <tr key={b.batch_id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 font-mono text-xs text-gray-600">{b.batch_id.slice(0, 8)}…</td>
+                            <td className="px-4 py-3 text-xs text-gray-500">
                               {b.window_start ? `${fmtDate(b.window_start)} – ${fmtDate(b.window_end)}` : fmtDate(b.generated_at)}
                             </td>
-                            <td className="px-4 py-3 text-right text-sm text-emerald-300 tabular-nums font-semibold">{fmtTTD(b.total_amount_ttd)}</td>
-                            <td className="px-4 py-3 text-right text-sm text-white/60 tabular-nums">{b.line_count}</td>
+                            <td className="px-4 py-3 text-right text-sm text-emerald-700 tabular-nums font-semibold">{fmtTTD(b.total_amount_ttd)}</td>
+                            <td className="px-4 py-3 text-right text-sm text-gray-600 tabular-nums">{b.line_count}</td>
                             <td className="px-4 py-3 text-center">
                               {b.csv_downloaded ? (
-                                <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-300">Downloaded</span>
+                                <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-700">Downloaded</span>
                               ) : (
-                                <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/15 text-amber-300">Awaiting download</span>
+                                <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-700">Awaiting download</span>
                               )}
                             </td>
                             <td className="px-4 py-3">
@@ -1842,7 +1844,7 @@ export default function OneOnOnePaymentsPage() {
                                   onClick={() => cancelBatch(b.batch_id)}
                                   disabled={!!busy}
                                   title="Return to Ready for CSV"
-                                  className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-rose-500/20 text-rose-300 text-xs font-bold disabled:opacity-50 transition"
+                                  className="px-2.5 py-1.5 rounded-lg bg-gray-50 hover:bg-rose-500/20 text-rose-700 text-xs font-bold disabled:opacity-50 transition"
                                 >
                                   {busy === 'cancel' ? <Loader2 className="size-3.5 animate-spin" /> : <Ban className="size-3.5" />}
                                 </button>
@@ -1860,9 +1862,9 @@ export default function OneOnOnePaymentsPage() {
             {/* ── CSV HISTORY (weekly folders) ── */}
             {tab === 'csv_history' && (
               <div className="space-y-3">
-                <p className="text-sm text-white/50">Exported &amp; paid payout batches, grouped by week. Expand a week to download its CSVs or mark a downloaded batch paid.</p>
+                <p className="text-sm text-gray-500">Exported &amp; paid payout batches, grouped by week. Expand a week to download its CSVs or mark a downloaded batch paid.</p>
                 {historyLoading1on1 ? (
-                  <div className="flex items-center justify-center py-16 gap-2 text-white/30">
+                  <div className="flex items-center justify-center py-16 gap-2 text-gray-400">
                     <Loader2 className="size-5 animate-spin" /><span className="text-sm">Loading…</span>
                   </div>
                 ) : csvHistory1on1.length === 0 ? (
@@ -1872,22 +1874,22 @@ export default function OneOnOnePaymentsPage() {
                     {csvHistory1on1.map((wk) => {
                       const open = expandedWeeks.has(wk.week_start);
                       return (
-                        <div key={wk.week_start} className="rounded-xl border border-white/8 overflow-hidden" style={{ background: '#161618' }}>
+                        <div key={wk.week_start} className="rounded-xl border border-gray-200 overflow-hidden" style={{ background: '#ffffff' }}>
                           <button
                             onClick={() => toggleWeek(wk.week_start)}
-                            className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/3 transition text-left"
+                            className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition text-left"
                           >
                             <div className="flex items-center gap-3">
-                              <span className="text-white/40 text-xs">{open ? '▼' : '▶'}</span>
-                              <span className="text-sm font-semibold text-white">{wk.label}</span>
-                              <span className="text-xs text-white/40">{wk.batch_count} batch{wk.batch_count !== 1 ? 'es' : ''}</span>
+                              <span className="text-gray-500 text-xs">{open ? '▼' : '▶'}</span>
+                              <span className="text-sm font-semibold text-gray-900">{wk.label}</span>
+                              <span className="text-xs text-gray-500">{wk.batch_count} batch{wk.batch_count !== 1 ? 'es' : ''}</span>
                             </div>
-                            <span className="text-sm font-bold text-emerald-300 tabular-nums">{fmtTTD(wk.total_ttd)}</span>
+                            <span className="text-sm font-bold text-emerald-700 tabular-nums">{fmtTTD(wk.total_ttd)}</span>
                           </button>
                           {open && (
-                            <table className="w-full text-sm border-t border-white/8">
+                            <table className="w-full text-sm border-t border-gray-200">
                               <thead>
-                                <tr className="text-[11px] font-semibold text-white/30 uppercase tracking-wider">
+                                <tr className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
                                   <th className="px-4 py-2 text-left">Batch</th>
                                   <th className="px-4 py-2 text-left">Generated</th>
                                   <th className="px-4 py-2 text-right">Amount</th>
@@ -1900,13 +1902,13 @@ export default function OneOnOnePaymentsPage() {
                                 {wk.batches.map((b) => {
                                   const busy = batchBusy[b.batch_id];
                                   return (
-                                    <tr key={b.batch_id} className="hover:bg-white/[0.02]" style={{ background: '#0f0f10' }}>
-                                      <td className="px-4 py-2.5 font-mono text-xs text-white/60">{b.batch_id.slice(0, 8)}…</td>
-                                      <td className="px-4 py-2.5 text-xs text-white/50">{fmtDate(b.generated_at)}</td>
-                                      <td className="px-4 py-2.5 text-right text-sm text-white tabular-nums">{fmtTTD(b.total_amount_ttd)}</td>
-                                      <td className="px-4 py-2.5 text-right text-sm text-white/60 tabular-nums">{b.line_count}</td>
+                                    <tr key={b.batch_id} className="hover:bg-gray-50" style={{ background: '#f9fafb' }}>
+                                      <td className="px-4 py-2.5 font-mono text-xs text-gray-600">{b.batch_id.slice(0, 8)}…</td>
+                                      <td className="px-4 py-2.5 text-xs text-gray-500">{fmtDate(b.generated_at)}</td>
+                                      <td className="px-4 py-2.5 text-right text-sm text-gray-900 tabular-nums">{fmtTTD(b.total_amount_ttd)}</td>
+                                      <td className="px-4 py-2.5 text-right text-sm text-gray-600 tabular-nums">{b.line_count}</td>
                                       <td className="px-4 py-2.5 text-center">
-                                        <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${b.status === 'paid' ? 'bg-purple-500/15 text-purple-300' : 'bg-emerald-500/15 text-emerald-300'}`}>
+                                        <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${b.status === 'paid' ? 'bg-purple-100 text-purple-700' : 'bg-emerald-100 text-emerald-700'}`}>
                                           {b.status === 'paid' ? `Paid${b.paid_at ? ' · ' + fmtDate(b.paid_at) : ''}` : 'Exported'}
                                         </span>
                                       </td>
@@ -1980,7 +1982,7 @@ export default function OneOnOnePaymentsPage() {
           onSuccess={() => { setBatchOpen(false); loadData(); }}
         />
       )}
-    </div>
+    </DashboardLayout>
   );
 }
 
@@ -2007,7 +2009,7 @@ function TransferToReadyButton({ onSuccess }: { onSuccess: () => void }) {
     return (
       <button
         onClick={() => setStep(1)}
-        className="px-4 py-2 rounded-xl bg-emerald-600/20 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-600/30 text-sm font-bold flex items-center gap-2 transition"
+        className="px-4 py-2 rounded-xl bg-emerald-100 border border-emerald-200 text-emerald-700 hover:bg-emerald-600/30 text-sm font-bold flex items-center gap-2 transition"
       >
         <CheckCircle className="size-4" /> Transfer to Ready for CSV
       </button>
@@ -2015,7 +2017,7 @@ function TransferToReadyButton({ onSuccess }: { onSuccess: () => void }) {
   }
 
   return (
-    <div className="flex items-center gap-3 px-4 py-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-emerald-200 text-sm">
+    <div className="flex items-center gap-3 px-4 py-2 rounded-xl border border-emerald-500/40 bg-emerald-50 text-emerald-200 text-sm">
       <span className="font-semibold">Move all owed payouts to Ready for CSV?</span>
       <button
         onClick={confirm}
@@ -2026,7 +2028,7 @@ function TransferToReadyButton({ onSuccess }: { onSuccess: () => void }) {
       </button>
       <button
         onClick={() => setStep(0)}
-        className="px-3 py-1.5 rounded-lg border border-white/15 text-white/50 hover:text-white text-xs transition"
+        className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-gray-900 text-xs transition"
       >
         Cancel
       </button>

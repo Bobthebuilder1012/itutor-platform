@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import { isEmailManagementOnlyAdmin } from '@/lib/auth/adminAccess';
 import AdminBreadcrumb from '@/components/admin/AdminBreadcrumb';
+import DashboardLayout from '@/components/DashboardLayout';
 import {
   BookOpen, DollarSign, AlertTriangle, Loader2,
   CheckSquare, Square, Download, RefreshCcw,
@@ -107,18 +108,18 @@ function StatCard({ label, value, sub, icon, accent }: {
   accent: 'emerald' | 'amber' | 'sky' | 'rose';
 }) {
   const map = {
-    emerald: 'text-emerald-400 bg-emerald-400/10',
-    amber:   'text-amber-400 bg-amber-400/10',
-    sky:     'text-sky-400 bg-sky-400/10',
-    rose:    'text-rose-400 bg-rose-400/10',
+    emerald: 'text-emerald-600 bg-emerald-50',
+    amber:   'text-amber-600 bg-amber-50',
+    sky:     'text-sky-600 bg-sky-50',
+    rose:    'text-rose-600 bg-rose-50',
   };
   return (
-    <div className="rounded-xl border border-white/8 p-5" style={{ background: '#161618' }}>
+    <div className="rounded-xl border border-gray-200 p-5" style={{ background: '#ffffff' }}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[11px] font-semibold text-white/40 uppercase tracking-wider truncate">{label}</p>
-          <p className="text-2xl font-bold text-white mt-1 tabular-nums">{value}</p>
-          {sub && <p className="text-[11px] text-white/40 mt-0.5">{sub}</p>}
+          <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider truncate">{label}</p>
+          <p className="text-2xl font-bold text-gray-900 mt-1 tabular-nums">{value}</p>
+          {sub && <p className="text-[11px] text-gray-500 mt-0.5">{sub}</p>}
         </div>
         <div className={`size-9 rounded-lg flex items-center justify-center shrink-0 ${map[accent]}`}>
           {icon}
@@ -129,16 +130,16 @@ function StatCard({ label, value, sub, icon, accent }: {
 }
 
 function PayoutChip({ status }: { status: string | null | undefined }) {
-  if (!status) return <span className="text-white/30 text-xs">—</span>;
+  if (!status) return <span className="text-gray-400 text-xs">—</span>;
   const cfg: Record<string, string> = {
-    owed:          'bg-sky-500/15 text-sky-300',
-    release_ready: 'bg-emerald-500/15 text-emerald-300',
-    admin_hold:    'bg-amber-500/15 text-amber-300',
-    released:      'bg-purple-500/15 text-purple-300',
-    reversed:      'bg-rose-500/15 text-rose-300',
+    owed:          'bg-sky-100 text-sky-700',
+    release_ready: 'bg-emerald-100 text-emerald-700',
+    admin_hold:    'bg-amber-100 text-amber-700',
+    released:      'bg-purple-100 text-purple-700',
+    reversed:      'bg-rose-100 text-rose-700',
   };
   return (
-    <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${cfg[status] ?? 'bg-white/10 text-white/60'}`}>
+    <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${cfg[status] ?? 'bg-gray-100 text-gray-600'}`}>
       {status.replace(/_/g, ' ')}
     </span>
   );
@@ -150,8 +151,8 @@ function Tab({ active, onClick, children }: { active: boolean; onClick: () => vo
       onClick={onClick}
       className={`px-4 py-2.5 text-sm font-semibold rounded-lg transition ${
         active
-          ? 'bg-white/10 text-white'
-          : 'text-white/50 hover:text-white/80 hover:bg-white/5'
+          ? 'bg-gray-100 text-gray-900'
+          : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
       }`}
     >
       {children}
@@ -161,7 +162,7 @@ function Tab({ active, onClick, children }: { active: boolean; onClick: () => vo
 
 function Table({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-white/8 overflow-x-auto" style={{ background: '#161618' }}>
+    <div className="rounded-xl border border-gray-200 overflow-x-auto" style={{ background: '#ffffff' }}>
       <table className="w-full">{children}</table>
     </div>
   );
@@ -169,7 +170,7 @@ function Table({ children }: { children: React.ReactNode }) {
 
 function EmptyState({ message }: { message: string }) {
   return (
-    <div className="flex flex-col items-center py-20 text-white/30 gap-2">
+    <div className="flex flex-col items-center py-20 text-gray-400 gap-2">
       <AlertTriangle className="size-10" />
       <p className="text-sm">{message}</p>
     </div>
@@ -220,35 +221,35 @@ function RefundModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70" onClick={onClose}>
-      <div className="w-full max-w-lg rounded-2xl border border-white/10 shadow-2xl" style={{ background: '#161618' }} onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between p-5 border-b border-white/8">
-          <h2 className="text-base font-bold text-white">Approve Refund</h2>
-          <button onClick={onClose} className="text-white/40 hover:text-white"><X className="size-5" /></button>
+      <div className="w-full max-w-lg rounded-2xl border border-gray-200 shadow-2xl" style={{ background: '#ffffff' }} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-5 border-b border-gray-200">
+          <h2 className="text-base font-bold text-gray-900">Approve Refund</h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-900"><X className="size-5" /></button>
         </div>
 
         <div className="p-5 space-y-4">
           {error && (
-            <div className="rounded-lg bg-rose-500/10 border border-rose-500/20 p-3 text-sm text-rose-300">{error}</div>
+            <div className="rounded-lg bg-rose-50 border border-rose-200 p-3 text-sm text-rose-700">{error}</div>
           )}
 
-          <div className="rounded-xl border border-white/8 p-4 space-y-2" style={{ background: '#0f0f10' }}>
+          <div className="rounded-xl border border-gray-200 p-4 space-y-2" style={{ background: '#f9fafb' }}>
             <div className="flex justify-between text-sm">
-              <span className="text-white/50">Student</span>
-              <span className="text-white font-semibold">{student?.full_name ?? '—'}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-white/50">Group</span>
-              <span className="text-white">{group?.name ?? '—'}</span>
+              <span className="text-gray-500">Student</span>
+              <span className="text-gray-900 font-semibold">{student?.full_name ?? '—'}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-white/50">Tutor</span>
-              <span className="text-white">{tutor?.full_name ?? '—'}</span>
+              <span className="text-gray-500">Group</span>
+              <span className="text-gray-900">{group?.name ?? '—'}</span>
             </div>
-            <div className="flex justify-between text-sm font-bold border-t border-white/8 pt-2 mt-2">
-              <span className="text-white/70">Refund amount</span>
-              <span className="text-rose-300 tabular-nums">{fmtTTD(amount)}</span>
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">Tutor</span>
+              <span className="text-gray-900">{tutor?.full_name ?? '—'}</span>
             </div>
-            <div className="text-xs text-amber-300/80 mt-2">
+            <div className="flex justify-between text-sm font-bold border-t border-gray-200 pt-2 mt-2">
+              <span className="text-gray-700">Refund amount</span>
+              <span className="text-rose-700 tabular-nums">{fmtTTD(amount)}</span>
+            </div>
+            <div className="text-xs text-amber-700/80 mt-2">
               {sp?.lunipay_transaction_id
                 ? 'Refund will be processed via LuniPay. If the payout was already released to the tutor, the amount will be recovered from future earnings.'
                 : 'No LuniPay transaction found. Platform credits will be issued to the student\'s account.'}
@@ -256,8 +257,8 @@ function RefundModal({
           </div>
         </div>
 
-        <div className="flex gap-3 p-5 border-t border-white/8">
-          <button onClick={onClose} className="flex-1 px-4 py-2 rounded-xl border border-white/10 text-sm font-semibold text-white/60 hover:text-white hover:bg-white/5">
+        <div className="flex gap-3 p-5 border-t border-gray-200">
+          <button onClick={onClose} className="flex-1 px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100">
             Cancel
           </button>
           <button
@@ -322,33 +323,33 @@ function BatchModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
-      <div className="w-full max-w-lg rounded-2xl border border-white/10 shadow-2xl" style={{ background: '#161618' }}>
-        <div className="flex items-center justify-between p-5 border-b border-white/8">
-          <h2 className="text-base font-bold text-white">Transfer to CSV Batch</h2>
-          <button onClick={onClose} className="text-white/40 hover:text-white"><X className="size-5" /></button>
+      <div className="w-full max-w-lg rounded-2xl border border-gray-200 shadow-2xl" style={{ background: '#ffffff' }}>
+        <div className="flex items-center justify-between p-5 border-b border-gray-200">
+          <h2 className="text-base font-bold text-gray-900">Transfer to CSV Batch</h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-900"><X className="size-5" /></button>
         </div>
 
         <div className="p-5 space-y-4">
           {error && (
-            <div className="rounded-lg bg-rose-500/10 border border-rose-500/20 p-3 text-sm text-rose-300">{error}</div>
+            <div className="rounded-lg bg-rose-50 border border-rose-200 p-3 text-sm text-rose-700">{error}</div>
           )}
 
-          <div className="rounded-xl border border-white/8 p-4 space-y-2" style={{ background: '#0f0f10' }}>
+          <div className="rounded-xl border border-gray-200 p-4 space-y-2" style={{ background: '#f9fafb' }}>
             <div className="flex justify-between text-sm">
-              <span className="text-white/50">Selected payments</span>
-              <span className="text-white font-semibold">{rows.length}</span>
+              <span className="text-gray-500">Selected payments</span>
+              <span className="text-gray-900 font-semibold">{rows.length}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-white/50">Total collected</span>
-              <span className="text-white tabular-nums">{fmtTTD(totalAmount)}</span>
+              <span className="text-gray-500">Total collected</span>
+              <span className="text-gray-900 tabular-nums">{fmtTTD(totalAmount)}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-white/50">Platform commission</span>
-              <span className="text-rose-300 tabular-nums">−{fmtTTD(totalPlatform)}</span>
+              <span className="text-gray-500">Platform commission</span>
+              <span className="text-rose-700 tabular-nums">−{fmtTTD(totalPlatform)}</span>
             </div>
-            <div className="flex justify-between text-sm font-bold border-t border-white/8 pt-2 mt-2">
-              <span className="text-white/70">Tutor payout total</span>
-              <span className="text-emerald-300 tabular-nums">{fmtTTD(totalPayout)}</span>
+            <div className="flex justify-between text-sm font-bold border-t border-gray-200 pt-2 mt-2">
+              <span className="text-gray-700">Tutor payout total</span>
+              <span className="text-emerald-700 tabular-nums">{fmtTTD(totalPayout)}</span>
             </div>
           </div>
 
@@ -359,20 +360,20 @@ function BatchModal({
               const student    = normalize(enrollment?.student);
               const tutor      = normalize(group?.tutor);
               return (
-                <div key={r.id} className="flex items-center justify-between py-1.5 px-2 rounded-lg bg-white/4 text-xs">
+                <div key={r.id} className="flex items-center justify-between py-1.5 px-2 rounded-lg bg-gray-50 text-xs">
                   <div className="min-w-0">
-                    <p className="text-white/70 truncate">{group?.name ?? '—'}</p>
-                    <p className="text-white/40">{student?.full_name ?? '—'} · {tutor?.full_name ?? '—'}</p>
+                    <p className="text-gray-700 truncate">{group?.name ?? '—'}</p>
+                    <p className="text-gray-500">{student?.full_name ?? '—'} · {tutor?.full_name ?? '—'}</p>
                   </div>
-                  <span className="text-emerald-300 tabular-nums ml-3 shrink-0">{fmtTTD(r.tutor_payout_ttd)}</span>
+                  <span className="text-emerald-700 tabular-nums ml-3 shrink-0">{fmtTTD(r.tutor_payout_ttd)}</span>
                 </div>
               );
             })}
           </div>
         </div>
 
-        <div className="flex gap-3 p-5 border-t border-white/8">
-          <button onClick={onClose} className="flex-1 px-4 py-2 rounded-xl border border-white/10 text-sm font-semibold text-white/60 hover:text-white hover:bg-white/5">
+        <div className="flex gap-3 p-5 border-t border-gray-200">
+          <button onClick={onClose} className="flex-1 px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100">
             Cancel
           </button>
           <button
@@ -524,31 +525,32 @@ export default function LessonPaymentsPage() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: '#0f0f10' }}>
-        <Loader2 className="size-6 animate-spin text-white/30" />
-      </div>
+      <DashboardLayout role="admin" userName="Admin">
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="size-6 animate-spin text-gray-400" />
+        </div>
+      </DashboardLayout>
     );
   }
 
   return (
-    <div className="min-h-screen" style={{ background: '#0f0f10', color: '#fff' }}>
+    <DashboardLayout role="admin" userName="Admin">
       <div className="max-w-6xl mx-auto p-6 space-y-6">
 
         <AdminBreadcrumb
-          tone="dark"
           items={[{ label: 'Finance', href: '/admin/payments' }, { label: 'Lesson Payments' }]}
         />
 
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-white">Lesson Payments</h1>
-            <p className="text-sm text-white/40 mt-0.5">Subscription billing, pending refunds, and cancellations</p>
+            <h1 className="text-xl font-bold text-gray-900">Lesson Payments</h1>
+            <p className="text-sm text-gray-500 mt-0.5">Subscription billing, pending refunds, and cancellations</p>
           </div>
           <button
             onClick={loadData}
             disabled={loading}
-            className="px-3 py-1.5 rounded-lg border border-white/10 text-white/60 hover:text-white hover:bg-white/5 text-sm flex items-center gap-1.5"
+            className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:text-gray-900 hover:bg-gray-100 text-sm flex items-center gap-1.5"
           >
             <RefreshCcw className={`size-4 ${loading ? 'animate-spin' : ''}`} />
             Refresh
@@ -556,7 +558,7 @@ export default function LessonPaymentsPage() {
         </div>
 
         {error && (
-          <div className="rounded-xl bg-rose-500/10 border border-rose-500/20 p-3 text-sm text-rose-300">{error}</div>
+          <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-sm text-rose-700">{error}</div>
         )}
 
         {/* Stats */}
@@ -572,7 +574,7 @@ export default function LessonPaymentsPage() {
         </div>
 
         {/* Tabs */}
-        <div className="flex items-center gap-1 p-1 rounded-xl border border-white/8 w-fit" style={{ background: '#161618' }}>
+        <div className="flex items-center gap-1 p-1 rounded-xl border border-gray-200 w-fit" style={{ background: '#ffffff' }}>
           <Tab active={tab === 'active'}    onClick={() => setTab('active')}>
             Active Subscriptions {stats ? `(${stats.active_count})` : ''}
           </Tab>
@@ -588,7 +590,7 @@ export default function LessonPaymentsPage() {
         </div>
 
         {loading ? (
-          <div className="flex items-center justify-center py-20 gap-2 text-white/30">
+          <div className="flex items-center justify-center py-20 gap-2 text-gray-400">
             <Loader2 className="size-5 animate-spin" /><span className="text-sm">Loading…</span>
           </div>
         ) : (
@@ -598,10 +600,10 @@ export default function LessonPaymentsPage() {
               <div className="space-y-3">
                 {active.length > 0 && (
                   <div className="flex items-center justify-between">
-                    <button onClick={toggleAll} className="flex items-center gap-2 text-sm text-white/50 hover:text-white">
-                      {selected.size === active.length ? <CheckSquare className="size-4 text-emerald-400" /> : <Square className="size-4" />}
+                    <button onClick={toggleAll} className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900">
+                      {selected.size === active.length ? <CheckSquare className="size-4 text-emerald-600" /> : <Square className="size-4" />}
                       {selected.size === active.length ? 'Deselect all' : 'Select all'}
-                      {selected.size > 0 && <span className="text-white/30">({selected.size} selected)</span>}
+                      {selected.size > 0 && <span className="text-gray-400">({selected.size} selected)</span>}
                     </button>
                     {selected.size > 0 && (
                       <button onClick={() => setBatchOpen(true)} className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold flex items-center gap-2">
@@ -613,7 +615,7 @@ export default function LessonPaymentsPage() {
                 {active.length === 0 ? <EmptyState message="No active subscription payments to batch." /> : (
                   <Table>
                     <thead>
-                      <tr className="text-[11px] font-semibold text-white/30 uppercase tracking-wider">
+                      <tr className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
                         <th className="px-4 py-3 text-left w-8" />
                         <th className="px-4 py-3 text-left">Group / Student</th>
                         <th className="px-4 py-3 text-left">Tutor</th>
@@ -633,18 +635,18 @@ export default function LessonPaymentsPage() {
                         const isSelected = selected.has(sp.id);
                         return (
                           <tr key={sp.id} onClick={() => toggleOne(sp.id)}
-                            className={`cursor-pointer transition ${isSelected ? 'bg-emerald-500/8' : 'hover:bg-white/3'}`}>
+                            className={`cursor-pointer transition ${isSelected ? 'bg-emerald-500/8' : 'hover:bg-gray-50'}`}>
                             <td className="px-4 py-3">
-                              {isSelected ? <CheckSquare className="size-4 text-emerald-400" /> : <Square className="size-4 text-white/20" />}
+                              {isSelected ? <CheckSquare className="size-4 text-emerald-600" /> : <Square className="size-4 text-gray-300" />}
                             </td>
                             <td className="px-4 py-3">
-                              <p className="text-sm font-semibold text-white">{group?.name ?? '—'}</p>
-                              <p className="text-xs text-white/40">{student?.full_name ?? '—'}</p>
+                              <p className="text-sm font-semibold text-gray-900">{group?.name ?? '—'}</p>
+                              <p className="text-xs text-gray-500">{student?.full_name ?? '—'}</p>
                             </td>
-                            <td className="px-4 py-3 text-sm text-white/70">{tutor?.full_name ?? '—'}</td>
-                            <td className="px-4 py-3 text-right text-sm text-white tabular-nums">{fmtTTD(sp.amount_ttd)}</td>
-                            <td className="px-4 py-3 text-right text-sm text-emerald-300 tabular-nums">{fmtTTD(sp.tutor_payout_ttd)}</td>
-                            <td className="px-4 py-3 text-xs text-white/40">{fmtDate(sp.period_start)} → {fmtDate(sp.period_end)}</td>
+                            <td className="px-4 py-3 text-sm text-gray-700">{tutor?.full_name ?? '—'}</td>
+                            <td className="px-4 py-3 text-right text-sm text-gray-900 tabular-nums">{fmtTTD(sp.amount_ttd)}</td>
+                            <td className="px-4 py-3 text-right text-sm text-emerald-700 tabular-nums">{fmtTTD(sp.tutor_payout_ttd)}</td>
+                            <td className="px-4 py-3 text-xs text-gray-500">{fmtDate(sp.period_start)} → {fmtDate(sp.period_end)}</td>
                             <td className="px-4 py-3 text-center"><PayoutChip status={ledger?.status} /></td>
                           </tr>
                         );
@@ -660,7 +662,7 @@ export default function LessonPaymentsPage() {
               pendingRefunds.length === 0 ? <EmptyState message="No pending refunds to approve." /> : (
                 <Table>
                   <thead>
-                    <tr className="text-[11px] font-semibold text-white/30 uppercase tracking-wider">
+                    <tr className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
                       <th className="px-4 py-3 text-left">Group / Student</th>
                       <th className="px-4 py-3 text-left">Tutor</th>
                       <th className="px-4 py-3 text-right">Refund</th>
@@ -676,14 +678,14 @@ export default function LessonPaymentsPage() {
                       const student    = normalize(enrollment?.student);
                       const tutor      = normalize(r.tutor);
                       return (
-                        <tr key={r.id} className="hover:bg-white/3">
+                        <tr key={r.id} className="hover:bg-gray-50">
                           <td className="px-4 py-3">
-                            <p className="text-sm font-semibold text-white">{group?.name ?? '—'}</p>
-                            <p className="text-xs text-white/40">{student?.full_name ?? '—'}</p>
+                            <p className="text-sm font-semibold text-gray-900">{group?.name ?? '—'}</p>
+                            <p className="text-xs text-gray-500">{student?.full_name ?? '—'}</p>
                           </td>
-                          <td className="px-4 py-3 text-sm text-white/70">{tutor?.full_name ?? '—'}</td>
-                          <td className="px-4 py-3 text-right text-sm text-amber-300 tabular-nums">{fmtTTD(r.refund_amount_ttd)}</td>
-                          <td className="px-4 py-3 text-xs text-white/40">{fmtDate(r.created_at)}</td>
+                          <td className="px-4 py-3 text-sm text-gray-700">{tutor?.full_name ?? '—'}</td>
+                          <td className="px-4 py-3 text-right text-sm text-amber-700 tabular-nums">{fmtTTD(r.refund_amount_ttd)}</td>
+                          <td className="px-4 py-3 text-xs text-gray-500">{fmtDate(r.created_at)}</td>
                           <td className="px-4 py-3 text-center">
                             <button
                               onClick={() => setRefundTarget(r)}
@@ -705,7 +707,7 @@ export default function LessonPaymentsPage() {
               cancelledLeft.length === 0 ? <EmptyState message="No voluntarily cancelled subscriptions." /> : (
                 <Table>
                   <thead>
-                    <tr className="text-[11px] font-semibold text-white/30 uppercase tracking-wider">
+                    <tr className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
                       <th className="px-4 py-3 text-left">Group / Student</th>
                       <th className="px-4 py-3 text-left">Tutor</th>
                       <th className="px-4 py-3 text-right">Amount</th>
@@ -721,23 +723,23 @@ export default function LessonPaymentsPage() {
                       const tutor   = normalize(group?.tutor);
                       const sp      = normalize(e.subscription_payment);
                       return (
-                        <tr key={e.id} className="hover:bg-white/3">
+                        <tr key={e.id} className="hover:bg-gray-50">
                           <td className="px-4 py-3">
-                            <p className="text-sm font-semibold text-white">{group?.name ?? '—'}</p>
-                            <p className="text-xs text-white/40">{student?.full_name ?? '—'}</p>
+                            <p className="text-sm font-semibold text-gray-900">{group?.name ?? '—'}</p>
+                            <p className="text-xs text-gray-500">{student?.full_name ?? '—'}</p>
                           </td>
-                          <td className="px-4 py-3 text-sm text-white/70">{tutor?.full_name ?? '—'}</td>
-                          <td className="px-4 py-3 text-right text-sm text-white/70 tabular-nums">{fmtTTD(sp?.amount_ttd)}</td>
+                          <td className="px-4 py-3 text-sm text-gray-700">{tutor?.full_name ?? '—'}</td>
+                          <td className="px-4 py-3 text-right text-sm text-gray-700 tabular-nums">{fmtTTD(sp?.amount_ttd)}</td>
                           <td className="px-4 py-3 text-center">
                             <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${
-                              e.payment_status === 'REFUNDED'  ? 'bg-rose-500/15 text-rose-300' :
-                              e.payment_status === 'PAID'      ? 'bg-sky-500/15 text-sky-300' :
-                                                                 'bg-white/10 text-white/50'}`}>
+                              e.payment_status === 'REFUNDED'  ? 'bg-rose-100 text-rose-700' :
+                              e.payment_status === 'PAID'      ? 'bg-sky-100 text-sky-700' :
+                                                                 'bg-gray-100 text-gray-500'}`}>
                               {e.payment_status}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-xs text-white/40">{fmtDate(e.enrolled_at)}</td>
-                          <td className="px-4 py-3 text-xs text-white/40">{fmtDate(e.updated_at)}</td>
+                          <td className="px-4 py-3 text-xs text-gray-500">{fmtDate(e.enrolled_at)}</td>
+                          <td className="px-4 py-3 text-xs text-gray-500">{fmtDate(e.updated_at)}</td>
                         </tr>
                       );
                     })}
@@ -749,9 +751,9 @@ export default function LessonPaymentsPage() {
             {/* CSV History — weekly folders (group/lesson batches) */}
             {tab === 'history' && (
               <div className="space-y-3">
-                <p className="text-sm text-white/50">Exported &amp; paid group payout batches, grouped by week. Expand a week to download its CSVs or mark a downloaded batch paid.</p>
+                <p className="text-sm text-gray-500">Exported &amp; paid group payout batches, grouped by week. Expand a week to download its CSVs or mark a downloaded batch paid.</p>
                 {historyLoading ? (
-                  <div className="flex items-center justify-center py-16 gap-2 text-white/30">
+                  <div className="flex items-center justify-center py-16 gap-2 text-gray-400">
                     <Loader2 className="size-5 animate-spin" /><span className="text-sm">Loading…</span>
                   </div>
                 ) : csvHistory.length === 0 ? (
@@ -761,22 +763,22 @@ export default function LessonPaymentsPage() {
                     {csvHistory.map((wk) => {
                       const open = expandedWeeks.has(wk.week_start);
                       return (
-                        <div key={wk.week_start} className="rounded-xl border border-white/8 overflow-hidden" style={{ background: '#161618' }}>
+                        <div key={wk.week_start} className="rounded-xl border border-gray-200 overflow-hidden" style={{ background: '#ffffff' }}>
                           <button
                             onClick={() => toggleWeek(wk.week_start)}
-                            className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/3 transition text-left"
+                            className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition text-left"
                           >
                             <div className="flex items-center gap-3">
-                              <span className="text-white/40 text-xs">{open ? '▼' : '▶'}</span>
-                              <span className="text-sm font-semibold text-white">{wk.label}</span>
-                              <span className="text-xs text-white/40">{wk.batch_count} batch{wk.batch_count !== 1 ? 'es' : ''}</span>
+                              <span className="text-gray-500 text-xs">{open ? '▼' : '▶'}</span>
+                              <span className="text-sm font-semibold text-gray-900">{wk.label}</span>
+                              <span className="text-xs text-gray-500">{wk.batch_count} batch{wk.batch_count !== 1 ? 'es' : ''}</span>
                             </div>
-                            <span className="text-sm font-bold text-emerald-300 tabular-nums">{fmtTTD(wk.total_ttd)}</span>
+                            <span className="text-sm font-bold text-emerald-700 tabular-nums">{fmtTTD(wk.total_ttd)}</span>
                           </button>
                           {open && (
-                            <table className="w-full text-sm border-t border-white/8">
+                            <table className="w-full text-sm border-t border-gray-200">
                               <thead>
-                                <tr className="text-[11px] font-semibold text-white/30 uppercase tracking-wider">
+                                <tr className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
                                   <th className="px-4 py-2 text-left">Batch</th>
                                   <th className="px-4 py-2 text-left">Generated</th>
                                   <th className="px-4 py-2 text-right">Amount</th>
@@ -789,13 +791,13 @@ export default function LessonPaymentsPage() {
                                 {wk.batches.map((b) => {
                                   const busy = batchBusy[b.batch_id];
                                   return (
-                                    <tr key={b.batch_id} className="hover:bg-white/[0.02]" style={{ background: '#0f0f10' }}>
-                                      <td className="px-4 py-2.5 font-mono text-xs text-white/60">{b.batch_id.slice(0, 8)}…</td>
-                                      <td className="px-4 py-2.5 text-xs text-white/50">{fmtDate(b.generated_at)}</td>
-                                      <td className="px-4 py-2.5 text-right text-sm text-white tabular-nums">{fmtTTD(b.total_amount_ttd)}</td>
-                                      <td className="px-4 py-2.5 text-right text-sm text-white/60 tabular-nums">{b.line_count}</td>
+                                    <tr key={b.batch_id} className="hover:bg-gray-50" style={{ background: '#f9fafb' }}>
+                                      <td className="px-4 py-2.5 font-mono text-xs text-gray-600">{b.batch_id.slice(0, 8)}…</td>
+                                      <td className="px-4 py-2.5 text-xs text-gray-500">{fmtDate(b.generated_at)}</td>
+                                      <td className="px-4 py-2.5 text-right text-sm text-gray-900 tabular-nums">{fmtTTD(b.total_amount_ttd)}</td>
+                                      <td className="px-4 py-2.5 text-right text-sm text-gray-600 tabular-nums">{b.line_count}</td>
                                       <td className="px-4 py-2.5 text-center">
-                                        <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${b.status === 'paid' ? 'bg-purple-500/15 text-purple-300' : 'bg-emerald-500/15 text-emerald-300'}`}>
+                                        <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${b.status === 'paid' ? 'bg-purple-100 text-purple-700' : 'bg-emerald-100 text-emerald-700'}`}>
                                           {b.status === 'paid' ? `Paid${b.paid_at ? ' · ' + fmtDate(b.paid_at) : ''}` : 'Exported'}
                                         </span>
                                       </td>
@@ -850,6 +852,6 @@ export default function LessonPaymentsPage() {
           onClose={() => setRefundTarget(null)}
           onSuccess={() => { setRefundTarget(null); loadData(); }} />
       )}
-    </div>
+    </DashboardLayout>
   );
 }

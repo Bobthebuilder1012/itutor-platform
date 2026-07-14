@@ -96,6 +96,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [logoutModalOpen, setLogoutModalOpen] = useState(false);
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   const [authEmail, setAuthEmail] = useState<string | null>(null);
@@ -265,7 +266,6 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/admin/accounts', label: 'Accounts', icon: icons.users },
           { href: '/admin/verification/queue', label: 'Verification Queue', icon: icons.queue },
           { href: '/admin/verified-tutors', label: 'Verified iTutors', icon: icons.shield },
-          { href: '/admin/degrees', label: 'Degree Verification', icon: icons.shield },
           { href: '/admin/signups', label: 'Signups & Onboarding', icon: icons.userPlus },
         ]},
         { label: 'Finance', items: [
@@ -343,15 +343,30 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 overflow-y-auto py-4 px-2">
-          {navSections.map((section, sectionIdx) => (
+        <nav className="flex-1 overflow-y-auto scrollbar-hide py-4 px-2">
+          {navSections.map((section, sectionIdx) => {
+            const showHeader = role === 'admin' && !collapsed;
+            const isSectionCollapsed = showHeader && !!collapsedSections[section.label];
+            return (
             <div key={section.label} className={sectionIdx > 0 ? 'mt-4' : ''}>
-              {role === 'admin' && !collapsed && (
-                <p className="px-3 pt-1 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-600">
-                  {section.label}
-                </p>
+              {showHeader && (
+                <button
+                  type="button"
+                  onClick={() => setCollapsedSections((s) => ({ ...s, [section.label]: !s[section.label] }))}
+                  className="w-full flex items-center justify-between px-3 pt-1 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-500 hover:text-gray-300 transition-colors"
+                >
+                  <span>{section.label}</span>
+                  <svg
+                    className={`w-3 h-3 flex-shrink-0 transition-transform duration-200 ${isSectionCollapsed ? '-rotate-90' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path d="M19 9l-7 7-7-7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
               )}
-              {section.items.map((item) => {
+              {!isSectionCollapsed && section.items.map((item) => {
                 if ('children' in item) {
                   const groupAnyActive = item.children.some(
                     (c) =>
@@ -443,7 +458,8 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
                 );
               })}
             </div>
-          ))}
+            );
+          })}
         </nav>
 
         {/* User footer */}
