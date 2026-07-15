@@ -878,6 +878,230 @@ function BatchModal({
   );
 }
 
+// ─── Place Hold Modal ─────────────────────────────────────────────────────────
+
+const HOLD_REASONS: { value: string; label: string }[] = [
+  { value: 'manual_admin_hold',   label: 'Manual admin hold' },
+  { value: 'refund_requested',    label: 'Refund request' },
+  { value: 'chargeback',          label: 'Chargeback' },
+  { value: 'session_cancelled',   label: 'Session cancelled' },
+  { value: 'tutor_cancelled',     label: 'Tutor cancelled' },
+  { value: 'system_inconsistency', label: 'System inconsistency' },
+];
+
+function HoldModal({
+  row,
+  onClose,
+  onSuccess,
+}: {
+  row: PaymentRow;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [reason, setReason]     = useState('manual_admin_hold');
+  const [notes, setNotes]       = useState('');
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState('');
+
+  async function submit() {
+    setLoading(true); setError('');
+    try {
+      const body: Record<string, string> = { hold_reason: reason };
+      if (notes.trim()) body.admin_notes = notes.trim();
+      // Prefer the ledger row; fall back to session / payment for pre-ledger holds.
+      if (row.payout_ledger_id)   body.ledger_id  = row.payout_ledger_id;
+      else if (row.session_id)    body.session_id = row.session_id;
+      else if (row.payment_id)    body.payment_id = row.payment_id;
+
+      const res  = await fetch('/api/admin/payout-cases', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message ?? data.error ?? 'Hold failed');
+      onSuccess();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70" onClick={onClose}>
+      <div className="w-full max-w-lg rounded-2xl border border-gray-200 shadow-2xl" style={{ background: '#ffffff' }} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-5 border-b border-gray-200">
+          <h2 className="text-base font-bold text-gray-900">Place Payout Hold</h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-900"><X className="size-5" /></button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {error && (
+            <div className="rounded-lg bg-rose-50 border border-rose-200 p-3 text-sm text-rose-700">{error}</div>
+          )}
+
+          <div className="rounded-xl border border-gray-200 p-4 space-y-2" style={{ background: '#f9fafb' }}>
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">Tutor</span>
+              <span className="text-gray-900 font-semibold">{row.tutor_name ?? '—'}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">Student</span>
+              <span className="text-gray-900">{row.student_name ?? '—'}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">Session</span>
+              <span className="text-gray-900">{fmtDate(row.scheduled_at)}</span>
+            </div>
+            <div className="flex justify-between text-sm font-bold border-t border-gray-200 pt-2 mt-2">
+              <span className="text-gray-700">Payout on hold</span>
+              <span className="text-amber-700 tabular-nums">{fmtTTD(row.tutor_payout_ttd)}</span>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Hold reason</label>
+            <select
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-900 focus:outline-none focus:border-gray-300"
+            >
+              {HOLD_REASONS.map((r) => (
+                <option key={r.value} value={r.value}>{r.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Admin notes (optional)</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Why is this payout being held?"
+              rows={3}
+              className="w-full px-3 py-2 rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-900 placeholder-gray-400 resize-none focus:outline-none focus:border-gray-300"
+            />
+          </div>
+        </div>
+
+        <div className="flex gap-3 p-5 border-t border-gray-200">
+          <button onClick={onClose} className="flex-1 px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100">
+            Cancel
+          </button>
+          <button
+            onClick={submit}
+            disabled={loading}
+            className="flex-1 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50 transition"
+          >
+            {loading ? <Loader2 className="size-4 animate-spin" /> : <PauseCircle className="size-4" />}
+            {loading ? 'Placing hold…' : 'Place Hold'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Payment Detail Modal ─────────────────────────────────────────────────────
+
+function DetailRow({ label, value, accent }: { label: string; value: React.ReactNode; accent?: string }) {
+  return (
+    <div className="flex justify-between gap-3 text-sm py-1.5">
+      <span className="text-gray-500 shrink-0">{label}</span>
+      <span className={`text-right ${accent ?? 'text-gray-900'} tabular-nums`}>{value}</span>
+    </div>
+  );
+}
+
+function PaymentDetailModal({
+  row,
+  onClose,
+}: {
+  row: PaymentRow;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70" onClick={onClose}>
+      <div className="w-full max-w-lg rounded-2xl border border-gray-200 shadow-2xl max-h-[90vh] overflow-y-auto" style={{ background: '#ffffff' }} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-5 border-b border-gray-200 sticky top-0" style={{ background: '#ffffff' }}>
+          <h2 className="text-base font-bold text-gray-900">Payment Details</h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-900"><X className="size-5" /></button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Parties */}
+          <div className="rounded-xl border border-gray-200 p-4" style={{ background: '#f9fafb' }}>
+            <DetailRow label="Student" value={row.student_name ?? '—'} />
+            {row.student_email && <DetailRow label="Student email" value={row.student_email} />}
+            <DetailRow label="Tutor" value={row.tutor_name ?? '—'} />
+            {row.tutor_email && <DetailRow label="Tutor email" value={row.tutor_email} />}
+            {row.subject && <DetailRow label="Subject" value={row.subject} />}
+            <DetailRow label="Session date" value={fmtDateTime(row.scheduled_at)} />
+            <DetailRow label="Session status" value={row.session_status ?? '—'} />
+          </div>
+
+          {/* Money */}
+          <div className="rounded-xl border border-gray-200 p-4" style={{ background: '#f9fafb' }}>
+            <DetailRow label="Total paid (gross)" value={fmtTTD(grossCharged(row.amount_ttd))} />
+            <DetailRow label="Base amount" value={fmtTTD(row.amount_ttd)} />
+            <DetailRow label="LuniPay fee" value={fmtTTD(lunipayFee(row.amount_ttd))} accent="text-rose-700" />
+            <DetailRow label="Platform fee" value={fmtTTD(row.platform_fee_ttd)} />
+            <DetailRow label="Tutor payout" value={fmtTTD(row.tutor_payout_ttd)} accent="text-emerald-700" />
+            {row.total_refunded_ttd > 0 && (
+              <DetailRow label="Refunded" value={fmtTTD(row.total_refunded_ttd)} accent="text-rose-700" />
+            )}
+            {row.retained_amount_ttd > 0 && (
+              <DetailRow label="Retained" value={fmtTTD(row.retained_amount_ttd)} />
+            )}
+          </div>
+
+          {/* Status */}
+          <div className="rounded-xl border border-gray-200 p-4" style={{ background: '#f9fafb' }}>
+            <div className="flex justify-between items-center gap-3 text-sm py-1.5">
+              <span className="text-gray-500">Payment status</span>
+              <PaymentStatusChip status={row.payment_status} />
+            </div>
+            <div className="flex justify-between items-center gap-3 text-sm py-1.5">
+              <span className="text-gray-500">Payout status</span>
+              <PayoutChip status={row.payout_status} />
+            </div>
+            <DetailRow label="Paid at" value={fmtDateTime(row.paid_at)} />
+            {row.refunded_at && <DetailRow label="Refunded at" value={fmtDateTime(row.refunded_at)} />}
+            {row.has_noshow_claim && (
+              <DetailRow label="No-show claim" value={row.noshow_status ?? 'filed'} accent="text-amber-700" />
+            )}
+            {row.has_payout_case && (
+              <DetailRow label="Payout case" value={row.payout_case_status ?? 'open'} accent="text-amber-700" />
+            )}
+          </div>
+
+          {/* IDs */}
+          <div className="rounded-xl border border-gray-200 p-4 space-y-1" style={{ background: '#f9fafb' }}>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">References</p>
+            <DetailRow label="Payment ID" value={<span className="text-xs font-mono">{row.payment_id ?? '—'}</span>} />
+            {row.lunipay_transaction_id && (
+              <DetailRow label="LuniPay txn" value={<span className="text-xs font-mono">{row.lunipay_transaction_id}</span>} />
+            )}
+            {row.session_id && (
+              <DetailRow label="Session ID" value={<span className="text-xs font-mono">{row.session_id}</span>} />
+            )}
+            {row.payout_ledger_id && (
+              <DetailRow label="Ledger ID" value={<span className="text-xs font-mono">{row.payout_ledger_id}</span>} />
+            )}
+          </div>
+        </div>
+
+        <div className="flex p-5 border-t border-gray-200">
+          <button onClick={onClose} className="flex-1 px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function OneOnOnePaymentsPage() {
@@ -913,6 +1137,8 @@ export default function OneOnOnePaymentsPage() {
   // Modals
   const [refundTarget, setRefundTarget] = useState<PendingRefundRow | null>(null);
   const [noshowTarget, setNoshowTarget] = useState<NoshowRow | null>(null);
+  const [detailTarget, setDetailTarget] = useState<PaymentRow | null>(null);
+  const [holdTarget, setHoldTarget]     = useState<PaymentRow | null>(null);
   // CSV export state
   const [exportStep1on1, setExportStep1on1] = useState<0|1|2>(0);
   const [csvHistory1on1, setCsvHistory1on1] = useState<CsvHistoryWeek[]>([]);
@@ -1269,6 +1495,7 @@ export default function OneOnOnePaymentsPage() {
                           <div className="flex items-center justify-center gap-1.5">
                             <button
                               title="View details"
+                              onClick={() => setDetailTarget(row)}
                               className="p-1.5 rounded-lg bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-gray-900 transition"
                             >
                               <Eye className="size-3.5" />
@@ -1276,6 +1503,7 @@ export default function OneOnOnePaymentsPage() {
                             {!row.has_payout_case && row.payout_status !== 'admin_hold' && (
                               <button
                                 title="Place hold"
+                                onClick={() => setHoldTarget(row)}
                                 className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-500/20 text-amber-600 transition"
                               >
                                 <PauseCircle className="size-3.5" />
@@ -1980,6 +2208,23 @@ export default function OneOnOnePaymentsPage() {
           allReady={data.ready_for_csv}
           onClose={() => setBatchOpen(false)}
           onSuccess={() => { setBatchOpen(false); loadData(); }}
+        />
+      )}
+
+      {/* Payment Detail Modal */}
+      {detailTarget && (
+        <PaymentDetailModal
+          row={detailTarget}
+          onClose={() => setDetailTarget(null)}
+        />
+      )}
+
+      {/* Place Hold Modal */}
+      {holdTarget && (
+        <HoldModal
+          row={holdTarget}
+          onClose={() => setHoldTarget(null)}
+          onSuccess={() => { setHoldTarget(null); loadData(); }}
         />
       )}
     </DashboardLayout>
