@@ -108,7 +108,7 @@ export async function GET(request: NextRequest) {
        require_join_requests, auto_suspend_missed_payment, grace_period_days,
        archived_at, archived_reason, cover_image, form_level, session_length_minutes, schedule_display, schedule_data,
        estimated_earnings,
-       tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, rating_average, rating_count),
+       tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, rating_average, rating_count, profile_banner_url),
        group_members(id, user_id, status)`,
       // Tier 2: drop columns likely missing (parent_feedback_mode → feedback_mode, no archived_reason/whatsapp_url)
       `id, name, description, tutor_id, subject, pricing, pricing_model, price_per_session, price_monthly, created_at,
@@ -117,7 +117,7 @@ export async function GET(request: NextRequest) {
        price_per_session, price_monthly, price_per_course, member_service_fee,
        require_join_requests, auto_suspend_missed_payment, grace_period_days,
        archived_at, schedule_display, estimated_earnings,
-       tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, rating_average, rating_count),
+       tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, rating_average, rating_count, profile_banner_url),
        group_members(id, user_id, status)`,
       // Tier 3: drop rating columns from profiles (may live on tutor_profiles instead)
       `id, name, description, tutor_id, subject, pricing, pricing_model, price_per_session, price_monthly, created_at,
