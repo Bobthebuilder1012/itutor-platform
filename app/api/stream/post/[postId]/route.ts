@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 
 type Params = { params: Promise<{ postId: string }> };
 
@@ -26,8 +27,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Post not found' }, { status: 404 });
     }
 
-    const { data: group } = await service.from('groups').select('tutor_id').eq('id', post.group_id).single();
-    const isClassTutor = group?.tutor_id === user.id;
+    const actor = await resolveGroupActor({ groupId: post.group_id, userId: user.id, email: user.email });
+    const isClassTutor = actor.actingAsTutor;
     const isAuthor = post.author_id === user.id;
 
     const body = await req.json();
@@ -69,6 +70,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
     if (updateError) throw updateError;
 
+    await auditAdminOverride(actor, 'stream.post.update', { postId, fields: Object.keys(update) });
+
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error('[PATCH /api/stream/post/[postId]]', err);
@@ -97,8 +100,8 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Post not found' }, { status: 404 });
     }
 
-    const { data: group } = await service.from('groups').select('tutor_id').eq('id', post.group_id).single();
-    const isTutorOwner = group?.tutor_id === user.id;
+    const actor = await resolveGroupActor({ groupId: post.group_id, userId: user.id, email: user.email });
+    const isTutorOwner = actor.actingAsTutor;
     const isAuthor = post.author_id === user.id;
 
     if (!isTutorOwner && !isAuthor) {
@@ -108,6 +111,8 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     const { error: deleteError } = await service.from('stream_posts').delete().eq('id', postId);
 
     if (deleteError) throw deleteError;
+
+    await auditAdminOverride(actor, 'stream.post.delete', { postId });
 
     return new NextResponse(null, { status: 204 });
   } catch (err) {

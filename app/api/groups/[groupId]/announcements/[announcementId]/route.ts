@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 
 // PATCH /api/groups/[groupId]/announcements/[announcementId]
 // Tutor can edit body, toggle pin
@@ -17,8 +18,9 @@ export async function PATCH(
     const service = getServiceClient();
     const { groupId, announcementId } = params;
 
-    const { data: group } = await service.from('groups').select('tutor_id').eq('id', groupId).single();
-    if (!group || group.tutor_id !== user.id) {
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    if (actor.notFound) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+    if (!actor.authorized) {
       return NextResponse.json({ error: 'Only the tutor can edit announcements' }, { status: 403 });
     }
 
@@ -36,6 +38,7 @@ export async function PATCH(
       .single();
 
     if (error) throw error;
+    await auditAdminOverride(actor, 'announcement.update', { announcementId });
 
     return NextResponse.json({ announcement });
   } catch (err) {
@@ -57,8 +60,9 @@ export async function DELETE(
     const service = getServiceClient();
     const { groupId, announcementId } = params;
 
-    const { data: group } = await service.from('groups').select('tutor_id').eq('id', groupId).single();
-    if (!group || group.tutor_id !== user.id) {
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    if (actor.notFound) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+    if (!actor.authorized) {
       return NextResponse.json({ error: 'Only the tutor can delete announcements' }, { status: 403 });
     }
 
@@ -69,6 +73,7 @@ export async function DELETE(
       .eq('group_id', groupId);
 
     if (error) throw error;
+    await auditAdminOverride(actor, 'announcement.delete', { announcementId });
 
     return NextResponse.json({ success: true });
   } catch (err) {

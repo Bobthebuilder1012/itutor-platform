@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 
 type Params = { params: Promise<{ groupId: string; sessionId: string }> };
 
@@ -16,15 +17,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     }
 
     const service = getServiceClient();
-    const { data: group } = await service
-      .from('groups')
-      .select('tutor_id')
-      .eq('id', groupId)
-      .single();
-
-    if (!group || group.tutor_id !== user.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    if (actor.notFound) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+    if (!actor.authorized) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const body = await request.json();
     const updates: Record<string, unknown> = {};
@@ -42,6 +37,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       .single();
 
     if (error) throw error;
+
+    await auditAdminOverride(actor, 'session.update', { sessionId });
 
     // Notify approved members of schedule change
     const { data: members } = await service
@@ -84,15 +81,9 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     }
 
     const service = getServiceClient();
-    const { data: group } = await service
-      .from('groups')
-      .select('tutor_id')
-      .eq('id', groupId)
-      .single();
-
-    if (!group || group.tutor_id !== user.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    if (actor.notFound) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+    if (!actor.authorized) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const { error } = await service
       .from('group_sessions')
@@ -101,6 +92,8 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
       .eq('group_id', groupId);
 
     if (error) throw error;
+
+    await auditAdminOverride(actor, 'session.delete', { sessionId });
 
     return NextResponse.json({ success: true });
   } catch (err) {

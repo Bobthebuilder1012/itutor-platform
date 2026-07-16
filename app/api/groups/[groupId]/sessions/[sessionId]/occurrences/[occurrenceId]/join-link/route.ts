@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor } from '@/lib/auth/groupAccess';
 import { resolveSeriesMeetingLink } from '@/lib/services/groupMeetingLink';
 
 type Params = {
@@ -24,17 +25,14 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
     const service = getServiceClient();
 
-    const { data: group, error: groupError } = await service
-      .from('groups')
-      .select('id, tutor_id')
-      .eq('id', groupId)
-      .single();
-    if (groupError || !group) {
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    if (actor.notFound) {
       return NextResponse.json({ error: 'Group not found' }, { status: 404 });
     }
+    const group = actor.group;
 
-    // Access: tutor or approved member.
-    const isTutor = group.tutor_id === user.id;
+    // Access: tutor (or superadmin acting as tutor) or approved member.
+    const isTutor = actor.actingAsTutor;
     if (!isTutor) {
       const { data: membership } = await service
         .from('group_members')

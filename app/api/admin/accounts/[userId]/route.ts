@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/middleware/adminAuth';
+import { isSuperAdmin } from '@/lib/auth/adminAccess';
 import { getServiceClient } from '@/lib/supabase/server';
 import { logAdminAction } from '@/lib/services/adminAudit';
 import { createServerClient } from '@supabase/ssr';
@@ -178,6 +179,7 @@ export async function GET(
       },
       ratings,
       suspensionHistory,
+      is_superadmin: isSuperAdmin(auth.profile?.email),
     });
   } catch (error) {
     console.error('Error in GET /api/admin/accounts/[userId]:', error);

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 
 type Params = { params: Promise<{ groupId: string }> };
 export const dynamic = 'force-dynamic';
@@ -50,10 +51,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const service = getServiceClient();
-    const { data: group } = await service
-      .from('groups').select('tutor_id').eq('id', groupId).single();
-    if (!group || group.tutor_id !== user.id)
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    if (actor.notFound) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+    if (!actor.authorized) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const body = await req.json();
     const { kind, discount, student_cap, duration_days } = body;
@@ -71,7 +71,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       .from('group_promotions')
       .insert({
         group_id: groupId,
-        tutor_id: user.id,
+        tutor_id: actor.group.tutor_id,
         kind,
         discount,
         student_cap: kind === 'early-bird' ? student_cap : null,
@@ -89,6 +89,9 @@ export async function POST(req: NextRequest, { params }: Params) {
         { status: 500 }
       );
     }
+
+    await auditAdminOverride(actor, 'promotion.create', { kind, discount });
+
     return NextResponse.json({ promotion: data }, { status: 201 });
   } catch (err) {
     console.error('[POST promotions]', err);
@@ -108,14 +111,21 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
 
     const service = getServiceClient();
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    if (actor.notFound) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+    if (!actor.authorized) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
     const { error } = await service
       .from('group_promotions')
       .update({ active: false })
       .eq('id', id)
       .eq('group_id', groupId)
-      .eq('tutor_id', user.id);
+      .eq('tutor_id', actor.group.tutor_id);
 
     if (error) throw error;
+
+    await auditAdminOverride(actor, 'promotion.delete', { promotionId: id });
+
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error('[DELETE promotions]', err);

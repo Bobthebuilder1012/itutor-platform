@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 
 type Params = { params: Promise<{ groupId: string; userId: string }> };
 
@@ -15,15 +16,14 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
     const service = getServiceClient();
 
-    const { data: group } = await service
-      .from('groups')
-      .select('tutor_id, name')
-      .eq('id', groupId)
-      .single();
-
-    if (!group || group.tutor_id !== user.id) {
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    if (actor.notFound) {
+      return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+    }
+    if (!actor.authorized) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+    const group = actor.group;
 
     // Delete the membership row — student must rejoin from scratch
     const { error } = await service
@@ -33,6 +33,8 @@ export async function POST(_req: NextRequest, { params }: Params) {
       .eq('user_id', userId);
 
     if (error) throw error;
+
+    await auditAdminOverride(actor, 'member.pardon', { targetUserId: userId });
 
     // Notify student they can rejoin
     try {

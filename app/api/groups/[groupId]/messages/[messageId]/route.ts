@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 import type { PatchGroupMessageInput } from '@/lib/types/groups';
 
 type Params = { params: Promise<{ groupId: string; messageId: string }> };
@@ -17,13 +18,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     }
 
     const service = getServiceClient();
-    const { data: group } = await service
-      .from('groups')
-      .select('tutor_id')
-      .eq('id', groupId)
-      .single();
-
-    if (!group || group.tutor_id !== user.id) {
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    if (actor.notFound) {
+      return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+    }
+    if (!actor.authorized) {
       return NextResponse.json({ error: 'Forbidden — only the tutor can pin or lock messages' }, { status: 403 });
     }
 
@@ -45,6 +44,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       .single();
 
     if (error) throw error;
+
+    await auditAdminOverride(actor, 'message.update', { messageId, fields: Object.keys(updates) });
 
     return NextResponse.json({ message });
   } catch (err) {
@@ -71,14 +72,9 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
       .eq('id', messageId)
       .single();
 
-    const { data: group } = await service
-      .from('groups')
-      .select('tutor_id')
-      .eq('id', groupId)
-      .single();
-
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
     const isSender = msg?.sender_id === user.id;
-    const isTutor = group?.tutor_id === user.id;
+    const isTutor = actor.actingAsTutor;
 
     if (!isSender && !isTutor) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -90,6 +86,8 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
       .eq('id', messageId);
 
     if (error) throw error;
+
+    await auditAdminOverride(actor, 'message.delete', { messageId });
 
     return NextResponse.json({ success: true });
   } catch (err) {

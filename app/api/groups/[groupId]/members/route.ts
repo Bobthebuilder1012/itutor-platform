@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor } from '@/lib/auth/groupAccess';
 
 type Params = { params: Promise<{ groupId: string }> };
 function isSchemaMismatch(error: any): boolean {
@@ -22,14 +23,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
     const service = getServiceClient();
 
-    // Check if user is tutor of this group
-    const { data: group } = await service
-      .from('groups')
-      .select('tutor_id')
-      .eq('id', groupId)
-      .single();
-
-    const isTutor = group?.tutor_id === user.id;
+    // Tutor (or a superadmin acting as tutor) sees all members; others see only
+    // approved/active/invited.
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    const isTutor = actor.actingAsTutor;
 
     let query: any = service
       .from('group_members')

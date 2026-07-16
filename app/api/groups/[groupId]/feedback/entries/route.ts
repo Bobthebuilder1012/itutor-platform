@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 
 type Params = { params: Promise<{ groupId: string }> };
 
@@ -14,9 +15,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const { groupId } = await params;
     const service = getServiceClient();
 
-    const { data: group } = await service.from('groups').select('tutor_id').eq('id', groupId).single();
-    if (!group) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
-    if (group.tutor_id !== user.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    if (actor.notFound) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+    if (!actor.authorized) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const body = await req.json();
     const { entry_id, action, rating_participation, rating_understanding, rating_effort, comment } = body;
@@ -55,6 +56,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     } else {
       return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
     }
+
+    await auditAdminOverride(actor, 'feedback.entry.update', { entryId: entry_id, action });
 
     return NextResponse.json({ success: true });
   } catch (err) {

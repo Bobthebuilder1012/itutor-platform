@@ -32,6 +32,8 @@ export default function AdminClassesPage() {
   const [classes, setClasses] = useState<AdminClass[]>([]);
   const [filter, setFilter] = useState<Filter>('all');
   const [search, setSearch] = useState('');
+  const [tutorQuery, setTutorQuery] = useState('');
+  const [isSuperadmin, setIsSuperadmin] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState('');
 
@@ -51,16 +53,18 @@ export default function AdminClassesPage() {
     try {
       const params = new URLSearchParams({ filter });
       if (search.trim()) params.set('search', search.trim());
+      if (tutorQuery.trim()) params.set('tutor', tutorQuery.trim());
       const res = await fetch(`/api/admin/classes?${params.toString()}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to load classes');
       setClasses(data.classes ?? []);
+      setIsSuperadmin(!!data.is_superadmin);
     } catch (e: any) {
       setError(e.message);
     } finally {
       setLoading(false);
     }
-  }, [filter, search]);
+  }, [filter, search, tutorQuery]);
 
   useEffect(() => {
     if (!authLoading) load();
@@ -128,6 +132,13 @@ export default function AdminClassesPage() {
             placeholder="Search by class name…"
             className="flex-1 min-w-[200px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-itutor-green"
           />
+          <input
+            type="text"
+            value={tutorQuery}
+            onChange={(e) => setTutorQuery(e.target.value)}
+            placeholder="Filter by tutor name or email…"
+            className="flex-1 min-w-[200px] px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-itutor-green"
+          />
         </div>
 
         <div className="rounded-xl border border-gray-200 overflow-hidden bg-white shadow-sm">
@@ -169,6 +180,15 @@ export default function AdminClassesPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-2">
+                          {isSuperadmin && (
+                            <Link
+                              href={`/tutor/classes/${cls.id}`}
+                              className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-itutor-green text-itutor-green hover:bg-emerald-50 transition"
+                              title="Open this class and act as the tutor. Every change is logged."
+                            >
+                              Enter class
+                            </Link>
+                          )}
                           <button
                             onClick={() => toggleArchive(cls)}
                             disabled={busyId === cls.id}

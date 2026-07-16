@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateUser, requireGroupOwner } from '@/lib/api/groupAuth';
+import { resolveGroupActor } from '@/lib/auth/groupAccess';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { createMeeting } from '@/lib/services/videoProviders';
 import { isLinkStillValid } from '@/lib/utils/meetingLink';
@@ -27,14 +28,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
       .eq('user_id', user.id)
       .maybeSingle();
 
-    // Also allow the tutor themselves
-    const { data: group } = await service
-      .from('groups')
-      .select('tutor_id, meeting_link')
-      .eq('id', groupId)
-      .single();
-
-    const isTutor = group?.tutor_id === user.id;
+    // Also allow the tutor themselves (or a superadmin acting as tutor)
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email, columns: 'meeting_link' });
+    const group = actor.group;
+    const isTutor = actor.actingAsTutor;
     const isMember = membership && ['approved', 'active'].includes(membership.status);
 
     if (!isTutor && !isMember) {

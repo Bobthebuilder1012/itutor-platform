@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 import type { UpdateGroupInput } from '@/lib/types/groups';
 import { generateUpcomingSessions } from '@/lib/recurrence';
 
@@ -350,13 +351,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     }
 
     const service = getServiceClient();
-    const { data: existing } = await service
-      .from('groups')
-      .select('tutor_id')
-      .eq('id', groupId)
-      .single();
-
-    if (!existing || existing.tutor_id !== user.id) {
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    if (actor.notFound) {
+      return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+    }
+    if (!actor.authorized) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -486,6 +485,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       await generateUpcomingSessions(groupId, 60);
     }
 
+    await auditAdminOverride(actor, 'class.update', { fields: Object.keys(updates).filter((k) => k !== 'updated_at') });
+
     return NextResponse.json({ group });
   } catch (err) {
     console.error('[PATCH /api/groups/[groupId]]', err);
@@ -504,17 +505,11 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
     }
 
     const service = getServiceClient();
-    const { data: existing, error: existingError } = await service
-      .from('groups')
-      .select('id, tutor_id')
-      .eq('id', groupId)
-      .single();
-
-    if (existingError?.code === 'PGRST116' || !existing) {
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    if (actor.notFound) {
       return NextResponse.json({ error: 'Group not found' }, { status: 404 });
     }
-    if (existingError) throw existingError;
-    if (existing.tutor_id !== user.id) {
+    if (!actor.authorized) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -595,6 +590,8 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
       }
       throw deleteError;
     }
+
+    await auditAdminOverride(actor, 'class.delete');
 
     return NextResponse.json({ success: true });
   } catch (err) {

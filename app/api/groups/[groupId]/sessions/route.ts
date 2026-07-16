@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import type { CreateGroupSessionInput, DayOfWeek } from '@/lib/types/groups';
+import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 
 type Params = { params: Promise<{ groupId: string }> };
 function isSchemaMismatch(error: any): boolean {
@@ -111,15 +112,9 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
 
     const service = getServiceClient();
-    const { data: group } = await service
-      .from('groups')
-      .select('tutor_id')
-      .eq('id', groupId)
-      .single();
-
-    if (!group || group.tutor_id !== user.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    if (actor.notFound) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+    if (!actor.authorized) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const body: CreateGroupSessionInput = await request.json();
 
@@ -153,6 +148,8 @@ export async function POST(request: NextRequest, { params }: Params) {
         .insert(occurrences.map((o) => ({ ...o, group_session_id: session.id })));
       if (occError) throw occError;
     }
+
+    await auditAdminOverride(actor, 'session.create', { sessionId: session.id });
 
     // Notify approved members of new session
     const { data: members } = await service

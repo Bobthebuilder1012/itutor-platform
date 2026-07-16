@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerClient } from '@/lib/supabase/server';
+import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 import { classSettingsSchema } from '@/lib/validation/classSettings';
 
 export const dynamic = 'force-dynamic';
@@ -16,16 +17,20 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 });
     }
 
-    // Verify ownership + not archived
-    const { data: existing, error: existingError } = await supabase
-      .from('groups')
-      .select('tutor_id, archived_at, whatsapp_link, google_classroom_link, feedback_mode, parent_feedback_price, primary_channel, meeting_link')
-      .eq('id', classId)
-      .maybeSingle();
-
-    if (existingError) throw existingError;
-    if (!existing) return NextResponse.json({ ok: false, error: 'not_found' }, { status: 404 });
-    if (existing.tutor_id !== user.id) return NextResponse.json({ ok: false, error: 'forbidden' }, { status: 403 });
+    // Verify ownership (or superadmin acting as tutor) + not archived. Use the
+    // service client for the read AND all writes below: this route otherwise
+    // reads/writes `groups` via the RLS client, which would silently deny an
+    // admin override (groups UPDATE is tutor-only under RLS).
+    const service = getServiceClient();
+    const actor = await resolveGroupActor({
+      groupId: classId,
+      userId: user.id,
+      email: user.email,
+      columns: 'whatsapp_link, google_classroom_link, feedback_mode, parent_feedback_price, primary_channel, meeting_link, visibility',
+    });
+    if (actor.notFound) return NextResponse.json({ ok: false, error: 'not_found' }, { status: 404 });
+    if (!actor.authorized) return NextResponse.json({ ok: false, error: 'forbidden' }, { status: 403 });
+    const existing = actor.group;
     if (existing.archived_at) return NextResponse.json({ ok: false, error: 'class_archived' }, { status: 410 });
 
     // Validate body
@@ -79,7 +84,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (input.pricing_model !== undefined) updates.pricing_model = input.pricing_model;
     if (input.member_service_fee !== undefined) updates.member_service_fee = input.member_service_fee;
 
-    const { data: updated, error: updateError } = await supabase
+    const { data: updated, error: updateError } = await service
       .from('groups')
       .update(updates)
       .eq('id', classId)
@@ -94,22 +99,24 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
     if (prevMode === 'off' && newMode !== 'off') {
       // Enabling feedback: upsert feedback settings row
-      await supabase
+      await service
         .from('group_feedback_settings')
         .upsert({ group_id: classId, enabled: true }, { onConflict: 'group_id' })
         .select();
     } else if (prevMode !== 'off' && newMode === 'off') {
       // Disabling feedback: close active periods + disable settings
-      await supabase
+      await service
         .from('group_feedback_periods')
         .update({ period_end: new Date().toISOString() })
         .eq('group_id', classId)
         .is('period_end', null);
-      await supabase
+      await service
         .from('group_feedback_settings')
         .update({ enabled: false })
         .eq('group_id', classId);
     }
+
+    await auditAdminOverride(actor, 'settings.update', { fields: Object.keys(updates) });
 
     return NextResponse.json({ ok: true, class: updated });
   } catch (err) {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor, auditAdminOverride, type GroupActor } from '@/lib/auth/groupAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,16 +9,13 @@ type Params = { params: Promise<{ groupId: string; postId: string }> };
 async function resolveUser(groupId: string) {
   const supabase = await getServerClient();
   const { data: { user }, error } = await supabase.auth.getUser();
-  if (error || !user) return { user: null, group: null, isTutor: false };
+  if (error || !user) return { user: null, group: null, isTutor: false, actor: null as GroupActor | null };
 
   const service = getServiceClient();
-  const { data: group } = await service
-    .from('groups')
-    .select('id, tutor_id')
-    .eq('id', groupId)
-    .single();
+  const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+  const group = actor.notFound ? null : actor.group;
 
-  return { user, group, isTutor: group?.tutor_id === user.id, service };
+  return { user, group, isTutor: actor.actingAsTutor, service, actor };
 }
 
 // GET /api/groups/[groupId]/stream/post/[postId]/private-comments
@@ -58,7 +56,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const { groupId, postId } = await params;
-    const { user, group, isTutor, service } = await resolveUser(groupId);
+    const { user, group, isTutor, service, actor } = await resolveUser(groupId);
     if (!user || !group) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json();
@@ -78,6 +76,8 @@ export async function POST(req: NextRequest, { params }: Params) {
       .single();
 
     if (error) throw error;
+
+    if (actor) await auditAdminOverride(actor, 'private_comment.create', { postId, studentId });
 
     return NextResponse.json({ comment }, { status: 201 });
   } catch (err) {

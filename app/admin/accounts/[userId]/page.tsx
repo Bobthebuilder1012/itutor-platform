@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import Link from 'next/link';
 import DashboardLayout from '@/components/DashboardLayout';
 import AdminBreadcrumb from '@/components/admin/AdminBreadcrumb';
 import AdminAccountControls from '@/components/admin/AdminAccountControls';
@@ -17,6 +18,7 @@ interface AccountDetails {
   };
   ratings: any;
   suspensionHistory: any;
+  is_superadmin?: boolean;
 }
 
 export default function AccountDetailsPage() {
@@ -124,7 +126,7 @@ export default function AccountDetailsPage() {
     return null;
   }
 
-  const { profile: userProfile, additionalData, statistics, ratings, suspensionHistory } = accountDetails;
+  const { profile: userProfile, additionalData, statistics, ratings, suspensionHistory, is_superadmin: isSuperadmin } = accountDetails;
 
   return (
     <DashboardLayout role={profile.role === 'admin' ? 'admin' : 'reviewer'} userName={profile.full_name || 'Admin'}>
@@ -346,6 +348,30 @@ export default function AccountDetailsPage() {
               {additionalData.subjects.length === 0 && (
                 <p className="text-gray-500 col-span-2">No subjects listed</p>
               )}
+            </div>
+          </div>
+        )}
+        {/* Classes — superadmins can enter any of the tutor's classes and act as the tutor */}
+        {userProfile.role === 'tutor' && isSuperadmin && (additionalData.classes ?? []).length > 0 && (
+          <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
+            <h2 className="text-xl font-bold text-gray-900 mb-1">Classes</h2>
+            <p className="text-sm text-gray-500 mb-4">Open a class to view and edit it as the tutor. Every change is logged.</p>
+            <div className="divide-y divide-gray-100">
+              {(additionalData.classes ?? []).map((c: any) => (
+                <div key={c.id} className="flex items-center justify-between py-2.5">
+                  <div className="min-w-0">
+                    <p className="font-medium text-gray-900 truncate">{c.name || 'Untitled class'}</p>
+                    {c.archived_at && <p className="text-xs text-amber-700">Archived</p>}
+                  </div>
+                  <Link
+                    href={`/tutor/classes/${c.id}`}
+                    className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border border-itutor-green text-itutor-green hover:bg-emerald-50 transition"
+                    title="Open this class and act as the tutor. Every change is logged."
+                  >
+                    Enter class
+                  </Link>
+                </div>
+              ))}
             </div>
           </div>
         )}

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor } from '@/lib/auth/groupAccess';
 import { extractStoragePath } from '@/lib/utils/signedAttachmentUrl';
 
 type Params = { params: Promise<{ groupId: string; attachmentId: string }> };
@@ -26,9 +27,9 @@ export async function GET(req: NextRequest, { params }: Params) {
     const service = getServiceClient();
 
     // Access: tutor or approved/active member of this group.
-    const { data: group } = await service.from('groups').select('tutor_id').eq('id', groupId).maybeSingle();
-    if (!group) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
-    const isTutor = group.tutor_id === user.id;
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    if (actor.notFound) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+    const isTutor = actor.actingAsTutor;
     if (!isTutor) {
       const { data: membership } = await service
         .from('group_members')

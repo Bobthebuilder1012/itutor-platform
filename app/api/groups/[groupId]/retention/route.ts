@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor } from '@/lib/auth/groupAccess';
 
 type Params = { params: Promise<{ groupId: string }> };
 
@@ -14,8 +15,8 @@ export async function GET(req: NextRequest, { params }: Params) {
     const { groupId } = await params;
     const service = getServiceClient();
 
-    const { data: group } = await service.from('groups').select('tutor_id').eq('id', groupId).single();
-    if (!group || group.tutor_id !== user.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    if (!actor.authorized) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const monthsParam = req.nextUrl.searchParams.get('months');
     const monthsBack = monthsParam ? Number.parseInt(monthsParam, 10) : 12;

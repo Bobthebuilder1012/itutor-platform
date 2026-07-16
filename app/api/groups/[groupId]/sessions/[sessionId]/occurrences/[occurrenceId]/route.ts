@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 import { resolveSeriesMeetingLink } from '@/lib/services/groupMeetingLink';
 
 type Params = { params: Promise<{ groupId: string; sessionId: string; occurrenceId: string }> };
@@ -22,17 +23,13 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
     const service = getServiceClient();
 
-    const { data: group, error: groupError } = await service
-      .from('groups')
-      .select('id, tutor_id')
-      .eq('id', groupId)
-      .single();
-    if (groupError || !group) {
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    if (actor.notFound) {
       return NextResponse.json({ error: 'Group not found' }, { status: 404 });
     }
 
     // Access: tutor or approved member.
-    const isTutor = group.tutor_id === user.id;
+    const isTutor = actor.actingAsTutor;
     if (!isTutor) {
       const { data: membership } = await service
         .from('group_members')
@@ -47,13 +44,15 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
     const result = await resolveSeriesMeetingLink({
       groupId,
-      tutorId: group.tutor_id,
+      tutorId: actor.group.tutor_id,
       sessionId,
       occurrenceId,
     });
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
+
+    await auditAdminOverride(actor, 'session.occurrence.update', { sessionId, occurrenceId });
 
     // Best-effort attendance mark for a joining student (non-critical).
     if (!isTutor) {
@@ -64,7 +63,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
             student_id: user.id,
             status: 'PRESENT',
             marked_at: new Date().toISOString(),
-            marked_by_id: group.tutor_id,
+            marked_by_id: actor.group.tutor_id,
             updated_at: new Date().toISOString(),
           },
           { onConflict: 'session_id,student_id' }
@@ -102,15 +101,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const body = await req.json().catch(() => ({}));
 
     const service = getServiceClient();
-    const { data: group } = await service
-      .from('groups')
-      .select('tutor_id')
-      .eq('id', groupId)
-      .single();
-
-    if (!group || group.tutor_id !== user.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    if (actor.notFound) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+    if (!actor.authorized) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const update: Record<string, any> = {};
     if (body?.action === 'restore') {
@@ -147,6 +140,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
     if (error) throw error;
 
+    await auditAdminOverride(actor, 'session.occurrence.update', { sessionId, occurrenceId });
+
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error('[PATCH occurrence]', err);
@@ -178,13 +173,9 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     }
 
     const service = getServiceClient();
-    const { data: group } = await service
-      .from('groups')
-      .select('tutor_id')
-      .eq('id', groupId)
-      .single();
-
-    if (!group || group.tutor_id !== user.id) {
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    if (actor.notFound) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+    if (!actor.authorized) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -198,6 +189,8 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
       .eq('group_session_id', sessionId);
 
     if (error) throw error;
+
+    await auditAdminOverride(actor, 'session.occurrence.delete', { sessionId, occurrenceId });
 
     return NextResponse.json({ success: true });
   } catch (err) {

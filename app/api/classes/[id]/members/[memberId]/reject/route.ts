@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerClient } from '@/lib/supabase/server';
+import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,17 +17,18 @@ export async function POST(req: NextRequest, { params }: Params) {
       return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 });
     }
 
-    const { data: group } = await supabase
-      .from('groups')
-      .select('tutor_id')
-      .eq('id', classId)
-      .maybeSingle();
-
-    if (!group || group.tutor_id !== user.id) {
+    // Verify tutor owns the class (or superadmin acting as tutor). Service client
+    // for the member read/update so an admin override isn't RLS-blocked.
+    const service = getServiceClient();
+    const actor = await resolveGroupActor({ groupId: classId, userId: user.id, email: user.email });
+    if (actor.notFound) {
+      return NextResponse.json({ ok: false, error: 'not_found' }, { status: 404 });
+    }
+    if (!actor.authorized) {
       return NextResponse.json({ ok: false, error: 'forbidden' }, { status: 403 });
     }
 
-    const { data: member, error: memberError } = await supabase
+    const { data: member, error: memberError } = await service
       .from('group_members')
       .select('id, user_id, status')
       .eq('id', memberId)
@@ -42,7 +44,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     const body = await req.json().catch(() => ({}));
     const reason: string | null = body.reason ?? null;
 
-    const { data: updated, error: updateError } = await supabase
+    const { data: updated, error: updateError } = await service
       .from('group_members')
       .update({ status: 'rejected', status_changed_at: new Date().toISOString(), status_changed_by: user.id, status_reason: reason })
       .eq('id', memberId)
@@ -52,10 +54,12 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (updateError) throw updateError;
 
     // Notify the student
-    await supabase
+    await service
       .from('notifications')
       .insert({ user_id: member.user_id, type: 'class_invite', group_id: classId, actor_id: user.id })
       .select();
+
+    await auditAdminOverride(actor, 'member.reject', { memberId, targetUserId: member.user_id, reason });
 
     return NextResponse.json({ ok: true, member: updated });
   } catch (err) {

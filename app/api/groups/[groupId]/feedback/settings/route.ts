@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 
 type Params = { params: Promise<{ groupId: string }> };
 
@@ -14,9 +15,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const { groupId } = await params;
     const service = getServiceClient();
 
-    const { data: group } = await service.from('groups').select('tutor_id').eq('id', groupId).single();
-    if (!group) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
-    if (group.tutor_id !== user.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    if (actor.notFound) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+    if (!actor.authorized) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const { data: settings } = await service
       .from('group_feedback_settings')
@@ -50,9 +51,9 @@ export async function PUT(req: NextRequest, { params }: Params) {
     const { groupId } = await params;
     const service = getServiceClient();
 
-    const { data: group } = await service.from('groups').select('tutor_id').eq('id', groupId).single();
-    if (!group) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
-    if (group.tutor_id !== user.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    if (actor.notFound) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+    if (!actor.authorized) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const body = await req.json();
     const payload = {
@@ -77,6 +78,8 @@ export async function PUT(req: NextRequest, { params }: Params) {
     if (payload.enabled) {
       await ensureCurrentPeriod(service, groupId, payload.frequency, payload.deadline_days);
     }
+
+    await auditAdminOverride(actor, 'feedback.settings.update', { enabled: payload.enabled });
 
     return NextResponse.json({ settings: data });
   } catch (err: any) {

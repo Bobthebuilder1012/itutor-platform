@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
-import { authenticateUser, requireGroupOwner } from '@/lib/api/groupAuth';
+import { authenticateUser } from '@/lib/api/groupAuth';
+import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 import { fail, ok } from '@/lib/api/http';
 import { generateUpcomingSessions } from '@/lib/recurrence';
 import { getServiceClient } from '@/lib/supabase/server';
@@ -14,18 +15,13 @@ export async function POST(_req: NextRequest, { params }: Params) {
     if (!user) return fail('Unauthorized', 401);
 
     const { groupId } = await params;
-    const isOwner = await requireGroupOwner(groupId, user.id);
-    if (!isOwner) return fail('Forbidden', 403);
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email, columns: 'subject' });
+    if (actor.notFound) return fail('Group not found', 404);
+    if (!actor.authorized) return fail('Forbidden', 403);
 
     const service = getServiceClient();
+    const group = actor.group;
 
-    const { data: group } = await service
-      .from('groups')
-      .select('id, name, subject')
-      .eq('id', groupId)
-      .single();
-
-    if (!group) return fail('Group not found', 404);
     if (!group.name || !group.subject) return fail('Group missing required fields', 400);
 
     const { data: sessions } = await service
@@ -46,6 +42,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
     if (error) return fail(error.message, 500);
 
     await generateUpcomingSessions(groupId, 60);
+    await auditAdminOverride(actor, 'class.publish');
     return ok(updated);
   } catch (error: any) {
     return fail(error?.message ?? 'Internal server error', 500);

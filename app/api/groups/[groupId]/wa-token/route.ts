@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor } from '@/lib/auth/groupAccess';
 
 type Params = { params: Promise<{ groupId: string }> };
 export const dynamic = 'force-dynamic';
@@ -21,23 +22,18 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
     const service = getServiceClient();
 
-    // 2. Group must exist and have a WhatsApp link configured
-    const { data: group } = await service
-      .from('groups')
-      .select('id, tutor_id, whatsapp_link')
-      .eq('id', groupId)
-      .is('archived_at', null)
-      .single();
-
-    if (!group) {
+    // 2. Group must exist (not archived) and have a WhatsApp link configured
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email, columns: 'whatsapp_link' });
+    const group = actor.group;
+    if (actor.notFound || group.archived_at) {
       return NextResponse.json({ error: 'Group not found' }, { status: 404 });
     }
     if (!group.whatsapp_link) {
       return NextResponse.json({ error: 'No WhatsApp link configured' }, { status: 404 });
     }
 
-    // 3. Must be the tutor or an approved member
-    const isTutor = group.tutor_id === user.id;
+    // 3. Must be the tutor (or superadmin acting as tutor) or an approved member
+    const isTutor = actor.actingAsTutor;
     if (!isTutor) {
       const { data: membership } = await service
         .from('group_members')
