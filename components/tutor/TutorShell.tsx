@@ -48,9 +48,17 @@ export default function TutorShell({ children }: { children: ReactNode }) {
     try { const v = localStorage.getItem(COLLAPSE_KEY); if (v) setCollapsed(v === '1'); } catch {}
   }, []);
 
+  // A class detail page (/tutor/classes/<id>) is the one place a non-tutor may
+  // pass through the shell: an admin using "Enter as Tutor". The class page's
+  // own gate probes /api/admin/classes/[id]/access and enforces the superadmin
+  // check (redirecting if unauthorized), so the shell must not pre-empt it.
+  // Every other /tutor/* path stays strictly tutor-only.
+  const isClassDetailPage = /^\/tutor\/classes\/[^/]+$/.test(pathname);
   useEffect(() => {
-    if (!loading && profile && profile.role !== 'tutor') router.replace('/login');
-  }, [loading, profile, router]);
+    if (!loading && profile && profile.role !== 'tutor' && !isClassDetailPage) {
+      router.replace('/login');
+    }
+  }, [loading, profile, router, isClassDetailPage]);
 
   useEffect(() => {
     if (!profile?.id) return;
@@ -80,6 +88,19 @@ export default function TutorShell({ children }: { children: ReactNode }) {
     e.preventDefault();
     router.push(`/tutor/students${query.trim() ? `?q=${encodeURIComponent(query.trim())}` : ''}`);
   };
+
+  // Admin "Enter as Tutor": render the class page WITHOUT the tutor sidebar/nav
+  // and "get listed" chrome, which would be misleading for an admin. The class
+  // page supplies its own "Viewing as admin" banner and back link. Padding
+  // matches the normal <main> so the page's negative-margin banner lines up.
+  const isAdminViewing = !loading && !!profile && profile.role !== 'tutor' && isClassDetailPage;
+  if (isAdminViewing) {
+    return (
+      <div className="min-h-screen overflow-y-auto bg-background">
+        <main className="px-4 lg:px-8 py-6 lg:py-8">{children}</main>
+      </div>
+    );
+  }
 
   const initials = (profile?.full_name || profile?.email || 'T').split(' ').map((s) => s[0]).join('').slice(0, 2).toUpperCase();
   const profileMenuProps = {
