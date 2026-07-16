@@ -26,12 +26,16 @@ const ACCENT: Record<NonNullable<PublicClass['accent']>, string> = {
 // Both "Join"/"Join waitlist" and "View" open the canonical class page
 // (/student/explore/[groupId]), which itself resolves the correct CTA
 // (join / request / waitlist / open) and handles paid vs free enrollment.
+// In `readOnly` mode (a tutor previewing their own public profile) the footer
+// shows a passive "Student view" label instead of the live action buttons.
 export default function PublicClassCard({
   c,
   onOpen,
+  readOnly = false,
 }: {
   c: PublicClass;
   onOpen: (classId: string) => void;
+  readOnly?: boolean;
 }) {
   const full = c.spaces ? c.spaces.taken >= c.spaces.total : false;
   const pct = c.spaces && c.spaces.total > 0 ? Math.min(100, (c.spaces.taken / c.spaces.total) * 100) : 0;
@@ -83,20 +87,28 @@ export default function PublicClassCard({
       )}
 
       <div className="mt-3 flex items-center gap-2 border-t border-border p-3">
-        <button
-          onClick={() => onOpen(c.id)}
-          className={`inline-flex flex-1 items-center justify-center gap-1 rounded-2xl px-3 py-2 text-xs font-semibold transition ${
-            full ? 'bg-muted text-ink hover:bg-mint' : 'bg-brand text-white hover:bg-brand-deep'
-          }`}
-        >
-          {full ? 'Join waitlist' : (<><Check className="size-3.5" /> Join class</>)}
-        </button>
-        <button
-          onClick={() => onOpen(c.id)}
-          className="inline-flex items-center gap-0.5 rounded-2xl border border-border px-3 py-2 text-xs font-semibold text-ink hover:bg-mint"
-        >
-          View
-        </button>
+        {readOnly ? (
+          <span className="inline-flex flex-1 items-center justify-center gap-1 rounded-2xl bg-muted px-3 py-2 text-xs font-semibold text-ink-muted">
+            Student view
+          </span>
+        ) : (
+          <>
+            <button
+              onClick={() => onOpen(c.id)}
+              className={`inline-flex flex-1 items-center justify-center gap-1 rounded-2xl px-3 py-2 text-xs font-semibold transition ${
+                full ? 'bg-muted text-ink hover:bg-mint' : 'bg-brand text-white hover:bg-brand-deep'
+              }`}
+            >
+              {full ? 'Join waitlist' : (<><Check className="size-3.5" /> Join class</>)}
+            </button>
+            <button
+              onClick={() => onOpen(c.id)}
+              className="inline-flex items-center gap-0.5 rounded-2xl border border-border px-3 py-2 text-xs font-semibold text-ink hover:bg-mint"
+            >
+              View
+            </button>
+          </>
+        )}
       </div>
     </article>
   );

@@ -11,9 +11,11 @@ const ACCENTS: NonNullable<PublicClass['accent']>[] = ['mint', 'sky', 'peach', '
 export default function ClassesSection({
   tutorId,
   tutorFirstName,
+  readOnly = false,
 }: {
   tutorId: string;
   tutorFirstName: string;
+  readOnly?: boolean;
 }) {
   const router = useRouter();
   const [classes, setClasses] = useState<PublicClass[] | null>(null);
@@ -101,7 +103,12 @@ export default function ClassesSection({
 
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         {classes.map((c) => (
-          <PublicClassCard key={c.id} c={c} onOpen={(id) => router.push(`/student/explore/${id}`)} />
+          <PublicClassCard
+            key={c.id}
+            c={c}
+            readOnly={readOnly}
+            onOpen={(id) => { if (!readOnly) router.push(`/student/explore/${id}`); }}
+          />
         ))}
       </div>
     </section>

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   Briefcase, Tag, BarChart3, FileText, Plus, Check, X, Sparkles,
-  Users, DollarSign, Star, BookOpen, Clock, Lock, Copy,
+  Users, DollarSign, Star, BookOpen, Clock, Lock, Copy, ExternalLink,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -15,6 +15,9 @@ import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { formatLevel } from '@/lib/utils/formatLevel';
 import TutorShell from '@/components/tutor/TutorShell';
 import QrCodePanel from '@/components/QrCodePanel';
+import ClassesSection from '@/components/tutor/public/ClassesSection';
+import ProfilePreviewPanel from '@/components/tutor/business/ProfilePreviewPanel';
+import { getDisplayName } from '@/lib/utils/displayName';
 
 type Tab = 'overview' | 'classes' | 'promotions' | 'analytics' | 'feedback';
 
@@ -156,21 +159,16 @@ function MyBusinessContent() {
   );
 }
 
-/* ----------- Overview ----------- */
-function OverviewTab({ activeClasses, totalRevenue, totalStudents, profile }: any) {
+/* ----------- Overview — read-only preview of the tutor's public profile ----------- */
+function OverviewTab({ activeClasses, profile }: any) {
   const [copied, setCopied] = useState(false);
   const url = typeof window !== 'undefined' ? `${window.location.origin}/tutors/${profile?.username || profile?.id}` : '';
+  const firstName = (getDisplayName(profile) || 'Tutor').split(' ')[0];
 
   return (
     <div className="space-y-6">
-      <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard icon={DollarSign} label="Revenue (all classes)" value={`TTD ${totalRevenue.toLocaleString()}`} delta="+18% MoM" positive />
-        <KpiCard icon={Users} label="Enrolled students" value={String(totalStudents)} delta="+2 this month" positive />
-        <KpiCard icon={BookOpen} label="Active classes" value={String(activeClasses.length)} />
-        <KpiCard icon={Star} label="Avg rating" value={activeClasses.length > 0 ? '4.8' : '—'} />
-      </section>
-
-      <section className="grid lg:grid-cols-2 gap-4">
+      {/* Share link + QR */}
+      <section className="grid md:grid-cols-2 gap-4">
         <div className="rounded-2xl bg-card border border-border p-5 space-y-3">
           <div className="font-bold text-ink">Your public profile</div>
           <p className="text-xs text-muted-foreground">Share your profile link with students to get new bookings.</p>
@@ -181,31 +179,55 @@ function OverviewTab({ activeClasses, totalRevenue, totalStudents, profile }: an
               {copied ? <Check className="size-3" /> : <Copy className="size-3" />} {copied ? 'Copied' : 'Copy'}
             </button>
           </div>
-          {profile?.id && (
-            <div className="pt-1">
-              <p className="text-xs font-semibold text-muted-foreground mb-2">Profile QR code</p>
-              <QrCodePanel tutorId={profile.id} classes={[]} />
-            </div>
-          )}
         </div>
 
         <div className="rounded-2xl bg-card border border-border p-5 space-y-3">
-          <div className="font-bold text-ink">Quick actions</div>
-          <div className="grid grid-cols-2 gap-2">
-            <Link href="/tutor/classes/new" className="rounded-xl border border-border p-3 text-sm font-semibold text-ink hover:bg-muted inline-flex items-center gap-2">
-              <Plus className="size-4 text-brand-deep" /> New Class
-            </Link>
-            <Link href="/tutor/reviews" className="rounded-xl border border-border p-3 text-sm font-semibold text-ink hover:bg-muted inline-flex items-center gap-2">
-              <Star className="size-4 text-amber-500" /> Reviews
-            </Link>
-            <Link href="/tutor/wallet" className="rounded-xl border border-border p-3 text-sm font-semibold text-ink hover:bg-muted inline-flex items-center gap-2">
-              <DollarSign className="size-4 text-emerald-600" /> Wallet
-            </Link>
-            <Link href="/tutor/sessions" className="rounded-xl border border-border p-3 text-sm font-semibold text-ink hover:bg-muted inline-flex items-center gap-2">
-              <Clock className="size-4 text-purple-600" /> Sessions
+          <div className="font-bold text-ink">QR code</div>
+          <p className="text-xs text-muted-foreground">Print it or show it in class — scanning opens your public profile.</p>
+          {profile?.id && <QrCodePanel tutorId={profile.id} classes={[]} />}
+        </div>
+      </section>
+
+      {/* Preview (what students see) + tips */}
+      <section className="grid lg:grid-cols-12 gap-4">
+        <div className="lg:col-span-8 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="font-bold text-ink">Preview</div>
+              <p className="text-xs text-muted-foreground">This is what students see on your public profile.</p>
+            </div>
+            {url && (
+              <a href={url} target="_blank" rel="noopener noreferrer" className="shrink-0 inline-flex items-center gap-1 text-xs font-semibold text-brand-deep hover:underline">
+                Open live profile <ExternalLink className="size-3.5" />
+              </a>
+            )}
+          </div>
+
+          <ProfilePreviewPanel profile={profile} />
+
+          {profile?.id && (
+            activeClasses.length > 0 ? (
+              <ClassesSection tutorId={profile.id} tutorFirstName={firstName} readOnly />
+            ) : (
+              <section className="rounded-3xl bg-background border border-border p-6 text-sm text-muted-foreground">
+                No classes yet — create one from{' '}
+                <Link href="/tutor/classes" className="font-semibold text-brand-deep hover:underline">My Classes</Link>.
+              </section>
+            )
+          )}
+        </div>
+
+        <aside className="lg:col-span-4">
+          <div className="lg:sticky lg:top-20 rounded-2xl bg-card border border-border p-5 space-y-2">
+            <div className="font-bold text-ink">Tips</div>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              A complete profile — a clear bio, subjects with rates, and an up-to-date class list — gets more bookings. Keep it fresh from your settings.
+            </p>
+            <Link href="/tutor/settings" className="inline-flex items-center gap-1 text-xs font-semibold text-brand-deep hover:underline">
+              Profile settings →
             </Link>
           </div>
-        </div>
+        </aside>
       </section>
     </div>
   );
