@@ -14,6 +14,7 @@ import { supabase } from '@/lib/supabase/client';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { formatLevel } from '@/lib/utils/formatLevel';
 import TutorShell from '@/components/tutor/TutorShell';
+import QrCodePanel from '@/components/QrCodePanel';
 
 type Tab = 'overview' | 'classes' | 'promotions' | 'analytics' | 'feedback';
 
@@ -147,7 +148,7 @@ function MyBusinessContent() {
       </div>
 
       {tab === 'overview'   && <OverviewTab activeClasses={activeClasses} totalRevenue={totalRevenue} totalStudents={totalStudents} profile={profile} />}
-      {tab === 'classes'    && <ClassesTab activeClasses={activeClasses} />}
+      {tab === 'classes'    && <ClassesTab activeClasses={activeClasses} tutorId={profile?.id} />}
       {tab === 'promotions' && <PromotionsTab classes={activeClasses} />}
       {tab === 'analytics'  && <BusinessAnalyticsTab classes={activeClasses} totalRevenue={totalRevenue} />}
       {tab === 'feedback'   && <FeedbackComingSoon />}
@@ -180,6 +181,12 @@ function OverviewTab({ activeClasses, totalRevenue, totalStudents, profile }: an
               {copied ? <Check className="size-3" /> : <Copy className="size-3" />} {copied ? 'Copied' : 'Copy'}
             </button>
           </div>
+          {profile?.id && (
+            <div className="pt-1">
+              <p className="text-xs font-semibold text-muted-foreground mb-2">Profile QR code</p>
+              <QrCodePanel tutorId={profile.id} classes={[]} />
+            </div>
+          )}
         </div>
 
         <div className="rounded-2xl bg-card border border-border p-5 space-y-3">
@@ -205,7 +212,7 @@ function OverviewTab({ activeClasses, totalRevenue, totalStudents, profile }: an
 }
 
 /* ----------- Classes ----------- */
-function ClassesTab({ activeClasses }: { activeClasses: any[] }) {
+function ClassesTab({ activeClasses, tutorId }: { activeClasses: any[]; tutorId?: string }) {
   const GRADIENTS = ['from-brand to-emerald-400', 'from-sky-500 to-cyan-400', 'from-orange-500 to-amber-400', 'from-fuchsia-500 to-purple-500', 'from-rose-500 to-pink-400', 'from-indigo-500 to-blue-500'];
 
   return (
@@ -303,6 +310,16 @@ function ClassesTab({ activeClasses }: { activeClasses: any[] }) {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {tutorId && activeClasses.length > 0 && (
+        <div className="rounded-2xl bg-card border border-border p-5 space-y-3 mt-2">
+          <div>
+            <h3 className="font-bold text-ink">QR codes</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">Download or share a QR code for each class. Scanning it opens the class&apos;s public page.</p>
+          </div>
+          <QrCodePanel tutorId={tutorId} showProfile={false} classes={activeClasses.map((c: any) => ({ id: c.id, name: c.name }))} />
         </div>
       )}
     </div>
