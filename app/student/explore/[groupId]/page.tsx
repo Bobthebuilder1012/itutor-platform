@@ -225,7 +225,7 @@ function Detail({ group, onJoin }: { group: GroupData; onJoin: () => void }) {
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 pb-32">
+    <div className="max-w-3xl mx-auto space-y-6 pb-44 sm:pb-32">
       <Link href="/student/find-tutors" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-ink">
         <ArrowLeft className="size-4" /> All classes
       </Link>
@@ -425,8 +425,10 @@ function Detail({ group, onJoin }: { group: GroupData; onJoin: () => void }) {
         </div>
       )}
 
-      {/* Sticky CTA */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 bg-background border-t border-border p-4 flex items-center gap-4 shadow-xl sm:relative sm:bottom-auto sm:rounded-2xl sm:border sm:shadow-none">
+      {/* Sticky CTA — on mobile it floats just above the shell's fixed bottom
+          nav (~67px, also bottom-0 z-40) instead of hiding behind it. On sm+ it
+          becomes an in-flow card at the end of the content. */}
+      <div className="fixed bottom-[4.5rem] left-0 right-0 z-40 bg-background border-t border-border p-4 flex items-center gap-4 shadow-xl sm:relative sm:bottom-auto sm:rounded-2xl sm:border sm:shadow-none">
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline gap-2 flex-wrap">
             {price > 0 ? (
