@@ -6,7 +6,7 @@ import Link from 'next/link';
 import DashboardLayout from '@/components/DashboardLayout';
 import AdminBreadcrumb from '@/components/admin/AdminBreadcrumb';
 import AdminAccountControls from '@/components/admin/AdminAccountControls';
-import AdminQrPanel from '@/components/admin/AdminQrPanel';
+import QrCodePanel from '@/components/QrCodePanel';
 import { useProfile } from '@/lib/hooks/useProfile';
 
 interface AccountDetails {
@@ -388,7 +388,7 @@ export default function AccountDetailsPage() {
           <div className="bg-white rounded-lg border border-gray-200 p-6 mt-6">
             <h2 className="text-xl font-bold text-gray-900 mb-1">QR codes</h2>
             <p className="text-sm text-gray-500 mb-4">Profile and per-class QR codes linking to the public pages.</p>
-            <AdminQrPanel
+            <QrCodePanel
               tutorId={userId}
               classes={(additionalData.classes ?? []).map((c: any) => ({ id: c.id, name: c.name }))}
             />

@@ -5,6 +5,12 @@ import { useEffect, useMemo, useState } from 'react';
 // QR codes are meant to be scanned in the real world, so they always encode the
 // public production domain regardless of which environment renders this panel.
 const PUBLIC_BASE = 'https://myitutor.com';
+// iTutor brand green (tailwind token `itutor-green`). Kept fully-opaque white
+// behind it — contrast is what keeps the code scannable.
+const BRAND_GREEN = '#199356';
+// Compact square brand mark for the centre overlay (small + square, unlike the
+// wordmark logos which are too wide to sit inside a QR).
+const LOGO_SRC = '/assets/logo/itutor-mark.png';
 
 type ClassLite = { id: string; name: string | null };
 
@@ -14,18 +20,33 @@ interface QrItem {
   url: string;
 }
 
-export default function AdminQrPanel({
+// Load the centre logo once. Resolves to null (rather than rejecting) if it
+// can't load, so we fall back to a plain — still brand-green — QR.
+function loadLogo(): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = LOGO_SRC;
+  });
+}
+
+export default function QrCodePanel({
   tutorId,
   classes,
+  showProfile = true,
 }: {
   tutorId: string;
   classes: ClassLite[];
+  showProfile?: boolean;
 }) {
   const classSig = classes.map((c) => c.id).join(',');
 
   const items = useMemo<QrItem[]>(
     () => [
-      { key: 'profile', label: 'Profile', url: `${PUBLIC_BASE}/tutors/${tutorId}` },
+      ...(showProfile
+        ? [{ key: 'profile', label: 'Profile', url: `${PUBLIC_BASE}/tutors/${tutorId}` }]
+        : []),
       ...classes.map((c) => ({
         key: `class-${c.id}`,
         label: c.name || 'Untitled class',
@@ -33,7 +54,7 @@ export default function AdminQrPanel({
       })),
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tutorId, classSig]
+    [tutorId, classSig, showProfile]
   );
 
   const [pngs, setPngs] = useState<Record<string, string>>({});
@@ -43,13 +64,38 @@ export default function AdminQrPanel({
     let cancelled = false;
     (async () => {
       const QRCode = (await import('qrcode')).default;
+      const logo = await loadLogo();
       const out: Record<string, string> = {};
       for (const it of items) {
+        const canvas = document.createElement('canvas');
         try {
-          out[it.key] = await QRCode.toDataURL(it.url, { width: 512, margin: 2 });
+          // Level 'H' error correction gives ~30% redundancy, enough to safely
+          // obscure the centre with the logo below.
+          await QRCode.toCanvas(canvas, it.url, {
+            width: 512,
+            margin: 2,
+            errorCorrectionLevel: 'H',
+            color: { dark: BRAND_GREEN, light: '#FFFFFFFF' },
+          });
         } catch {
-          /* skip a code that fails to render */
+          continue; // skip a code that fails to render
         }
+        // Composite the brand mark at ~20% width (well under the 'H' budget),
+        // on a white padding square so it never touches QR modules directly.
+        if (logo) {
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            const logoSize = Math.round(canvas.width * 0.2);
+            const pad = Math.round(logoSize * 0.16);
+            const box = logoSize + pad * 2;
+            const x = (canvas.width - box) / 2;
+            const y = (canvas.height - box) / 2;
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(x, y, box, box);
+            ctx.drawImage(logo, x + pad, y + pad, logoSize, logoSize);
+          }
+        }
+        out[it.key] = canvas.toDataURL('image/png');
       }
       if (!cancelled) setPngs(out);
     })();
