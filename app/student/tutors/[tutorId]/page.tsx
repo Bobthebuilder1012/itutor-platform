@@ -15,6 +15,7 @@ import {
   ThumbsUp, ThumbsDown,
 } from 'lucide-react';
 import { getTutorPublicCalendar } from '@/lib/services/bookingService';
+import ClassesSection from '@/components/tutor/public/ClassesSection';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -418,11 +419,8 @@ export default function TutorProfilePage() {
       setTutor(fetchedTutor);
       if (subjects.length === 1) setSelectedSubject(subjects[0]);
 
-      // Load real tutor availability
-      loadCalendar(tutorId)
-        .then(setSlots)
-        .catch((err) => console.error('Failed to load calendar:', err))
-        .finally(() => setCalendarLoading(false));
+      // Calendar availability is loaded lazily when the booking modal first
+      // opens (see loadCalendarOnce) — no always-visible sidebar needs it now.
     } catch (error) {
       console.error('Error fetching tutor profile:', error);
       alert('Failed to load tutor profile');
@@ -476,7 +474,18 @@ export default function TutorProfilePage() {
     setVoted((v) => ({ ...v, [id]: v[id] === dir ? undefined : dir }));
   };
 
-  const openBookingSheet = () => { setBookingStep(1); setPickedTime(null); setShowBookingSheet(true); };
+  // Load the tutor calendar once, lazily, the first time the booking modal opens.
+  const calendarStartedRef = useRef(false);
+  const loadCalendarOnce = () => {
+    if (calendarStartedRef.current) return;
+    calendarStartedRef.current = true;
+    setCalendarLoading(true);
+    loadCalendar(tutorId)
+      .then(setSlots)
+      .catch((err) => console.error('Failed to load calendar:', err))
+      .finally(() => setCalendarLoading(false));
+  };
+  const openBookingSheet = () => { setBookingStep(1); setPickedTime(null); setShowBookingSheet(true); loadCalendarOnce(); };
   const pricedSubjects = (tutor?.subjects ?? []).filter((s) => s.price_per_hour_ttd > 0);
   const minPrice = pricedSubjects.length ? Math.min(...pricedSubjects.map((s) => s.price_per_hour_ttd)) : 0;
   const priceLabel = !paidClassesEnabled ? 'Free' : (minPrice > 0 ? `TT$${minPrice}` : 'Rate not set');
@@ -554,20 +563,21 @@ export default function TutorProfilePage() {
               ))}
             </div>
 
-            <button onClick={openBookingSheet} className="mt-4 w-full sm:hidden inline-flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-brand text-white font-semibold">
+            <button onClick={openBookingSheet} className="mt-4 w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-brand text-white font-semibold hover:bg-brand-deep transition">
               <Video className="size-4" /> Book a 1:1{paidClassesEnabled && minPrice > 0 ? ` — TT$${minPrice}/hr` : ''}
             </button>
           </div>
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
+        <div className="space-y-6">
             {tutor.bio && (
               <section className="rounded-3xl bg-background border border-border p-6">
                 <h2 className="font-semibold text-ink mb-2">About</h2>
                 <p className="text-sm text-muted-foreground leading-relaxed">{tutor.bio}</p>
               </section>
             )}
+
+            <ClassesSection tutorId={tutorId} tutorFirstName={getDisplayName(tutor).split(' ')[0]} />
 
             <section className="rounded-3xl bg-background border border-border p-6">
               <h2 className="font-semibold text-ink mb-3">Subjects</h2>
@@ -634,33 +644,6 @@ export default function TutorProfilePage() {
                 </div>
               )}
             </section>
-          </div>
-
-          {/* Desktop booking sidebar */}
-          <aside className="hidden lg:block lg:sticky lg:top-20 self-start">
-            {calendarLoading ? (
-              <div className="rounded-2xl border border-border bg-card p-8 flex items-center justify-center min-h-[200px]">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand" />
-              </div>
-            ) : (
-            <BookingCard
-              priceLabel={priceLabel}
-              subjects={tutor.subjects}
-              pickedSubject={selectedSubject}
-              setPickedSubject={setSelectedSubject}
-              slots={slots}
-              pickedDay={pickedDay}
-              setPickedDay={setPickedDay}
-              pickedTime={pickedTime}
-              setPickedTime={setPickedTime}
-              duration={duration}
-              setDuration={setDuration}
-              scrollRef={dayScrollRef}
-              scrollDays={scrollDays}
-              onContinue={() => { setBookingStep(3); setShowBookingSheet(true); }}
-            />
-            )}
-          </aside>
         </div>
       </div>
 
