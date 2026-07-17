@@ -17,6 +17,7 @@ import TutorShell from '@/components/tutor/TutorShell';
 import QrCodePanel from '@/components/QrCodePanel';
 import ClassesSection from '@/components/tutor/public/ClassesSection';
 import ProfilePreviewPanel from '@/components/tutor/business/ProfilePreviewPanel';
+import ProfileQrCard from '@/components/tutor/business/ProfileQrCard';
 import { getDisplayName } from '@/lib/utils/displayName';
 
 type Tab = 'overview' | 'classes' | 'promotions' | 'analytics' | 'feedback';
@@ -167,24 +168,22 @@ function OverviewTab({ activeClasses, profile }: any) {
 
   return (
     <div className="space-y-6">
-      {/* Share link + QR */}
-      <section className="grid md:grid-cols-2 gap-4">
-        <div className="rounded-2xl bg-card border border-border p-5 space-y-3">
-          <div className="font-bold text-ink">Your public profile</div>
-          <p className="text-xs text-muted-foreground">Share your profile link with students to get new bookings.</p>
+      {/* Share link + QR — compact */}
+      <section className="grid md:grid-cols-2 gap-3">
+        <div className="rounded-2xl bg-card border border-border p-4 space-y-2">
+          <div className="text-sm font-bold text-ink">Share your profile</div>
           <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2">
             <span className="text-xs text-muted-foreground truncate font-mono flex-1">{url}</span>
             <button onClick={() => { navigator.clipboard?.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
-              className="text-xs font-semibold text-brand-deep hover:underline inline-flex items-center gap-1">
+              className="shrink-0 text-xs font-semibold text-brand-deep hover:underline inline-flex items-center gap-1">
               {copied ? <Check className="size-3" /> : <Copy className="size-3" />} {copied ? 'Copied' : 'Copy'}
             </button>
           </div>
         </div>
 
-        <div className="rounded-2xl bg-card border border-border p-5 space-y-3">
-          <div className="font-bold text-ink">QR code</div>
-          <p className="text-xs text-muted-foreground">Print it or show it in class — scanning opens your public profile.</p>
-          {profile?.id && <QrCodePanel tutorId={profile.id} classes={[]} />}
+        <div className="rounded-2xl bg-card border border-border p-4 space-y-2">
+          <div className="text-sm font-bold text-ink">QR code</div>
+          {profile?.id && <ProfileQrCard tutorId={profile.id} />}
         </div>
       </section>
 
