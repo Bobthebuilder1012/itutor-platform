@@ -221,10 +221,48 @@ export default function ExploreClassDetailPage() {
     );
   }
 
-  if (step === 'join') return <JoinFlow group={group} onBack={() => setStep('detail')} onSuccess={(s) => setStep(s)} profile={profile} hasLinkedParent={hasLinkedParent} />;
-  if (step === 'joined') return <JoinedScreen group={group} kind="enrolled" />;
-  if (step === 'awaiting-approval') return <JoinedScreen group={group} kind="awaiting-approval" />;
-  return <Detail group={group} onJoin={() => setStep('join')} />;
+  return (
+    <>
+      <Detail group={group} onJoin={() => setStep('join')} />
+      {step !== 'detail' && (
+        <Modal onClose={() => setStep('detail')}>
+          {step === 'join' && (
+            <JoinFlow group={group} onBack={() => setStep('detail')} onSuccess={(s) => setStep(s)} profile={profile} hasLinkedParent={hasLinkedParent} />
+          )}
+          {step === 'joined' && <JoinedScreen group={group} kind="enrolled" />}
+          {step === 'awaiting-approval' && <JoinedScreen group={group} kind="awaiting-approval" />}
+        </Modal>
+      )}
+    </>
+  );
+}
+
+/* ─── Modal shell ────────────────────────────────────── */
+
+function Modal({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} aria-hidden />
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="relative w-full max-h-[92vh] overflow-y-auto rounded-t-3xl border border-border bg-background p-5 shadow-2xl sm:max-w-md sm:rounded-3xl"
+      >
+        {children}
+      </div>
+    </div>
+  );
 }
 
 /* ─── Detail screen ──────────────────────────────────── */
@@ -814,15 +852,15 @@ function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent }: {
   };
 
   return (
-    <div className="max-w-md mx-auto py-6 space-y-5">
+    <div className="space-y-5">
       <div className="flex items-center justify-between">
         <button onClick={onBack} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-ink">
           <ArrowLeft className="size-4" /> Back
         </button>
         <h1 className="font-bold text-ink">{heading}</h1>
-        <Link href="/student/find-tutors" className="size-8 grid place-items-center rounded-full hover:bg-muted text-muted-foreground">
+        <button onClick={onBack} aria-label="Close" className="size-8 grid place-items-center rounded-full hover:bg-muted text-muted-foreground">
           <X className="size-4" />
-        </Link>
+        </button>
       </div>
 
       <ClassSummaryCard group={group} />
@@ -899,8 +937,8 @@ function JoinedScreen({ group, kind }: { group: GroupData; kind: 'enrolled' | 'a
   }[kind];
 
   return (
-    <div className="max-w-md mx-auto py-12 space-y-6 text-center">
-      <div className={cn('mx-auto size-14 rounded-2xl grid place-items-center', copy.tone)}>{copy.icon}</div>
+    <div className="space-y-5 text-center">
+      <div className={cn('mx-auto mt-2 size-14 rounded-2xl grid place-items-center', copy.tone)}>{copy.icon}</div>
       <div>
         <h1 className="text-2xl font-bold text-ink">{copy.title}</h1>
         <p className="text-sm text-muted-foreground mt-2">{copy.body}</p>
