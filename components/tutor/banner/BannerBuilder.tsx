@@ -14,17 +14,17 @@ import {
 } from '@/lib/utils/bannerCanvas';
 
 interface BannerBuilderProps {
-  mode: 'class' | 'profile';
-  classId?: string;
+  classId: string;
   /** Class name (display context only — not baked into the image). */
   contextName?: string;
   backHref: string;
 }
 
 // The builder opens on a finished auto-default so most tutors just hit "Use this
-// banner". Templates #3 (pattern) / #4 (illustration) are deferred until design
-// delivers assets — this MVP ships Solid, Gradient, and external Upload.
-export default function BannerBuilder({ mode, classId, contextName, backHref }: BannerBuilderProps) {
+// banner". Banners are per-class (there is no separate profile banner).
+// Templates #3 (pattern) / #4 (illustration) are deferred until design delivers
+// assets — this MVP ships Solid, Gradient, and external Upload.
+export default function BannerBuilder({ classId, contextName, backHref }: BannerBuilderProps) {
   const router = useRouter();
   const { profile } = useProfile();
 
@@ -34,7 +34,7 @@ export default function BannerBuilder({ mode, classId, contextName, backHref }: 
   const uploadRef = useRef<ImageBitmap | null>(null);
 
   const [template, setTemplate] = useState<BannerTemplate>('gradient');
-  const [wash, setWash] = useState<WashKey>(() => washForId(classId ?? 'itutor'));
+  const [wash, setWash] = useState<WashKey>(() => washForId(classId));
   const [atmosphere, setAtmosphere] = useState('');
   const [usePhoto, setUsePhoto] = useState(true);
   const [photoScale, setPhotoScale] = useState(1);
@@ -43,7 +43,6 @@ export default function BannerBuilder({ mode, classId, contextName, backHref }: 
   const [uploadScale, setUploadScale] = useState(1);
   const [uploadOffsetX, setUploadOffsetX] = useState(0);
   const [uploadOffsetY, setUploadOffsetY] = useState(0);
-  const [alsoDefault, setAlsoDefault] = useState(false);
 
   const [photoReady, setPhotoReady] = useState(false);
   const [hasUpload, setHasUpload] = useState(false);
@@ -129,25 +128,20 @@ export default function BannerBuilder({ mode, classId, contextName, backHref }: 
       const blob = await bannerToBlob(canvas);
       const file = new File([blob], 'banner.jpg', { type: 'image/jpeg' });
 
-      if (mode === 'class' && classId) {
-        // Store class covers in the `avatars` bucket under the tutor's own prefix
-        // — the same convention the create/manage flows use (its RLS + public
-        // read are provisioned in every environment; a dedicated `class-banners`
-        // bucket is not).
-        const path = `${profile.id}/groups/banner-${classId}-${Date.now()}.jpg`;
-        const up = await supabase.storage.from('avatars').upload(path, file, { upsert: true, contentType: 'image/jpeg' });
-        if (up.error) throw up.error;
-        const coverUrl = supabase.storage.from('avatars').getPublicUrl(path).data.publicUrl;
-        const res = await fetch(`/api/groups/${classId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cover_image: coverUrl }),
-        });
-        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to save the class banner.');
-        if (alsoDefault) await saveProfileDefault(file, profile.id);
-      } else {
-        await saveProfileDefault(file, profile.id);
-      }
+      // Store class covers in the `avatars` bucket under the tutor's own prefix
+      // — the same convention the create/manage flows use (its RLS + public read
+      // are provisioned in every environment; a dedicated `class-banners` bucket
+      // is not).
+      const path = `${profile.id}/groups/banner-${classId}-${Date.now()}.jpg`;
+      const up = await supabase.storage.from('avatars').upload(path, file, { upsert: true, contentType: 'image/jpeg' });
+      if (up.error) throw up.error;
+      const coverUrl = supabase.storage.from('avatars').getPublicUrl(path).data.publicUrl;
+      const res = await fetch(`/api/groups/${classId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cover_image: coverUrl }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to save the class banner.');
       draw();
       router.push(backHref);
       router.refresh();
@@ -157,19 +151,6 @@ export default function BannerBuilder({ mode, classId, contextName, backHref }: 
     } finally {
       setSaving(false);
     }
-  }
-
-  async function saveProfileDefault(file: File, userId: string) {
-    const path = `${userId}/profile-banner.jpg`;
-    const up = await supabase.storage.from('avatars').upload(path, file, { upsert: true, contentType: 'image/jpeg' });
-    if (up.error) throw up.error;
-    const url = supabase.storage.from('avatars').getPublicUrl(path).data.publicUrl;
-    const res = await fetch('/api/profile/banner', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bannerUrl: url }),
-    });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to set default banner.');
   }
 
   const isUpload = template === 'upload';
@@ -183,9 +164,7 @@ export default function BannerBuilder({ mode, classId, contextName, backHref }: 
       <div>
         <h1 className="text-xl font-bold text-ink">Banner builder</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
-          {mode === 'class'
-            ? <>A finished banner for <span className="font-medium text-ink">{contextName || 'your class'}</span> is ready — tweak it or just use it.</>
-            : <>Build a default banner used across your classes.</>}
+          A finished banner for <span className="font-medium text-ink">{contextName || 'your class'}</span> is ready — tweak it or just use it.
         </p>
       </div>
 
@@ -283,13 +262,6 @@ export default function BannerBuilder({ mode, classId, contextName, backHref }: 
             <ImageIcon className="size-4" /> {hasUpload ? 'Choose a different image' : 'Choose an image'}
           </button>
         </div>
-      )}
-
-      {mode === 'class' && (
-        <label className="flex items-center gap-2 text-sm text-ink">
-          <input type="checkbox" checked={alsoDefault} onChange={(e) => setAlsoDefault(e.target.checked)} className="accent-[var(--brand)]" />
-          Also use this as my default banner for future classes
-        </label>
       )}
 
       {error && <p className="text-sm text-rose-600">{error}</p>}

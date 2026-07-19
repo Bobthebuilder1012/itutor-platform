@@ -222,14 +222,9 @@ function OverviewTab({ activeClasses, profile }: any) {
             <p className="text-xs text-muted-foreground leading-relaxed">
               A complete profile — a clear bio, subjects with rates, and an up-to-date class list — gets more bookings. Keep it fresh from your settings.
             </p>
-            <div className="flex flex-col gap-1.5 pt-1">
-              <Link href="/tutor/settings" className="inline-flex items-center gap-1 text-xs font-semibold text-brand-deep hover:underline">
-                Profile settings →
-              </Link>
-              <Link href="/tutor/banner" className="inline-flex items-center gap-1 text-xs font-semibold text-brand-deep hover:underline">
-                Build my banner →
-              </Link>
-            </div>
+            <Link href="/tutor/settings" className="inline-flex items-center gap-1 text-xs font-semibold text-brand-deep hover:underline">
+              Profile settings →
+            </Link>
           </div>
         </aside>
       </section>

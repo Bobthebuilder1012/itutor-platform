@@ -29,10 +29,6 @@ export default function GroupGridCard({ group, onClick, onAskToJoin }: GroupGrid
     (group as any).coverImage ??
     (group as any).header_image ??
     (group as any).headerImage ??
-    // Fallback: a class with no cover of its own inherits the tutor's profile
-    // banner, so an admin can set the banner once and it shows on their classes.
-    group.tutor?.profile_banner_url ??
-    (group as any).tutor_profile_banner_url ??
     null;
   const subjects: string[] =
     (group as any).subject_list?.length > 0

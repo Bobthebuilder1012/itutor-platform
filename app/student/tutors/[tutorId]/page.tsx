@@ -366,7 +366,7 @@ export default function TutorProfilePage() {
     try {
       const { data: tutorData, error: tutorError } = await supabase
         .from('profiles')
-        .select('id, full_name, username, display_name, avatar_url, profile_banner_url, school, institution_id, country, bio, tutor_verification_status, created_at, updated_at, is_dev_account')
+        .select('id, full_name, username, display_name, avatar_url, school, institution_id, country, bio, tutor_verification_status, created_at, is_dev_account')
         .eq('id', tutorId).eq('role', 'tutor').single();
       if (tutorError) throw tutorError;
       if (!tutorData) { alert('Tutor not found'); router.push('/student/find-tutors'); return; }
@@ -511,20 +511,8 @@ export default function TutorProfilePage() {
 
         {/* Header */}
         <div className="rounded-3xl bg-background border border-border overflow-hidden">
-          {(tutor as any).profile_banner_url ? (
-            <div className="relative h-32 sm:h-40">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={`${String((tutor as any).profile_banner_url).split(/[?#]/)[0]}${(tutor as any).updated_at ? `?v=${encodeURIComponent((tutor as any).updated_at)}` : ''}`}
-                alt=""
-                className="absolute inset-0 h-full w-full object-cover"
-              />
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
-            </div>
-          ) : (
-            <div className="h-32 sm:h-40 bg-gradient-to-br from-brand to-brand-deep" />
-          )}
-          <div className="relative z-10 px-5 sm:px-6 pb-6">
+          <div className="h-32 sm:h-40 bg-gradient-to-br from-brand to-brand-deep" />
+          <div className="px-5 sm:px-6 pb-6">
             <div className="flex items-end justify-between -mt-12 sm:-mt-14">
               <UserAvatar avatarUrl={tutor.avatar_url} name={getDisplayName(tutor)} size={96} className="ring-4 ring-background rounded-full" />
               <div className="flex gap-2 mb-1">
