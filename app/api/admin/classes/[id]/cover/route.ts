@@ -10,7 +10,10 @@ import { logAdminAction } from '@/lib/services/adminAudit';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const BUCKET = 'class-banners';
+// Class covers live in the `avatars` bucket under the tutor's own prefix — the
+// same convention the tutor create/manage flows use. A dedicated `class-banners`
+// bucket is not provisioned in every environment.
+const BUCKET = 'avatars';
 
 export async function POST(
   request: NextRequest,
@@ -51,7 +54,7 @@ export async function POST(
   }
 
   const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-  const path = `class-banners/${id}-${Date.now()}.${ext}`;
+  const path = `${cls.tutor_id}/groups/banner-${id}-${Date.now()}.${ext}`;
   const buffer = Buffer.from(await file.arrayBuffer());
 
   const { error: uploadError } = await admin.storage

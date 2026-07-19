@@ -130,10 +130,14 @@ export default function BannerBuilder({ mode, classId, contextName, backHref }: 
       const file = new File([blob], 'banner.jpg', { type: 'image/jpeg' });
 
       if (mode === 'class' && classId) {
-        const path = `${classId}-${Date.now()}.jpg`;
-        const up = await supabase.storage.from('class-banners').upload(path, file, { upsert: true, contentType: 'image/jpeg' });
+        // Store class covers in the `avatars` bucket under the tutor's own prefix
+        // — the same convention the create/manage flows use (its RLS + public
+        // read are provisioned in every environment; a dedicated `class-banners`
+        // bucket is not).
+        const path = `${profile.id}/groups/banner-${classId}-${Date.now()}.jpg`;
+        const up = await supabase.storage.from('avatars').upload(path, file, { upsert: true, contentType: 'image/jpeg' });
         if (up.error) throw up.error;
-        const coverUrl = supabase.storage.from('class-banners').getPublicUrl(path).data.publicUrl;
+        const coverUrl = supabase.storage.from('avatars').getPublicUrl(path).data.publicUrl;
         const res = await fetch(`/api/groups/${classId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
