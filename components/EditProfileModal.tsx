@@ -156,14 +156,12 @@ export default function EditProfileModal({
                 </div>
                 {bannerHookError && <p className="mb-2 text-sm text-red-600">{bannerHookError}</p>}
                 <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setBannerModalOpen(true)}
-                    disabled={bannerUploading}
-                    className="rounded-lg bg-gradient-to-r from-itutor-green to-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:from-emerald-600 hover:to-itutor-green disabled:opacity-50"
+                  <a
+                    href="/tutor/banner"
+                    className="rounded-lg bg-gradient-to-r from-itutor-green to-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:from-emerald-600 hover:to-itutor-green"
                   >
-                    {profile.profile_banner_url ? 'Change banner' : 'Upload banner'}
-                  </button>
+                    {profile.profile_banner_url ? 'Change banner' : 'Build banner'}
+                  </a>
                   {profile.profile_banner_url && (
                     <button
                       type="button"
