@@ -2531,50 +2531,29 @@ function SchedulePicker({ entries, onChange }: { entries: ScheduleEntry[]; onCha
   );
 }
 
-/* ─── Class banner upload ─────────────────────────────── */
+/* ─── Class banner (built in the Banner Builder) ──────── */
 function ClassBannerUpload({ groupId, currentUrl, onUploaded }: { groupId: string; currentUrl: string; onUploaded: (url: string) => void }) {
-  const [uploading, setUploading] = useState(false);
-  const [err, setErr] = useState('');
-
-  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) { setErr('Please select an image file.'); return; }
-    if (file.size > 5 * 1024 * 1024) { setErr('Image must be under 5 MB.'); return; }
-    setUploading(true); setErr('');
-    try {
-      const ext = file.name.split('.').pop() ?? 'jpg';
-      const path = `class-banners/${groupId}-${Date.now()}.${ext}`;
-      const { supabase } = await import('@/lib/supabase/client');
-      const { error: upErr } = await supabase.storage.from('class-banners').upload(path, file, { upsert: true });
-      if (upErr) throw new Error(upErr.message);
-      const { data } = supabase.storage.from('class-banners').getPublicUrl(path);
-      onUploaded(data.publicUrl);
-    } catch (e: any) {
-      setErr(e?.message ?? 'Upload failed');
-    } finally {
-      setUploading(false);
-    }
-  };
-
   return (
     <div className="space-y-2">
       <div className="text-sm font-semibold text-ink">Banner image</div>
-      <p className="text-xs text-muted-foreground">Displayed at the top of your class listing. Recommended: 1200×300px.</p>
+      <p className="text-xs text-muted-foreground">Shown at the top of your class listing. Create or change it in the banner builder.</p>
       {currentUrl && (
         <div className="rounded-xl overflow-hidden h-24 border border-border">
           <img src={currentUrl} alt="Banner" className="w-full h-full object-cover" />
         </div>
       )}
-      <label className={cn('inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-sm font-semibold cursor-pointer hover:bg-muted transition', uploading && 'opacity-50 cursor-not-allowed')}>
-        <ArrowUpRight className="size-4 rotate-45" />
-        {uploading ? 'Uploading…' : currentUrl ? 'Change banner' : 'Upload banner'}
-        <input type="file" accept="image/*" className="hidden" disabled={uploading} onChange={handleFile} />
-      </label>
-      {currentUrl && (
-        <button onClick={() => onUploaded('')} className="ml-2 text-xs text-muted-foreground hover:text-rose-600 transition">Remove</button>
-      )}
-      {err && <p className="text-xs text-rose-600">{err}</p>}
+      <div className="flex items-center gap-3">
+        <Link
+          href={`/tutor/classes/${groupId}/banner`}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-sm font-semibold hover:bg-muted transition"
+        >
+          <ArrowUpRight className="size-4 rotate-45" />
+          {currentUrl ? 'Change banner' : 'Build banner'}
+        </Link>
+        {currentUrl && (
+          <button onClick={() => onUploaded('')} className="text-xs text-muted-foreground hover:text-rose-600 transition">Remove</button>
+        )}
+      </div>
     </div>
   );
 }
