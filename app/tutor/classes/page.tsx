@@ -45,6 +45,7 @@ type Lesson = {
   pricePerSession: number | null;
   visibility: 'public' | 'private';
   thumbnailGradient: string;
+  coverImage: string | null;
   totalSessionsRun: number;
   earningsTtd: number;
   nextSessionDate: string | null;
@@ -114,6 +115,7 @@ function LessonsContent() {
         pricePerSession: g.price_per_session ?? g.price_monthly ?? null,
         visibility: g.visibility === 'private' ? 'private' : 'public',
         thumbnailGradient: GRADIENTS[i % GRADIENTS.length],
+        coverImage: g.cover_image ?? g.coverImage ?? g.header_image ?? null,
         totalSessionsRun: g.session_count ?? 0,
         earningsTtd: g.estimated_earnings ?? 0,
         nextSessionDate: g.nextSession?.scheduledAt ?? g.next_occurrence?.scheduled_start_at ?? null,
@@ -327,9 +329,14 @@ function LessonCard({
     <div className="group relative rounded-2xl bg-card border border-border overflow-hidden hover:shadow-lg hover:-translate-y-0.5 hover:border-brand/30 transition-all flex flex-col">
       {/* Banner */}
       <Link href={`/tutor/classes/${l.id}`} className="block">
-        <div className={cn('relative h-28 bg-gradient-to-br', l.thumbnailGradient)}>
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.25),transparent_60%)]" />
-          <BookOpen className="absolute bottom-3 left-4 size-7 text-white/85" />
+        <div className={cn('relative h-28', !l.coverImage && 'bg-gradient-to-br', !l.coverImage && l.thumbnailGradient)}
+          style={l.coverImage ? { backgroundImage: `url(${l.coverImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}>
+          {l.coverImage ? (
+            <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-black/10" />
+          ) : (
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.25),transparent_60%)]" />
+          )}
+          {!l.coverImage && <BookOpen className="absolute bottom-3 left-4 size-7 text-white/85" />}
           <span className={cn(
             'absolute top-3 right-3 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full backdrop-blur-sm',
             isPublic ? 'bg-white/90 text-ink' : 'bg-ink/80 text-white',

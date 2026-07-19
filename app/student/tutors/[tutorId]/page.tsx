@@ -520,7 +520,7 @@ export default function TutorProfilePage() {
           ) : (
             <div className="h-32 sm:h-40 bg-gradient-to-br from-brand to-brand-deep" />
           )}
-          <div className="px-5 sm:px-6 pb-6">
+          <div className="relative z-10 px-5 sm:px-6 pb-6">
             <div className="flex items-end justify-between -mt-12 sm:-mt-14">
               <UserAvatar avatarUrl={tutor.avatar_url} name={getDisplayName(tutor)} size={96} className="ring-4 ring-background rounded-full" />
               <div className="flex gap-2 mb-1">
