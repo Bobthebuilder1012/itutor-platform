@@ -86,3 +86,46 @@ export async function POST(
 
   return NextResponse.json({ url: publicUrl });
 }
+
+// DELETE /api/admin/classes/[id]/cover — admin removes a class banner. Clears
+// groups.cover_image (the render fallback chain then applies) and audits.
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const auth = await requireAdmin('full');
+  if (auth.error) return auth.error;
+
+  const { id } = params;
+  const admin = getServiceClient();
+
+  const { data: cls, error: findError } = await admin
+    .from('groups')
+    .select('id, name, tutor_id')
+    .eq('id', id)
+    .single();
+  if (findError || !cls) {
+    return NextResponse.json({ error: 'Class not found' }, { status: 404 });
+  }
+
+  const { error: updateError } = await admin
+    .from('groups')
+    .update({ cover_image: null })
+    .eq('id', id);
+  if (updateError) {
+    return NextResponse.json({ error: updateError.message }, { status: 400 });
+  }
+
+  await logAdminAction(
+    { id: auth.profile?.id, email: auth.profile?.email },
+    {
+      action: 'class.cover_removed',
+      targetType: 'class',
+      targetId: id,
+      targetLabel: cls.name || id,
+      details: { tutor_id: cls.tutor_id },
+    }
+  );
+
+  return NextResponse.json({ success: true });
+}

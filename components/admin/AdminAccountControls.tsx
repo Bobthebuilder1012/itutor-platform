@@ -123,6 +123,38 @@ export default function AdminAccountControls({
     }
   }
 
+  async function removeBanner() {
+    if (!window.confirm("Remove this tutor's profile banner?")) return;
+    setUploading('banner'); setErr(''); setMsg('');
+    try {
+      const res = await fetch(`/api/admin/accounts/${profile.id}/banner`, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Remove failed');
+      setMsg('Profile banner removed.');
+      onUpdated();
+    } catch (e: any) {
+      setErr(e.message);
+    } finally {
+      setUploading(null);
+    }
+  }
+
+  async function removeClassCover(classId: string) {
+    if (!window.confirm('Remove this class banner?')) return;
+    setUploading(`class-${classId}`); setErr(''); setMsg('');
+    try {
+      const res = await fetch(`/api/admin/classes/${classId}/cover`, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Remove failed');
+      setMsg('Class banner removed.');
+      onUpdated();
+    } catch (e: any) {
+      setErr(e.message);
+    } finally {
+      setUploading(null);
+    }
+  }
+
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -147,6 +179,12 @@ export default function AdminAccountControls({
           className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50">
           {uploading === 'banner' ? 'Uploading…' : 'Set profile banner'}
         </button>
+        {profile.profile_banner_url && (
+          <button onClick={removeBanner} disabled={uploading === 'banner'}
+            className="px-4 py-2 rounded-lg border border-red-200 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50">
+            Remove banner
+          </button>
+        )}
       </div>
 
       {/* Text fields */}
@@ -210,7 +248,7 @@ export default function AdminAccountControls({
           <p className="text-xs text-gray-500 mb-3">Set a banner per class. Classes without their own banner fall back to the profile banner.</p>
           <div className="space-y-2">
             {classes.map((c) => (
-              <ClassBannerRow key={c.id} cls={c} uploading={uploading === `class-${c.id}`} onUpload={uploadClassCover} />
+              <ClassBannerRow key={c.id} cls={c} uploading={uploading === `class-${c.id}`} onUpload={uploadClassCover} onRemove={removeClassCover} />
             ))}
           </div>
         </div>
@@ -223,10 +261,12 @@ function ClassBannerRow({
   cls,
   uploading,
   onUpload,
+  onRemove,
 }: {
   cls: ClassLite;
   uploading: boolean;
   onUpload: (classId: string, file: File) => void;
+  onRemove: (classId: string) => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
   return (
@@ -234,10 +274,16 @@ function ClassBannerRow({
       <span className="text-sm text-gray-800 truncate">{cls.name || 'Untitled class'}</span>
       <input ref={input} type="file" accept="image/*" className="hidden"
         onChange={(e) => { const f = e.target.files?.[0]; if (f) onUpload(cls.id, f); e.target.value = ''; }} />
-      <button onClick={() => input.current?.click()} disabled={uploading}
-        className="shrink-0 px-3 py-1.5 rounded-lg border border-gray-300 text-xs font-semibold text-gray-700 hover:bg-white disabled:opacity-50">
-        {uploading ? 'Uploading…' : 'Set banner'}
-      </button>
+      <div className="flex items-center gap-2 shrink-0">
+        <button onClick={() => input.current?.click()} disabled={uploading}
+          className="px-3 py-1.5 rounded-lg border border-gray-300 text-xs font-semibold text-gray-700 hover:bg-white disabled:opacity-50">
+          {uploading ? 'Uploading…' : 'Set banner'}
+        </button>
+        <button onClick={() => onRemove(cls.id)} disabled={uploading}
+          className="px-3 py-1.5 rounded-lg border border-red-200 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50">
+          Remove
+        </button>
+      </div>
     </div>
   );
 }

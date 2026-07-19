@@ -430,6 +430,9 @@ function ClassHubContent() {
       {/* Banner header */}
       <div className={cn('relative h-44 lg:h-52', !group.coverImage && (group.thumbnailGradient ?? 'from-brand to-emerald-400'), !group.coverImage && 'bg-gradient-to-br')}
         style={group.coverImage ? { backgroundImage: `url(${group.coverImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}>
+        {group.coverImage && (
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
+        )}
         <Link href={adminMode ? '/admin/classes' : '/tutor/classes'} className="absolute top-4 left-4 inline-flex items-center gap-1 text-xs font-semibold text-white/95 bg-black/30 hover:bg-black/40 px-3 py-1.5 rounded-full backdrop-blur">
           <ArrowLeft className="size-3.5" /> {adminMode ? 'Class Admin' : 'All Classes'}
         </Link>
@@ -478,6 +481,17 @@ function ClassHubContent() {
       </div>
 
       <div className="px-4 lg:px-8 pb-12">
+        {!group.coverImage && !adminMode && (
+          <Link href={`/tutor/classes/${group.id}/banner`}
+            className="mt-6 flex items-center gap-3 rounded-2xl border border-dashed border-brand/40 bg-brand-soft/40 px-4 py-3 transition hover:bg-brand-soft/70">
+            <div className="size-9 rounded-xl bg-brand text-white grid place-items-center shrink-0"><UploadCloud className="size-4" /></div>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-ink">Build your class banner</div>
+              <div className="text-xs text-muted-foreground">Give this class a cover in under a minute — a finished default is ready for you.</div>
+            </div>
+            <span className="ml-auto shrink-0 text-xs font-semibold text-brand-deep">Open builder →</span>
+          </Link>
+        )}
         <div className="border-b border-border mt-6 flex items-center gap-6 overflow-x-auto">
           {tabs.map((t) => (
             <button key={t.key} onClick={() => switchTab(t.key)}
