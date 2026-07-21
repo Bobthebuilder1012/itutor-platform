@@ -23,7 +23,7 @@ import ProfilePreviewPanel from '@/components/tutor/business/ProfilePreviewPanel
 import ProfileQrCard from '@/components/tutor/business/ProfileQrCard';
 import { getDisplayName } from '@/lib/utils/displayName';
 
-type Tab = 'overview' | 'classes' | 'promotions' | 'verification' | 'credentials' | 'analytics' | 'feedback';
+type Tab = 'overview' | 'classes' | 'promotions' | 'verification' | 'analytics' | 'feedback';
 
 export default function TutorBusinessPage() {
   return (
@@ -119,7 +119,6 @@ function MyBusinessContent() {
     { key: 'classes',    label: 'Classes',          icon: BookOpen,  badge: activeClasses.length },
     { key: 'promotions', label: 'Promotions',       icon: Tag },
     { key: 'verification', label: 'Verification',   icon: ShieldCheck },
-    { key: 'credentials', label: 'Credentials',     icon: GraduationCap },
     { key: 'analytics',  label: 'Analytics',        icon: BarChart3 },
     { key: 'feedback',   label: 'Parent feedback',  icon: FileText,  comingSoon: true },
   ];
@@ -159,8 +158,7 @@ function MyBusinessContent() {
       {tab === 'overview'   && <OverviewTab activeClasses={activeClasses} totalRevenue={totalRevenue} totalStudents={totalStudents} profile={profile} />}
       {tab === 'classes'    && <ClassesTab activeClasses={activeClasses} tutorId={profile?.id} />}
       {tab === 'promotions' && <PromotionsTab classes={activeClasses} />}
-      {tab === 'verification' && <VerificationTab />}
-      {tab === 'credentials' && <CredentialsTab />}
+      {tab === 'verification' && <VerificationCredentialsTab />}
       {tab === 'analytics'  && <BusinessAnalyticsTab classes={activeClasses} totalRevenue={totalRevenue} />}
       {tab === 'feedback'   && <FeedbackComingSoon />}
     </div>
@@ -664,13 +662,51 @@ function KpiCard({ icon: Icon, label, value, delta, positive }: { icon: any; lab
   );
 }
 
-// ── Verification tab ─────────────────────────────────────────────────────────
-// Surfaces the iTutor "Verified" badge pipeline (tutor_verification_status +
-// verification_requests) on the business page, restyled to the business design
-// system. Reuses the exact 3-step upload flow the standalone /tutor/verification
-// page uses: create request (signed URL) → PUT file → trigger processing.
-// This is distinct from Credentials (the degrees table): verification grants the
-// trust badge and search boost; credentials shows degree text on the profile.
+// ── Verification & Credentials tab ───────────────────────────────────────────
+// One tab holding the two SEPARATE "prove you're qualified" systems, led by a
+// comparison card so tutors aren't confused about which is which:
+//   • Verification — the iTutor "Verified" badge pipeline
+//     (tutor_verification_status + verification_requests). Grants the trust
+//     badge next to the name + a marketplace ranking boost. Doc stays private.
+//   • Credentials  — the degrees table (mig 096). Shows the degree text
+//     (title, institution, year) on the public profile once approved.
+function VerificationCredentialsTab() {
+  return (
+    <div className="max-w-2xl space-y-8">
+      {/* Clearly state the difference between the two */}
+      <div className="rounded-2xl bg-mint p-5 space-y-3">
+        <div>
+          <div className="text-xs uppercase tracking-wider font-semibold text-muted-foreground">Verification &amp; Credentials</div>
+          <p className="text-sm text-ink mt-1 font-medium">Two separate ways to prove you&apos;re qualified — do either or both.</p>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div className="rounded-xl bg-background/70 border border-border/70 p-3">
+            <div className="flex items-center gap-1.5 text-sm font-semibold text-ink"><ShieldCheck className="size-4 text-brand-deep" /> Verification badge</div>
+            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+              Upload a teaching credential (CSEC, CAPE, or other) to earn the <span className="font-semibold text-ink">Verified</span> badge next to your name.
+              Builds trust and lifts your marketplace ranking. Your document stays <span className="font-semibold text-ink">private</span> — students never see it.
+            </p>
+          </div>
+          <div className="rounded-xl bg-background/70 border border-border/70 p-3">
+            <div className="flex items-center gap-1.5 text-sm font-semibold text-ink"><GraduationCap className="size-4 text-brand-deep" /> Credentials</div>
+            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+              Add a degree or qualification (title, institution, year) that appears as <span className="font-semibold text-ink">text on your public profile</span> once approved.
+              Counts toward your profile completion.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <VerificationSection />
+      <div className="border-t border-border" />
+      <CredentialsSection />
+    </div>
+  );
+}
+
+// ── Verification section — the "Verified" badge pipeline ─────────────────────
+// Reuses the standalone /tutor/verification 3-step upload flow: create request
+// (signed URL) → PUT file → trigger processing.
 interface VerificationRequest {
   id: string;
   status: string;
@@ -681,7 +717,7 @@ interface VerificationRequest {
   created_at: string;
 }
 
-function VerificationTab() {
+function VerificationSection() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -699,7 +735,7 @@ function VerificationTab() {
         setLatestRequest(data.latestRequest ?? null);
       }
     } catch (e) {
-      console.error('[VerificationTab] failed to load status:', e);
+      console.error('[VerificationSection] failed to load status:', e);
     } finally {
       setLoading(false);
     }
@@ -736,7 +772,7 @@ function VerificationTab() {
       if (!uploadRes.ok) throw new Error('Failed to upload file');
 
       const processRes = await fetch(`/api/verification/request/${requestId}/process`, { method: 'POST' });
-      if (!processRes.ok) console.warn('[VerificationTab] processing may have failed, but file was uploaded');
+      if (!processRes.ok) console.warn('[VerificationSection] processing may have failed, but file was uploaded');
 
       setUploadSuccess(true);
       await load();
@@ -755,24 +791,16 @@ function VerificationTab() {
   const rejectionReason = latestRequest?.reviewer_reason || latestRequest?.system_reason;
 
   return (
-    <div className="max-w-2xl space-y-5">
-      {/* Intro */}
-      <div className="rounded-2xl bg-mint p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-1.5 text-xs uppercase tracking-wider font-semibold text-muted-foreground">
-              <ShieldCheck className="size-3.5" /> iTutor Verification
-            </div>
-            <p className="text-sm text-ink mt-1 font-medium">Get the verified badge on your profile</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Upload a teaching credential (CSEC, CAPE, or other). Verified tutors get a badge next to their name,
-              rank higher in the marketplace, and build trust with parents and students. Your document stays private.
-            </p>
-          </div>
-          <button onClick={() => setShowSupport(true)} className="shrink-0 text-xs font-semibold text-brand-deep hover:underline whitespace-nowrap">
-            Need help?
-          </button>
+    <div className="space-y-5">
+      {/* Section header */}
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="flex items-center gap-2 text-lg font-bold text-ink"><ShieldCheck className="size-4 text-brand-deep" /> Verification badge</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">Upload a teaching credential to get the Verified badge and a marketplace ranking boost. Your document stays private.</p>
         </div>
+        <button onClick={() => setShowSupport(true)} className="shrink-0 text-xs font-semibold text-brand-deep hover:underline whitespace-nowrap">
+          Need help?
+        </button>
       </div>
 
       {/* Status card */}
@@ -872,14 +900,14 @@ function VerificationTab() {
   );
 }
 
-// ── Credentials tab ──────────────────────────────────────────────────────────
-// Surfaces the existing degree-verification pipeline (mig 096) on the business
-// page: submit/resubmit a degree with a private document, see review status,
-// and — when rejected — see the reason and resubmit. The uploaded document is
-// evidence only (private bucket); students only ever see the verified text.
+// ── Credentials section — degree text on the public profile ──────────────────
+// Surfaces the existing degree-verification pipeline (mig 096): submit/resubmit
+// a degree with a private document, see review status, and — when rejected —
+// see the reason and resubmit. The uploaded document is evidence only (private
+// bucket); students only ever see the verified text.
 const CREDENTIAL_INPUT = 'w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand';
 
-function CredentialsTab() {
+function CredentialsSection() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -952,15 +980,13 @@ function CredentialsTab() {
   }
 
   return (
-    <div className="max-w-2xl space-y-5">
-      <div className="rounded-2xl bg-mint p-4">
-        <div className="flex items-center gap-1.5 text-xs uppercase tracking-wider font-semibold text-muted-foreground">
-          <GraduationCap className="size-3.5" /> Credentials
-        </div>
-        <p className="text-sm text-ink mt-1 font-medium">Add your degree or teaching qualification</p>
+    <div className="space-y-5">
+      {/* Section header */}
+      <div>
+        <h2 className="flex items-center gap-2 text-lg font-bold text-ink"><GraduationCap className="size-4 text-brand-deep" /> Credentials</h2>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Your document stays private — only you and our reviewers can see it. Students only ever see the verified text
-          (title, institution, year) plus a “Verified” badge once approved. Adding a credential counts toward your profile completion.
+          Add a degree or qualification shown as text on your public profile. Your document stays private — students only ever see the
+          approved text (title, institution, year) plus a “Verified” badge. Counts toward your profile completion.
         </p>
       </div>
 
