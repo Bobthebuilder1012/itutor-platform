@@ -10,7 +10,7 @@ import { getDisplayName } from '@/lib/utils/displayName';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import UserAvatar from '@/components/UserAvatar';
 import { cn } from '@/lib/utils';
-import { Search, Star, Heart, Calendar, Clock, SlidersHorizontal, Users, GraduationCap, Flame, X, Check, Video, Sparkles, BadgeCheck, MessageSquare, TrendingUp, Play } from 'lucide-react';
+import { Search, Star, Heart, Clock, SlidersHorizontal, Users, GraduationCap, Flame, X, Check, Video, Sparkles, BadgeCheck, MessageSquare, TrendingUp, Play } from 'lucide-react';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { parseScheduleData, scheduleToDisplay } from '@/lib/utils/scheduleFormat';
 import { formatLevel } from '@/lib/utils/formatLevel';
@@ -1063,14 +1063,11 @@ export default function FindTutorsPage() {
                       </div>
 
                       <div className="space-y-1.5 text-xs">
-                        {/* Schedule — structured (contains "–") or plain fallback */}
-                        {l.day !== 'Schedule TBD' ? (
+                        {/* Schedule — shown only when the group has a real recurring
+                            schedule (weekly/recurring days). When none is set we render
+                            nothing rather than a "Schedule TBD" placeholder. */}
+                        {l.day && l.day !== 'Schedule TBD' && (
                           <div className="text-muted-foreground whitespace-pre-line leading-relaxed">{l.day}</div>
-                        ) : (
-                          <div className="flex items-center gap-1.5 text-muted-foreground">
-                            <Calendar className="size-3.5 shrink-0" />
-                            <span>Schedule TBD</span>
-                          </div>
                         )}
                         {/* Only show separate time/duration for legacy auto-derived schedules without a range */}
                         {l.time && !l.day.includes('–') && (
