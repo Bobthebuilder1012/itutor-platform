@@ -4,26 +4,26 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
-  Briefcase, Tag, BarChart3, FileText, Plus, Check, X, Sparkles,
-  Users, DollarSign, Star, BookOpen, Clock, Lock, Copy, ExternalLink,
-  GraduationCap, BadgeCheck, AlertCircle, UploadCloud, Loader2, ShieldCheck,
+  Briefcase, Tag, BarChart3, FileText, Plus, Check, X,
+  Users, DollarSign, BookOpen, Clock, Lock, Copy, ExternalLink,
+  GraduationCap, BadgeCheck, AlertCircle, UploadCloud, Loader2, ShieldCheck, CalendarClock,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { useTutorCompletion } from '@/lib/hooks/useTutorCompletion';
 import { supabase } from '@/lib/supabase/client';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
-import { formatLevel } from '@/lib/utils/formatLevel';
 import TutorShell from '@/components/tutor/TutorShell';
-import QrCodePanel from '@/components/QrCodePanel';
 import SupportFormModal from '@/components/SupportFormModal';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import ClassesSection from '@/components/tutor/public/ClassesSection';
-import ProfilePreviewPanel from '@/components/tutor/business/ProfilePreviewPanel';
+import EditableProfilePanel from '@/components/tutor/business/EditableProfilePanel';
 import ProfileQrCard from '@/components/tutor/business/ProfileQrCard';
+import AvailabilityEditor from '@/components/tutor/AvailabilityEditor';
+import OneOnOneMarketplaceToggle from '@/components/tutor/OneOnOneMarketplaceToggle';
 import { getDisplayName } from '@/lib/utils/displayName';
 
-type Tab = 'overview' | 'classes' | 'promotions' | 'verification' | 'analytics' | 'feedback';
+type Tab = 'overview' | 'availability' | 'promotions' | 'verification' | 'analytics' | 'feedback';
 
 export default function TutorBusinessPage() {
   return (
@@ -35,7 +35,7 @@ export default function TutorBusinessPage() {
 
 function MyBusinessContent() {
   const router = useRouter();
-  const { profile, loading } = useProfile();
+  const { profile, loading, refresh: refreshProfile } = useProfile();
   const completion = useTutorCompletion(profile);
   const [tab, setTab] = useState<Tab>('overview');
 
@@ -116,7 +116,7 @@ function MyBusinessContent() {
 
   const tabs: { key: Tab; label: string; icon: any; badge?: number; comingSoon?: boolean }[] = [
     { key: 'overview',   label: 'Overview',        icon: Briefcase },
-    { key: 'classes',    label: 'Classes',          icon: BookOpen,  badge: activeClasses.length },
+    { key: 'availability', label: 'Availability',   icon: CalendarClock },
     { key: 'promotions', label: 'Promotions',       icon: Tag },
     { key: 'verification', label: 'Verification',   icon: ShieldCheck },
     { key: 'analytics',  label: 'Analytics',        icon: BarChart3 },
@@ -155,8 +155,8 @@ function MyBusinessContent() {
         })}
       </div>
 
-      {tab === 'overview'   && <OverviewTab activeClasses={activeClasses} totalRevenue={totalRevenue} totalStudents={totalStudents} profile={profile} />}
-      {tab === 'classes'    && <ClassesTab activeClasses={activeClasses} tutorId={profile?.id} />}
+      {tab === 'overview'   && <OverviewTab activeClasses={activeClasses} totalRevenue={totalRevenue} totalStudents={totalStudents} profile={profile} onProfileUpdated={refreshProfile} />}
+      {tab === 'availability' && <AvailabilityTab tutorId={profile?.id} />}
       {tab === 'promotions' && <PromotionsTab classes={activeClasses} />}
       {tab === 'verification' && <VerificationCredentialsTab />}
       {tab === 'analytics'  && <BusinessAnalyticsTab classes={activeClasses} totalRevenue={totalRevenue} />}
@@ -165,8 +165,8 @@ function MyBusinessContent() {
   );
 }
 
-/* ----------- Overview — read-only preview of the tutor's public profile ----------- */
-function OverviewTab({ activeClasses, profile }: any) {
+/* ----------- Overview — inline-editable view of the tutor's public profile ----------- */
+function OverviewTab({ activeClasses, profile, onProfileUpdated }: any) {
   const [copied, setCopied] = useState(false);
   const url = typeof window !== 'undefined' ? `${window.location.origin}/tutors/${profile?.username || profile?.id}` : '';
   const firstName = (getDisplayName(profile) || 'Tutor').split(' ')[0];
@@ -197,8 +197,8 @@ function OverviewTab({ activeClasses, profile }: any) {
         <div className="lg:col-span-8 space-y-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="font-bold text-ink">Preview</div>
-              <p className="text-xs text-muted-foreground">This is what students see on your public profile.</p>
+              <div className="font-bold text-ink">Your profile</div>
+              <p className="text-xs text-muted-foreground">Edit any field here — changes show on your public profile right away.</p>
             </div>
             {url && (
               <a href={url} target="_blank" rel="noopener noreferrer" className="shrink-0 inline-flex items-center gap-1 text-xs font-semibold text-brand-deep hover:underline">
@@ -207,7 +207,7 @@ function OverviewTab({ activeClasses, profile }: any) {
             )}
           </div>
 
-          <ProfilePreviewPanel profile={profile} />
+          <EditableProfilePanel profile={profile} onUpdated={onProfileUpdated} />
 
           {profile?.id && (
             activeClasses.length > 0 ? (
@@ -237,117 +237,26 @@ function OverviewTab({ activeClasses, profile }: any) {
   );
 }
 
-/* ----------- Classes ----------- */
-function ClassesTab({ activeClasses, tutorId }: { activeClasses: any[]; tutorId?: string }) {
-  const GRADIENTS = ['from-brand to-emerald-400', 'from-sky-500 to-cyan-400', 'from-orange-500 to-amber-400', 'from-fuchsia-500 to-purple-500', 'from-rose-500 to-pink-400', 'from-indigo-500 to-blue-500'];
-
+/* ----------- Availability + 1:1 marketplace ----------- */
+function AvailabilityTab({ tutorId }: { tutorId?: string }) {
+  if (!tutorId) return null;
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-bold text-ink">Your classes ({activeClasses.length})</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">This is how your classes appear to students on the marketplace.</p>
-        </div>
-        <Link href="/tutor/classes/new" className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand/90">
-          <Plus className="size-3.5" /> New Class
-        </Link>
+    <div className="max-w-4xl space-y-6">
+      <div>
+        <h2 className="text-lg font-bold text-ink">Availability &amp; 1:1 bookings</h2>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Set the weekly hours you&apos;re free to teach, and control whether you appear on the one-on-one marketplace.
+        </p>
       </div>
-      {activeClasses.length === 0 ? (
-        <div className="rounded-2xl border-2 border-dashed border-border p-12 text-center">
-          <BookOpen className="size-10 mx-auto text-muted-foreground/40" />
-          <p className="mt-3 text-sm font-semibold text-ink">No classes yet</p>
-          <p className="text-xs text-muted-foreground mt-1">Create your first class to start teaching.</p>
-        </div>
-      ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {activeClasses.map((c: any, i: number) => {
-            const gradient = GRADIENTS[i % GRADIENTS.length];
-            const enrolled = c.member_count ?? c.enrollmentCount ?? 0;
-            const capacity = c.max_students ?? 20;
-            const pct = capacity > 0 ? Math.round((enrolled / capacity) * 100) : 0;
-            const spotsLeft = capacity - enrolled;
-            const isLow = spotsLeft > 0 && spotsLeft <= 3;
-            const price = Number(c.price_monthly ?? c.price_per_session ?? 0);
-            const promo = c.active_promotion ?? null;
-            const discountedPrice = promo ? Math.round(price * (1 - promo.discount / 100)) : null;
-            const daysLeft = promo?.kind === 'time-limited' && promo.duration_days && promo.created_at
-              ? Math.max(0, promo.duration_days - Math.floor((Date.now() - new Date(promo.created_at).getTime()) / 86400000))
-              : null;
 
-            return (
-              <div key={c.id} className="rounded-3xl bg-background border border-border overflow-hidden shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5 flex flex-col">
-                <div className={cn('relative h-24 flex items-end p-3', !c.cover_image && `bg-gradient-to-br ${gradient}`)}
-                  style={c.cover_image ? { backgroundImage: `url(${c.cover_image})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}>
-                  <div className="size-12 rounded-2xl bg-white/90 backdrop-blur grid place-items-center text-2xl shadow-md">📚</div>
-                  <span className={cn('absolute top-2.5 right-2.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full',
-                    c.visibility === 'private' ? 'bg-muted/90 text-ink' : 'bg-emerald-500 text-white')}>
-                    {c.visibility === 'private' ? 'Private' : 'Live'}
-                  </span>
-                  {promo && (
-                    <span className="absolute top-2.5 left-2.5 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-400 text-amber-900">
-                      {promo.discount}% off{daysLeft !== null ? ` · ${daysLeft}d left` : ''}
-                    </span>
-                  )}
-                </div>
-                <div className="p-4 space-y-2 flex-1 flex flex-col">
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="font-semibold text-ink leading-tight">{c.name || 'Untitled'}</h3>
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-bold shrink-0">
-                      <Star className="size-3 fill-amber-500 text-amber-500" /> —
-                    </span>
-                  </div>
-                  <div className="text-xs text-muted-foreground">{c.subject}{c.form_level ? ` · ${formatLevel(c.form_level)}` : ''}</div>
-                  {c.description && <p className="text-xs text-muted-foreground line-clamp-2">{c.description}</p>}
-                  <div className="flex flex-wrap gap-1">
-                    {c.require_join_requests && <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border border-border bg-muted text-muted-foreground">Approval required</span>}
-                    {c.feedback_mode && c.feedback_mode !== 'off' && (
-                      <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-brand text-white inline-flex items-center gap-1">
-                        <Sparkles className="size-2.5" /> Parent feedback
-                      </span>
-                    )}
-                    {isLow && <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">Only {spotsLeft} left</span>}
-                  </div>
-                  {c.schedule_display && <div className="text-xs text-muted-foreground whitespace-pre-line">{c.schedule_display}</div>}
-                  <div className="space-y-1 mt-auto">
-                    <div className="text-xs text-muted-foreground">{enrolled}/{capacity} enrolled</div>
-                    <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                      <div className={cn('h-full rounded-full', pct > 80 ? 'bg-coral' : 'bg-brand')} style={{ width: `${Math.min(100, pct)}%` }} />
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between pt-2 border-t border-border">
-                    <div>
-                      {price > 0 ? (
-                        promo ? (
-                          <div className="flex items-baseline gap-1.5">
-                            <span className="font-bold text-ink">TT${discountedPrice}</span>
-                            <span className="text-xs text-muted-foreground line-through">TT${price}</span>
-                            <span className="text-xs text-muted-foreground">/mo</span>
-                          </div>
-                        ) : (
-                          <><span className="font-bold text-ink">TT${price}</span><span className="text-xs text-muted-foreground">/mo</span></>
-                        )
-                      ) : (
-                        <span className="font-bold text-brand-deep">Free</span>
-                      )}
-                    </div>
-                    <Link href={`/tutor/classes/${c.id}`} className="text-xs font-semibold text-brand-deep hover:underline">Manage →</Link>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      {/* On/off for the 1:1 marketplace */}
+      <OneOnOneMarketplaceToggle tutorId={tutorId} />
 
-      {tutorId && activeClasses.length > 0 && (
-        <div className="rounded-2xl bg-card border border-border p-5 space-y-3 mt-2">
-          <div>
-            <h3 className="font-bold text-ink">QR codes</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">Download or share a QR code for each class. Scanning it opens the class&apos;s public page.</p>
-          </div>
-          <QrCodePanel tutorId={tutorId} showProfile={false} classes={activeClasses.map((c: any) => ({ id: c.id, name: c.name }))} />
-        </div>
-      )}
+      {/* Weekly availability grid */}
+      <div>
+        <h3 className="text-sm font-bold text-ink mb-2">Weekly availability</h3>
+        <AvailabilityEditor tutorId={tutorId} />
+      </div>
     </div>
   );
 }
