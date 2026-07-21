@@ -134,15 +134,22 @@ export function renderBanner(canvas: HTMLCanvasElement, opts: BannerRenderOpts):
     ctx.fillRect(slotX, 0, fadeW, BANNER_H);
   }
 
-  // Optional atmosphere line — left-centre, clear of both Layer-2 safe zones
+  // Optional atmosphere line — centred in the band between the top-left icon
+  // tile (cards overlay a class-icon there, and the full banner width is shown,
+  // so text jammed at the left edge gets clipped by it) and the right-side
+  // photo. Vertically centred, clear of the bottom-left title chrome zone.
   const atmo = (opts.atmosphere ?? '').trim();
   if (atmo) {
     ctx.save();
     ctx.font = '600 40px "Inter", system-ui, sans-serif';
     ctx.fillStyle = mix(wash.accent, '#0b1b12', 0.2);
     ctx.textBaseline = 'middle';
-    const maxW = BANNER_W * 0.5;
-    ctx.fillText(ellipsize(ctx, atmo, maxW), 64, BANNER_H * 0.5, maxW);
+    ctx.textAlign = 'center';
+    const leftGutter = 240;                                        // clears the icon tile
+    const rightBound = opts.photo ? BANNER_W * 0.58 : BANNER_W * 0.64;
+    const maxW = rightBound - leftGutter;
+    const cx = (leftGutter + rightBound) / 2;
+    ctx.fillText(ellipsize(ctx, atmo, maxW), cx, BANNER_H * 0.5, maxW);
     ctx.restore();
   }
 
