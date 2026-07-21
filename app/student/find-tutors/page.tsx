@@ -10,7 +10,7 @@ import { getDisplayName } from '@/lib/utils/displayName';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import UserAvatar from '@/components/UserAvatar';
 import { cn } from '@/lib/utils';
-import { Search, Star, Heart, Calendar, Clock, SlidersHorizontal, Users, GraduationCap, Flame, X, Check, Video, Sparkles } from 'lucide-react';
+import { Search, Star, Heart, Calendar, Clock, SlidersHorizontal, Users, GraduationCap, Flame, X, Check, Video, Sparkles, BadgeCheck, MessageSquare, TrendingUp, Play } from 'lucide-react';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { parseScheduleData, scheduleToDisplay } from '@/lib/utils/scheduleFormat';
 import { formatLevel } from '@/lib/utils/formatLevel';
@@ -117,11 +117,33 @@ function TutorInitialAvatar({ name, size = 40 }: { name: string; size?: number }
   );
 }
 
+// Map a stored country (ISO2 code or full name) to a flag emoji for the card.
+// Returns '' when we can't confidently resolve one — never a fabricated flag.
+function countryToFlag(country?: string | null): string {
+  if (!country) return '';
+  const c = country.trim();
+  if (/^[A-Za-z]{2}$/.test(c)) {
+    return c.toUpperCase().replace(/./g, (ch) => String.fromCodePoint(127397 + ch.charCodeAt(0)));
+  }
+  const MAP: Record<string, string> = {
+    'trinidad and tobago': '🇹🇹', 'trinidad & tobago': '🇹🇹', 'trinidad': '🇹🇹',
+    'jamaica': '🇯🇲', 'guyana': '🇬🇾', 'barbados': '🇧🇧', 'grenada': '🇬🇩',
+    'saint lucia': '🇱🇨', 'st. lucia': '🇱🇨', 'st lucia': '🇱🇨', 'dominica': '🇩🇲',
+    'saint vincent and the grenadines': '🇻🇨', 'antigua and barbuda': '🇦🇬',
+    'the bahamas': '🇧🇸', 'bahamas': '🇧🇸', 'suriname': '🇸🇷', 'belize': '🇧🇿',
+    'united states': '🇺🇸', 'united kingdom': '🇬🇧', 'canada': '🇨🇦',
+  };
+  return MAP[c.toLowerCase()] ?? '';
+}
+
 export default function FindTutorsPage() {
   const { profile, loading } = useProfile();
   const router = useRouter();
   const [tutors, setTutors] = useState<Tutor[]>([]);
   const [loadingTutors, setLoadingTutors] = useState(true);
+  // Real per-tutor stats (lessons taught, students taught, recent bookings),
+  // aggregated server-side (service role) so counts are RLS-correct.
+  const [tutorStats, setTutorStats] = useState<Record<string, { lessonsTaught: number; studentsTaught: number; recentBookings: number }>>({});
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
@@ -374,6 +396,19 @@ export default function FindTutorsPage() {
       console.log('Tutors with subjects:', tutorsWithSubjects.length);
 
       setTutors(tutorsWithSubjects);
+
+      // Real marketplace stats (lessons taught, students taught, recent bookings).
+      const statIds = tutorsWithSubjects.map((t) => t.id);
+      if (statIds.length > 0) {
+        fetch('/api/public/tutors/stats', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tutorIds: statIds }),
+        })
+          .then((r) => (r.ok ? r.json() : { byTutorId: {} }))
+          .then((j) => setTutorStats(j.byTutorId ?? {}))
+          .catch(() => {});
+      }
     } catch (error) {
       console.error('Error fetching tutors:', error);
     } finally {
@@ -1123,7 +1158,7 @@ export default function FindTutorsPage() {
         {tab === 'tutors' && (
           <>
             <div className="text-sm text-muted-foreground">
-              {loadingTutors ? 'Loading tutors…' : `${pagedTutors.length} tutor${pagedTutors.length === 1 ? '' : 's'} for 1:1 sessions`}
+              {loadingTutors ? 'Loading tutors…' : `${filteredTutors.length} tutor${filteredTutors.length === 1 ? '' : 's'}${totalPages > 1 ? ` · Page ${currentPage} of ${totalPages}` : ''}`}
             </div>
 
             {loadingTutors ? (
@@ -1133,75 +1168,158 @@ export default function FindTutorsPage() {
             ) : pagedTutors.length === 0 ? (
               <div className="text-center py-16 text-muted-foreground text-sm">No tutors found. Try adjusting your search.</div>
             ) : (
-              <div className="grid sm:grid-cols-2 gap-3">
-                {pagedTutors.map((tutor) => (
-                  <div
-                    key={tutor.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => router.push(`/student/tutors/${tutor.id}`)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); router.push(`/student/tutors/${tutor.id}`); } }}
-                    className="group rounded-2xl bg-background border border-border p-4 hover:shadow-card hover:border-brand/40 transition-all flex gap-3 items-start cursor-pointer w-full min-w-0"
-                  >
-                    <UserAvatar avatarUrl={tutor.avatar_url} name={getDisplayName(tutor)} size={56} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <h3 className="font-semibold text-ink truncate">{getDisplayName(tutor)}</h3>
+              <div className="grid lg:grid-cols-[1fr_320px] gap-6 items-start">
+                {/* Tutor list */}
+                <div className="space-y-3 min-w-0">
+                  {pagedTutors.map((tutor) => {
+                    const stats = tutorStats[tutor.id];
+                    const isVerified = (tutor.tutor_verification_status ?? '').toUpperCase() === 'VERIFIED';
+                    const curricula = Array.from(new Set(tutor.subjects.map((s) => s.curriculum).filter(Boolean)));
+                    const subjectNames = Array.from(new Set(tutor.subjects.map((s) => s.name)));
+                    const minRate = tutor.subjects.length ? Math.min(...tutor.subjects.map((s) => s.price_per_hour_ttd ?? 0)) : 0;
+                    const flag = countryToFlag(tutor.country);
+                    return (
+                      <div key={tutor.id} className="group rounded-2xl bg-background border border-border p-4 hover:shadow-card hover:border-brand/40 transition-all">
+                        <div className="flex gap-4">
+                          {/* Avatar (placeholder) */}
+                          <div className="shrink-0 flex flex-col items-center gap-2">
+                            <button
+                              onClick={() => router.push(`/student/tutors/${tutor.id}`)}
+                              className="size-20 rounded-2xl grid place-items-center text-2xl font-bold text-white bg-gradient-to-br from-brand to-brand-deep overflow-hidden"
+                              aria-label={`View ${getDisplayName(tutor)}`}
+                            >
+                              {tutor.avatar_url
+                                ? <img src={tutor.avatar_url} alt="" className="size-full object-cover" />
+                                : getDisplayName(tutor).charAt(0).toUpperCase()}
+                            </button>
+                            <button
+                              onClick={() => toggleSave(tutor.id)}
+                              className="size-8 rounded-full hover:bg-muted grid place-items-center"
+                              aria-label="Save tutor"
+                            >
+                              <Heart className={cn('size-4', savedItems.has(tutor.id) ? 'fill-coral text-coral' : 'text-muted-foreground')} />
+                            </button>
                           </div>
-                          <div className="text-xs text-muted-foreground truncate">
-                            {tutor.subjects.slice(0, 3).map((s) => s.name).join(' · ')}
-                            {tutor.subjects.length > 3 && ` +${tutor.subjects.length - 3}`}
+
+                          {/* Main */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <button onClick={() => router.push(`/student/tutors/${tutor.id}`)} className="flex items-center gap-1.5 text-left max-w-full">
+                                  <h3 className="font-bold text-ink text-lg truncate group-hover:text-brand-deep transition-colors">{getDisplayName(tutor)}</h3>
+                                  {isVerified && <BadgeCheck className="size-4 shrink-0 text-brand-deep" />}
+                                  {flag && <span className="text-sm shrink-0" title={tutor.country}>{flag}</span>}
+                                </button>
+                                <div className="flex items-center gap-2 mt-1 text-sm flex-wrap">
+                                  {tutor.average_rating !== null ? (
+                                    <span className="inline-flex items-center gap-1 font-bold text-ink tabular-nums">
+                                      <Star className="size-3.5 fill-amber-400 text-amber-400" /> {tutor.average_rating.toFixed(2)}
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 text-muted-foreground"><Star className="size-3.5" /> New</span>
+                                  )}
+                                  {tutor.total_reviews > 0 && <span className="text-muted-foreground">({tutor.total_reviews} review{tutor.total_reviews === 1 ? '' : 's'})</span>}
+                                  {subjectNames.length > 0 && (
+                                    <span className="text-muted-foreground truncate">· {subjectNames.slice(0, 3).join(', ')}{subjectNames.length > 3 ? ` +${subjectNames.length - 3}` : ''}</span>
+                                  )}
+                                </div>
+                                {curricula.length > 0 && (
+                                  <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                                    {curricula.map((c) => (
+                                      <span key={c} className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-brand-soft text-brand-deep">{c}</span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="text-right shrink-0">
+                                {minRate > 0 ? (
+                                  <>
+                                    <div className="text-xl font-bold text-ink">TT${minRate}</div>
+                                    <div className="text-[11px] text-muted-foreground">60-min lesson</div>
+                                  </>
+                                ) : (
+                                  <div className="text-xs text-muted-foreground">Rate not set</div>
+                                )}
+                              </div>
+                            </div>
+
+                            {tutor.bio && <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{tutor.bio}</p>}
+
+                            {/* Real, tracked stats */}
+                            <div className="flex items-center gap-6 mt-3">
+                              <div>
+                                <div className="text-sm font-bold text-ink tabular-nums">{stats?.studentsTaught ?? 0}</div>
+                                <div className="text-[11px] text-muted-foreground">Students taught</div>
+                              </div>
+                              <div>
+                                <div className="text-sm font-bold text-ink tabular-nums">{stats?.lessonsTaught ?? 0}</div>
+                                <div className="text-[11px] text-muted-foreground">Lessons taught</div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-3 mt-3 pt-3 border-t border-border">
+                              <div className="text-xs text-muted-foreground inline-flex items-center gap-1 min-w-0">
+                                {stats && stats.recentBookings > 0 && (
+                                  <><TrendingUp className="size-3.5 text-brand-deep shrink-0" /> <span className="truncate">Booked {stats.recentBookings} time{stats.recentBookings === 1 ? '' : 's'} recently</span></>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <button
+                                  onClick={() => router.push('/student/messages')}
+                                  className="size-9 rounded-xl border border-border grid place-items-center hover:bg-muted transition"
+                                  aria-label="Message tutor"
+                                >
+                                  <MessageSquare className="size-4 text-muted-foreground" />
+                                </button>
+                                <button
+                                  onClick={() => router.push(`/student/tutors/${tutor.id}`)}
+                                  className="px-4 py-2 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep transition"
+                                >
+                                  Book a lesson
+                                </button>
+                              </div>
+                            </div>
                           </div>
                         </div>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); toggleSave(tutor.id); }}
-                          className="size-8 rounded-full hover:bg-muted grid place-items-center shrink-0"
-                        >
-                          <Heart className={cn('size-4', savedItems.has(tutor.id) ? 'fill-coral text-coral' : 'text-muted-foreground')} />
-                        </button>
                       </div>
+                    );
+                  })}
+                </div>
 
-                      <div className="flex items-center gap-2 mt-1.5 text-xs">
-                        {tutor.average_rating !== null ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold tabular-nums">
-                            <Star className="size-3 fill-amber-500 text-amber-500" />
-                            {tutor.average_rating.toFixed(1)}
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-muted-foreground font-semibold">
-                            <Star className="size-3 text-muted-foreground" /> —
-                          </span>
-                        )}
-                        {tutor.total_reviews > 0 && <span className="text-muted-foreground">({tutor.total_reviews} reviews)</span>}
-                      </div>
-
-                      {tutor.bio && <p className="text-xs text-muted-foreground mt-2 line-clamp-1">{tutor.bio}</p>}
-
-                      {tutor.institution_name && (
-                        <div className="text-[11px] text-muted-foreground mt-1">{tutor.institution_name}</div>
-                      )}
-
-                      <div className="flex items-end justify-between mt-3 pt-3 border-t border-border">
-                        <div>
-                          {tutor.subjects.length > 0 && (() => {
-                            const minRate = Math.min(...tutor.subjects.map((s) => s.price_per_hour_ttd ?? 0));
-                            return minRate > 0 ? (
-                              <>
-                                <span className="text-base font-bold text-ink">TT${minRate}</span>
-                                <span className="text-[11px] text-muted-foreground">/hr</span>
-                              </>
-                            ) : (
-                              <span className="text-sm text-muted-foreground">Rate not set</span>
-                            );
-                          })()}
+                {/* Featured tutor panel (top-ranked). Video area is a placeholder. */}
+                {filteredTutors[0] && (() => {
+                  const f = filteredTutors[0];
+                  const fname = getDisplayName(f).split(' ')[0];
+                  const fsubjects = Array.from(new Set(f.subjects.map((s) => s.name))).slice(0, 2).join(' · ');
+                  return (
+                    <aside className="hidden lg:block sticky top-4 space-y-3">
+                      <div className="rounded-2xl overflow-hidden border border-border">
+                        <div className="relative aspect-[4/5] bg-gradient-to-br from-brand to-brand-deep grid place-items-center">
+                          <button
+                            onClick={() => router.push(`/student/tutors/${f.id}`)}
+                            className="size-16 rounded-full bg-white/90 grid place-items-center hover:bg-white transition shadow-lg"
+                            aria-label={`View ${getDisplayName(f)}`}
+                          >
+                            <Play className="size-7 text-brand-deep fill-brand-deep translate-x-0.5" />
+                          </button>
+                          <div className="absolute bottom-0 inset-x-0 p-4 bg-gradient-to-t from-black/60 to-transparent">
+                            <div className="font-bold text-white flex items-center gap-1.5">
+                              {getDisplayName(f)}
+                              {(f.tutor_verification_status ?? '').toUpperCase() === 'VERIFIED' && <BadgeCheck className="size-4 text-white" />}
+                            </div>
+                            {fsubjects && <div className="text-xs text-white/80">{fsubjects}</div>}
+                          </div>
                         </div>
-                        <span className="text-xs font-semibold text-brand-deep group-hover:underline">View profile →</span>
                       </div>
-                    </div>
-                  </div>
-                ))}
+                      <button onClick={() => router.push(`/student/tutors/${f.id}`)} className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-sm font-semibold text-ink hover:bg-muted transition">
+                        View full schedule
+                      </button>
+                      <button onClick={() => router.push(`/student/tutors/${f.id}`)} className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-sm font-semibold text-ink hover:bg-muted transition">
+                        See {fname}&apos;s profile
+                      </button>
+                    </aside>
+                  );
+                })()}
               </div>
             )}
 
