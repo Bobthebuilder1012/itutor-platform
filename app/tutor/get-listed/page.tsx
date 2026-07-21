@@ -3,12 +3,13 @@
 import { Suspense, useEffect, useRef, useState, Fragment } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Check, Circle, Camera, Copy } from 'lucide-react';
+import { Check, Circle, Camera, Copy, Lock, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { useTutorCompletion, notifyCompletionUpdated } from '@/lib/hooks/useTutorCompletion';
 import { supabase } from '@/lib/supabase/client';
 import TutorShell from '@/components/tutor/TutorShell';
+import PayoutSetupModal from '@/components/tutor/PayoutSetupModal';
 import {
   getTutorAvailabilityRules,
   upsertAvailabilityRule,
@@ -121,6 +122,7 @@ function GetListedContent() {
 
   // Payout account gate
   const [hasPayoutAccount, setHasPayoutAccount] = useState<boolean | null>(null);
+  const [payoutModalOpen, setPayoutModalOpen] = useState(false);
 
   // Video provider
   const [videoConnection, setVideoConnection] = useState<{ provider: string; email: string | null } | null>(null);
@@ -525,11 +527,34 @@ function GetListedContent() {
       {/* 4. Rate */}
       <SectionShell done={completion.rate} title="Hourly rate" subtitle="Set your rate per subject (TTD). Each subject can have a different rate.">
         {hasPayoutAccount === false && (
-          <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            <svg className="mt-0.5 size-4 shrink-0 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3m0 3h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
-            <span>
-              You need to <a href="/tutor/wallet" className="font-semibold underline underline-offset-2 hover:text-amber-900">set up your payout account</a> before you can set rates or receive payments.
-            </span>
+          <div className="mb-4 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <svg className="mt-0.5 size-4 shrink-0 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3m0 3h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+              <span>Set up your payout account before you can set rates or receive payments.</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPayoutModalOpen(true)}
+              className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-deep"
+            >
+              <Lock className="size-4" /> Set up payout account
+            </button>
+          </div>
+        )}
+
+        {hasPayoutAccount === true && (
+          <div className="mb-4 flex flex-col gap-3 rounded-xl border border-brand/30 bg-brand/5 px-4 py-3 text-sm text-ink sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <ShieldCheck className="mt-0.5 size-4 shrink-0 text-brand-deep" />
+              <span>Payout account connected. Payouts are sent via secure bulk bank transfer.</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPayoutModalOpen(true)}
+              className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-semibold text-ink hover:bg-muted"
+            >
+              <Lock className="size-4" /> Manage payout account
+            </button>
           </div>
         )}
 
@@ -695,6 +720,12 @@ function GetListedContent() {
           </Link>
         </div>
       )}
+
+      <PayoutSetupModal
+        open={payoutModalOpen}
+        onClose={() => setPayoutModalOpen(false)}
+        onSaved={() => { if (profile?.id) fetchData(profile.id); }}
+      />
     </div>
   );
 }
