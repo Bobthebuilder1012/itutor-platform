@@ -776,21 +776,14 @@ export default function FindTutorsPage() {
       filtered.sort((a, b) => minPrice(a) - minPrice(b));
     } else if (sortOrder === 'rating_high') {
       filtered.sort((a, b) => (b.average_rating ?? -1) - (a.average_rating ?? -1));
-    } else if (profile?.subjects_of_study && profile.subjects_of_study.length > 0) {
-      filtered.sort((a, b) => {
-        const aMatchesSubjects = a.subjects.some((s) => profile.subjects_of_study?.includes(s.name));
-        const bMatchesSubjects = b.subjects.some((s) => profile.subjects_of_study?.includes(s.name));
-
-        if (aMatchesSubjects && !bMatchesSubjects) return -1;
-        if (!aMatchesSubjects && bMatchesSubjects) return 1;
-
-        const aRating = a.average_rating || 0;
-        const bRating = b.average_rating || 0;
-        return bRating - aRating;
-      });
-    } else {
-      filtered.sort((a, b) => (b.average_rating || 0) - (a.average_rating || 0));
     }
+    // 'relevance' (the default): keep the marketplace ranking order already
+    // applied in fetchTutors from the tutor_marketplace_rankings view (mig 190)
+    // — pinned first, then ranking_score desc. We intentionally do NOT re-sort
+    // here. The previous default re-sorted by the *viewer's* subjects_of_study
+    // and then rating, which overrode the ranking and made the marketplace
+    // disagree with the admin Tutor Ranking page (e.g. a new, unrated tutor who
+    // happened to match the viewer's subjects jumped above a higher-scored one).
 
     return filtered;
   }, [tutors, searchQuery, selectedSubjects, selectedRating, priceMin, priceMax, selectedSchool, profile, sortOrder]);
