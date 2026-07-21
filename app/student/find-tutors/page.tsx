@@ -1265,7 +1265,7 @@ export default function FindTutorsPage() {
                                   <MessageSquare className="size-4 text-muted-foreground" />
                                 </button>
                                 <button
-                                  onClick={() => router.push(`/student/tutors/${tutor.id}`)}
+                                  onClick={() => router.push(`/student/tutors/${tutor.id}?book=1on1`)}
                                   className="px-4 py-2 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep transition"
                                 >
                                   Book a lesson

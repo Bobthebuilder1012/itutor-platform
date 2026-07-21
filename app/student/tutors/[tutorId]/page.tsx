@@ -487,6 +487,22 @@ export default function TutorProfilePage() {
       .finally(() => setCalendarLoading(false));
   };
   const openBookingSheet = () => { setBookingStep(1); setPickedTime(null); setShowBookingSheet(true); loadCalendarOnce(); };
+
+  // Deep-link: arriving from the 1:1 marketplace "Book a lesson" button
+  // (/student/tutors/[id]?book=1on1) opens the 1:1 booking sheet straight away,
+  // instead of landing on the (class-led) profile and hunting for the button.
+  // Read the query off window (client-only) to avoid the useSearchParams()
+  // Suspense-boundary requirement. Fires once, after the tutor has loaded.
+  const autoOpenedRef = useRef(false);
+  useEffect(() => {
+    if (autoOpenedRef.current || loading || !tutor) return;
+    if (new URLSearchParams(window.location.search).get('book') === '1on1') {
+      autoOpenedRef.current = true;
+      openBookingSheet();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, tutor]);
+
   const pricedSubjects = (tutor?.subjects ?? []).filter((s) => s.price_per_hour_ttd > 0);
   const minPrice = pricedSubjects.length ? Math.min(...pricedSubjects.map((s) => s.price_per_hour_ttd)) : 0;
   const priceLabel = !paidClassesEnabled ? 'Free' : (minPrice > 0 ? `TT$${minPrice}` : 'Rate not set');
