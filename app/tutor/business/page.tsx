@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import {
   Briefcase, Tag, BarChart3, FileText, Plus, Check, X, Sparkles,
   Users, DollarSign, Star, BookOpen, Clock, Lock, Copy, ExternalLink,
-  GraduationCap, BadgeCheck, AlertCircle, UploadCloud, Loader2,
+  GraduationCap, BadgeCheck, AlertCircle, UploadCloud, Loader2, ShieldCheck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -16,12 +16,14 @@ import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { formatLevel } from '@/lib/utils/formatLevel';
 import TutorShell from '@/components/tutor/TutorShell';
 import QrCodePanel from '@/components/QrCodePanel';
+import SupportFormModal from '@/components/SupportFormModal';
+import VerifiedBadge from '@/components/VerifiedBadge';
 import ClassesSection from '@/components/tutor/public/ClassesSection';
 import ProfilePreviewPanel from '@/components/tutor/business/ProfilePreviewPanel';
 import ProfileQrCard from '@/components/tutor/business/ProfileQrCard';
 import { getDisplayName } from '@/lib/utils/displayName';
 
-type Tab = 'overview' | 'classes' | 'promotions' | 'credentials' | 'analytics' | 'feedback';
+type Tab = 'overview' | 'classes' | 'promotions' | 'verification' | 'credentials' | 'analytics' | 'feedback';
 
 export default function TutorBusinessPage() {
   return (
@@ -116,6 +118,7 @@ function MyBusinessContent() {
     { key: 'overview',   label: 'Overview',        icon: Briefcase },
     { key: 'classes',    label: 'Classes',          icon: BookOpen,  badge: activeClasses.length },
     { key: 'promotions', label: 'Promotions',       icon: Tag },
+    { key: 'verification', label: 'Verification',   icon: ShieldCheck },
     { key: 'credentials', label: 'Credentials',     icon: GraduationCap },
     { key: 'analytics',  label: 'Analytics',        icon: BarChart3 },
     { key: 'feedback',   label: 'Parent feedback',  icon: FileText,  comingSoon: true },
@@ -156,6 +159,7 @@ function MyBusinessContent() {
       {tab === 'overview'   && <OverviewTab activeClasses={activeClasses} totalRevenue={totalRevenue} totalStudents={totalStudents} profile={profile} />}
       {tab === 'classes'    && <ClassesTab activeClasses={activeClasses} tutorId={profile?.id} />}
       {tab === 'promotions' && <PromotionsTab classes={activeClasses} />}
+      {tab === 'verification' && <VerificationTab />}
       {tab === 'credentials' && <CredentialsTab />}
       {tab === 'analytics'  && <BusinessAnalyticsTab classes={activeClasses} totalRevenue={totalRevenue} />}
       {tab === 'feedback'   && <FeedbackComingSoon />}
@@ -656,6 +660,214 @@ function KpiCard({ icon: Icon, label, value, delta, positive }: { icon: any; lab
       </div>
       <div className="mt-3 text-xl font-bold text-ink tabular-nums">{value}</div>
       <div className="text-[11px] text-muted-foreground mt-0.5">{label}</div>
+    </div>
+  );
+}
+
+// ── Verification tab ─────────────────────────────────────────────────────────
+// Surfaces the iTutor "Verified" badge pipeline (tutor_verification_status +
+// verification_requests) on the business page, restyled to the business design
+// system. Reuses the exact 3-step upload flow the standalone /tutor/verification
+// page uses: create request (signed URL) → PUT file → trigger processing.
+// This is distinct from Credentials (the degrees table): verification grants the
+// trust badge and search boost; credentials shows degree text on the profile.
+interface VerificationRequest {
+  id: string;
+  status: string;
+  system_recommendation: string | null;
+  system_reason: string | null;
+  reviewer_reason: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+}
+
+function VerificationTab() {
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [showSupport, setShowSupport] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const [latestRequest, setLatestRequest] = useState<VerificationRequest | null>(null);
+
+  async function load() {
+    try {
+      const res = await fetch('/api/verification/request');
+      const data = await res.json();
+      if (res.ok) {
+        setStatus(data.verificationStatus ?? null);
+        setLatestRequest(data.latestRequest ?? null);
+      }
+    } catch (e) {
+      console.error('[VerificationTab] failed to load status:', e);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { load(); }, []);
+
+  async function handleFileUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setUploadError(null);
+    setUploadSuccess(false);
+    try {
+      const fileExt = file.name.split('.').pop()?.toLowerCase();
+      const fileType = fileExt === 'pdf' ? 'pdf' : 'image';
+
+      const createRes = await fetch('/api/verification/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileType, originalFilename: file.name }),
+      });
+      if (!createRes.ok) {
+        const err = await createRes.json();
+        throw new Error(err.error || 'Failed to create verification request');
+      }
+      const { uploadUrl, requestId } = await createRes.json();
+
+      const uploadRes = await fetch(uploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type },
+      });
+      if (!uploadRes.ok) throw new Error('Failed to upload file');
+
+      const processRes = await fetch(`/api/verification/request/${requestId}/process`, { method: 'POST' });
+      if (!processRes.ok) console.warn('[VerificationTab] processing may have failed, but file was uploaded');
+
+      setUploadSuccess(true);
+      await load();
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : 'Failed to upload file');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  if (loading) {
+    return <div className="flex items-center gap-2 text-sm text-muted-foreground py-10"><Loader2 className="size-4 animate-spin" /> Loading verification…</div>;
+  }
+
+  const canUpload = status !== 'VERIFIED' && status !== 'PENDING';
+  const rejectionReason = latestRequest?.reviewer_reason || latestRequest?.system_reason;
+
+  return (
+    <div className="max-w-2xl space-y-5">
+      {/* Intro */}
+      <div className="rounded-2xl bg-mint p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-1.5 text-xs uppercase tracking-wider font-semibold text-muted-foreground">
+              <ShieldCheck className="size-3.5" /> iTutor Verification
+            </div>
+            <p className="text-sm text-ink mt-1 font-medium">Get the verified badge on your profile</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Upload a teaching credential (CSEC, CAPE, or other). Verified tutors get a badge next to their name,
+              rank higher in the marketplace, and build trust with parents and students. Your document stays private.
+            </p>
+          </div>
+          <button onClick={() => setShowSupport(true)} className="shrink-0 text-xs font-semibold text-brand-deep hover:underline whitespace-nowrap">
+            Need help?
+          </button>
+        </div>
+      </div>
+
+      {/* Status card */}
+      {status === 'VERIFIED' && (
+        <div className="rounded-2xl border border-brand/30 bg-brand/5 p-4 flex items-start gap-3">
+          <BadgeCheck className="size-5 shrink-0 text-brand-deep mt-0.5" />
+          <div className="flex-1">
+            <div className="font-semibold text-ink flex items-center gap-2">Verified <VerifiedBadge size="sm" /></div>
+            <div className="text-sm text-muted-foreground mt-0.5">
+              Your credentials have been verified. The badge shows on your public profile and you rank higher in the marketplace.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {status === 'PENDING' && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
+          <Clock className="size-5 shrink-0 text-amber-500 mt-0.5" />
+          <div>
+            <div className="font-semibold text-amber-800">Under review</div>
+            <div className="text-sm text-amber-700 mt-0.5">
+              Our team is reviewing your document. This usually takes 1–2 business days. It stays hidden from students until approved.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {status === 'REJECTED' && (
+        <div className="rounded-2xl border border-coral/30 bg-coral/5 p-4 flex items-start gap-3">
+          <AlertCircle className="size-5 shrink-0 text-coral mt-0.5" />
+          <div>
+            <div className="font-semibold text-ink">Not verified</div>
+            {rejectionReason && <div className="text-sm text-ink/80 mt-0.5"><span className="font-medium">Reason:</span> {rejectionReason}</div>}
+            <div className="text-xs text-muted-foreground mt-1">Review the feedback, then upload a clearer document below to resubmit.</div>
+          </div>
+        </div>
+      )}
+
+      {uploadError && <div className="rounded-xl bg-coral/10 border border-coral/30 p-3 text-sm text-coral">{uploadError}</div>}
+      {uploadSuccess && (
+        <div className="rounded-xl bg-brand/10 border border-brand/30 p-3 text-sm text-brand-deep">
+          Your document was submitted and is being processed.
+        </div>
+      )}
+
+      {/* Upload */}
+      {canUpload && (
+        <div className="rounded-2xl bg-card border border-border p-5 space-y-3">
+          <div>
+            <div className="font-bold text-ink">{status === 'REJECTED' ? 'Resubmit your document' : 'Upload verification document'}</div>
+            <p className="text-xs text-muted-foreground mt-0.5">CSEC, CAPE, or other teaching qualification — PDF, JPG, PNG or WEBP (max 10MB).</p>
+          </div>
+          <label className={cn(
+            'flex items-center gap-3 rounded-xl border-2 border-dashed border-border p-4',
+            uploading ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:border-brand hover:bg-brand/5',
+          )}>
+            {uploading ? <Loader2 className="size-5 text-brand-deep animate-spin" /> : <UploadCloud className="size-5 text-muted-foreground" />}
+            <span className="text-sm text-muted-foreground">
+              {uploading ? 'Uploading and processing…' : 'Click to upload your certificate or results slip'}
+            </span>
+            <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" className="hidden" disabled={uploading} onChange={handleFileUpload} />
+          </label>
+        </div>
+      )}
+
+      {/* Request details */}
+      {latestRequest && (
+        <div className="rounded-2xl bg-card border border-border p-5 space-y-3">
+          <div className="font-bold text-ink">Latest request</div>
+          <div className="grid sm:grid-cols-2 gap-3 text-sm">
+            <div>
+              <div className="text-xs text-muted-foreground">Status</div>
+              <div className="text-ink font-medium mt-0.5">{latestRequest.status}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">Submitted</div>
+              <div className="text-ink font-medium mt-0.5">{new Date(latestRequest.created_at).toLocaleString()}</div>
+            </div>
+            {latestRequest.system_recommendation && (
+              <div className="sm:col-span-2">
+                <div className="text-xs text-muted-foreground">System assessment</div>
+                <div className="text-ink mt-0.5"><span className="font-medium">{latestRequest.system_recommendation}:</span> {latestRequest.system_reason}</div>
+              </div>
+            )}
+            {latestRequest.reviewed_at && (
+              <div>
+                <div className="text-xs text-muted-foreground">Reviewed</div>
+                <div className="text-ink font-medium mt-0.5">{new Date(latestRequest.reviewed_at).toLocaleString()}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <SupportFormModal isOpen={showSupport} onClose={() => setShowSupport(false)} />
     </div>
   );
 }
