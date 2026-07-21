@@ -1132,7 +1132,7 @@ export default function FindTutorsPage() {
                             href={`/student/explore/${l.id}`}
                             className="px-3 py-1.5 rounded-xl bg-brand text-white text-xs font-semibold hover:bg-brand-deep transition"
                           >
-                            {full ? 'Join waitlist' : l.requireJoinRequests ? 'Request to join' : 'View class'}
+                            {full ? 'Join waitlist' : 'View class'}
                           </Link>
                         )}
                       </div>
