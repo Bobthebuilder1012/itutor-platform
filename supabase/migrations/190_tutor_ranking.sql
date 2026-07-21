@@ -141,13 +141,13 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT round(
+  SELECT round((
       30.0 * coalesce((SELECT avg(r.stars) FROM ratings r WHERE r.tutor_id = p.id), 0) / 5.0
     + 20.0 * tutor_completion_score(p.id) / 100.0
     + 25.0 * least(1.0, ln(1 + coalesce(ss.sessions_held, 0)) / ln(1 + 200))
     + 15.0 * least(1.0, ln(1 + coalesce(cs.classes_created, 0)) / ln(1 + 20))
     + 10.0 * coalesce(p.admin_boost, 0) / 100.0
-  , 3)
+  )::numeric, 3)
   FROM profiles p
   LEFT JOIN tutor_session_stats ss ON ss.tutor_id = p.id
   LEFT JOIN tutor_class_stats  cs ON cs.tutor_id = p.id
