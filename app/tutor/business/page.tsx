@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import {
   Briefcase, Tag, BarChart3, FileText, Plus, Check, X, Sparkles,
   Users, DollarSign, Star, BookOpen, Clock, Lock, Copy, ExternalLink,
+  GraduationCap, BadgeCheck, AlertCircle, UploadCloud, Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -20,7 +21,7 @@ import ProfilePreviewPanel from '@/components/tutor/business/ProfilePreviewPanel
 import ProfileQrCard from '@/components/tutor/business/ProfileQrCard';
 import { getDisplayName } from '@/lib/utils/displayName';
 
-type Tab = 'overview' | 'classes' | 'promotions' | 'analytics' | 'feedback';
+type Tab = 'overview' | 'classes' | 'promotions' | 'credentials' | 'analytics' | 'feedback';
 
 export default function TutorBusinessPage() {
   return (
@@ -115,6 +116,7 @@ function MyBusinessContent() {
     { key: 'overview',   label: 'Overview',        icon: Briefcase },
     { key: 'classes',    label: 'Classes',          icon: BookOpen,  badge: activeClasses.length },
     { key: 'promotions', label: 'Promotions',       icon: Tag },
+    { key: 'credentials', label: 'Credentials',     icon: GraduationCap },
     { key: 'analytics',  label: 'Analytics',        icon: BarChart3 },
     { key: 'feedback',   label: 'Parent feedback',  icon: FileText,  comingSoon: true },
   ];
@@ -154,6 +156,7 @@ function MyBusinessContent() {
       {tab === 'overview'   && <OverviewTab activeClasses={activeClasses} totalRevenue={totalRevenue} totalStudents={totalStudents} profile={profile} />}
       {tab === 'classes'    && <ClassesTab activeClasses={activeClasses} tutorId={profile?.id} />}
       {tab === 'promotions' && <PromotionsTab classes={activeClasses} />}
+      {tab === 'credentials' && <CredentialsTab />}
       {tab === 'analytics'  && <BusinessAnalyticsTab classes={activeClasses} totalRevenue={totalRevenue} />}
       {tab === 'feedback'   && <FeedbackComingSoon />}
     </div>
@@ -653,6 +656,199 @@ function KpiCard({ icon: Icon, label, value, delta, positive }: { icon: any; lab
       </div>
       <div className="mt-3 text-xl font-bold text-ink tabular-nums">{value}</div>
       <div className="text-[11px] text-muted-foreground mt-0.5">{label}</div>
+    </div>
+  );
+}
+
+// ── Credentials tab ──────────────────────────────────────────────────────────
+// Surfaces the existing degree-verification pipeline (mig 096) on the business
+// page: submit/resubmit a degree with a private document, see review status,
+// and — when rejected — see the reason and resubmit. The uploaded document is
+// evidence only (private bucket); students only ever see the verified text.
+const CREDENTIAL_INPUT = 'w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand';
+
+function CredentialsTab() {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [degree, setDegree] = useState<any>(null);
+  const [editing, setEditing] = useState(false);
+
+  const [fullName, setFullName] = useState('');
+  const [school, setSchool] = useState('');
+  const [title, setTitle] = useState('');
+  const [field, setField] = useState('');
+  const [year, setYear] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/degrees/me');
+      const json = await res.json();
+      setDegree(json.degree ?? null);
+      if (json.degree) {
+        setFullName(json.degree.full_name ?? '');
+        setSchool(json.degree.school_name ?? '');
+        setTitle(json.degree.degree ?? '');
+        setField(json.degree.field ?? '');
+        setYear(json.degree.graduation_year ? String(json.degree.graduation_year) : '');
+      }
+    } catch {
+      setError('Failed to load your credentials.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { load(); }, []);
+
+  async function submit() {
+    setError('');
+    if (!fullName.trim() || !school.trim() || !title.trim() || !year.trim()) {
+      setError('Full name, institution, credential title and year are required.');
+      return;
+    }
+    if (!file) { setError('Please attach a photo or PDF of your certificate.'); return; }
+    setSaving(true);
+    try {
+      const fd = new FormData();
+      fd.append('full_name', fullName.trim());
+      fd.append('school_name', school.trim());
+      fd.append('degree', title.trim());
+      fd.append('field', field.trim());
+      fd.append('graduation_year', year.trim());
+      fd.append('file', file);
+      const res = await fetch('/api/degrees', { method: 'POST', body: fd });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Submission failed');
+      setEditing(false);
+      setFile(null);
+      await load();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const status = degree?.status as 'pending' | 'verified' | 'rejected' | undefined;
+  const showForm = !degree || status === 'rejected' || editing;
+
+  if (loading) {
+    return <div className="flex items-center gap-2 text-sm text-muted-foreground py-10"><Loader2 className="size-4 animate-spin" /> Loading credentials…</div>;
+  }
+
+  return (
+    <div className="max-w-2xl space-y-5">
+      <div className="rounded-2xl bg-mint p-4">
+        <div className="flex items-center gap-1.5 text-xs uppercase tracking-wider font-semibold text-muted-foreground">
+          <GraduationCap className="size-3.5" /> Credentials
+        </div>
+        <p className="text-sm text-ink mt-1 font-medium">Add your degree or teaching qualification</p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Your document stays private — only you and our reviewers can see it. Students only ever see the verified text
+          (title, institution, year) plus a “Verified” badge once approved. Adding a credential counts toward your profile completion.
+        </p>
+      </div>
+
+      {error && <div className="rounded-xl bg-coral/10 border border-coral/30 p-3 text-sm text-coral">{error}</div>}
+
+      {/* Status card */}
+      {status === 'verified' && (
+        <div className="rounded-2xl border border-brand/30 bg-brand/5 p-4 flex items-start gap-3">
+          <BadgeCheck className="size-5 shrink-0 text-brand-deep mt-0.5" />
+          <div className="flex-1">
+            <div className="font-semibold text-ink">Verified{degree.field ? `: ${degree.degree} — ${degree.field}` : `: ${degree.degree}`}</div>
+            <div className="text-sm text-muted-foreground mt-0.5">{[degree.school_name, degree.graduation_year].filter(Boolean).join(' · ')}</div>
+            <div className="text-xs text-brand-deep mt-1">This is shown on your public profile.</div>
+          </div>
+        </div>
+      )}
+
+      {status === 'pending' && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
+          <Clock className="size-5 shrink-0 text-amber-500 mt-0.5" />
+          <div>
+            <div className="font-semibold text-amber-800">Under review</div>
+            <div className="text-sm text-amber-700 mt-0.5">
+              {degree.degree}{degree.school_name ? ` · ${degree.school_name}` : ''}. Our team is checking your document against the details you entered. It stays hidden from students until approved.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {status === 'rejected' && (
+        <div className="rounded-2xl border border-coral/30 bg-coral/5 p-4 flex items-start gap-3">
+          <AlertCircle className="size-5 shrink-0 text-coral mt-0.5" />
+          <div>
+            <div className="font-semibold text-ink">Couldn’t verify this credential</div>
+            {degree.rejection_reason && <div className="text-sm text-ink/80 mt-0.5"><span className="font-medium">Reason:</span> {degree.rejection_reason}</div>}
+            <div className="text-xs text-muted-foreground mt-1">Update the details or upload a clearer document below and resubmit.</div>
+          </div>
+        </div>
+      )}
+
+      {status === 'verified' && !editing && (
+        <button onClick={() => setEditing(true)} className="text-sm font-semibold text-brand-deep hover:underline">
+          Replace credential
+        </button>
+      )}
+
+      {/* Submit / resubmit form */}
+      {showForm && (
+        <div className="rounded-2xl bg-card border border-border p-5 space-y-4">
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-medium text-ink mb-1.5">Name as it appears on the document</label>
+              <input value={fullName} onChange={(e) => setFullName(e.target.value)} className={CREDENTIAL_INPUT} placeholder="e.g. Jane A. Doe" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-ink mb-1.5">Credential title</label>
+              <input value={title} onChange={(e) => setTitle(e.target.value)} className={CREDENTIAL_INPUT} placeholder="e.g. B.Sc. Mathematics" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-ink mb-1.5">Field of study <span className="text-muted-foreground">(optional)</span></label>
+              <input value={field} onChange={(e) => setField(e.target.value)} className={CREDENTIAL_INPUT} placeholder="e.g. Applied Mathematics" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-ink mb-1.5">Institution</label>
+              <input value={school} onChange={(e) => setSchool(e.target.value)} className={CREDENTIAL_INPUT} placeholder="e.g. UWI St. Augustine" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-ink mb-1.5">Year</label>
+              <input value={year} onChange={(e) => setYear(e.target.value)} inputMode="numeric" className={CREDENTIAL_INPUT} placeholder="e.g. 2019" />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-ink mb-1.5 flex items-center gap-1.5">
+              <Lock className="size-3.5 text-brand-deep" /> Document (PDF or image, private)
+            </label>
+            <label className="flex items-center gap-3 rounded-xl border-2 border-dashed border-border p-4 cursor-pointer hover:border-brand hover:bg-brand/5">
+              <UploadCloud className="size-5 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">
+                {file ? file.name : 'Click to upload your certificate or transcript (max 10MB)'}
+              </span>
+              <input type="file" accept=".pdf,image/png,image/jpeg,image/webp" className="hidden"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            </label>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            {editing && (
+              <button onClick={() => { setEditing(false); setFile(null); }} className="px-4 py-2 rounded-xl border border-border bg-background text-sm font-semibold hover:bg-muted">
+                Cancel
+              </button>
+            )}
+            <button onClick={submit} disabled={saving}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep disabled:opacity-50">
+              {saving ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
+              {status === 'rejected' ? 'Resubmit for review' : 'Submit for review'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

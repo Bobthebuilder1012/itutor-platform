@@ -14,6 +14,7 @@ import { supabase } from '@/lib/supabase/client';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { formatLevel } from '@/lib/utils/formatLevel';
 import { parseScheduleData, scheduleToDisplay } from '@/lib/utils/scheduleFormat';
+import TutorCredentials from '@/components/TutorCredentials';
 
 type Step = 'detail' | 'join' | 'joined' | 'awaiting-approval';
 
@@ -971,6 +972,7 @@ function ClassSummaryCard({ group }: { group: GroupData }) {
       <div className="flex-1 min-w-0">
         <div className="font-semibold text-ink">{group.name}</div>
         <div className="text-xs text-muted-foreground">by {tutorName}</div>
+        {group.tutor?.id && <TutorCredentials tutorId={group.tutor.id} variant="compact" className="mt-1" />}
         {schedule && (
           <div className="text-xs text-muted-foreground mt-1 whitespace-pre-line leading-relaxed">{schedule}</div>
         )}

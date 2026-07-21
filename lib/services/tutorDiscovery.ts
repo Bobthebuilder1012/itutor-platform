@@ -1,7 +1,15 @@
 // =====================================================
-// TUTOR DISCOVERY HELPERS
+// TUTOR DISCOVERY HELPERS  — DEPRECATED / UNUSED
 // =====================================================
-// Helper functions for tutor search with verification ranking
+// DEPRECATED: this verification-only helper was never wired into any
+// live surface. Marketplace ordering now lives in the DB view
+// `tutor_marketplace_rankings` (migration 190_tutor_ranking.sql), which
+// blends rating/completion/experience with admin boost + pin. The live
+// marketplaces order by that view directly:
+//   * 1:1 + group lessons → app/student/find-tutors/page.tsx
+//   * group catalog        → app/api/groups/route.ts (default "latest" sort)
+// Do NOT wire these functions in; query the view instead. Kept only to
+// avoid breaking any stray import.
 
 import { SupabaseClient } from '@supabase/supabase-js';
 

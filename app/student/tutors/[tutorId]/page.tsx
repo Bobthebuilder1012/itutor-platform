@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { getTutorPublicCalendar } from '@/lib/services/bookingService';
 import ClassesSection from '@/components/tutor/public/ClassesSection';
+import TutorCredentials from '@/components/TutorCredentials';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -566,6 +567,9 @@ export default function TutorProfilePage() {
         </div>
 
         <div className="space-y-6">
+            {/* Verified credential (structured text + badge only — never the document) */}
+            <TutorCredentials tutorId={tutorId} />
+
             {/* Tutor's classes are the main attraction — first in the column. */}
             <ClassesSection tutorId={tutorId} tutorFirstName={getDisplayName(tutor).split(' ')[0]} />
 

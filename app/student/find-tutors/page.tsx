@@ -208,19 +208,9 @@ export default function FindTutorsPage() {
         throw profilesError ?? new Error('No tutor profiles');
       }
 
-      const verificationRank: Record<string, number> = {
-        VERIFIED: 0,
-        PENDING: 1,
-        PROCESSING: 2,
-        UNVERIFIED: 3,
-        REJECTED: 4,
-      };
-      tutorProfiles.sort(
-        (a, b) =>
-          (verificationRank[String(a.tutor_verification_status ?? 'UNVERIFIED')] ?? 9) -
-          (verificationRank[String(b.tutor_verification_status ?? 'UNVERIFIED')] ?? 9)
-      );
-
+      // Final ordering is applied after we know the listed set, using the
+      // marketplace ranking view (mig 190). Verification-status order is kept
+      // only as a fallback below if that view isn't available yet.
       const tutorProfilesWithBanners = tutorProfiles as Array<Record<string, unknown> & { id: string }>;
 
       // Fetch listed tutor IDs from server API (bypasses RLS on protected tables)
@@ -232,6 +222,40 @@ export default function FindTutorsPage() {
       const activeTutorIds = activeTutorProfiles.map((t) => t.id);
 
       console.log(`✅ Showing ${activeTutorProfiles.length} listed tutors (of ${tutorProfilesWithBanners.length} total)`);
+
+      // Marketplace ordering (mig 190): pinned tutors first in pin order,
+      // then everyone else by ranking_score desc. Falls back to
+      // verification-status order if the ranking view isn't present yet.
+      try {
+        const { data: rankRows, error: rankErr } = activeTutorIds.length > 0
+          ? await supabase
+              .from('tutor_marketplace_rankings')
+              .select('tutor_id, pin_rank, ranking_score')
+              .in('tutor_id', activeTutorIds)
+          : { data: [] as any[], error: null };
+        if (rankErr) throw rankErr;
+        const rankMap = new Map<string, { pin: number | null; score: number }>();
+        (rankRows ?? []).forEach((r: any) =>
+          rankMap.set(r.tutor_id, { pin: r.pin_rank ?? null, score: Number(r.ranking_score ?? 0) })
+        );
+        activeTutorProfiles.sort((a, b) => {
+          const ra = rankMap.get(a.id) ?? { pin: null, score: 0 };
+          const rb = rankMap.get(b.id) ?? { pin: null, score: 0 };
+          if (ra.pin != null || rb.pin != null) {
+            if (ra.pin == null) return 1;
+            if (rb.pin == null) return -1;
+            if (ra.pin !== rb.pin) return ra.pin - rb.pin;
+          }
+          return rb.score - ra.score;
+        });
+      } catch {
+        const verificationRank: Record<string, number> = { VERIFIED: 0, PENDING: 1, PROCESSING: 2, UNVERIFIED: 3, REJECTED: 4 };
+        activeTutorProfiles.sort(
+          (a, b) =>
+            (verificationRank[String((a as any).tutor_verification_status ?? 'UNVERIFIED')] ?? 9) -
+            (verificationRank[String((b as any).tutor_verification_status ?? 'UNVERIFIED')] ?? 9)
+        );
+      }
 
       // Fetch subjects for all tutor profiles
       const { data: tutorSubjects, error: subjectsError } =
@@ -458,6 +482,30 @@ export default function FindTutorsPage() {
       (subEnrollments ?? []).forEach((e: any) => enrolledSet.add(e.group_id));
 
       setEnrolledLessonIds(enrolledSet);
+
+      // Order classes by their tutor's marketplace ranking (mig 190): pinned
+      // tutors' classes first in pin order, then by ranking_score. Keeps the
+      // created_at order within a tutor; falls back to it entirely if the
+      // ranking view isn't present yet.
+      {
+        const { data: rankRows, error: rankErr } = tutorIds.length
+          ? await supabase.from('tutor_marketplace_rankings').select('tutor_id, pin_rank, ranking_score').in('tutor_id', tutorIds)
+          : { data: [] as any[], error: null };
+        if (!rankErr && rankRows) {
+          const rankMap = new Map<string, { pin: number | null; score: number }>();
+          rankRows.forEach((r: any) => rankMap.set(r.tutor_id, { pin: r.pin_rank ?? null, score: Number(r.ranking_score ?? 0) }));
+          groups = [...groups].sort((a: any, b: any) => {
+            const ra = rankMap.get(a.tutor_id) ?? { pin: null, score: 0 };
+            const rb = rankMap.get(b.tutor_id) ?? { pin: null, score: 0 };
+            if (ra.pin != null || rb.pin != null) {
+              if (ra.pin == null) return 1;
+              if (rb.pin == null) return -1;
+              if (ra.pin !== rb.pin) return ra.pin - rb.pin;
+            }
+            return rb.score - ra.score;
+          });
+        }
+      }
 
       const mapped: GroupLesson[] = groups.map((g: any) => {
         const tutor = tutorMap.get(g.tutor_id);

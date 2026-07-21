@@ -267,6 +267,24 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Default ("latest") order is by the owning tutor's marketplace ranking
+    // (mig 190): pinned tutors first, then ranking_score, then newest. Explicit
+    // user sorts (rating/members/price/nextSession) are unaffected. Skipped if
+    // the ranking view isn't present yet.
+    const rankMap = new Map<string, { pin: number | null; score: number }>();
+    if (sortBy === 'latest') {
+      const rankTutorIds = [...new Set<string>(filtered.map((g: any) => g.tutor_id).filter(Boolean))];
+      if (rankTutorIds.length > 0) {
+        const { data: rankRows, error: rankErr } = await service
+          .from('tutor_marketplace_rankings')
+          .select('tutor_id, pin_rank, ranking_score')
+          .in('tutor_id', rankTutorIds);
+        if (!rankErr && rankRows) {
+          rankRows.forEach((r: any) => rankMap.set(r.tutor_id, { pin: r.pin_rank ?? null, score: Number(r.ranking_score ?? 0) }));
+        }
+      }
+    }
+
     const sorted = [...filtered].sort((a: any, b: any) => {
       const dir = sortDir === 'asc' ? 1 : -1;
       if (sortBy === 'rating') return (Number(a.tutor?.rating_average ?? 0) - Number(b.tutor?.rating_average ?? 0)) * dir;
@@ -280,6 +298,17 @@ export async function GET(request: NextRequest) {
         const aTs = a.next_occurrence ? new Date(a.next_occurrence.scheduled_start_at).getTime() : Number.MAX_SAFE_INTEGER;
         const bTs = b.next_occurrence ? new Date(b.next_occurrence.scheduled_start_at).getTime() : Number.MAX_SAFE_INTEGER;
         return (aTs - bTs) * dir;
+      }
+      // Default 'latest': marketplace ranking when available, else newest first.
+      if (rankMap.size > 0) {
+        const ra = rankMap.get(a.tutor_id) ?? { pin: null, score: 0 };
+        const rb = rankMap.get(b.tutor_id) ?? { pin: null, score: 0 };
+        if (ra.pin != null || rb.pin != null) {
+          if (ra.pin == null) return 1;
+          if (rb.pin == null) return -1;
+          if (ra.pin !== rb.pin) return ra.pin - rb.pin;
+        }
+        if (rb.score !== ra.score) return rb.score - ra.score;
       }
       return (new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) * dir;
     });
