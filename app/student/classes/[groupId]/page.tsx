@@ -11,6 +11,7 @@ import {
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
+import { CommentSection } from '@/components/ratings/CommentSection';
 
 /* ─── Types ──────────────────────────────────────────── */
 
@@ -344,6 +345,21 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
           {tab === 'members'   && <MembersTab  groupId={groupId} userId={profile!.id} />}
           {tab === 'whatsapp'  && <ExternalChannelTab groupId={groupId} platform="whatsapp"  url={group.whatsapp_link!} tutorName={tutorName} />}
           {tab === 'classroom' && <ExternalChannelTab groupId={groupId} platform="classroom" url={group.google_classroom_link!} tutorName={tutorName} />}
+
+          {/* Ratings & reviews — enrolled students rate the class across the three
+              categories here; the form self-gates on enrolment + 30-day tenure. */}
+          {tab === 'stream' && (
+            <div className="pt-4 mt-2 border-t border-border">
+              <CommentSection
+                targetKind="class"
+                targetId={groupId}
+                viewerLoggedIn
+                viewerIsOwnerTutor={false}
+                activeRatingFilter={null}
+                onClearFilter={() => {}}
+              />
+            </div>
+          )}
         </>
       )}
     </div>
