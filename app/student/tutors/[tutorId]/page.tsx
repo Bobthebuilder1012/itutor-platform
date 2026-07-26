@@ -12,11 +12,12 @@ import { cn } from '@/lib/utils';
 import {
   ArrowLeft, Star, Heart, MessageSquare, Award, Clock, Video,
   BadgeCheck, ChevronLeft, ChevronRight, X, Check, MapPin,
-  ThumbsUp, ThumbsDown,
+  ThumbsUp, ThumbsDown, HeartHandshake, Lightbulb, BookOpen,
 } from 'lucide-react';
 import { getTutorPublicCalendar } from '@/lib/services/bookingService';
 import ClassesSection from '@/components/tutor/public/ClassesSection';
 import TutorCredentials from '@/components/TutorCredentials';
+import { StarRow } from '@/components/ratings/StarInput';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -26,6 +27,18 @@ type Review = {
   comment: string | null;
   created_at: string;
   student: { full_name: string; username: string };
+};
+
+// Group-class review with the 3-category sub-scores (mig 192).
+type GroupReview = {
+  id: string;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+  patience_rating: number | null;
+  explanation_rating: number | null;
+  class_material_rating: number | null;
+  reviewer?: { full_name?: string | null; avatar_url?: string | null } | null;
 };
 
 type TutorProfile = {
@@ -335,6 +348,7 @@ export default function TutorProfilePage() {
   const [paidClassesEnabled, setPaidClassesEnabled] = useState(false);
   const [completedSessions, setCompletedSessions] = useState(0);
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [groupReviews, setGroupReviews] = useState<GroupReview[]>([]);
   const [voted, setVoted] = useState<Record<string, 'up' | 'down' | undefined>>({});
   const [saved, setSaved] = useState(false);
   const [showBookingSheet, setShowBookingSheet] = useState(false);
@@ -410,6 +424,13 @@ export default function TutorProfilePage() {
       const avgRating = Number.isFinite(avgNum) ? avgNum : null;
       const totalReviews = typeof summary?.ratingCount === 'number' ? summary.ratingCount : 0;
       setReviews(summary?.reviews || []);
+
+      // Group-class reviews (3-category) — separate from the 1:1 ratings above.
+      try {
+        const grpRes = await fetch(`/api/tutors/${tutorId}/reviews`, { cache: 'no-store' });
+        const grpJson = await grpRes.json().catch(() => ({}));
+        setGroupReviews(Array.isArray(grpJson?.data) ? grpJson.data : []);
+      } catch { setGroupReviews([]); }
 
       const { count } = await supabase
         .from('sessions').select('*', { count: 'exact', head: true })
@@ -505,6 +526,19 @@ export default function TutorProfilePage() {
 
   const pricedSubjects = (tutor?.subjects ?? []).filter((s) => s.price_per_hour_ttd > 0);
   const minPrice = pricedSubjects.length ? Math.min(...pricedSubjects.map((s) => s.price_per_hour_ttd)) : 0;
+
+  // Group-class rating breakdown (only reviews carrying all three sub-scores).
+  const categoryReviews = groupReviews.filter(
+    (r) => r.patience_rating != null && r.explanation_rating != null && r.class_material_rating != null
+  );
+  const avgCat = (key: 'patience_rating' | 'explanation_rating' | 'class_material_rating') =>
+    categoryReviews.length ? categoryReviews.reduce((s, r) => s + (r[key] ?? 0), 0) / categoryReviews.length : 0;
+  const categoryCards = [
+    { label: 'Patience', icon: HeartHandshake, value: avgCat('patience_rating') },
+    { label: 'Explanation', icon: Lightbulb, value: avgCat('explanation_rating') },
+    { label: 'Class material', icon: BookOpen, value: avgCat('class_material_rating') },
+  ];
+  const writtenGroupReviews = groupReviews.filter((r) => r.comment && r.comment.trim().length > 0);
   const priceLabel = !paidClassesEnabled ? 'Free' : (minPrice > 0 ? `TT$${minPrice}` : 'Rate not set');
 
   if (profileLoading || loading || !profile) {
@@ -629,6 +663,54 @@ export default function TutorProfilePage() {
                 <Video className="size-4" /> Book a 1:1{paidClassesEnabled && minPrice > 0 ? ` — TT$${minPrice}/hr` : ''}
               </button>
             </section>
+
+            {/* Class ratings — 3-category breakdown + written group-class reviews */}
+            {groupReviews.length > 0 && (
+              <section className="rounded-3xl bg-background border border-border p-6">
+                <h2 className="font-semibold text-ink mb-1">Class ratings</h2>
+                <p className="text-xs text-muted-foreground mb-4">How students rate {getDisplayName(tutor)}&apos;s group classes.</p>
+
+                {categoryReviews.length > 0 && (
+                  <div className="grid sm:grid-cols-3 gap-3 mb-6">
+                    {categoryCards.map((c) => {
+                      const Icon = c.icon;
+                      return (
+                        <div key={c.label} className="rounded-2xl border border-border bg-card p-4">
+                          <div className="flex items-center gap-2 text-sm font-semibold text-ink">
+                            <span className="size-8 rounded-xl bg-brand/10 text-brand-deep grid place-items-center"><Icon className="size-4" /></span>
+                            {c.label}
+                          </div>
+                          <div className="mt-3 flex items-center gap-2">
+                            <span className="text-2xl font-bold text-ink tabular-nums">{c.value.toFixed(1)}</span>
+                            <StarRow value={c.value} size={14} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {writtenGroupReviews.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No written class reviews yet.</p>
+                ) : (
+                  <div className="space-y-4">
+                    {writtenGroupReviews.map((r) => (
+                      <div key={r.id} className="border-t border-border pt-4 first:border-0 first:pt-0">
+                        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                          <div className="size-7 rounded-full bg-brand-soft text-forest grid place-items-center text-xs font-bold shrink-0">
+                            {(r.reviewer?.full_name || 'S').charAt(0).toUpperCase()}
+                          </div>
+                          <span className="text-sm font-semibold text-ink">{r.reviewer?.full_name || 'Student'}</span>
+                          <StarRow value={r.rating} size={13} />
+                        </div>
+                        {r.comment && <p className="text-sm text-muted-foreground">{r.comment}</p>}
+                        <p className="mt-1.5 text-xs text-muted-foreground/70">{new Date(r.created_at).toLocaleDateString()}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
 
             {/* Reviews */}
             <section className="rounded-3xl bg-background border border-border p-6">

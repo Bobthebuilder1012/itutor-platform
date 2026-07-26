@@ -14,6 +14,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       .from('group_reviews')
       .select(`
         id, rating, comment, created_at,
+        patience_rating, explanation_rating, class_material_rating,
         group:groups!group_reviews_group_id_fkey(id, name),
         reviewer:profiles!group_reviews_reviewer_id_fkey(id, full_name, avatar_url)
       `)
