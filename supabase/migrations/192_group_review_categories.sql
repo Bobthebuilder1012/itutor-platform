@@ -24,10 +24,13 @@ ALTER TABLE public.group_reviews
 -- active (non-deleted) reviews. category_review_count = reviews that actually
 -- carried the 3 sub-scores (legacy single-score reviews are excluded from the
 -- category averages but still count toward the overall review_count).
+-- Grouped by (group_id, tutor_id): a group has exactly one tutor, so this is
+-- still one row per group. (We group by tutor_id rather than aggregate it —
+-- Postgres has no max()/min() for the uuid type.)
 CREATE OR REPLACE VIEW public.group_review_category_averages AS
 SELECT
   group_id,
-  max(tutor_id)                                                              AS tutor_id,
+  tutor_id,
   round(avg(patience_rating)       FILTER (WHERE patience_rating IS NOT NULL)::numeric, 2)       AS avg_patience,
   round(avg(explanation_rating)    FILTER (WHERE explanation_rating IS NOT NULL)::numeric, 2)    AS avg_explanation,
   round(avg(class_material_rating) FILTER (WHERE class_material_rating IS NOT NULL)::numeric, 2) AS avg_class_material,
@@ -36,7 +39,7 @@ SELECT
   count(*)                                                                   AS review_count
 FROM public.group_reviews
 WHERE deleted_at IS NULL
-GROUP BY group_id;
+GROUP BY group_id, tutor_id;
 
 GRANT SELECT ON public.group_review_category_averages TO anon, authenticated;
 
