@@ -7,8 +7,15 @@ import { getServiceClient } from '@/lib/supabase/server';
 
 type Params = { params: Promise<{ groupId: string }> };
 
+// A review is either the new 3-category form (patience/explanation/class_material,
+// overall = their rounded average) or the legacy single `rating`. `comment` is
+// always optional. The 3-category columns land in mig 192; legacy single-rating
+// submissions never reference them, so this route stays safe pre-migration.
 const createSchema = z.object({
-  rating: z.number().int().min(1).max(5),
+  rating: z.number().int().min(1).max(5).optional(),
+  patience_rating: z.number().int().min(1).max(5).optional(),
+  explanation_rating: z.number().int().min(1).max(5).optional(),
+  class_material_rating: z.number().int().min(1).max(5).optional(),
   comment: z.string().optional(),
 });
 
@@ -31,12 +38,33 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     const service = getServiceClient();
 
-    // Require active enrollment (or approved group_members row)
-    const [{ data: enrollment }, { data: membership }] = await Promise.all([
-      service.from('group_enrollments').select('id').eq('group_id', groupId).eq('student_id', user.id).in('status', ['ACTIVE', 'GRACE']).maybeSingle(),
+    // Resolve the overall score: average of the three categories when supplied,
+    // otherwise the legacy single rating. Reject if neither is present.
+    const { patience_rating: pr, explanation_rating: er, class_material_rating: cr } = parsed.data;
+    const haveCategories = pr != null && er != null && cr != null;
+    const overall = haveCategories ? Math.round(((pr as number) + (er as number) + (cr as number)) / 3) : parsed.data.rating;
+    if (!overall) return fail('Provide a rating, or all three category ratings.', 400);
+
+    // Require active enrollment (or approved group_members row). Select enrolled_at
+    // defensively — the column set on group_enrollments has migration drift, so we
+    // fall back to a minimal select if it's absent.
+    const enrollmentQuery = async () => {
+      let res = await service.from('group_enrollments').select('id, enrolled_at').eq('group_id', groupId).eq('student_id', user.id).in('status', ['ACTIVE', 'GRACE']).maybeSingle();
+      if (res.error) res = await service.from('group_enrollments').select('id').eq('group_id', groupId).eq('student_id', user.id).in('status', ['ACTIVE', 'GRACE']).maybeSingle();
+      return res.data as { id: string; enrolled_at?: string } | null;
+    };
+    const [enrollment, { data: membership }] = await Promise.all([
+      enrollmentQuery(),
       service.from('group_members').select('id').eq('group_id', groupId).eq('user_id', user.id).in('status', ['approved', 'active']).maybeSingle(),
     ]);
     if (!enrollment && !membership) return fail('You must be enrolled to leave a review', 403);
+
+    // 30-day tenure gate — only enforceable when we know when they enrolled.
+    const enrolledAt = enrollment?.enrolled_at;
+    if (enrolledAt) {
+      const daysEnrolled = (Date.now() - new Date(enrolledAt).getTime()) / 86_400_000;
+      if (daysEnrolled < 30) return fail('You can review this class once you have been enrolled for 30 days.', 403);
+    }
 
     const { data: existing } = await service
       .from('group_reviews')
@@ -50,15 +78,24 @@ export async function POST(req: NextRequest, { params }: Params) {
     const { data: group } = await service.from('groups').select('tutor_id').eq('id', groupId).single();
     if (!group) return fail('Group not found', 404);
 
+    const insertPayload: Record<string, unknown> = {
+      reviewer_id: user.id,
+      tutor_id: group.tutor_id,
+      group_id: groupId,
+      rating: overall,
+      comment: parsed.data.comment ?? null,
+    };
+    // Only touch the mig-192 columns when categories were actually supplied, so
+    // legacy single-rating submissions keep working before the migration runs.
+    if (haveCategories) {
+      insertPayload.patience_rating = pr;
+      insertPayload.explanation_rating = er;
+      insertPayload.class_material_rating = cr;
+    }
+
     const { data: review, error } = await service
       .from('group_reviews')
-      .insert({
-        reviewer_id: user.id,
-        tutor_id: group.tutor_id,
-        group_id: groupId,
-        rating: parsed.data.rating,
-        comment: parsed.data.comment ?? null,
-      })
+      .insert(insertPayload)
       .select()
       .single();
     if (error) return fail(error.message, 500);
@@ -71,7 +108,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         title: 'New Review Received',
         message: 'A student left a new review on your class.',
         group_id: groupId,
-        metadata: { groupId, rating: parsed.data.rating },
+        metadata: { groupId, rating: overall },
       });
     } catch { /* non-critical */ }
 

@@ -281,7 +281,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/admin/disputes', label: 'Disputes & Reliability', icon: icons.shield },
           { href: '/admin/strikes', label: 'Strikes & Warnings', icon: icons.shield },
           { href: '/admin/no-shows', label: 'No-Show Resolution', icon: icons.shield },
-          { href: '/admin/rating-appeals', label: 'Rating Appeals', icon: icons.shield },
+          { href: '/admin/rating-appeals', label: 'Review Moderation', icon: icons.shield },
         ]},
         { label: 'System', items: [
           { href: '/admin/emails', label: 'Email Management', icon: icons.mail },
