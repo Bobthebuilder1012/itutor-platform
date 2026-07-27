@@ -7,8 +7,10 @@ import {
   ArrowLeft, Star, Calendar, Clock, Users, Check, Lock,
   CreditCard, X, Loader2, Sparkles, BadgeCheck,
   MessageSquare, Globe, Flame, BookOpen, ShieldCheck, ChevronRight, CheckCircle2,
+  HeartHandshake, Lightbulb,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { StarRow } from '@/components/ratings/StarInput';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
@@ -63,7 +65,10 @@ type GroupData = {
   sessions: SessionRow[];
 };
 
-type ReviewItem = { id: string; rating: number; comment: string | null; reviewer_name: string };
+type ReviewItem = {
+  id: string; rating: number; comment: string | null; reviewer_name: string;
+  patience: number | null; explanation: number | null; classMaterial: number | null;
+};
 
 type AgendaItem = { id: string; title: string; start: Date; end: Date; durationMin: number; status: 'live' | 'soon' | 'scheduled' };
 
@@ -329,6 +334,9 @@ function Detail({ group, onJoin }: { group: GroupData; onJoin: () => void }) {
           rating: Number(it.rating) || 0,
           comment: it.comment ?? null,
           reviewer_name: it.reviewer?.full_name ?? 'Student',
+          patience: it.patience_rating ?? null,
+          explanation: it.explanation_rating ?? null,
+          classMaterial: it.class_material_rating ?? null,
         }));
         setReviews(items);
         setReviewTotal(payload.pagination?.total ?? items.length);
@@ -341,6 +349,16 @@ function Detail({ group, onJoin }: { group: GroupData; onJoin: () => void }) {
   const ratingAvg = group.average_rating && group.average_rating > 0 ? group.average_rating : computedAvg;
   const hasRatings = reviewTotal > 0 && ratingAvg > 0;
   const shownReviews = showAllReviews ? reviews : reviews.slice(0, 4);
+
+  // 3-category breakdown (only reviews carrying all three sub-scores).
+  const categoryReviews = reviews.filter((r) => r.patience != null && r.explanation != null && r.classMaterial != null);
+  const catAvg = (key: 'patience' | 'explanation' | 'classMaterial') =>
+    categoryReviews.length ? categoryReviews.reduce((s, r) => s + (r[key] ?? 0), 0) / categoryReviews.length : 0;
+  const categoryCards = [
+    { label: 'Patience', icon: HeartHandshake, value: catAvg('patience') },
+    { label: 'Explanation', icon: Lightbulb, value: catAvg('explanation') },
+    { label: 'Class material', icon: BookOpen, value: catAvg('classMaterial') },
+  ];
 
   const ctaLabel = group.enrolled ? 'Open class'
     : isPending ? 'Request pending'
@@ -619,6 +637,25 @@ function Detail({ group, onJoin }: { group: GroupData; onJoin: () => void }) {
                 </button>
               )}
             </div>
+            {categoryReviews.length > 0 && (
+              <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                {categoryCards.map((c) => {
+                  const Icon = c.icon;
+                  return (
+                    <div key={c.label} className="rounded-2xl border border-border bg-muted/50 p-3">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-ink">
+                        <span className="size-6 rounded-lg bg-brand/10 text-brand-deep grid place-items-center"><Icon className="size-3.5" /></span>
+                        {c.label}
+                      </div>
+                      <div className="mt-2 flex items-center gap-1.5">
+                        <span className="text-lg font-bold text-ink tabular-nums">{c.value.toFixed(1)}</span>
+                        <StarRow value={c.value} size={12} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             {reviews.length > 0 && (
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 {shownReviews.map((r) => (

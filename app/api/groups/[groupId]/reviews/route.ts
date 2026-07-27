@@ -134,6 +134,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       .from('group_reviews')
       .select(`
         id, rating, comment, created_at, reviewer_id,
+        patience_rating, explanation_rating, class_material_rating,
         reviewer:profiles!group_reviews_reviewer_id_fkey(full_name, avatar_url)
       `, { count: 'exact' })
       .eq('group_id', groupId)
