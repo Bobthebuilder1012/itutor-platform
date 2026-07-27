@@ -10,7 +10,7 @@ import SuggestTimeModal from '@/components/booking/SuggestTimeModal';
 import UserAvatar from '@/components/UserAvatar';
 import { cn } from '@/lib/utils';
 import {
-  ArrowLeft, Star, Heart, MessageSquare, Award, Clock, Video,
+  ArrowLeft, Star, MessageSquare, Award, Clock, Video,
   BadgeCheck, ChevronLeft, ChevronRight, X, Check, MapPin,
   ThumbsUp, ThumbsDown, HeartHandshake, Lightbulb, BookOpen,
 } from 'lucide-react';
@@ -350,7 +350,6 @@ export default function TutorProfilePage() {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [groupReviews, setGroupReviews] = useState<GroupReview[]>([]);
   const [voted, setVoted] = useState<Record<string, 'up' | 'down' | undefined>>({});
-  const [saved, setSaved] = useState(false);
   const [showBookingSheet, setShowBookingSheet] = useState(false);
   const [bookingStep, setBookingStep] = useState<1 | 2 | 3>(1);
   const [pickedTime, setPickedTime] = useState<number | null>(null);
@@ -566,11 +565,6 @@ export default function TutorProfilePage() {
           <div className="px-5 sm:px-6 pb-6">
             <div className="flex items-end justify-between -mt-12 sm:-mt-14">
               <UserAvatar avatarUrl={tutor.avatar_url} name={getDisplayName(tutor)} size={96} className="ring-4 ring-background rounded-full" />
-              <div className="flex gap-2 mb-1">
-                <button onClick={() => setSaved((s) => !s)} className="size-10 rounded-full border border-border bg-background grid place-items-center hover:bg-muted">
-                  <Heart className={cn('size-4', saved && 'fill-coral text-coral')} />
-                </button>
-              </div>
             </div>
 
             <div className="mt-4">

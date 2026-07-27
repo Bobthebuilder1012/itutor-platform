@@ -10,7 +10,7 @@ import { getDisplayName } from '@/lib/utils/displayName';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import UserAvatar from '@/components/UserAvatar';
 import { cn } from '@/lib/utils';
-import { Search, Star, Heart, Clock, SlidersHorizontal, Users, GraduationCap, Flame, X, Check, Video, Sparkles, BadgeCheck, MessageSquare, TrendingUp, Play } from 'lucide-react';
+import { Search, Star, Clock, SlidersHorizontal, Users, GraduationCap, Flame, X, Check, Video, Sparkles, BadgeCheck, MessageSquare, TrendingUp, Play } from 'lucide-react';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { parseScheduleData, scheduleToDisplay } from '@/lib/utils/scheduleFormat';
 import { formatLevel } from '@/lib/utils/formatLevel';
@@ -156,7 +156,6 @@ export default function FindTutorsPage() {
   const [sortOrder, setSortOrder] = useState<'relevance' | 'price_low' | 'rating_high'>('relevance');
   const [tab, setTab] = useState<'lessons' | 'tutors'>('lessons');
   const [activeChip, setActiveChip] = useState('All');
-  const [savedItems, setSavedItems] = useState<Set<string>>(new Set());
   const [groupLessons, setGroupLessons] = useState<GroupLesson[]>([]);
   const [loadingGroupLessons, setLoadingGroupLessons] = useState(true);
   const [enrolledLessonIds, setEnrolledLessonIds] = useState<Set<string>>(new Set());
@@ -829,8 +828,6 @@ export default function FindTutorsPage() {
     .filter((l) => matchChip(l.subject))
     .filter((l) => !searchQuery || l.title.toLowerCase().includes(searchQuery.toLowerCase()) || l.tutor.toLowerCase().includes(searchQuery.toLowerCase()) || l.subject.toLowerCase().includes(searchQuery.toLowerCase()));
 
-  const toggleSave = (id: string) => setSavedItems((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
-
   return (
     <>
       <div className="max-w-6xl mx-auto space-y-6">
@@ -1018,12 +1015,6 @@ export default function FindTutorsPage() {
                           Enrolled
                         </div>
                       )}
-                      <button
-                        onClick={() => toggleSave(l.id)}
-                        className="absolute top-2.5 right-2.5 size-8 rounded-full bg-white/90 backdrop-blur grid place-items-center hover:bg-white"
-                      >
-                        <Heart className={cn('size-4', savedItems.has(l.id) ? 'fill-coral text-coral' : 'text-ink')} />
-                      </button>
                       <div className="size-12 rounded-2xl bg-white grid place-items-center text-2xl shadow-md">{l.emoji}</div>
                     </div>
                     <div className="p-4 space-y-3 flex-1 flex flex-col">
@@ -1181,13 +1172,6 @@ export default function FindTutorsPage() {
                               {tutor.avatar_url
                                 ? <img src={tutor.avatar_url} alt="" className="size-full object-cover" />
                                 : getDisplayName(tutor).charAt(0).toUpperCase()}
-                            </button>
-                            <button
-                              onClick={() => toggleSave(tutor.id)}
-                              className="size-8 rounded-full hover:bg-muted grid place-items-center"
-                              aria-label="Save tutor"
-                            >
-                              <Heart className={cn('size-4', savedItems.has(tutor.id) ? 'fill-coral text-coral' : 'text-muted-foreground')} />
                             </button>
                           </div>
 
