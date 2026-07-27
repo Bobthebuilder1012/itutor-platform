@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, GraduationCap, FileText, Calendar, Clock, Check, AlertCircle, X, BookOpen, ChevronRight, Trash2 } from 'lucide-react';
+import { ArrowLeft, GraduationCap, FileText, Calendar, Clock, Check, AlertCircle, X, BookOpen, ChevronRight, Trash2, ClipboardCheck } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -12,6 +12,8 @@ import ParentShell from '@/components/parent/ParentShell';
 type Enrollment = { groupId: string; name: string; subject: string | null; status: string; joinedAt: string | null };
 type Booking = { id: string; tutorName: string; subject: string | null; status: string; start: string | null; priceTtd: number | null; durationMinutes: number | null; createdAt: string };
 type FeedbackReport = { id: string; month: string; tutorName: string; classTitle: string; body: string; deliveredAt: string; attendance: string };
+type AttRow = { key: string; type: '1:1' | 'group'; label: string; start: string; present: boolean };
+type AttSummary = { present: number; absent: number; total: number };
 
 export default function ChildDetailPage() {
   return <ParentShell><ChildContent /></ParentShell>;
@@ -21,13 +23,17 @@ function ChildContent() {
   const { childId } = useParams<{ childId: string }>();
   const router = useRouter();
   const { profile } = useProfile();
-  const [tab, setTab] = useState<'classes' | 'bookings' | 'feedback'>('classes');
+  const [tab, setTab] = useState<'classes' | 'bookings' | 'attendance' | 'feedback'>('classes');
   const [childName, setChildName] = useState('');
   const [initials, setInitials] = useState('');
   const [hue, setHue] = useState(145);
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [feedback, setFeedback] = useState<FeedbackReport[]>([]);
+  const [attendance, setAttendance] = useState<AttRow[]>([]);
+  const [attSummary, setAttSummary] = useState<AttSummary | null>(null);
+  const [attLoaded, setAttLoaded] = useState(false);
+  const [attLoading, setAttLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [openReport, setOpenReport] = useState<FeedbackReport | null>(null);
   const [removeOpen, setRemoveOpen] = useState(false);
@@ -57,6 +63,22 @@ function ChildContent() {
       }
     })();
   }, [childId]);
+
+  // Attendance is lazy-loaded the first time the tab is opened.
+  useEffect(() => {
+    if (tab !== 'attendance' || attLoaded || attLoading || !childId) return;
+    setAttLoading(true);
+    (async () => {
+      try {
+        const res = await fetch(`/api/parent/children/${childId}/attendance`, { cache: 'no-store' });
+        const data = await res.json();
+        if (res.ok) { setAttendance(data.attendance ?? []); setAttSummary(data.summary ?? null); }
+      } finally {
+        setAttLoaded(true);
+        setAttLoading(false);
+      }
+    })();
+  }, [tab, attLoaded, attLoading, childId]);
 
   const activeCount = enrollments.filter(e => ['approved','active'].includes(e.status)).length;
 
@@ -106,6 +128,7 @@ function ChildContent() {
         {([
           { id: 'classes' as const, label: 'Classes', icon: GraduationCap },
           { id: 'bookings' as const, label: 'Bookings', icon: Calendar },
+          { id: 'attendance' as const, label: 'Attendance', icon: ClipboardCheck },
           { id: 'feedback' as const, label: 'Feedback', icon: FileText },
         ]).map((t) => {
           const Icon = t.icon;
@@ -125,6 +148,8 @@ function ChildContent() {
         <ClassesTab enrollments={enrollments} />
       ) : tab === 'bookings' ? (
         <BookingsTab bookings={bookings} />
+      ) : tab === 'attendance' ? (
+        <AttendanceTab rows={attendance} summary={attSummary} loading={attLoading} />
       ) : (
         <FeedbackTab feedback={feedback} onOpen={setOpenReport} />
       )}
@@ -318,6 +343,55 @@ function BookingsTab({ bookings }: { bookings: Booking[] }) {
           </article>
         );
       })}
+    </div>
+  );
+}
+
+function AttendanceTab({ rows, summary, loading }: { rows: AttRow[]; summary: AttSummary | null; loading: boolean }) {
+  if (loading) {
+    return <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="h-16 rounded-2xl bg-muted animate-pulse" />)}</div>;
+  }
+  if (rows.length === 0) {
+    return (
+      <div className="rounded-2xl border-2 border-dashed border-border bg-card/50 p-10 text-center">
+        <div className="mx-auto size-12 rounded-2xl bg-brand-soft text-brand-deep grid place-items-center mb-4"><ClipboardCheck className="size-5" /></div>
+        <h2 className="font-bold text-ink">No attendance yet</h2>
+        <p className="text-sm text-muted-foreground mt-1">Attendance is recorded when your child joins a session. Past sessions will show here.</p>
+      </div>
+    );
+  }
+  const rate = summary && summary.total > 0 ? Math.round((summary.present / summary.total) * 100) : 0;
+  return (
+    <div className="space-y-4">
+      {summary && (
+        <div className="grid grid-cols-3 gap-3">
+          {[['Attendance', `${rate}%`], ['Present', summary.present], ['Absent', summary.absent]].map(([l, v]) => (
+            <div key={l as string} className="rounded-2xl bg-background border border-border p-4">
+              <div className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">{l}</div>
+              <div className="text-2xl font-bold text-ink mt-1 tabular-nums">{v}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="space-y-2">
+        {rows.map((r) => (
+          <div key={r.key} className="flex items-center gap-3 rounded-2xl bg-background border border-border p-4">
+            <span className={cn('size-9 rounded-xl grid place-items-center shrink-0', r.present ? 'bg-brand-soft text-brand-deep' : 'bg-rose-100 text-rose-600')}>
+              {r.present ? <Check className="size-4" /> : <X className="size-4" />}
+            </span>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold text-ink truncate">{r.label}</div>
+              <div className="text-xs text-muted-foreground">
+                {new Date(r.start).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · {new Date(r.start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                <span className="ml-2 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{r.type}</span>
+              </div>
+            </div>
+            <span className={cn('text-xs font-bold uppercase tracking-wider', r.present ? 'text-brand-deep' : 'text-rose-600')}>
+              {r.present ? 'Present' : 'Absent'}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
