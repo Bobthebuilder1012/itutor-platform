@@ -90,7 +90,8 @@ export default function CompleteRolePage() {
           if (data.role !== 'parent') {
             setStep('profile');
           } else {
-            router.replace('/parent/coming-soon');
+            // Parents need no extra profile step — straight to their dashboard.
+            router.replace('/parent/dashboard');
             return;
           }
         }
@@ -126,7 +127,7 @@ export default function CompleteRolePage() {
     setLoading(true);
     try {
       await saveProfile({ role: 'set-role', newRole: role });
-      if (role === 'parent') { router.push('/parent/coming-soon'); return; }
+      if (role === 'parent') { router.push('/parent/dashboard'); return; }
       setStep('profile');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save role. Please try again.');
