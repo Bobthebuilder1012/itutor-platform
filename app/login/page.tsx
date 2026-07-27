@@ -178,8 +178,12 @@ export default function LoginPage() {
               transition={{ duration: 0.2 }}
               className="flex-1 px-6 pb-8 pt-10 sm:px-10"
             >
-              <h2 className="font-display text-2xl font-bold tracking-tight sm:text-3xl">Log in</h2>
-              <p className="mt-1.5 text-sm text-gray-500">Welcome back to iTutor.</p>
+              <h2 className="font-display text-2xl font-bold tracking-tight sm:text-3xl">
+                {searchParams.get('role') === 'parent' ? 'Parent log in' : 'Log in'}
+              </h2>
+              <p className="mt-1.5 text-sm text-gray-500">
+                {searchParams.get('role') === 'parent' ? "Sign in to manage your child's learning." : 'Welcome back to iTutor.'}
+              </p>
 
               {/* Banners */}
               {banner && (

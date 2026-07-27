@@ -42,6 +42,12 @@ export default function Nav() {
         </nav>
         <div className="flex items-center gap-2">
           <a
+            href="/login?role=parent"
+            className="rounded-full px-4 py-2 text-sm font-medium text-white/80 hover:text-white"
+          >
+            Parent Login
+          </a>
+          <a
             href="/signup"
             className="hidden rounded-full px-4 py-2 text-sm font-medium text-white/80 hover:text-white sm:inline-flex"
           >
