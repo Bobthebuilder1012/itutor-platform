@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Search, Star, Users, GraduationCap, Sparkles, Flame, UserCheck } from 'lucide-react';
+import { Search, Star, Users, GraduationCap, Sparkles, Flame, UserCheck, Loader2, X, UserPlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { supabase } from '@/lib/supabase/client';
@@ -49,6 +49,10 @@ function ClassesContent() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [activeChip, setActiveChip] = useState('All');
+  const [children, setChildren] = useState<{ id: string; name: string }[]>([]);
+  const [selectorGroup, setSelectorGroup] = useState<GroupListing | null>(null);
+  const [joining, setJoining] = useState(false);
+  const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -142,9 +146,41 @@ function ClassesContent() {
         total_reviews: 0,
         subjects: subjectsByTutor.get(t.id) ?? [],
       })));
+
+      // Linked children — for joining a class on their behalf.
+      try {
+        const cr = await fetch('/api/parent/children/summary', { cache: 'no-store' });
+        if (cr.ok) { const cj = await cr.json(); setChildren((cj.children ?? []).map((c: any) => ({ id: c.id, name: c.name }))); }
+      } catch { /* ignore */ }
+
       setLoading(false);
     })();
   }, []);
+
+  async function doEnroll(childId: string, g: GroupListing) {
+    setJoining(true);
+    setToast(null);
+    try {
+      const res = await fetch('/api/parent/enroll-child', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ childId, groupId: g.id }),
+      });
+      const data = await res.json();
+      const childName = children.find((c) => c.id === childId)?.name ?? 'your child';
+      if (!res.ok) { setToast({ kind: 'err', text: data.error || 'Could not join this class.' }); return; }
+      setToast({ kind: 'ok', text: g.require_join_requests ? `Request sent for ${childName} to join ${g.name}.` : `${childName} joined ${g.name}.` });
+    } catch {
+      setToast({ kind: 'err', text: 'Could not join this class.' });
+    } finally {
+      setJoining(false);
+      setSelectorGroup(null);
+    }
+  }
+
+  function startJoin(g: GroupListing) {
+    if (children.length === 0) { setToast({ kind: 'err', text: 'Link a child first (Your children) before joining a class.' }); return; }
+    if (children.length === 1) { doEnroll(children[0].id, g); return; }
+    setSelectorGroup(g);
+  }
 
   const matchChip = (subject: string | null) => {
     if (activeChip === 'All') return true;
@@ -213,7 +249,7 @@ function ClassesContent() {
           </div>
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filtered.map(g => <ClassCard key={g.id} g={g} />)}
+            {filtered.map(g => <ClassCard key={g.id} g={g} onJoin={() => startJoin(g)} joining={joining} />)}
           </div>
         )
       )}
@@ -241,11 +277,43 @@ function ClassesContent() {
           </div>
         )
       )}
+
+      {/* Child selector — only shown when the parent has more than one child */}
+      {selectorGroup && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={() => setSelectorGroup(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-2xl bg-background border border-border shadow-xl p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="font-bold text-ink">Which child?</div>
+              <button onClick={() => setSelectorGroup(null)} className="size-8 rounded-full hover:bg-muted grid place-items-center"><X className="size-4" /></button>
+            </div>
+            <p className="text-sm text-muted-foreground">Join <span className="font-semibold text-ink">{selectorGroup.name}</span> on behalf of:</p>
+            <div className="space-y-2">
+              {children.map((c) => (
+                <button key={c.id} onClick={() => doEnroll(c.id, selectorGroup)} disabled={joining}
+                  className="w-full flex items-center justify-between gap-2 px-4 py-3 rounded-xl border border-border hover:border-brand-deep/40 hover:bg-muted/50 text-left disabled:opacity-50">
+                  <span className="font-semibold text-ink text-sm">{c.name}</span>
+                  {joining ? <Loader2 className="size-4 animate-spin text-muted-foreground" /> : <UserPlus className="size-4 text-brand-deep" />}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Result toast */}
+      {toast && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 max-w-md px-4">
+          <div className={cn('rounded-xl px-4 py-3 text-sm shadow-lg flex items-start gap-2', toast.kind === 'ok' ? 'bg-brand text-white' : 'bg-rose-600 text-white')}>
+            <span className="flex-1">{toast.text}</span>
+            <button onClick={() => setToast(null)} className="opacity-80 hover:opacity-100"><X className="size-4" /></button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function ClassCard({ g }: { g: GroupListing }) {
+function ClassCard({ g, onJoin, joining }: { g: GroupListing; onJoin: () => void; joining: boolean }) {
   const gradient = gradientFor(g.name);
   const spotsLeft = g.max_students - g.member_count;
   const isFull = spotsLeft <= 0;
@@ -260,8 +328,7 @@ function ClassCard({ g }: { g: GroupListing }) {
   })();
 
   return (
-    <Link href={`/student/explore/${g.id}`}
-      className="group rounded-2xl border border-border bg-background overflow-hidden hover:border-brand-deep/40 hover:shadow-card transition flex flex-col">
+    <div className="rounded-2xl border border-border bg-background overflow-hidden hover:shadow-card transition flex flex-col">
       {/* Banner */}
       <div className={cn('relative h-28 flex items-end p-3', !g.cover_image && `bg-gradient-to-br ${gradient}`)}
         style={g.cover_image ? { backgroundImage: `url(${g.cover_image})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}>
@@ -290,7 +357,7 @@ function ClassCard({ g }: { g: GroupListing }) {
 
         {schedule && <div className="text-xs text-muted-foreground mt-2">{schedule}</div>}
 
-        <div className="mt-auto pt-3 border-t border-border flex items-center justify-between">
+        <div className="mt-auto pt-3 border-t border-border flex items-center justify-between gap-2">
           <div>
             {price > 0 ? (
               <><span className="font-bold text-ink">{fmtTTD(price)}</span><span className="text-[11px] text-muted-foreground">/mo</span></>
@@ -298,13 +365,17 @@ function ClassCard({ g }: { g: GroupListing }) {
               <span className="font-bold text-brand-deep">Free</span>
             )}
           </div>
-          <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full',
-            isFull ? 'bg-muted text-muted-foreground' : g.require_join_requests ? 'bg-sky-100 text-sky-800' : 'bg-brand-soft text-brand-deep')}>
-            {isFull ? 'Full' : g.require_join_requests ? 'Request' : 'Join'}
-          </span>
+          <button
+            onClick={onJoin}
+            disabled={isFull || joining}
+            className={cn('inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition disabled:opacity-50',
+              isFull ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'bg-brand text-white hover:bg-brand-deep')}>
+            <UserPlus className="size-3.5" />
+            {isFull ? 'Full' : g.require_join_requests ? 'Request for child' : 'Join for child'}
+          </button>
         </div>
       </div>
-    </Link>
+    </div>
   );
 }
 

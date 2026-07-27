@@ -158,6 +158,26 @@ function ScheduleRow({ icon, label, value }: { icon: React.ReactNode; label: str
   );
 }
 
+/* ─── Attendance ──────────────────────────────────────────────────── */
+
+// Click-based attendance: firing this when a student clicks a group Join
+// control records "Present" for that specific occurrence (session_attendance_log
+// via /api/attendance/mark-present). Fire-and-forget with keepalive so it never
+// delays or blocks the meeting link opening in the new tab.
+function markGroupPresent(groupId: string, occurrenceId?: string | null) {
+  if (!occurrenceId) return;
+  try {
+    fetch('/api/attendance/mark-present', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ occurrenceType: 'group_occurrence', occurrenceId, groupId }),
+      keepalive: true,
+    }).catch(() => {});
+  } catch {
+    /* never block the join */
+  }
+}
+
 /* ─── Main page ───────────────────────────────────────────────────── */
 
 export default function StudentGroupPage({ params }: { params: { groupId: string } }) {
@@ -709,6 +729,7 @@ function ClassHomepage({ group, memberStatus, userId, subscriptionAccess }: { gr
             <a href={group.meeting_link}
               target="_blank"
               rel="noreferrer"
+              onClick={() => markGroupPresent(group.id, group.upcoming_sessions?.[0]?.id)}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white text-ink font-semibold text-sm hover:bg-white/90 shrink-0 transition">
               <Video className="size-4" /> Join next session
             </a>
@@ -985,6 +1006,7 @@ function SessionsTab({ groupId }: { groupId: string }) {
             </div>
             {s.meeting_link && (
               <a href={s.meeting_link} target="_blank" rel="noreferrer"
+                onClick={() => markGroupPresent(groupId, s.id)}
                 className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand-deep shrink-0">
                 <Video className="size-3.5" /> Join
               </a>

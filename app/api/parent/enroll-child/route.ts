@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
       .eq('group_id', groupId)
       .eq('user_id', childId)
       .maybeSingle();
-    if (existing && ['active', 'pending_approval', 'invited'].includes(existing.status)) {
+    if (existing && ['approved', 'pending'].includes(existing.status)) {
       return NextResponse.json({ error: 'This child is already in this class.', status: existing.status }, { status: 409 });
     }
 
@@ -43,19 +43,21 @@ export async function POST(request: NextRequest) {
     const conflict = await findGroupEnrollmentConflict(admin, childId, groupId);
     if (conflict) return NextResponse.json({ error: conflictMessage(conflict) }, { status: 409 });
 
-    const memberStatus = group.require_join_requests ? 'pending_approval' : 'active';
-    const nowISO = new Date().toISOString();
+    // Mirror the student self-join route (app/api/groups/[groupId]/members):
+    // status is 'pending' when the class gates joins, else 'approved'. Only the
+    // columns that actually exist on group_members (group_id, user_id, status).
+    const memberStatus = group.require_join_requests ? 'pending' : 'approved';
 
     if (existing) {
       const { error } = await admin
         .from('group_members')
-        .update({ status: memberStatus, status_changed_at: nowISO, status_reason: null })
+        .update({ status: memberStatus })
         .eq('id', existing.id);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     } else {
       const { error } = await admin
         .from('group_members')
-        .insert({ group_id: groupId, user_id: childId, status: memberStatus, initiated_by: 'parent' });
+        .insert({ group_id: groupId, user_id: childId, status: memberStatus });
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
@@ -65,8 +67,8 @@ export async function POST(request: NextRequest) {
       await admin.from('notifications').insert({
         user_id: group.tutor_id,
         type: 'new_class_member',
-        title: memberStatus === 'pending_approval' ? 'New join request' : 'New student joined',
-        message: `${childName} (added by their parent) ${memberStatus === 'pending_approval' ? 'requested to join' : 'joined'} your class.`,
+        title: memberStatus === 'pending' ? 'New join request' : 'New student joined',
+        message: `${childName} (added by their parent) ${memberStatus === 'pending' ? 'requested to join' : 'joined'} your class.`,
         link: `/tutor/classes/${groupId}?tab=roster`,
       });
     } catch { /* non-critical */ }
