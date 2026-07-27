@@ -72,6 +72,13 @@ export async function POST(_req: NextRequest, { params }: Params) {
       } catch {
         // Attendance table may not exist in every environment.
       }
+      // New click-based attendance (mig 196): a row == Present for this occurrence.
+      try {
+        await service.from('session_attendance_log').upsert(
+          { student_id: user.id, occurrence_type: 'group_occurrence', occurrence_id: occurrenceId, group_id: groupId },
+          { onConflict: 'student_id,occurrence_type,occurrence_id', ignoreDuplicates: true }
+        );
+      } catch { /* non-critical */ }
     }
 
     return NextResponse.json({

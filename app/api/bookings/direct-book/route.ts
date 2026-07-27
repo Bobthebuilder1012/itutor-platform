@@ -7,6 +7,7 @@ import { calculateCommissionForTutor } from '@/lib/utils/commissionCalculator';
 import { getLunipayClient, ttdToCents } from '@/lib/payments/lunipayClient';
 import { calculateGrossAmount } from '@/lib/payments/grossUp';
 import { resolvePayer } from '@/lib/payments/resolvePayer';
+import { findChildScheduleConflict, conflictMessage } from '@/lib/services/scheduleConflict';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -57,6 +58,11 @@ export async function POST(request: NextRequest) {
     }
 
     const admin = getServiceClient();
+
+    // Child-side schedule conflict: block if the student already has an
+    // overlapping session/class on their own schedule.
+    const conflict = await findChildScheduleConflict(admin, user.id, requestedStartAt, requestedEndAt);
+    if (conflict) return NextResponse.json({ error: conflictMessage(conflict) }, { status: 409 });
 
     // 1. Check for duplicate (this student already booked this exact slot)
     const { data: existing } = await admin

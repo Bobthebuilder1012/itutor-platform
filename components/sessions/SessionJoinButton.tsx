@@ -15,6 +15,21 @@ export default function SessionJoinButton({ session, userRole, onRetrySuccess }:
   const [needsReconnect, setNeedsReconnect] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
+
+  // Click-based attendance (mig 196): mark Present when a STUDENT clicks Join.
+  // Fire-and-forget (keepalive) — never block the meeting link from opening.
+  function markPresent() {
+    if (userRole !== 'student') return;
+    try {
+      fetch('/api/attendance/mark-present', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ occurrenceType: 'session', occurrenceId: session.id }),
+        keepalive: true,
+      }).catch(() => {});
+    } catch { /* ignore */ }
+  }
+
   async function handleRetryMeetingLink() {
     setRetrying(true);
     setNeedsReconnect(false);
@@ -131,6 +146,7 @@ export default function SessionJoinButton({ session, userRole, onRetrySuccess }:
         href={session.join_url}
         target="_blank"
         rel="noopener noreferrer"
+        onClick={markPresent}
         className="block w-full px-8 py-4 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-emerald-600 hover:to-green-600 text-white text-center font-bold text-lg rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
       >
         <div className="flex items-center justify-center gap-3">
