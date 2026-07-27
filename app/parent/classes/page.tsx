@@ -83,21 +83,51 @@ function ClassesContent() {
         member_count: countMap[g.id] ?? 0,
       })));
 
-      // Fetch 1:1 tutors
+      // Fetch 1:1 tutors — the SAME "listed" set students see (complete profile
+      // + priced subject + availability + video provider), not a VERIFIED-only
+      // flag, so parents aren't shown a thinner list than students.
+      const listedRes = await fetch('/api/tutors/listed-ids', { cache: 'no-store' });
+      const listedJson = listedRes.ok ? await listedRes.json() : { ids: [] };
+      const listedSet = new Set<string>(listedJson.ids ?? []);
+
       const { data: tutorProfiles } = await supabase
         .from('profiles')
         .select('id, full_name, display_name, username, avatar_url, bio, average_rating')
         .eq('role', 'tutor')
-        .eq('tutor_verification_status', 'VERIFIED')
         .or('pause_1on1.is.null,pause_1on1.eq.false')
-        .limit(40);
+        .limit(200);
 
-      // Get subjects for tutors
-      const tutorIds = (tutorProfiles ?? []).map((t: any) => t.id);
-      const { data: subjects } = await supabase
-        .from('tutor_subjects')
-        .select('tutor_id, subject:subjects(name, label), price_per_hour_ttd')
-        .in('tutor_id', tutorIds);
+      const listedTutors = (tutorProfiles ?? []).filter((t: any) => listedSet.has(t.id));
+
+      // Order by the marketplace ranking view (pinned first, then score) — matches students.
+      try {
+        const rankIds = listedTutors.map((t: any) => t.id);
+        if (rankIds.length) {
+          const { data: ranks } = await supabase
+            .from('tutor_marketplace_rankings')
+            .select('tutor_id, pin_rank, ranking_score')
+            .in('tutor_id', rankIds);
+          const rankMap = new Map((ranks ?? []).map((r: any) => [r.tutor_id, { pin: r.pin_rank ?? null, score: Number(r.ranking_score ?? 0) }]));
+          listedTutors.sort((a: any, b: any) => {
+            const ra = rankMap.get(a.id) ?? { pin: null, score: 0 };
+            const rb = rankMap.get(b.id) ?? { pin: null, score: 0 };
+            if (ra.pin != null || rb.pin != null) {
+              if (ra.pin == null) return 1;
+              if (rb.pin == null) return -1;
+              if (ra.pin !== rb.pin) return ra.pin - rb.pin;
+            }
+            return rb.score - ra.score;
+          });
+        }
+      } catch { /* keep listed order if the ranking view isn't present */ }
+
+      const tutorIds = listedTutors.map((t: any) => t.id);
+      const { data: subjects } = tutorIds.length
+        ? await supabase
+            .from('tutor_subjects')
+            .select('tutor_id, subject:subjects(name, label), price_per_hour_ttd')
+            .in('tutor_id', tutorIds)
+        : { data: [] as any[] };
 
       const subjectsByTutor = new Map<string, any[]>();
       (subjects ?? []).forEach((s: any) => {
@@ -107,7 +137,7 @@ function ClassesContent() {
         subjectsByTutor.set(s.tutor_id, arr);
       });
 
-      setTutors((tutorProfiles ?? []).map((t: any) => ({
+      setTutors(listedTutors.map((t: any) => ({
         ...t,
         total_reviews: 0,
         subjects: subjectsByTutor.get(t.id) ?? [],

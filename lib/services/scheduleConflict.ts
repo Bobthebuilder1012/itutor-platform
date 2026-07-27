@@ -63,6 +63,78 @@ export async function findChildScheduleConflict(
   return null;
 }
 
+// Conflict check for ENROLLING in a (recurring) group: does ANY of the group's
+// upcoming occurrences overlap the child's existing busy windows? Returns the
+// first clash. Bounded to the next N occurrences.
+export async function findGroupEnrollmentConflict(
+  admin: ServiceClient,
+  studentId: string,
+  groupId: string
+): Promise<ScheduleConflict | null> {
+  const nowISO = new Date().toISOString();
+  const { data: gs } = await admin.from('group_sessions').select('id').eq('group_id', groupId);
+  const gsIds = (gs ?? []).map((g: any) => g.id);
+  if (!gsIds.length) return null;
+  const { data: groupOccs } = await admin
+    .from('group_session_occurrences')
+    .select('scheduled_start_at, scheduled_end_at')
+    .in('group_session_id', gsIds)
+    .eq('is_cancelled', false)
+    .gte('scheduled_start_at', nowISO)
+    .order('scheduled_start_at', { ascending: true })
+    .limit(30);
+  if (!groupOccs?.length) return null;
+
+  const busy = await childBusyWindows(admin, studentId, nowISO);
+  for (const occ of groupOccs) {
+    for (const b of busy) {
+      if (b.start < occ.scheduled_end_at && occ.scheduled_start_at < b.end) {
+        return { type: b.type, label: b.label, start: occ.scheduled_start_at, end: occ.scheduled_end_at };
+      }
+    }
+  }
+  return null;
+}
+
+type Busy = { start: string; end: string; type: 'one_on_one' | 'group'; label: string };
+
+async function childBusyWindows(admin: ServiceClient, studentId: string, fromISO: string): Promise<Busy[]> {
+  const out: Busy[] = [];
+  const { data: sessions } = await admin
+    .from('sessions')
+    .select('scheduled_start_at, scheduled_end_at')
+    .eq('student_id', studentId)
+    .is('cancelled_at', null)
+    .gte('scheduled_start_at', fromISO)
+    .limit(200);
+  (sessions ?? []).forEach((s: any) => out.push({ start: s.scheduled_start_at, end: s.scheduled_end_at, type: 'one_on_one', label: 'a 1:1 session' }));
+
+  const groupIds = await childGroupIds(admin, studentId);
+  if (groupIds.length) {
+    const [{ data: gsRows }, { data: groups }] = await Promise.all([
+      admin.from('group_sessions').select('id, group_id').in('group_id', groupIds),
+      admin.from('groups').select('id, name').in('id', groupIds),
+    ]);
+    const groupName = new Map((groups ?? []).map((g: any) => [g.id, g.name]));
+    const groupOfSession = new Map((gsRows ?? []).map((g: any) => [g.id, g.group_id]));
+    const gsIds = (gsRows ?? []).map((g: any) => g.id);
+    if (gsIds.length) {
+      const { data: occ } = await admin
+        .from('group_session_occurrences')
+        .select('group_session_id, scheduled_start_at, scheduled_end_at')
+        .in('group_session_id', gsIds)
+        .eq('is_cancelled', false)
+        .gte('scheduled_start_at', fromISO)
+        .limit(300);
+      (occ ?? []).forEach((o: any) => {
+        const gId = groupOfSession.get(o.group_session_id);
+        out.push({ start: o.scheduled_start_at, end: o.scheduled_end_at, type: 'group', label: (gId && groupName.get(gId)) || 'a group class' });
+      });
+    }
+  }
+  return out;
+}
+
 async function childGroupIds(admin: ServiceClient, studentId: string): Promise<string[]> {
   const [{ data: mems }, { data: enrolls }] = await Promise.all([
     admin.from('group_members').select('group_id').eq('user_id', studentId).in('status', ['approved', 'active']),
