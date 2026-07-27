@@ -68,12 +68,16 @@ export async function POST(
   }
 
   const { data: pub } = admin.storage.from(BUCKET).getPublicUrl(path);
-  const publicUrl = pub.publicUrl;
+  // The storage path is stable (${userId}/avatar.jpg), so re-uploads keep the
+  // same public URL and the browser/CDN serves the stale cached image. Bake a
+  // cache-busting timestamp into the STORED url — matching lib/hooks/useAvatarUpload.ts
+  // — so every future read of the column is fresh everywhere, not just this response.
+  const storedUrl = `${pub.publicUrl}?t=${Date.now()}`;
   const column = kind === 'avatar' ? 'avatar_url' : 'profile_banner_url';
 
   const { error: updateError } = await admin
     .from('profiles')
-    .update({ [column]: publicUrl, updated_at: new Date().toISOString() })
+    .update({ [column]: storedUrl, updated_at: new Date().toISOString() })
     .eq('id', userId);
   if (updateError) {
     return NextResponse.json({ error: updateError.message }, { status: 400 });
@@ -90,7 +94,6 @@ export async function POST(
     }
   );
 
-  // Cache-bust only the returned URL so the admin sees the change immediately;
-  // the stored column stays a clean, stable public URL.
-  return NextResponse.json({ url: publicUrl, displayUrl: `${publicUrl}?v=${Date.now()}` });
+  // The stored URL is already cache-busted, so it's safe to display directly.
+  return NextResponse.json({ url: storedUrl, displayUrl: storedUrl });
 }

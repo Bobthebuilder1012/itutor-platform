@@ -166,6 +166,33 @@ export default function AdminAccountControls({
       {err && <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">{err}</div>}
 
       {/* Images */}
+      {/* Preview thumbnails — immediate visual confirmation. onUpdated() re-fetches
+          the profile with the now cache-busted URL, so these refresh on upload. */}
+      <div className="flex items-end gap-4">
+        <div className="flex flex-col items-center gap-1.5">
+          <div className="size-16 rounded-full overflow-hidden bg-gray-100 border border-gray-200 grid place-items-center">
+            {profile.avatar_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={profile.avatar_url} alt="Profile picture" className="size-full object-cover" />
+            ) : (
+              <span className="text-[10px] text-gray-400">No photo</span>
+            )}
+          </div>
+          <span className="text-[11px] text-gray-500">Picture</span>
+        </div>
+        <div className="flex-1 min-w-[140px] flex flex-col gap-1.5">
+          <div className="h-16 rounded-lg overflow-hidden bg-gray-100 border border-gray-200 grid place-items-center">
+            {profile.profile_banner_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={profile.profile_banner_url} alt="Profile banner" className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-[10px] text-gray-400">No banner</span>
+            )}
+          </div>
+          <span className="text-[11px] text-gray-500">Banner</span>
+        </div>
+      </div>
+
       <div className="flex flex-wrap gap-3">
         <input ref={avatarInput} type="file" accept="image/*" className="hidden"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) upload('avatar', f); e.target.value = ''; }} />
