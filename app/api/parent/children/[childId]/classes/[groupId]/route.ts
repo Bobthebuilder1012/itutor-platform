@@ -18,11 +18,12 @@ export async function GET(_request: NextRequest, { params }: Params) {
     await requireParentChild(parentProfile.id, childId); // 404 if not linked
     const nowISO = new Date().toISOString();
 
-    const { data: group } = await admin
+    const { data: group, error: groupErr } = await admin
       .from('groups')
-      .select('id, name, subject, description, content_blocks, tutor_id, meeting_link')
+      .select('id, name, subject, description, tutor_id, meeting_link')
       .eq('id', groupId)
       .maybeSingle();
+    if (groupErr) return NextResponse.json({ error: groupErr.message }, { status: 500 });
     if (!group) return NextResponse.json({ error: 'Class not found' }, { status: 404 });
 
     // The child's membership in this class (either system).
@@ -70,7 +71,8 @@ export async function GET(_request: NextRequest, { params }: Params) {
         name: group.name,
         subject: group.subject ?? null,
         description: group.description ?? null,
-        contentBlocks: group.content_blocks ?? null,
+        contentBlocks: null, // groups has no content_blocks column; page falls back to description
+
         tutorName: (tutor as any)?.display_name || (tutor as any)?.full_name || 'Tutor',
       },
       membershipStatus,
