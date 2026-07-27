@@ -96,6 +96,31 @@ function gradientForGroup(name: string): string {
   return GRADIENTS[Math.abs([...name].reduce((a, c) => a + c.charCodeAt(0), 0)) % GRADIENTS.length];
 }
 
+const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+// Full week with the class's recurring days highlighted.
+function WeekdayChips({ days }: { days: Set<number> }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {WEEKDAY_LABELS.map((label, i) => {
+        const on = days.has(i);
+        return (
+          <span
+            key={label}
+            aria-label={`${label}${on ? ' (class day)' : ''}`}
+            className={cn(
+              'inline-flex h-7 min-w-[2.5rem] items-center justify-center rounded-full px-2 text-[11px] font-semibold',
+              on ? 'bg-brand text-white' : 'bg-muted text-muted-foreground/50'
+            )}
+          >
+            {label}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function ExploreClassDetailPage() {
   const { groupId } = useParams<{ groupId: string }>();
   const { profile, loading: profileLoading } = useProfile();
@@ -298,6 +323,20 @@ function Detail({ group, onJoin }: { group: GroupData; onJoin: () => void }) {
   // Real dated agenda from group_sessions occurrences
   const agenda = useMemo(() => buildAgenda(group.sessions), [group.sessions]);
   const nextSession = agenda[0] ?? null;
+
+  // Recurring class days: derived from the tutor's UPCOMING scheduled
+  // occurrences (distinct weekdays, viewer-local). Falls back to the tutor's
+  // recurring schedule_data pattern when a class has no dated occurrences yet.
+  const recurringDays = useMemo(() => {
+    const days = new Set<number>();
+    for (const a of agenda) days.add(a.start.getDay());
+    if (days.size === 0) {
+      for (const e of parseScheduleData(group.schedule_data)) {
+        if (typeof e.day === 'number' && e.day >= 0 && e.day <= 6) days.add(e.day);
+      }
+    }
+    return days;
+  }, [agenda, group.schedule_data]);
 
   // Compact "at a glance" from real fields only
   const sessionSummary = useMemo(() => {
@@ -676,6 +715,19 @@ function Detail({ group, onJoin }: { group: GroupData; onJoin: () => void }) {
 
         {/* RIGHT column — schedule */}
         <aside className="flex flex-col gap-4 lg:sticky lg:top-4 lg:self-start">
+          {recurringDays.size > 0 && (
+            <div className="rounded-3xl border border-border bg-background p-4">
+              <div className="flex items-center gap-1.5">
+                <Calendar className="size-4 text-brand-deep" />
+                <h3 className="text-sm font-bold text-ink">Meets on</h3>
+              </div>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">Recurring class days</p>
+              <div className="mt-2.5">
+                <WeekdayChips days={recurringDays} />
+              </div>
+            </div>
+          )}
+
           {nextSession ? (
             <div className="overflow-hidden rounded-3xl border border-brand/40 bg-background">
               <div className="flex items-center justify-between bg-brand-soft px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-brand-deep">
