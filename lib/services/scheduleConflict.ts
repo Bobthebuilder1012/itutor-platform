@@ -45,7 +45,7 @@ export async function findChildScheduleConflict(
     .from('group_session_occurrences')
     .select('id, group_session_id, scheduled_start_at, scheduled_end_at')
     .in('group_session_id', sessionIds)
-    .eq('is_cancelled', false)
+    .is('cancelled_at', null)
     .lt('scheduled_start_at', endISO)
     .gt('scheduled_end_at', startISO)
     .limit(1);
@@ -79,7 +79,7 @@ export async function findGroupEnrollmentConflict(
     .from('group_session_occurrences')
     .select('scheduled_start_at, scheduled_end_at')
     .in('group_session_id', gsIds)
-    .eq('is_cancelled', false)
+    .is('cancelled_at', null)
     .gte('scheduled_start_at', nowISO)
     .order('scheduled_start_at', { ascending: true })
     .limit(30);
@@ -123,7 +123,7 @@ async function childBusyWindows(admin: ServiceClient, studentId: string, fromISO
         .from('group_session_occurrences')
         .select('group_session_id, scheduled_start_at, scheduled_end_at')
         .in('group_session_id', gsIds)
-        .eq('is_cancelled', false)
+        .is('cancelled_at', null)
         .gte('scheduled_start_at', fromISO)
         .limit(300);
       (occ ?? []).forEach((o: any) => {

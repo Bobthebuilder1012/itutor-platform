@@ -44,7 +44,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
         .from('group_session_occurrences')
         .select('id, scheduled_start_at, scheduled_end_at')
         .in('group_session_id', gsIds)
-        .eq('is_cancelled', false)
+        .is('cancelled_at', null)
         .order('scheduled_start_at', { ascending: true })
         .limit(200);
       upcoming = (occ ?? [])
@@ -65,6 +65,57 @@ export async function GET(_request: NextRequest, { params }: Params) {
         .map((o: any) => ({ key: o.id, start: o.scheduled_start_at, present: present.has(o.id) }));
     }
 
+    // Stream posts (announcements) — mirrors the student stream, read-only.
+    let stream: any[] = [];
+    {
+      let res: { data: any[] | null; error: unknown } = await admin.from('stream_posts')
+        .select('id, author_id, author_role, post_type, message_body, pinned_at, created_at')
+        .eq('group_id', groupId)
+        .order('pinned_at', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (res.error) {
+        res = await admin.from('stream_posts')
+          .select('id, author_id, author_role, post_type, message_body, created_at')
+          .eq('group_id', groupId)
+          .order('created_at', { ascending: false })
+          .limit(50);
+      }
+      const posts = (res.data ?? []) as any[];
+      const authorIds = [...new Set(posts.map((p) => p.author_id).filter(Boolean))];
+      const { data: authors } = authorIds.length
+        ? await admin.from('profiles').select('id, full_name, display_name, avatar_url').in('id', authorIds)
+        : { data: [] as any[] };
+      const nameOf = new Map((authors ?? []).map((a: any) => [a.id, a.display_name || a.full_name || 'iTutor']));
+      const avaOf = new Map((authors ?? []).map((a: any) => [a.id, a.avatar_url ?? null]));
+      stream = posts.map((p) => ({
+        id: p.id,
+        authorName: p.author_id ? (nameOf.get(p.author_id) ?? 'iTutor') : 'iTutor',
+        authorAvatar: p.author_id ? (avaOf.get(p.author_id) ?? null) : null,
+        authorRole: p.author_role ?? null,
+        postType: p.post_type ?? 'message',
+        body: p.message_body ?? '',
+        pinned: !!p.pinned_at,
+        createdAt: p.created_at,
+      }));
+    }
+
+    // Members (persons in the class).
+    let members: any[] = [];
+    {
+      const { data: mems } = await admin
+        .from('group_members').select('user_id, status').eq('group_id', groupId).in('status', ['approved', 'active']).limit(200);
+      const uids = [...new Set((mems ?? []).map((m: any) => m.user_id).filter(Boolean))];
+      const { data: profs } = uids.length
+        ? await admin.from('profiles').select('id, full_name, display_name, avatar_url').in('id', uids)
+        : { data: [] as any[] };
+      const byId = new Map((profs ?? []).map((x: any) => [x.id, x]));
+      members = (mems ?? []).map((m: any) => {
+        const pr = byId.get(m.user_id);
+        return { id: m.user_id, name: pr?.display_name || pr?.full_name || 'Student', avatarUrl: pr?.avatar_url ?? null, isChild: m.user_id === childId };
+      });
+    }
+
     return NextResponse.json({
       group: {
         id: group.id,
@@ -78,6 +129,8 @@ export async function GET(_request: NextRequest, { params }: Params) {
       membershipStatus,
       upcoming,
       attendance,
+      stream,
+      members,
     });
   } catch (error) {
     if (error instanceof ParentAccessError) return NextResponse.json({ error: error.message }, { status: error.status });

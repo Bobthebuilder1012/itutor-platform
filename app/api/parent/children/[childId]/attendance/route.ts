@@ -67,7 +67,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
           .from('group_session_occurrences')
           .select('id, group_session_id, scheduled_start_at')
           .in('group_session_id', gsIds)
-          .eq('is_cancelled', false)
+          .is('cancelled_at', null)
           .lt('scheduled_start_at', nowISO)
           .order('scheduled_start_at', { ascending: false })
           .limit(60);
