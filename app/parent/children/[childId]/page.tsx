@@ -145,7 +145,7 @@ function ChildContent() {
       {loading ? (
         <div className="space-y-3">{[1,2].map(i=><div key={i} className="h-32 rounded-2xl bg-muted animate-pulse"/>)}</div>
       ) : tab === 'classes' ? (
-        <ClassesTab enrollments={enrollments} />
+        <ClassesTab enrollments={enrollments} childId={childId} />
       ) : tab === 'bookings' ? (
         <BookingsTab bookings={bookings} />
       ) : tab === 'attendance' ? (
@@ -254,7 +254,7 @@ function ChildContent() {
   );
 }
 
-function ClassesTab({ enrollments }: { enrollments: Enrollment[] }) {
+function ClassesTab({ enrollments, childId }: { enrollments: Enrollment[]; childId: string }) {
   if (enrollments.length === 0) {
     return (
       <div className="rounded-2xl border-2 border-dashed border-border bg-card/50 p-10 text-center">
@@ -294,7 +294,7 @@ function ClassesTab({ enrollments }: { enrollments: Enrollment[] }) {
                   <Check className="size-3.5"/> Enrolled {new Date(e.joinedAt).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})}
                 </div>
               )}
-              <Link href={`/student/classes/${e.groupId}`} className="text-xs font-semibold text-brand-deep hover:underline ml-auto">View class →</Link>
+              <Link href={`/parent/children/${childId}/classes/${e.groupId}`} className="text-xs font-semibold text-brand-deep hover:underline ml-auto">View as student →</Link>
             </div>
           </article>
         );
