@@ -3,7 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { ParentAccessError, requireParentContext } from '@/lib/server/parentAccess';
-import { deliverInvite } from '@/app/api/parent/invite-child/route';
+import { deliverInvite } from '@/lib/services/parentInvite';
 
 export const dynamic = 'force-dynamic';
 

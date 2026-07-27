@@ -6,8 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
 import { ParentAccessError, requireParentContext } from '@/lib/server/parentAccess';
-import { sendEmail } from '@/lib/services/emailService';
-import { parentInviteEmailHtml } from '@/lib/services/parentInviteEmail';
+import { deliverInvite } from '@/lib/services/parentInvite';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,32 +78,4 @@ export async function POST(request: NextRequest) {
     if (error instanceof ParentAccessError) return NextResponse.json({ error: error.message }, { status: error.status });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
-
-// Shared by create + resend: send the email AND drop an in-app notification to
-// the student, so consent works even when email delivery is off.
-export async function deliverInvite(
-  admin: ReturnType<typeof import('@/lib/supabase/server').getServiceClient>,
-  opts: { origin: string; token: string; childId: string; parentName: string }
-) {
-  const acceptUrl = `${opts.origin}/invites/accept?token=${encodeURIComponent(opts.token)}`;
-  const relLink = `/invites/accept?token=${encodeURIComponent(opts.token)}`;
-
-  const { data: childProfile } = await admin.from('profiles').select('email').eq('id', opts.childId).maybeSingle();
-  if (childProfile?.email) {
-    await sendEmail({
-      to: childProfile.email,
-      subject: `${opts.parentName} wants to connect as your parent/guardian on iTutor`,
-      html: parentInviteEmailHtml({ parentName: opts.parentName, acceptUrl }),
-    }).catch(() => {});
-  }
-
-  await admin.from('notifications').insert({
-    user_id: opts.childId,
-    type: 'parent_invite',
-    title: 'Parent/guardian connection request',
-    message: `${opts.parentName} wants to connect as your parent or guardian. Review and respond.`,
-    link: relLink,
-    metadata: { token: opts.token },
-  }).then(undefined, () => {});
 }
