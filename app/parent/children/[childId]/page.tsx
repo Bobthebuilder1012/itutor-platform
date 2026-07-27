@@ -7,10 +7,10 @@ import { ArrowLeft, GraduationCap, FileText, Calendar, Clock, Check, AlertCircle
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
-import { supabase } from '@/lib/supabase/client';
 import ParentShell from '@/components/parent/ParentShell';
 
 type Enrollment = { groupId: string; name: string; subject: string | null; status: string; joinedAt: string | null };
+type Booking = { id: string; tutorName: string; subject: string | null; status: string; start: string | null; priceTtd: number | null; durationMinutes: number | null; createdAt: string };
 type FeedbackReport = { id: string; month: string; tutorName: string; classTitle: string; body: string; deliveredAt: string; attendance: string };
 
 export default function ChildDetailPage() {
@@ -21,11 +21,12 @@ function ChildContent() {
   const { childId } = useParams<{ childId: string }>();
   const router = useRouter();
   const { profile } = useProfile();
-  const [tab, setTab] = useState<'classes' | 'feedback'>('classes');
+  const [tab, setTab] = useState<'classes' | 'bookings' | 'feedback'>('classes');
   const [childName, setChildName] = useState('');
   const [initials, setInitials] = useState('');
   const [hue, setHue] = useState(145);
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
   const [feedback, setFeedback] = useState<FeedbackReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [openReport, setOpenReport] = useState<FeedbackReport | null>(null);
@@ -38,23 +39,22 @@ function ChildContent() {
   useEffect(() => {
     if (!childId) return;
     (async () => {
-      const { data: child } = await supabase.from('profiles').select('full_name, display_name').eq('id', childId).single();
-      const name = (child as any)?.display_name || (child as any)?.full_name || 'Child';
-      setChildName(name);
-      setInitials(name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase());
-      setHue([145, 200, 30, 280, 350][name.charCodeAt(0) % 5]);
-
-      const { data: mems } = await supabase
-        .from('group_members')
-        .select('group_id, status, joined_at, group:groups!group_members_group_id_fkey(id, name, subject)')
-        .eq('user_id', childId);
-
-      setEnrollments((mems ?? []).map((m: any) => {
-        const g = Array.isArray(m.group) ? m.group[0] : m.group;
-        return { groupId: m.group_id, name: g?.name ?? 'Class', subject: g?.subject ?? null, status: m.status, joinedAt: m.joined_at };
-      }));
-
-      setLoading(false);
+      try {
+        // Server-side: the child's classes/bookings are RLS-scoped to the child,
+        // so the parent must read them via the service-client overview API.
+        const res = await fetch(`/api/parent/children/${childId}/overview`, { cache: 'no-store' });
+        const data = await res.json();
+        if (res.ok) {
+          const name = data.child?.name || 'Child';
+          setChildName(name);
+          setInitials(name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase());
+          setHue([145, 200, 30, 280, 350][name.charCodeAt(0) % 5]);
+          setEnrollments(data.enrollments ?? []);
+          setBookings(data.bookings ?? []);
+        }
+      } finally {
+        setLoading(false);
+      }
     })();
   }, [childId]);
 
@@ -103,20 +103,28 @@ function ChildContent() {
 
 
       <div className="inline-flex p-1 rounded-2xl bg-muted">
-        {(['classes', 'feedback'] as const).map((t) => (
-          <button key={t} onClick={() => setTab(t)}
-            className={cn('inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold capitalize transition',
-              tab === t ? 'bg-background text-ink shadow-sm' : 'text-muted-foreground hover:text-ink')}>
-            {t === 'classes' ? <GraduationCap className="size-4" /> : <FileText className="size-4" />}
-            {t === 'classes' ? 'Classes' : 'Feedback'}
-          </button>
-        ))}
+        {([
+          { id: 'classes' as const, label: 'Classes', icon: GraduationCap },
+          { id: 'bookings' as const, label: 'Bookings', icon: Calendar },
+          { id: 'feedback' as const, label: 'Feedback', icon: FileText },
+        ]).map((t) => {
+          const Icon = t.icon;
+          return (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={cn('inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition',
+                tab === t.id ? 'bg-background text-ink shadow-sm' : 'text-muted-foreground hover:text-ink')}>
+              <Icon className="size-4" /> {t.label}
+            </button>
+          );
+        })}
       </div>
 
       {loading ? (
         <div className="space-y-3">{[1,2].map(i=><div key={i} className="h-32 rounded-2xl bg-muted animate-pulse"/>)}</div>
       ) : tab === 'classes' ? (
         <ClassesTab enrollments={enrollments} />
+      ) : tab === 'bookings' ? (
+        <BookingsTab bookings={bookings} />
       ) : (
         <FeedbackTab feedback={feedback} onOpen={setOpenReport} />
       )}
@@ -262,6 +270,50 @@ function ClassesTab({ enrollments }: { enrollments: Enrollment[] }) {
                 </div>
               )}
               <Link href={`/student/classes/${e.groupId}`} className="text-xs font-semibold text-brand-deep hover:underline ml-auto">View class →</Link>
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+function BookingsTab({ bookings }: { bookings: Booking[] }) {
+  if (bookings.length === 0) {
+    return (
+      <div className="rounded-2xl border-2 border-dashed border-border bg-card/50 p-10 text-center">
+        <div className="mx-auto size-12 rounded-2xl bg-brand-soft text-brand-deep grid place-items-center mb-4"><Calendar className="size-5" /></div>
+        <h2 className="font-bold text-ink">No 1:1 bookings yet</h2>
+        <p className="text-sm text-muted-foreground mt-1">One-on-one sessions your child books will appear here.</p>
+      </div>
+    );
+  }
+  const statusMeta: Record<string, { label: string; cls: string }> = {
+    confirmed:  { label: 'Confirmed',  cls: 'bg-brand-soft text-brand-deep' },
+    completed:  { label: 'Completed',  cls: 'bg-emerald-100 text-emerald-800' },
+    pending:    { label: 'Pending',    cls: 'bg-sky-100 text-sky-800' },
+    counter_offer: { label: 'Counter-offer', cls: 'bg-amber-100 text-amber-800' },
+    cancelled:  { label: 'Cancelled',  cls: 'bg-muted text-muted-foreground' },
+    declined:   { label: 'Declined',   cls: 'bg-rose-100 text-rose-700' },
+  };
+  return (
+    <div className="space-y-3">
+      {bookings.map((b) => {
+        const sm = statusMeta[b.status] ?? { label: b.status, cls: 'bg-muted text-muted-foreground' };
+        return (
+          <article key={b.id} className="rounded-2xl bg-background border border-border p-5">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h3 className="font-bold text-ink truncate">{b.subject ?? '1:1 session'}</h3>
+                <div className="text-xs text-muted-foreground mt-0.5">with {b.tutorName}</div>
+              </div>
+              <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full whitespace-nowrap', sm.cls)}>{sm.label}</span>
+            </div>
+            <div className="mt-4 pt-3 border-t border-border flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              {b.start && <span className="inline-flex items-center gap-1"><Calendar className="size-3.5" /> {new Date(b.start).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>}
+              {b.start && <span className="inline-flex items-center gap-1"><Clock className="size-3.5" /> {new Date(b.start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>}
+              {b.durationMinutes ? <span>{b.durationMinutes} min</span> : null}
+              {b.priceTtd != null && b.priceTtd > 0 ? <span className="ml-auto font-semibold text-ink">TT${b.priceTtd}</span> : null}
             </div>
           </article>
         );

@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Plus, ChevronRight, AlertCircle, Check, GraduationCap, Receipt } from 'lucide-react';
 import { useProfile } from '@/lib/hooks/useProfile';
-import { supabase } from '@/lib/supabase/client';
 import ParentShell from '@/components/parent/ParentShell';
 
 type ChildData = {
@@ -21,28 +20,22 @@ function DashboardContent() {
   const [children, setChildren] = useState<ChildData[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchChildren = async (parentId: string) => {
+  const fetchChildren = async () => {
     try {
-      const { data: links } = await supabase
-        .from('parent_child_links')
-        .select('child_id, child:profiles!parent_child_links_child_id_fkey(id, full_name, display_name)')
-        .eq('parent_id', parentId);
-
-      const mapped: ChildData[] = await Promise.all((links ?? []).map(async (l: any) => {
-        const child = Array.isArray(l.child) ? l.child[0] : l.child;
-        const name = child?.display_name || child?.full_name || 'Child';
-        const initials = name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
-        const hue = [145, 200, 30, 280, 350][name.charCodeAt(0) % 5];
-        const { data: mems } = await supabase.from('group_members').select('status').eq('user_id', child.id);
-        const active = (mems ?? []).filter((m: any) => ['approved', 'active'].includes(m.status)).length;
-        const pending = (mems ?? []).filter((m: any) => m.status === 'pending').length;
-        return { id: child.id, name, initials, hue, activeClasses: active, pendingCount: pending };
-      }));
+      // Server-side (service client): child class counts aren't readable by the
+      // parent from the browser due to RLS on group_members.
+      const res = await fetch('/api/parent/children/summary', { cache: 'no-store' });
+      const data = res.ok ? await res.json() : { children: [] };
+      const mapped: ChildData[] = (data.children ?? []).map((c: any) => {
+        const initials = c.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
+        const hue = [145, 200, 30, 280, 350][c.name.charCodeAt(0) % 5];
+        return { id: c.id, name: c.name, initials, hue, activeClasses: c.activeClasses, pendingCount: c.pendingCount };
+      });
       setChildren(mapped);
     } catch { setChildren([]); } finally { setLoading(false); }
   };
 
-  useEffect(() => { if (profile?.id) fetchChildren(profile.id); }, [profile?.id]);
+  useEffect(() => { if (profile?.id) fetchChildren(); }, [profile?.id]);
 
   const firstName = (profile?.display_name || profile?.full_name || 'there').split(' ')[0];
   const totalActive = children.reduce((n, c) => n + c.activeClasses, 0);

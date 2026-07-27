@@ -40,24 +40,20 @@ function ChildrenContent() {
   const emailRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async (parentId: string) => {
-    const [{ data: links }, { data: inv }] = await Promise.all([
-      supabase.from('parent_child_links')
-        .select('child_id, child:profiles!parent_child_links_child_id_fkey(id, full_name, display_name)')
-        .eq('parent_id', parentId),
+    // Children + class counts come from the server (service client) — a parent
+    // can't read a child's group_members from the browser (RLS). Pending invites
+    // are the parent's own rows, so those are fine to read directly.
+    const [summary, { data: inv }] = await Promise.all([
+      fetch('/api/parent/children/summary', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : { children: [] })).catch(() => ({ children: [] })),
       supabase.from('parent_child_invites')
         .select('id, child_email, created_at').eq('parent_id', parentId).eq('status', 'pending')
         .order('created_at', { ascending: false }),
     ]);
-    const mapped: ChildData[] = await Promise.all((links ?? []).map(async (l: any) => {
-      const child = Array.isArray(l.child) ? l.child[0] : l.child;
-      const name = child?.display_name || child?.full_name || 'Child';
-      const initials = name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
-      const hue = [145, 200, 30, 280, 350][name.charCodeAt(0) % 5];
-      const { data: mems } = await supabase.from('group_members').select('status').eq('user_id', child.id);
-      const active = (mems ?? []).filter((m: any) => ['approved', 'active'].includes(m.status)).length;
-      const pending = (mems ?? []).filter((m: any) => m.status === 'pending').length;
-      return { id: child.id, name, initials, hue, activeClasses: active, pendingCount: pending };
-    }));
+    const mapped: ChildData[] = (summary.children ?? []).map((c: any) => {
+      const initials = c.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
+      const hue = [145, 200, 30, 280, 350][c.name.charCodeAt(0) % 5];
+      return { id: c.id, name: c.name, initials, hue, activeClasses: c.activeClasses, pendingCount: c.pendingCount };
+    });
     setChildren(mapped);
     setInvites((inv ?? []) as PendingInvite[]);
     setLoading(false);
