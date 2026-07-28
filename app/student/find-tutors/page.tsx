@@ -10,7 +10,7 @@ import { getDisplayName } from '@/lib/utils/displayName';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import UserAvatar from '@/components/UserAvatar';
 import { cn } from '@/lib/utils';
-import { Search, Star, Clock, SlidersHorizontal, Users, GraduationCap, Flame, X, Check, Video, Sparkles, BadgeCheck, MessageSquare, TrendingUp, Play } from 'lucide-react';
+import { Search, Star, Heart, Calendar, Clock, SlidersHorizontal, Users, GraduationCap, Flame, X, Check, Video, Sparkles } from 'lucide-react';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { parseScheduleData, scheduleToDisplay } from '@/lib/utils/scheduleFormat';
 import { formatLevel } from '@/lib/utils/formatLevel';
@@ -117,33 +117,11 @@ function TutorInitialAvatar({ name, size = 40 }: { name: string; size?: number }
   );
 }
 
-// Map a stored country (ISO2 code or full name) to a flag emoji for the card.
-// Returns '' when we can't confidently resolve one — never a fabricated flag.
-function countryToFlag(country?: string | null): string {
-  if (!country) return '';
-  const c = country.trim();
-  if (/^[A-Za-z]{2}$/.test(c)) {
-    return c.toUpperCase().replace(/./g, (ch) => String.fromCodePoint(127397 + ch.charCodeAt(0)));
-  }
-  const MAP: Record<string, string> = {
-    'trinidad and tobago': '🇹🇹', 'trinidad & tobago': '🇹🇹', 'trinidad': '🇹🇹',
-    'jamaica': '🇯🇲', 'guyana': '🇬🇾', 'barbados': '🇧🇧', 'grenada': '🇬🇩',
-    'saint lucia': '🇱🇨', 'st. lucia': '🇱🇨', 'st lucia': '🇱🇨', 'dominica': '🇩🇲',
-    'saint vincent and the grenadines': '🇻🇨', 'antigua and barbuda': '🇦🇬',
-    'the bahamas': '🇧🇸', 'bahamas': '🇧🇸', 'suriname': '🇸🇷', 'belize': '🇧🇿',
-    'united states': '🇺🇸', 'united kingdom': '🇬🇧', 'canada': '🇨🇦',
-  };
-  return MAP[c.toLowerCase()] ?? '';
-}
-
 export default function FindTutorsPage() {
   const { profile, loading } = useProfile();
   const router = useRouter();
   const [tutors, setTutors] = useState<Tutor[]>([]);
   const [loadingTutors, setLoadingTutors] = useState(true);
-  // Real per-tutor stats (lessons taught, students taught, recent bookings),
-  // aggregated server-side (service role) so counts are RLS-correct.
-  const [tutorStats, setTutorStats] = useState<Record<string, { lessonsTaught: number; studentsTaught: number; recentBookings: number }>>({});
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
@@ -156,6 +134,7 @@ export default function FindTutorsPage() {
   const [sortOrder, setSortOrder] = useState<'relevance' | 'price_low' | 'rating_high'>('relevance');
   const [tab, setTab] = useState<'lessons' | 'tutors'>('lessons');
   const [activeChip, setActiveChip] = useState('All');
+  const [savedItems, setSavedItems] = useState<Set<string>>(new Set());
   const [groupLessons, setGroupLessons] = useState<GroupLesson[]>([]);
   const [loadingGroupLessons, setLoadingGroupLessons] = useState(true);
   const [enrolledLessonIds, setEnrolledLessonIds] = useState<Set<string>>(new Set());
@@ -229,9 +208,19 @@ export default function FindTutorsPage() {
         throw profilesError ?? new Error('No tutor profiles');
       }
 
-      // Final ordering is applied after we know the listed set, using the
-      // marketplace ranking view (mig 190). Verification-status order is kept
-      // only as a fallback below if that view isn't available yet.
+      const verificationRank: Record<string, number> = {
+        VERIFIED: 0,
+        PENDING: 1,
+        PROCESSING: 2,
+        UNVERIFIED: 3,
+        REJECTED: 4,
+      };
+      tutorProfiles.sort(
+        (a, b) =>
+          (verificationRank[String(a.tutor_verification_status ?? 'UNVERIFIED')] ?? 9) -
+          (verificationRank[String(b.tutor_verification_status ?? 'UNVERIFIED')] ?? 9)
+      );
+
       const tutorProfilesWithBanners = tutorProfiles as Array<Record<string, unknown> & { id: string }>;
 
       // Fetch listed tutor IDs from server API (bypasses RLS on protected tables)
@@ -243,40 +232,6 @@ export default function FindTutorsPage() {
       const activeTutorIds = activeTutorProfiles.map((t) => t.id);
 
       console.log(`✅ Showing ${activeTutorProfiles.length} listed tutors (of ${tutorProfilesWithBanners.length} total)`);
-
-      // Marketplace ordering (mig 190): pinned tutors first in pin order,
-      // then everyone else by ranking_score desc. Falls back to
-      // verification-status order if the ranking view isn't present yet.
-      try {
-        const { data: rankRows, error: rankErr } = activeTutorIds.length > 0
-          ? await supabase
-              .from('tutor_marketplace_rankings')
-              .select('tutor_id, pin_rank, ranking_score')
-              .in('tutor_id', activeTutorIds)
-          : { data: [] as any[], error: null };
-        if (rankErr) throw rankErr;
-        const rankMap = new Map<string, { pin: number | null; score: number }>();
-        (rankRows ?? []).forEach((r: any) =>
-          rankMap.set(r.tutor_id, { pin: r.pin_rank ?? null, score: Number(r.ranking_score ?? 0) })
-        );
-        activeTutorProfiles.sort((a, b) => {
-          const ra = rankMap.get(a.id) ?? { pin: null, score: 0 };
-          const rb = rankMap.get(b.id) ?? { pin: null, score: 0 };
-          if (ra.pin != null || rb.pin != null) {
-            if (ra.pin == null) return 1;
-            if (rb.pin == null) return -1;
-            if (ra.pin !== rb.pin) return ra.pin - rb.pin;
-          }
-          return rb.score - ra.score;
-        });
-      } catch {
-        const verificationRank: Record<string, number> = { VERIFIED: 0, PENDING: 1, PROCESSING: 2, UNVERIFIED: 3, REJECTED: 4 };
-        activeTutorProfiles.sort(
-          (a, b) =>
-            (verificationRank[String((a as any).tutor_verification_status ?? 'UNVERIFIED')] ?? 9) -
-            (verificationRank[String((b as any).tutor_verification_status ?? 'UNVERIFIED')] ?? 9)
-        );
-      }
 
       // Fetch subjects for all tutor profiles
       const { data: tutorSubjects, error: subjectsError } =
@@ -395,19 +350,6 @@ export default function FindTutorsPage() {
       console.log('Tutors with subjects:', tutorsWithSubjects.length);
 
       setTutors(tutorsWithSubjects);
-
-      // Real marketplace stats (lessons taught, students taught, recent bookings).
-      const statIds = tutorsWithSubjects.map((t) => t.id);
-      if (statIds.length > 0) {
-        fetch('/api/public/tutors/stats', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tutorIds: statIds }),
-        })
-          .then((r) => (r.ok ? r.json() : { byTutorId: {} }))
-          .then((j) => setTutorStats(j.byTutorId ?? {}))
-          .catch(() => {});
-      }
     } catch (error) {
       console.error('Error fetching tutors:', error);
     } finally {
@@ -516,30 +458,6 @@ export default function FindTutorsPage() {
       (subEnrollments ?? []).forEach((e: any) => enrolledSet.add(e.group_id));
 
       setEnrolledLessonIds(enrolledSet);
-
-      // Order classes by their tutor's marketplace ranking (mig 190): pinned
-      // tutors' classes first in pin order, then by ranking_score. Keeps the
-      // created_at order within a tutor; falls back to it entirely if the
-      // ranking view isn't present yet.
-      {
-        const { data: rankRows, error: rankErr } = tutorIds.length
-          ? await supabase.from('tutor_marketplace_rankings').select('tutor_id, pin_rank, ranking_score').in('tutor_id', tutorIds)
-          : { data: [] as any[], error: null };
-        if (!rankErr && rankRows) {
-          const rankMap = new Map<string, { pin: number | null; score: number }>();
-          rankRows.forEach((r: any) => rankMap.set(r.tutor_id, { pin: r.pin_rank ?? null, score: Number(r.ranking_score ?? 0) }));
-          groups = [...groups].sort((a: any, b: any) => {
-            const ra = rankMap.get(a.tutor_id) ?? { pin: null, score: 0 };
-            const rb = rankMap.get(b.tutor_id) ?? { pin: null, score: 0 };
-            if (ra.pin != null || rb.pin != null) {
-              if (ra.pin == null) return 1;
-              if (rb.pin == null) return -1;
-              if (ra.pin !== rb.pin) return ra.pin - rb.pin;
-            }
-            return rb.score - ra.score;
-          });
-        }
-      }
 
       const mapped: GroupLesson[] = groups.map((g: any) => {
         const tutor = tutorMap.get(g.tutor_id);
@@ -775,14 +693,21 @@ export default function FindTutorsPage() {
       filtered.sort((a, b) => minPrice(a) - minPrice(b));
     } else if (sortOrder === 'rating_high') {
       filtered.sort((a, b) => (b.average_rating ?? -1) - (a.average_rating ?? -1));
+    } else if (profile?.subjects_of_study && profile.subjects_of_study.length > 0) {
+      filtered.sort((a, b) => {
+        const aMatchesSubjects = a.subjects.some((s) => profile.subjects_of_study?.includes(s.name));
+        const bMatchesSubjects = b.subjects.some((s) => profile.subjects_of_study?.includes(s.name));
+
+        if (aMatchesSubjects && !bMatchesSubjects) return -1;
+        if (!aMatchesSubjects && bMatchesSubjects) return 1;
+
+        const aRating = a.average_rating || 0;
+        const bRating = b.average_rating || 0;
+        return bRating - aRating;
+      });
+    } else {
+      filtered.sort((a, b) => (b.average_rating || 0) - (a.average_rating || 0));
     }
-    // 'relevance' (the default): keep the marketplace ranking order already
-    // applied in fetchTutors from the tutor_marketplace_rankings view (mig 190)
-    // — pinned first, then ranking_score desc. We intentionally do NOT re-sort
-    // here. The previous default re-sorted by the *viewer's* subjects_of_study
-    // and then rating, which overrode the ranking and made the marketplace
-    // disagree with the admin Tutor Ranking page (e.g. a new, unrated tutor who
-    // happened to match the viewer's subjects jumped above a higher-scored one).
 
     return filtered;
   }, [tutors, searchQuery, selectedSubjects, selectedRating, priceMin, priceMax, selectedSchool, profile, sortOrder]);
@@ -827,6 +752,8 @@ export default function FindTutorsPage() {
   const filteredGroupLessons = groupLessons
     .filter((l) => matchChip(l.subject))
     .filter((l) => !searchQuery || l.title.toLowerCase().includes(searchQuery.toLowerCase()) || l.tutor.toLowerCase().includes(searchQuery.toLowerCase()) || l.subject.toLowerCase().includes(searchQuery.toLowerCase()));
+
+  const toggleSave = (id: string) => setSavedItems((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   return (
     <>
@@ -1015,6 +942,12 @@ export default function FindTutorsPage() {
                           Enrolled
                         </div>
                       )}
+                      <button
+                        onClick={() => toggleSave(l.id)}
+                        className="absolute top-2.5 right-2.5 size-8 rounded-full bg-white/90 backdrop-blur grid place-items-center hover:bg-white"
+                      >
+                        <Heart className={cn('size-4', savedItems.has(l.id) ? 'fill-coral text-coral' : 'text-ink')} />
+                      </button>
                       <div className="size-12 rounded-2xl bg-white grid place-items-center text-2xl shadow-md">{l.emoji}</div>
                     </div>
                     <div className="p-4 space-y-3 flex-1 flex flex-col">
@@ -1054,11 +987,14 @@ export default function FindTutorsPage() {
                       </div>
 
                       <div className="space-y-1.5 text-xs">
-                        {/* Schedule — shown only when the group has a real recurring
-                            schedule (weekly/recurring days). When none is set we render
-                            nothing rather than a "Schedule TBD" placeholder. */}
-                        {l.day && l.day !== 'Schedule TBD' && (
+                        {/* Schedule — structured (contains "–") or plain fallback */}
+                        {l.day !== 'Schedule TBD' ? (
                           <div className="text-muted-foreground whitespace-pre-line leading-relaxed">{l.day}</div>
+                        ) : (
+                          <div className="flex items-center gap-1.5 text-muted-foreground">
+                            <Calendar className="size-3.5 shrink-0" />
+                            <span>Schedule TBD</span>
+                          </div>
                         )}
                         {/* Only show separate time/duration for legacy auto-derived schedules without a range */}
                         {l.time && !l.day.includes('–') && (
@@ -1123,7 +1059,7 @@ export default function FindTutorsPage() {
                             href={`/student/explore/${l.id}`}
                             className="px-3 py-1.5 rounded-xl bg-brand text-white text-xs font-semibold hover:bg-brand-deep transition"
                           >
-                            {full ? 'Join waitlist' : 'View class'}
+                            {full ? 'Join waitlist' : l.requireJoinRequests ? 'Request to join' : 'Join class'}
                           </Link>
                         )}
                       </div>
@@ -1139,7 +1075,7 @@ export default function FindTutorsPage() {
         {tab === 'tutors' && (
           <>
             <div className="text-sm text-muted-foreground">
-              {loadingTutors ? 'Loading tutors…' : `${filteredTutors.length} tutor${filteredTutors.length === 1 ? '' : 's'}${totalPages > 1 ? ` · Page ${currentPage} of ${totalPages}` : ''}`}
+              {loadingTutors ? 'Loading tutors…' : `${pagedTutors.length} tutor${pagedTutors.length === 1 ? '' : 's'} for 1:1 sessions`}
             </div>
 
             {loadingTutors ? (
@@ -1149,151 +1085,75 @@ export default function FindTutorsPage() {
             ) : pagedTutors.length === 0 ? (
               <div className="text-center py-16 text-muted-foreground text-sm">No tutors found. Try adjusting your search.</div>
             ) : (
-              <div className="grid lg:grid-cols-[1fr_320px] gap-6 items-start">
-                {/* Tutor list */}
-                <div className="space-y-3 min-w-0">
-                  {pagedTutors.map((tutor) => {
-                    const stats = tutorStats[tutor.id];
-                    const isVerified = (tutor.tutor_verification_status ?? '').toUpperCase() === 'VERIFIED';
-                    const curricula = Array.from(new Set(tutor.subjects.map((s) => s.curriculum).filter(Boolean)));
-                    const subjectNames = Array.from(new Set(tutor.subjects.map((s) => s.name)));
-                    const minRate = tutor.subjects.length ? Math.min(...tutor.subjects.map((s) => s.price_per_hour_ttd ?? 0)) : 0;
-                    const flag = countryToFlag(tutor.country);
-                    return (
-                      <div key={tutor.id} className="group rounded-2xl bg-background border border-border p-4 hover:shadow-card hover:border-brand/40 transition-all">
-                        <div className="flex gap-4">
-                          {/* Avatar (placeholder) */}
-                          <div className="shrink-0 flex flex-col items-center gap-2">
-                            <button
-                              onClick={() => router.push(`/student/tutors/${tutor.id}/book`)}
-                              className="size-20 rounded-2xl grid place-items-center text-2xl font-bold text-white bg-gradient-to-br from-brand to-brand-deep overflow-hidden"
-                              aria-label={`View ${getDisplayName(tutor)}`}
-                            >
-                              {tutor.avatar_url
-                                ? <img src={tutor.avatar_url} alt="" className="size-full object-cover" />
-                                : getDisplayName(tutor).charAt(0).toUpperCase()}
-                            </button>
+              <div className="grid sm:grid-cols-2 gap-3">
+                {pagedTutors.map((tutor) => (
+                  <div
+                    key={tutor.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => router.push(`/student/tutors/${tutor.id}`)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); router.push(`/student/tutors/${tutor.id}`); } }}
+                    className="group rounded-2xl bg-background border border-border p-4 hover:shadow-card hover:border-brand/40 transition-all flex gap-3 items-start cursor-pointer w-full min-w-0"
+                  >
+                    <UserAvatar avatarUrl={tutor.avatar_url} name={getDisplayName(tutor)} size={56} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <h3 className="font-semibold text-ink truncate">{getDisplayName(tutor)}</h3>
                           </div>
-
-                          {/* Main */}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <button onClick={() => router.push(`/student/tutors/${tutor.id}/book`)} className="flex items-center gap-1.5 text-left max-w-full">
-                                  <h3 className="font-bold text-ink text-lg truncate group-hover:text-brand-deep transition-colors">{getDisplayName(tutor)}</h3>
-                                  {isVerified && <BadgeCheck className="size-4 shrink-0 text-brand-deep" />}
-                                  {flag && <span className="text-sm shrink-0" title={tutor.country}>{flag}</span>}
-                                </button>
-                                <div className="flex items-center gap-2 mt-1 text-sm flex-wrap">
-                                  {tutor.average_rating !== null ? (
-                                    <span className="inline-flex items-center gap-1 font-bold text-ink tabular-nums">
-                                      <Star className="size-3.5 fill-amber-400 text-amber-400" /> {tutor.average_rating.toFixed(2)}
-                                    </span>
-                                  ) : (
-                                    <span className="inline-flex items-center gap-1 text-muted-foreground"><Star className="size-3.5" /> New</span>
-                                  )}
-                                  {tutor.total_reviews > 0 && <span className="text-muted-foreground">({tutor.total_reviews} review{tutor.total_reviews === 1 ? '' : 's'})</span>}
-                                  {subjectNames.length > 0 && (
-                                    <span className="text-muted-foreground truncate">· {subjectNames.slice(0, 3).join(', ')}{subjectNames.length > 3 ? ` +${subjectNames.length - 3}` : ''}</span>
-                                  )}
-                                </div>
-                                {curricula.length > 0 && (
-                                  <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                                    {curricula.map((c) => (
-                                      <span key={c} className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-brand-soft text-brand-deep">{c}</span>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                              <div className="text-right shrink-0">
-                                {minRate > 0 ? (
-                                  <>
-                                    <div className="text-xl font-bold text-ink">TT${minRate}</div>
-                                    <div className="text-[11px] text-muted-foreground">60-min lesson</div>
-                                  </>
-                                ) : (
-                                  <div className="text-xs text-muted-foreground">Rate not set</div>
-                                )}
-                              </div>
-                            </div>
-
-                            {tutor.bio && <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{tutor.bio}</p>}
-
-                            {/* Real, tracked stats */}
-                            <div className="flex items-center gap-6 mt-3">
-                              <div>
-                                <div className="text-sm font-bold text-ink tabular-nums">{stats?.studentsTaught ?? 0}</div>
-                                <div className="text-[11px] text-muted-foreground">Students taught</div>
-                              </div>
-                              <div>
-                                <div className="text-sm font-bold text-ink tabular-nums">{stats?.lessonsTaught ?? 0}</div>
-                                <div className="text-[11px] text-muted-foreground">Lessons taught</div>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center justify-between gap-3 mt-3 pt-3 border-t border-border">
-                              <div className="text-xs text-muted-foreground inline-flex items-center gap-1 min-w-0">
-                                {stats && stats.recentBookings > 0 && (
-                                  <><TrendingUp className="size-3.5 text-brand-deep shrink-0" /> <span className="truncate">Booked {stats.recentBookings} time{stats.recentBookings === 1 ? '' : 's'} recently</span></>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <button
-                                  onClick={() => router.push('/student/messages')}
-                                  className="size-9 rounded-xl border border-border grid place-items-center hover:bg-muted transition"
-                                  aria-label="Message tutor"
-                                >
-                                  <MessageSquare className="size-4 text-muted-foreground" />
-                                </button>
-                                <button
-                                  onClick={() => router.push(`/student/tutors/${tutor.id}/book`)}
-                                  className="px-4 py-2 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep transition"
-                                >
-                                  Book a lesson
-                                </button>
-                              </div>
-                            </div>
+                          <div className="text-xs text-muted-foreground truncate">
+                            {tutor.subjects.slice(0, 3).map((s) => s.name).join(' · ')}
+                            {tutor.subjects.length > 3 && ` +${tutor.subjects.length - 3}`}
                           </div>
                         </div>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); toggleSave(tutor.id); }}
+                          className="size-8 rounded-full hover:bg-muted grid place-items-center shrink-0"
+                        >
+                          <Heart className={cn('size-4', savedItems.has(tutor.id) ? 'fill-coral text-coral' : 'text-muted-foreground')} />
+                        </button>
                       </div>
-                    );
-                  })}
-                </div>
 
-                {/* Featured tutor panel (top-ranked). Video area is a placeholder. */}
-                {filteredTutors[0] && (() => {
-                  const f = filteredTutors[0];
-                  const fname = getDisplayName(f).split(' ')[0];
-                  const fsubjects = Array.from(new Set(f.subjects.map((s) => s.name))).slice(0, 2).join(' · ');
-                  return (
-                    <aside className="hidden lg:block sticky top-4 space-y-3">
-                      <div className="rounded-2xl overflow-hidden border border-border">
-                        <div className="relative aspect-[4/5] bg-gradient-to-br from-brand to-brand-deep grid place-items-center">
-                          <button
-                            onClick={() => router.push(`/student/tutors/${f.id}/book`)}
-                            className="size-16 rounded-full bg-white/90 grid place-items-center hover:bg-white transition shadow-lg"
-                            aria-label={`Book ${getDisplayName(f)}`}
-                          >
-                            <Play className="size-7 text-brand-deep fill-brand-deep translate-x-0.5" />
-                          </button>
-                          <div className="absolute bottom-0 inset-x-0 p-4 bg-gradient-to-t from-black/60 to-transparent">
-                            <div className="font-bold text-white flex items-center gap-1.5">
-                              {getDisplayName(f)}
-                              {(f.tutor_verification_status ?? '').toUpperCase() === 'VERIFIED' && <BadgeCheck className="size-4 text-white" />}
-                            </div>
-                            {fsubjects && <div className="text-xs text-white/80">{fsubjects}</div>}
-                          </div>
-                        </div>
+                      <div className="flex items-center gap-2 mt-1.5 text-xs">
+                        {tutor.average_rating !== null ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold tabular-nums">
+                            <Star className="size-3 fill-amber-500 text-amber-500" />
+                            {tutor.average_rating.toFixed(1)}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-muted-foreground font-semibold">
+                            <Star className="size-3 text-muted-foreground" /> —
+                          </span>
+                        )}
+                        {tutor.total_reviews > 0 && <span className="text-muted-foreground">({tutor.total_reviews} reviews)</span>}
                       </div>
-                      <button onClick={() => router.push(`/student/tutors/${f.id}/book`)} className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-sm font-semibold text-ink hover:bg-muted transition">
-                        View full schedule
-                      </button>
-                      <button onClick={() => router.push(`/student/tutors/${f.id}`)} className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-sm font-semibold text-ink hover:bg-muted transition">
-                        See {fname}&apos;s profile
-                      </button>
-                    </aside>
-                  );
-                })()}
+
+                      {tutor.bio && <p className="text-xs text-muted-foreground mt-2 line-clamp-1">{tutor.bio}</p>}
+
+                      {tutor.institution_name && (
+                        <div className="text-[11px] text-muted-foreground mt-1">{tutor.institution_name}</div>
+                      )}
+
+                      <div className="flex items-end justify-between mt-3 pt-3 border-t border-border">
+                        <div>
+                          {tutor.subjects.length > 0 && (() => {
+                            const minRate = Math.min(...tutor.subjects.map((s) => s.price_per_hour_ttd ?? 0));
+                            return minRate > 0 ? (
+                              <>
+                                <span className="text-base font-bold text-ink">TT${minRate}</span>
+                                <span className="text-[11px] text-muted-foreground">/hr</span>
+                              </>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">Rate not set</span>
+                            );
+                          })()}
+                        </div>
+                        <span className="text-xs font-semibold text-brand-deep group-hover:underline">View profile →</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 

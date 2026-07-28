@@ -16,29 +16,17 @@ export async function GET(_req: Request, { params }: { params: { userId: string 
   }
 
   const supabase = getServiceClient();
-  // Only the structured, admin-approved text is ever returned here — never the
-  // document image/path. Students/children see the credential, not the scan.
   const { data, error } = await supabase
     .from('degrees')
-    .select('degree, school_name, field, graduation_year')
+    .select('id')
     .eq('user_id', userId)
     .eq('status', 'verified')
     .maybeSingle();
 
   if (error) {
     console.error('degrees verified lookup:', error);
-    return NextResponse.json({ verified: false, degree: null });
+    return NextResponse.json({ verified: false });
   }
 
-  return NextResponse.json({
-    verified: !!data,
-    degree: data
-      ? {
-          degree: data.degree,
-          school_name: data.school_name,
-          field: data.field,
-          graduation_year: data.graduation_year,
-        }
-      : null,
-  });
+  return NextResponse.json({ verified: !!data });
 }
