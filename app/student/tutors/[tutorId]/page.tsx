@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useParams, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
@@ -332,11 +332,17 @@ function BookingCard({
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
+// Serves BOTH routes: /student/tutors/[id] (class-led profile) and
+// /student/tutors/[id]/book (1:1 booking-first). `mode` is derived from the
+// path; in 'book' mode the 1:1 flow auto-opens and the class-led sections are
+// hidden. The /book route renders this same component (see book/page.tsx).
 export default function TutorProfilePage() {
   const { profile, loading: profileLoading } = useProfile();
   const router = useRouter();
   const params = useParams();
   const tutorId = params.tutorId as string;
+  const pathname = usePathname();
+  const mode: 'profile' | 'book' = pathname?.endsWith('/book') ? 'book' : 'profile';
 
   const [tutor, setTutor] = useState<TutorProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -516,7 +522,7 @@ export default function TutorProfilePage() {
   const autoOpenedRef = useRef(false);
   useEffect(() => {
     if (autoOpenedRef.current || loading || !tutor) return;
-    if (new URLSearchParams(window.location.search).get('book') === '1on1') {
+    if (mode === 'book' || new URLSearchParams(window.location.search).get('book') === '1on1') {
       autoOpenedRef.current = true;
       openBookingSheet();
     }
@@ -614,8 +620,11 @@ export default function TutorProfilePage() {
             {/* Verified credential (structured text + badge only — never the document) */}
             <TutorCredentials tutorId={tutorId} />
 
-            {/* Tutor's classes are the main attraction — first in the column. */}
-            <ClassesSection tutorId={tutorId} tutorFirstName={getDisplayName(tutor).split(' ')[0]} />
+            {/* Tutor's classes lead the profile. Hidden in booking mode, which
+                leads with the 1:1 flow instead. */}
+            {mode !== 'book' && (
+              <ClassesSection tutorId={tutorId} tutorFirstName={getDisplayName(tutor).split(' ')[0]} />
+            )}
 
             {tutor.bio && (
               <section className="rounded-3xl bg-background border border-border p-6">
@@ -659,7 +668,7 @@ export default function TutorProfilePage() {
             </section>
 
             {/* Class ratings — 3-category breakdown + written group-class reviews */}
-            {groupReviews.length > 0 && (
+            {mode !== 'book' && groupReviews.length > 0 && (
               <section className="rounded-3xl bg-background border border-border p-6">
                 <h2 className="font-semibold text-ink mb-1">Class ratings</h2>
                 <p className="text-xs text-muted-foreground mb-4">How students rate {getDisplayName(tutor)}&apos;s group classes.</p>

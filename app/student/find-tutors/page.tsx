@@ -1165,7 +1165,7 @@ export default function FindTutorsPage() {
                           {/* Avatar (placeholder) */}
                           <div className="shrink-0 flex flex-col items-center gap-2">
                             <button
-                              onClick={() => router.push(`/student/tutors/${tutor.id}`)}
+                              onClick={() => router.push(`/student/tutors/${tutor.id}/book`)}
                               className="size-20 rounded-2xl grid place-items-center text-2xl font-bold text-white bg-gradient-to-br from-brand to-brand-deep overflow-hidden"
                               aria-label={`View ${getDisplayName(tutor)}`}
                             >
@@ -1179,7 +1179,7 @@ export default function FindTutorsPage() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
-                                <button onClick={() => router.push(`/student/tutors/${tutor.id}`)} className="flex items-center gap-1.5 text-left max-w-full">
+                                <button onClick={() => router.push(`/student/tutors/${tutor.id}/book`)} className="flex items-center gap-1.5 text-left max-w-full">
                                   <h3 className="font-bold text-ink text-lg truncate group-hover:text-brand-deep transition-colors">{getDisplayName(tutor)}</h3>
                                   {isVerified && <BadgeCheck className="size-4 shrink-0 text-brand-deep" />}
                                   {flag && <span className="text-sm shrink-0" title={tutor.country}>{flag}</span>}
@@ -1246,7 +1246,7 @@ export default function FindTutorsPage() {
                                   <MessageSquare className="size-4 text-muted-foreground" />
                                 </button>
                                 <button
-                                  onClick={() => router.push(`/student/tutors/${tutor.id}?book=1on1`)}
+                                  onClick={() => router.push(`/student/tutors/${tutor.id}/book`)}
                                   className="px-4 py-2 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep transition"
                                 >
                                   Book a lesson
@@ -1270,9 +1270,9 @@ export default function FindTutorsPage() {
                       <div className="rounded-2xl overflow-hidden border border-border">
                         <div className="relative aspect-[4/5] bg-gradient-to-br from-brand to-brand-deep grid place-items-center">
                           <button
-                            onClick={() => router.push(`/student/tutors/${f.id}`)}
+                            onClick={() => router.push(`/student/tutors/${f.id}/book`)}
                             className="size-16 rounded-full bg-white/90 grid place-items-center hover:bg-white transition shadow-lg"
-                            aria-label={`View ${getDisplayName(f)}`}
+                            aria-label={`Book ${getDisplayName(f)}`}
                           >
                             <Play className="size-7 text-brand-deep fill-brand-deep translate-x-0.5" />
                           </button>
@@ -1285,7 +1285,7 @@ export default function FindTutorsPage() {
                           </div>
                         </div>
                       </div>
-                      <button onClick={() => router.push(`/student/tutors/${f.id}`)} className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-sm font-semibold text-ink hover:bg-muted transition">
+                      <button onClick={() => router.push(`/student/tutors/${f.id}/book`)} className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-sm font-semibold text-ink hover:bg-muted transition">
                         View full schedule
                       </button>
                       <button onClick={() => router.push(`/student/tutors/${f.id}`)} className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-sm font-semibold text-ink hover:bg-muted transition">
