@@ -12,7 +12,16 @@ import UserAvatar from '@/components/UserAvatar';
 import { cn } from '@/lib/utils';
 import { Search, Star, Clock, SlidersHorizontal, Users, GraduationCap, Flame, X, Check, Video, Sparkles, BadgeCheck, MessageSquare, TrendingUp, Play } from 'lucide-react';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
-import { parseScheduleData, scheduleToDisplay } from '@/lib/utils/scheduleFormat';
+import {
+  parseScheduleData,
+  scheduleToCompact,
+  sessionRowsToEntries,
+  scheduleMatchesDayTime,
+  DAY_FILTER_OPTIONS,
+  TIME_BANDS,
+  type ScheduleEntry,
+  type TimeBand,
+} from '@/lib/utils/scheduleFormat';
 import { formatLevel } from '@/lib/utils/formatLevel';
 
 type Tutor = {
@@ -58,8 +67,13 @@ type GroupLesson = {
   tutorHue: number;
   subject: string;
   level: string;
+  /** Recurring schedule line, or '' when the class has no recurring schedule. */
   day: string;
   time: string;
+  /** True when `day` is a compact line that already includes the time range. */
+  hasCompactSchedule: boolean;
+  /** Structured weekly pattern — drives the day / time-of-day filters. */
+  scheduleEntries: ScheduleEntry[];
   monthlyPrice: number;
   seats: { taken: number; total: number | null };
   sessionLength: number | null;
@@ -156,6 +170,10 @@ export default function FindTutorsPage() {
   const [sortOrder, setSortOrder] = useState<'relevance' | 'price_low' | 'rating_high'>('relevance');
   const [tab, setTab] = useState<'lessons' | 'tutors'>('lessons');
   const [activeChip, setActiveChip] = useState('All');
+  // Day / time-of-day narrowing for group lessons. Both multi-select; a lesson
+  // matches when one of its recurring sessions satisfies every active filter.
+  const [selectedDays, setSelectedDays] = useState<number[]>([]);
+  const [selectedBands, setSelectedBands] = useState<TimeBand[]>([]);
   const [groupLessons, setGroupLessons] = useState<GroupLesson[]>([]);
   const [loadingGroupLessons, setLoadingGroupLessons] = useState(true);
   const [enrolledLessonIds, setEnrolledLessonIds] = useState<Set<string>>(new Set());
@@ -503,9 +521,12 @@ export default function FindTutorsPage() {
       );
       const enrolledSet = new Set<string>();
 
-      // group_members rows: used only for enrolled-status of non-subscription groups
+      // group_members rows: used only for enrolled-status of non-subscription groups.
+      // Must match the server's definition in GET /api/groups/[groupId] — a
+      // 'pending' request is not membership, and badging it "Enrolled" here sent
+      // students to a class page they have no access to yet.
       (memberRows ?? []).forEach((m: any) => {
-        if (m.user_id === profile.id && m.status !== 'denied') enrolledSet.add(m.group_id);
+        if (m.user_id === profile.id && ['approved', 'active', 'invited'].includes(m.status)) enrolledSet.add(m.group_id);
         // Only fall back to group_members count when server didn't return a count
         if (!(m.group_id in serverCounts)) {
           memberCountMap.set(m.group_id, (memberCountMap.get(m.group_id) ?? 0) + 1);
@@ -552,10 +573,14 @@ export default function FindTutorsPage() {
           tutorHue: 145,
           subject: g.subject || 'General',
           level: formatLevel(g.form_level || g.difficulty || ''),
-          day: (() => {
+          ...(() => {
             const entries = parseScheduleData(g.schedule_data);
-            if (entries.length) return scheduleToDisplay(entries);
-            return g.schedule_display || 'Schedule TBD';
+            const compact = scheduleToCompact(entries);
+            return {
+              day: compact ?? g.schedule_display ?? '',
+              hasCompactSchedule: !!compact,
+              scheduleEntries: entries,
+            };
           })(),
           time: '',
           monthlyPrice: Number(g.price_monthly ?? g.price_per_session ?? g.price_per_course ?? 0),
@@ -614,9 +639,14 @@ export default function FindTutorsPage() {
         mapped.forEach((g) => { g.activePromotion = bestPromoByGroup.get(g.id) ?? null; });
       } catch { /* non-fatal */ }
 
-      // Batch-fetch sessions to get schedule for groups without a manual schedule_display
+      // Batch-fetch sessions for any group without a structured schedule_data.
+      // Keyed on schedule_data rather than schedule_display so a class whose
+      // tutor typed a free-text schedule still gets structured entries — without
+      // them it could never match a day/time filter.
       try {
-        const groupIds = groups.filter((g: any) => !g.schedule_display).map((g: any) => g.id);
+        const groupIds = groups
+          .filter((g: any) => parseScheduleData(g.schedule_data).length === 0)
+          .map((g: any) => g.id);
         if (!groupIds.length) { setGroupLessons(mapped); return; }
         const { data: sessions } = await supabase
           .from('group_sessions')
@@ -626,28 +656,27 @@ export default function FindTutorsPage() {
           .order('created_at', { ascending: true });
 
         if (sessions?.length) {
-          const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-          const sessionByGroup = new Map<string, any>();
+          // Collect every recurring session per group — a class meeting Monday
+          // and Saturday at different times needs both to format and filter
+          // correctly, so taking only the first row would lose half the pattern.
+          const sessionsByGroup = new Map<string, any[]>();
           for (const s of sessions) {
-            if (!sessionByGroup.has(s.group_id)) sessionByGroup.set(s.group_id, s);
+            sessionsByGroup.set(s.group_id, [...(sessionsByGroup.get(s.group_id) ?? []), s]);
           }
 
           setGroupLessons(mapped.map((l) => {
-            const s = sessionByGroup.get(l.id);
-            if (!s) return l;
-            const recType = (s.recurrence_type ?? '').toUpperCase();
-            const days = Array.isArray(s.recurrence_days) && s.recurrence_days.length
-              ? s.recurrence_days.map((d: number) => dayNames[d] ?? '').filter(Boolean).join(', ')
-              : recType === 'DAILY' ? 'Daily' : recType === 'WEEKLY' ? 'Weekly' : recType === 'MONTHLY' ? 'Monthly' : null;
-            const time = s.start_time
-              ? new Date(`2000-01-01T${s.start_time}`).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-              : '';
-            const durMin = s.duration_minutes ?? l.sessionLength;
-            const durLabel = durMin ? (durMin < 60 ? `${durMin}m` : durMin % 60 === 0 ? `${durMin / 60}h` : `${Math.floor(durMin / 60)}h ${durMin % 60}m`) : '';
+            const rows = sessionsByGroup.get(l.id);
+            if (!rows?.length) return l;
+            const entries = sessionRowsToEntries(rows);
+            const compact = scheduleToCompact(entries);
+            const durMin = rows[0].duration_minutes ?? l.sessionLength;
             return {
               ...l,
-              day: days || 'Schedule TBD',
-              time,
+              day: compact ?? l.day,
+              // The compact line carries the time range already.
+              time: compact ? '' : l.time,
+              hasCompactSchedule: !!compact,
+              scheduleEntries: entries.length ? entries : l.scheduleEntries,
               sessionLength: durMin ?? l.sessionLength,
             };
           }));
@@ -826,7 +855,14 @@ export default function FindTutorsPage() {
 
   const filteredGroupLessons = groupLessons
     .filter((l) => matchChip(l.subject))
+    .filter((l) => scheduleMatchesDayTime(l.scheduleEntries, selectedDays, selectedBands))
     .filter((l) => !searchQuery || l.title.toLowerCase().includes(searchQuery.toLowerCase()) || l.tutor.toLowerCase().includes(searchQuery.toLowerCase()) || l.subject.toLowerCase().includes(searchQuery.toLowerCase()));
+
+  const scheduleFilterActive = selectedDays.length > 0 || selectedBands.length > 0;
+  const toggleDay = (d: number) =>
+    setSelectedDays((prev) => (prev.includes(d) ? prev.filter((v) => v !== d) : [...prev, d]));
+  const toggleBand = (b: TimeBand) =>
+    setSelectedBands((prev) => (prev.includes(b) ? prev.filter((v) => v !== b) : [...prev, b]));
 
   return (
     <>
@@ -975,6 +1011,66 @@ export default function FindTutorsPage() {
         {/* Group Lessons tab */}
         {tab === 'lessons' && (
           <>
+            {/* Day + time narrowing — "does this fit our week?" */}
+            <div className="rounded-2xl border border-border bg-background p-3 space-y-3">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <span className="text-xs font-semibold text-ink shrink-0">Meets on</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {DAY_FILTER_OPTIONS.map((d) => (
+                    <button
+                      key={d.value}
+                      type="button"
+                      aria-pressed={selectedDays.includes(d.value)}
+                      aria-label={d.label}
+                      onClick={() => toggleDay(d.value)}
+                      className={cn(
+                        'px-3 py-1.5 rounded-full text-xs font-semibold border transition',
+                        selectedDays.includes(d.value)
+                          ? 'bg-brand text-white border-brand'
+                          : 'bg-background text-muted-foreground border-border hover:border-brand/40'
+                      )}
+                    >
+                      {d.short}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <span className="text-xs font-semibold text-ink shrink-0">Time</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {TIME_BANDS.map((b) => (
+                    <button
+                      key={b.value}
+                      type="button"
+                      aria-pressed={selectedBands.includes(b.value)}
+                      onClick={() => toggleBand(b.value)}
+                      className={cn(
+                        'px-3 py-1.5 rounded-full text-xs font-semibold border transition',
+                        selectedBands.includes(b.value)
+                          ? 'bg-brand text-white border-brand'
+                          : 'bg-background text-muted-foreground border-border hover:border-brand/40'
+                      )}
+                    >
+                      {b.label}
+                    </button>
+                  ))}
+                </div>
+                {scheduleFilterActive && (
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedDays([]); setSelectedBands([]); }}
+                    className="ml-auto text-xs font-semibold text-brand-deep hover:underline"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Times are in AST (Trinidad &amp; Tobago).
+                {scheduleFilterActive && ' One-off classes are hidden while a day or time filter is on.'}
+              </p>
+            </div>
+
             <div className="text-sm text-muted-foreground">
               {loadingGroupLessons ? 'Loading lessons…' : (() => {
                 const enrolledCount = filteredGroupLessons.filter(l => enrolledLessonIds.has(l.id)).length;
@@ -995,8 +1091,24 @@ export default function FindTutorsPage() {
             ) : filteredGroupLessons.length === 0 ? (
               <div className="text-center py-16 text-muted-foreground text-sm">
                 <div className="text-3xl mb-3">📚</div>
-                <p className="font-semibold text-ink">No group lessons yet</p>
-                <p className="mt-1">Check back soon — tutors are adding new group classes.</p>
+                {scheduleFilterActive ? (
+                  <>
+                    <p className="font-semibold text-ink">No classes match those days or times</p>
+                    <p className="mt-1">Try widening your selection, or clear the day and time filters.</p>
+                    <button
+                      type="button"
+                      onClick={() => { setSelectedDays([]); setSelectedBands([]); }}
+                      className="mt-3 px-4 py-2 rounded-xl bg-brand text-white text-xs font-semibold hover:bg-brand-deep transition"
+                    >
+                      Clear day &amp; time filters
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-semibold text-ink">No group lessons yet</p>
+                    <p className="mt-1">Check back soon — tutors are adding new group classes.</p>
+                  </>
+                )}
               </div>
             ) : null}
 
@@ -1054,20 +1166,22 @@ export default function FindTutorsPage() {
                       </div>
 
                       <div className="space-y-1.5 text-xs">
-                        {/* Schedule — shown only when the group has a real recurring
-                            schedule (weekly/recurring days). When none is set we render
-                            nothing rather than a "Schedule TBD" placeholder. */}
-                        {l.day && l.day !== 'Schedule TBD' && (
+                        {/* Recurring schedule — days and time on one line, e.g.
+                            "Recurring every Monday and Wednesday · 5:00–7:00 PM AST".
+                            Renders nothing when the class has no recurring
+                            schedule, rather than a "Schedule TBD" placeholder. */}
+                        {l.day && (
                           <div className="text-muted-foreground whitespace-pre-line leading-relaxed">{l.day}</div>
                         )}
-                        {/* Only show separate time/duration for legacy auto-derived schedules without a range */}
-                        {l.time && !l.day.includes('–') && (
+                        {/* Time / duration only for free-text or legacy schedules —
+                            a compact line already states the range. */}
+                        {!l.hasCompactSchedule && l.time && (
                           <div className="flex items-center gap-1.5 text-muted-foreground">
                             <Clock className="size-3.5" /> {l.time}
                             {l.sessionLength && <span className="text-muted-foreground/70">· {formatDuration(l.sessionLength)}</span>}
                           </div>
                         )}
-                        {!l.time && l.sessionLength && !l.day.includes('–') && (
+                        {!l.hasCompactSchedule && !l.time && l.sessionLength && (
                           <div className="flex items-center gap-1.5 text-muted-foreground">
                             <Clock className="size-3.5" /> {formatDuration(l.sessionLength)} per session
                           </div>

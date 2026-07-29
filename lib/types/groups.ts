@@ -1,4 +1,5 @@
 import { Profile } from './database';
+import type { ScheduleEntry } from '@/lib/utils/scheduleFormat';
 
 // ============================
 // ENUMS / UNION TYPES
@@ -84,6 +85,12 @@ export interface GroupWithTutor extends Group {
   member_previews: Array<Pick<Profile, 'id' | 'full_name' | 'avatar_url'>>;
   current_user_membership: GroupMember | null;
   next_occurrence: GroupOccurrence | null;
+  /**
+   * Recurring weekly pattern (day + AST start time + duration), resolved by
+   * GET /api/groups from the tutor's manual schedule_data or group_sessions.
+   * Empty when the class has no recurring schedule.
+   */
+  schedule_entries?: ScheduleEntry[];
 }
 
 export interface GroupMember {

@@ -161,6 +161,41 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const approvedMembers = (group.group_members ?? []).filter((m: any) => m.status === 'approved');
     const currentUserMembership = (group.group_members ?? []).find((m: any) => m.user_id === user.id) ?? null;
 
+    // Viewer membership must consider BOTH tables. Free / approval-gated classes
+    // create a `group_members` row, but a paid class enrols through
+    // /subscribe which only writes `group_enrollments` — a student who paid has
+    // no group_members row at all. Resolving this server-side keeps every page
+    // that renders a join CTA from having to remember both.
+    let viewerEnrollmentStatus: string | null = null;
+    {
+      const { data: enrolRows, error: enrolErr } = await service
+        .from('group_enrollments')
+        .select('status')
+        .eq('group_id', groupId)
+        .eq('student_id', user.id);
+
+      if (enrolErr && !isSchemaMismatch(enrolErr)) {
+        console.warn('[GET /api/groups/[groupId]] viewer enrollment load failed (non-fatal):', enrolErr?.message ?? enrolErr);
+      }
+      const statuses = (enrolRows ?? []).map((r: any) => String(r.status));
+      viewerEnrollmentStatus =
+        statuses.find((s) => ['ACTIVE', 'GRACE', 'SUSPENDED'].includes(s)) ??
+        statuses.find((s) => s === 'PENDING_PAYMENT') ??
+        null;
+    }
+
+    const viewerMemberStatus = currentUserMembership?.status ? String(currentUserMembership.status) : null;
+    const viewerEnrolled =
+      (!!viewerMemberStatus && ['approved', 'active', 'invited'].includes(viewerMemberStatus)) ||
+      (!!viewerEnrollmentStatus && ['ACTIVE', 'GRACE', 'SUSPENDED'].includes(viewerEnrollmentStatus));
+    const viewerMembership = {
+      member_status: viewerMemberStatus,
+      enrollment_status: viewerEnrollmentStatus,
+      enrolled: viewerEnrolled,
+      pending_approval: viewerMemberStatus === 'pending',
+      payment_pending: !viewerEnrolled && viewerEnrollmentStatus === 'PENDING_PAYMENT',
+    };
+
     // Fetch sessions with upcoming occurrences (service client bypasses RLS so all users get schedule preview)
     let sessionsRaw: any[] | null = null;
     let sessionsError: any = null;
@@ -304,6 +339,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
         member_count: approvedMembers.length,
         member_previews: approvedMembers.slice(0, 3).map((m: any) => m.profile).filter(Boolean),
         current_user_membership: currentUserMembership,
+        viewer_membership: viewerMembership,
         sessions,
         next_occurrence: nextOccurrence,
         upcoming_sessions: upcomingSessions,
@@ -322,6 +358,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
           member_count: approvedMembers.length,
           member_previews: approvedMembers.slice(0, 3).map((m: any) => m.profile).filter(Boolean),
           current_user_membership: currentUserMembership,
+          viewer_membership: viewerMembership,
           sessions,
           next_occurrence: nextOccurrence,
           upcoming_sessions: upcomingSessions,

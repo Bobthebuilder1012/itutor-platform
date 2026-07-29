@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import type { CreateGroupInput } from '@/lib/types/groups';
+import {
+  sessionRowsToEntries,
+  scheduleMatchesDayTime,
+  parseScheduleData,
+  type ScheduleEntry,
+  type TimeBand,
+} from '@/lib/utils/scheduleFormat';
 import { z } from 'zod';
 
 function isSchemaMismatch(error: any) {
@@ -49,6 +56,26 @@ export async function GET(request: NextRequest) {
       tutor_name: z.string().optional(),
       tutor_id: z.string().uuid().optional(),
       archived: z.enum(['true', 'false']).optional(),
+      // Recurring day-of-week filter: comma-separated indices, 0=Sunday.
+      days: z
+        .string()
+        .optional()
+        .transform((v) =>
+          (v ?? '')
+            .split(',')
+            .map((s) => Number(s.trim()))
+            .filter((n) => Number.isInteger(n) && n >= 0 && n <= 6)
+        ),
+      // Time-of-day bands: comma-separated morning|afternoon|evening.
+      timeOfDay: z
+        .string()
+        .optional()
+        .transform((v) =>
+          (v ?? '')
+            .split(',')
+            .map((s) => s.trim().toLowerCase())
+            .filter((s): s is TimeBand => s === 'morning' || s === 'afternoon' || s === 'evening')
+        ),
     });
     const parsed = querySchema.safeParse(
       Object.fromEntries([...searchParams.entries()].filter(([, v]) => v !== ''))
@@ -74,6 +101,8 @@ export async function GET(request: NextRequest) {
       tutor_name: tutorName,
       tutor_id: filterTutorId,
       archived: archivedParam,
+      days: filterDays,
+      timeOfDay: filterBands,
     } = parsed.data;
 
     const fetchArchived = archivedParam === 'true';
@@ -180,6 +209,36 @@ export async function GET(request: NextRequest) {
     const groupRows = groups ?? [];
     const groupIds = groupRows.map((g: any) => g.id);
 
+    // Preload the recurring schedule per group: powers the card's "Recurring
+    // every Monday and Wednesday · 5:00–7:00 PM AST" line and the day/time
+    // filters below. Manual schedule_data (authored by the tutor) wins over the
+    // pattern derived from group_sessions.
+    const scheduleEntriesByGroupId = new Map<string, ScheduleEntry[]>();
+    if (groupIds.length > 0) {
+      const { data: recurrenceRows, error: recurrenceError } = await service
+        .from('group_sessions')
+        .select('group_id, start_time, recurrence_type, recurrence_days, duration_minutes')
+        .in('group_id', groupIds)
+        .neq('recurrence_type', 'NONE')
+        .order('created_at', { ascending: true });
+
+      if (recurrenceError && !isSchemaMismatch(recurrenceError)) {
+        console.warn('[GET /api/groups] recurring schedule load failed (non-fatal):', recurrenceError.message);
+      }
+
+      const rowsByGroup = new Map<string, any[]>();
+      for (const row of recurrenceRows ?? []) {
+        const key = String((row as any).group_id);
+        rowsByGroup.set(key, [...(rowsByGroup.get(key) ?? []), row]);
+      }
+
+      for (const g of groupRows) {
+        const manual = parseScheduleData((g as any).schedule_data);
+        const entries = manual.length > 0 ? manual : sessionRowsToEntries(rowsByGroup.get(String(g.id)) ?? []);
+        if (entries.length > 0) scheduleEntriesByGroupId.set(String(g.id), entries);
+      }
+    }
+
     // Preload session occurrences to compute next session per group card
     let nextOccurrenceByGroupId = new Map<string, any>();
     if (groupIds.length > 0) {
@@ -225,8 +284,15 @@ export async function GET(request: NextRequest) {
         member_previews: [],
         current_user_membership: currentUserMembership,
         next_occurrence: nextOccurrenceByGroupId.get(g.id) ?? null,
+        schedule_entries: scheduleEntriesByGroupId.get(String(g.id)) ?? [],
       };
     });
+
+    // Day-of-week / time-of-day filter. Lives here rather than in the `groups`
+    // where-clause because the data is on group_sessions, not groups.
+    if (filterDays.length > 0 || filterBands.length > 0) {
+      enriched = enriched.filter((g: any) => scheduleMatchesDayTime(g.schedule_entries, filterDays, filterBands));
+    }
 
     // No profile-completeness gate for group classes — visibility (public/private) and
     // archived_at are the sole gating mechanisms. Tutor profile quality checks apply to

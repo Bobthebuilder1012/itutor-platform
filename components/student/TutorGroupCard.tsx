@@ -1,6 +1,7 @@
 'use client';
 
 import { formatDistanceToNowStrict } from 'date-fns';
+import { scheduleToCompact, type ScheduleEntry } from '@/lib/utils/scheduleFormat';
 
 type GroupCardData = {
   id: string;
@@ -13,6 +14,7 @@ type GroupCardData = {
   coverImage?: string | null;
   averageRating?: number;
   totalReviews?: number;
+  schedule_entries?: ScheduleEntry[];
 };
 
 export default function TutorGroupCard({
@@ -24,6 +26,7 @@ export default function TutorGroupCard({
 }) {
   const next = group.nextSession?.scheduledAt ? new Date(group.nextSession.scheduledAt) : null;
   const countdown = next ? formatDistanceToNowStrict(next, { addSuffix: true }) : null;
+  const recurring = scheduleToCompact(group.schedule_entries);
   const capacity = group.maxStudents ? `${group.enrollmentCount ?? 0}/${group.maxStudents}` : `${group.enrollmentCount ?? 0}`;
   const tutorName = group.tutor?.full_name ?? 'Tutor';
   const initials = tutorName
@@ -80,7 +83,10 @@ export default function TutorGroupCard({
           </span>
         </div>
 
-        <p className="mt-3 text-xs font-medium text-blue-700">
+        {/* Weekly commitment first ("does this fit our week?"), then the next
+            single occurrence. Nothing renders when there's no recurring schedule. */}
+        {recurring && <p className="mt-3 text-xs font-medium text-gray-700">{recurring}</p>}
+        <p className={`text-xs font-medium text-blue-700 ${recurring ? 'mt-1' : 'mt-3'}`}>
           {countdown ? `Next session ${countdown}` : 'No upcoming session'}
         </p>
       </div>

@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-quer
 import SearchInput from '@/components/student/SearchInput';
 import FilterPanel, { type GroupFiltersState } from '@/components/student/FilterPanel';
 import TutorGroupCard from '@/components/student/TutorGroupCard';
+import type { ScheduleEntry } from '@/lib/utils/scheduleFormat';
 
 type GroupItem = {
   id: string;
@@ -18,6 +19,7 @@ type GroupItem = {
   coverImage?: string | null;
   averageRating?: number;
   totalReviews?: number;
+  schedule_entries?: ScheduleEntry[];
 };
 
 const defaultFilters: GroupFiltersState = {
@@ -26,6 +28,8 @@ const defaultFilters: GroupFiltersState = {
   recurrenceType: '',
   minPrice: '',
   maxPrice: '',
+  days: [],
+  timeOfDay: [],
 };
 
 async function fetchGroups(search: string, filters: GroupFiltersState, page: number) {
@@ -36,6 +40,8 @@ async function fetchGroups(search: string, filters: GroupFiltersState, page: num
   if (filters.recurrenceType) params.set('recurrenceType', filters.recurrenceType);
   if (filters.minPrice) params.set('minPrice', filters.minPrice);
   if (filters.maxPrice) params.set('maxPrice', filters.maxPrice);
+  if (filters.days.length) params.set('days', filters.days.join(','));
+  if (filters.timeOfDay.length) params.set('timeOfDay', filters.timeOfDay.join(','));
   params.set('page', String(page));
   params.set('limit', '9');
 

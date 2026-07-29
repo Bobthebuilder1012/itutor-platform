@@ -15,7 +15,15 @@ import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { formatLevel } from '@/lib/utils/formatLevel';
-import { parseScheduleData, scheduleToDisplay } from '@/lib/utils/scheduleFormat';
+import {
+  parseScheduleData,
+  scheduleToDisplay,
+  astWeekday,
+  astDayOfMonth,
+  formatAstDate,
+  formatAstTimeRange,
+  AST_LABEL,
+} from '@/lib/utils/scheduleFormat';
 import TutorCredentials from '@/components/TutorCredentials';
 
 type Step = 'detail' | 'join' | 'joined' | 'awaiting-approval';
@@ -60,6 +68,7 @@ type GroupData = {
   member_count: number;
   enrolled: boolean;
   memberStatus: string | null;
+  paymentPending: boolean;
   parent_feedback_price: number | null;
   active_promotion: { id: string; kind: string; discount: number; student_cap: number | null; duration_days: number | null } | null;
   sessions: SessionRow[];
@@ -129,11 +138,13 @@ export default function ExploreClassDetailPage() {
   const [step, setStep] = useState<Step>('detail');
   const [hasLinkedParent, setHasLinkedParent] = useState(false);
 
+  // Wait for the profile before fetching: the linked-parent lookup below needs
+  // profile.id, and firing while it is still null used to silently skip it.
   useEffect(() => {
-    if (!groupId) return;
+    if (!groupId || profileLoading) return;
     fetchGroup();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupId]);
+  }, [groupId, profile?.id, profileLoading]);
 
   async function fetchGroup() {
     try {
@@ -145,19 +156,14 @@ export default function ExploreClassDetailPage() {
 
       const tutorObj = Array.isArray(g.tutor) ? g.tutor[0] : g.tutor;
 
-      // Check enrollment + pending status
-      let enrolled = false;
-      let memberStatus: string | null = null;
-      if (profile?.id) {
-        const { data: mem } = await supabase
-          .from('group_members')
-          .select('status')
-          .eq('group_id', groupId)
-          .eq('user_id', profile.id)
-          .maybeSingle();
-        memberStatus = mem?.status ?? null;
-        enrolled = !!(mem && ['approved', 'active', 'invited'].includes(mem.status));
-      }
+      // Membership comes from the API, which resolves both group_members (free /
+      // approval-gated classes) and group_enrollments (paid classes). Doing it
+      // server-side means this page can't miss one of the two tables, and there
+      // is no window where the CTA renders before membership is known.
+      const vm = g.viewer_membership ?? null;
+      const enrolled = !!vm?.enrolled;
+      const memberStatus: string | null = vm?.member_status ?? null;
+      const paymentPending = !!vm?.payment_pending;
 
       // Tutor verification + display name (defensive against schema drift)
       let tutorVerified = false;
@@ -218,6 +224,7 @@ export default function ExploreClassDetailPage() {
         member_count: g.enrollment_count ?? g.member_count ?? 0,
         enrolled,
         memberStatus,
+        paymentPending,
         parent_feedback_price: g.parent_feedback_price ?? null,
         active_promotion: g.active_promotion ?? null,
         sessions,
@@ -258,7 +265,15 @@ export default function ExploreClassDetailPage() {
       {step !== 'detail' && (
         <Modal onClose={() => setStep('detail')}>
           {step === 'join' && (
-            <JoinFlow group={group} onBack={() => setStep('detail')} onSuccess={(s) => setStep(s)} profile={profile} hasLinkedParent={hasLinkedParent} />
+            <JoinFlow
+              group={group}
+              onBack={() => setStep('detail')}
+              // Re-read membership so dismissing the modal leaves the CTA showing
+              // "Open class" / "Request pending" rather than the stale join label.
+              onSuccess={(s) => { setStep(s); void fetchGroup(); }}
+              profile={profile}
+              hasLinkedParent={hasLinkedParent}
+            />
           )}
           {step === 'joined' && <JoinedScreen group={group} kind="enrolled" />}
           {step === 'awaiting-approval' && <JoinedScreen group={group} kind="awaiting-approval" />}
@@ -325,11 +340,13 @@ function Detail({ group, onJoin }: { group: GroupData; onJoin: () => void }) {
   const nextSession = agenda[0] ?? null;
 
   // Recurring class days: derived from the tutor's UPCOMING scheduled
-  // occurrences (distinct weekdays, viewer-local). Falls back to the tutor's
+  // occurrences (distinct weekdays in AST). Falls back to the tutor's
   // recurring schedule_data pattern when a class has no dated occurrences yet.
   const recurringDays = useMemo(() => {
     const days = new Set<number>();
-    for (const a of agenda) days.add(a.start.getDay());
+    // AST weekday, not the viewer's — otherwise an evening class reads as the
+    // next day for a student east of Trinidad.
+    for (const a of agenda) days.add(astWeekday(a.start));
     if (days.size === 0) {
       for (const e of parseScheduleData(group.schedule_data)) {
         if (typeof e.day === 'number' && e.day >= 0 && e.day <= 6) days.add(e.day);
@@ -401,11 +418,13 @@ function Detail({ group, onJoin }: { group: GroupData; onJoin: () => void }) {
 
   const ctaLabel = group.enrolled ? 'Open class'
     : isPending ? 'Request pending'
+    : group.paymentPending ? 'Complete payment'
     : isFull ? 'Join waitlist'
     : group.require_join_requests ? 'Request to join'
     : 'Join class';
   const ctaCaption = group.enrolled ? "You're enrolled"
     : isPending ? 'Awaiting tutor approval'
+    : group.paymentPending ? 'Your seat is held until payment completes'
     : isFull ? 'Class full · join the waitlist'
     : group.require_join_requests ? 'Tutor approval required'
     : 'Join instantly · cancel anytime';
@@ -749,7 +768,11 @@ function Detail({ group, onJoin }: { group: GroupData; onJoin: () => void }) {
                 ) : (
                   <button onClick={handleCta} disabled={isPending}
                     className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-2xl bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-deep disabled:opacity-60">
-                    {isFull ? 'Join the waitlist' : group.require_join_requests ? 'Request to attend' : 'Enrol to attend'}
+                    {isPending ? 'Request pending'
+                      : group.paymentPending ? 'Complete payment'
+                      : isFull ? 'Join the waitlist'
+                      : group.require_join_requests ? 'Request to attend'
+                      : 'Enrol to attend'}
                   </button>
                 )}
               </div>
@@ -771,7 +794,7 @@ function Detail({ group, onJoin }: { group: GroupData; onJoin: () => void }) {
               <div className="flex items-center justify-between border-b border-border px-4 py-3">
                 <div>
                   <h3 className="text-sm font-bold text-ink">Upcoming classes</h3>
-                  <p className="text-[11px] text-muted-foreground">Your local time · {tzLabel()}</p>
+                  <p className="text-[11px] text-muted-foreground">Class times in {AST_LABEL} · Trinidad &amp; Tobago</p>
                 </div>
               </div>
               <ul className="divide-y divide-border">
@@ -846,8 +869,8 @@ function DateBadge({ date }: { date: Date }) {
   return (
     <div className="grid size-11 shrink-0 place-items-center rounded-2xl border border-border bg-background text-center leading-tight">
       <div>
-        <div className="text-[9px] font-bold uppercase text-brand-deep">{date.toLocaleDateString(undefined, { month: 'short' })}</div>
-        <div className="text-sm font-black text-ink">{date.getDate()}</div>
+        <div className="text-[9px] font-bold uppercase text-brand-deep">{formatAstDate(date, { month: 'short' })}</div>
+        <div className="text-sm font-black text-ink">{astDayOfMonth(date)}</div>
       </div>
     </div>
   );
@@ -1118,16 +1141,18 @@ function firstName(name: string) {
   return parts[0] || 'Student';
 }
 
+// Class dates and times render in AST — the timezone they were authored in —
+// so this page agrees with the card copy and the day/time filters. Rendering
+// some surfaces viewer-local and others in AST is how a student shows up an
+// hour off, or sees the wrong weekday highlighted.
 function formatShort(d: Date) {
-  return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  return formatAstDate(d, { weekday: 'short', month: 'short', day: 'numeric' });
 }
 function formatFull(d: Date) {
-  return d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+  return formatAstDate(d, { weekday: 'long', month: 'short', day: 'numeric' });
 }
 function formatTimeRange(d: Date, mins: number) {
-  const end = new Date(d.getTime() + mins * 60_000);
-  const opts: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' };
-  return `${d.toLocaleTimeString(undefined, opts)} – ${end.toLocaleTimeString(undefined, opts)}`;
+  return formatAstTimeRange(d, mins);
 }
 function relativeTime(d: Date) {
   const diff = d.getTime() - Date.now();
@@ -1138,11 +1163,4 @@ function relativeTime(d: Date) {
   if (abs < 60 * 60_000) return min >= 0 ? `in ${min}m` : `${-min}m ago`;
   if (abs < 24 * 3_600_000) return hr >= 0 ? `in ${hr}h` : `${-hr}h ago`;
   return day >= 0 ? `in ${day}d` : `${-day}d ago`;
-}
-function tzLabel() {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone;
-  } catch {
-    return 'local time';
-  }
 }
