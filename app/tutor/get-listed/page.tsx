@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useRef, useState, Fragment } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Check, Circle, Camera, Copy, Lock, ShieldCheck } from 'lucide-react';
+import { Check, Circle, Camera, Copy, Lock, ShieldCheck, Link2, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { useTutorCompletion, notifyCompletionUpdated } from '@/lib/hooks/useTutorCompletion';
@@ -130,6 +130,8 @@ function GetListedContent() {
   const [videoConnection, setVideoConnection] = useState<{ provider: string; email: string | null } | null>(null);
   const [videoConnecting, setVideoConnecting] = useState(false);
   const [videoMsg, setVideoMsg] = useState('');
+  // UI only — the custom-link flow is not wired up yet.
+  const [otherProviderOpen, setOtherProviderOpen] = useState(false);
 
   // Read by the autosave closures so they always diff against what's persisted
   // without having to be re-created (and re-armed) on every render.
@@ -756,6 +758,42 @@ function GetListedContent() {
             </div>
           </div>
         )}
+
+        {/* Use another provider — UI only, intentionally not wired up yet.
+            Rendered outside the connected/disconnected branch so it's reachable
+            even once Zoom or Meet is connected. */}
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={() => setOtherProviderOpen((o) => !o)}
+            aria-expanded={otherProviderOpen}
+            className="flex w-full items-center gap-3 rounded-xl border border-border p-3 text-left transition hover:border-brand/60 hover:bg-brand/5"
+          >
+            <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+              <Link2 className="size-4" />
+            </span>
+            <span className="flex-1">
+              <span className="block text-sm font-semibold text-ink">Use another provider</span>
+              <span className="block text-xs text-muted-foreground">Paste your own meeting link</span>
+            </span>
+            <ChevronDown className={cn('size-4 shrink-0 text-muted-foreground transition-transform', otherProviderOpen && 'rotate-180')} />
+          </button>
+
+          {otherProviderOpen && (
+            <div className="mt-2 rounded-xl border border-dashed border-border bg-muted/40 p-3">
+              <label className="block text-xs font-semibold text-ink">Your meeting link</label>
+              <input
+                type="url"
+                disabled
+                placeholder="https://…  (Teams, Jitsi, Whereby, or any other link)"
+                className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+              />
+              <p className="mt-2 text-xs text-muted-foreground">
+                Coming soon — this isn&apos;t active yet, so nothing typed here is saved. For now, connect Google Meet above.
+              </p>
+            </div>
+          )}
+        </div>
       </SectionShell>
 
       {/* Listed banner */}
