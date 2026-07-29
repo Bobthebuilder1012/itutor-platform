@@ -181,6 +181,79 @@ export function sessionRowsToEntries(rows: SessionRecurrenceRow[] | null | undef
   });
 }
 
+// ── Dated occurrences → schedule entries ──────────────────────────────────────
+
+export type OccurrenceLike = {
+  scheduled_start_at?: string | null;
+  scheduled_end_at?: string | null;
+  cancelled_at?: string | null;
+  status?: string | null;
+};
+
+/**
+ * Derives a weekly pattern from dated occurrences, for classes scheduled as
+ * individual sessions rather than a recurrence rule (`recurrence_type` NONE or
+ * no `recurrence_days`). Without this a real weekly class shows no schedule at
+ * all on a card, even though its class page lists every date.
+ *
+ * A (weekday, time) slot must appear at least `minRepeats` times to count — one
+ * date is not evidence of a recurrence, and claiming otherwise would advertise
+ * a one-off class as weekly.
+ */
+export function occurrencesToEntries(
+  occurrences: OccurrenceLike[] | null | undefined,
+  minRepeats = 2
+): ScheduleEntry[] {
+  const counts = new Map<string, { entry: ScheduleEntry; n: number }>();
+
+  for (const o of occurrences ?? []) {
+    if (!o?.scheduled_start_at) continue;
+    if (o.cancelled_at) continue;
+    if (o.status && String(o.status).toLowerCase() === 'cancelled') continue;
+
+    const start = new Date(o.scheduled_start_at);
+    if (Number.isNaN(start.getTime())) continue;
+
+    let durationMin = 0;
+    if (o.scheduled_end_at) {
+      const end = new Date(o.scheduled_end_at);
+      if (!Number.isNaN(end.getTime())) {
+        durationMin = Math.max(0, Math.round((end.getTime() - start.getTime()) / 60_000));
+      }
+    }
+
+    const entry: ScheduleEntry = { day: astWeekday(start), time: astTimeOfDay(start), durationMin };
+    const key = `${entry.day}|${entry.time}|${entry.durationMin}`;
+    const hit = counts.get(key);
+    if (hit) hit.n += 1;
+    else counts.set(key, { entry, n: 1 });
+  }
+
+  return [...counts.values()]
+    .filter((c) => c.n >= minRepeats)
+    .map((c) => c.entry)
+    .sort((a, b) => a.day - b.day || a.time.localeCompare(b.time));
+}
+
+/**
+ * Single source of truth for how a class's recurring pattern is resolved, so
+ * every card and page agrees. Precedence: the tutor's manual schedule_data, then
+ * a group_sessions recurrence rule, then dated occurrences.
+ */
+export function resolveScheduleEntries(input: {
+  scheduleData?: string | null;
+  sessionRows?: SessionRecurrenceRow[] | null;
+  occurrences?: OccurrenceLike[] | null;
+}): ScheduleEntry[] {
+  const manual = parseScheduleData(input.scheduleData);
+  if (manual.length > 0) return manual;
+
+  const fromRules = sessionRowsToEntries(input.sessionRows);
+  if (fromRules.length > 0) return fromRules;
+
+  return occurrencesToEntries(input.occurrences);
+}
+
 // ── Day / time-of-day filtering ───────────────────────────────────────────────
 
 export type TimeBand = 'morning' | 'afternoon' | 'evening';
@@ -247,6 +320,16 @@ export function astWeekday(d: Date): number {
 
 export function formatAstDate(d: Date, options: Intl.DateTimeFormatOptions): string {
   return d.toLocaleDateString(undefined, { ...options, timeZone: AST_TIME_ZONE });
+}
+
+/** 24-hour "HH:mm" of a timestamp in AST — the shape ScheduleEntry.time expects. */
+export function astTimeOfDay(d: Date): string {
+  return d.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: AST_TIME_ZONE,
+  });
 }
 
 /** Day-of-month in AST — for date badges that must match the AST weekday. */

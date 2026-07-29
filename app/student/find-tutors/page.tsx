@@ -15,7 +15,6 @@ import { fmtTTD } from '@/lib/utils/formatCurrency';
 import {
   parseScheduleData,
   scheduleToCompact,
-  sessionRowsToEntries,
   scheduleMatchesDayTime,
   DAY_FILTER_OPTIONS,
   TIME_BANDS,
@@ -639,45 +638,32 @@ export default function FindTutorsPage() {
         mapped.forEach((g) => { g.activePromotion = bestPromoByGroup.get(g.id) ?? null; });
       } catch { /* non-fatal */ }
 
-      // Batch-fetch sessions for any group without a structured schedule_data.
-      // Keyed on schedule_data rather than schedule_display so a class whose
-      // tutor typed a free-text schedule still gets structured entries — without
-      // them it could never match a day/time filter.
+      // Resolve each class's recurring pattern server-side. Sessions and
+      // occurrences are RLS-scoped, so a student who isn't enrolled can't read
+      // them from the browser — and that's exactly the student who needs to see
+      // the schedule before joining. Mirrors the /member-counts workaround.
       try {
-        const groupIds = groups
-          .filter((g: any) => parseScheduleData(g.schedule_data).length === 0)
-          .map((g: any) => g.id);
+        const groupIds = groups.map((g: any) => g.id);
         if (!groupIds.length) { setGroupLessons(mapped); return; }
-        const { data: sessions } = await supabase
-          .from('group_sessions')
-          .select('group_id, start_time, recurrence_type, recurrence_days, duration_minutes')
-          .in('group_id', groupIds)
-          .neq('recurrence_type', 'NONE')
-          .order('created_at', { ascending: true });
 
-        if (sessions?.length) {
-          // Collect every recurring session per group — a class meeting Monday
-          // and Saturday at different times needs both to format and filter
-          // correctly, so taking only the first row would lose half the pattern.
-          const sessionsByGroup = new Map<string, any[]>();
-          for (const s of sessions) {
-            sessionsByGroup.set(s.group_id, [...(sessionsByGroup.get(s.group_id) ?? []), s]);
-          }
+        const schedRes = await fetch(`/api/groups/schedules?ids=${groupIds.join(',')}`, { cache: 'no-store' })
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null);
+        const schedules: Record<string, ScheduleEntry[]> = schedRes?.schedules ?? {};
 
+        if (Object.keys(schedules).length > 0) {
           setGroupLessons(mapped.map((l) => {
-            const rows = sessionsByGroup.get(l.id);
-            if (!rows?.length) return l;
-            const entries = sessionRowsToEntries(rows);
+            const entries = schedules[l.id];
+            if (!entries?.length) return l;
             const compact = scheduleToCompact(entries);
-            const durMin = rows[0].duration_minutes ?? l.sessionLength;
+            if (!compact) return { ...l, scheduleEntries: entries };
             return {
               ...l,
-              day: compact ?? l.day,
-              // The compact line carries the time range already.
-              time: compact ? '' : l.time,
-              hasCompactSchedule: !!compact,
-              scheduleEntries: entries.length ? entries : l.scheduleEntries,
-              sessionLength: durMin ?? l.sessionLength,
+              day: compact,
+              // The compact line already carries the time range.
+              time: '',
+              hasCompactSchedule: true,
+              scheduleEntries: entries,
             };
           }));
           return;

@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import type { CreateGroupInput } from '@/lib/types/groups';
 import {
-  sessionRowsToEntries,
+  resolveScheduleEntries,
   scheduleMatchesDayTime,
-  parseScheduleData,
   type ScheduleEntry,
   type TimeBand,
 } from '@/lib/utils/scheduleFormat';
@@ -215,27 +214,41 @@ export async function GET(request: NextRequest) {
     // pattern derived from group_sessions.
     const scheduleEntriesByGroupId = new Map<string, ScheduleEntry[]>();
     if (groupIds.length > 0) {
+      // No recurrence_type filter: classes scheduled as individual dates (no
+      // recurrence rule) still have a real weekly pattern in their occurrences,
+      // and resolveScheduleEntries falls back to those.
       const { data: recurrenceRows, error: recurrenceError } = await service
         .from('group_sessions')
-        .select('group_id, start_time, recurrence_type, recurrence_days, duration_minutes')
+        .select(
+          'group_id, start_time, recurrence_type, recurrence_days, duration_minutes, ' +
+            'group_session_occurrences(scheduled_start_at, scheduled_end_at, cancelled_at, status)'
+        )
         .in('group_id', groupIds)
-        .neq('recurrence_type', 'NONE')
         .order('created_at', { ascending: true });
 
       if (recurrenceError && !isSchemaMismatch(recurrenceError)) {
         console.warn('[GET /api/groups] recurring schedule load failed (non-fatal):', recurrenceError.message);
       }
 
-      const rowsByGroup = new Map<string, any[]>();
+      const rulesByGroup = new Map<string, any[]>();
+      const occurrencesByGroup = new Map<string, any[]>();
       for (const row of recurrenceRows ?? []) {
         const key = String((row as any).group_id);
-        rowsByGroup.set(key, [...(rowsByGroup.get(key) ?? []), row]);
+        rulesByGroup.set(key, [...(rulesByGroup.get(key) ?? []), row]);
+        occurrencesByGroup.set(key, [
+          ...(occurrencesByGroup.get(key) ?? []),
+          ...(((row as any).group_session_occurrences as any[]) ?? []),
+        ]);
       }
 
       for (const g of groupRows) {
-        const manual = parseScheduleData((g as any).schedule_data);
-        const entries = manual.length > 0 ? manual : sessionRowsToEntries(rowsByGroup.get(String(g.id)) ?? []);
-        if (entries.length > 0) scheduleEntriesByGroupId.set(String(g.id), entries);
+        const key = String(g.id);
+        const entries = resolveScheduleEntries({
+          scheduleData: (g as any).schedule_data ?? null,
+          sessionRows: rulesByGroup.get(key) ?? [],
+          occurrences: occurrencesByGroup.get(key) ?? [],
+        });
+        if (entries.length > 0) scheduleEntriesByGroupId.set(key, entries);
       }
     }
 
