@@ -159,6 +159,9 @@ export default function FindTutorsPage() {
   const [groupLessons, setGroupLessons] = useState<GroupLesson[]>([]);
   const [loadingGroupLessons, setLoadingGroupLessons] = useState(true);
   const [enrolledLessonIds, setEnrolledLessonIds] = useState<Set<string>>(new Set());
+  // Classes with an unpaid PENDING_PAYMENT enrollment — started checkout but
+  // never paid. Deliberately NOT treated as enrolled.
+  const [pendingPaymentLessonIds, setPendingPaymentLessonIds] = useState<Set<string>>(new Set());
   const [joiningLesson, setJoiningLesson] = useState(false);
   const [joinLesson, setJoinLesson] = useState<GroupLesson | null>(null);
   const TUTORS_PER_PAGE = 12;
@@ -481,7 +484,7 @@ export default function FindTutorsPage() {
         supabase.from('group_members').select('group_id, user_id, status').in('group_id', groupIds),
         supabase
           .from('group_enrollments')
-          .select('group_id')
+          .select('group_id, status')
           .eq('student_id', profile.id)
           .in('group_id', groupIds)
           .in('status', ['ACTIVE', 'GRACE', 'SUSPENDED', 'PENDING_PAYMENT']),
@@ -502,20 +505,32 @@ export default function FindTutorsPage() {
         Object.entries(serverCounts).map(([k, v]) => [k, v as number])
       );
       const enrolledSet = new Set<string>();
+      const pendingSet = new Set<string>();
 
-      // group_members rows: used only for enrolled-status of non-subscription groups
+      // group_members rows: used only for enrolled-status of non-subscription groups.
+      // ALLOWLIST, not a denylist — this previously accepted anything that wasn't
+      // 'denied', which counts 'pending', 'suspended', 'banned' and 'removed' as
+      // enrolled. Only an approved member is actually in the class.
       (memberRows ?? []).forEach((m: any) => {
-        if (m.user_id === profile.id && m.status !== 'denied') enrolledSet.add(m.group_id);
+        if (m.user_id === profile.id && m.status === 'approved') enrolledSet.add(m.group_id);
         // Only fall back to group_members count when server didn't return a count
         if (!(m.group_id in serverCounts)) {
           memberCountMap.set(m.group_id, (memberCountMap.get(m.group_id) ?? 0) + 1);
         }
       });
 
-      // Also mark subscription-enrolled groups
-      (subEnrollments ?? []).forEach((e: any) => enrolledSet.add(e.group_id));
+      // Subscription enrollments. PENDING_PAYMENT is NOT enrolment — it's an
+      // unpaid checkout that was started and abandoned. Showing it as "Enrolled"
+      // told students they were in a class they had no access to, and the class
+      // page then contradicted the card by refusing entry. Tracked separately so
+      // the card can offer to finish paying instead.
+      (subEnrollments ?? []).forEach((e: any) => {
+        if (e.status === 'PENDING_PAYMENT') pendingSet.add(e.group_id);
+        else enrolledSet.add(e.group_id);
+      });
 
       setEnrolledLessonIds(enrolledSet);
+      setPendingPaymentLessonIds(pendingSet);
 
       // Order classes by their tutor's marketplace ranking (mig 190): pinned
       // tutors' classes first in pin order, then by ranking_score. Keeps the
@@ -1010,11 +1025,15 @@ export default function FindTutorsPage() {
                   <div key={l.id} className={cn('group rounded-3xl bg-background border overflow-hidden hover:shadow-card transition-all hover:-translate-y-0.5 flex flex-col', enrolledLessonIds.has(l.id) ? 'border-brand/40' : 'border-border')}>
                     <div className={`relative h-24 flex items-end p-3 ${l.coverImage ? '' : `bg-gradient-to-br ${l.color}`}`}
                       style={l.coverImage ? { backgroundImage: `url(${l.coverImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}>
-                      {enrolledLessonIds.has(l.id) && (
+                      {enrolledLessonIds.has(l.id) ? (
                         <div className="absolute top-2.5 left-2.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-brand text-white">
                           Enrolled
                         </div>
-                      )}
+                      ) : pendingPaymentLessonIds.has(l.id) ? (
+                        <div className="absolute top-2.5 left-2.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500 text-white">
+                          Payment pending
+                        </div>
+                      ) : null}
                       <div className="size-12 rounded-2xl bg-white grid place-items-center text-2xl shadow-md">{l.emoji}</div>
                     </div>
                     <div className="p-4 space-y-3 flex-1 flex flex-col">
