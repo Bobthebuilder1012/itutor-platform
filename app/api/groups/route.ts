@@ -422,10 +422,46 @@ export async function POST(request: NextRequest) {
       price_monthly: rawBody.price_monthly ?? rawBody.priceMonthly ?? undefined,
       form_level: rawBody.form_level ?? rawBody.formLevel ?? undefined,
       pricing_model: rawBody.pricing_model ?? rawBody.billingModel ?? undefined,
+      end_date: rawBody.end_date ?? rawBody.endDate ?? undefined,
     };
     if (!body.name?.trim()) {
       return NextResponse.json({ error: 'Group name is required' }, { status: 400 });
     }
+
+    // Every NEW class must carry an end date — "ongoing / no end date" is not
+    // an allowed class type. Billing stops after this date, so a class without
+    // one would recur indefinitely. Existing classes predating this rule are
+    // handled by the tutor backfill flow, which is why the column is nullable.
+    const endDateRaw = (body as any).end_date;
+    if (!endDateRaw) {
+      return NextResponse.json(
+        { error: 'An end date is required. Classes must have a date they finish.' },
+        { status: 400 }
+      );
+    }
+    const endDate = new Date(`${String(endDateRaw).slice(0, 10)}T00:00:00Z`);
+    if (!Number.isFinite(endDate.getTime())) {
+      return NextResponse.json({ error: 'End date is not a valid date' }, { status: 400 });
+    }
+    // Compare on the date, not the instant, so "today" isn't rejected for
+    // being a few hours in the past.
+    const todayUtc = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z');
+    if (endDate.getTime() < todayUtc.getTime()) {
+      return NextResponse.json(
+        { error: 'End date cannot be in the past' },
+        { status: 400 }
+      );
+    }
+    const MAX_CLASS_YEARS = 2;
+    const maxEnd = new Date(todayUtc);
+    maxEnd.setUTCFullYear(maxEnd.getUTCFullYear() + MAX_CLASS_YEARS);
+    if (endDate.getTime() > maxEnd.getTime()) {
+      return NextResponse.json(
+        { error: `End date cannot be more than ${MAX_CLASS_YEARS} years away` },
+        { status: 400 }
+      );
+    }
+    const endDateValue = endDate.toISOString().slice(0, 10);
 
     // Store multiple subjects as a comma-separated string
     const subjectString =
@@ -458,6 +494,7 @@ export async function POST(request: NextRequest) {
         price_per_course: body.price_per_course ?? null,
         member_service_fee: body.member_service_fee ?? 0,
         max_students: body.max_students ?? null,
+        end_date: endDateValue,
         availability_window: body.availability_window ?? null,
         cover_image: body.cover_image ?? null,
         header_image: body.header_image ?? null,
