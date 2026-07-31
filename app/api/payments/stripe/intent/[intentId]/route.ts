@@ -65,9 +65,9 @@ export async function GET(
 
     const md = intent.metadata || {};
 
-    if (md.kind !== 'create_booking') {
+    if (md.kind !== 'create_booking' && md.kind !== 'group_subscription') {
       return NextResponse.json(
-        { error: 'Not a booking payment' },
+        { error: 'Not a checkout payment' },
         { status: 400 }
       );
     }
@@ -87,6 +87,49 @@ export async function GET(
         { error: 'This checkout has expired. Please book again.' },
         { status: 410 }
       );
+    }
+
+    // -------- Group subscription --------
+    // A monthly class subscription has no session slot and no subject row;
+    // the "what am I buying" comes from the group itself.
+    if (md.kind === 'group_subscription') {
+      const { data: group } = await userClient
+        .from('groups')
+        .select('id, name, subject, tutor_id, session_length_minutes, end_date')
+        .eq('id', md.group_id)
+        .maybeSingle();
+
+      const { data: groupTutor } = group?.tutor_id
+        ? await userClient
+            .from('profiles')
+            .select('id, full_name, display_name, avatar_url')
+            .eq('id', group.tutor_id)
+            .maybeSingle()
+        : { data: null };
+
+      return NextResponse.json({
+        kind: 'group_subscription',
+        status: intent.status,
+        clientSecret: intent.client_secret,
+        paymentIntentId: intent.id,
+        amount: Number(md.base_amount_ttd ?? '0'),
+        processingFee: Number(md.processing_fee_ttd ?? '0'),
+        total: centsToTtd(intent.amount),
+        currency: 'TTD',
+        // Monthly plan — no single session start time to show.
+        durationMinutes: group?.session_length_minutes ?? null,
+        startAt: null,
+        endDate: (group as any)?.end_date ?? null,
+        tutor: {
+          id: group?.tutor_id ?? null,
+          name:
+            groupTutor?.display_name || groupTutor?.full_name || 'Your tutor',
+          avatarUrl: groupTutor?.avatar_url ?? null,
+        },
+        subject: group?.name || 'Group class',
+        groupId: md.group_id,
+        enrollmentId: md.enrollment_id ?? null,
+      });
     }
 
     const [{ data: tutor }, { data: subject }] = await Promise.all([

@@ -93,8 +93,16 @@ export async function expireSubscriptionPayment(
 export interface HandleSubscriptionPaymentParams {
   admin: SupabaseClient;
   subscriptionPaymentId: string;
-  lunipaySessionId: string;
+  /**
+   * Provider reference. Exactly one of these is set depending on which
+   * gateway took the money — Stripe for new subscriptions, LuniPay for
+   * ones started before the migration. They're written to separate
+   * columns so the provider stays legible from the row.
+   */
+  lunipaySessionId?: string | null;
   lunipayTransactionId?: string | null;
+  stripePaymentIntentId?: string | null;
+  stripeChargeId?: string | null;
   receiptUrl?: string | null;
   source: 'webhook' | 'finalize';
 }
@@ -120,7 +128,16 @@ export interface HandleSubscriptionPaymentResult {
 export async function handleSubscriptionPayment(
   params: HandleSubscriptionPaymentParams
 ): Promise<HandleSubscriptionPaymentResult> {
-  const { admin, subscriptionPaymentId, lunipaySessionId, lunipayTransactionId, receiptUrl, source } = params;
+  const {
+    admin,
+    subscriptionPaymentId,
+    lunipaySessionId,
+    lunipayTransactionId,
+    stripePaymentIntentId,
+    stripeChargeId,
+    receiptUrl,
+    source,
+  } = params;
 
   // Fetch the subscription_payment row + enrollment + group
   const { data: sp, error: spErr } = await admin
@@ -166,14 +183,22 @@ export async function handleSubscriptionPayment(
     return { ok: false, error: 'enrollment_not_found' };
   }
 
-  // Store session id on the payment row (non-blocking metadata)
+  // Store the provider reference on the payment row (non-blocking metadata).
+  // Only the keys for the gateway that actually took the money are written,
+  // so a Stripe payment never leaves ids in lunipay_* columns.
+  const providerRefs: Record<string, unknown> = { receipt_url: receiptUrl ?? null };
+  if (lunipaySessionId) {
+    providerRefs.lunipay_checkout_session_id = lunipaySessionId;
+    providerRefs.lunipay_transaction_id = lunipayTransactionId ?? null;
+  }
+  if (stripePaymentIntentId) {
+    providerRefs.stripe_payment_intent_id = stripePaymentIntentId;
+    providerRefs.stripe_charge_id = stripeChargeId ?? null;
+  }
+
   await admin
     .from('subscription_payments')
-    .update({
-      lunipay_checkout_session_id: lunipaySessionId,
-      lunipay_transaction_id: lunipayTransactionId ?? null,
-      receipt_url: receiptUrl ?? null,
-    })
+    .update(providerRefs)
     .eq('id', subscriptionPaymentId);
 
   // Calculate period dates

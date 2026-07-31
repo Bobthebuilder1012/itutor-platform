@@ -35,6 +35,7 @@ import {
   extractChargeFees,
 } from '@/lib/payments/stripeClient';
 import { createSessionForBooking } from '@/lib/services/sessionService';
+import { handleSubscriptionPayment } from '@/lib/services/subscriptionPayments';
 import { sendEmail } from '@/lib/services/emailService';
 import {
   buildReceiptData,
@@ -436,6 +437,65 @@ async function handleIntentSucceeded(
   // Stripe confirms the student paid.
   // See app/api/bookings/direct-book/route.ts.
   // -----------------------------------------------------------
+  // -----------------------------------------------------------
+  // Group subscription cycle. The enrollment and subscription_payment
+  // rows already exist (created by /subscribe as PENDING_PAYMENT);
+  // this activates them. Reuses handleSubscriptionPayment, the same
+  // function the LuniPay webhook calls, so activation logic exists once.
+  // -----------------------------------------------------------
+  if (intent.metadata?.kind === 'group_subscription') {
+    const subscriptionPaymentId = intent.metadata?.payment_id;
+    if (!subscriptionPaymentId) {
+      console.error('[stripe/webhook] group_subscription intent missing payment_id');
+      await markProcessed(admin, event, null, 'skipped', attempts, 'missing payment_id');
+      return NextResponse.json({ received: true, status: 'metadata_incomplete' });
+    }
+
+    const chargeId =
+      typeof intent.latest_charge === 'string'
+        ? intent.latest_charge
+        : intent.latest_charge?.id ?? null;
+
+    const result = await handleSubscriptionPayment({
+      admin: admin as any,
+      subscriptionPaymentId,
+      stripePaymentIntentId: intent.id,
+      stripeChargeId: chargeId,
+      source: 'webhook',
+    });
+
+    // Transient failures must NOT be recorded as processed, or Stripe's
+    // retry gets deduped and the student keeps a PENDING_PAYMENT
+    // enrollment despite having paid.
+    if (!result.ok && !result.idempotent && result.error?.includes('rpc_failed')) {
+      console.error(
+        '[stripe/webhook] Transient subscription activation failure — leaving event un-deduped',
+        { event_id: event.id, error: result.error }
+      );
+      await markRetryable(admin, event, null, attempts, result.error ?? 'rpc_failed');
+      return NextResponse.json(
+        { received: false, status: result.error, retry: true },
+        { status: 500 }
+      );
+    }
+
+    // 'skipped' rather than 'failed' for a terminal non-ok result: the event
+    // WAS handled, the outcome just wasn't an activation (already active,
+    // expired checkout). Either way it must not be reprocessed.
+    await markProcessed(
+      admin,
+      event,
+      null,
+      result.ok ? 'processed' : 'skipped',
+      attempts,
+      result.ok ? undefined : result.error ?? undefined
+    );
+    return NextResponse.json({
+      received: true,
+      status: result.ok ? 'subscription_activated' : result.error,
+    });
+  }
+
   if (intent.metadata?.kind === 'create_booking') {
     const result = await materialiseBookingFromIntent(admin, event, intent);
 

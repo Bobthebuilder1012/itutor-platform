@@ -61,6 +61,41 @@ export async function GET(
     ).maybeSingle();
 
     if (!payment && isIntentId) {
+      // Group subscriptions don't write to `payments` at all — they use
+      // subscription_payments, and the enrollment is what actually flips to
+      // ACTIVE. Without this the checkout page would poll forever and time
+      // out on a subscription that had in fact been paid.
+      const { data: subPayment } = await userClient
+        .from('subscription_payments')
+        .select('id, status, enrollment_id, group_id, paid_at')
+        .eq('stripe_payment_intent_id', paymentId)
+        .maybeSingle();
+
+      if (subPayment) {
+        const { data: enrollment } = await userClient
+          .from('group_enrollments')
+          .select('status')
+          .eq('id', subPayment.enrollment_id)
+          .maybeSingle();
+
+        const active =
+          subPayment.status === 'paid' ||
+          subPayment.status === 'succeeded' ||
+          enrollment?.status === 'ACTIVE';
+
+        return NextResponse.json({
+          paymentId: subPayment.id,
+          kind: 'group_subscription',
+          groupId: subPayment.group_id,
+          enrollmentId: subPayment.enrollment_id,
+          // 'succeeded' is what the client polls for, so map onto it rather
+          // than leaking subscription-specific status names to the UI.
+          status: active ? 'succeeded' : 'pending',
+          enrollmentStatus: enrollment?.status ?? null,
+          paidAt: subPayment.paid_at ?? null,
+        });
+      }
+
       // Expected while the webhook is still in flight — the booking and its
       // payment row are created together on payment_intent.succeeded. Report
       // 'pending' so the client keeps waiting rather than treating it as an

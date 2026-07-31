@@ -42,6 +42,9 @@ type Summary = {
   subject: string;
   /** Where to send the student once the webhook confirms. */
   successHref: string;
+  /** Monthly group subscription rather than a single session. */
+  isSubscription?: boolean;
+  endDate?: string | null;
 };
 
 export default function PaymentCheckout() {
@@ -82,10 +85,19 @@ export default function PaymentCheckout() {
           startAt: d.startAt,
           tutor: d.tutor,
           subject: d.subject,
+          isSubscription: d.kind === 'group_subscription',
+          endDate: d.endDate ?? null,
           // Land on the confirmation page, which polls the status route and
           // then shows the receipt + download. Keyed on the intent id because
           // the payments row doesn't exist until the webhook creates it.
-          successHref: `/payments/success?pi=${d.paymentIntentId}`,
+          //
+          // Subscriptions go straight to the class instead: their money lands
+          // in subscription_payments, not `payments`, so the receipt page has
+          // nothing to render for them.
+          successHref:
+            d.kind === 'group_subscription'
+              ? `/student/classes/${d.groupId}`
+              : `/payments/success?pi=${d.paymentIntentId}`,
         });
         return;
       }
@@ -248,9 +260,42 @@ export default function PaymentCheckout() {
 
             <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
               <h2 className="text-lg font-bold text-gray-900 mb-4">
-                Lesson details
+                {summary.isSubscription ? 'Subscription details' : 'Lesson details'}
               </h2>
-              {start ? (
+              {summary.isSubscription ? (
+                <div className="space-y-3 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Plan</span>
+                    <span className="font-semibold text-gray-900">
+                      Monthly · billed every 30 days
+                    </span>
+                  </div>
+                  {summary.durationMinutes ? (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Session length</span>
+                      <span className="font-semibold text-gray-900">
+                        {summary.durationMinutes} minutes
+                      </span>
+                    </div>
+                  ) : null}
+                  {summary.endDate && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Class ends</span>
+                      <span className="font-semibold text-gray-900">
+                        {new Date(`${summary.endDate}T00:00:00`).toLocaleDateString(
+                          'en-US',
+                          { month: 'long', day: 'numeric', year: 'numeric' }
+                        )}
+                      </span>
+                    </div>
+                  )}
+                  <p className="pt-1 text-xs text-gray-500">
+                    You&apos;ll be charged {`$${summary.total.toFixed(2)} ${summary.currency}`}{' '}
+                    today and then monthly
+                    {summary.endDate ? ' until the class ends' : ' until you cancel'}.
+                  </p>
+                </div>
+              ) : start ? (
                 <div className="flex items-center gap-4">
                   <div className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-brand-soft text-center">
                     <div>
@@ -278,7 +323,7 @@ export default function PaymentCheckout() {
                 </p>
               )}
 
-              {cancelBy && (
+              {cancelBy && !summary.isSubscription && (
                 <div className="mt-4 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
                   <span className="font-semibold">
                     Cancel or reschedule for free
@@ -302,7 +347,7 @@ export default function PaymentCheckout() {
               <div className="space-y-3 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-600">
-                    {summary.durationMinutes}-min lesson
+                    {summary.isSubscription ? `${summary.subject} — monthly` : `${summary.durationMinutes}-min lesson`}
                   </span>
                   <span className="text-gray-900">
                     ${summary.amount.toFixed(2)} {summary.currency}
