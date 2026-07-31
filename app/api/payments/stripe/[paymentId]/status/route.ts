@@ -46,11 +46,27 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { data: payment, error } = await userClient
+    // Accepts either our payments.id (pay-for-existing-booking flow) or a
+    // Stripe PaymentIntent id (pay-first "create_booking" flow, where no
+    // payments row exists until the webhook materialises the booking).
+    const isIntentId = paymentId.startsWith('pi_');
+
+    const query = userClient
       .from('payments')
-      .select('id, booking_id, payer_id, status, amount_ttd, paid_at')
-      .eq('id', paymentId)
-      .maybeSingle();
+      .select('id, booking_id, payer_id, status, amount_ttd, paid_at');
+
+    const { data: payment, error } = await (isIntentId
+      ? query.eq('stripe_payment_intent_id', paymentId)
+      : query.eq('id', paymentId)
+    ).maybeSingle();
+
+    if (!payment && isIntentId) {
+      // Expected while the webhook is still in flight — the booking and its
+      // payment row are created together on payment_intent.succeeded. Report
+      // 'pending' so the client keeps waiting rather than treating it as an
+      // error, which would be indistinguishable from a genuine failure.
+      return NextResponse.json({ paymentId, status: 'pending' });
+    }
 
     if (error || !payment) {
       return NextResponse.json({ error: 'Payment not found' }, { status: 404 });

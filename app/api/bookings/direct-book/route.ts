@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { LuniPayError } from 'lunipay';
+import { createHash } from 'crypto';
+import Stripe from 'stripe';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { createSessionForBooking } from '@/lib/services/sessionService';
 import { isPaidClassesEnabled } from '@/lib/featureFlags/paidClasses';
 import { calculateCommissionForTutor } from '@/lib/utils/commissionCalculator';
-import { getLunipayClient, ttdToCents } from '@/lib/payments/lunipayClient';
-import { calculateGrossAmount } from '@/lib/payments/grossUp';
+import { getStripeClient, ttdToCents } from '@/lib/payments/stripeClient';
+import { calculateGrossAmountForProvider } from '@/lib/payments/grossUp';
 import { resolvePayer } from '@/lib/payments/resolvePayer';
 import { findChildScheduleConflict, conflictMessage } from '@/lib/services/scheduleConflict';
 
@@ -174,20 +175,17 @@ export async function POST(request: NextRequest) {
       ? await calculateCommissionForTutor(admin, tutorId, priceTtd)
       : { platformFee: 0, payoutAmount: 0, commissionRate: 0 };
 
-    // 5b. Paid path: NO booking row is created here. We create a LuniPay
-    // checkout session with the full booking intent in metadata; the
-    // webhook materialises the booking only after payment succeeds.
+    // 5b. Paid path: NO booking row is created here. We create a Stripe
+    // PaymentIntent with the full booking intent in metadata; the webhook
+    // materialises the booking only after payment succeeds, via the
+    // materialize_paid_booking_stripe RPC (migration 198).
     // This guarantees a tutor never sees a "ghost" CONFIRMED row for a
     // checkout the student abandoned.
     if (paidClassesEnabled && priceTtd > 0) {
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL;
-      if (!appUrl) {
-        console.error('[direct-book] NEXT_PUBLIC_APP_URL is not configured');
-        return NextResponse.json(
-          { error: 'Payments are not configured on this environment' },
-          { status: 500 }
-        );
-      }
+      // NEXT_PUBLIC_APP_URL is no longer required here. The LuniPay flow
+      // needed it to build success_url / cancel_url for the hosted page;
+      // the Payment Element confirms inline, so there is nothing to
+      // redirect to and no reason to fail the booking if it is unset.
 
       // Resolve who the cardholder is. For billing_mode='parent_required',
       // this is the linked parent, not the student.
@@ -206,69 +204,82 @@ export async function POST(request: NextRequest) {
 
       const subjectName = (tutorSubject as any)?.label || 'Tutoring Session';
       const description = `${subjectName} (${durationMinutes} min)`;
-      const { grossAmount: grossPriceTtd, processingFee: sessionFee } = calculateGrossAmount(priceTtd);
+      const { grossAmount: grossPriceTtd, processingFee: sessionFee } =
+        calculateGrossAmountForProvider(priceTtd, 'stripe');
       const amountCents = ttdToCents(grossPriceTtd);
 
-      // Stripe-style metadata: ≤50 keys, ≤500 chars per value. Truncate
-      // student_notes hard so a long note can't break session creation.
+      // Stripe metadata: ≤50 keys, ≤500 chars per value. Truncate
+      // student_notes hard so a long note can't break intent creation.
       const truncatedNotes = (studentNotes || '').slice(0, 400);
 
+      const intentMetadata = {
+        kind: 'create_booking',
+        student_id: user.id,
+        payer_id: payer.payerId,
+        tutor_id: tutorId,
+        subject_id: subjectId,
+        session_type_id: sessionTypeId ?? '',
+        requested_start_at: requestedStartAt,
+        requested_end_at: requestedEndAt,
+        duration_minutes: String(durationMinutes),
+        price_ttd: String(priceTtd),
+        processing_fee_ttd: String(sessionFee),
+        platform_fee_pct: String(Math.round(commission.commissionRate * 100)),
+        platform_fee_ttd: String(commission.platformFee),
+        tutor_payout_ttd: String(commission.payoutAmount),
+        student_notes: truncatedNotes,
+      };
+
+      // Idempotency: a genuine double-click returns the SAME PaymentIntent.
+      //
+      // The key hashes EVERY request parameter, not just the slot and amount.
+      // The previous key was
+      //   book-<user>-<tutor>-<start>-<end>-<amountCents>
+      // which omitted student_notes — so editing the note and retrying reused
+      // the key with different parameters, which Stripe rejects outright
+      // ("This idempotency key has already been used with different request
+      // parameters"), poisoning that slot for the key's ~24h lifetime.
+      // Hashing the full payload means any change starts a fresh intent while
+      // a true duplicate submit still collapses onto one.
+      const idempotencyKey = `book-${user.id}-${createHash('sha256')
+        .update(JSON.stringify({ amountCents, description, customerEmail, ...intentMetadata }))
+        .digest('hex')
+        .slice(0, 40)}`;
+
       try {
-        const lunipay = getLunipayClient();
-        const session = await lunipay.checkout.sessions.create(
+        const stripe = getStripeClient();
+        const intent = await stripe.paymentIntents.create(
           {
             amount: amountCents,
             currency: 'ttd',
-            success_url: `${appUrl}/payments/success?session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${appUrl}/student/tutors/${tutorId}?cancelled=1`,
-            customer_email: customerEmail,
-            line_items: [
-              {
-                name: description,
-                quantity: 1,
-                amount: amountCents,
-              } as any,
-            ],
-            metadata: {
-              kind: 'create_booking',
-              student_id: user.id,
-              payer_id: payer.payerId,
-              tutor_id: tutorId,
-              subject_id: subjectId,
-              session_type_id: sessionTypeId ?? '',
-              requested_start_at: requestedStartAt,
-              requested_end_at: requestedEndAt,
-              duration_minutes: String(durationMinutes),
-              price_ttd: String(priceTtd),
-              processing_fee_ttd: String(sessionFee),
-              platform_fee_pct: String(Math.round(commission.commissionRate * 100)),
-              platform_fee_ttd: String(commission.platformFee),
-              tutor_payout_ttd: String(commission.payoutAmount),
-              student_notes: truncatedNotes,
-            },
+            description,
+            receipt_email: customerEmail,
+            automatic_payment_methods: { enabled: true },
+            metadata: intentMetadata,
           },
-          // Idempotency: a genuine double-click (identical slot, duration AND
-          // amount) returns the SAME hosted URL. amountCents is part of the key
-          // so any change to time, duration, price, or processing fee starts a
-          // FRESH session instead of colliding with a prior attempt — LuniPay
-          // rejects a reused key whose request parameters changed (→ 502) and
-          // would otherwise serve a stale session at the old amount.
-          {
-            idempotencyKey: `book-${user.id}-${tutorId}-${requestedStartAt}-${requestedEndAt}-${amountCents}`,
-          }
+          { idempotencyKey }
         );
 
+        // No booking row is created here — the Stripe webhook materialises
+        // it on payment_intent.succeeded. Returning a clientSecret keeps the
+        // student on-site: the modal mounts the Payment Element inline
+        // instead of redirecting to a hosted checkout page.
         return NextResponse.json({
           success: true,
           requires_payment: true,
-          paymentUrl: session.url,
+          clientSecret: intent.client_secret,
+          paymentIntentId: intent.id,
+          amount: priceTtd,
+          processingFee: sessionFee,
+          total: grossPriceTtd,
+          currency: 'TTD',
         });
       } catch (sdkError) {
-        const isApiError = sdkError instanceof LuniPayError;
+        const isApiError = sdkError instanceof Stripe.errors.StripeError;
         console.error(
-          '[direct-book] LuniPay sessions.create failed:',
+          '[direct-book] Stripe paymentIntents.create failed:',
           isApiError
-            ? { code: sdkError.code, status: sdkError.status, message: sdkError.message }
+            ? { type: sdkError.type, code: sdkError.code, message: sdkError.message }
             : sdkError
         );
         return NextResponse.json(

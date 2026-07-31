@@ -34,6 +34,7 @@ import {
   centsToTtd,
   extractChargeFees,
 } from '@/lib/payments/stripeClient';
+import { createSessionForBooking } from '@/lib/services/sessionService';
 
 export const dynamic = 'force-dynamic';
 // MUST be nodejs: constructEvent needs the raw body bytes and Node crypto.
@@ -336,6 +337,43 @@ async function handleIntentSucceeded(
   attempts: number
 ) {
   const intent = event.data.object as Stripe.PaymentIntent;
+
+  // -----------------------------------------------------------
+  // create_booking flow (the 1:1 "Book a session" modal): no booking
+  // or payment row existed before payment. Materialise both now that
+  // Stripe confirms the student paid.
+  // See app/api/bookings/direct-book/route.ts.
+  // -----------------------------------------------------------
+  if (intent.metadata?.kind === 'create_booking') {
+    const result = await materialiseBookingFromIntent(admin, event, intent);
+
+    // Only mark the event processed when materialisation reached a
+    // terminal state. 'booking_insert_failed' is transient — leave it
+    // retryable so Stripe redelivers and we get another chance to insert
+    // the booking, otherwise we'd keep the money and lose the session.
+    const terminalStatuses = new Set([
+      'already_processed',
+      'created',
+      'slot_conflict_needs_refund',
+      'metadata_incomplete',
+    ]);
+
+    if (terminalStatuses.has(result.status)) {
+      await markProcessed(admin, event, result.paymentId, 'processed', attempts);
+      return NextResponse.json({ received: true, ...result });
+    }
+
+    console.error(
+      '[stripe/webhook] Transient materialisation failure — leaving event un-deduped for retry',
+      { event_id: event.id, status: result.status }
+    );
+    await markRetryable(admin, event, null, attempts, result.status);
+    return NextResponse.json(
+      { received: false, status: result.status, retry: true },
+      { status: 500 }
+    );
+  }
+
   const { payment, lookupFailed, retryable } = await findLocalPayment(
     admin,
     intent.id,
@@ -533,6 +571,266 @@ async function handleIntentSucceeded(
     payment_id: payment.id,
     status: 'processed',
   });
+}
+
+/**
+ * Create a booking + payment row from the metadata of a succeeded
+ * `create_booking` PaymentIntent. Idempotent: if a payment row for this
+ * intent already exists, returns that.
+ *
+ * Does a defensive slot-conflict re-check against currently CONFIRMED
+ * bookings — in the rare case the slot was claimed during the payment
+ * window, we record the payment as needing a refund and notify the
+ * student instead of creating an overlapping session.
+ *
+ * Ported from materialiseBookingFromCheckout in the LuniPay webhook.
+ */
+async function materialiseBookingFromIntent(
+  admin: AdminClient,
+  event: Stripe.Event,
+  intent: Stripe.PaymentIntent
+): Promise<{ status: string; paymentId: string | null; bookingId?: string | null }> {
+  // ---- Idempotency: did we already create the booking? ----
+  const { data: existingPayment } = await admin
+    .from('payments')
+    .select('id, booking_id, status')
+    .eq('stripe_payment_intent_id', intent.id)
+    .maybeSingle();
+
+  if (existingPayment) {
+    return {
+      status: 'already_processed',
+      paymentId: existingPayment.id,
+      bookingId: existingPayment.booking_id,
+    };
+  }
+
+  const md = intent.metadata || {};
+  const studentId = md.student_id;
+  const tutorId = md.tutor_id;
+  const subjectId = md.subject_id;
+  const requestedStartAt = md.requested_start_at;
+  const requestedEndAt = md.requested_end_at;
+
+  if (!studentId || !tutorId || !subjectId || !requestedStartAt || !requestedEndAt) {
+    console.error('[stripe/webhook] create_booking metadata incomplete:', md);
+    return { status: 'metadata_incomplete', paymentId: null };
+  }
+
+  let payerId = md.payer_id;
+  if (!payerId) {
+    const { data: rpcPayer } = await admin.rpc('get_payer_for_student', {
+      p_student_id: studentId,
+    });
+    payerId = (typeof rpcPayer === 'string' && rpcPayer) || studentId;
+  }
+
+  const sessionTypeId = md.session_type_id || null;
+  const durationMinutes = parseInt(md.duration_minutes ?? '60', 10);
+  const priceTtd = Number(md.price_ttd ?? '0');
+  const platformFeePct = parseInt(md.platform_fee_pct ?? '0', 10);
+  const platformFeeTtd = Number(md.platform_fee_ttd ?? '0');
+  const tutorPayoutTtd = Number(md.tutor_payout_ttd ?? '0');
+  const processingFeeTtd = Number(md.processing_fee_ttd ?? '0');
+  const studentNotes = md.student_notes || null;
+
+  const chargeId =
+    typeof intent.latest_charge === 'string'
+      ? intent.latest_charge
+      : intent.latest_charge?.id ?? null;
+
+  // amount_ttd records what the student was actually charged (grossed up),
+  // matching the LuniPay behaviour of storing the full captured amount.
+  const amountTtd = centsToTtd(intent.amount_received || intent.amount);
+
+  const refundCasePayload = (extra: Record<string, unknown> = {}) => ({
+    booking_id: null,
+    payer_id: payerId,
+    provider: 'stripe',
+    amount_ttd: amountTtd,
+    status: 'succeeded',
+    stripe_payment_intent_id: intent.id,
+    stripe_charge_id: chargeId,
+    charged_processing_fee_ttd: processingFeeTtd,
+    provider_reference: intent.id,
+    paid_at: new Date().toISOString(),
+    cancel_reason: 'slot_taken_after_payment_needs_refund',
+    raw_provider_payload: { event_id: event.id, intent, ...extra },
+  });
+
+  const notifySlotTaken = async () => {
+    await admin.from('notifications').insert({
+      user_id: payerId,
+      type: 'payment_failed',
+      title: 'Booking unavailable — refund pending',
+      message:
+        'Your payment went through, but the time slot was taken before we could confirm your booking. We will refund you shortly.',
+      link: '/student/bookings',
+      created_at: new Date().toISOString(),
+    });
+  };
+
+  // ---- Defensive slot-conflict re-check (race-condition guard) ----
+  const { data: conflicts } = await admin
+    .from('bookings')
+    .select('id')
+    .eq('tutor_id', tutorId)
+    .eq('status', 'CONFIRMED')
+    .or(
+      `and(confirmed_start_at.lt.${requestedEndAt},confirmed_end_at.gt.${requestedStartAt}),` +
+        `and(requested_start_at.lt.${requestedEndAt},requested_end_at.gt.${requestedStartAt})`
+    )
+    .limit(1);
+
+  if (conflicts && conflicts.length > 0) {
+    console.warn(
+      `[stripe/webhook] Slot conflict on payment success — intent ${intent.id} needs refund`
+    );
+    const { data: refundPayment } = await admin
+      .from('payments')
+      .insert(refundCasePayload())
+      .select('id')
+      .single();
+
+    await notifySlotTaken();
+    return { status: 'slot_conflict_needs_refund', paymentId: refundPayment?.id ?? null };
+  }
+
+  // ---- Atomic booking + payment insert via RPC (migration 198) ----
+  const { data: rpcResult, error: rpcError } = await admin.rpc(
+    'materialize_paid_booking_stripe',
+    {
+      p_student_id: studentId,
+      p_tutor_id: tutorId,
+      p_subject_id: subjectId,
+      p_session_type_id: sessionTypeId,
+      p_payer_id: payerId,
+      p_requested_start_at: requestedStartAt,
+      p_requested_end_at: requestedEndAt,
+      p_duration_minutes: durationMinutes,
+      p_price_ttd: priceTtd,
+      p_platform_fee_pct: platformFeePct,
+      p_platform_fee_ttd: platformFeeTtd,
+      p_tutor_payout_ttd: tutorPayoutTtd,
+      p_student_notes: studentNotes,
+      p_stripe_payment_intent_id: intent.id,
+      p_stripe_charge_id: chargeId,
+      p_provider_reference: intent.id,
+      p_amount_ttd: amountTtd,
+      p_charged_processing_fee_ttd: processingFeeTtd,
+      p_raw_payload: { event_id: event.id, intent } as any,
+    }
+  );
+
+  if (rpcError || !rpcResult) {
+    console.error('[stripe/webhook] materialize_paid_booking_stripe failed:', rpcError);
+
+    // Migration 155 added an EXCLUDE constraint against double-booked
+    // CONFIRMED slots. If two webhooks raced past the soft SELECT above
+    // and one lost, treat it as a terminal slot conflict (refund) rather
+    // than telling Stripe to retry — the retry would lose the same way.
+    const code = (rpcError as any)?.code as string | undefined;
+    const msg = rpcError?.message ?? '';
+    const isExclusion =
+      code === '23P01' ||
+      msg.includes('bookings_tutor_no_overlap') ||
+      msg.includes('exclusion constraint');
+
+    if (isExclusion) {
+      console.warn(
+        `[stripe/webhook] EXCLUDE constraint hit on intent ${intent.id}; converting to slot-conflict refund`
+      );
+      const { data: refundPayment } = await admin
+        .from('payments')
+        .insert(refundCasePayload({ exclusion: true }))
+        .select('id')
+        .single();
+
+      await notifySlotTaken();
+      return { status: 'slot_conflict_needs_refund', paymentId: refundPayment?.id ?? null };
+    }
+
+    return { status: 'booking_insert_failed', paymentId: null };
+  }
+
+  const bookingId = (rpcResult as any).booking_id as string;
+  const paymentId = (rpcResult as any).payment_id as string;
+
+  // Provision meeting link (Google Meet / Zoom). Best-effort; a failure
+  // here does NOT void the booking.
+  try {
+    await createSessionForBooking(bookingId);
+  } catch (err) {
+    console.error('[stripe/webhook] createSessionForBooking failed:', err);
+  }
+
+  // Best-effort fee capture for reconciliation (see handleIntentSucceeded).
+  try {
+    if (chargeId) {
+      const stripe = getStripeClient();
+      const charge = await stripe.charges.retrieve(chargeId, {
+        expand: ['balance_transaction'],
+      });
+      const fees = extractChargeFees(charge);
+      const variance =
+        fees.feeTtd != null
+          ? Math.round((processingFeeTtd - fees.feeTtd) * 100) / 100
+          : null;
+
+      await admin
+        .from('payments')
+        .update({
+          stripe_balance_txn_id: fees.balanceTxnId,
+          stripe_fee_ttd: fees.feeTtd,
+          stripe_net_ttd: fees.netTtd,
+          stripe_settlement_currency: fees.settlementCurrency,
+          fee_variance_ttd: variance,
+        })
+        .eq('id', paymentId);
+
+      if (variance != null && variance < 0) {
+        console.warn(
+          `[stripe/webhook] UNDER-COLLECTED on payment ${paymentId}: charged TT$${processingFeeTtd}, Stripe took TT$${fees.feeTtd} (variance TT$${variance}).`
+        );
+      }
+    }
+  } catch (feeError) {
+    console.warn('[stripe/webhook] Could not capture balance_transaction fee:', feeError);
+  }
+
+  // Notify the payer (may be a parent for parent_required students). If the
+  // payer isn't the student, notify the student too.
+  const notifications: Array<Record<string, unknown>> = [
+    {
+      user_id: payerId,
+      type: 'payment_succeeded',
+      title: 'Booking confirmed',
+      message: `Payment of $${priceTtd} TTD was successful and the session is booked.`,
+      link: '/student/bookings',
+      created_at: new Date().toISOString(),
+    },
+    {
+      user_id: tutorId,
+      type: 'booking_confirmed',
+      title: 'New paid booking',
+      message: `You have a new paid booking (${durationMinutes} minutes).`,
+      link: '/tutor/sessions',
+      created_at: new Date().toISOString(),
+    },
+  ];
+  if (payerId !== studentId) {
+    notifications.push({
+      user_id: studentId,
+      type: 'booking_confirmed',
+      title: 'Your session is booked',
+      message: `Your parent paid for a ${durationMinutes}-minute session — see you soon!`,
+      link: '/student/bookings',
+      created_at: new Date().toISOString(),
+    });
+  }
+  await admin.from('notifications').insert(notifications);
+
+  return { status: 'created', paymentId, bookingId };
 }
 
 // -----------------------------------------------------------------
