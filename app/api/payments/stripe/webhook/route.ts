@@ -35,6 +35,12 @@ import {
   extractChargeFees,
 } from '@/lib/payments/stripeClient';
 import { createSessionForBooking } from '@/lib/services/sessionService';
+import { sendEmail } from '@/lib/services/emailService';
+import {
+  buildReceiptData,
+  renderReceiptHtml,
+  receiptSubject,
+} from '@/lib/payments/receipt';
 
 export const dynamic = 'force-dynamic';
 // MUST be nodejs: constructEvent needs the raw body bytes and Node crypto.
@@ -60,6 +66,58 @@ type LocalPayment = {
   amount_ttd: number;
   status: string;
 };
+
+/**
+ * Emails the receipt for a completed payment.
+ *
+ * Sent from the webhook, not the client, so it fires even when the student
+ * closes the tab before the redirect. Duplicate sends are prevented by the
+ * handler's existing event idempotency: a redelivered event short-circuits
+ * on stripe_webhook_events before reaching this call.
+ *
+ * FULLY NON-FATAL. The payment succeeding is the state that matters; a
+ * bounced email must never fail the handler, because returning 5xx here
+ * would make Stripe redeliver and re-run booking side effects. Every error
+ * is swallowed and logged.
+ *
+ * Note sendEmail() itself no-ops when RESEND_API_KEY is unset, so staging
+ * without mail configured logs instead of sending.
+ */
+async function sendReceiptEmail(admin: AdminClient, paymentId: string) {
+  try {
+    const data = await buildReceiptData(admin, paymentId);
+    if (!data) {
+      console.warn(`[stripe/webhook] No receipt data for payment ${paymentId}`);
+      return;
+    }
+    if (!data.payerEmail) {
+      console.warn(
+        `[stripe/webhook] Payer has no email on file; skipping receipt for ${paymentId}`
+      );
+      return;
+    }
+
+    const result = await sendEmail({
+      to: data.payerEmail,
+      subject: receiptSubject(data),
+      html: renderReceiptHtml(data, {
+        appUrl: process.env.NEXT_PUBLIC_APP_URL,
+      }),
+    });
+
+    if (!result.success) {
+      console.error(
+        `[stripe/webhook] Receipt email failed for ${paymentId}: ${result.error}`
+      );
+    } else {
+      console.log(
+        `[stripe/webhook] Receipt emailed for ${paymentId} (${result.messageId})`
+      );
+    }
+  } catch (err) {
+    console.error('[stripe/webhook] Receipt email threw (non-fatal):', err);
+  }
+}
 
 /** Records the event as terminally handled so retries short-circuit. */
 async function markProcessed(
@@ -567,6 +625,8 @@ async function handleIntentSucceeded(
     console.warn('[stripe/webhook] Failed to insert notifications:', notifyError);
   }
 
+  await sendReceiptEmail(admin, payment.id);
+
   await markProcessed(admin, event, payment.id, 'processed', attempts);
   return NextResponse.json({
     received: true,
@@ -831,6 +891,8 @@ async function materialiseBookingFromIntent(
     });
   }
   await admin.from('notifications').insert(notifications);
+
+  await sendReceiptEmail(admin, paymentId);
 
   return { status: 'created', paymentId, bookingId };
 }

@@ -82,7 +82,10 @@ export default function PaymentCheckout() {
           startAt: d.startAt,
           tutor: d.tutor,
           subject: d.subject,
-          successHref: '/student/bookings',
+          // Land on the confirmation page, which polls the status route and
+          // then shows the receipt + download. Keyed on the intent id because
+          // the payments row doesn't exist until the webhook creates it.
+          successHref: `/payments/success?pi=${d.paymentIntentId}`,
         });
         return;
       }

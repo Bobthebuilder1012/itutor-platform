@@ -42,6 +42,9 @@ export default function PaymentSuccess() {
   const router = useRouter();
   const bookingId = searchParams.get('bookingId');
   const sessionId = searchParams.get('session_id');
+  // Stripe flows: paymentId for pay-for-existing-booking, pi for pay-first.
+  const paymentId = searchParams.get('paymentId');
+  const intentId = searchParams.get('pi');
   const isMock = searchParams.get('mock') === 'true';
 
   const [receipt, setReceipt] = useState<PaymentReceipt | null>(null);
@@ -50,20 +53,69 @@ export default function PaymentSuccess() {
   const [waitingOnWebhook, setWaitingOnWebhook] = useState(false);
 
   useEffect(() => {
-    if (bookingId || sessionId) {
+    if (bookingId || sessionId || paymentId || intentId) {
       fetchReceipt();
     } else {
       setError('Missing payment reference');
       setLoading(false);
     }
-  }, [bookingId, sessionId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookingId, sessionId, paymentId, intentId]);
 
   async function fetchReceipt() {
-    // The new pre-payment flow lands here with only ?session_id=... — the
-    // booking + payment rows are written by the webhook AFTER the redirect.
-    // Poll briefly for the webhook; if it's slow / not registered, fall
-    // back to /api/payments/lunipay/finalize which runs the same logic
-    // synchronously off the LuniPay session itself.
+    // -----------------------------------------------------------------
+    // Stripe flows arrive with ?paymentId=<uuid> or ?pi=<intent id>.
+    //
+    // We poll our OWN status route rather than trusting the redirect: the
+    // webhook is the only writer of payment status, and the redirect can
+    // land before it has run. For the pay-first flow the payments row does
+    // not exist at all until the webhook creates it, so the route reports
+    // 'pending' until then.
+    // -----------------------------------------------------------------
+    const stripeRef = paymentId || intentId;
+    if (stripeRef) {
+      const deadline = Date.now() + 45_000;
+      try {
+        while (Date.now() < deadline) {
+          const res = await fetch(
+            `/api/payments/stripe/${stripeRef}/status`,
+            { cache: 'no-store' }
+          );
+          if (res.ok) {
+            const d = await res.json();
+            if (d.status === 'succeeded' || d.bookingPaymentStatus === 'paid') {
+              const payment = await loadPaymentByBookingId(d.bookingId);
+              if (payment?.booking_id) {
+                await loadBookingAndSet(payment);
+                return;
+              }
+            }
+            if (d.status === 'failed' || d.status === 'cancelled') {
+              throw new Error(
+                'This payment did not complete. You have not been charged.'
+              );
+            }
+          }
+          if (!waitingOnWebhook) setWaitingOnWebhook(true);
+          await new Promise((r) => setTimeout(r, 1_500));
+        }
+        throw new Error(
+          'Your payment is still being confirmed. You have not been charged twice — check your bookings in a moment.'
+        );
+      } catch (err: any) {
+        setError(err.message || 'Failed to confirm payment');
+        return;
+      } finally {
+        setLoading(false);
+        setWaitingOnWebhook(false);
+      }
+    }
+
+    // -----------------------------------------------------------------
+    // LuniPay flow (subscriptions / groups) — unchanged.
+    // Lands with ?session_id=...; falls back to finalize if the webhook
+    // is slow or not registered.
+    // -----------------------------------------------------------------
     const start = Date.now();
     const POLL_MS = 8_000;
     const RETRY_MS = 1_500;
@@ -166,6 +218,7 @@ export default function PaymentSuccess() {
         id,
         duration_minutes,
         requested_start_at,
+        price_ttd,
         platform_fee_ttd,
         tutor_payout_ttd,
         platform_fee_pct,
@@ -231,12 +284,28 @@ export default function PaymentSuccess() {
   const subjectName = receipt.subject.label || receipt.subject.name;
   const sessionDate = format(new Date(receipt.booking.requested_start_at), 'PPPp');
 
-  // Calculate gross amount charged to card (base + LuniPay transaction fee)
-  const LUNIPAY_PCT   = 0.03;
-  const LUNIPAY_FIXED = 1.00;
-  const base          = receipt.payment.amount_ttd;
-  const gross         = Math.round(((base + LUNIPAY_FIXED) / (1 - LUNIPAY_PCT)) * 100) / 100;
-  const transactionFee = Math.round((gross - base) * 100) / 100;
+  // Figures come from the STORED values, never recomputed.
+  //
+  // This previously re-derived the total client-side with a hardcoded
+  // 3% + $1.00 gross-up, which matched neither provider's real rate AND
+  // treated payments.amount_ttd (already the full amount charged) as the
+  // base — so it inflated it a second time. A customer who paid
+  // TT$105.09 was shown "Total Paid $109.37".
+  //
+  // amount_ttd IS the amount charged. The fee we added is recorded at
+  // initiate time in charged_processing_fee_ttd; booking.price_ttd is the
+  // tutor's rate. Falling back to a subtraction keeps pre-Stripe rows
+  // renderable without inventing a rate.
+  const gross = Number(receipt.payment.amount_ttd ?? 0);
+  const chargedFee = (receipt.payment as any).charged_processing_fee_ttd;
+  const bookingPrice = Number((receipt.booking as any).price_ttd ?? 0);
+  const transactionFee =
+    chargedFee != null
+      ? Number(chargedFee)
+      : Math.max(0, Math.round((gross - bookingPrice) * 100) / 100);
+  const base = Math.round((gross - transactionFee) * 100) / 100;
+
+  const receiptHref = `/api/payments/stripe/${receipt.payment.id}/receipt?print=1`;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 py-12 px-4">
@@ -333,15 +402,24 @@ export default function PaymentSuccess() {
             >
               Go to Dashboard
             </Link>
-            <button
-              onClick={() => window.print()}
+            {/*
+              Opens the server-rendered receipt (lib/payments/receipt.ts —
+              the same renderer used for the emailed copy) and auto-triggers
+              the print dialog, where the browser offers "Save as PDF".
+              window.print() on this page would print the whole screen:
+              navigation, gradients and the "What happens next?" panel.
+            */}
+            <a
+              href={receiptHref}
+              target="_blank"
+              rel="noopener noreferrer"
               className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 py-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-2"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h5l2 2h7a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
               </svg>
-              Print Receipt
-            </button>
+              Download Receipt
+            </a>
           </div>
         </div>
 
