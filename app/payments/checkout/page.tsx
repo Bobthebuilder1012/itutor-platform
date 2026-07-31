@@ -1,203 +1,383 @@
 'use client';
 
 // =====================================================
-// PAYMENT CHECKOUT
+// CHECKOUT
 // =====================================================
-// Stripe-backed checkout for one-on-one bookings.
+// Full-page checkout, two-column: summary on the left, payment on the
+// right. Replaces both the LuniPay hosted redirect and the in-modal
+// payment step — the tutor-profile modal now collects subject/slot/notes
+// and hands off here.
 //
-// Replaces the previous LuniPay flow, which POSTed to
-// /api/payments/lunipay/initiate and then redirected the browser to a
-// LuniPay-hosted page. The card form is now inline via Stripe's
-// Payment Element, so the student never leaves the site.
+// Serves BOTH 1:1 payment flows:
 //
-// This page owns the session summary only. All payment state — the
-// PaymentIntent, the authoritative totals, and confirmation — lives in
-// <SessionCheckout />, which treats the webhook as the single source of
-// truth and never marks a booking paid from a client-side result.
+//   ?pi=pi_…            pay-first. No booking exists yet; the summary is
+//                       rebuilt from the PaymentIntent metadata via
+//                       /api/payments/stripe/intent/[id]. The booking is
+//                       materialised by the webhook after payment.
+//
+//   ?bookingId=…        pay for a booking that already exists; the
+//                       PaymentIntent is created by /initiate.
+//
+// Payment state and confirmation live in <StripePaymentForm />, which
+// treats the webhook as the only source of truth.
 // =====================================================
 
 import { useSearchParams, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import Link from 'next/link';
-import SessionCheckout from '@/components/booking/SessionCheckout';
+import StripePaymentForm from '@/components/booking/StripePaymentForm';
+import UserAvatar from '@/components/UserAvatar';
 
-interface BookingDetails {
-  id: string;
-  price_ttd: number;
-  duration_minutes: number;
-  platform_fee_pct: number;
-  platform_fee_ttd: number;
-  tutor_payout_ttd: number;
+type Summary = {
+  clientSecret: string;
+  statusId: string;
+  amount: number;
+  processingFee: number;
+  total: number;
   currency: string;
-  requested_start_at: string;
-  tutor: {
-    full_name: string;
-    display_name?: string;
-  };
-  subjects: {
-    name: string;
-    label?: string;
-  };
-}
+  durationMinutes: number;
+  startAt: string | null;
+  tutor: { id: string; name: string; avatarUrl: string | null };
+  subject: string;
+  /** Where to send the student once the webhook confirms. */
+  successHref: string;
+};
 
 export default function PaymentCheckout() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const bookingId = searchParams.get('bookingId');
+  const intentId = searchParams.get('pi');
 
-  const [booking, setBooking] = useState<BookingDetails | null>(null);
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [rating, setRating] = useState<{ avg: number | null; count: number }>({
+    avg: null,
+    count: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    if (bookingId) {
-      fetchBooking();
-    } else {
-      setError('No booking ID provided');
-      setLoading(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookingId]);
-
-  async function fetchBooking() {
+  // ---- Load whichever flow we're in -------------------------------
+  const load = useCallback(async () => {
     try {
-      const { data, error } = await supabase
-        .from('bookings')
-        .select(`
-          id,
-          price_ttd,
-          duration_minutes,
-          platform_fee_pct,
-          platform_fee_ttd,
-          tutor_payout_ttd,
-          currency,
-          requested_start_at,
-          payment_status,
-          tutor:profiles!bookings_tutor_id_fkey(full_name, display_name),
-          subjects(name, label)
-        `)
-        .eq('id', bookingId)
-        .single();
-
-      if (error) throw error;
-
-      if (data.payment_status === 'paid') {
-        // Already paid, redirect to success page
-        router.push(`/payments/success?bookingId=${bookingId}`);
+      if (intentId) {
+        const res = await fetch(`/api/payments/stripe/intent/${intentId}`, {
+          cache: 'no-store',
+        });
+        const d = await res.json();
+        if (d?.alreadyPaid) {
+          router.replace('/student/bookings');
+          return;
+        }
+        if (!res.ok) throw new Error(d?.error || 'Could not load checkout');
+        setSummary({
+          clientSecret: d.clientSecret,
+          statusId: d.paymentIntentId,
+          amount: d.amount,
+          processingFee: d.processingFee,
+          total: d.total,
+          currency: d.currency,
+          durationMinutes: d.durationMinutes,
+          startAt: d.startAt,
+          tutor: d.tutor,
+          subject: d.subject,
+          successHref: '/student/bookings',
+        });
         return;
       }
 
-      setBooking(data as any);
-    } catch (err: any) {
-      console.error('Error fetching booking:', err);
-      setError(err.message || 'Failed to load booking details');
+      if (!bookingId) throw new Error('Nothing to pay for');
+
+      // Existing-booking flow: read the booking, then create its intent.
+      const { data: booking, error: bErr } = await supabase
+        .from('bookings')
+        .select(
+          `id, price_ttd, duration_minutes, currency, requested_start_at, payment_status,
+           tutor:profiles!bookings_tutor_id_fkey(id, full_name, display_name, avatar_url),
+           subjects(name, label)`
+        )
+        .eq('id', bookingId)
+        .single();
+      if (bErr || !booking) throw new Error('Booking not found');
+
+      if ((booking as any).payment_status === 'paid') {
+        router.replace(`/payments/success?bookingId=${bookingId}`);
+        return;
+      }
+
+      const res = await fetch('/api/payments/stripe/initiate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId }),
+      });
+      const d = await res.json();
+      if (!res.ok || !d.clientSecret)
+        throw new Error(d?.error || 'Could not start checkout');
+
+      const t = (booking as any).tutor;
+      const s = (booking as any).subjects;
+      setSummary({
+        clientSecret: d.clientSecret,
+        statusId: d.paymentId,
+        amount: d.amount,
+        processingFee: d.processingFee,
+        total: d.total,
+        currency: d.currency,
+        durationMinutes: (booking as any).duration_minutes,
+        startAt: (booking as any).requested_start_at,
+        tutor: {
+          id: t?.id,
+          name: t?.display_name || t?.full_name || 'Your tutor',
+          avatarUrl: t?.avatar_url ?? null,
+        },
+        subject: s?.label || s?.name || 'Tutoring session',
+        successHref: `/payments/success?bookingId=${bookingId}&paymentId=${d.paymentId}`,
+      });
+    } catch (e: any) {
+      setError(e?.message || 'Could not load checkout');
     } finally {
       setLoading(false);
     }
-  }
+  }, [bookingId, intentId, router]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // Reuse the same aggregation the tutor profile uses, rather than
+  // recomputing ratings (soft-deletes, category blending) here.
+  useEffect(() => {
+    if (!summary?.tutor?.id) return;
+    fetch(`/api/public/tutors/${summary.tutor.id}/reviews?limit=1&offset=0`, {
+      cache: 'no-store',
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        const a = d?.averageRating == null ? null : Number(d.averageRating);
+        setRating({
+          avg: Number.isFinite(a as number) ? (a as number) : null,
+          count: Number(d?.totalReviews ?? 0),
+        });
+      })
+      .catch(() => {});
+  }, [summary?.tutor?.id]);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-itutor-green"></div>
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-itutor-green" />
       </div>
     );
   }
 
-  if (error || !booking) {
+  if (error || !summary) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
-          <div className="bg-red-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Error</h1>
-          <p className="text-gray-600 mb-6">{error || 'Booking not found'}</p>
+      <div className="min-h-screen bg-white flex items-center justify-center p-4">
+        <div className="max-w-md w-full rounded-2xl border border-gray-200 p-8 text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">
+            Checkout unavailable
+          </h1>
+          <p className="text-gray-600 mb-6">{error || 'Something went wrong.'}</p>
           <Link
-            href="/"
-            className="inline-block bg-gradient-to-r from-itutor-green to-emerald-600 text-white px-6 py-3 rounded-lg font-semibold hover:from-emerald-600 hover:to-itutor-green transition"
+            href="/student/explore"
+            className="inline-block rounded-lg bg-itutor-green px-6 py-3 font-semibold text-white transition hover:opacity-90"
           >
-            Go to Dashboard
+            Back to Explore
           </Link>
         </div>
       </div>
     );
   }
 
-  const tutorName = booking.tutor.display_name || booking.tutor.full_name;
-  const subjectName = booking.subjects.label || booking.subjects.name;
-  const sessionDate = new Date(booking.requested_start_at).toLocaleString('en-US', {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+  const start = summary.startAt ? new Date(summary.startAt) : null;
+  const end =
+    start && summary.durationMinutes
+      ? new Date(start.getTime() + summary.durationMinutes * 60000)
+      : null;
+  const fmtTime = (d: Date) =>
+    d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+  const cancelBy = start ? new Date(start.getTime() - 24 * 3600 * 1000) : null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 py-12 px-4">
-      <div className="max-w-3xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">Complete Payment</h1>
-          <p className="text-gray-600">Secure your tutoring session with {tutorName}</p>
-        </div>
+    <div className="min-h-screen bg-white">
+      {/* Hero */}
+      <div className="bg-brand-soft/60 px-4 py-10 text-center">
+        <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-gray-900">
+          Confirm and pay for your{' '}
+          <span className="text-itutor-green">{summary.subject}</span> lesson
+        </h1>
+      </div>
 
-        <div className="bg-white rounded-2xl shadow-xl overflow-hidden mb-6">
-          {/* Session Details */}
-          <div className="p-6 border-b border-gray-200">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Session Details</h2>
-            <div className="space-y-3">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Subject</span>
-                <span className="font-semibold text-gray-900">{subjectName}</span>
+      <div className="mx-auto max-w-5xl px-4 pb-16 -mt-6">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] items-start">
+          {/* ---------------- LEFT: summary ---------------- */}
+          <div className="space-y-4">
+            <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+              <h2 className="text-sm font-semibold text-gray-500 mb-4">
+                Your tutor
+              </h2>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-2xl font-bold text-gray-900">
+                    {summary.tutor.name}
+                  </div>
+                  {rating.avg !== null && (
+                    <div className="mt-1 flex items-center gap-1 text-sm">
+                      <span className="text-yellow-500">★</span>
+                      <span className="font-semibold text-gray-900">
+                        {rating.avg.toFixed(1)}
+                      </span>
+                      <span className="text-gray-500">
+                        ({rating.count} review{rating.count === 1 ? '' : 's'})
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <UserAvatar
+                  avatarUrl={summary.tutor.avatarUrl}
+                  name={summary.tutor.name}
+                  size={64}
+                  className="rounded-2xl shrink-0"
+                />
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Tutor</span>
-                <span className="font-semibold text-gray-900">{tutorName}</span>
+            </section>
+
+            <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+              <h2 className="text-lg font-bold text-gray-900 mb-4">
+                Lesson details
+              </h2>
+              {start ? (
+                <div className="flex items-center gap-4">
+                  <div className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-brand-soft text-center">
+                    <div>
+                      <div className="text-[10px] font-bold uppercase tracking-wide text-itutor-green">
+                        {start.toLocaleDateString('en-US', { month: 'short' })}
+                      </div>
+                      <div className="text-lg font-bold leading-none text-gray-900">
+                        {start.getDate()}
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="font-semibold text-gray-900">
+                      {fmtTime(start)}
+                      {end ? ` – ${fmtTime(end)}` : ''}
+                    </div>
+                    <div className="text-sm text-gray-500">
+                      Time is shown in your local timezone
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">
+                  {summary.durationMinutes} minute lesson
+                </p>
+              )}
+
+              {cancelBy && (
+                <div className="mt-4 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                  <span className="font-semibold">
+                    Cancel or reschedule for free
+                  </span>{' '}
+                  until{' '}
+                  {cancelBy.toLocaleString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false,
+                  })}
+                </div>
+              )}
+            </section>
+
+            <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+              <h2 className="text-lg font-bold text-gray-900 mb-4">
+                Checkout info
+              </h2>
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">
+                    {summary.durationMinutes}-min lesson
+                  </span>
+                  <span className="text-gray-900">
+                    ${summary.amount.toFixed(2)} {summary.currency}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Processing fee</span>
+                  <span className="text-gray-900">
+                    ${summary.processingFee.toFixed(2)} {summary.currency}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between border-t border-gray-200 pt-3 text-xl font-bold">
+                  <span className="text-gray-900">Total</span>
+                  <span className="text-gray-900">
+                    ${summary.total.toFixed(2)} {summary.currency}
+                  </span>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Duration</span>
-                <span className="font-semibold text-gray-900">{booking.duration_minutes} minutes</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Scheduled Time</span>
-                <span className="font-semibold text-gray-900">{sessionDate}</span>
-              </div>
-            </div>
+            </section>
           </div>
 
-          {/*
-            Card form + authoritative totals.
+          {/* ---------------- RIGHT: payment ---------------- */}
+          <div className="space-y-4">
+            <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+              <h2 className="text-lg font-bold text-gray-900 mb-4">
+                Choose how to pay
+              </h2>
 
-            The old page rendered a static breakdown here (platform fee,
-            tutor payout) and showed "Total to Pay" as price_ttd — which
-            understated the charge, since the processing fee is grossed up
-            on top. SessionCheckout now renders the real figures returned
-            by /initiate, so what's displayed always matches what Stripe
-            charges.
-          */}
-          <SessionCheckout
-            bookingId={booking.id}
-            onCancel={() => router.back()}
-          />
-        </div>
+              {/* The Payment Element renders card plus any wallets Stripe
+                  has enabled for this account (Apple Pay / Google Pay show
+                  automatically on supported devices) — we don't hand-roll
+                  those buttons, so nothing here can advertise a method that
+                  isn't actually available. */}
+              <StripePaymentForm
+                clientSecret={summary.clientSecret}
+                statusId={summary.statusId}
+                amount={summary.amount}
+                processingFee={summary.processingFee}
+                total={summary.total}
+                currency={summary.currency}
+                hideBreakdown
+                submitLabel={`Book lesson and pay · $${summary.total.toFixed(2)} ${summary.currency}`}
+                returnUrl={`${typeof window !== 'undefined' ? window.location.origin : ''}${summary.successHref}`}
+                onConfirmed={() => router.push(summary.successHref)}
+                onCancel={() => router.back()}
+              />
 
-        {/* Security Notice */}
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
-          <svg className="w-6 h-6 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-          </svg>
-          <div>
-            <h3 className="font-semibold text-blue-900 mb-1">Secure Payment</h3>
-            <p className="text-sm text-blue-800">
-              Your card details are entered directly into Stripe and never touch our
-              servers. Your session is confirmed once payment is received.
-            </p>
+              <p className="mt-4 text-xs leading-relaxed text-gray-500">
+                By paying you agree to iTutor&apos;s{' '}
+                <Link href="/terms" className="underline">
+                  Terms &amp; Refund Policy
+                </Link>
+                . Card details are entered directly into Stripe and never touch
+                our servers.
+                {/* Single link on purpose — there is no /refund-policy route,
+                    and linking one would 404 from the checkout page. */}
+              </p>
+            </section>
+
+            <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+              <h2 className="text-base font-bold text-gray-900">
+                {summary.tutor.name} is a great choice
+              </h2>
+              {rating.avg !== null ? (
+                <div className="mt-3 flex items-center gap-2">
+                  <span className="rounded-lg bg-gray-100 px-3 py-1 text-sm font-semibold text-gray-900">
+                    ★ {rating.avg.toFixed(1)}
+                  </span>
+                  <span className="text-sm text-gray-600">
+                    {rating.count} review{rating.count === 1 ? '' : 's'}
+                  </span>
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-gray-600">
+                  Free cancellation up to 24 hours before your lesson.
+                </p>
+              )}
+            </section>
           </div>
         </div>
       </div>

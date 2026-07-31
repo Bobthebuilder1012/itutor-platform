@@ -18,7 +18,6 @@ import { getTutorPublicCalendar } from '@/lib/services/bookingService';
 import ClassesSection from '@/components/tutor/public/ClassesSection';
 import TutorCredentials from '@/components/TutorCredentials';
 import { StarRow } from '@/components/ratings/StarInput';
-import StripePaymentForm from '@/components/booking/StripePaymentForm';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -358,19 +357,7 @@ export default function TutorProfilePage() {
   const [groupReviews, setGroupReviews] = useState<GroupReview[]>([]);
   const [voted, setVoted] = useState<Record<string, 'up' | 'down' | undefined>>({});
   const [showBookingSheet, setShowBookingSheet] = useState(false);
-  const [bookingStep, setBookingStep] = useState<1 | 2 | 3 | 4>(1);
-  // Pay-first: /api/bookings/direct-book returns a Stripe clientSecret and
-  // creates NO booking row. The booking is materialised by the Stripe
-  // webhook once payment succeeds, so step 4 mounts the Payment Element
-  // inline rather than redirecting to a hosted checkout page.
-  const [pendingPayment, setPendingPayment] = useState<{
-    clientSecret: string;
-    paymentIntentId: string;
-    amount: number;
-    processingFee: number;
-    total: number;
-    currency: string;
-  } | null>(null);
+  const [bookingStep, setBookingStep] = useState<1 | 2 | 3>(1);
   const [pickedTime, setPickedTime] = useState<number | null>(null);
   const [pickedDay, setPickedDay] = useState(0);
   const [duration, setDuration] = useState(1);
@@ -496,18 +483,13 @@ export default function TutorProfilePage() {
         throw new Error(msg);
       }
       // Paid path: the server returns a Stripe clientSecret and no booking
-      // has been created yet. Stay in the sheet and collect the card inline
-      // — the booking is materialised by the webhook on payment success.
-      if (result.clientSecret) {
-        setPendingPayment({
-          clientSecret: result.clientSecret,
-          paymentIntentId: result.paymentIntentId,
-          amount: result.amount,
-          processingFee: result.processingFee,
-          total: result.total,
-          currency: result.currency ?? 'TTD',
-        });
-        setBookingStep(4);
+      // has been created yet. Hand off to the full checkout page, which
+      // rebuilds the summary from the PaymentIntent metadata. The booking is
+      // materialised by the webhook on payment success.
+      if (result.paymentIntentId) {
+        setShowBookingSheet(false);
+        setBookingNotes('');
+        router.push(`/payments/checkout?pi=${result.paymentIntentId}`);
         return;
       }
       // Free path: the server actually inserted a booking, so it returns
@@ -811,7 +793,7 @@ export default function TutorProfilePage() {
             <div className="sticky top-0 bg-background border-b border-border px-5 py-3 flex items-center justify-between">
               <div>
                 <div className="text-xs text-muted-foreground">
-                  Step {bookingStep} of {paidClassesEnabled ? 4 : 3}
+                  Step {bookingStep} of 3
                 </div>
                 <div className="font-semibold text-ink text-sm">
                   {bookingStep === 1
@@ -926,32 +908,6 @@ export default function TutorProfilePage() {
                     {confirmLoading ? 'Booking…' : 'Book session'}
                   </button>
                 </div>
-              )}
-              {bookingStep === 4 && pendingPayment && (
-                <StripePaymentForm
-                  clientSecret={pendingPayment.clientSecret}
-                  // No payments row exists yet — poll on the PaymentIntent id;
-                  // the status route resolves `pi_…` and reports 'pending'
-                  // until the webhook materialises the booking.
-                  statusId={pendingPayment.paymentIntentId}
-                  amount={pendingPayment.amount}
-                  processingFee={pendingPayment.processingFee}
-                  total={pendingPayment.total}
-                  currency={pendingPayment.currency}
-                  returnUrl={`${typeof window !== 'undefined' ? window.location.origin : ''}/student/bookings`}
-                  onConfirmed={() => {
-                    setShowBookingSheet(false);
-                    setBookingNotes('');
-                    setPendingPayment(null);
-                    router.push('/student/bookings');
-                  }}
-                  onCancel={() => {
-                    // Abandoning here leaves an unconfirmed PaymentIntent,
-                    // which costs nothing and creates no booking.
-                    setPendingPayment(null);
-                    setBookingStep(3);
-                  }}
-                />
               )}
             </div>
             {bookingStep > 1 && bookingStep < 3 && (

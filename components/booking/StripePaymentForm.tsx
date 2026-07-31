@@ -64,6 +64,12 @@ export interface StripePaymentFormProps {
   currency?: string;
   returnUrl: string;
   submitLabel?: string;
+  /**
+   * Suppress the inline price breakdown. The full checkout page renders
+   * its own "Checkout info" panel, and showing the same three lines twice
+   * on one screen reads as a duplicate total.
+   */
+  hideBreakdown?: boolean;
   onConfirmed: () => void;
   onCancel?: () => void;
 }
@@ -108,6 +114,7 @@ function InnerForm({
   currency = 'TTD',
   returnUrl,
   submitLabel,
+  hideBreakdown = false,
   onConfirmed,
   onCancel,
 }: StripePaymentFormProps) {
@@ -231,26 +238,28 @@ function InnerForm({
       <PaymentElement options={{ layout: 'tabs' }} />
 
       {/* Authoritative totals — computed server-side, never client-supplied. */}
-      <div className="mt-6 space-y-2 border-t border-gray-200 pt-4">
-        <div className="flex justify-between text-sm">
-          <span className="text-gray-600">Session price</span>
-          <span className="text-gray-900">
-            ${amount.toFixed(2)} {currency}
-          </span>
+      {!hideBreakdown && (
+        <div className="mt-6 space-y-2 border-t border-gray-200 pt-4">
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-600">Session price</span>
+            <span className="text-gray-900">
+              ${amount.toFixed(2)} {currency}
+            </span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-600">Processing fee</span>
+            <span className="text-gray-900">
+              ${processingFee.toFixed(2)} {currency}
+            </span>
+          </div>
+          <div className="flex justify-between border-t border-gray-200 pt-2 text-lg font-bold">
+            <span className="text-gray-900">Total</span>
+            <span className="text-itutor-green">
+              ${total.toFixed(2)} {currency}
+            </span>
+          </div>
         </div>
-        <div className="flex justify-between text-sm">
-          <span className="text-gray-600">Processing fee</span>
-          <span className="text-gray-900">
-            ${processingFee.toFixed(2)} {currency}
-          </span>
-        </div>
-        <div className="flex justify-between border-t border-gray-200 pt-2 text-lg font-bold">
-          <span className="text-gray-900">Total</span>
-          <span className="text-itutor-green">
-            ${total.toFixed(2)} {currency}
-          </span>
-        </div>
-      </div>
+      )}
 
       {error && (
         <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
