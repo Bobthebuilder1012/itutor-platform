@@ -38,6 +38,8 @@ export interface ReceiptData {
   /** True when a parent paid for a child (billing_mode='parent_required'). */
   payerIsNotStudent: boolean;
   tutorName: string;
+  /** Needed for the tutor's "new booking" notification. */
+  tutorEmail: string | null;
   subject: string;
   sessionStartAt: string | null;
   durationMinutes: number | null;
@@ -113,6 +115,7 @@ export async function buildReceiptData(
     payerEmail: payer?.email ?? null,
     payerIsNotStudent: payment.payer_id !== booking.student_id,
     tutorName: tutor?.display_name || tutor?.full_name || 'Tutor',
+    tutorEmail: tutor?.email ?? null,
     subject: subject?.label || subject?.name || 'Tutoring session',
     sessionStartAt: booking.confirmed_start_at || booking.requested_start_at || null,
     durationMinutes: booking.duration_minutes ?? null,
@@ -159,6 +162,78 @@ function esc(s: string | null | undefined) {
 
 export function receiptSubject(d: ReceiptData) {
   return `Your iTutor receipt — ${d.subject} with ${d.tutorName}`;
+}
+
+export function tutorBookingSubject(d: ReceiptData) {
+  return `New booking: ${d.subject} with ${d.studentName}`;
+}
+
+/**
+ * "You have a new booking" email for the TUTOR.
+ *
+ * Deliberately shows NO money. The tutor's earnings are not the student's
+ * total — the gap is platform commission plus the processing fee — so
+ * quoting either figure here invites a support ticket. Earnings live in
+ * the tutor dashboard, which is the single place they're computed.
+ *
+ * Shares this module with the receipt so the session facts (subject,
+ * date/time, duration) are formatted identically in both emails.
+ */
+export function renderTutorBookingHtml(
+  d: ReceiptData,
+  opts: { appUrl?: string } = {}
+): string {
+  const { appUrl } = opts;
+
+  const rows: Array<[string, string]> = [
+    ['Student', d.studentName],
+    ['Subject', d.subject],
+    ['Session date & time', fmtDateTime(d.sessionStartAt)],
+    ['Duration', d.durationMinutes ? `${d.durationMinutes} minutes` : '—'],
+  ];
+
+  const detailRows = rows
+    .map(
+      ([k, v]) => `
+      <tr>
+        <td style="padding:8px 0;color:#6b7280;font-size:14px;">${esc(k)}</td>
+        <td style="padding:8px 0;color:#111827;font-size:14px;font-weight:600;text-align:right;">${esc(v)}</td>
+      </tr>`
+    )
+    .join('');
+
+  return `
+  <div style="font-family:system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#ffffff;color:#111827;max-width:560px;margin:0 auto;padding:24px;">
+    <div style="border-bottom:3px solid ${BRAND_GREEN};padding-bottom:16px;margin-bottom:24px;">
+      <div style="font-size:22px;font-weight:800;color:${BRAND_GREEN};">iTutor</div>
+      <div style="font-size:13px;color:#6b7280;margin-top:2px;">New booking confirmed</div>
+    </div>
+
+    <p style="font-size:15px;line-height:1.6;margin:0 0 20px;">
+      Hi ${esc(d.tutorName)}, you have a new confirmed booking. The session is
+      paid for and locked into your calendar.
+    </p>
+
+    <table style="width:100%;border-collapse:collapse;">
+      ${detailRows}
+    </table>
+
+    ${
+      appUrl
+        ? `<div style="margin-top:28px;">
+             <a href="${esc(appUrl)}/tutor/sessions"
+                style="display:inline-block;background:${BRAND_GREEN};color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:700;font-size:14px;">
+               View in my sessions
+             </a>
+           </div>`
+        : ''
+    }
+
+    <p style="font-size:12px;color:#9ca3af;line-height:1.6;margin:28px 0 0;border-top:1px solid #e5e7eb;padding-top:16px;">
+      Your earnings for this session are shown in your tutor dashboard.<br />
+      iTutor · Trinidad &amp; Tobago
+    </p>
+  </div>`;
 }
 
 /**

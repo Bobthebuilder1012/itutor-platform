@@ -40,6 +40,8 @@ import {
   buildReceiptData,
   renderReceiptHtml,
   receiptSubject,
+  renderTutorBookingHtml,
+  tutorBookingSubject,
 } from '@/lib/payments/receipt';
 
 export const dynamic = 'force-dynamic';
@@ -90,32 +92,62 @@ async function sendReceiptEmail(admin: AdminClient, paymentId: string) {
       console.warn(`[stripe/webhook] No receipt data for payment ${paymentId}`);
       return;
     }
-    if (!data.payerEmail) {
+
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+
+    // Each recipient is sent independently and awaited via allSettled, so a
+    // bounce on one address cannot suppress the other. The payer's receipt
+    // and the tutor's booking notice are separate concerns.
+    const jobs: Array<{ label: string; run: () => Promise<unknown> }> = [];
+
+    if (data.payerEmail) {
+      jobs.push({
+        label: `receipt→${data.payerEmail}`,
+        run: () =>
+          sendEmail({
+            to: data.payerEmail!,
+            subject: receiptSubject(data),
+            html: renderReceiptHtml(data, { appUrl }),
+          }),
+      });
+    } else {
       console.warn(
         `[stripe/webhook] Payer has no email on file; skipping receipt for ${paymentId}`
       );
-      return;
     }
 
-    const result = await sendEmail({
-      to: data.payerEmail,
-      subject: receiptSubject(data),
-      html: renderReceiptHtml(data, {
-        appUrl: process.env.NEXT_PUBLIC_APP_URL,
-      }),
-    });
-
-    if (!result.success) {
-      console.error(
-        `[stripe/webhook] Receipt email failed for ${paymentId}: ${result.error}`
-      );
+    if (data.tutorEmail) {
+      jobs.push({
+        label: `tutor-booking→${data.tutorEmail}`,
+        run: () =>
+          sendEmail({
+            to: data.tutorEmail!,
+            subject: tutorBookingSubject(data),
+            html: renderTutorBookingHtml(data, { appUrl }),
+          }),
+      });
     } else {
-      console.log(
-        `[stripe/webhook] Receipt emailed for ${paymentId} (${result.messageId})`
+      console.warn(
+        `[stripe/webhook] Tutor has no email on file; skipping booking notice for ${paymentId}`
       );
     }
+
+    const results = await Promise.allSettled(jobs.map((j) => j.run()));
+    results.forEach((r, i) => {
+      const label = jobs[i].label;
+      if (r.status === 'rejected') {
+        console.error(`[stripe/webhook] ${label} threw:`, r.reason);
+      } else {
+        const v = r.value as { success?: boolean; error?: string; messageId?: string };
+        if (v?.success) {
+          console.log(`[stripe/webhook] ${label} sent (${v.messageId})`);
+        } else {
+          console.error(`[stripe/webhook] ${label} failed: ${v?.error}`);
+        }
+      }
+    });
   } catch (err) {
-    console.error('[stripe/webhook] Receipt email threw (non-fatal):', err);
+    console.error('[stripe/webhook] Payment emails threw (non-fatal):', err);
   }
 }
 
