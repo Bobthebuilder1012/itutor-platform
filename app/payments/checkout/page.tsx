@@ -1,9 +1,26 @@
 'use client';
 
+// =====================================================
+// PAYMENT CHECKOUT
+// =====================================================
+// Stripe-backed checkout for one-on-one bookings.
+//
+// Replaces the previous LuniPay flow, which POSTed to
+// /api/payments/lunipay/initiate and then redirected the browser to a
+// LuniPay-hosted page. The card form is now inline via Stripe's
+// Payment Element, so the student never leaves the site.
+//
+// This page owns the session summary only. All payment state — the
+// PaymentIntent, the authoritative totals, and confirmation — lives in
+// <SessionCheckout />, which treats the webhook as the single source of
+// truth and never marks a booking paid from a client-side result.
+// =====================================================
+
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import Link from 'next/link';
+import SessionCheckout from '@/components/booking/SessionCheckout';
 
 interface BookingDetails {
   id: string;
@@ -28,10 +45,9 @@ export default function PaymentCheckout() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const bookingId = searchParams.get('bookingId');
-  
+
   const [booking, setBooking] = useState<BookingDetails | null>(null);
   const [loading, setLoading] = useState(true);
-  const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -41,6 +57,7 @@ export default function PaymentCheckout() {
       setError('No booking ID provided');
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookingId]);
 
   async function fetchBooking() {
@@ -77,33 +94,6 @@ export default function PaymentCheckout() {
       setError(err.message || 'Failed to load booking details');
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function handlePayNow() {
-    if (!bookingId) return;
-
-    setProcessing(true);
-    setError('');
-
-    try {
-      const response = await fetch('/api/payments/lunipay/initiate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookingId }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok || result.error) {
-        throw new Error(result.error || 'Failed to initiate payment');
-      }
-
-      window.location.href = result.paymentUrl;
-    } catch (err: any) {
-      console.error('Payment initiation error:', err);
-      setError(err.message || 'Failed to initiate payment');
-      setProcessing(false);
     }
   }
 
@@ -157,7 +147,6 @@ export default function PaymentCheckout() {
           <p className="text-gray-600">Secure your tutoring session with {tutorName}</p>
         </div>
 
-        {/* Payment Summary Card */}
         <div className="bg-white rounded-2xl shadow-xl overflow-hidden mb-6">
           {/* Session Details */}
           <div className="p-6 border-b border-gray-200">
@@ -182,70 +171,20 @@ export default function PaymentCheckout() {
             </div>
           </div>
 
-          {/* Payment Breakdown */}
-          <div className="p-6 bg-gray-50">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Payment Summary</h2>
-            <div className="space-y-3">
-              <div className="flex justify-between text-lg">
-                <span className="text-gray-700">Session Price</span>
-                <span className="font-semibold text-gray-900">${booking.price_ttd.toFixed(2)} {booking.currency}</span>
-              </div>
-              
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Platform Fee ({booking.platform_fee_pct}%)</span>
-                <span className="text-gray-700">${booking.platform_fee_ttd.toFixed(2)} {booking.currency}</span>
-              </div>
-              
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Tutor Receives</span>
-                <span className="text-gray-700">${booking.tutor_payout_ttd.toFixed(2)} {booking.currency}</span>
-              </div>
-              
-              <div className="border-t-2 border-gray-300 pt-3 mt-3">
-                <div className="flex justify-between text-2xl font-bold">
-                  <span className="text-gray-900">Total to Pay</span>
-                  <span className="text-itutor-green">${booking.price_ttd.toFixed(2)} {booking.currency}</span>
-                </div>
-              </div>
-            </div>
-          </div>
+          {/*
+            Card form + authoritative totals.
 
-          {/* Action Buttons */}
-          <div className="p-6 space-y-3">
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg text-sm">
-                {error}
-              </div>
-            )}
-
-            <button
-              onClick={handlePayNow}
-              disabled={processing}
-              className="w-full bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-white py-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
-            >
-              {processing ? (
-                <>
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                  Processing...
-                </>
-              ) : (
-                <>
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                  </svg>
-                  Pay with LuniPay
-                </>
-              )}
-            </button>
-
-            <button
-              onClick={() => router.back()}
-              disabled={processing}
-              className="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 py-3 rounded-xl font-semibold transition-all duration-200 disabled:opacity-50"
-            >
-              Cancel
-            </button>
-          </div>
+            The old page rendered a static breakdown here (platform fee,
+            tutor payout) and showed "Total to Pay" as price_ttd — which
+            understated the charge, since the processing fee is grossed up
+            on top. SessionCheckout now renders the real figures returned
+            by /initiate, so what's displayed always matches what Stripe
+            charges.
+          */}
+          <SessionCheckout
+            bookingId={booking.id}
+            onCancel={() => router.back()}
+          />
         </div>
 
         {/* Security Notice */}
@@ -256,7 +195,8 @@ export default function PaymentCheckout() {
           <div>
             <h3 className="font-semibold text-blue-900 mb-1">Secure Payment</h3>
             <p className="text-sm text-blue-800">
-              Your payment is processed securely through LuniPay. Your session will be confirmed once payment is received.
+              Your card details are entered directly into Stripe and never touch our
+              servers. Your session is confirmed once payment is received.
             </p>
           </div>
         </div>
@@ -264,16 +204,3 @@ export default function PaymentCheckout() {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-

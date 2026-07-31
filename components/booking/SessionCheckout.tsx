@@ -4,6 +4,8 @@
 // SESSION CHECKOUT (Stripe Payment Element)
 // =====================================================
 // Renders the Stripe Payment Element for a one-on-one booking.
+// Replaces the LuniPay hosted-checkout redirect — the card form is
+// now inline, so the student never leaves the site.
 //
 // CRITICAL RULE: this component NEVER marks a booking as paid.
 // `stripe.confirmPayment` resolving without an error means Stripe
@@ -45,6 +47,8 @@ function getStripe() {
 /** How long to wait for the webhook before telling the user to check back. */
 const CONFIRM_TIMEOUT_MS = 30_000;
 const POLL_INTERVAL_MS = 1_500;
+
+const BRAND_GREEN = '#199356';
 
 interface SessionCheckoutProps {
   bookingId: string;
@@ -93,7 +97,7 @@ export default function SessionCheckout({
         } else {
           setIntent(data);
         }
-      } catch (err) {
+      } catch {
         if (!cancelled) {
           setLoadError('Could not reach the payment service. Please try again.');
         }
@@ -112,23 +116,24 @@ export default function SessionCheckout({
 
   if (loading) {
     return (
-      <div className="rounded-xl bg-card p-6">
-        <div className="h-4 w-32 animate-pulse rounded bg-white/10" />
-        <div className="mt-4 h-24 animate-pulse rounded bg-white/5" />
+      <div className="p-6">
+        <div className="h-4 w-40 animate-pulse rounded bg-gray-200" />
+        <div className="mt-4 h-32 animate-pulse rounded-lg bg-gray-100" />
+        <div className="mt-4 h-12 animate-pulse rounded-xl bg-gray-100" />
       </div>
     );
   }
 
   if (loadError || !intent || !stripe) {
     return (
-      <div className="rounded-xl bg-card p-6">
-        <p className="text-sm text-red-400">
+      <div className="p-6">
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
           {loadError || 'Payments are unavailable right now.'}
-        </p>
+        </div>
         {onCancel && (
           <button
             onClick={onCancel}
-            className="mt-4 text-sm text-muted underline"
+            className="mt-4 w-full rounded-xl bg-gray-200 py-3 font-semibold text-gray-800 transition hover:bg-gray-300"
           >
             Go back
           </button>
@@ -143,10 +148,12 @@ export default function SessionCheckout({
       options={{
         clientSecret: intent.clientSecret,
         appearance: {
-          theme: 'night',
+          theme: 'stripe',
           variables: {
-            colorPrimary: '#199356',
+            colorPrimary: BRAND_GREEN,
+            colorText: '#111827',
             borderRadius: '10px',
+            fontFamily: 'system-ui, sans-serif',
           },
         },
       }}
@@ -157,6 +164,7 @@ export default function SessionCheckout({
         amount={intent.amount}
         processingFee={intent.processingFee}
         total={intent.total}
+        currency={intent.currency}
         onConfirmed={onConfirmed}
         onCancel={onCancel}
       />
@@ -170,6 +178,7 @@ function CheckoutForm({
   amount,
   processingFee,
   total,
+  currency,
   onConfirmed,
   onCancel,
 }: {
@@ -178,6 +187,7 @@ function CheckoutForm({
   amount: number;
   processingFee: number;
   total: number;
+  currency: string;
   onConfirmed?: () => void;
   onCancel?: () => void;
 }) {
@@ -207,10 +217,9 @@ function CheckoutForm({
 
     while (Date.now() < deadline) {
       try {
-        const res = await fetch(
-          `/api/payments/stripe/${paymentId}/status`,
-          { cache: 'no-store' }
-        );
+        const res = await fetch(`/api/payments/stripe/${paymentId}/status`, {
+          cache: 'no-store',
+        });
         if (res.ok) {
           const data = (await res.json()) as {
             status?: string;
@@ -292,14 +301,16 @@ function CheckoutForm({
 
   if (awaitingWebhook) {
     return (
-      <div className="rounded-xl bg-card p-6 text-center">
-        <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-green-brand" />
-        <p className="mt-4 text-sm font-medium">Confirming your payment…</p>
-        <p className="mt-1 text-xs text-muted">
+      <div className="p-10 text-center">
+        <div className="mx-auto h-10 w-10 animate-spin rounded-full border-b-2 border-itutor-green" />
+        <p className="mt-4 font-semibold text-gray-900">
+          Confirming your payment…
+        </p>
+        <p className="mt-1 text-sm text-gray-600">
           Please don&apos;t close this page.
         </p>
         {slowWarning && (
-          <p className="mt-3 text-xs text-muted">
+          <p className="mt-3 text-sm text-gray-500">
             This is taking longer than usual. Your payment is safe — we&apos;re
             just waiting on confirmation.
           </p>
@@ -309,36 +320,70 @@ function CheckoutForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-xl bg-card p-6">
+    <form onSubmit={handleSubmit} className="p-6">
+      <h2 className="mb-4 text-xl font-semibold text-gray-900">
+        Payment Details
+      </h2>
+
       <PaymentElement options={{ layout: 'tabs' }} />
 
-      <div className="mt-6 space-y-1 border-t border-white/10 pt-4 text-sm">
-        <div className="flex justify-between text-muted">
-          <span>Session</span>
-          <span>${amount.toFixed(2)} TTD</span>
+      {/* Authoritative totals — these come from the server's price
+          calculation, not from anything the client supplied. */}
+      <div className="mt-6 space-y-2 border-t border-gray-200 pt-4">
+        <div className="flex justify-between text-sm">
+          <span className="text-gray-600">Session price</span>
+          <span className="text-gray-900">
+            ${amount.toFixed(2)} {currency}
+          </span>
         </div>
-        <div className="flex justify-between text-muted">
-          <span>Processing fee</span>
-          <span>${processingFee.toFixed(2)} TTD</span>
+        <div className="flex justify-between text-sm">
+          <span className="text-gray-600">Processing fee</span>
+          <span className="text-gray-900">
+            ${processingFee.toFixed(2)} {currency}
+          </span>
         </div>
-        <div className="flex justify-between pt-1 font-semibold">
-          <span>Total</span>
-          <span>${total.toFixed(2)} TTD</span>
+        <div className="flex justify-between border-t border-gray-200 pt-2 text-lg font-bold">
+          <span className="text-gray-900">Total</span>
+          <span className="text-itutor-green">
+            ${total.toFixed(2)} {currency}
+          </span>
         </div>
       </div>
 
       {error && (
-        <p className="mt-4 rounded-lg bg-red-500/10 p-3 text-sm text-red-400">
+        <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
           {error}
-        </p>
+        </div>
       )}
 
       <button
         type="submit"
         disabled={!stripe || submitting}
-        className="mt-6 w-full rounded-lg bg-green-brand py-3 font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+        className="mt-6 flex w-full items-center justify-center gap-3 rounded-xl bg-gradient-to-r from-itutor-green to-emerald-600 py-4 text-lg font-bold text-white shadow-lg transition-all duration-200 hover:from-emerald-600 hover:to-itutor-green hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {submitting ? 'Processing…' : `Pay $${total.toFixed(2)} TTD`}
+        {submitting ? (
+          <>
+            <div className="h-5 w-5 animate-spin rounded-full border-b-2 border-white" />
+            Processing…
+          </>
+        ) : (
+          <>
+            <svg
+              className="h-6 w-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+              />
+            </svg>
+            Pay ${total.toFixed(2)} {currency}
+          </>
+        )}
       </button>
 
       {onCancel && (
@@ -346,7 +391,7 @@ function CheckoutForm({
           type="button"
           onClick={onCancel}
           disabled={submitting}
-          className="mt-3 w-full text-sm text-muted underline disabled:opacity-50"
+          className="mt-3 w-full rounded-xl bg-gray-200 py-3 font-semibold text-gray-800 transition-all duration-200 hover:bg-gray-300 disabled:opacity-50"
         >
           Cancel
         </button>
