@@ -510,11 +510,32 @@ export default function TutorProfilePage() {
         setBookingStep(4);
         return;
       }
-      // Free path: the booking already exists.
-      setShowBookingSheet(false);
-      setBookingNotes('');
-      alert('Session booked! You\'ll receive a confirmation shortly.');
-      router.push('/student/bookings');
+      // Free path: the server actually inserted a booking, so it returns
+      // a booking_id. Only claim success when we have that proof.
+      //
+      // Without this guard a version-skewed client (old JS in a stale tab
+      // talking to a newer API) silently showed "Session booked!" for a
+      // response it didn't understand — the pay-first API had returned a
+      // clientSecret and created NO booking, so the student was told their
+      // session was booked when nothing had been booked or paid.
+      if (result.booking_id) {
+        setShowBookingSheet(false);
+        setBookingNotes('');
+        // The duplicate-booking branch returns an existing booking that may
+        // still be unpaid. Send those to checkout rather than telling the
+        // student it's booked when payment is outstanding.
+        if (result.requires_payment) {
+          router.push(`/payments/checkout?bookingId=${result.booking_id}`);
+          return;
+        }
+        alert('Session booked! You\'ll receive a confirmation shortly.');
+        router.push('/student/bookings');
+        return;
+      }
+
+      throw new Error(
+        'This page is out of date — please refresh and try again.'
+      );
     } catch (err: any) {
       setConfirmError(err.message || 'Failed to book session');
     } finally {
