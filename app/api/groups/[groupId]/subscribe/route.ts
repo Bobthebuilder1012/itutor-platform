@@ -12,6 +12,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { getStripeClient, ttdToCents } from '@/lib/payments/stripeClient';
+import {
+  ensureStripeCustomer,
+  ensureGroupPrice,
+  endDateToCancelAt,
+} from '@/lib/payments/stripeSubscriptions';
 import { calculateGrossAmountForProvider } from '@/lib/payments/grossUp';
 import {
   createPendingSubscriptionPayment,
@@ -45,7 +50,8 @@ export async function POST(req: NextRequest, { params }: Params) {
       .select(`
         id, tutor_id, name, status, pricing_model, price_monthly,
         max_students, grace_period_days, require_join_requests,
-        visibility, archived_at
+        visibility, archived_at,
+        end_date, stripe_price_id, stripe_price_amount_ttd
       `)
       .eq('id', groupId)
       .is('archived_at', null)
@@ -426,37 +432,58 @@ export async function POST(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Your account is missing an email address' }, { status: 400 });
     }
 
-    let intent: Stripe.PaymentIntent;
+    // Native Stripe Subscription: Stripe owns the cycle from here on —
+    // it charges each month, retries failures and runs its own dunning.
+    // Our process-subscriptions cron must therefore SKIP this enrollment,
+    // which is what billing_provider='stripe' below signals.
+    let subscription: Stripe.Subscription;
     try {
+      const customerId = await ensureStripeCustomer(admin, user.id);
+      const priceId = await ensureGroupPrice(admin, group as any);
+      const cancelAt = endDateToCancelAt((group as any).end_date);
+
       const stripe = getStripeClient();
-      intent = await stripe.paymentIntents.create(
+      subscription = await stripe.subscriptions.create(
         {
-          amount: amountCents,
-          currency: 'ttd',
-          description: `${group.name} — Monthly Subscription`,
-          receipt_email: customerEmail,
-          automatic_payment_methods: { enabled: true },
+          customer: customerId,
+          items: [{ price: priceId }],
+          // Don't activate until the first invoice is actually paid; the
+          // enrollment stays PENDING_PAYMENT until the webhook says so.
+          payment_behavior: 'default_incomplete',
+          payment_settings: { save_default_payment_method: 'on_subscription' },
+          expand: ['latest_invoice.payment_intent'],
+          // Stops billing when the class ends, without a cron to cancel it.
+          ...(cancelAt ? { cancel_at: cancelAt } : {}),
+          // Stripe has no concept of "which class/tutor" — these are what
+          // the webhook and the (deferred) pause/resume work key off.
           metadata: {
-            // Routes this intent to the subscription branch of the webhook.
             kind: 'group_subscription',
-            type: 'subscription_initial',
-            enrollment_id: enrollmentId!,
             group_id: groupId,
+            tutor_id: group.tutor_id,
             student_id: user.id,
+            enrollment_id: enrollmentId!,
             payment_id: paymentRow.id,
             base_amount_ttd: String(finalPrice),
-            processing_fee_ttd: String(subFee),
           },
         },
-        // Keyed on the subscription_payment row, so a double-submit reuses
-        // the same intent while a genuinely new cycle gets its own.
         { idempotencyKey: `subscribe-${paymentRow.id}` }
       );
     } catch (err) {
       const isApiError = err instanceof Stripe.errors.StripeError;
       console.error(
-        '[subscribe] Stripe paymentIntents.create failed:',
+        '[subscribe] Stripe subscriptions.create failed:',
         isApiError ? { type: err.type, code: err.code, message: err.message } : err
+      );
+      return NextResponse.json({ error: 'Failed to create checkout session' }, { status: 502 });
+    }
+
+    const latestInvoice = subscription.latest_invoice as Stripe.Invoice | null;
+    const intent = (latestInvoice as any)?.payment_intent as Stripe.PaymentIntent | null;
+
+    if (!intent?.client_secret) {
+      console.error(
+        '[subscribe] Subscription created without a payable invoice',
+        { subscription: subscription.id, status: subscription.status }
       );
       return NextResponse.json({ error: 'Failed to create checkout session' }, { status: 502 });
     }
@@ -465,9 +492,23 @@ export async function POST(req: NextRequest, { params }: Params) {
       .from('subscription_payments')
       .update({
         stripe_payment_intent_id: intent.id,
+        stripe_subscription_id: subscription.id,
+        stripe_invoice_id: latestInvoice?.id ?? null,
         charged_processing_fee_ttd: subFee,
       })
       .eq('id', paymentRow.id);
+
+    // Mark the enrollment Stripe-billed so the self-managed dunning cron
+    // leaves it alone. Set BEFORE the student pays: if they abandon
+    // checkout the enrollment is still PENDING_PAYMENT and gets expired by
+    // the normal seat-reservation task, which doesn't consult this flag.
+    await admin
+      .from('group_enrollments')
+      .update({
+        stripe_subscription_id: subscription.id,
+        billing_provider: 'stripe',
+      })
+      .eq('id', enrollmentId!);
 
     // Step 14: Return the client secret. The enrollment stays PENDING_PAYMENT
     // until the webhook confirms — the client never activates it from

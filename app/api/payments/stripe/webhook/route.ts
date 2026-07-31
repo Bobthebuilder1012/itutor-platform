@@ -309,6 +309,12 @@ export async function POST(request: NextRequest) {
         return await handleDisputeCreated(admin, event, attempts);
       case 'charge.updated':
         return await handleChargeUpdated(admin, event, attempts);
+      case 'invoice.paid':
+        return await handleInvoicePaid(admin, event, attempts);
+      case 'invoice.payment_failed':
+        return await handleInvoicePaymentFailed(admin, event, attempts);
+      case 'customer.subscription.deleted':
+        return await handleSubscriptionDeleted(admin, event, attempts);
       default:
         console.log(
           `[stripe/webhook] Ignoring unhandled event type: ${event.type}`
@@ -1176,6 +1182,255 @@ async function handleChargeRefunded(
     payment_id: payment.id,
     status: newStatus,
   });
+}
+
+// -----------------------------------------------------------------
+// invoice.paid — a subscription cycle was actually paid
+// -----------------------------------------------------------------
+/**
+ * The subscription equivalent of payment_intent.succeeded, and the only
+ * event that proves money moved for a period. Fires for the FIRST
+ * invoice and every renewal, so this single handler activates a new
+ * enrollment and extends an existing one.
+ *
+ * Activation goes through handleSubscriptionPayment — the same function
+ * the LuniPay webhook uses — so period maths, seat limits and enrollment
+ * state transitions exist in exactly one place.
+ */
+async function handleInvoicePaid(
+  admin: AdminClient,
+  event: Stripe.Event,
+  attempts: number
+) {
+  const invoice = event.data.object as Stripe.Invoice;
+  const subscriptionId =
+    typeof (invoice as any).subscription === 'string'
+      ? (invoice as any).subscription
+      : (invoice as any).subscription?.id ?? null;
+
+  if (!subscriptionId) {
+    // Not a subscription invoice (one-off invoices aren't used here).
+    await markProcessed(admin, event, null, 'skipped', attempts, 'no subscription');
+    return NextResponse.json({ received: true, status: 'not_subscription' });
+  }
+
+  const { data: enrollment, error: lookupErr } = await admin
+    .from('group_enrollments')
+    .select('id, status, group_id, student_id')
+    .eq('stripe_subscription_id', subscriptionId)
+    .maybeSingle();
+
+  if (lookupErr && isRetryablePgError(lookupErr)) {
+    await markRetryable(admin, event, null, attempts, 'lookup_retryable');
+    return NextResponse.json(
+      { received: false, status: 'lookup_retryable', retry: true },
+      { status: 500 }
+    );
+  }
+
+  if (!enrollment) {
+    console.warn(
+      `[stripe/webhook] invoice.paid for unknown subscription ${subscriptionId}`
+    );
+    await markProcessed(admin, event, null, 'skipped', attempts, 'no enrollment');
+    return NextResponse.json({ received: true, status: 'no_enrollment' });
+  }
+
+  // Find the subscription_payment for this cycle. The first invoice was
+  // pre-created by /subscribe; renewals have none yet, so one is created.
+  let { data: sp } = await admin
+    .from('subscription_payments')
+    .select('id')
+    .eq('stripe_invoice_id', invoice.id)
+    .maybeSingle();
+
+  if (!sp) {
+    const { data: pending } = await admin
+      .from('subscription_payments')
+      .select('id')
+      .eq('stripe_subscription_id', subscriptionId)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    sp = pending ?? null;
+
+    if (sp) {
+      await admin
+        .from('subscription_payments')
+        .update({ stripe_invoice_id: invoice.id })
+        .eq('id', sp.id);
+    }
+  }
+
+  if (!sp) {
+    // A renewal Stripe charged without us having staged a row. The money
+    // is real, so record it rather than dropping it on the floor.
+    const { data: created, error: createErr } = await admin
+      .from('subscription_payments')
+      .insert({
+        enrollment_id: enrollment.id,
+        group_id: enrollment.group_id,
+        student_id: enrollment.student_id,
+        type: 'subscription_renewal',
+        amount_ttd: centsToTtd(invoice.amount_paid ?? 0),
+        platform_fee_ttd: 0,
+        tutor_payout_ttd: 0,
+        status: 'pending',
+        stripe_invoice_id: invoice.id,
+        stripe_subscription_id: subscriptionId,
+      })
+      .select('id')
+      .single();
+
+    if (createErr || !created) {
+      console.error('[stripe/webhook] Could not stage renewal payment:', createErr);
+      await markRetryable(admin, event, null, attempts, 'renewal_insert_failed');
+      return NextResponse.json(
+        { received: false, status: 'renewal_insert_failed', retry: true },
+        { status: 500 }
+      );
+    }
+    sp = created;
+  }
+
+  const result = await handleSubscriptionPayment({
+    admin: admin as any,
+    subscriptionPaymentId: sp.id,
+    stripePaymentIntentId:
+      typeof (invoice as any).payment_intent === 'string'
+        ? (invoice as any).payment_intent
+        : (invoice as any).payment_intent?.id ?? null,
+    stripeChargeId:
+      typeof (invoice as any).charge === 'string' ? (invoice as any).charge : null,
+    receiptUrl: (invoice as any).hosted_invoice_url ?? null,
+    source: 'webhook',
+  });
+
+  if (!result.ok && !result.idempotent && result.error?.includes('rpc_failed')) {
+    await markRetryable(admin, event, null, attempts, result.error ?? 'rpc_failed');
+    return NextResponse.json(
+      { received: false, status: result.error, retry: true },
+      { status: 500 }
+    );
+  }
+
+  await markProcessed(
+    admin,
+    event,
+    null,
+    result.ok ? 'processed' : 'skipped',
+    attempts,
+    result.ok ? undefined : result.error ?? undefined
+  );
+  return NextResponse.json({
+    received: true,
+    status: result.ok ? 'subscription_cycle_paid' : result.error,
+  });
+}
+
+// -----------------------------------------------------------------
+// invoice.payment_failed — Stripe's dunning, not ours
+// -----------------------------------------------------------------
+/**
+ * Records the failure and notifies the student. Access is deliberately
+ * NOT suspended here: Stripe retries on its own schedule and the
+ * subscription only ends when those retries are exhausted, which arrives
+ * as customer.subscription.deleted. Suspending on the first failure
+ * would cut off a student whose card succeeds on retry two days later.
+ */
+async function handleInvoicePaymentFailed(
+  admin: AdminClient,
+  event: Stripe.Event,
+  attempts: number
+) {
+  const invoice = event.data.object as Stripe.Invoice;
+  const subscriptionId =
+    typeof (invoice as any).subscription === 'string'
+      ? (invoice as any).subscription
+      : (invoice as any).subscription?.id ?? null;
+
+  if (!subscriptionId) {
+    await markProcessed(admin, event, null, 'skipped', attempts, 'no subscription');
+    return NextResponse.json({ received: true, status: 'not_subscription' });
+  }
+
+  const { data: enrollment } = await admin
+    .from('group_enrollments')
+    .select('id, student_id, group_id')
+    .eq('stripe_subscription_id', subscriptionId)
+    .maybeSingle();
+
+  if (!enrollment) {
+    await markProcessed(admin, event, null, 'skipped', attempts, 'no enrollment');
+    return NextResponse.json({ received: true, status: 'no_enrollment' });
+  }
+
+  const { data: group } = await admin
+    .from('groups')
+    .select('name')
+    .eq('id', enrollment.group_id)
+    .maybeSingle();
+
+  await admin.from('notifications').insert({
+    user_id: enrollment.student_id,
+    type: 'payment_failed',
+    title: 'Class payment failed',
+    message: `We couldn't process your payment for ${group?.name ?? 'your class'}. We'll retry automatically — please check your card details.`,
+    link: '/student/subscriptions',
+    created_at: new Date().toISOString(),
+  });
+
+  console.warn(
+    `[stripe/webhook] invoice.payment_failed on enrollment ${enrollment.id} — Stripe will retry`
+  );
+
+  await markProcessed(admin, event, null, 'processed', attempts);
+  return NextResponse.json({ received: true, status: 'payment_failed_recorded' });
+}
+
+// -----------------------------------------------------------------
+// customer.subscription.deleted — cycle genuinely over
+// -----------------------------------------------------------------
+/**
+ * Fires when retries are exhausted, the student cancels, or `cancel_at`
+ * (the class end date) is reached. This is where access actually ends.
+ */
+async function handleSubscriptionDeleted(
+  admin: AdminClient,
+  event: Stripe.Event,
+  attempts: number
+) {
+  const subscription = event.data.object as Stripe.Subscription;
+
+  const { data: enrollment } = await admin
+    .from('group_enrollments')
+    .select('id, status')
+    .eq('stripe_subscription_id', subscription.id)
+    .maybeSingle();
+
+  if (!enrollment) {
+    await markProcessed(admin, event, null, 'skipped', attempts, 'no enrollment');
+    return NextResponse.json({ received: true, status: 'no_enrollment' });
+  }
+
+  // Already in a terminal state — nothing to change.
+  if (enrollment.status === 'CANCELLED' || enrollment.status === 'COMPLETED') {
+    await markProcessed(admin, event, enrollment.id, 'skipped', attempts);
+    return NextResponse.json({ received: true, status: 'already_terminal' });
+  }
+
+  await admin
+    .from('group_enrollments')
+    .update({
+      status: 'CANCELLED',
+      cancelled_at: new Date().toISOString(),
+      removal_reason: 'stripe_subscription_ended',
+    })
+    .eq('id', enrollment.id);
+
+  await markProcessed(admin, event, null, 'processed', attempts);
+  return NextResponse.json({ received: true, status: 'enrollment_cancelled' });
 }
 
 // -----------------------------------------------------------------
