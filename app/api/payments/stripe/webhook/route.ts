@@ -1073,10 +1073,25 @@ async function handleChargeUpdated(
     return NextResponse.json({ received: true, status: 'no_backfill_needed' });
   }
 
-  const fees = extractChargeFees(charge);
+  // The charge on a WEBHOOK PAYLOAD carries balance_transaction as an id
+  // string, never an expanded object — so extractChargeFees would always
+  // return nulls here. Re-retrieve with the expansion to get the real
+  // figures. (This is what made the first version of this handler no-op.)
+  let fees = extractChargeFees(charge);
   if (fees.feeTtd == null) {
-    // Balance transaction still not settled — a later charge.updated
-    // (or the reconciliation query) will pick it up.
+    try {
+      const stripe = getStripeClient();
+      const full = await stripe.charges.retrieve(charge.id, {
+        expand: ['balance_transaction'],
+      });
+      fees = extractChargeFees(full);
+    } catch (err) {
+      console.warn('[stripe/webhook] Could not re-retrieve charge for fees:', err);
+    }
+  }
+
+  if (fees.feeTtd == null) {
+    // Genuinely not settled yet — a later charge.updated will pick it up.
     await markProcessed(admin, event, payment.id, 'skipped', attempts, 'fee not settled yet');
     return NextResponse.json({ received: true, status: 'fee_not_ready' });
   }
