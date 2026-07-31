@@ -216,6 +216,8 @@ export async function POST(request: NextRequest) {
         return await handleChargeRefunded(admin, event, attempts);
       case 'charge.dispute.created':
         return await handleDisputeCreated(admin, event, attempts);
+      case 'charge.updated':
+        return await handleChargeUpdated(admin, event, attempts);
       default:
         console.log(
           `[stripe/webhook] Ignoring unhandled event type: ${event.type}`
@@ -1019,6 +1021,99 @@ async function handleChargeRefunded(
     received: true,
     payment_id: payment.id,
     status: newStatus,
+  });
+}
+
+// -----------------------------------------------------------------
+// charge.updated — late fee backfill
+// -----------------------------------------------------------------
+/**
+ * Captures Stripe's real processing fee once the balance transaction
+ * has settled.
+ *
+ * WHY THIS EXISTS: `balance_transaction` is frequently NOT yet available
+ * when `payment_intent.succeeded` fires — the charge exists but Stripe
+ * hasn't settled it. The inline capture in handleIntentSucceeded is
+ * therefore best-effort and often produces null fees in production
+ * (observed on a deployed test: fees captured locally where the handler
+ * was slow, null on the fast serverless path).
+ *
+ * Polling inside the succeeded handler would add latency to a webhook
+ * that should ack fast, so instead we backfill here. Stripe emits
+ * charge.updated when the balance transaction lands.
+ *
+ * Purely a reconciliation concern — it never changes payment or booking
+ * status, and a miss costs nothing but an empty fee_variance_ttd.
+ */
+async function handleChargeUpdated(
+  admin: AdminClient,
+  event: Stripe.Event,
+  attempts: number
+) {
+  const charge = event.data.object as Stripe.Charge;
+  const intentId =
+    typeof charge.payment_intent === 'string'
+      ? charge.payment_intent
+      : charge.payment_intent?.id ?? null;
+
+  if (!intentId) {
+    await markProcessed(admin, event, null, 'skipped', attempts, 'no payment_intent');
+    return NextResponse.json({ received: true, status: 'no_intent' });
+  }
+
+  const { data: payment } = await admin
+    .from('payments')
+    .select('id, charged_processing_fee_ttd, stripe_fee_ttd')
+    .eq('stripe_payment_intent_id', intentId)
+    .maybeSingle();
+
+  // Nothing of ours, or the fee is already recorded — nothing to do.
+  if (!payment || payment.stripe_fee_ttd != null) {
+    await markProcessed(admin, event, payment?.id ?? null, 'skipped', attempts);
+    return NextResponse.json({ received: true, status: 'no_backfill_needed' });
+  }
+
+  const fees = extractChargeFees(charge);
+  if (fees.feeTtd == null) {
+    // Balance transaction still not settled — a later charge.updated
+    // (or the reconciliation query) will pick it up.
+    await markProcessed(admin, event, payment.id, 'skipped', attempts, 'fee not settled yet');
+    return NextResponse.json({ received: true, status: 'fee_not_ready' });
+  }
+
+  const charged = payment.charged_processing_fee_ttd;
+  const variance =
+    charged != null
+      ? Math.round((Number(charged) - fees.feeTtd) * 100) / 100
+      : null;
+
+  await admin
+    .from('payments')
+    .update({
+      stripe_charge_id: charge.id,
+      stripe_balance_txn_id: fees.balanceTxnId,
+      stripe_fee_ttd: fees.feeTtd,
+      stripe_net_ttd: fees.netTtd,
+      stripe_settlement_currency: fees.settlementCurrency,
+      fee_variance_ttd: variance,
+    })
+    .eq('id', payment.id);
+
+  if (variance != null && variance < 0) {
+    console.warn(
+      `[stripe/webhook] UNDER-COLLECTED on payment ${payment.id}: charged TT$${charged}, Stripe took TT$${fees.feeTtd} (variance TT$${variance}).`
+    );
+  }
+
+  console.log(
+    `[stripe/webhook] Backfilled fee for payment ${payment.id}: TT$${fees.feeTtd} (variance TT$${variance})`
+  );
+
+  await markProcessed(admin, event, payment.id, 'processed', attempts);
+  return NextResponse.json({
+    received: true,
+    payment_id: payment.id,
+    status: 'fee_backfilled',
   });
 }
 
