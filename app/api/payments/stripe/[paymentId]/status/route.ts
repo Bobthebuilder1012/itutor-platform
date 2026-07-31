@@ -72,10 +72,16 @@ export async function GET(
       return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
     }
 
-    // Only the payer may poll their own payment.
-    if (payment.payer_id !== user.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    // Authorization is enforced by RLS on the query above, which is run with
+    // the *user's* client, not the service role. If a row came back, this
+    // user is already permitted to see it — the policies on `payments` cover
+    // the payer, the student, a linked parent, and the tutor.
+    //
+    // Do NOT re-check payer_id === user.id here. That was stricter than the
+    // policies and broke billing_mode='parent_required': the student sits on
+    // the checkout page while their PARENT is the payer, so the student's own
+    // poll 403'd, the client kept retrying, and a perfectly successful
+    // payment surfaced as "still being confirmed" until it timed out.
 
     let bookingPaymentStatus: string | null = null;
     if (payment.booking_id) {
