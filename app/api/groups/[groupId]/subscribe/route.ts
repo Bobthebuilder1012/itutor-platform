@@ -1,12 +1,15 @@
 // POST /api/groups/[groupId]/subscribe
-// Creates a Stripe PaymentIntent for a MONTHLY group subscription.
+// Creates a native Stripe Subscription for a MONTHLY group class.
 // Implements the 14-step decision tree from the subscription billing plan.
 //
-// Deliberately NOT a Stripe Subscription object: we own the recurring
-// cycle (group_enrollments.next_payment_due_at + the
-// process-subscriptions cron), so Stripe charges each period with a
-// PaymentIntent, the same shape as the 1:1 flow. The enrollment stays
-// PENDING_PAYMENT until the webhook confirms.
+// Stripe owns the billing cycle: it charges each month, retries failures
+// and runs its own dunning. The enrollment is marked
+// billing_provider='stripe' so our self-managed process-subscriptions
+// cron skips it — running both would suspend a student while Stripe is
+// still successfully retrying.
+//
+// The enrollment stays PENDING_PAYMENT until the webhook confirms
+// invoice.paid; the client never activates it from confirmPayment.
 
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
@@ -79,7 +82,10 @@ export async function POST(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Payments are not configured' }, { status: 503 });
     }
 
-    if (!process.env.LUNIPAY_SECRET_KEY) {
+    // Gate on the provider this route actually uses. This checked
+    // LUNIPAY_SECRET_KEY, which would have refused Stripe subscriptions on
+    // any environment where the (now unused) LuniPay key was absent.
+    if (!process.env.STRIPE_SECRET_KEY) {
       return NextResponse.json({ error: 'Payment processing is not available on this environment' }, { status: 503 });
     }
 
@@ -451,7 +457,13 @@ export async function POST(req: NextRequest, { params }: Params) {
           // enrollment stays PENDING_PAYMENT until the webhook says so.
           payment_behavior: 'default_incomplete',
           payment_settings: { save_default_payment_method: 'on_subscription' },
-          expand: ['latest_invoice.payment_intent'],
+          // NOT 'latest_invoice.payment_intent' — Stripe removed
+          // Invoice.payment_intent in recent API versions (we pin
+          // 2026-07-29.dahlia). That expand is accepted silently but
+          // yields nothing, so the client secret came back undefined and
+          // every subscribe attempt fell into the 502 below.
+          // confirmation_secret is the replacement.
+          expand: ['latest_invoice.confirmation_secret'],
           // Stops billing when the class ends, without a cron to cancel it.
           ...(cancelAt ? { cancel_at: cancelAt } : {}),
           // Stripe has no concept of "which class/tutor" — these are what
@@ -478,20 +490,31 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
 
     const latestInvoice = subscription.latest_invoice as Stripe.Invoice | null;
-    const intent = (latestInvoice as any)?.payment_intent as Stripe.PaymentIntent | null;
+    const clientSecret = (latestInvoice as any)?.confirmation_secret?.client_secret as
+      | string
+      | undefined;
 
-    if (!intent?.client_secret) {
+    if (!clientSecret) {
       console.error(
         '[subscribe] Subscription created without a payable invoice',
-        { subscription: subscription.id, status: subscription.status }
+        {
+          subscription: subscription.id,
+          status: subscription.status,
+          invoice: latestInvoice?.id,
+        }
       );
       return NextResponse.json({ error: 'Failed to create checkout session' }, { status: 502 });
     }
 
+    // A client secret is `pi_XXX_secret_YYY`, so the PaymentIntent id is the
+    // part before `_secret_`. Derived rather than fetched: Invoice no longer
+    // exposes payment_intent, and this saves a round-trip.
+    const intentId = clientSecret.split('_secret_')[0];
+
     await admin
       .from('subscription_payments')
       .update({
-        stripe_payment_intent_id: intent.id,
+        stripe_payment_intent_id: intentId,
         stripe_subscription_id: subscription.id,
         stripe_invoice_id: latestInvoice?.id ?? null,
         charged_processing_fee_ttd: subFee,
@@ -514,9 +537,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     // until the webhook confirms — the client never activates it from
     // confirmPayment's result.
     return NextResponse.json({
-      checkout_url: `/payments/checkout?pi=${intent.id}`,
-      client_secret: intent.client_secret,
-      payment_intent_id: intent.id,
+      checkout_url: `/payments/checkout?pi=${intentId}`,
+      client_secret: clientSecret,
+      payment_intent_id: intentId,
       enrollment_id: enrollmentId,
       payment_id: paymentRow.id,
       amount: finalPrice,
