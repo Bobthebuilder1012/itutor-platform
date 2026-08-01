@@ -1184,6 +1184,43 @@ async function handleChargeRefunded(
   });
 }
 
+/**
+ * Pulls the subscription id and metadata off an Invoice.
+ *
+ * Stripe MOVED these. On the API version we pin (2026-07-29.dahlia)
+ * `invoice.subscription`, `invoice.charge` and `invoice.payment_intent`
+ * are all null, and the subscription now lives at
+ * `invoice.parent.subscription_details.subscription`, with the
+ * Subscription's metadata alongside it.
+ *
+ * This cost a silently-dropped payment: invoice.paid was delivered and
+ * skipped as 'no subscription', so the student was charged and their
+ * enrollment stayed PENDING_PAYMENT. Both shapes are read so a version
+ * change in either direction doesn't break it again.
+ */
+function extractInvoiceSubscription(invoice: Stripe.Invoice): {
+  subscriptionId: string | null;
+  metadata: Record<string, string>;
+} {
+  const anyInv = invoice as any;
+
+  const legacy =
+    typeof anyInv.subscription === 'string'
+      ? anyInv.subscription
+      : anyInv.subscription?.id ?? null;
+
+  const details = anyInv.parent?.subscription_details;
+  const nested =
+    typeof details?.subscription === 'string'
+      ? details.subscription
+      : details?.subscription?.id ?? null;
+
+  return {
+    subscriptionId: legacy ?? nested ?? null,
+    metadata: (details?.metadata ?? anyInv.metadata ?? {}) as Record<string, string>,
+  };
+}
+
 // -----------------------------------------------------------------
 // invoice.paid — a subscription cycle was actually paid
 // -----------------------------------------------------------------
@@ -1203,10 +1240,7 @@ async function handleInvoicePaid(
   attempts: number
 ) {
   const invoice = event.data.object as Stripe.Invoice;
-  const subscriptionId =
-    typeof (invoice as any).subscription === 'string'
-      ? (invoice as any).subscription
-      : (invoice as any).subscription?.id ?? null;
+  const { subscriptionId, metadata: subMeta } = extractInvoiceSubscription(invoice);
 
   if (!subscriptionId) {
     // Not a subscription invoice (one-off invoices aren't used here).
@@ -1238,11 +1272,30 @@ async function handleInvoicePaid(
 
   // Find the subscription_payment for this cycle. The first invoice was
   // pre-created by /subscribe; renewals have none yet, so one is created.
-  let { data: sp } = await admin
-    .from('subscription_payments')
-    .select('id')
-    .eq('stripe_invoice_id', invoice.id)
-    .maybeSingle();
+  //
+  // The Subscription's metadata rides along on
+  // parent.subscription_details.metadata, so payment_id identifies the
+  // staged row directly — more precise than guessing at the newest
+  // PENDING row when a student has several cycles in flight.
+  let sp: { id: string } | null = null;
+
+  if (subMeta?.payment_id) {
+    const { data } = await admin
+      .from('subscription_payments')
+      .select('id')
+      .eq('id', subMeta.payment_id)
+      .maybeSingle();
+    sp = data ?? null;
+  }
+
+  if (!sp) {
+    const { data } = await admin
+      .from('subscription_payments')
+      .select('id')
+      .eq('stripe_invoice_id', invoice.id)
+      .maybeSingle();
+    sp = data ?? null;
+  }
 
   if (!sp) {
     const { data: pending } = await admin
@@ -1345,10 +1398,7 @@ async function handleInvoicePaymentFailed(
   attempts: number
 ) {
   const invoice = event.data.object as Stripe.Invoice;
-  const subscriptionId =
-    typeof (invoice as any).subscription === 'string'
-      ? (invoice as any).subscription
-      : (invoice as any).subscription?.id ?? null;
+  const { subscriptionId, metadata: subMeta } = extractInvoiceSubscription(invoice);
 
   if (!subscriptionId) {
     await markProcessed(admin, event, null, 'skipped', attempts, 'no subscription');
