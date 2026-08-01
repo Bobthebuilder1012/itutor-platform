@@ -11,6 +11,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
 import { getStripeClient, ttdToCents } from './stripeClient';
+import { calculateGrossAmountForProvider } from './grossUp';
 
 type AdminClient = SupabaseClient<any, 'public', 'public', any, any>;
 
@@ -85,7 +86,21 @@ export async function ensureGroupPrice(
     throw new Error('Group has no monthly price');
   }
 
+  // The student pays the processing fee ON TOP of the tutor's price, so the
+  // recurring Price is the grossed-up total — the same model as 1:1.
+  //
+  // This previously used price_monthly directly, so Stripe charged the bare
+  // TT$120 while checkout displayed a TT$5.68 processing fee that was never
+  // collected: the line was fiction and the platform absorbed the fee every
+  // month, for every subscriber.
+  //
+  // Note the tutor's payout is unaffected either way — it's computed from
+  // subscription_payments.amount_ttd, which stays the BASE price.
+  const { grossAmount } = calculateGrossAmountForProvider(amount, 'stripe');
+
   const cached = group.stripe_price_id;
+  // Compared against the BASE price, not the gross, so the check still
+  // detects a tutor editing their price even if the fee schedule changes.
   const cachedAmount = Number(group.stripe_price_amount_ttd ?? NaN);
   if (cached && Number.isFinite(cachedAmount) && cachedAmount === amount) {
     return cached;
@@ -94,10 +109,14 @@ export async function ensureGroupPrice(
   const stripe = getStripeClient();
   const price = await stripe.prices.create({
     currency: 'ttd',
-    unit_amount: ttdToCents(amount),
+    unit_amount: ttdToCents(grossAmount),
     recurring: { interval: 'month' },
     product_data: { name: `${group.name} — Monthly` },
-    metadata: { group_id: group.id, amount_ttd: String(amount) },
+    metadata: {
+      group_id: group.id,
+      base_amount_ttd: String(amount),
+      gross_amount_ttd: String(grossAmount),
+    },
   });
 
   await admin
