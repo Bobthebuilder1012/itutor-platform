@@ -17,6 +17,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
+import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { getStripeClient, centsToTtd } from '@/lib/payments/stripeClient';
 
@@ -65,11 +66,84 @@ export async function GET(
 
     const md = intent.metadata || {};
 
+    // -----------------------------------------------------------------
+    // Subscription invoices carry NO metadata.
+    //
+    // For a native Stripe Subscription, Stripe creates the invoice's
+    // PaymentIntent itself and it inherits nothing from the Subscription —
+    // verified against a live intent: metadata is literally {}. So a
+    // subscription checkout can't be identified from Stripe at all; it has
+    // to be resolved from our own record, which /subscribe writes when it
+    // stores stripe_payment_intent_id on subscription_payments.
+    //
+    // This also covers renewals, whose intents we never created.
+    // -----------------------------------------------------------------
     if (md.kind !== 'create_booking' && md.kind !== 'group_subscription') {
-      return NextResponse.json(
-        { error: 'Not a checkout payment' },
-        { status: 400 }
+      const admin = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        { auth: { autoRefreshToken: false, persistSession: false } }
       );
+
+      const { data: sp } = await admin
+        .from('subscription_payments')
+        .select('id, enrollment_id, group_id, student_id, amount_ttd, charged_processing_fee_ttd')
+        .eq('stripe_payment_intent_id', intentId)
+        .maybeSingle();
+
+      if (!sp) {
+        return NextResponse.json({ error: 'Not a checkout payment' }, { status: 400 });
+      }
+
+      // Authorize against our own row, since there's no metadata to trust.
+      // The payer may be a parent, so allow the enrolment's student or a
+      // caller who is that student.
+      if (sp.student_id !== user.id) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+
+      if (intent.status === 'succeeded') {
+        return NextResponse.json({ status: 'succeeded', alreadyPaid: true });
+      }
+
+      const { data: group } = await admin
+        .from('groups')
+        .select('id, name, tutor_id, session_length_minutes, end_date')
+        .eq('id', sp.group_id)
+        .maybeSingle();
+
+      const { data: groupTutor } = group?.tutor_id
+        ? await admin
+            .from('profiles')
+            .select('id, full_name, display_name, avatar_url')
+            .eq('id', group.tutor_id)
+            .maybeSingle()
+        : { data: null };
+
+      const base = Number(sp.amount_ttd ?? 0);
+      const fee = Number(sp.charged_processing_fee_ttd ?? 0);
+
+      return NextResponse.json({
+        kind: 'group_subscription',
+        status: intent.status,
+        clientSecret: intent.client_secret,
+        paymentIntentId: intent.id,
+        amount: base,
+        processingFee: fee,
+        total: centsToTtd(intent.amount),
+        currency: 'TTD',
+        durationMinutes: group?.session_length_minutes ?? null,
+        startAt: null,
+        endDate: (group as any)?.end_date ?? null,
+        tutor: {
+          id: group?.tutor_id ?? null,
+          name: groupTutor?.display_name || groupTutor?.full_name || 'Your tutor',
+          avatarUrl: groupTutor?.avatar_url ?? null,
+        },
+        subject: group?.name || 'Group class',
+        groupId: sp.group_id,
+        enrollmentId: sp.enrollment_id,
+      });
     }
 
     // Only the student the booking is for, or the payer footing the bill

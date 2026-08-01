@@ -79,8 +79,7 @@ export async function GET(
           .maybeSingle();
 
         const active =
-          subPayment.status === 'paid' ||
-          subPayment.status === 'succeeded' ||
+          subPayment.status === 'PAID' ||
           enrollment?.status === 'ACTIVE';
 
         return NextResponse.json({

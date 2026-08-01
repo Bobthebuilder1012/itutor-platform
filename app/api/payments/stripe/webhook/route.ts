@@ -1249,7 +1249,7 @@ async function handleInvoicePaid(
       .from('subscription_payments')
       .select('id')
       .eq('stripe_subscription_id', subscriptionId)
-      .eq('status', 'pending')
+      .eq('status', 'PENDING')
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -1276,7 +1276,7 @@ async function handleInvoicePaid(
         amount_ttd: centsToTtd(invoice.amount_paid ?? 0),
         platform_fee_ttd: 0,
         tutor_payout_ttd: 0,
-        status: 'pending',
+        status: 'PENDING',
         stripe_invoice_id: invoice.id,
         stripe_subscription_id: subscriptionId,
       })
