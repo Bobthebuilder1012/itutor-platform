@@ -42,20 +42,36 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
     await auditAdminOverride(actor, 'member.update', { targetUserId: userId, status });
 
+    // 'ENROLLMENT_CONFIRMED' was not a permitted notifications.type, so this
+    // insert threw and was swallowed by the catch below — students were never
+    // told their request had been approved. Migration 203 adds
+    // 'join_request_approved'; the error is now logged rather than discarded
+    // so a future type mismatch is visible instead of silent.
     try {
-      await service.from('notifications').insert({
+      const { error: notifyError } = await service.from('notifications').insert({
         user_id: userId,
-        type: status === 'approved' ? 'ENROLLMENT_CONFIRMED' : 'booking_declined',
-        title: status === 'approved' ? 'Group request approved' : 'Group request declined',
+        type: status === 'approved' ? 'join_request_approved' : 'booking_declined',
+        title:
+          status === 'approved'
+            ? `You're approved to join ${actor.group.name}`
+            : 'Group request declined',
         message:
           status === 'approved'
-            ? `Your request to join "${actor.group.name}" has been approved.`
+            ? `Your request to join "${actor.group.name}" was approved. You can now complete your enrolment.`
             : `Your request to join "${actor.group.name}" was not approved.`,
-        link: `/groups`,
+        // Deep-link to the class so an approved student can carry straight on
+        // to payment, rather than landing on a list and hunting for it.
+        link:
+          status === 'approved'
+            ? `/student/explore/${groupId}`
+            : '/student/explore',
         group_id: groupId,
       });
-    } catch {
-      // Non-critical
+      if (notifyError) {
+        console.error('[members PATCH] notification insert failed:', notifyError);
+      }
+    } catch (err) {
+      console.error('[members PATCH] notification threw:', err);
     }
 
     return NextResponse.json({ member });

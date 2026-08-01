@@ -43,6 +43,10 @@ import {
   receiptSubject,
   renderTutorBookingHtml,
   tutorBookingSubject,
+  buildSubscriptionReceiptData,
+  renderSubscriptionReceiptHtml,
+  subscriptionReceiptSubject,
+  renderTutorNewMemberHtml,
 } from '@/lib/payments/receipt';
 
 export const dynamic = 'force-dynamic';
@@ -1368,6 +1372,14 @@ async function handleInvoicePaid(
     );
   }
 
+  // Receipt to the student + "someone joined" to the tutor. Non-fatal and
+  // per-recipient, exactly like the booking emails: a bounce must never
+  // fail the handler, since a 5xx would make Stripe redeliver and re-run
+  // the activation side effects.
+  if (result.ok) {
+    await sendSubscriptionEmails(admin, sp.id);
+  }
+
   await markProcessed(
     admin,
     event,
@@ -1380,6 +1392,70 @@ async function handleInvoicePaid(
     received: true,
     status: result.ok ? 'subscription_cycle_paid' : result.error,
   });
+}
+
+/**
+ * Student receipt + tutor "new member" notice for a paid subscription
+ * cycle. Both are dispatched independently so one bad address can't
+ * suppress the other. Fully swallowed — see sendReceiptEmail.
+ */
+async function sendSubscriptionEmails(admin: AdminClient, subscriptionPaymentId: string) {
+  try {
+    const d = await buildSubscriptionReceiptData(admin, subscriptionPaymentId);
+    if (!d) {
+      console.warn(
+        `[stripe/webhook] No subscription receipt data for ${subscriptionPaymentId}`
+      );
+      return;
+    }
+
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+    const jobs: Array<{ label: string; run: () => Promise<unknown> }> = [];
+
+    if (d.studentEmail) {
+      jobs.push({
+        label: `sub-receipt→${d.studentEmail}`,
+        run: () =>
+          sendEmail({
+            to: d.studentEmail!,
+            subject: subscriptionReceiptSubject(d),
+            html: renderSubscriptionReceiptHtml(d, { appUrl }),
+          }),
+      });
+    }
+
+    // Only announce a NEW member, not every monthly renewal — a tutor
+    // doesn't want "X joined your class" once a month forever.
+    const isFirstCycle = !d.periodStart || !d.paidAt
+      ? true
+      : Math.abs(new Date(d.paidAt).getTime() - new Date(d.periodStart).getTime()) <
+        60 * 60 * 1000;
+
+    if (d.tutorEmail && isFirstCycle) {
+      jobs.push({
+        label: `tutor-new-member→${d.tutorEmail}`,
+        run: () =>
+          sendEmail({
+            to: d.tutorEmail!,
+            subject: `${d.studentName} joined ${d.className}`,
+            html: renderTutorNewMemberHtml(d, { appUrl }),
+          }),
+      });
+    }
+
+    const results = await Promise.allSettled(jobs.map((j) => j.run()));
+    results.forEach((r, i) => {
+      const label = jobs[i].label;
+      if (r.status === 'rejected') {
+        console.error(`[stripe/webhook] ${label} threw:`, r.reason);
+      } else {
+        const v = r.value as { success?: boolean; error?: string };
+        if (!v?.success) console.error(`[stripe/webhook] ${label} failed: ${v?.error}`);
+      }
+    });
+  } catch (err) {
+    console.error('[stripe/webhook] Subscription emails threw (non-fatal):', err);
+  }
 }
 
 // -----------------------------------------------------------------

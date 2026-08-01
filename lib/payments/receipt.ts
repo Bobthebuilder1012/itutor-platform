@@ -168,6 +168,209 @@ export function tutorBookingSubject(d: ReceiptData) {
   return `New booking: ${d.subject} with ${d.studentName}`;
 }
 
+// =====================================================
+// GROUP SUBSCRIPTION RECEIPT
+// =====================================================
+// Separate shape from ReceiptData because a subscription has no session
+// slot: the money buys a month of a recurring class, not one lesson.
+// Shares the formatting helpers so both receipts look like one product.
+
+export interface SubscriptionReceiptData {
+  subscriptionPaymentId: string;
+  transactionId: string;
+  paidAt: string | null;
+  currency: string;
+  /** Tutor's monthly price, before the processing fee. */
+  amount: number;
+  processingFee: number;
+  total: number;
+  studentName: string;
+  studentEmail: string | null;
+  tutorName: string;
+  tutorEmail: string | null;
+  className: string;
+  periodStart: string | null;
+  periodEnd: string | null;
+  groupId: string;
+}
+
+export async function buildSubscriptionReceiptData(
+  admin: AdminClient,
+  subscriptionPaymentId: string
+): Promise<SubscriptionReceiptData | null> {
+  const { data: sp, error } = await admin
+    .from('subscription_payments')
+    .select(
+      'id, enrollment_id, group_id, student_id, amount_ttd, charged_processing_fee_ttd, paid_at, period_start, period_end, stripe_payment_intent_id, stripe_invoice_id'
+    )
+    .eq('id', subscriptionPaymentId)
+    .maybeSingle();
+
+  if (error || !sp) return null;
+
+  const { data: group } = await admin
+    .from('groups')
+    .select('id, name, tutor_id')
+    .eq('id', sp.group_id)
+    .maybeSingle();
+
+  const ids = Array.from(new Set([sp.student_id, group?.tutor_id].filter(Boolean)));
+  const { data: people } = await admin
+    .from('profiles')
+    .select('id, full_name, display_name, email')
+    .in('id', ids as string[]);
+
+  const find = (id: string | null | undefined) =>
+    (people ?? []).find((p: any) => p.id === id) as
+      | { full_name?: string; display_name?: string; email?: string }
+      | undefined;
+
+  const student = find(sp.student_id);
+  const tutor = find(group?.tutor_id);
+
+  const base = Number(sp.amount_ttd ?? 0);
+  const fee = Number(sp.charged_processing_fee_ttd ?? 0);
+
+  return {
+    subscriptionPaymentId: sp.id,
+    transactionId: sp.stripe_invoice_id || sp.stripe_payment_intent_id || sp.id,
+    paidAt: sp.paid_at ?? null,
+    currency: 'TTD',
+    amount: base,
+    processingFee: fee,
+    total: Math.round((base + fee) * 100) / 100,
+    studentName: student?.display_name || student?.full_name || 'Student',
+    studentEmail: student?.email ?? null,
+    tutorName: tutor?.display_name || tutor?.full_name || 'Tutor',
+    tutorEmail: tutor?.email ?? null,
+    className: group?.name || 'Group class',
+    periodStart: sp.period_start ?? null,
+    periodEnd: sp.period_end ?? null,
+    groupId: sp.group_id,
+  };
+}
+
+export function subscriptionReceiptSubject(d: SubscriptionReceiptData) {
+  return `Your iTutor receipt — ${d.className}`;
+}
+
+export function renderSubscriptionReceiptHtml(
+  d: SubscriptionReceiptData,
+  opts: { appUrl?: string } = {}
+): string {
+  const { appUrl } = opts;
+
+  const rows: Array<[string, string]> = [
+    ['Receipt / Transaction ID', d.transactionId],
+    ['Date of payment', fmtDate(d.paidAt)],
+    ['Student', d.studentName],
+    ['Tutor', d.tutorName],
+    ['Class', d.className],
+    ['Billing period', `${fmtDate(d.periodStart)} – ${fmtDate(d.periodEnd)}`],
+  ];
+
+  const detailRows = rows
+    .map(
+      ([k, v]) => `
+      <tr>
+        <td style="padding:8px 0;color:#6b7280;font-size:14px;">${esc(k)}</td>
+        <td style="padding:8px 0;color:#111827;font-size:14px;font-weight:600;text-align:right;">${esc(v)}</td>
+      </tr>`
+    )
+    .join('');
+
+  return `
+  <div style="font-family:system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#ffffff;color:#111827;max-width:560px;margin:0 auto;padding:24px;">
+    <div style="border-bottom:3px solid ${BRAND_GREEN};padding-bottom:16px;margin-bottom:24px;">
+      <div style="font-size:22px;font-weight:800;color:${BRAND_GREEN};">iTutor</div>
+      <div style="font-size:13px;color:#6b7280;margin-top:2px;">Class subscription receipt</div>
+    </div>
+
+    <p style="font-size:15px;line-height:1.6;margin:0 0 20px;">
+      Hi ${esc(d.studentName)}, thanks for your payment. You're enrolled in
+      <strong>${esc(d.className)}</strong>.
+    </p>
+
+    <table style="width:100%;border-collapse:collapse;margin-bottom:8px;">
+      ${detailRows}
+    </table>
+
+    <table style="width:100%;border-collapse:collapse;border-top:1px solid #e5e7eb;margin-top:16px;">
+      <tr>
+        <td style="padding:10px 0 4px;color:#6b7280;font-size:14px;">Monthly class fee</td>
+        <td style="padding:10px 0 4px;color:#111827;font-size:14px;text-align:right;">${fmtMoney(d.amount, d.currency)}</td>
+      </tr>
+      <tr>
+        <td style="padding:4px 0;color:#6b7280;font-size:14px;">Processing fee</td>
+        <td style="padding:4px 0;color:#111827;font-size:14px;text-align:right;">${fmtMoney(d.processingFee, d.currency)}</td>
+      </tr>
+      <tr>
+        <td style="padding:12px 0 0;border-top:1px solid #e5e7eb;font-size:17px;font-weight:800;">Total charged</td>
+        <td style="padding:12px 0 0;border-top:1px solid #e5e7eb;font-size:17px;font-weight:800;text-align:right;color:${BRAND_GREEN};">${fmtMoney(d.total, d.currency)}</td>
+      </tr>
+    </table>
+
+    <div style="margin-top:20px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:14px;">
+      <p style="margin:0;font-size:13px;line-height:1.6;color:#374151;">
+        <strong>This is a recurring payment.</strong> You'll be charged
+        ${fmtMoney(d.total, d.currency)} each month until the class ends or you
+        cancel. You can cancel any time from your account — you'll keep access
+        for the period you've already paid for.
+      </p>
+    </div>
+
+    ${
+      appUrl
+        ? `<div style="margin-top:24px;">
+             <a href="${esc(appUrl)}/student/subscriptions"
+                style="display:inline-block;background:${BRAND_GREEN};color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:700;font-size:14px;">
+               Manage my subscriptions
+             </a>
+           </div>`
+        : ''
+    }
+
+    <p style="font-size:12px;color:#9ca3af;line-height:1.6;margin:28px 0 0;border-top:1px solid #e5e7eb;padding-top:16px;">
+      Keep this receipt for your records. Quote the transaction ID above in any
+      billing query. Payments are processed securely by Stripe.<br />
+      iTutor · Trinidad &amp; Tobago
+    </p>
+  </div>`;
+}
+
+/** "Someone joined your class" for the tutor. No amounts, same as bookings. */
+export function renderTutorNewMemberHtml(
+  d: SubscriptionReceiptData,
+  opts: { appUrl?: string } = {}
+): string {
+  const { appUrl } = opts;
+  return `
+  <div style="font-family:system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#ffffff;color:#111827;max-width:560px;margin:0 auto;padding:24px;">
+    <div style="border-bottom:3px solid ${BRAND_GREEN};padding-bottom:16px;margin-bottom:24px;">
+      <div style="font-size:22px;font-weight:800;color:${BRAND_GREEN};">iTutor</div>
+      <div style="font-size:13px;color:#6b7280;margin-top:2px;">New student enrolled</div>
+    </div>
+    <p style="font-size:15px;line-height:1.6;margin:0 0 20px;">
+      Hi ${esc(d.tutorName)}, <strong>${esc(d.studentName)}</strong> has joined
+      <strong>${esc(d.className)}</strong> and their first payment has cleared.
+    </p>
+    ${
+      appUrl
+        ? `<div style="margin-top:8px;">
+             <a href="${esc(appUrl)}/tutor/classes/${esc(d.groupId)}?tab=roster"
+                style="display:inline-block;background:${BRAND_GREEN};color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:700;font-size:14px;">
+               View class roster
+             </a>
+           </div>`
+        : ''
+    }
+    <p style="font-size:12px;color:#9ca3af;line-height:1.6;margin:28px 0 0;border-top:1px solid #e5e7eb;padding-top:16px;">
+      Your earnings for this class are shown in your tutor dashboard.<br />
+      iTutor · Trinidad &amp; Tobago
+    </p>
+  </div>`;
+}
+
 /**
  * "You have a new booking" email for the TUTOR.
  *

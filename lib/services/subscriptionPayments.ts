@@ -325,6 +325,45 @@ export async function handleSubscriptionPayment(
     if (ne) console.warn('[handleSubscriptionPayment] notification insert failed:', ne);
   });
 
+  // Notify the TUTOR that a student joined. Placed here rather than in the
+  // Stripe webhook so LuniPay-billed classes get it too — activation is the
+  // one point both providers pass through.
+  //
+  // Only on the FIRST cycle: a renewal isn't someone joining, and a tutor
+  // doesn't want "X joined your class" once a month forever.
+  if (sp.type === 'subscription_initial' || sp.type === 'subscription_reactivation') {
+    const group = (sp as any).enrollment?.group;
+    const tutorId = group?.tutor_id;
+    if (tutorId) {
+      const { data: studentProfile } = await admin
+        .from('profiles')
+        .select('full_name, display_name')
+        .eq('id', sp.student_id)
+        .maybeSingle();
+      const studentName =
+        (studentProfile as any)?.display_name ||
+        (studentProfile as any)?.full_name ||
+        'A student';
+      const className = group?.name ?? 'your class';
+
+      const { error: tutorNotifyError } = await admin.from('notifications').insert({
+        user_id: tutorId,
+        type: 'new_class_member',
+        title: `${studentName} joined ${className}`,
+        message: `${studentName} has joined "${className}" and their payment has cleared.`,
+        link: `/tutor/classes/${sp.group_id}?tab=roster`,
+        group_id: sp.group_id,
+        metadata: { enrollment_id: sp.enrollment_id, student_id: sp.student_id },
+      });
+      if (tutorNotifyError) {
+        console.warn(
+          '[handleSubscriptionPayment] tutor notification failed:',
+          tutorNotifyError
+        );
+      }
+    }
+  }
+
   return { ok: true, enrollmentId: sp.enrollment_id, receipt };
 }
 

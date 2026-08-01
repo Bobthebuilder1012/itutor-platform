@@ -91,12 +91,12 @@ export default function PaymentCheckout() {
           // then shows the receipt + download. Keyed on the intent id because
           // the payments row doesn't exist until the webhook creates it.
           //
-          // Subscriptions go straight to the class instead: their money lands
-          // in subscription_payments, not `payments`, so the receipt page has
-          // nothing to render for them.
+          // Subscriptions get their own confirmation page: their money lands
+          // in subscription_payments, not `payments`, so /payments/success
+          // has nothing to render for them.
           successHref:
             d.kind === 'group_subscription'
-              ? `/student/classes/${d.groupId}`
+              ? `/payments/subscription-success?pi=${d.paymentIntentId}`
               : `/payments/success?pi=${d.paymentIntentId}`,
         });
         return;
@@ -289,11 +289,25 @@ export default function PaymentCheckout() {
                       </span>
                     </div>
                   )}
-                  <p className="pt-1 text-xs text-gray-500">
-                    You&apos;ll be charged {`$${summary.total.toFixed(2)} ${summary.currency}`}{' '}
-                    today and then monthly
-                    {summary.endDate ? ' until the class ends' : ' until you cancel'}.
-                  </p>
+                  {/* Recurring-payment disclaimer. Deliberately prominent and
+                      stated before the card form: this is the one thing a
+                      student must understand before entering card details. */}
+                  <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                    <p className="text-xs leading-relaxed text-amber-900">
+                      <strong>This is a recurring payment.</strong> You&apos;ll
+                      be charged{' '}
+                      <strong>
+                        ${summary.total.toFixed(2)} {summary.currency}
+                      </strong>{' '}
+                      today and then every month
+                      {summary.endDate
+                        ? ' until the class ends'
+                        : ' until you cancel'}
+                      . You can <strong>cancel at any time</strong> from your
+                      account, and you&apos;ll keep access for the period
+                      you&apos;ve already paid for.
+                    </p>
+                  </div>
                 </div>
               ) : start ? (
                 <div className="flex items-center gap-4">
