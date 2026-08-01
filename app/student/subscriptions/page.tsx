@@ -312,12 +312,14 @@ function SubscriptionCard({ sub, onCancel, onUndo, actionLoading }: {
             </a>
           )}
 
-          {isActive && !sub.next_cycle_paid && !isDueNow && (
-            <a href={`/student/subscriptions/${sub.id}/pay`}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-border text-sm font-semibold text-ink hover:bg-muted/50 transition">
-              <CreditCard className="size-3.5" /> Pay next month
-            </a>
-          )}
+          {/*
+            "Pay next month" (advance payment) removed.
+
+            Subscriptions renew automatically now — Stripe charges the saved
+            card each period — so paying ahead manually is at best redundant
+            and at worst a double charge for the same month. Students manage
+            billing by cancelling, not by pre-paying.
+          */}
 
           {(isGrace || isSuspended) && (
             <a href={`/student/subscriptions/${sub.id}/pay`}
