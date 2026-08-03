@@ -446,8 +446,9 @@ export default function TutorProfilePage() {
       setTutor(fetchedTutor);
       if (subjects.length === 1) setSelectedSubject(subjects[0]);
 
-      // Calendar availability is loaded lazily when the booking modal first
-      // opens (see loadCalendarOnce) — no always-visible sidebar needs it now.
+      // Calendar availability is loaded by loadCalendarOnce(): on mount in
+      // 1:1 book mode, where the sidebar shows it straight away, and lazily
+      // when the booking sheet opens elsewhere.
     } catch (error) {
       console.error('Error fetching tutor profile:', error);
       alert('Failed to load tutor profile');
@@ -541,6 +542,16 @@ export default function TutorProfilePage() {
       .finally(() => setCalendarLoading(false));
   };
   const openBookingSheet = () => { setBookingStep(1); setPickedTime(null); setShowBookingSheet(true); loadCalendarOnce(); };
+
+  // The 1:1 sidebar shows the calendar immediately, so it cannot wait for the
+  // booking sheet to open — which was the only thing that ever called
+  // loadCalendarOnce(). Once the sheet stopped auto-opening in book mode, the
+  // sidebar was left spinning forever on calendarLoading's initial `true`.
+  useEffect(() => {
+    if (mode !== 'book' || loading || !tutor) return;
+    loadCalendarOnce();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, loading, tutor]);
 
   // Deep-link: arriving from the 1:1 marketplace "Book a lesson" button
   // (/student/tutors/[id]?book=1on1) opens the 1:1 booking sheet straight away,
