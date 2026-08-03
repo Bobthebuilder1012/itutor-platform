@@ -145,18 +145,41 @@ export default function ExploreClassDetailPage() {
 
       const tutorObj = Array.isArray(g.tutor) ? g.tutor[0] : g.tutor;
 
-      // Check enrollment + pending status
+      // Check enrollment + pending status.
+      //
+      // Membership has TWO sources and this only consulted one. A paid class
+      // is joined by subscribing (group_enrollments), which upserts a
+      // group_members row as a side effect — so if that row is missing or
+      // stale, a student with a live paid subscription was told to "Request
+      // to join" a class they were already paying for. Seen in the wild: an
+      // ACTIVE stripe enrollment alongside group_members.status='removed'.
+      //
+      // A subscription is the stronger signal: it means money is changing
+      // hands right now.
       let enrolled = false;
       let memberStatus: string | null = null;
       if (profile?.id) {
-        const { data: mem } = await supabase
-          .from('group_members')
-          .select('status')
-          .eq('group_id', groupId)
-          .eq('user_id', profile.id)
-          .maybeSingle();
+        const [{ data: mem }, { data: enr }] = await Promise.all([
+          supabase
+            .from('group_members')
+            .select('status')
+            .eq('group_id', groupId)
+            .eq('user_id', profile.id)
+            .maybeSingle(),
+          supabase
+            .from('group_enrollments')
+            .select('status')
+            .eq('group_id', groupId)
+            .eq('student_id', profile.id)
+            // SUSPENDED included deliberately: they ARE in the class, just
+            // access-restricted for non-payment. Offering "Request to join"
+            // would be nonsense; the class page explains the suspension.
+            .in('status', ['ACTIVE', 'GRACE', 'SUSPENDED'])
+            .maybeSingle(),
+        ]);
         memberStatus = mem?.status ?? null;
-        enrolled = !!(mem && ['approved', 'active', 'invited'].includes(mem.status));
+        enrolled =
+          !!enr || !!(mem && ['approved', 'active', 'invited'].includes(mem.status));
       }
 
       // Tutor verification + display name (defensive against schema drift)
