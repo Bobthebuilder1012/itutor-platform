@@ -37,30 +37,31 @@ const LUNIPAY_FIXED_FEE_TTD  = usdToTtd(LUNIPAY_FIXED_FEE_USD); // ≈ TT$4.08
 
 // -----------------------------------------------------------------
 // Stripe: US account, settles USD, presents TTD.
-// Rate set to Stripe's headline card rate per the payments owner.
 // -----------------------------------------------------------------
-//   2.9% + US$0.30
+//   2.9%  + US$0.30   card processing
+// + 1.0%              currency conversion (TTD presented, USD settled)
+// = 3.9%  + US$0.30
 //
-// !! THIS DELIBERATELY UNDER-COLLECTS — the shortfall is absorbed by
-// !! the platform, NOT the tutor (tutor payout is a fixed TTD figure).
-//
-// MEASURED 2026-07-30 against the live test account. A TT$108.44 charge
-// settled as US$16.07 (fx 0.148191) and Stripe took TWO fees:
+// MEASURED 2026-07-30 against the account. A TT$108.44 charge settled as
+// US$16.07 (fx 0.148191) and Stripe took TWO fees:
 //     US$0.77  "Stripe processing fees"      = 2.9% + $0.30  exactly
 //     US$0.16  "Stripe currency conversion"  = 1.0%          exactly
-//     -------
-//     US$0.93  total  ≈ TT$6.28
 //
-// The 1% conversion fee applies because we present in TTD and settle in
-// USD, and it is NOT covered by the 2.9% + $0.30 below. That probe also
-// used `pm_card_visa` (a US test card), so Stripe's international-card
-// surcharge never applied — real T&T cards will add more again.
+// The rate was briefly 2.9% + $0.30 — the headline card rate — which
+// omitted the conversion fee and so under-collected by ~1% of every
+// charge, with the platform silently absorbing it. Both measured
+// components are now covered.
 //
-// Expect fee_variance_ttd to run NEGATIVE by roughly 1% of each charge.
-// That column exists precisely to make this visible rather than silent:
-//     SELECT sum(fee_variance_ttd) FROM payments WHERE provider='stripe';
-// Raise the rate here if the platform should stop absorbing it.
-const STRIPE_PERCENTAGE_FEE = 0.029;
+// STILL UNKNOWN: Stripe's international-card surcharge (~1.5%). The
+// probe used a US test card, so it never applied — but iTutor's students
+// hold T&T cards, which ARE international to a US account. If that
+// surcharge does apply in practice, this under-collects by a further
+// ~1.5% and fee_variance_ttd will go negative on real charges:
+//     SELECT count(*), avg(fee_variance_ttd), sum(fee_variance_ttd)
+//     FROM payments WHERE provider='stripe' AND fee_variance_ttd IS NOT NULL;
+// Raise to 0.054 if that's what the live data shows. Deliberately NOT
+// assumed up-front, since guessing high overcharges every student.
+const STRIPE_PERCENTAGE_FEE = 0.039;
 const STRIPE_FIXED_FEE_USD  = 0.30;
 const STRIPE_FIXED_FEE_TTD  = usdToTtd(STRIPE_FIXED_FEE_USD); // ≈ TT$2.04
 

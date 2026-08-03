@@ -32,7 +32,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
     const { data: enrollment, error: enrErr } = await admin
       .from('group_enrollments')
       .select(`
-        id, student_id, group_id, status, plan_price_ttd,
+        id, student_id, group_id, status, billing_provider, stripe_subscription_id, plan_price_ttd,
         current_period_end,
         group:groups!group_id ( id, name, tutor_id, max_students, price_monthly )
       `)
@@ -56,6 +56,24 @@ export async function POST(_req: NextRequest, { params }: Params) {
       !isExpired
     ) {
       return NextResponse.json({ error: 'Enrollment is not in a reactivatable state' }, { status: 400 });
+    }
+
+    // Stripe-billed enrollments must NOT be reactivated through this route:
+    // it builds a LuniPay checkout, which would take money on a different
+    // processor while the student's Stripe Subscription stays cancelled —
+    // so they'd have paid and still have no recurring billing.
+    //
+    // Re-subscribing via /api/groups/[groupId]/subscribe mints a fresh
+    // Stripe Subscription, which is the correct way back in.
+    if ((enrollment as any).billing_provider === 'stripe') {
+      return NextResponse.json(
+        {
+          error: 'Please re-subscribe to this class to restart billing.',
+          billing_provider: 'stripe',
+          resubscribe_url: `/student/explore/${enrollment.group_id}`,
+        },
+        { status: 409 }
+      );
     }
 
     const group = enrollment.group as any;

@@ -35,7 +35,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const { data: enrollment, error: enrErr } = await admin
       .from('group_enrollments')
       .select(`
-        id, student_id, group_id, status, payment_status,
+        id, student_id, group_id, status, billing_provider, stripe_subscription_id, payment_status,
         plan_price_ttd, current_period_end, cancel_at_period_end,
         group:groups!group_id ( id, name, tutor_id, pricing_model, price_monthly )
       `)
@@ -49,6 +49,24 @@ export async function GET(_req: NextRequest, { params }: Params) {
     // Must belong to caller
     if (enrollment.student_id !== user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    // Stripe-billed subscriptions renew THEMSELVES. This route builds a
+    // LuniPay checkout, so letting a Stripe enrollment through would charge
+    // the student a second time for a period Stripe is already collecting —
+    // on a different processor, with no link back to the subscription.
+    //
+    // Only enrollments still on the legacy self-managed cycle
+    // (billing_provider='lunipay') may renew manually.
+    if ((enrollment as any).billing_provider === 'stripe') {
+      return NextResponse.json(
+        {
+          error: 'This subscription renews automatically — no action needed.',
+          auto_renewing: true,
+          billing_provider: 'stripe',
+        },
+        { status: 409 }
+      );
     }
 
     // Must be in a renewable/resumable state
