@@ -641,6 +641,26 @@ export default function TutorProfilePage() {
                 </div>
               ))}
             </div>
+
+            {/*
+              Booking mode hides the class-led sections, which left /book a
+              dead end — a student arriving from the 1:1 marketplace had no
+              route to this tutor's classes, reviews or fuller profile.
+              This is the way back.
+
+              Points at the EXISTING class-led profile rather than a new page:
+              same component, same data, just without `mode === 'book'`. No
+              second page to keep in sync.
+            */}
+            {mode === 'book' && (
+              <Link
+                href={`/student/tutors/${tutorId}`}
+                className="mt-3 flex items-center justify-center gap-2 rounded-2xl border border-border px-4 py-2.5 text-sm font-semibold text-ink transition hover:bg-muted/50"
+              >
+                View full profile
+                <ChevronRight className="size-4" />
+              </Link>
+            )}
           </div>
         </div>
 
