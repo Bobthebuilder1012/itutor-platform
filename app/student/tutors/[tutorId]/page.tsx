@@ -550,7 +550,14 @@ export default function TutorProfilePage() {
   const autoOpenedRef = useRef(false);
   useEffect(() => {
     if (autoOpenedRef.current || loading || !tutor) return;
-    if (mode === 'book' || new URLSearchParams(window.location.search).get('book') === '1on1') {
+    // Only an EXPLICIT ?book=1on1 deep-link auto-opens the sheet.
+    //
+    // `mode === 'book'` used to trigger it too, which now fights the booking
+    // sidebar: a student arriving from the 1:1 marketplace would get the
+    // calendar rendered beside the profile AND a modal thrown over it on load.
+    // Desktop uses the sidebar; below lg the "Book a 1:1" button (which is not
+    // mode-gated) still opens the sheet.
+    if (new URLSearchParams(window.location.search).get('book') === '1on1') {
       autoOpenedRef.current = true;
       openBookingSheet();
     }
@@ -664,6 +671,18 @@ export default function TutorProfilePage() {
           </div>
         </div>
 
+        {/*
+          Booking mode restores the two-column layout with the sticky booking
+          sidebar — the flow that's live in production. Clicking a tutor in the
+          1:1 marketplace routes to /book, so that's the flow they get: rate,
+          Available badge, subject chips and "Pick a day" visible immediately,
+          rather than a modal they have to open first.
+
+          The class-led profile stays single-column: its primary action is
+          browsing classes, and a 1:1 booking sidebar there would compete with
+          the subscribe CTAs.
+        */}
+        <div className={mode === 'book' ? 'lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-6 lg:items-start' : ''}>
         <div className="space-y-6">
             {/* Verified credential (structured text + badge only — never the document) */}
             <TutorCredentials tutorId={tutorId} />
@@ -803,6 +822,42 @@ export default function TutorProfilePage() {
                 </div>
               )}
             </section>
+        </div>
+
+        {/* Desktop booking sidebar — 1:1 mode only.
+            Same BookingCard the sheet uses, so the calendar, subject chips and
+            duration logic exist once; this just surfaces them immediately
+            instead of behind a tap. Hidden below lg, where the sheet remains
+            the right interaction. */}
+        {mode === 'book' && (
+          <aside className="hidden lg:block lg:sticky lg:top-20 self-start">
+            {calendarLoading ? (
+              <div className="rounded-2xl border border-border bg-background p-8 flex items-center justify-center min-h-[200px]">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand" />
+              </div>
+            ) : (
+              <BookingCard
+                priceLabel={priceLabel}
+                subjects={tutor.subjects}
+                pickedSubject={selectedSubject}
+                setPickedSubject={setSelectedSubject}
+                slots={slots}
+                pickedDay={pickedDay}
+                setPickedDay={setPickedDay}
+                pickedTime={pickedTime}
+                setPickedTime={setPickedTime}
+                duration={duration}
+                setDuration={setDuration}
+                scrollRef={dayScrollRef}
+                scrollDays={scrollDays}
+                // Straight to Confirm: subject and slot are already chosen in
+                // the sidebar, so re-asking for them in the sheet would be a
+                // pointless extra step.
+                onContinue={() => { setBookingStep(3); setShowBookingSheet(true); }}
+              />
+            )}
+          </aside>
+        )}
         </div>
       </div>
 
