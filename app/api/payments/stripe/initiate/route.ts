@@ -212,10 +212,8 @@ export async function POST(request: NextRequest) {
       booking.tutor_id,
       priceTtd
     );
-    const { grossAmount, processingFee } = calculateGrossAmountForProvider(
-      priceTtd,
-      'stripe'
-    );
+    const { grossAmount, processingFee, breakdown: feeBreakdown } =
+      calculateGrossAmountForProvider(priceTtd, 'stripe');
     const amountCents = ttdToCents(grossAmount);
 
     const stripe = getStripeClient();
@@ -246,6 +244,7 @@ export async function POST(request: NextRequest) {
             clientSecret: existingIntent.client_secret,
             amount: priceTtd,
             processingFee,
+        feeBreakdown,
             total: grossAmount,
             currency: 'TTD',
             reused: true,
@@ -311,6 +310,7 @@ export async function POST(request: NextRequest) {
               clientSecret: winnerIntent.client_secret,
               amount: priceTtd,
               processingFee,
+        feeBreakdown,
               total: grossAmount,
               currency: 'TTD',
               reused: true,
@@ -395,6 +395,7 @@ export async function POST(request: NextRequest) {
         clientSecret: intent.client_secret,
         amount: priceTtd,
         processingFee,
+        feeBreakdown,
         total: grossAmount,
         currency: 'TTD',
       });

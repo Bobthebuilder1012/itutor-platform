@@ -20,6 +20,25 @@ import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { getStripeClient, centsToTtd } from '@/lib/payments/stripeClient';
+import { calculateGrossAmountForProvider } from '@/lib/payments/grossUp';
+
+/**
+ * Rebuilds the fee breakdown for an intent created earlier.
+ *
+ * Returns null if the current rate no longer reproduces the fee this
+ * intent was actually created with — i.e. the schedule changed in
+ * between. Showing a breakdown whose parts don't sum to what the card
+ * is charged would be worse than showing none.
+ */
+function feeBreakdownFor(baseTtd: number, chargedFeeTtd: number) {
+  if (!Number.isFinite(baseTtd) || baseTtd <= 0) return null;
+  const { processingFee, breakdown } = calculateGrossAmountForProvider(
+    baseTtd,
+    'stripe'
+  );
+  if (Math.abs(processingFee - chargedFeeTtd) > 0.01) return null;
+  return breakdown;
+}
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -130,6 +149,7 @@ export async function GET(
         paymentIntentId: intent.id,
         amount: base,
         processingFee: fee,
+        feeBreakdown: feeBreakdownFor(base, fee),
         total: centsToTtd(intent.amount),
         currency: 'TTD',
         durationMinutes: group?.session_length_minutes ?? null,
@@ -188,6 +208,7 @@ export async function GET(
         paymentIntentId: intent.id,
         amount: Number(md.base_amount_ttd ?? '0'),
         processingFee: Number(md.processing_fee_ttd ?? '0'),
+        feeBreakdown: feeBreakdownFor(Number(md.base_amount_ttd ?? '0'), Number(md.processing_fee_ttd ?? '0')),
         total: centsToTtd(intent.amount),
         currency: 'TTD',
         // Monthly plan — no single session start time to show.
@@ -233,6 +254,7 @@ export async function GET(
       paymentIntentId: intent.id,
       amount: priceTtd,
       processingFee,
+      feeBreakdown: feeBreakdownFor(priceTtd, processingFee),
       total: centsToTtd(intent.amount),
       currency: 'TTD',
       durationMinutes: parseInt(md.duration_minutes ?? '60', 10),
