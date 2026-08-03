@@ -736,8 +736,17 @@ export default function TutorProfilePage() {
               )}
             </section>
 
-            {/* 1:1 tutoring — secondary to the tutor's classes above */}
-            <section className="rounded-3xl bg-background border border-border p-6">
+            {/* 1:1 tutoring — secondary to the tutor's classes above.
+                In book mode this duplicates the booking sidebar, so it's
+                hidden from lg up. It stays below lg, where the sidebar is
+                hidden and this is the ONLY way into the booking sheet —
+                dropping it outright would leave mobile with no way to book. */}
+            <section
+              className={cn(
+                'rounded-3xl bg-background border border-border p-6',
+                mode === 'book' && 'lg:hidden'
+              )}
+            >
               <h2 className="font-semibold text-ink mb-1">1:1 tutoring</h2>
               <p className="text-sm text-muted-foreground mb-4">Prefer a private session? Book a one-on-one at a time that works for you.</p>
               <button onClick={openBookingSheet} className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-brand text-white font-semibold hover:bg-brand-deep transition">
