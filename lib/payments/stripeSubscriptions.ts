@@ -33,9 +33,34 @@ export async function ensureStripeCustomer(
     .maybeSingle();
 
   if (error || !profile) throw new Error('Profile not found');
-  if (profile.stripe_customer_id) return profile.stripe_customer_id;
 
   const stripe = getStripeClient();
+
+  // A cached Customer belongs to ONE Stripe mode. Switching the API key from
+  // test to live (or between accounts) leaves an id here that the current key
+  // cannot see, and Stripe rejects it with "No such customer" — so the
+  // student's first subscription after the switch fails for no visible reason.
+  //
+  // Verify the cached id resolves under the CURRENT key; if it doesn't, mint a
+  // fresh one rather than failing. Deleted customers are treated the same way.
+  let staleCustomerId: string | null = null;
+  if (profile.stripe_customer_id) {
+    try {
+      const existing = await stripe.customers.retrieve(profile.stripe_customer_id);
+      if (!(existing as Stripe.DeletedCustomer).deleted) {
+        return profile.stripe_customer_id;
+      }
+      staleCustomerId = profile.stripe_customer_id;
+      console.warn(
+        `[stripe] Cached customer ${profile.stripe_customer_id} is deleted — creating a new one`
+      );
+    } catch {
+      staleCustomerId = profile.stripe_customer_id;
+      console.warn(
+        `[stripe] Cached customer ${profile.stripe_customer_id} not found under the current key (mode/account switch) — creating a new one`
+      );
+    }
+  }
   const customer = await stripe.customers.create(
     {
       email: profile.email ?? undefined,
@@ -44,7 +69,13 @@ export async function ensureStripeCustomer(
     },
     // Guards against two concurrent subscribe requests creating two
     // Customers for the same student.
-    { idempotencyKey: `customer-${userId}` }
+    // Distinct key when replacing a stale customer: reusing the original
+    // would make Stripe replay the very customer we just rejected.
+    {
+      idempotencyKey: staleCustomerId
+        ? `customer-${userId}-retry-${staleCustomerId}`
+        : `customer-${userId}`,
+    }
   );
 
   const { error: updErr } = await admin
