@@ -34,7 +34,6 @@ type Summary = {
   statusId: string;
   amount: number;
   processingFee: number;
-  feeBreakdown?: Array<{ label: string; rate: number | null; amountTtd: number }> | null;
   total: number;
   currency: string;
   durationMinutes: number;
@@ -61,7 +60,6 @@ export default function PaymentCheckout() {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [feeOpen, setFeeOpen] = useState(false);
 
   // ---- Load whichever flow we're in -------------------------------
   const load = useCallback(async () => {
@@ -81,7 +79,6 @@ export default function PaymentCheckout() {
           statusId: d.paymentIntentId,
           amount: d.amount,
           processingFee: d.processingFee,
-          feeBreakdown: d.feeBreakdown ?? null,
           total: d.total,
           currency: d.currency,
           durationMinutes: d.durationMinutes,
@@ -140,7 +137,6 @@ export default function PaymentCheckout() {
         statusId: d.paymentId,
         amount: d.amount,
         processingFee: d.processingFee,
-        feeBreakdown: d.feeBreakdown ?? null,
         total: d.total,
         currency: d.currency,
         durationMinutes: (booking as any).duration_minutes,
@@ -371,58 +367,11 @@ export default function PaymentCheckout() {
                     ${summary.amount.toFixed(2)} {summary.currency}
                   </span>
                 </div>
-                <div>
-                  <div className="flex justify-between">
-                    <button
-                      type="button"
-                      onClick={() => setFeeOpen((v) => !v)}
-                      disabled={!summary.feeBreakdown?.length}
-                      className="flex items-center gap-1 text-gray-600 hover:text-gray-900 disabled:cursor-default disabled:hover:text-gray-600"
-                    >
-                      Processing fee
-                      {!!summary.feeBreakdown?.length && (
-                        <span
-                          aria-hidden
-                          className={`text-[10px] transition-transform ${feeOpen ? 'rotate-180' : ''}`}
-                        >
-                          ▼
-                        </span>
-                      )}
-                    </button>
-                    <span className="text-gray-900">
-                      ${summary.processingFee.toFixed(2)} {summary.currency}
-                    </span>
-                  </div>
-
-                  {/* What the fee is actually made of. These sum exactly to
-                      the figure above — the gross-up charges each component
-                      against the total, so gross*rate + fixed === fee. */}
-                  {feeOpen && !!summary.feeBreakdown?.length && (
-                    <div className="mt-2 space-y-1.5 rounded-lg bg-gray-50 px-3 py-2.5">
-                      {summary.feeBreakdown.map((c) => (
-                        <div
-                          key={c.label}
-                          className="flex justify-between text-xs text-gray-600"
-                        >
-                          <span>
-                            {c.label}
-                            {c.rate != null && (
-                              <span className="text-gray-400">
-                                {' '}
-                                ({(c.rate * 100).toFixed(1)}%)
-                              </span>
-                            )}
-                          </span>
-                          <span>${c.amountTtd.toFixed(2)}</span>
-                        </div>
-                      ))}
-                      <p className="pt-1 text-[11px] leading-relaxed text-gray-500">
-                        Charged by our payment processor, not retained by
-                        iTutor. Conversion applies because your tutor is priced
-                        in TTD and payments settle in USD.
-                      </p>
-                    </div>
-                  )}
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Processing fee</span>
+                  <span className="text-gray-900">
+                    ${summary.processingFee.toFixed(2)} {summary.currency}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between border-t border-gray-200 pt-3 text-xl font-bold">
                   <span className="text-gray-900">Total</span>
