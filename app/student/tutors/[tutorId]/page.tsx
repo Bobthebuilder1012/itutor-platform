@@ -749,7 +749,15 @@ export default function TutorProfilePage() {
             >
               <h2 className="font-semibold text-ink mb-1">1:1 tutoring</h2>
               <p className="text-sm text-muted-foreground mb-4">Prefer a private session? Book a one-on-one at a time that works for you.</p>
-              <button onClick={openBookingSheet} className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-brand text-white font-semibold hover:bg-brand-deep transition">
+              {/* In profile mode this sends the student to the dedicated 1:1
+                  route rather than opening the sheet here. Otherwise a 1:1
+                  booking gets completed on the class-led profile — whichever
+                  way the student arrived — which is the wrong page for it.
+                  In book mode we're already on that route, so open the sheet. */}
+              <button
+                onClick={() => (mode === 'book' ? openBookingSheet() : router.push(`/student/tutors/${tutorId}/book`))}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-brand text-white font-semibold hover:bg-brand-deep transition"
+              >
                 <Video className="size-4" /> Book a 1:1{paidClassesEnabled && minPrice > 0 ? ` — TT$${minPrice}/hr` : ''}
               </button>
             </section>
