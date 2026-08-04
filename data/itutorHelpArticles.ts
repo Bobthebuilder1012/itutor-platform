@@ -1136,7 +1136,7 @@ Understanding the payout process helps you manage your earnings effectively.
 ### After Session Completion
 1. **Session ends** at the scheduled time
 2. **Payment processing begins** automatically
-3. **Platform fee deducted** (10%, 15%, or 20% based on session price)
+3. **Platform fee deducted** (7% of the session price)
 4. **Payout queued** to your saved payment method
 5. **Funds sent** to your bank account
 

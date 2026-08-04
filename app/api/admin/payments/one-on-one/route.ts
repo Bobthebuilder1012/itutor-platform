@@ -151,7 +151,7 @@ export async function GET() {
     // Sessions that are scheduled/open and not yet charged (funds held)
     admin
       .from('sessions')
-      .select('id, tutor_id, student_id, booking_id, scheduled_start_at, payout_amount_ttd, charge_amount_ttd')
+      .select('id, tutor_id, student_id, booking_id, scheduled_start_at, payout_amount_ttd, charge_amount_ttd, platform_fee_ttd')
       .in('status', ['SCHEDULED', 'JOIN_OPEN'])
       .is('charged_at', null),
   ]);
@@ -410,7 +410,15 @@ export async function GET() {
     scheduled_at:          s.scheduled_start_at ?? null,
     subject:               null,
     amount_ttd:            Number(s.charge_amount_ttd ?? 0),
-    platform_fee_ttd:      0,
+    // Was hardcoded to 0, so every upcoming session reported "Platform fee
+    // TT$0.00" while showing a payout well below the session price — the
+    // commission looked like it had vanished. sessions.platform_fee_ttd holds
+    // the real figure (it just wasn't being selected); the subtraction is a
+    // fallback for older rows written before that column was populated.
+    platform_fee_ttd:      Number(
+                             s.platform_fee_ttd ??
+                             Math.max(0, Number(s.charge_amount_ttd ?? 0) - Number(s.payout_amount_ttd ?? 0))
+                           ),
     tutor_payout_ttd:      Number(s.payout_amount_ttd ?? 0),
     payment_status:        'scheduled',
     payout_status:         'upcoming',
