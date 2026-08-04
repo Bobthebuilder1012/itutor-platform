@@ -46,6 +46,9 @@ function CreateClassContent() {
   const [bio, setBio] = useState('');
   const [studentLimit, setStudentLimit] = useState(8);
   const [price, setPrice] = useState(120);
+  // Required by /api/groups — billing recurs until this date, so a class
+  // without one would charge students forever.
+  const [endDate, setEndDate] = useState('');
   const [memberFee, setMemberFee] = useState(0);
   const [visibility, setVisibility] = useState<Visibility>('public');
   const [joinRequests, setJoinRequests] = useState(false);
@@ -90,7 +93,7 @@ function CreateClassContent() {
   };
 
   const handlePublish = async () => {
-    if (!profile?.id || !title.trim()) return;
+    if (!profile?.id || !title.trim() || !endDate) return;
     setSubmitting(true);
     try {
       const res = await fetch('/api/groups', {
@@ -105,6 +108,7 @@ function CreateClassContent() {
           description: bio,
           maxStudents: type === 'recurring-1on1' ? 1 : studentLimit,
           price_monthly: price,
+          end_date: endDate,
           member_service_fee: memberFee,
           pricing_model: 'MONTHLY',
           isPublic: visibility === 'public',
@@ -261,6 +265,18 @@ function CreateClassContent() {
                   className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
               </Field>
             </div>
+            <Field
+              label="Class end date"
+              hint="Billing stops after this date. Every class needs one — students are charged monthly until it passes."
+            >
+              <input
+                type="date"
+                value={endDate}
+                min={new Date().toISOString().slice(0, 10)}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand"
+              />
+            </Field>
           </Card>
 
           <Card title="Access & policies">
@@ -320,7 +336,7 @@ function CreateClassContent() {
               <button onClick={() => router.push('/tutor/classes')} className="px-4 py-2 rounded-lg border border-border text-sm font-semibold hover:bg-muted">
                 Save as draft
               </button>
-              <button onClick={handlePublish} disabled={submitting || !title.trim()}
+              <button onClick={handlePublish} disabled={submitting || !title.trim() || !endDate}
                 className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand/90 disabled:opacity-60">
                 <Check className="size-4" /> {submitting ? 'Publishing…' : 'Publish Class'}
               </button>
