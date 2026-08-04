@@ -70,7 +70,6 @@ export async function GET() {
 
   // ── Subscription payment stats ──
   const subTotalCollected = subPayments.reduce((s, p) => s + Number(p.amount_ttd ?? 0), 0);
-  const subPlatformFees   = subPayments.reduce((s, p) => s + Number(p.platform_fee_ttd ?? 0), 0);
 
   // ── Combined ──
   const totalCollected  = +(sessionTotalCollected + subTotalCollected).toFixed(2);
@@ -81,9 +80,16 @@ export async function GET() {
   const heldTtd      = heldRows.reduce((s, r) => s + Number(r.amount_ttd    ?? 0), 0);
   const releasedTtd  = releasedRows.reduce((s, r) => s + Number(r.amount_ttd ?? 0), 0);
 
-  // Platform fees = total collected – total paid out to tutors (released + pending + available + held)
+  // Platform fees = total collected – refunds – everything owed to tutors
+  // (released + pending + available + held).
+  //
+  // This residual already covers subscriptions: their revenue is inside
+  // totalCollected and their payouts inside tutorPayoutTotal, so the
+  // difference IS the subscription platform fee. Adding subPlatformFees on
+  // top counted every subscription fee twice — a single TT$5.00 subscription
+  // with a TT$0.50 fee reported TT$1.00.
   const tutorPayoutTotal = pendingTtd + availableTtd + heldTtd + releasedTtd;
-  const platformFees     = +(totalCollected - totalRefunded - tutorPayoutTotal + subPlatformFees).toFixed(2);
+  const platformFees     = +(totalCollected - totalRefunded - tutorPayoutTotal).toFixed(2);
 
   return NextResponse.json({
     total_collected_ttd:  totalCollected,
