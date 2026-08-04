@@ -231,6 +231,41 @@ export default function FindTutorsPage() {
       const activeTutorProfiles = tutorProfilesWithBanners.filter(t => listedSet.has(t.id));
       const activeTutorIds = activeTutorProfiles.map((t) => t.id);
 
+      // Marketplace ordering (mig 190): pinned tutors first in pin order,
+      // then everyone else by ranking_score desc. This is what the admin
+      // Promotion & Ranking page controls — without it, boost/pin have no
+      // effect on what students see. Falls back to verification-status order
+      // if the ranking view isn't present.
+      try {
+        const { data: rankRows, error: rankErr } = activeTutorIds.length > 0
+          ? await supabase
+              .from('tutor_marketplace_rankings')
+              .select('tutor_id, pin_rank, ranking_score')
+              .in('tutor_id', activeTutorIds)
+          : { data: [] as any[], error: null };
+        if (rankErr) throw rankErr;
+        const rankMap = new Map<string, { pin: number | null; score: number }>();
+        (rankRows ?? []).forEach((r: any) =>
+          rankMap.set(r.tutor_id, { pin: r.pin_rank ?? null, score: Number(r.ranking_score ?? 0) })
+        );
+        activeTutorProfiles.sort((a, b) => {
+          const ra = rankMap.get(a.id) ?? { pin: null, score: 0 };
+          const rb = rankMap.get(b.id) ?? { pin: null, score: 0 };
+          if (ra.pin != null || rb.pin != null) {
+            if (ra.pin == null) return 1;
+            if (rb.pin == null) return -1;
+            if (ra.pin !== rb.pin) return ra.pin - rb.pin;
+          }
+          return rb.score - ra.score;
+        });
+      } catch {
+        activeTutorProfiles.sort(
+          (a, b) =>
+            (verificationRank[String(a.tutor_verification_status ?? 'UNVERIFIED')] ?? 9) -
+            (verificationRank[String(b.tutor_verification_status ?? 'UNVERIFIED')] ?? 9)
+        );
+      }
+
       console.log(`✅ Showing ${activeTutorProfiles.length} listed tutors (of ${tutorProfilesWithBanners.length} total)`);
 
       // Fetch subjects for all tutor profiles
@@ -698,21 +733,15 @@ export default function FindTutorsPage() {
       filtered.sort((a, b) => minPrice(a) - minPrice(b));
     } else if (sortOrder === 'rating_high') {
       filtered.sort((a, b) => (b.average_rating ?? -1) - (a.average_rating ?? -1));
-    } else if (profile?.subjects_of_study && profile.subjects_of_study.length > 0) {
-      filtered.sort((a, b) => {
-        const aMatchesSubjects = a.subjects.some((s) => profile.subjects_of_study?.includes(s.name));
-        const bMatchesSubjects = b.subjects.some((s) => profile.subjects_of_study?.includes(s.name));
-
-        if (aMatchesSubjects && !bMatchesSubjects) return -1;
-        if (!aMatchesSubjects && bMatchesSubjects) return 1;
-
-        const aRating = a.average_rating || 0;
-        const bRating = b.average_rating || 0;
-        return bRating - aRating;
-      });
-    } else {
-      filtered.sort((a, b) => (b.average_rating || 0) - (a.average_rating || 0));
     }
+    // 'relevance' (the default): keep the marketplace ranking order already
+    // applied in fetchTutors from the tutor_marketplace_rankings view (mig 190)
+    // — pinned first, then ranking_score desc. We intentionally do NOT re-sort
+    // here. The previous default re-sorted by the *viewer's* subjects_of_study
+    // and then rating, which overrode the ranking and made the marketplace
+    // disagree with the admin Promotion & Ranking page (e.g. a new, unrated
+    // tutor who happened to match the viewer's subjects jumped above a
+    // higher-scored one).
 
     return filtered;
   }, [tutors, searchQuery, selectedSubjects, selectedRating, priceMin, priceMax, selectedSchool, profile, sortOrder]);
