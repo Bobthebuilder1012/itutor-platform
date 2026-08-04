@@ -1121,12 +1121,17 @@ export default function FindTutorsPage() {
             ) : (
               <div className="grid sm:grid-cols-2 gap-3">
                 {pagedTutors.map((tutor) => (
+                  // This is the 1:1 marketplace, so the card opens the
+                  // dedicated 1:1 booking route — NOT the class-led profile at
+                  // /student/tutors/[id], which leads with "<tutor>'s classes"
+                  // and Join-class buttons and is the wrong destination for
+                  // someone shopping for a one-to-one lesson.
                   <div
                     key={tutor.id}
                     role="button"
                     tabIndex={0}
-                    onClick={() => router.push(`/student/tutors/${tutor.id}`)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); router.push(`/student/tutors/${tutor.id}`); } }}
+                    onClick={() => router.push(`/student/tutors/${tutor.id}/book`)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); router.push(`/student/tutors/${tutor.id}/book`); } }}
                     className="group rounded-2xl bg-background border border-border p-4 hover:shadow-card hover:border-brand/40 transition-all flex gap-3 items-start cursor-pointer w-full min-w-0"
                   >
                     <UserAvatar avatarUrl={tutor.avatar_url} name={getDisplayName(tutor)} size={56} />
