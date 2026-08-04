@@ -64,8 +64,16 @@ ALTER TABLE public.notifications
     -- misc
     'new_feedback', 'refund_failed_admin_alert',
     -- parent linking
-    'parent_invite', 'parent_link_accepted', 'parent_link_declined'
-  ]));
+    'parent_invite', 'parent_link_accepted', 'parent_link_declined',
+    -- Legacy UPPERCASE types. These were dropped from this list by mistake:
+    -- the app still inserts all of them (WAITLIST_AVAILABLE in
+    -- /api/enrollments/[id], SESSION_REMINDER in /api/groups/[id]/sessions,
+    -- NEW_REVIEW in /api/groups/[id]/reviews, ENROLLMENT_CONFIRMED in
+    -- /api/groups/[id]/members/[userId]), so omitting them made every one of
+    -- those inserts violate this constraint.
+    'SESSION_REMINDER', 'ENROLLMENT_CONFIRMED', 'NEW_ANNOUNCEMENT',
+    'SESSION_CANCELLED', 'NEW_REVIEW', 'WAITLIST_AVAILABLE'
+  ]::text[])) NOT VALID;
 
 COMMIT;
 
