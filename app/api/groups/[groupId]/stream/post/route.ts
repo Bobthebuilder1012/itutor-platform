@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 import type { CreateStreamPostInput, StreamPostType } from '@/lib/types/groupStream';
 
 type Params = { params: Promise<{ groupId: string }> };
@@ -17,10 +18,10 @@ export async function POST(req: NextRequest, { params }: Params) {
     const { groupId } = await params;
     const service = getServiceClient();
 
-    const { data: group } = await service.from('groups').select('tutor_id').eq('id', groupId).single();
-    if (!group) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    if (actor.notFound) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
 
-    const isTutor = group.tutor_id === user.id;
+    const isTutor = actor.actingAsTutor;
     if (!isTutor) {
       const { data: membership } = await service
         .from('group_members')
@@ -90,6 +91,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     if (result.error) throw result.error;
     const post = result.data as Record<string, unknown>;
+    await auditAdminOverride(actor, 'stream.post.create', { postType });
 
     const attachmentUrls = body.attachment_urls ?? [];
     if (attachmentUrls.length > 0) {

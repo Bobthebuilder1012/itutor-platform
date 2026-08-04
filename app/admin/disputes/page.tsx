@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
+import AdminBreadcrumb from '@/components/admin/AdminBreadcrumb';
 import { isEmailManagementOnlyAdmin } from '@/lib/auth/adminAccess';
 import { AlertTriangle, Clock, ShieldAlert, Star } from 'lucide-react';
 
@@ -242,6 +243,7 @@ export default function AdminDisputesPage() {
   return (
     <DashboardLayout role="admin" userName="Admin">
       <div className="max-w-5xl mx-auto px-4 py-6 space-y-8">
+        <AdminBreadcrumb items={[{ label: 'Trust & Safety' }, { label: 'Disputes & Reliability' }]} />
         <header>
           <h1 className="text-2xl font-bold text-gray-900">Disputes & reliability</h1>
           <p className="text-sm text-gray-600 mt-1">

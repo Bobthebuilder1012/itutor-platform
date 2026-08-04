@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase/client';
 import SubjectMultiSelect from '@/components/SubjectMultiSelect';
+import SaveStatus from '@/components/SaveStatus';
+import ProfilePhotoStep from '@/components/onboarding/ProfilePhotoStep';
+import { useAutosave } from '@/lib/hooks/useAutosave';
 import { ensureSchoolCommunityAndMembership } from '@/lib/actions/community';
 
 const TEACHING_LEVELS = [
@@ -32,6 +35,15 @@ const SEA_NAME_BY_UI_LABEL: Record<string, string> = {
   'SEA English': 'SEA English',
   'SEA Creative Writing': 'SEA Creative Writing',
 };
+
+const UI_LABEL_BY_SEA_NAME: Record<string, string> = Object.fromEntries(
+  Object.entries(SEA_NAME_BY_UI_LABEL).map(([uiLabel, dbName]) => [dbName, uiLabel])
+);
+
+/** Compare selections without caring about order. */
+function sameSet(a: string[], b: string[]): boolean {
+  return [...new Set(a)].sort().join('|') === [...new Set(b)].sort().join('|');
+}
 
 async function resolveSubjectRowsForOnboarding(client: SupabaseClient, labels: string[]) {
   const unique = [...new Set(labels.filter(Boolean))];
@@ -101,6 +113,82 @@ export default function TutorOnboardingPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  // Shown after the subjects/levels step succeeds, before the dashboard.
+  const [showPhotoStep, setShowPhotoStep] = useState(false);
+
+  // ── Autosave ────────────────────────────────────────────────────────────────
+  // Everything on this page persists as it is picked, so a tutor who leaves
+  // part-way resumes with their selections intact (and /tutor/get-listed, which
+  // reads the same tables, already reflects them).
+  const levelsSave = useAutosave<string[]>({
+    value: selectedLevels,
+    enabled: !!userId,
+    delay: 500,
+    isEqual: sameSet,
+    save: async (v) => {
+      const ordered = TEACHING_LEVELS.filter((l) => v.includes(l));
+      const { error: err } = await supabase.from('profiles').update({ teaching_levels: ordered }).eq('id', userId!);
+      if (err) throw new Error(err.message);
+    },
+  });
+
+  const selectedSubjectLabels = [...new Set([...selectedSubjects, ...selectedSeaSubjects])];
+  const subjectsSave = useAutosave<string[]>({
+    value: selectedSubjectLabels,
+    enabled: !!userId,
+    delay: 900,
+    isEqual: sameSet,
+    save: async (labels) => {
+      const { data: existing, error: readErr } = await supabase
+        .from('tutor_subjects')
+        .select('subject_id')
+        .eq('tutor_id', userId!);
+      if (readErr) throw new Error(readErr.message);
+      const existingIds = new Set((existing ?? []).map((r: any) => String(r.subject_id)));
+
+      let wantedIds: string[] = [];
+      if (labels.length > 0) {
+        if (labels.some((l) => SEA_SUBJECT_LABELS.has(l))) {
+          const ensureRes = await fetch('/api/tutor/ensure-sea-subjects', { method: 'POST' });
+          const ensureJson = (await ensureRes.json().catch(() => null)) as { ok?: boolean; hint?: string; error?: string } | null;
+          if (!ensureJson?.ok) {
+            throw new Error(ensureJson?.hint || ensureJson?.error || 'SEA subjects are not available yet.');
+          }
+        }
+        const { rows, error: resolveErr } = await resolveSubjectRowsForOnboarding(supabase, labels);
+        if (resolveErr) throw new Error(resolveErr);
+        wantedIds = rows.map((r) => r.id);
+      }
+
+      // Reconcile rather than delete-all-then-reinsert, so any per-subject rate
+      // already set on /tutor/get-listed survives a return visit here.
+      const toAdd = wantedIds.filter((id) => !existingIds.has(id));
+      const toRemove = [...existingIds].filter((id) => !wantedIds.includes(id));
+
+      if (toAdd.length > 0) {
+        const { error: upErr } = await supabase.from('tutor_subjects').upsert(
+          toAdd.map((subject_id) => ({
+            tutor_id: userId!,
+            subject_id,
+            // A valid positive price is required by the DB; the tutor sets the
+            // real rate on /tutor/get-listed.
+            price_per_hour_ttd: 100,
+            mode: 'either' as const,
+          })),
+          { onConflict: 'tutor_id,subject_id' }
+        );
+        if (upErr) throw new Error(upErr.message);
+      }
+      if (toRemove.length > 0) {
+        const { error: delErr } = await supabase
+          .from('tutor_subjects')
+          .delete()
+          .eq('tutor_id', userId!)
+          .in('subject_id', toRemove);
+        if (delErr) throw new Error(delErr.message);
+      }
+    },
+  });
 
   useEffect(() => {
     async function checkAuth() {
@@ -116,7 +204,7 @@ export default function TutorOnboardingPage() {
 
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role')
+        .select('role, teaching_levels')
         .eq('id', user.id)
         .single();
 
@@ -125,11 +213,38 @@ export default function TutorOnboardingPage() {
         return;
       }
 
+      // Resume any earlier attempt.
+      const savedLevels = Array.isArray(profile.teaching_levels)
+        ? TEACHING_LEVELS.filter((l) => (profile.teaching_levels as string[]).includes(l))
+        : [];
+
+      const { data: savedSubjectRows } = await supabase
+        .from('tutor_subjects')
+        .select('subject_id, subjects(label, name)')
+        .eq('tutor_id', user.id);
+
+      const savedLabels = (savedSubjectRows ?? [])
+        .map((row: any) => {
+          const s = Array.isArray(row.subjects) ? row.subjects[0] : row.subjects;
+          const name = s?.name ?? null;
+          return s?.label ?? (name ? UI_LABEL_BY_SEA_NAME[name] ?? name : null);
+        })
+        .filter((l: string | null): l is string => !!l);
+
+      const savedSea = savedLabels.filter((l) => SEA_SUBJECT_LABELS.has(l));
+      const savedOther = savedLabels.filter((l) => !SEA_SUBJECT_LABELS.has(l));
+
       setUserId(user.id);
+      setSelectedLevels(savedLevels);
+      setSelectedSeaSubjects(savedSea);
+      setSelectedSubjects(savedOther);
+      levelsSave.hydrate(savedLevels);
+      subjectsSave.hydrate(savedLabels);
       setLoading(false);
     }
 
     checkAuth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   useEffect(() => {
@@ -191,75 +306,9 @@ export default function TutorOnboardingPage() {
     setSubmitting(true);
 
     try {
-      const allLabels = [...new Set([...selectedSubjects, ...selectedSeaSubjects])];
-
-      const needsSeaRows = allLabels.some((l) => SEA_SUBJECT_LABELS.has(l));
-      if (needsSeaRows) {
-        const ensureRes = await fetch('/api/tutor/ensure-sea-subjects', { method: 'POST' });
-        const ensureJson = (await ensureRes.json().catch(() => null)) as {
-          ok?: boolean;
-          hint?: string;
-          error?: string;
-        } | null;
-        if (!ensureJson?.ok) {
-          setError(
-            ensureJson?.hint ||
-              ensureJson?.error ||
-              'SEA subjects are not available yet. Run migration 095_sea_subjects.sql in the Supabase SQL editor, or set SUPABASE_SERVICE_ROLE_KEY so the app can seed SEA rows.'
-          );
-          setSubmitting(false);
-          return;
-        }
-      }
-
-      const { rows: subjectRows, error: resolveError } = await resolveSubjectRowsForOnboarding(supabase, allLabels);
-
-      if (resolveError || subjectRows.length === 0) {
-        console.error('Subjects resolve error:', resolveError, 'labels:', allLabels);
-        setError(resolveError || 'Could not load your selected subjects. Please try again.');
-        setSubmitting(false);
-        return;
-      }
-
-      // Delete existing tutor_subjects
-      const { error: deleteError } = await supabase
-        .from('tutor_subjects')
-        .delete()
-        .eq('tutor_id', userId);
-
-      if (deleteError) {
-        console.error('Delete error:', deleteError);
-        setError('Error clearing previous subjects. Please try again.');
-        setSubmitting(false);
-        return;
-      }
-
-      // Insert new tutor_subjects
-      const flagsRes = await fetch('/api/feature-flags', { cache: 'no-store' });
-      const flags = await flagsRes.json();
-      const paidEnabled = Boolean(flags?.paidClassesEnabled);
-
-      const response = await fetch('/api/tutor/subjects', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          subjects: subjectRows.map((subject) => ({
-            subject_id: subject.id,
-            // Always save a valid positive price to satisfy DB constraints.
-            // During launch, payments can still be forced free elsewhere via feature flag.
-            price_per_hour_ttd: 100,
-            mode: 'either',
-          })),
-        }),
-      });
-
-      const result = await response.json();
-      if (!response.ok) {
-        console.error('Insert error:', result);
-        setError(`Error saving subjects: ${result?.error || 'Unknown error'}`);
-        setSubmitting(false);
-        return;
-      }
+      // Selections already persist as they're made; flush anything still sitting
+      // inside a debounce window, then verify before moving the tutor on.
+      await Promise.all([levelsSave.flush(), subjectsSave.flush()]);
 
       const { data: savedSubjects, error: verifyError } = await supabase
         .from('tutor_subjects')
@@ -267,21 +316,21 @@ export default function TutorOnboardingPage() {
         .eq('tutor_id', userId);
 
       if (verifyError || !savedSubjects || savedSubjects.length === 0) {
-        console.error('Verification failed:', verifyError);
-        setError('Subjects were not saved correctly. Please try again.');
+        console.error('Subject verification failed:', verifyError);
+        setError('Your subjects could not be saved. Check the subject section above and try again.');
         setSubmitting(false);
         return;
       }
 
-      const teachingLevelsToSave = TEACHING_LEVELS.filter((level) => selectedLevels.includes(level));
-      const { error: profileError } = await supabase
+      const { data: savedProfile, error: profileError } = await supabase
         .from('profiles')
-        .update({ teaching_levels: teachingLevelsToSave })
-        .eq('id', userId);
+        .select('teaching_levels')
+        .eq('id', userId)
+        .single();
 
-      if (profileError) {
-        console.error('Profile save error:', profileError);
-        setError(`Profile save failed: ${profileError.message}`);
+      if (profileError || !Array.isArray(savedProfile?.teaching_levels) || savedProfile.teaching_levels.length === 0) {
+        console.error('Teaching levels verification failed:', profileError);
+        setError('Your teaching levels could not be saved. Please try again.');
         setSubmitting(false);
         return;
       }
@@ -294,7 +343,8 @@ export default function TutorOnboardingPage() {
         return;
       }
 
-      router.push('/tutor/dashboard');
+      setSubmitting(false);
+      setShowPhotoStep(true);
     } catch (err) {
       console.error('Unexpected error:', err);
       setError('An unexpected error occurred. Please try again.');
@@ -313,11 +363,31 @@ export default function TutorOnboardingPage() {
     );
   }
 
+  // Final step: profile picture. Subjects/levels are already saved by this point,
+  // so skipping here still leaves a complete onboarding.
+  if (showPhotoStep && userId) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 via-teal-50 to-blue-50 px-4 py-8 relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-96 h-96 bg-gradient-to-br from-emerald-300/30 to-teal-200/30 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2"></div>
+        <div className="absolute bottom-0 right-0 w-96 h-96 bg-gradient-to-br from-blue-200/30 to-cyan-200/30 rounded-full blur-3xl translate-x-1/2 translate-y-1/2"></div>
+
+        <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-8 max-w-md w-full relative border border-white/50">
+          <ProfilePhotoStep
+            userId={userId}
+            role="tutor"
+            onSaved={() => router.push('/tutor/dashboard')}
+            onSkip={() => router.push('/tutor/dashboard')}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 via-teal-50 to-blue-50 px-4 py-8 relative overflow-hidden">
       <div className="absolute top-0 left-0 w-96 h-96 bg-gradient-to-br from-emerald-300/30 to-teal-200/30 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2"></div>
       <div className="absolute bottom-0 right-0 w-96 h-96 bg-gradient-to-br from-blue-200/30 to-cyan-200/30 rounded-full blur-3xl translate-x-1/2 translate-y-1/2"></div>
-      
+
       <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-8 max-w-3xl w-full relative border border-white/50">
         <div className="text-center mb-8">
           <div className="w-20 h-20 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg transform hover:scale-105 transition-transform duration-200">
@@ -330,6 +400,9 @@ export default function TutorOnboardingPage() {
           </h1>
           <p className="text-gray-700 text-lg">
             Add your subjects and teaching levels—including SEA if you teach primary exit—so students can find you.
+          </p>
+          <p className="text-gray-500 text-sm mt-2">
+            Your choices save as you make them, so you can leave and pick up where you left off.
           </p>
         </div>
 
@@ -363,11 +436,16 @@ export default function TutorOnboardingPage() {
                 </button>
               ))}
             </div>
-            {selectedLevels.length > 0 && (
-              <p className="text-sm text-emerald-700 font-medium mt-3">
-                ✓ Selected: {selectedLevels.length} level{selectedLevels.length !== 1 ? 's' : ''}
-              </p>
-            )}
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+              {selectedLevels.length > 0 ? (
+                <p className="text-sm text-emerald-700 font-medium">
+                  ✓ Selected: {selectedLevels.length} level{selectedLevels.length !== 1 ? 's' : ''}
+                </p>
+              ) : (
+                <span />
+              )}
+              <SaveStatus state={levelsSave} />
+            </div>
           </div>
 
           {/* SEA subjects (when SEA level selected) */}
@@ -401,11 +479,16 @@ export default function TutorOnboardingPage() {
                   );
                 })}
               </div>
-              {selectedSeaSubjects.length > 0 && (
-                <p className="text-sm text-amber-800 font-medium mt-3">
-                  {selectedSeaSubjects.length} SEA subject{selectedSeaSubjects.length !== 1 ? 's' : ''} selected
-                </p>
-              )}
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                {selectedSeaSubjects.length > 0 ? (
+                  <p className="text-sm text-amber-800 font-medium">
+                    {selectedSeaSubjects.length} SEA subject{selectedSeaSubjects.length !== 1 ? 's' : ''} selected
+                  </p>
+                ) : (
+                  <span />
+                )}
+                <SaveStatus state={subjectsSave} />
+              </div>
             </div>
           )}
 
@@ -424,6 +507,9 @@ export default function TutorOnboardingPage() {
                 disabled={submitting}
                 placeholder="Type subject name (e.g. CSEC Math, CAPE Physics)..."
               />
+              <div className="mt-3 flex justify-end">
+                <SaveStatus state={subjectsSave} />
+              </div>
             </div>
           )}
 

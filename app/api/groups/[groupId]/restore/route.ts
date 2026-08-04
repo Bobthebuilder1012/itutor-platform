@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 
 type Params = { params: Promise<{ groupId: string }> };
 
@@ -15,15 +16,11 @@ export async function POST(_req: NextRequest, { params }: Params) {
     }
 
     const service = getServiceClient();
-    const { data: group } = await service
-      .from('groups')
-      .select('id, tutor_id, archived_at, status')
-      .eq('id', groupId)
-      .single();
-
-    if (!group || group.tutor_id !== user.id) {
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    if (actor.notFound || !actor.authorized) {
       return NextResponse.json({ error: 'Group not found or you do not own it' }, { status: 404 });
     }
+    const group = actor.group;
 
     if (!group.archived_at) {
       return NextResponse.json({ error: 'Group is not archived' }, { status: 400 });
@@ -52,6 +49,8 @@ export async function POST(_req: NextRequest, { params }: Params) {
       group_id: groupId,
       user_id: user.id,
     });
+
+    await auditAdminOverride(actor, 'class.restore');
 
     return NextResponse.json({ success: true });
   } catch (err) {

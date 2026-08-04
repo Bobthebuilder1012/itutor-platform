@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
+import AdminBreadcrumb from '@/components/admin/AdminBreadcrumb';
 import { supabase } from '@/lib/supabase/client';
 import {
   htmlToPlainTextForEditor,
@@ -294,6 +295,7 @@ export default function AdminEmailsPage() {
   return (
     <DashboardLayout role="admin" userName="Admin">
       <div className="p-6">
+        <AdminBreadcrumb items={[{ label: 'System' }, { label: 'Email Management' }]} />
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Email Management</h1>
           <p className="text-gray-600 mt-2">Send emails, manage templates, and view mailing lists</p>

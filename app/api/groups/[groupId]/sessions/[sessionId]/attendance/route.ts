@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { authenticateUser, requireGroupOwner } from '@/lib/api/groupAuth';
+import { authenticateUser } from '@/lib/api/groupAuth';
+import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 import { fail, ok } from '@/lib/api/http';
 import { getServiceClient } from '@/lib/supabase/server';
 
@@ -24,8 +25,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     const user = await authenticateUser();
     if (!user) return fail('Unauthorized', 401);
     const { groupId, sessionId } = await params;
-    const isOwner = await requireGroupOwner(groupId, user.id);
-    if (!isOwner) return fail('Forbidden', 403);
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    if (actor.notFound) return fail('Group not found', 404);
+    if (!actor.authorized) return fail('Forbidden', 403);
 
     const parsed = schema.safeParse(await req.json());
     if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? 'Invalid request body', 400);
@@ -47,6 +49,8 @@ export async function POST(req: NextRequest, { params }: Params) {
       )
     );
     await Promise.all(upserts);
+
+    await auditAdminOverride(actor, 'attendance.mark', { sessionId, count: parsed.data.attendance.length });
 
     const { data, error } = await service
       .from('group_attendance_records')

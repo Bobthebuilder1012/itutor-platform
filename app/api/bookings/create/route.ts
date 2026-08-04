@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { isPaidClassesEnabled } from '@/lib/featureFlags/paidClasses';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { calculateCommissionForTutor } from '@/lib/utils/commissionCalculator';
+import { findChildScheduleConflict, conflictMessage } from '@/lib/services/scheduleConflict';
 
 type Body = {
   studentId?: string;
@@ -226,6 +227,13 @@ export async function POST(request: NextRequest) {
     ) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
+
+    // Child-side schedule conflict check — applies whether a parent or the
+    // student initiates (the check is about the student's own schedule).
+    const conflict = await findChildScheduleConflict(
+      getServiceClient(), effectiveStudentId, body.requestedStartAt, body.requestedEndAt
+    );
+    if (conflict) return NextResponse.json({ error: conflictMessage(conflict) }, { status: 409 });
 
     if (effectiveStudentId !== user.id) {
       const parentBooking = await createParentBooking(user.id, body, durationMinutes, supabase);

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor } from '@/lib/auth/groupAccess';
+import { findGroupEnrollmentConflict, conflictMessage } from '@/lib/services/scheduleConflict';
 
 type Params = { params: Promise<{ groupId: string }> };
 function isSchemaMismatch(error: any): boolean {
@@ -22,14 +24,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
     const service = getServiceClient();
 
-    // Check if user is tutor of this group
-    const { data: group } = await service
-      .from('groups')
-      .select('tutor_id')
-      .eq('id', groupId)
-      .single();
-
-    const isTutor = group?.tutor_id === user.id;
+    // Tutor (or a superadmin acting as tutor) sees all members; others see only
+    // approved/active/invited.
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    const isTutor = actor.actingAsTutor;
 
     let query: any = service
       .from('group_members')
@@ -107,6 +105,13 @@ export async function POST(_req: NextRequest, { params }: Params) {
       return NextResponse.json({ member: existing, already_exists: true });
     }
 
+    // Child schedule conflict — the student's own upcoming schedule (1:1 + group)
+    // vs this class's occurrences. Applies regardless of who initiates the join.
+    const conflict = await findGroupEnrollmentConflict(service, user.id, groupId);
+    if (conflict) {
+      return NextResponse.json({ error: conflictMessage(conflict) }, { status: 409 });
+    }
+
     // Determine initial status based on group's join-request setting
     const { data: groupSettings } = await service
       .from('groups')
@@ -142,7 +147,11 @@ export async function POST(_req: NextRequest, { params }: Params) {
       const { data: studentProfile } = await service.from('profiles').select('full_name, display_name').eq('id', user.id).single();
       const studentName = (studentProfile as any)?.display_name || (studentProfile as any)?.full_name || 'A student';
       const isRequest = initialStatus === 'pending';
-      await service.from('notifications').insert({
+      // 'join_request' was not a permitted notifications.type until migration
+      // 203, so this insert threw and the empty catch discarded it — tutors
+      // were never told anyone had asked to join. Errors are logged now so the
+      // same class of failure can't hide again.
+      const { error: notifyError } = await service.from('notifications').insert({
         user_id: group.tutor_id,
         type: isRequest ? 'join_request' : 'new_class_member',
         title: isRequest ? `${studentName} wants to join ${groupName}` : `${studentName} joined ${groupName}`,
@@ -153,8 +162,11 @@ export async function POST(_req: NextRequest, { params }: Params) {
         group_id: groupId,
         metadata: { groupId, studentId: user.id },
       });
-    } catch {
-      // Non-critical
+      if (notifyError) {
+        console.error('[members POST] notification insert failed:', notifyError);
+      }
+    } catch (err) {
+      console.error('[members POST] notification threw:', err);
     }
 
     return NextResponse.json({ member }, { status: 201 });

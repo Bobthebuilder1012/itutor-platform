@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor } from '@/lib/auth/groupAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,14 +22,12 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
     const admin = getServiceClient();
 
-    // Verify tutor ownership
-    const { data: group } = await admin
-      .from('groups')
-      .select('tutor_id')
-      .eq('id', groupId)
-      .single();
-
-    if (!group || group.tutor_id !== user.id) {
+    // Verify tutor ownership (or superadmin acting as tutor)
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    if (actor.notFound) {
+      return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+    }
+    if (!actor.authorized) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

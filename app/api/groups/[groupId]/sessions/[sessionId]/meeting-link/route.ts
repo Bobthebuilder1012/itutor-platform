@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
-import { authenticateUser, requireGroupOwner } from '@/lib/api/groupAuth';
+import { authenticateUser } from '@/lib/api/groupAuth';
+import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 import { fail, ok } from '@/lib/api/http';
 import { resolveSeriesMeetingLink } from '@/lib/services/groupMeetingLink';
 
@@ -19,8 +20,9 @@ export async function POST(_req: NextRequest, { params }: Params) {
     if (!user) return fail('Unauthorized', 401);
 
     const { groupId, sessionId } = await params;
-    const isOwner = await requireGroupOwner(groupId, user.id);
-    if (!isOwner) return fail('Forbidden', 403);
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    if (actor.notFound) return fail('Group not found', 404);
+    if (!actor.authorized) return fail('Forbidden', 403);
 
     const result = await resolveSeriesMeetingLink({
       groupId,
@@ -29,6 +31,8 @@ export async function POST(_req: NextRequest, { params }: Params) {
       occurrenceId: sessionId,
     });
     if (!result.ok) return fail(result.error, result.status);
+
+    await auditAdminOverride(actor, 'session.meeting_link.update', { sessionId });
 
     return ok({ meeting_link: result.join_url, join_url: result.join_url, cached: result.cached });
   } catch (error: any) {

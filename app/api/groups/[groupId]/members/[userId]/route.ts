@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { promoteNextFromWaitlist } from '@/lib/services/waitlistService';
+import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 
 type Params = { params: Promise<{ groupId: string; userId: string }> };
 
@@ -19,15 +20,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
     const service = getServiceClient();
 
-    const { data: group } = await service
-      .from('groups')
-      .select('id, name, tutor_id')
-      .eq('id', groupId)
-      .single();
-
-    if (!group || group.tutor_id !== user.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    if (actor.notFound) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+    if (!actor.authorized) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const { status }: { status: 'approved' | 'denied' } = await request.json();
 
@@ -45,20 +40,38 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
     if (error) throw error;
 
+    await auditAdminOverride(actor, 'member.update', { targetUserId: userId, status });
+
+    // 'ENROLLMENT_CONFIRMED' was not a permitted notifications.type, so this
+    // insert threw and was swallowed by the catch below — students were never
+    // told their request had been approved. Migration 203 adds
+    // 'join_request_approved'; the error is now logged rather than discarded
+    // so a future type mismatch is visible instead of silent.
     try {
-      await service.from('notifications').insert({
+      const { error: notifyError } = await service.from('notifications').insert({
         user_id: userId,
-        type: status === 'approved' ? 'ENROLLMENT_CONFIRMED' : 'booking_declined',
-        title: status === 'approved' ? 'Group request approved' : 'Group request declined',
+        type: status === 'approved' ? 'join_request_approved' : 'booking_declined',
+        title:
+          status === 'approved'
+            ? `You're approved to join ${actor.group.name}`
+            : 'Group request declined',
         message:
           status === 'approved'
-            ? `Your request to join "${group.name}" has been approved.`
-            : `Your request to join "${group.name}" was not approved.`,
-        link: `/groups`,
+            ? `Your request to join "${actor.group.name}" was approved. You can now complete your enrolment.`
+            : `Your request to join "${actor.group.name}" was not approved.`,
+        // Deep-link to the class so an approved student can carry straight on
+        // to payment, rather than landing on a list and hunting for it.
+        link:
+          status === 'approved'
+            ? `/student/explore/${groupId}`
+            : '/student/explore',
         group_id: groupId,
       });
-    } catch {
-      // Non-critical
+      if (notifyError) {
+        console.error('[members PATCH] notification insert failed:', notifyError);
+      }
+    } catch (err) {
+      console.error('[members PATCH] notification threw:', err);
     }
 
     return NextResponse.json({ member });
@@ -88,7 +101,8 @@ export async function DELETE(req: NextRequest, { params }: Params) {
       .eq('id', groupId)
       .single();
 
-    const isTutor = group?.tutor_id === user.id;
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    const isTutor = actor.actingAsTutor;
     const isSelf = userId === user.id;
 
     if (!isTutor && !isSelf) {
@@ -101,12 +115,14 @@ export async function DELETE(req: NextRequest, { params }: Params) {
       return handleSelfLeave(admin as any, groupId, userId, group as any, !!body.immediate);
     }
 
-    return handleTutorRemoval(admin as any, {
+    const removalResult = await handleTutorRemoval(admin as any, {
       groupId,
       groupName: group?.name ?? 'this group',
       studentId: userId,
       tutorId: user.id,
     });
+    await auditAdminOverride(actor, 'member.remove', { targetUserId: userId });
+    return removalResult;
   } catch (err) {
     console.error('[DELETE /api/groups/[groupId]/members/[userId]]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

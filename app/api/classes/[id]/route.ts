@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,21 +22,21 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     const reason: string | null = body.reason ?? null;
     const force: boolean = body.force === true;
 
-    if (force) {
+    // Resolve ownership (or superadmin acting as tutor). The archive_class RPC
+    // below enforces owner-only internally and can't see an admin override, so a
+    // superadmin override takes the manual archive path (like force=true).
+    const actor = await resolveGroupActor({ groupId: classId, userId: user.id, email: user.email });
+    if (actor.notFound) {
+      return NextResponse.json({ ok: false, error: 'not_found' }, { status: 404 });
+    }
+    if (!actor.authorized) {
+      return NextResponse.json({ ok: false, error: 'forbidden' }, { status: 403 });
+    }
+
+    if (force || actor.isAdminOverride) {
       // Bypass the RPC entirely — archive manually so no future-session checks block us
       const admin = getServiceClient();
       const now = new Date().toISOString();
-
-      // Verify ownership
-      const { data: grp } = await admin
-        .from('groups')
-        .select('tutor_id')
-        .eq('id', classId)
-        .single();
-
-      if (!grp || grp.tutor_id !== user.id) {
-        return NextResponse.json({ ok: false, error: 'forbidden' }, { status: 403 });
-      }
 
       // Cancel all upcoming session occurrences
       await admin
@@ -58,6 +59,8 @@ export async function DELETE(req: NextRequest, { params }: Params) {
         .eq('id', classId);
 
       if (archiveErr) throw archiveErr;
+
+      await auditAdminOverride(actor, 'class.archive', { force });
 
       return NextResponse.json({ ok: true });
     }

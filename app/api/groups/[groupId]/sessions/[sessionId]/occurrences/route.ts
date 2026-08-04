@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 
 type Params = { params: Promise<{ groupId: string; sessionId: string }> };
 
@@ -24,15 +25,9 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
 
     const service = getServiceClient();
-    const { data: group } = await service
-      .from('groups')
-      .select('tutor_id')
-      .eq('id', groupId)
-      .single();
-
-    if (!group || group.tutor_id !== user.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    if (actor.notFound) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+    if (!actor.authorized) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const { data: session, error: sessionError } = await service
       .from('group_sessions')
@@ -94,6 +89,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
 
     if (occError) throw occError;
+
+    await auditAdminOverride(actor, 'session.occurrence.create', { sessionId });
 
     // Notify all approved members (non-critical)
     try {

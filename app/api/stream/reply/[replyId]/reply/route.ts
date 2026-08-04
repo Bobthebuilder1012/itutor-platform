@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 
 type Params = { params: Promise<{ replyId: string }> };
 
@@ -32,8 +33,8 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     if (!post) return NextResponse.json({ error: 'Post not found' }, { status: 404 });
 
-    const { data: group } = await service.from('groups').select('tutor_id').eq('id', post.group_id).single();
-    const isTutor = group?.tutor_id === user.id;
+    const actor = await resolveGroupActor({ groupId: post.group_id, userId: user.id, email: user.email });
+    const isTutor = actor.actingAsTutor;
     if (!isTutor) {
       const { data: membership } = await service
         .from('group_members')
@@ -64,6 +65,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       .single();
 
     if (insertError) throw insertError;
+    await auditAdminOverride(actor, 'stream.reply.create', { replyId });
 
     const { data: author } = await service.from('profiles').select('id, full_name, avatar_url').eq('id', user.id).single();
 

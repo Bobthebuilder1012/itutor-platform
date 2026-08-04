@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor } from '@/lib/auth/groupAccess';
 
 type Params = { params: Promise<{ groupId: string }> };
 
-async function ensureGroupAccess(groupId: string, userId: string) {
+async function ensureGroupAccess(groupId: string, userId: string, email?: string | null) {
   const service = getServiceClient();
-  const { data: group, error: groupErr } = await service
-    .from('groups')
-    .select('tutor_id')
-    .eq('id', groupId)
-    .maybeSingle();
-  if (groupErr || !group) return { error: 'Group not found', status: 404 as const };
-  const isTutor = group.tutor_id === userId;
+  const actor = await resolveGroupActor({ groupId, userId, email });
+  if (actor.notFound) return { error: 'Group not found', status: 404 as const };
+  const isTutor = actor.actingAsTutor;
   if (!isTutor) {
     const { data: membership } = await service
       .from('group_members')
@@ -38,7 +35,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     }
 
     const { groupId } = await params;
-    const access = await ensureGroupAccess(groupId, user.id);
+    const access = await ensureGroupAccess(groupId, user.id, user.email);
     if ('status' in access) {
       return NextResponse.json({ error: access.error }, { status: access.status });
     }

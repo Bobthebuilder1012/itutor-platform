@@ -115,6 +115,9 @@ export default function GroupGridCard({ group, onClick, onAskToJoin }: GroupGrid
             </div>
           </div>
         )}
+        {hasCustomImage && (
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/25 via-transparent to-black/15" />
+        )}
         <div className="absolute top-3 left-3 flex gap-1.5 flex-wrap max-w-[85%]">
           {cap != null && spotsLeft !== null && spotsLeft > 0 && spotsLeft <= 5 && (
             <span className="px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider bg-orange-500/90 text-white backdrop-blur-sm">

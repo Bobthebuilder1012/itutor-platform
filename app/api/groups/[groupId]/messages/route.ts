@@ -1,21 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor, auditAdminOverride, type GroupActor } from '@/lib/auth/groupAccess';
 import type { PostGroupMessageInput } from '@/lib/types/groups';
 
 type Params = { params: Promise<{ groupId: string }> };
 
-async function isApprovedMemberOrTutor(
+// Returns whether the caller may read/post on the board (tutor, superadmin
+// acting as tutor, or an approved member) plus the resolved actor so writes can
+// be audited when performed via admin override.
+async function resolveMessageAccess(
   service: ReturnType<typeof getServiceClient>,
   groupId: string,
-  userId: string
-): Promise<boolean> {
-  const { data: group } = await service
-    .from('groups')
-    .select('tutor_id')
-    .eq('id', groupId)
-    .single();
-
-  if (group?.tutor_id === userId) return true;
+  userId: string,
+  email?: string | null
+): Promise<{ allowed: boolean; actor: GroupActor }> {
+  const actor = await resolveGroupActor({ groupId, userId, email });
+  if (actor.actingAsTutor) return { allowed: true, actor };
 
   const { data: member } = await service
     .from('group_members')
@@ -24,7 +24,7 @@ async function isApprovedMemberOrTutor(
     .eq('user_id', userId)
     .single();
 
-  return member?.status === 'approved';
+  return { allowed: member?.status === 'approved', actor };
 }
 
 // GET /api/groups/[groupId]/messages — fetch group message board
@@ -40,7 +40,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     }
 
     const service = getServiceClient();
-    const allowed = await isApprovedMemberOrTutor(service, groupId, user.id);
+    const { allowed } = await resolveMessageAccess(service, groupId, user.id, user.email);
     if (!allowed) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
 
     const service = getServiceClient();
-    const allowed = await isApprovedMemberOrTutor(service, groupId, user.id);
+    const { allowed, actor } = await resolveMessageAccess(service, groupId, user.id, user.email);
     if (!allowed) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
@@ -124,6 +124,8 @@ export async function POST(request: NextRequest, { params }: Params) {
       .single();
 
     if (error) throw error;
+
+    await auditAdminOverride(actor, 'message.post.create', { parentMessageId: body.parent_message_id ?? null });
 
     // Notify all approved members except the sender
     const { data: members } = await service

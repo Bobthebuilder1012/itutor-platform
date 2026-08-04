@@ -1,16 +1,31 @@
 // POST /api/groups/[groupId]/subscribe
-// Creates a LuniPay checkout for a MONTHLY group subscription.
+// Creates a native Stripe Subscription for a MONTHLY group class.
 // Implements the 14-step decision tree from the subscription billing plan.
+//
+// Stripe owns the billing cycle: it charges each month, retries failures
+// and runs its own dunning. The enrollment is marked
+// billing_provider='stripe' so our self-managed process-subscriptions
+// cron skips it — running both would suspend a student while Stripe is
+// still successfully retrying.
+//
+// The enrollment stays PENDING_PAYMENT until the webhook confirms
+// invoice.paid; the client never activates it from confirmPayment.
 
 import { NextRequest, NextResponse } from 'next/server';
-import { LuniPayError } from 'lunipay';
+import Stripe from 'stripe';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
-import { getLunipayClient, ttdToCents } from '@/lib/payments/lunipayClient';
-import { calculateGrossAmount } from '@/lib/payments/grossUp';
+import { getStripeClient, ttdToCents } from '@/lib/payments/stripeClient';
+import {
+  ensureStripeCustomer,
+  ensureGroupPrice,
+  endDateToCancelAt,
+} from '@/lib/payments/stripeSubscriptions';
+import { calculateGrossAmountForProvider } from '@/lib/payments/grossUp';
 import {
   createPendingSubscriptionPayment,
   expireSubscriptionPayment,
 } from '@/lib/services/subscriptionPayments';
+import { findGroupEnrollmentConflict, conflictMessage } from '@/lib/services/scheduleConflict';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -38,7 +53,8 @@ export async function POST(req: NextRequest, { params }: Params) {
       .select(`
         id, tutor_id, name, status, pricing_model, price_monthly,
         max_students, grace_period_days, require_join_requests,
-        visibility, archived_at
+        visibility, archived_at,
+        end_date, stripe_price_id, stripe_price_amount_ttd
       `)
       .eq('id', groupId)
       .is('archived_at', null)
@@ -66,7 +82,10 @@ export async function POST(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Payments are not configured' }, { status: 503 });
     }
 
-    if (!process.env.LUNIPAY_SECRET_KEY) {
+    // Gate on the provider this route actually uses. This checked
+    // LUNIPAY_SECRET_KEY, which would have refused Stripe subscriptions on
+    // any environment where the (now unused) LuniPay key was absent.
+    if (!process.env.STRIPE_SECRET_KEY) {
       return NextResponse.json({ error: 'Payment processing is not available on this environment' }, { status: 503 });
     }
 
@@ -117,6 +136,13 @@ export async function POST(req: NextRequest, { params }: Params) {
         enrollment_id: activeEnrollment.id,
         status: activeEnrollment.status,
       }, { status: 409 });
+    }
+
+    // Step 6b: Child schedule conflict — the student's own upcoming schedule
+    // (1:1 + group) vs this class's occurrences. Block before creating a checkout.
+    const conflict = await findGroupEnrollmentConflict(admin, user.id, groupId);
+    if (conflict) {
+      return NextResponse.json({ error: conflictMessage(conflict) }, { status: 409 });
     }
 
     const now = new Date();
@@ -389,8 +415,13 @@ export async function POST(req: NextRequest, { params }: Params) {
       .update({ checkout_expires_at: pendingExpiresAt })
       .eq('id', paymentRow.id);
 
-    // Step 13: Create LuniPay checkout session
-    const { grossAmount: grossFinalPrice, processingFee: subFee } = calculateGrossAmount(finalPrice);
+    // Step 13: Create the Stripe PaymentIntent for this cycle.
+    //
+    // NOT a Stripe Subscription object: we own the recurring cycle
+    // (group_enrollments.next_payment_due_at + the process-subscriptions
+    // cron), so Stripe just charges each period, exactly like the 1:1 flow.
+    const { grossAmount: grossFinalPrice, processingFee: subFee } =
+      calculateGrossAmountForProvider(finalPrice, 'stripe');
     const amountCents = ttdToCents(grossFinalPrice);
 
     // Get student email for checkout
@@ -407,54 +438,114 @@ export async function POST(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Your account is missing an email address' }, { status: 400 });
     }
 
-    const lunipay = getLunipayClient();
-    let session: any;
+    // Native Stripe Subscription: Stripe owns the cycle from here on —
+    // it charges each month, retries failures and runs its own dunning.
+    // Our process-subscriptions cron must therefore SKIP this enrollment,
+    // which is what billing_provider='stripe' below signals.
+    let subscription: Stripe.Subscription;
     try {
-      session = await lunipay.checkout.sessions.create(
+      const customerId = await ensureStripeCustomer(admin, user.id);
+      const priceId = await ensureGroupPrice(admin, group as any);
+      const cancelAt = endDateToCancelAt((group as any).end_date);
+
+      const stripe = getStripeClient();
+      subscription = await stripe.subscriptions.create(
         {
-          amount: amountCents,
-          currency: 'ttd',
-          success_url: `${appUrl}/student/subscriptions/${enrollmentId}/confirmed?session_id={CHECKOUT_SESSION_ID}`,
-          cancel_url: `${appUrl}/student/groups/${groupId}`,
-          customer_email: customerEmail,
-          line_items: [
-            {
-              name: `${group.name} — Monthly Subscription`,
-              quantity: 1,
-              amount: amountCents,
-            } as any,
-          ],
+          customer: customerId,
+          items: [{ price: priceId }],
+          // Don't activate until the first invoice is actually paid; the
+          // enrollment stays PENDING_PAYMENT until the webhook says so.
+          payment_behavior: 'default_incomplete',
+          payment_settings: { save_default_payment_method: 'on_subscription' },
+          // NOT 'latest_invoice.payment_intent' — Stripe removed
+          // Invoice.payment_intent in recent API versions (we pin
+          // 2026-07-29.dahlia). That expand is accepted silently but
+          // yields nothing, so the client secret came back undefined and
+          // every subscribe attempt fell into the 502 below.
+          // confirmation_secret is the replacement.
+          expand: ['latest_invoice.confirmation_secret'],
+          // Stops billing when the class ends, without a cron to cancel it.
+          ...(cancelAt ? { cancel_at: cancelAt } : {}),
+          // Stripe has no concept of "which class/tutor" — these are what
+          // the webhook and the (deferred) pause/resume work key off.
           metadata: {
-            type: 'subscription_initial',
-            enrollment_id: enrollmentId!,
+            kind: 'group_subscription',
             group_id: groupId,
+            tutor_id: group.tutor_id,
             student_id: user.id,
+            enrollment_id: enrollmentId!,
             payment_id: paymentRow.id,
             base_amount_ttd: String(finalPrice),
-            processing_fee_ttd: String(subFee),
           },
         },
         { idempotencyKey: `subscribe-${paymentRow.id}` }
       );
     } catch (err) {
-      if (err instanceof LuniPayError) {
-        console.error('[subscribe] LuniPay checkout creation failed:', err);
-        return NextResponse.json({ error: 'Failed to create checkout session' }, { status: 502 });
-      }
-      throw err;
+      const isApiError = err instanceof Stripe.errors.StripeError;
+      console.error(
+        '[subscribe] Stripe subscriptions.create failed:',
+        isApiError ? { type: err.type, code: err.code, message: err.message } : err
+      );
+      return NextResponse.json({ error: 'Failed to create checkout session' }, { status: 502 });
     }
 
-    // Store checkout session id on the payment row
+    const latestInvoice = subscription.latest_invoice as Stripe.Invoice | null;
+    const clientSecret = (latestInvoice as any)?.confirmation_secret?.client_secret as
+      | string
+      | undefined;
+
+    if (!clientSecret) {
+      console.error(
+        '[subscribe] Subscription created without a payable invoice',
+        {
+          subscription: subscription.id,
+          status: subscription.status,
+          invoice: latestInvoice?.id,
+        }
+      );
+      return NextResponse.json({ error: 'Failed to create checkout session' }, { status: 502 });
+    }
+
+    // A client secret is `pi_XXX_secret_YYY`, so the PaymentIntent id is the
+    // part before `_secret_`. Derived rather than fetched: Invoice no longer
+    // exposes payment_intent, and this saves a round-trip.
+    const intentId = clientSecret.split('_secret_')[0];
+
     await admin
       .from('subscription_payments')
-      .update({ lunipay_checkout_session_id: session.id })
+      .update({
+        stripe_payment_intent_id: intentId,
+        stripe_subscription_id: subscription.id,
+        stripe_invoice_id: latestInvoice?.id ?? null,
+        charged_processing_fee_ttd: subFee,
+      })
       .eq('id', paymentRow.id);
 
-    // Step 14: Return checkout URL
+    // Mark the enrollment Stripe-billed so the self-managed dunning cron
+    // leaves it alone. Set BEFORE the student pays: if they abandon
+    // checkout the enrollment is still PENDING_PAYMENT and gets expired by
+    // the normal seat-reservation task, which doesn't consult this flag.
+    await admin
+      .from('group_enrollments')
+      .update({
+        stripe_subscription_id: subscription.id,
+        billing_provider: 'stripe',
+      })
+      .eq('id', enrollmentId!);
+
+    // Step 14: Return the client secret. The enrollment stays PENDING_PAYMENT
+    // until the webhook confirms — the client never activates it from
+    // confirmPayment's result.
     return NextResponse.json({
-      checkout_url: session.url,
+      checkout_url: `/payments/checkout?pi=${intentId}`,
+      client_secret: clientSecret,
+      payment_intent_id: intentId,
       enrollment_id: enrollmentId,
       payment_id: paymentRow.id,
+      amount: finalPrice,
+      processing_fee: subFee,
+      total: grossFinalPrice,
+      currency: 'TTD',
     }, { status: 201 });
 
   } catch (err) {

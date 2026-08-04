@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, GraduationCap, Lightbulb, Loader2, UserRound, Users, X as XIcon } from 'lucide-react';
@@ -9,6 +9,7 @@ import InstitutionAutocomplete from '@/components/InstitutionAutocomplete';
 import { Institution } from '@/lib/hooks/useInstitutionsSearch';
 import { setUserSubjects } from '@/lib/supabase/userSubjects';
 import { ensureSchoolCommunityAndMembership } from '@/lib/actions/community';
+import ProfilePhotoStep from '@/components/onboarding/ProfilePhotoStep';
 import { cn } from '@/lib/utils';
 
 type UserRole = 'student' | 'tutor' | 'parent';
@@ -53,11 +54,14 @@ export default function CompleteRolePage() {
   const router = useRouter();
 
   const [userId, setUserId] = useState<string | null>(null);
-  const [step, setStep] = useState<'role' | 'profile'>('role');
+  const [step, setStep] = useState<'role' | 'profile' | 'photo'>('role');
   const [role, setRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [checkingSession, setCheckingSession] = useState(true);
+
+  // Profile picture — last step, after the required details, and always skippable.
+  const [destination, setDestination] = useState('/student/dashboard');
 
   // Student profile
   const [affiliation, setAffiliation] = useState<'attend' | 'teach' | 'no' | null>(null);
@@ -90,7 +94,8 @@ export default function CompleteRolePage() {
           if (data.role !== 'parent') {
             setStep('profile');
           } else {
-            router.replace('/parent/coming-soon');
+            // Parents need no extra profile step — straight to their dashboard.
+            router.replace('/parent/dashboard');
             return;
           }
         }
@@ -126,7 +131,7 @@ export default function CompleteRolePage() {
     setLoading(true);
     try {
       await saveProfile({ role: 'set-role', newRole: role });
-      if (role === 'parent') { router.push('/parent/coming-soon'); return; }
+      if (role === 'parent') { router.push('/parent/dashboard'); return; }
       setStep('profile');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save role. Please try again.');
@@ -147,7 +152,8 @@ export default function CompleteRolePage() {
         institution_id: showSchool && studentInstitution ? studentInstitution.id : null,
       });
       if (showSchool && studentInstitution) await ensureSchoolCommunityAndMembership(userId!);
-      router.push('/student/dashboard');
+      setDestination('/student/dashboard');
+      setStep('photo');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred.');
     } finally { setLoading(false); }
@@ -162,7 +168,8 @@ export default function CompleteRolePage() {
     try {
       await saveProfile({ role: 'tutor', teaching_levels: tLevels });
       if (tSubjects.length > 0) await setUserSubjects(userId!, tSubjects);
-      router.push('/tutor/dashboard');
+      setDestination('/tutor/dashboard');
+      setStep('photo');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred.');
     } finally { setLoading(false); }
@@ -358,6 +365,18 @@ export default function CompleteRolePage() {
                     {loading ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : 'Complete Profile'}
                   </button>
                 </div>
+              </motion.div>
+            )}
+
+            {/* PROFILE PICTURE */}
+            {step === 'photo' && userId && (
+              <motion.div key="photo" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }}>
+                <ProfilePhotoStep
+                  userId={userId}
+                  role={role === 'tutor' ? 'tutor' : 'student'}
+                  onSaved={() => router.push(destination)}
+                  onSkip={() => router.push(destination)}
+                />
               </motion.div>
             )}
 

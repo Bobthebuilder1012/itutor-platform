@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { ThumbsUp, ThumbsDown, Pencil, Trash2, MessageSquare, Send, X } from 'lucide-react';
+import { ThumbsUp, ThumbsDown, Pencil, Trash2, MessageSquare, Send, X, HeartHandshake, Lightbulb, BookOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { StarRow, StarInput } from './StarInput';
 import { supabase } from '@/lib/supabase/client';
@@ -53,12 +53,16 @@ export function CommentSection({ targetKind, targetId, viewerIsOwnerTutor, viewe
   const [loading, setLoading] = useState(true);
   const [shown, setShown] = useState(PAGE);
 
-  // New review
-  const [newRating, setNewRating] = useState(0);
+  // New review — group classes use three category sub-scores (mig 192); the
+  // overall score is computed server-side as their average.
+  const [patience, setPatience] = useState(0);
+  const [explanation, setExplanation] = useState(0);
+  const [classMaterial, setClassMaterial] = useState(0);
   const [newComment, setNewComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [eligibleSessionId, setEligibleSessionId] = useState<string | null | undefined>(undefined); // undefined = loading
   const [alreadyReviewed, setAlreadyReviewed] = useState(false);
+  const [tooNew, setTooNew] = useState(false); // enrolled < 30 days (mirrors API gate)
 
   // Edit review
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -103,12 +107,28 @@ export function CommentSection({ targetKind, targetId, viewerIsOwnerTutor, viewe
           const already = items.some((r: any) => r.reviewer_id === profile.id);
           setAlreadyReviewed(already);
           if (!already) {
-            // Check if student is enrolled (enrollment OR approved group_members row)
+            // Check enrollment (with tenure) OR approved group_members row.
             const [{ data: enrollment }, { data: membership }] = await Promise.all([
-              supabase.from('group_enrollments').select('id').eq('group_id', targetId).eq('student_id', profile.id).in('status', ['ACTIVE', 'GRACE']).maybeSingle(),
+              supabase.from('group_enrollments').select('id, enrolled_at').eq('group_id', targetId).eq('student_id', profile.id).in('status', ['ACTIVE', 'GRACE']).maybeSingle(),
               supabase.from('group_members').select('id').eq('group_id', targetId).eq('user_id', profile.id).in('status', ['approved', 'active']).maybeSingle(),
             ]);
-            setEligibleSessionId(enrollment || membership ? 'eligible' : null);
+            // Mirror the API's 30-day tenure gate so an ineligible student sees a
+            // clear message instead of a rejected submit. Only enforceable when we
+            // know enrolled_at; membership-only (no enrolled_at) is allowed.
+            const enrolledAt = (enrollment as any)?.enrolled_at as string | undefined;
+            const tenureOk = !enrolledAt || (Date.now() - new Date(enrolledAt).getTime()) / 86_400_000 >= 30;
+            if (enrollment || membership) {
+              if (enrollment && !membership && !tenureOk) {
+                setEligibleSessionId(null);
+                setTooNew(true);
+              } else {
+                setEligibleSessionId('eligible');
+                setTooNew(false);
+              }
+            } else {
+              setEligibleSessionId(null);
+              setTooNew(false);
+            }
           } else {
             setEligibleSessionId(null);
           }
@@ -122,6 +142,7 @@ export function CommentSection({ targetKind, targetId, viewerIsOwnerTutor, viewe
           .select('id, comment, stars, created_at, tutor_reply, tutor_replied_at, student_id, student:profiles!ratings_student_id_fkey(full_name, avatar_url)')
           .eq('tutor_id', targetId)
           .not('comment', 'is', null)
+          .is('deleted_at', null)
           .order('created_at', { ascending: false })
           .limit(100);
 
@@ -153,18 +174,27 @@ export function CommentSection({ targetKind, targetId, viewerIsOwnerTutor, viewe
 
   useEffect(() => { fetchReviews(); }, [fetchReviews]);
 
+  const allCategoriesSet = patience > 0 && explanation > 0 && classMaterial > 0;
+
   const submitReview = async () => {
-    if (newRating === 0 || submitting || !eligibleSessionId) return;
+    if (!allCategoriesSet || submitting || !eligibleSessionId) return;
     setSubmitting(true);
     try {
       const res = await fetch(`/api/groups/${targetId}/reviews`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rating: newRating, comment: newComment.trim() || undefined }),
+        body: JSON.stringify({
+          patience_rating: patience,
+          explanation_rating: explanation,
+          class_material_rating: classMaterial,
+          comment: newComment.trim() || undefined,
+        }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? json.message ?? 'Failed to submit review');
-      setNewRating(0);
+      setPatience(0);
+      setExplanation(0);
+      setClassMaterial(0);
       setNewComment('');
       setAlreadyReviewed(true);
       await fetchReviews();
@@ -260,43 +290,59 @@ export function CommentSection({ targetKind, targetId, viewerIsOwnerTutor, viewe
         )}
       </div>
 
-      {/* New review form */}
+      {/* New review form — rate three areas; overall is their average */}
       {canSubmit && (
-        <div className="rounded-2xl bg-card border border-border p-5 space-y-3">
+        <div className="rounded-2xl bg-card border border-border p-5 space-y-4">
           <div className="text-sm font-semibold text-ink">Leave a review</div>
-          <StarInput value={newRating} onChange={setNewRating} size={36} />
-          {newRating > 0 && (
-            <>
-              <textarea
-                value={newComment}
-                onChange={e => setNewComment(e.target.value)}
-                placeholder="Share your experience (optional)"
-                rows={3}
-                maxLength={1000}
-                className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand resize-none"
-              />
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">{newComment.length}/1000</span>
-                <div className="flex gap-2">
-                  <button onClick={() => { setNewRating(0); setNewComment(''); }}
-                    className="px-3 py-1.5 text-sm text-muted-foreground hover:text-ink">Cancel</button>
-                  <button onClick={submitReview} disabled={submitting}
-                    className="px-5 py-1.5 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep disabled:opacity-50">
-                    {submitting ? 'Submitting…' : 'Submit Review'}
-                  </button>
+          <div className="space-y-2.5">
+            {([
+              { label: 'Patience', icon: HeartHandshake, value: patience, set: setPatience },
+              { label: 'Explanation', icon: Lightbulb, value: explanation, set: setExplanation },
+              { label: 'Class material', icon: BookOpen, value: classMaterial, set: setClassMaterial },
+            ] as const).map((row) => {
+              const Icon = row.icon;
+              return (
+                <div key={row.label} className="flex items-center justify-between gap-3">
+                  <span className="inline-flex items-center gap-2 text-sm text-ink">
+                    <Icon className="size-4 text-brand-deep" /> {row.label}
+                  </span>
+                  <StarInput value={row.value} onChange={row.set} size={28} />
                 </div>
-              </div>
-            </>
-          )}
+              );
+            })}
+          </div>
+          <textarea
+            value={newComment}
+            onChange={e => setNewComment(e.target.value)}
+            placeholder="Share your experience (optional)"
+            rows={3}
+            maxLength={1000}
+            className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand resize-none"
+          />
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">{newComment.length}/1000</span>
+            <div className="flex gap-2">
+              <button onClick={() => { setPatience(0); setExplanation(0); setClassMaterial(0); setNewComment(''); }}
+                className="px-3 py-1.5 text-sm text-muted-foreground hover:text-ink">Cancel</button>
+              <button onClick={submitReview} disabled={submitting || !allCategoriesSet}
+                title={!allCategoriesSet ? 'Rate all three areas to submit' : undefined}
+                className="px-5 py-1.5 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep disabled:opacity-50">
+                {submitting ? 'Submitting…' : 'Submit Review'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
       {/* State messages */}
       {alreadyReviewed && isStudent && !viewerIsOwnerTutor && (
-        <p className="text-sm text-muted-foreground italic">You've already reviewed this class.</p>
+        <p className="text-sm text-muted-foreground italic">You&apos;ve already reviewed this class.</p>
       )}
-      {targetKind === 'class' && isStudent && !viewerIsOwnerTutor && !alreadyReviewed && eligibleSessionId === null && viewerLoggedIn && (
-        <p className="text-sm text-muted-foreground">Attend a session to leave a review.</p>
+      {targetKind === 'class' && isStudent && !viewerIsOwnerTutor && !alreadyReviewed && tooNew && viewerLoggedIn && (
+        <p className="text-sm text-muted-foreground">You can review this class once you&apos;ve been enrolled for 30 days.</p>
+      )}
+      {targetKind === 'class' && isStudent && !viewerIsOwnerTutor && !alreadyReviewed && !tooNew && eligibleSessionId === null && viewerLoggedIn && (
+        <p className="text-sm text-muted-foreground">Enrol in this class to leave a review.</p>
       )}
 
       {/* Reviews list */}

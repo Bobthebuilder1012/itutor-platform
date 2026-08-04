@@ -79,7 +79,7 @@ export interface Group {
 }
 
 export interface GroupWithTutor extends Group {
-  tutor: Pick<Profile, 'id' | 'full_name' | 'avatar_url' | 'rating_average' | 'rating_count'>;
+  tutor: Pick<Profile, 'id' | 'full_name' | 'avatar_url' | 'rating_average' | 'rating_count' | 'profile_banner_url'>;
   member_count: number;
   member_previews: Array<Pick<Profile, 'id' | 'full_name' | 'avatar_url'>>;
   current_user_membership: GroupMember | null;

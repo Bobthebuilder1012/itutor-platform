@@ -8,6 +8,7 @@ import TutorCalendarWidget from '@/components/booking/TutorCalendarWidget';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import VerifiedSubjectsButton from '@/components/tutor/VerifiedSubjectsButton';
 import VerifiedSubjectsModal from '@/components/tutor/VerifiedSubjectsModal';
+import TutorCredentials from '@/components/TutorCredentials';
 import RatingComment from '@/components/tutor/RatingComment';
 import AuthPromptModal from '@/components/AuthPromptModal';
 import { useAuthPrompt } from '@/hooks/useAuthPrompt';
@@ -428,6 +429,9 @@ export default function PublicTutorProfilePage() {
         {/* Two-column: left = CXC + subjects + calendar, right = reviews */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
+            {/* Verified degree credential (structured text + badge only — never the document) */}
+            <TutorCredentials tutorId={tutorId} className="mb-6" />
+
             {/* Verified CXC Results */}
             {tutor.tutor_verification_status === 'verified' && verifiedSubjects.length > 0 && (
               <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-300 shadow-xl rounded-2xl p-6 mb-6 hover:shadow-green-300/50 transition-all duration-300">

@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
+import AdminBreadcrumb from '@/components/admin/AdminBreadcrumb';
 import { isEmailManagementOnlyAdmin } from '@/lib/auth/adminAccess';
 import {
   Percent, Users, ShieldCheck, Search, Loader2,
@@ -127,8 +128,8 @@ function EditModal({
 
           {mode === 'reflexive' && (
             <p className="rounded-lg bg-blue-50 px-4 py-3 text-sm text-blue-700">
-              Reflexive mode uses the existing tier-based commission logic:
-              &lt;TT$100 → 10%, TT$100–199 → 15%, TT$200+ → 20%
+              Reflexive mode uses the platform&apos;s base commission: a flat 7% of
+              the session price, whatever the price is.
             </p>
           )}
 
@@ -479,6 +480,8 @@ export default function TutorCommissionsPage() {
     <DashboardLayout role="admin" userName="Admin">
       <div className="mx-auto max-w-6xl space-y-8 px-4 py-8 sm:px-6">
 
+        <AdminBreadcrumb items={[{ label: 'Finance' }, { label: 'Tutor Commissions' }]} />
+
         {/* Header */}
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Tutor Commission Settings</h1>
@@ -569,7 +572,7 @@ export default function TutorCommissionsPage() {
 
               {globalMode === 'reflexive' && (
                 <div className="max-w-md rounded-lg bg-blue-50 px-4 py-3 text-sm text-blue-700">
-                  Uses the existing tier-based logic: &lt;TT$100 → 10% &nbsp;|&nbsp; TT$100–199 → 15% &nbsp;|&nbsp; TT$200+ → 20%
+                  Uses the platform&apos;s base commission: a flat 7% of the session price.
                 </div>
               )}
 

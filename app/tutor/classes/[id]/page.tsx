@@ -148,6 +148,14 @@ function ClassHubContent() {
   const [tab, setTab] = useState<Tab>('stream');
   const [settingsDirty, setSettingsDirty] = useState(false);
 
+  // Admin "Enter as Tutor" mode. null = undetermined (still resolving), false =
+  // real tutor viewing their own class, true = a superadmin acting as tutor.
+  // The browser can't read SUPERADMIN_EMAILS, so mode is established by probing
+  // the server (which also returns the group row, working for archived classes
+  // the RLS client can't read directly).
+  const [adminMode, setAdminMode] = useState<boolean | null>(null);
+  const [adminGroupRow, setAdminGroupRow] = useState<any>(null);
+
   const switchTab = (next: Tab) => {
     if (tab === 'settings' && settingsDirty) {
       if (!window.confirm('You have unsaved changes in Settings. Leave anyway?')) return;
@@ -157,11 +165,34 @@ function ClassHubContent() {
   };
 
   useEffect(() => {
-    if (!loading && (!profile || profile.role !== 'tutor')) router.replace('/login');
-  }, [loading, profile, router]);
+    if (loading) return;
+    if (!profile) { router.replace('/login'); return; }
+    // Real tutor: unchanged path, and never touch the admin probe (regression-safe).
+    if (profile.role === 'tutor') { setAdminMode(false); return; }
+    // Non-tutor: only a superadmin may view. Probe the server, which authorizes
+    // and returns the group row. Anyone else is bounced to /login.
+    if (!id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/admin/classes/${id}/access`);
+        if (cancelled) return;
+        if (res.ok) {
+          const j = await res.json();
+          setAdminGroupRow(j.group);
+          setAdminMode(true);
+        } else {
+          router.replace('/login');
+        }
+      } catch {
+        if (!cancelled) router.replace('/login');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [loading, profile, id, router]);
 
   useEffect(() => {
-    if (!id || !profile?.id) return;
+    if (!id || adminMode === null) return;
     fetchAll(id);
 
     // Realtime: re-fetch members whenever a join request arrives for this group
@@ -180,16 +211,21 @@ function ClassHubContent() {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [id, profile?.id]);
+  }, [id, adminMode]);
 
   async function fetchAll(groupId: string) {
     setDataLoading(true);
     try {
-      // Fetch group + active promotion in parallel
-      const [{ data: g }, { data: promoRows }] = await Promise.all([
-        supabase.from('groups').select('*').eq('id', groupId).single(),
+      // Fetch group + active promotion in parallel. In admin mode the group row
+      // comes from the server probe (service client) — the browser's RLS client
+      // can't read archived/private groups the admin doesn't own.
+      const [groupRes, { data: promoRows }] = await Promise.all([
+        adminMode
+          ? Promise.resolve({ data: adminGroupRow })
+          : supabase.from('groups').select('*').eq('id', groupId).single(),
         supabase.from('group_promotions').select('*').eq('group_id', groupId).eq('active', true).limit(1),
       ]);
+      const g = (groupRes as { data: any }).data;
       if (g) {
         const pricingModel = g.pricing_model ?? 'FREE';
         const billingModel: GroupDetail['billingModel'] = 'per-month'; // Only monthly billing supported
@@ -384,11 +420,21 @@ function ClassHubContent() {
 
   return (
     <div className="-mx-4 lg:-mx-8 -mt-6 lg:-mt-8">
+      {/* Admin "acting as tutor" banner — mandatory, never ambiguous. */}
+      {adminMode && (
+        <div className="sticky top-0 z-30 flex items-center justify-center gap-2 bg-amber-500 px-4 py-2 text-center text-xs font-semibold text-amber-950">
+          <ShieldAlert className="size-4 shrink-0" />
+          <span>Viewing as admin — you are acting as the tutor. Every change is logged.</span>
+        </div>
+      )}
       {/* Banner header */}
       <div className={cn('relative h-44 lg:h-52', !group.coverImage && (group.thumbnailGradient ?? 'from-brand to-emerald-400'), !group.coverImage && 'bg-gradient-to-br')}
         style={group.coverImage ? { backgroundImage: `url(${group.coverImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}>
-        <Link href="/tutor/classes" className="absolute top-4 left-4 inline-flex items-center gap-1 text-xs font-semibold text-white/95 bg-black/30 hover:bg-black/40 px-3 py-1.5 rounded-full backdrop-blur">
-          <ArrowLeft className="size-3.5" /> All Classes
+        {group.coverImage && (
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
+        )}
+        <Link href={adminMode ? '/admin/classes' : '/tutor/classes'} className="absolute top-4 left-4 inline-flex items-center gap-1 text-xs font-semibold text-white/95 bg-black/30 hover:bg-black/40 px-3 py-1.5 rounded-full backdrop-blur">
+          <ArrowLeft className="size-3.5" /> {adminMode ? 'Class Admin' : 'All Classes'}
         </Link>
         <div className="absolute inset-x-0 bottom-0">
           <div className="px-4 lg:px-8 pb-5 text-white flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
@@ -435,6 +481,17 @@ function ClassHubContent() {
       </div>
 
       <div className="px-4 lg:px-8 pb-12">
+        {!group.coverImage && !adminMode && (
+          <Link href={`/tutor/classes/${group.id}/banner`}
+            className="mt-6 flex items-center gap-3 rounded-2xl border border-dashed border-brand/40 bg-brand-soft/40 px-4 py-3 transition hover:bg-brand-soft/70">
+            <div className="size-9 rounded-xl bg-brand text-white grid place-items-center shrink-0"><UploadCloud className="size-4" /></div>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-ink">Build your class banner</div>
+              <div className="text-xs text-muted-foreground">Give this class a cover in under a minute — a finished default is ready for you.</div>
+            </div>
+            <span className="ml-auto shrink-0 text-xs font-semibold text-brand-deep">Open builder →</span>
+          </Link>
+        )}
         <div className="border-b border-border mt-6 flex items-center gap-6 overflow-x-auto">
           {tabs.map((t) => (
             <button key={t.key} onClick={() => switchTab(t.key)}
@@ -2474,50 +2531,29 @@ function SchedulePicker({ entries, onChange }: { entries: ScheduleEntry[]; onCha
   );
 }
 
-/* ─── Class banner upload ─────────────────────────────── */
+/* ─── Class banner (built in the Banner Builder) ──────── */
 function ClassBannerUpload({ groupId, currentUrl, onUploaded }: { groupId: string; currentUrl: string; onUploaded: (url: string) => void }) {
-  const [uploading, setUploading] = useState(false);
-  const [err, setErr] = useState('');
-
-  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) { setErr('Please select an image file.'); return; }
-    if (file.size > 5 * 1024 * 1024) { setErr('Image must be under 5 MB.'); return; }
-    setUploading(true); setErr('');
-    try {
-      const ext = file.name.split('.').pop() ?? 'jpg';
-      const path = `class-banners/${groupId}-${Date.now()}.${ext}`;
-      const { supabase } = await import('@/lib/supabase/client');
-      const { error: upErr } = await supabase.storage.from('class-banners').upload(path, file, { upsert: true });
-      if (upErr) throw new Error(upErr.message);
-      const { data } = supabase.storage.from('class-banners').getPublicUrl(path);
-      onUploaded(data.publicUrl);
-    } catch (e: any) {
-      setErr(e?.message ?? 'Upload failed');
-    } finally {
-      setUploading(false);
-    }
-  };
-
   return (
     <div className="space-y-2">
       <div className="text-sm font-semibold text-ink">Banner image</div>
-      <p className="text-xs text-muted-foreground">Displayed at the top of your class listing. Recommended: 1200×300px.</p>
+      <p className="text-xs text-muted-foreground">Shown at the top of your class listing. Create or change it in the banner builder.</p>
       {currentUrl && (
         <div className="rounded-xl overflow-hidden h-24 border border-border">
           <img src={currentUrl} alt="Banner" className="w-full h-full object-cover" />
         </div>
       )}
-      <label className={cn('inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-sm font-semibold cursor-pointer hover:bg-muted transition', uploading && 'opacity-50 cursor-not-allowed')}>
-        <ArrowUpRight className="size-4 rotate-45" />
-        {uploading ? 'Uploading…' : currentUrl ? 'Change banner' : 'Upload banner'}
-        <input type="file" accept="image/*" className="hidden" disabled={uploading} onChange={handleFile} />
-      </label>
-      {currentUrl && (
-        <button onClick={() => onUploaded('')} className="ml-2 text-xs text-muted-foreground hover:text-rose-600 transition">Remove</button>
-      )}
-      {err && <p className="text-xs text-rose-600">{err}</p>}
+      <div className="flex items-center gap-3">
+        <Link
+          href={`/tutor/classes/${groupId}/banner`}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-sm font-semibold hover:bg-muted transition"
+        >
+          <ArrowUpRight className="size-4 rotate-45" />
+          {currentUrl ? 'Change banner' : 'Build banner'}
+        </Link>
+        {currentUrl && (
+          <button onClick={() => onUploaded('')} className="text-xs text-muted-foreground hover:text-rose-600 transition">Remove</button>
+        )}
+      </div>
     </div>
   );
 }

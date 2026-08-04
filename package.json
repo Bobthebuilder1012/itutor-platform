@@ -18,6 +18,8 @@
     "@google/generative-ai": "^0.24.1",
     "@heroicons/react": "^2.2.0",
     "@react-email/components": "^1.0.12",
+    "@stripe/react-stripe-js": "^6.8.0",
+    "@stripe/stripe-js": "^9.12.1",
     "@supabase/auth-helpers-nextjs": "^0.15.0",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.89.0",
@@ -36,6 +38,7 @@
     "react-markdown": "^10.1.0",
     "resend": "^6.9.1",
     "rrule": "^2.8.1",
+    "stripe": "^22.4.0",
     "tailwind-merge": "^3.5.0",
     "web-push": "^3.6.7",
     "zod": "^4.3.6"

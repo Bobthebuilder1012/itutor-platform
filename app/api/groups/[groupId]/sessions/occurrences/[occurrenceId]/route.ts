@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 
 type Params = { params: Promise<{ groupId: string; occurrenceId: string }> };
 
@@ -17,16 +18,10 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
 
     const service = getServiceClient();
 
-    // Verify the tutor owns this group
-    const { data: group } = await service
-      .from('groups')
-      .select('tutor_id, name')
-      .eq('id', groupId)
-      .single();
-
-    if (!group || group.tutor_id !== user.id) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    // Verify the tutor owns this group (superadmins may act as the tutor)
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    if (actor.notFound) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+    if (!actor.authorized) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     // Try deleting as an occurrence first
     const { data: occurrence } = await service
@@ -41,6 +36,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
         .delete()
         .eq('id', occurrenceId);
       if (error) throw error;
+      await auditAdminOverride(actor, 'session.occurrence.delete', { occurrenceId });
       return NextResponse.json({ success: true });
     }
 
@@ -58,6 +54,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
         .delete()
         .eq('id', occurrenceId);
       if (error) throw error;
+      await auditAdminOverride(actor, 'session.occurrence.delete', { sessionId: occurrenceId });
       return NextResponse.json({ success: true });
     }
 

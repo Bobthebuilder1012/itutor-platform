@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase/client';
 import { Subject } from '@/lib/types/database';
 import PaidClassesLockNotice from '@/components/tutor/PaidClassesLockNotice';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
+import { getCommissionRatePercentage } from '@/lib/utils/commissionCalculator';
 
 type AddSubjectModalProps = {
   isOpen: boolean;
@@ -143,13 +144,12 @@ export default function AddSubjectModal({
     ));
   };
 
-  // Calculate commission rate based on price
-  const getCommissionRate = (price: number): number => {
-    if (price === 0) return 0; // Free sessions - no commission
-    if (price < 100) return 10;
-    if (price < 200) return 15;
-    return 20;
-  };
+  // Read the rate from the shared calculator rather than re-declaring the
+  // schedule here — this copy said 10/15/20 by price tier long after the
+  // platform moved to a flat rate, so tutors were quoted a commission the
+  // server never charged.
+  const getCommissionRate = (price: number): number =>
+    price === 0 ? 0 : getCommissionRatePercentage(price); // free sessions take no cut
 
   async function handleAddSubjects() {
     if (selectedSubjects.length === 0) return;

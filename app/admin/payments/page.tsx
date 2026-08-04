@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
+import AdminBreadcrumb from '@/components/admin/AdminBreadcrumb';
 import { isEmailManagementOnlyAdmin } from '@/lib/auth/adminAccess';
 import {
   DollarSign, TrendingUp, Clock, ShieldAlert,
@@ -170,6 +171,8 @@ export default function AdminPaymentsPage() {
   return (
     <DashboardLayout role="admin" userName="Admin">
       <div className="max-w-6xl mx-auto space-y-8 p-6">
+
+        <AdminBreadcrumb items={[{ label: 'Finance' }, { label: 'Payments Overview' }]} />
 
         {/* Header */}
         <div>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useParams, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
@@ -10,11 +10,14 @@ import SuggestTimeModal from '@/components/booking/SuggestTimeModal';
 import UserAvatar from '@/components/UserAvatar';
 import { cn } from '@/lib/utils';
 import {
-  ArrowLeft, Star, Heart, MessageSquare, Award, Clock, Video,
+  ArrowLeft, Star, MessageSquare, Award, Clock, Video,
   BadgeCheck, ChevronLeft, ChevronRight, X, Check, MapPin,
-  ThumbsUp, ThumbsDown,
+  ThumbsUp, ThumbsDown, HeartHandshake, Lightbulb, BookOpen,
 } from 'lucide-react';
 import { getTutorPublicCalendar } from '@/lib/services/bookingService';
+import ClassesSection from '@/components/tutor/public/ClassesSection';
+import TutorCredentials from '@/components/TutorCredentials';
+import { StarRow } from '@/components/ratings/StarInput';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -24,6 +27,18 @@ type Review = {
   comment: string | null;
   created_at: string;
   student: { full_name: string; username: string };
+};
+
+// Group-class review with the 3-category sub-scores (mig 192).
+type GroupReview = {
+  id: string;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+  patience_rating: number | null;
+  explanation_rating: number | null;
+  class_material_rating: number | null;
+  reviewer?: { full_name?: string | null; avatar_url?: string | null } | null;
 };
 
 type TutorProfile = {
@@ -317,11 +332,17 @@ function BookingCard({
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
+// Serves BOTH routes: /student/tutors/[id] (class-led profile) and
+// /student/tutors/[id]/book (1:1 booking-first). `mode` is derived from the
+// path; in 'book' mode the 1:1 flow auto-opens and the class-led sections are
+// hidden. The /book route renders this same component (see book/page.tsx).
 export default function TutorProfilePage() {
   const { profile, loading: profileLoading } = useProfile();
   const router = useRouter();
   const params = useParams();
   const tutorId = params.tutorId as string;
+  const pathname = usePathname();
+  const mode: 'profile' | 'book' = pathname?.endsWith('/book') ? 'book' : 'profile';
 
   const [tutor, setTutor] = useState<TutorProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -333,8 +354,8 @@ export default function TutorProfilePage() {
   const [paidClassesEnabled, setPaidClassesEnabled] = useState(false);
   const [completedSessions, setCompletedSessions] = useState(0);
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [groupReviews, setGroupReviews] = useState<GroupReview[]>([]);
   const [voted, setVoted] = useState<Record<string, 'up' | 'down' | undefined>>({});
-  const [saved, setSaved] = useState(false);
   const [showBookingSheet, setShowBookingSheet] = useState(false);
   const [bookingStep, setBookingStep] = useState<1 | 2 | 3>(1);
   const [pickedTime, setPickedTime] = useState<number | null>(null);
@@ -409,6 +430,13 @@ export default function TutorProfilePage() {
       const totalReviews = typeof summary?.ratingCount === 'number' ? summary.ratingCount : 0;
       setReviews(summary?.reviews || []);
 
+      // Group-class reviews (3-category) — separate from the 1:1 ratings above.
+      try {
+        const grpRes = await fetch(`/api/tutors/${tutorId}/reviews`, { cache: 'no-store' });
+        const grpJson = await grpRes.json().catch(() => ({}));
+        setGroupReviews(Array.isArray(grpJson?.data) ? grpJson.data : []);
+      } catch { setGroupReviews([]); }
+
       const { count } = await supabase
         .from('sessions').select('*', { count: 'exact', head: true })
         .eq('tutor_id', tutorId).eq('status', 'COMPLETED_ASSUMED');
@@ -418,11 +446,9 @@ export default function TutorProfilePage() {
       setTutor(fetchedTutor);
       if (subjects.length === 1) setSelectedSubject(subjects[0]);
 
-      // Load real tutor availability
-      loadCalendar(tutorId)
-        .then(setSlots)
-        .catch((err) => console.error('Failed to load calendar:', err))
-        .finally(() => setCalendarLoading(false));
+      // Calendar availability is loaded by loadCalendarOnce(): on mount in
+      // 1:1 book mode, where the sidebar shows it straight away, and lazily
+      // when the booking sheet opens elsewhere.
     } catch (error) {
       console.error('Error fetching tutor profile:', error);
       alert('Failed to load tutor profile');
@@ -457,14 +483,42 @@ export default function TutorProfilePage() {
           : result?.error || 'Failed to book session';
         throw new Error(msg);
       }
-      setShowBookingSheet(false);
-      setBookingNotes('');
-      // Paid path: server returns a LuniPay hosted-checkout URL and no
-      // booking has been created yet. Send the user straight to LuniPay
-      // — the booking is materialised by the webhook on payment success.
-      if (result.paymentUrl) { window.location.href = result.paymentUrl; return; }
-      alert('Session booked! You\'ll receive a confirmation shortly.');
-      router.push('/student/bookings');
+      // Paid path: the server returns a Stripe clientSecret and no booking
+      // has been created yet. Hand off to the full checkout page, which
+      // rebuilds the summary from the PaymentIntent metadata. The booking is
+      // materialised by the webhook on payment success.
+      if (result.paymentIntentId) {
+        setShowBookingSheet(false);
+        setBookingNotes('');
+        router.push(`/payments/checkout?pi=${result.paymentIntentId}`);
+        return;
+      }
+      // Free path: the server actually inserted a booking, so it returns
+      // a booking_id. Only claim success when we have that proof.
+      //
+      // Without this guard a version-skewed client (old JS in a stale tab
+      // talking to a newer API) silently showed "Session booked!" for a
+      // response it didn't understand — the pay-first API had returned a
+      // clientSecret and created NO booking, so the student was told their
+      // session was booked when nothing had been booked or paid.
+      if (result.booking_id) {
+        setShowBookingSheet(false);
+        setBookingNotes('');
+        // The duplicate-booking branch returns an existing booking that may
+        // still be unpaid. Send those to checkout rather than telling the
+        // student it's booked when payment is outstanding.
+        if (result.requires_payment) {
+          router.push(`/payments/checkout?bookingId=${result.booking_id}`);
+          return;
+        }
+        alert('Session booked! You\'ll receive a confirmation shortly.');
+        router.push('/student/bookings');
+        return;
+      }
+
+      throw new Error(
+        'This page is out of date — please refresh and try again.'
+      );
     } catch (err: any) {
       setConfirmError(err.message || 'Failed to book session');
     } finally {
@@ -476,9 +530,66 @@ export default function TutorProfilePage() {
     setVoted((v) => ({ ...v, [id]: v[id] === dir ? undefined : dir }));
   };
 
-  const openBookingSheet = () => { setBookingStep(1); setPickedTime(null); setShowBookingSheet(true); };
+  // Load the tutor calendar once, lazily, the first time the booking modal opens.
+  const calendarStartedRef = useRef(false);
+  const loadCalendarOnce = () => {
+    if (calendarStartedRef.current) return;
+    calendarStartedRef.current = true;
+    setCalendarLoading(true);
+    loadCalendar(tutorId)
+      .then(setSlots)
+      .catch((err) => console.error('Failed to load calendar:', err))
+      .finally(() => setCalendarLoading(false));
+  };
+  const openBookingSheet = () => { setBookingStep(1); setPickedTime(null); setShowBookingSheet(true); loadCalendarOnce(); };
+
+  // The 1:1 sidebar shows the calendar immediately, so it cannot wait for the
+  // booking sheet to open — which was the only thing that ever called
+  // loadCalendarOnce(). Once the sheet stopped auto-opening in book mode, the
+  // sidebar was left spinning forever on calendarLoading's initial `true`.
+  useEffect(() => {
+    if (mode !== 'book' || loading || !tutor) return;
+    loadCalendarOnce();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, loading, tutor]);
+
+  // Deep-link: arriving from the 1:1 marketplace "Book a lesson" button
+  // (/student/tutors/[id]?book=1on1) opens the 1:1 booking sheet straight away,
+  // instead of landing on the (class-led) profile and hunting for the button.
+  // Read the query off window (client-only) to avoid the useSearchParams()
+  // Suspense-boundary requirement. Fires once, after the tutor has loaded.
+  const autoOpenedRef = useRef(false);
+  useEffect(() => {
+    if (autoOpenedRef.current || loading || !tutor) return;
+    // Only an EXPLICIT ?book=1on1 deep-link auto-opens the sheet.
+    //
+    // `mode === 'book'` used to trigger it too, which now fights the booking
+    // sidebar: a student arriving from the 1:1 marketplace would get the
+    // calendar rendered beside the profile AND a modal thrown over it on load.
+    // Desktop uses the sidebar; below lg the "Book a 1:1" button (which is not
+    // mode-gated) still opens the sheet.
+    if (new URLSearchParams(window.location.search).get('book') === '1on1') {
+      autoOpenedRef.current = true;
+      openBookingSheet();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, tutor]);
+
   const pricedSubjects = (tutor?.subjects ?? []).filter((s) => s.price_per_hour_ttd > 0);
   const minPrice = pricedSubjects.length ? Math.min(...pricedSubjects.map((s) => s.price_per_hour_ttd)) : 0;
+
+  // Group-class rating breakdown (only reviews carrying all three sub-scores).
+  const categoryReviews = groupReviews.filter(
+    (r) => r.patience_rating != null && r.explanation_rating != null && r.class_material_rating != null
+  );
+  const avgCat = (key: 'patience_rating' | 'explanation_rating' | 'class_material_rating') =>
+    categoryReviews.length ? categoryReviews.reduce((s, r) => s + (r[key] ?? 0), 0) / categoryReviews.length : 0;
+  const categoryCards = [
+    { label: 'Patience', icon: HeartHandshake, value: avgCat('patience_rating') },
+    { label: 'Explanation', icon: Lightbulb, value: avgCat('explanation_rating') },
+    { label: 'Class material', icon: BookOpen, value: avgCat('class_material_rating') },
+  ];
+  const writtenGroupReviews = groupReviews.filter((r) => r.comment && r.comment.trim().length > 0);
   const priceLabel = !paidClassesEnabled ? 'Free' : (minPrice > 0 ? `TT$${minPrice}` : 'Rate not set');
 
   if (profileLoading || loading || !profile) {
@@ -506,11 +617,6 @@ export default function TutorProfilePage() {
           <div className="px-5 sm:px-6 pb-6">
             <div className="flex items-end justify-between -mt-12 sm:-mt-14">
               <UserAvatar avatarUrl={tutor.avatar_url} name={getDisplayName(tutor)} size={96} className="ring-4 ring-background rounded-full" />
-              <div className="flex gap-2 mb-1">
-                <button onClick={() => setSaved((s) => !s)} className="size-10 rounded-full border border-border bg-background grid place-items-center hover:bg-muted">
-                  <Heart className={cn('size-4', saved && 'fill-coral text-coral')} />
-                </button>
-              </div>
             </div>
 
             <div className="mt-4">
@@ -554,14 +660,50 @@ export default function TutorProfilePage() {
               ))}
             </div>
 
-            <button onClick={openBookingSheet} className="mt-4 w-full sm:hidden inline-flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-brand text-white font-semibold">
-              <Video className="size-4" /> Book a 1:1{paidClassesEnabled && minPrice > 0 ? ` — TT$${minPrice}/hr` : ''}
-            </button>
+            {/*
+              Booking mode hides the class-led sections, which left /book a
+              dead end — a student arriving from the 1:1 marketplace had no
+              route to this tutor's classes, reviews or fuller profile.
+              This is the way back.
+
+              Points at the EXISTING class-led profile rather than a new page:
+              same component, same data, just without `mode === 'book'`. No
+              second page to keep in sync.
+            */}
+            {mode === 'book' && (
+              <Link
+                href={`/student/tutors/${tutorId}`}
+                className="mt-3 flex items-center justify-center gap-2 rounded-2xl border border-border px-4 py-2.5 text-sm font-semibold text-ink transition hover:bg-muted/50"
+              >
+                View full profile
+                <ChevronRight className="size-4" />
+              </Link>
+            )}
           </div>
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
+        {/*
+          Booking mode restores the two-column layout with the sticky booking
+          sidebar — the flow that's live in production. Clicking a tutor in the
+          1:1 marketplace routes to /book, so that's the flow they get: rate,
+          Available badge, subject chips and "Pick a day" visible immediately,
+          rather than a modal they have to open first.
+
+          The class-led profile stays single-column: its primary action is
+          browsing classes, and a 1:1 booking sidebar there would compete with
+          the subscribe CTAs.
+        */}
+        <div className={mode === 'book' ? 'lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-6 lg:items-start' : ''}>
+        <div className="space-y-6">
+            {/* Verified credential (structured text + badge only — never the document) */}
+            <TutorCredentials tutorId={tutorId} />
+
+            {/* Tutor's classes lead the profile. Hidden in booking mode, which
+                leads with the 1:1 flow instead. */}
+            {mode !== 'book' && (
+              <ClassesSection tutorId={tutorId} tutorFirstName={getDisplayName(tutor).split(' ')[0]} />
+            )}
+
             {tutor.bio && (
               <section className="rounded-3xl bg-background border border-border p-6">
                 <h2 className="font-semibold text-ink mb-2">About</h2>
@@ -593,6 +735,72 @@ export default function TutorProfilePage() {
                 </ul>
               )}
             </section>
+
+            {/* 1:1 tutoring — secondary to the tutor's classes above.
+                In book mode this duplicates the booking sidebar, so it's
+                hidden from lg up. It stays below lg, where the sidebar is
+                hidden and this is the ONLY way into the booking sheet —
+                dropping it outright would leave mobile with no way to book. */}
+            <section
+              className={cn(
+                'rounded-3xl bg-background border border-border p-6',
+                mode === 'book' && 'lg:hidden'
+              )}
+            >
+              <h2 className="font-semibold text-ink mb-1">1:1 tutoring</h2>
+              <p className="text-sm text-muted-foreground mb-4">Prefer a private session? Book a one-on-one at a time that works for you.</p>
+              <button onClick={openBookingSheet} className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-brand text-white font-semibold hover:bg-brand-deep transition">
+                <Video className="size-4" /> Book a 1:1{paidClassesEnabled && minPrice > 0 ? ` — TT$${minPrice}/hr` : ''}
+              </button>
+            </section>
+
+            {/* Class ratings — 3-category breakdown + written group-class reviews */}
+            {mode !== 'book' && groupReviews.length > 0 && (
+              <section className="rounded-3xl bg-background border border-border p-6">
+                <h2 className="font-semibold text-ink mb-1">Class ratings</h2>
+                <p className="text-xs text-muted-foreground mb-4">How students rate {getDisplayName(tutor)}&apos;s group classes.</p>
+
+                {categoryReviews.length > 0 && (
+                  <div className="grid sm:grid-cols-3 gap-3 mb-6">
+                    {categoryCards.map((c) => {
+                      const Icon = c.icon;
+                      return (
+                        <div key={c.label} className="rounded-2xl border border-border bg-card p-4">
+                          <div className="flex items-center gap-2 text-sm font-semibold text-ink">
+                            <span className="size-8 rounded-xl bg-brand/10 text-brand-deep grid place-items-center"><Icon className="size-4" /></span>
+                            {c.label}
+                          </div>
+                          <div className="mt-3 flex items-center gap-2">
+                            <span className="text-2xl font-bold text-ink tabular-nums">{c.value.toFixed(1)}</span>
+                            <StarRow value={c.value} size={14} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {writtenGroupReviews.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No written class reviews yet.</p>
+                ) : (
+                  <div className="space-y-4">
+                    {writtenGroupReviews.map((r) => (
+                      <div key={r.id} className="border-t border-border pt-4 first:border-0 first:pt-0">
+                        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                          <div className="size-7 rounded-full bg-brand-soft text-forest grid place-items-center text-xs font-bold shrink-0">
+                            {(r.reviewer?.full_name || 'S').charAt(0).toUpperCase()}
+                          </div>
+                          <span className="text-sm font-semibold text-ink">{r.reviewer?.full_name || 'Student'}</span>
+                          <StarRow value={r.rating} size={13} />
+                        </div>
+                        {r.comment && <p className="text-sm text-muted-foreground">{r.comment}</p>}
+                        <p className="mt-1.5 text-xs text-muted-foreground/70">{new Date(r.created_at).toLocaleDateString()}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
 
             {/* Reviews */}
             <section className="rounded-3xl bg-background border border-border p-6">
@@ -634,33 +842,42 @@ export default function TutorProfilePage() {
                 </div>
               )}
             </section>
-          </div>
+        </div>
 
-          {/* Desktop booking sidebar */}
+        {/* Desktop booking sidebar — 1:1 mode only.
+            Same BookingCard the sheet uses, so the calendar, subject chips and
+            duration logic exist once; this just surfaces them immediately
+            instead of behind a tap. Hidden below lg, where the sheet remains
+            the right interaction. */}
+        {mode === 'book' && (
           <aside className="hidden lg:block lg:sticky lg:top-20 self-start">
             {calendarLoading ? (
-              <div className="rounded-2xl border border-border bg-card p-8 flex items-center justify-center min-h-[200px]">
+              <div className="rounded-2xl border border-border bg-background p-8 flex items-center justify-center min-h-[200px]">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand" />
               </div>
             ) : (
-            <BookingCard
-              priceLabel={priceLabel}
-              subjects={tutor.subjects}
-              pickedSubject={selectedSubject}
-              setPickedSubject={setSelectedSubject}
-              slots={slots}
-              pickedDay={pickedDay}
-              setPickedDay={setPickedDay}
-              pickedTime={pickedTime}
-              setPickedTime={setPickedTime}
-              duration={duration}
-              setDuration={setDuration}
-              scrollRef={dayScrollRef}
-              scrollDays={scrollDays}
-              onContinue={() => { setBookingStep(3); setShowBookingSheet(true); }}
-            />
+              <BookingCard
+                priceLabel={priceLabel}
+                subjects={tutor.subjects}
+                pickedSubject={selectedSubject}
+                setPickedSubject={setSelectedSubject}
+                slots={slots}
+                pickedDay={pickedDay}
+                setPickedDay={setPickedDay}
+                pickedTime={pickedTime}
+                setPickedTime={setPickedTime}
+                duration={duration}
+                setDuration={setDuration}
+                scrollRef={dayScrollRef}
+                scrollDays={scrollDays}
+                // Straight to Confirm: subject and slot are already chosen in
+                // the sidebar, so re-asking for them in the sheet would be a
+                // pointless extra step.
+                onContinue={() => { setBookingStep(3); setShowBookingSheet(true); }}
+              />
             )}
           </aside>
+        )}
         </div>
       </div>
 
@@ -670,9 +887,17 @@ export default function TutorProfilePage() {
           <div className="bg-background w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="sticky top-0 bg-background border-b border-border px-5 py-3 flex items-center justify-between">
               <div>
-                <div className="text-xs text-muted-foreground">Step {bookingStep} of 3</div>
+                <div className="text-xs text-muted-foreground">
+                  Step {bookingStep} of 3
+                </div>
                 <div className="font-semibold text-ink text-sm">
-                  {bookingStep === 1 ? 'Pick a subject' : bookingStep === 2 ? 'Pick a date & time' : 'Confirm booking'}
+                  {bookingStep === 1
+                    ? 'Pick a subject'
+                    : bookingStep === 2
+                      ? 'Pick a date & time'
+                      : bookingStep === 3
+                        ? 'Confirm booking'
+                        : 'Payment'}
                 </div>
               </div>
               <button onClick={() => setShowBookingSheet(false)} className="size-8 rounded-full hover:bg-muted grid place-items-center"><X className="size-4" /></button>

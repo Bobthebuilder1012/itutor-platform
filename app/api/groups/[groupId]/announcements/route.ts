@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 
 // GET /api/groups/[groupId]/announcements
 export const dynamic = 'force-dynamic';
@@ -17,10 +18,10 @@ export async function GET(
     const { groupId } = params;
 
     // Verify caller is tutor or approved member
-    const { data: group } = await service.from('groups').select('tutor_id').eq('id', groupId).single();
-    if (!group) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    if (actor.notFound) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
 
-    const isTutor = group.tutor_id === user.id;
+    const isTutor = actor.actingAsTutor;
     if (!isTutor) {
       const { data: membership } = await service
         .from('group_members')
@@ -65,9 +66,9 @@ export async function POST(
     const service = getServiceClient();
     const { groupId } = params;
 
-    const { data: group } = await service.from('groups').select('tutor_id').eq('id', groupId).single();
-    if (!group) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
-    if (group.tutor_id !== user.id) return NextResponse.json({ error: 'Only the tutor can post announcements' }, { status: 403 });
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    if (actor.notFound) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+    if (!actor.authorized) return NextResponse.json({ error: 'Only the tutor can post announcements' }, { status: 403 });
 
     const { body } = await req.json();
     if (!body?.trim()) return NextResponse.json({ error: 'Body is required' }, { status: 400 });
@@ -79,6 +80,7 @@ export async function POST(
       .single();
 
     if (error) throw error;
+    await auditAdminOverride(actor, 'announcement.create', { announcementId: announcement.id });
 
     // Notify approved members
     const { data: members } = await service

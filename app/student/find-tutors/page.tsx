@@ -231,6 +231,41 @@ export default function FindTutorsPage() {
       const activeTutorProfiles = tutorProfilesWithBanners.filter(t => listedSet.has(t.id));
       const activeTutorIds = activeTutorProfiles.map((t) => t.id);
 
+      // Marketplace ordering (mig 190): pinned tutors first in pin order,
+      // then everyone else by ranking_score desc. This is what the admin
+      // Promotion & Ranking page controls — without it, boost/pin have no
+      // effect on what students see. Falls back to verification-status order
+      // if the ranking view isn't present.
+      try {
+        const { data: rankRows, error: rankErr } = activeTutorIds.length > 0
+          ? await supabase
+              .from('tutor_marketplace_rankings')
+              .select('tutor_id, pin_rank, ranking_score')
+              .in('tutor_id', activeTutorIds)
+          : { data: [] as any[], error: null };
+        if (rankErr) throw rankErr;
+        const rankMap = new Map<string, { pin: number | null; score: number }>();
+        (rankRows ?? []).forEach((r: any) =>
+          rankMap.set(r.tutor_id, { pin: r.pin_rank ?? null, score: Number(r.ranking_score ?? 0) })
+        );
+        activeTutorProfiles.sort((a, b) => {
+          const ra = rankMap.get(a.id) ?? { pin: null, score: 0 };
+          const rb = rankMap.get(b.id) ?? { pin: null, score: 0 };
+          if (ra.pin != null || rb.pin != null) {
+            if (ra.pin == null) return 1;
+            if (rb.pin == null) return -1;
+            if (ra.pin !== rb.pin) return ra.pin - rb.pin;
+          }
+          return rb.score - ra.score;
+        });
+      } catch {
+        activeTutorProfiles.sort(
+          (a, b) =>
+            (verificationRank[String(a.tutor_verification_status ?? 'UNVERIFIED')] ?? 9) -
+            (verificationRank[String(b.tutor_verification_status ?? 'UNVERIFIED')] ?? 9)
+        );
+      }
+
       console.log(`✅ Showing ${activeTutorProfiles.length} listed tutors (of ${tutorProfilesWithBanners.length} total)`);
 
       // Fetch subjects for all tutor profiles
@@ -426,7 +461,10 @@ export default function FindTutorsPage() {
           .select('group_id')
           .eq('student_id', profile.id)
           .in('group_id', groupIds)
-          .in('status', ['ACTIVE', 'GRACE', 'SUSPENDED', 'PENDING_PAYMENT']),
+          // PENDING_PAYMENT is an abandoned checkout, not an enrolment —
+          // including it made the card read "Enrolled" for a class the
+          // student had no access to, which opening the class then denied.
+          .in('status', ['ACTIVE', 'GRACE', 'SUSPENDED']),
         fetch(`/api/groups/member-counts?ids=${groupIds.join(',')}`).then((r) => r.json()).catch(() => ({ counts: {} })),
       ]);
 
@@ -447,7 +485,9 @@ export default function FindTutorsPage() {
 
       // group_members rows: used only for enrolled-status of non-subscription groups
       (memberRows ?? []).forEach((m: any) => {
-        if (m.user_id === profile.id && m.status !== 'denied') enrolledSet.add(m.group_id);
+        // Allowlist, not a denylist: `!== 'denied'` also counted 'pending',
+        // 'suspended', 'banned' and 'removed' members as enrolled.
+        if (m.user_id === profile.id && m.status === 'approved') enrolledSet.add(m.group_id);
         // Only fall back to group_members count when server didn't return a count
         if (!(m.group_id in serverCounts)) {
           memberCountMap.set(m.group_id, (memberCountMap.get(m.group_id) ?? 0) + 1);
@@ -693,21 +733,15 @@ export default function FindTutorsPage() {
       filtered.sort((a, b) => minPrice(a) - minPrice(b));
     } else if (sortOrder === 'rating_high') {
       filtered.sort((a, b) => (b.average_rating ?? -1) - (a.average_rating ?? -1));
-    } else if (profile?.subjects_of_study && profile.subjects_of_study.length > 0) {
-      filtered.sort((a, b) => {
-        const aMatchesSubjects = a.subjects.some((s) => profile.subjects_of_study?.includes(s.name));
-        const bMatchesSubjects = b.subjects.some((s) => profile.subjects_of_study?.includes(s.name));
-
-        if (aMatchesSubjects && !bMatchesSubjects) return -1;
-        if (!aMatchesSubjects && bMatchesSubjects) return 1;
-
-        const aRating = a.average_rating || 0;
-        const bRating = b.average_rating || 0;
-        return bRating - aRating;
-      });
-    } else {
-      filtered.sort((a, b) => (b.average_rating || 0) - (a.average_rating || 0));
     }
+    // 'relevance' (the default): keep the marketplace ranking order already
+    // applied in fetchTutors from the tutor_marketplace_rankings view (mig 190)
+    // — pinned first, then ranking_score desc. We intentionally do NOT re-sort
+    // here. The previous default re-sorted by the *viewer's* subjects_of_study
+    // and then rating, which overrode the ranking and made the marketplace
+    // disagree with the admin Promotion & Ranking page (e.g. a new, unrated
+    // tutor who happened to match the viewer's subjects jumped above a
+    // higher-scored one).
 
     return filtered;
   }, [tutors, searchQuery, selectedSubjects, selectedRating, priceMin, priceMax, selectedSchool, profile, sortOrder]);
@@ -1087,12 +1121,17 @@ export default function FindTutorsPage() {
             ) : (
               <div className="grid sm:grid-cols-2 gap-3">
                 {pagedTutors.map((tutor) => (
+                  // This is the 1:1 marketplace, so the card opens the
+                  // dedicated 1:1 booking route — NOT the class-led profile at
+                  // /student/tutors/[id], which leads with "<tutor>'s classes"
+                  // and Join-class buttons and is the wrong destination for
+                  // someone shopping for a one-to-one lesson.
                   <div
                     key={tutor.id}
                     role="button"
                     tabIndex={0}
-                    onClick={() => router.push(`/student/tutors/${tutor.id}`)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); router.push(`/student/tutors/${tutor.id}`); } }}
+                    onClick={() => router.push(`/student/tutors/${tutor.id}/book`)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); router.push(`/student/tutors/${tutor.id}/book`); } }}
                     className="group rounded-2xl bg-background border border-border p-4 hover:shadow-card hover:border-brand/40 transition-all flex gap-3 items-start cursor-pointer w-full min-w-0"
                   >
                     <UserAvatar avatarUrl={tutor.avatar_url} name={getDisplayName(tutor)} size={56} />

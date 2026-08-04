@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor, auditAdminOverride, type GroupActor } from '@/lib/auth/groupAccess';
 
 type Params = { params: Promise<{ groupId: string; postId: string }> };
 
 export const dynamic = 'force-dynamic';
 
-async function resolveAccess(groupId: string, userId: string) {
+async function resolveAccess(groupId: string, userId: string, email?: string | null) {
   const service = getServiceClient();
-  const { data: group } = await service.from('groups').select('tutor_id').eq('id', groupId).single();
-  if (!group) return { error: 'Group not found', status: 404 as const };
-  const isTutor = group.tutor_id === userId;
+  const actor = await resolveGroupActor({ groupId, userId, email });
+  if (actor.notFound) return { error: 'Group not found', status: 404 as const };
+  const isTutor = actor.actingAsTutor;
   if (!isTutor) {
     const { data: membership } = await service
       .from('group_members')
@@ -21,7 +22,7 @@ async function resolveAccess(groupId: string, userId: string) {
       return { error: 'Forbidden', status: 403 as const };
     }
   }
-  return { service, isTutor };
+  return { service, isTutor, actor };
 }
 
 // GET — tutor gets all student submissions; student gets own submission
@@ -32,7 +33,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { groupId, postId } = await params;
-    const access = await resolveAccess(groupId, user.id);
+    const access = await resolveAccess(groupId, user.id, user.email);
     if ('status' in access) return NextResponse.json({ error: access.error }, { status: access.status });
 
     const { service, isTutor } = access;
@@ -96,7 +97,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { groupId, postId } = await params;
-    const access = await resolveAccess(groupId, user.id);
+    const access = await resolveAccess(groupId, user.id, user.email);
     if ('status' in access) return NextResponse.json({ error: access.error }, { status: access.status });
     if ((access as { isTutor: boolean }).isTutor) {
       return NextResponse.json({ error: 'Tutors cannot submit papers' }, { status: 403 });
@@ -149,7 +150,7 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { groupId, postId } = await params;
-    const access = await resolveAccess(groupId, user.id);
+    const access = await resolveAccess(groupId, user.id, user.email);
     if ('status' in access) return NextResponse.json({ error: access.error }, { status: access.status });
     if ((access as { isTutor: boolean }).isTutor) {
       return NextResponse.json({ error: 'Tutors cannot unsubmit student papers' }, { status: 403 });
@@ -183,7 +184,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { groupId, postId } = await params;
-    const access = await resolveAccess(groupId, user.id);
+    const access = await resolveAccess(groupId, user.id, user.email);
     if ('status' in access) return NextResponse.json({ error: access.error }, { status: access.status });
     if (!(access as { isTutor: boolean }).isTutor) {
       return NextResponse.json({ error: 'Only tutors can write grades' }, { status: 403 });
@@ -216,6 +217,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       student_count: body.student_count,
       tokens_used: null,
     });
+
+    await auditAdminOverride((access as { actor: GroupActor }).actor, 'submission.grade', { postId, count: body.grades?.length ?? 0 });
 
     return NextResponse.json({ ok: true });
   } catch (err) {

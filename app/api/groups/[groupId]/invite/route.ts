@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 
 type Params = { params: Promise<{ groupId: string }> };
 
@@ -17,16 +18,11 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     const service = getServiceClient();
 
-    // Verify caller is the tutor of this group
-    const { data: group } = await service
-      .from('groups')
-      .select('id, tutor_id, name, max_students')
-      .eq('id', groupId)
-      .is('archived_at', null)
-      .single();
-
-    if (!group) return NextResponse.json({ error: 'Class not found' }, { status: 404 });
-    if (group.tutor_id !== user.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    // Verify caller is the tutor of this group (or superadmin acting as tutor)
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email, columns: 'max_students' });
+    const group = actor.group;
+    if (actor.notFound || group.archived_at) return NextResponse.json({ error: 'Class not found' }, { status: 404 });
+    if (!actor.authorized) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const body = await request.json();
     const query = (body.email ?? body.username ?? '').trim().toLowerCase();
@@ -111,6 +107,8 @@ export async function POST(request: NextRequest, { params }: Params) {
       .select('id, full_name, avatar_url')
       .eq('id', studentId)
       .maybeSingle();
+
+    await auditAdminOverride(actor, 'member.invite', { targetUserId: studentId });
 
     return NextResponse.json({ member, profile }, { status: 201 });
   } catch (err) {

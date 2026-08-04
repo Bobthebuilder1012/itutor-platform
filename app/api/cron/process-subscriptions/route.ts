@@ -49,6 +49,10 @@ export async function GET(req: NextRequest) {
       .from('group_enrollments')
       .select('id, group_id, student_id')
       .eq('enrollment_type', 'SUBSCRIPTION')
+      // Stripe owns the cycle for these — it charges, retries and duns them
+      // itself. Running our reminders/grace/suspension against them too would
+      // suspend a student while Stripe is still successfully retrying.
+      .neq('billing_provider', 'stripe')
       .eq('cancel_at_period_end', true)
       .neq('status', 'CANCELLED')
       .lt('current_period_end', nowIso);
@@ -117,6 +121,10 @@ export async function GET(req: NextRequest) {
       .from('group_enrollments')
       .select('id, group_id, student_id')
       .eq('enrollment_type', 'SUBSCRIPTION')
+      // Stripe owns the cycle for these — it charges, retries and duns them
+      // itself. Running our reminders/grace/suspension against them too would
+      // suspend a student while Stripe is still successfully retrying.
+      .neq('billing_provider', 'stripe')
       .eq('status', 'PENDING_PAYMENT')
       .lt('pending_payment_expires_at', nowIso);
 
@@ -257,6 +265,10 @@ export async function GET(req: NextRequest) {
       .from('group_enrollments')
       .select('id, student_id, group_id, next_payment_due_at, grace_period_days_snapshot, reminder_count')
       .eq('enrollment_type', 'SUBSCRIPTION')
+      // Stripe owns the cycle for these — it charges, retries and duns them
+      // itself. Running our reminders/grace/suspension against them too would
+      // suspend a student while Stripe is still successfully retrying.
+      .neq('billing_provider', 'stripe')
       .eq('status', 'ACTIVE')
       .eq('cancel_at_period_end', false)
       .not('next_payment_due_at', 'is', null)
@@ -328,6 +340,10 @@ export async function GET(req: NextRequest) {
       .from('group_enrollments')
       .select('id, student_id, group_id, grace_period_days_snapshot')
       .eq('enrollment_type', 'SUBSCRIPTION')
+      // Stripe owns the cycle for these — it charges, retries and duns them
+      // itself. Running our reminders/grace/suspension against them too would
+      // suspend a student while Stripe is still successfully retrying.
+      .neq('billing_provider', 'stripe')
       .eq('status', 'ACTIVE')
       .eq('cancel_at_period_end', false)
       .lt('next_payment_due_at', nowIso);
@@ -386,6 +402,10 @@ export async function GET(req: NextRequest) {
       .from('group_enrollments')
       .select('id, student_id, group_id')
       .eq('enrollment_type', 'SUBSCRIPTION')
+      // Stripe owns the cycle for these — it charges, retries and duns them
+      // itself. Running our reminders/grace/suspension against them too would
+      // suspend a student while Stripe is still successfully retrying.
+      .neq('billing_provider', 'stripe')
       .eq('status', 'GRACE')
       .eq('cancel_at_period_end', false)
       .lt('grace_period_ends_at', nowIso);

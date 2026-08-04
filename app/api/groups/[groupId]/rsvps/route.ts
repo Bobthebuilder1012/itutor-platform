@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { resolveGroupActor } from '@/lib/auth/groupAccess';
 
 type Params = { params: Promise<{ groupId: string }> };
 
@@ -27,8 +28,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
       return NextResponse.json({ rsvps: [] });
     }
 
-    const { data: group } = await service.from('groups').select('tutor_id').eq('id', groupId).single();
-    const isTutor = group?.tutor_id === user.id;
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    const isTutor = actor.actingAsTutor;
 
     if (isTutor) {
       const { data: rsvps } = await service

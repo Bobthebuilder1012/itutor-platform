@@ -36,9 +36,20 @@ export async function sendEmail({
   html,
   from = process.env.RESEND_FROM_EMAIL || 'iTutor <hello@myitutor.com>',
 }: SendEmailParams): Promise<EmailResult> {
-  // ALL EMAILS DISABLED
-  console.log(`[EMAIL BLOCKED] to=${to} subject=${subject}`);
-  return { success: true, messageId: 'disabled' };
+  const resend = getResend();
+  // No RESEND_API_KEY configured (e.g. staging without email set up) → no-op,
+  // so nothing is sent by accident. Sending is enabled the moment a key exists.
+  if (!resend) {
+    console.log(`[EMAIL SKIPPED — no RESEND_API_KEY] to=${to} subject=${subject}`);
+    return { success: true, messageId: 'disabled' };
+  }
+  try {
+    const { data, error } = await resend.emails.send({ from, to, subject, html });
+    if (error) return { success: false, error: (error as { message?: string }).message ?? 'Send failed' };
+    return { success: true, messageId: data?.id };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : 'Send failed' };
+  }
 }
 
 /**
