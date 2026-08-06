@@ -114,6 +114,7 @@ type GroupDetail = {
   visibility: 'public' | 'private';
   isPublic: boolean;
   requireJoinRequests: boolean;
+  secureSpotEnabled: boolean;
   autoSuspendMissedPayment: boolean;
   gracePeriodDays: number;
   primaryChannel: 'native' | 'whatsapp' | 'classroom';
@@ -264,6 +265,7 @@ function ClassHubContent() {
           visibility: visibilityVal,
           isPublic: visibilityVal === 'public',
           requireJoinRequests: g.require_join_requests ?? false,
+          secureSpotEnabled: g.secure_spot_enabled === true,
           autoSuspendMissedPayment: g.auto_suspend_missed_payment ?? false,
           gracePeriodDays: g.grace_period_days ?? 7,
           primaryChannel: (g.primary_channel ?? 'native') as GroupDetail['primaryChannel'],
@@ -1990,6 +1992,28 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
   const d = <K extends keyof GroupDetail>(k: K, v: GroupDetail[K]) =>
     setDraft((prev) => ({ ...prev, [k]: v }));
 
+  // Can this class open preorders at all? Answered by the server, because the
+  // recurrence lives in group_sessions and this page only holds flattened
+  // occurrences — and because the same rule has to gate the save anyway.
+  const [preorderReady, setPreorderReady] =
+    useState<{ ok: boolean; reason?: string; firstSession?: string } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/groups/schedules?ids=${group.id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (cancelled) return;
+        setPreorderReady(json?.schedules?.[group.id]?.preorderReady ?? { ok: false, reason: 'no_schedule' });
+      })
+      .catch(() => {
+        // Leaving it null keeps the switch disabled rather than offering
+        // something the save would then reject.
+        if (!cancelled) setPreorderReady({ ok: false, reason: 'no_schedule' });
+      });
+    return () => { cancelled = true; };
+  }, [group.id]);
+
   // Track saved snapshot to compute dirty state
   const savedRef = useRef(JSON.stringify(group));
   const dirty = JSON.stringify(draft) !== savedRef.current;
@@ -2088,6 +2112,7 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
         body: JSON.stringify({
           visibility: draft.visibility,
           require_join_requests: draft.requireJoinRequests,
+          secure_spot_enabled: draft.secureSpotEnabled,
           auto_suspend_missed_payment: draft.autoSuspendMissedPayment,
           grace_period_days: draft.gracePeriodDays,
           primary_channel: draft.primaryChannel,
@@ -2333,6 +2358,34 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
                 value={draft.requireJoinRequests}
                 onChange={(v) => d('requireJoinRequests', v)}
                 disabled={draft.visibility === 'private'}
+              />
+              {/* Preorders. The switch is only offered once the class has a
+                  schedule whose first lesson is still ahead — students must
+                  never see a payment button next to "schedule to be
+                  confirmed", and a class already running is joined, not
+                  reserved. The server re-checks this on save. */}
+              <Toggle
+                label="Let students secure a spot before it starts"
+                hint={
+                  preorderReady === null
+                    ? 'Checking the schedule…'
+                    : preorderReady.ok
+                      ? `Students can pay their first month up front to hold a place${
+                          preorderReady.firstSession
+                            ? `. Classes start ${new Date(preorderReady.firstSession).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}`
+                            : ''
+                        }.`
+                      : preorderReady.reason === 'no_schedule'
+                        ? 'Add a schedule to open reservations.'
+                        : preorderReady.reason === 'already_started'
+                          ? 'This class has already started, so students join it rather than reserve a place.'
+                          : 'This class starts too far ahead to open reservations yet.'
+                }
+                value={draft.secureSpotEnabled}
+                // Never blocked while it's already on, so a tutor can always
+                // switch it back off — including after the class has started.
+                disabled={!draft.secureSpotEnabled && !(preorderReady?.ok ?? false)}
+                onChange={(v) => d('secureSpotEnabled', v)}
               />
               <Toggle label="Auto-suspend on overdue payment" hint="When a payment goes overdue past the grace window, the member is suspended until they pay." value={draft.autoSuspendMissedPayment} onChange={(v) => d('autoSuspendMissedPayment', v)} />
               {draft.autoSuspendMissedPayment && (

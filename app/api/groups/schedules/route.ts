@@ -40,6 +40,13 @@ export type GroupSchedule = {
     releaseDate?: string;
     shortClass?: boolean;
   };
+  /**
+   * Whether the SCHEDULE would allow preorders, ignoring whether the tutor has
+   * switched them on. The tutor's own settings screen needs this: asking
+   * `preorder.eligible` there is circular, since it is false precisely because
+   * they haven't enabled it yet.
+   */
+  preorderReady: { ok: boolean; reason?: string; firstSession?: string };
 };
 
 const PATTERN_COLUMNS = 'group_id, recurrence_type, recurrence_days, start_time, duration_minutes, starts_on, ends_on';
@@ -119,14 +126,19 @@ export async function GET(req: NextRequest) {
         };
       }
 
+      const preorderReady = eligibility.eligible
+        ? { ok: true, firstSession: eligibility.firstSession.toISOString() }
+        : { ok: false, reason: eligibility.reason };
+
       // Skip only classes with nothing at all to say.
-      if (!display && !preorder.eligible) continue;
+      if (!display && !preorder.eligible && !preorderReady.ok) continue;
 
       schedules[groupId] = {
         display,
         days: sessionPatternWeekdays(patterns),
         sessionLength: sessionPatternsDuration(patterns),
         preorder,
+        preorderReady,
       };
     }
 

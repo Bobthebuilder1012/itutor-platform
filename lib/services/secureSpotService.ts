@@ -12,7 +12,7 @@
 
 import { type SupabaseClient } from '@supabase/supabase-js';
 import { getStripeClient } from '@/lib/payments/stripeClient';
-import { computeReleaseDate, firstUpcomingSession } from '@/lib/payments/secureSpot';
+import { computeReleaseDate, firstUpcomingSession, preorderEligibility } from '@/lib/payments/secureSpot';
 import type { SessionPattern } from '@/lib/utils/scheduleFormat';
 
 export interface ConfirmSecuredSpotParams {
@@ -35,6 +35,41 @@ export interface ConfirmSecuredSpotResult {
 
 const SESSION_COLUMNS =
   'recurrence_type, recurrence_days, start_time, duration_minutes, starts_on, ends_on';
+
+/**
+ * May this class open preorders?
+ *
+ * Shared by both settings routes so the rule is enforced once. This is the
+ * flag that lets a class take money before it has taught anything, so it is
+ * never taken on the client's word — and "no schedule" is refused outright,
+ * because a payment CTA next to "schedule to be confirmed" is indefensible in
+ * a dispute.
+ */
+export async function canOpenPreorders(
+  admin: SupabaseClient,
+  groupId: string
+): Promise<{ ok: true } | { ok: false; reason: string; message: string }> {
+  const { data: sessions, error } = await admin
+    .from('group_sessions')
+    .select(SESSION_COLUMNS)
+    .eq('group_id', groupId);
+
+  if (error) {
+    return { ok: false, reason: 'lookup_failed', message: 'Could not read the class schedule.' };
+  }
+
+  const eligibility = preorderEligibility((sessions ?? []) as SessionPattern[]);
+  if (eligibility.eligible) return { ok: true };
+
+  const message =
+    eligibility.reason === 'no_schedule'
+      ? 'Add a schedule to open reservations.'
+      : eligibility.reason === 'already_started'
+        ? 'This class has already started, so it cannot take reservations.'
+        : 'This class starts too far ahead to open reservations yet.';
+
+  return { ok: false, reason: eligibility.reason, message };
+}
 
 /**
  * Turn a paid securing charge into a held seat.
