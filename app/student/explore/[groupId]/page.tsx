@@ -16,6 +16,7 @@ import { supabase } from '@/lib/supabase/client';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { formatLevel } from '@/lib/utils/formatLevel';
 import { parseScheduleData, scheduleToDisplay, sessionPatternsToDisplay, sessionPatternWeekdays } from '@/lib/utils/scheduleFormat';
+import { preorderEligibility, computeReleaseDate, isShortClass } from '@/lib/payments/secureSpot';
 import TutorCredentials from '@/components/TutorCredentials';
 
 type Step = 'detail' | 'join' | 'joined' | 'awaiting-approval';
@@ -69,7 +70,27 @@ type GroupData = {
   parent_feedback_price: number | null;
   active_promotion: { id: string; kind: string; discount: number; student_cap: number | null; duration_days: number | null } | null;
   sessions: SessionRow[];
+  secure_spot_enabled: boolean;
+  end_date: string | null;
 };
+
+/**
+ * Can this class be reserved rather than joined, and on what dates?
+ *
+ * Same helper the server uses, so the button a student sees and the route that
+ * charges them can't disagree about whether the class has started.
+ */
+function preorderFor(group: GroupData) {
+  if (!group.secure_spot_enabled) return null;
+  const eligibility = preorderEligibility(group.sessions);
+  if (!eligibility.eligible) return null;
+  const { firstSession } = eligibility;
+  return {
+    firstSession,
+    releaseDate: computeReleaseDate({ firstSession, endDate: group.end_date }),
+    shortClass: isShortClass({ firstSession, endDate: group.end_date }),
+  };
+}
 
 type ReviewItem = {
   id: string; rating: number; comment: string | null; reviewer_name: string;
@@ -255,6 +276,8 @@ export default function ExploreClassDetailPage() {
         parent_feedback_price: g.parent_feedback_price ?? null,
         active_promotion: g.active_promotion ?? null,
         sessions,
+        secure_spot_enabled: g.secure_spot_enabled === true,
+        end_date: g.end_date ?? null,
       });
 
       // Check if student has a linked parent account
@@ -436,14 +459,20 @@ function Detail({ group, onJoin }: { group: GroupData; onJoin: () => void }) {
     { label: 'Class material', icon: BookOpen, value: catAvg('classMaterial') },
   ];
 
+  const preorder = useMemo(() => preorderFor(group), [group]);
+  const [showExplainer, setShowExplainer] = useState(false);
+
   const ctaLabel = group.enrolled ? 'Open class'
     : isPending ? 'Request pending'
     : isFull ? 'Join waitlist'
+    : preorder ? 'Secure your spot'
     : group.require_join_requests ? 'Request to join'
     : 'Join class';
   const ctaCaption = group.enrolled ? "You're enrolled"
     : isPending ? 'Awaiting tutor approval'
     : isFull ? 'Class full · join the waitlist'
+    : preorder
+      ? `${price > 0 ? `${fmtTTD(price)} today, covering your first month` : 'Free to reserve'} · Classes start ${preorder.firstSession.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}`
     : group.require_join_requests ? 'Tutor approval required'
     : 'Join instantly · cancel anytime';
 
@@ -457,6 +486,16 @@ function Detail({ group, onJoin }: { group: GroupData; onJoin: () => void }) {
       <Link href="/student/find-tutors" className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-brand-deep">
         <ArrowLeft className="size-3.5" /> All classes
       </Link>
+
+      {showExplainer && preorder && (
+        <Modal onClose={() => setShowExplainer(false)}>
+          <SecureSpotExplainer
+            preorder={preorder}
+            price={price}
+            onClose={() => setShowExplainer(false)}
+          />
+        </Modal>
+      )}
 
       {isPending && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
@@ -573,7 +612,19 @@ function Detail({ group, onJoin }: { group: GroupData; onJoin: () => void }) {
                   )}
                   {price > 0 && <span className="text-xs font-semibold text-muted-foreground">/{perLabel}</span>}
                 </div>
-                <div className="text-[11px] text-muted-foreground">{ctaCaption}</div>
+                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <span>{ctaCaption}</span>
+                  {preorder && (
+                    <button
+                      type="button"
+                      onClick={() => setShowExplainer(true)}
+                      aria-label="What does securing your spot mean?"
+                      className="grid size-4 shrink-0 place-items-center rounded-full border border-border text-[9px] font-bold text-muted-foreground transition hover:border-brand hover:text-brand-deep"
+                    >
+                      i
+                    </button>
+                  )}
+                </div>
               </div>
               <span className="inline-flex items-center gap-1 rounded-full bg-brand-soft px-2 py-0.5 text-[10px] font-semibold text-brand-deep">
                 <ShieldCheck className="size-3" /> Secure
@@ -932,6 +983,83 @@ function InfoRow({ icon, label, children }: { icon: React.ReactNode; label: stri
 
 /* ─── Join flow ──────────────────────────────────────── */
 
+/**
+ * The (i) copy.
+ *
+ * This is the platform's primary defence if a student disputes the charge, so
+ * it states the four things a dispute turns on: what the money buys, when the
+ * class starts, that the money is held until the month is taught, and what
+ * happens next. Written to be true of what the code actually does — the
+ * refund-on-tutor-cancellation promise is honoured by the webhook and the
+ * class-deletion path, not by goodwill.
+ */
+function SecureSpotExplainer({
+  preorder,
+  price,
+  onClose,
+}: {
+  preorder: { firstSession: Date; releaseDate: string; shortClass: boolean };
+  price: number;
+  onClose: () => void;
+}) {
+  const startLabel = preorder.firstSession.toLocaleDateString('en-US', {
+    weekday: 'long', month: 'long', day: 'numeric',
+  });
+  const endLabel = new Date(`${preorder.releaseDate}T00:00:00`).toLocaleDateString('en-US', {
+    month: 'long', day: 'numeric', year: 'numeric',
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <h2 className="text-lg font-bold text-ink">What “secure your spot” means</h2>
+        <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-ink">
+          <X className="size-5" />
+        </button>
+      </div>
+
+      <div className="space-y-3 text-sm leading-relaxed text-muted-foreground">
+        <p>
+          {price > 0 ? (
+            <>You&apos;re paying for your <strong className="text-ink">first month of classes</strong> now, which reserves your place.</>
+          ) : (
+            <>You&apos;re reserving your place in this class. It&apos;s free.</>
+          )}{' '}
+          Classes start <strong className="text-ink">{startLabel}</strong>.
+        </p>
+
+        {price > 0 && (
+          <p>
+            Your payment is <strong className="text-ink">held by iTutor</strong> until your first month
+            of classes has been taught. If the tutor cancels the class before it
+            starts, you&apos;ll be refunded automatically.
+          </p>
+        )}
+
+        {preorder.shortClass ? (
+          <p>
+            This class runs until <strong className="text-ink">{endLabel}</strong>. This is a one-time
+            payment — there&apos;s nothing further to pay.
+          </p>
+        ) : (
+          <p>
+            After your first month (until <strong className="text-ink">{endLabel}</strong>), you&apos;ll be
+            asked whether you&apos;d like to continue.{' '}
+            <strong className="text-ink">Nothing is charged automatically</strong> — you choose.
+          </p>
+        )}
+      </div>
+
+      <button
+        onClick={onClose}
+        className="w-full rounded-2xl bg-ink px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90"
+      >
+        Got it
+      </button>
+    </div>
+  );
+}
+
 function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent }: {
   group: GroupData;
   onBack: () => void;
@@ -952,11 +1080,16 @@ function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent }: {
   const feedbackDecisionRequired = hasFeedbackAddon && hasLinkedParent && wantsFeedback === null;
   const [err, setErr] = useState('');
 
+  const preorder = preorderFor(group);
+
   const heading = isFull ? 'Join the waitlist'
+    : preorder ? 'Secure your spot'
     : isRequest ? 'Request to join'
     : 'Confirm your enrolment';
 
   const confirmLabel = isFull ? 'Add me to the waitlist'
+    : preorder
+      ? (price > 0 ? `Pay ${fmtTTD(price)} & reserve my place` : 'Reserve my place')
     : isRequest ? 'Send request to tutor'
     : 'Confirm & join class';
 
@@ -964,6 +1097,20 @@ function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent }: {
     if (!profile?.id) return;
     setSubmitting(true); setErr('');
     try {
+      // Preorder: a one-time charge for the first month, not a subscription.
+      // Free preorders come back confirmed with no Stripe round trip at all.
+      if (preorder && !isFull) {
+        const res = await fetch(`/api/groups/${group.id}/secure-spot`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Could not reserve your place. Please try again.');
+        if (data.checkout_url) { window.location.href = data.checkout_url; return; }
+        if (data.free) { onSuccess('joined'); return; }
+        throw new Error('Could not start the payment. Please try again.');
+      }
+
       if (price > 0 && !isFull) {
         const res = await fetch(`/api/groups/${group.id}/subscribe`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
         const data = await res.json();
