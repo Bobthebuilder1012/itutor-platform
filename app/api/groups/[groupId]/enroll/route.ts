@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { authenticateUser } from '@/lib/api/groupAuth';
 import { fail, ok } from '@/lib/api/http';
 import { getServiceClient } from '@/lib/supabase/server';
+import { findGroupEnrollmentConflict, conflictMessage } from '@/lib/services/scheduleConflict';
 
 type Params = { params: Promise<{ groupId: string }> };
 
@@ -85,6 +86,11 @@ export async function POST(req: NextRequest, { params }: Params) {
       .eq('student_id', user.id)
       .eq('status', 'ACTIVE');
     if ((existingActiveCount ?? 0) > 0) return fail('Already enrolled', 409);
+
+    // Child schedule conflict — the student's own upcoming schedule vs this
+    // class's occurrences. Blocks before any capacity/waitlist/payment handling.
+    const conflict = await findGroupEnrollmentConflict(service, user.id, groupId);
+    if (conflict) return fail(conflictMessage(conflict), 409);
 
     const { count: currentEnrollmentCount } = await service
       .from('group_enrollments')
