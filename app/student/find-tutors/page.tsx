@@ -72,6 +72,8 @@ type GroupLesson = {
   feedbackMode?: string | null;
   parentFeedbackPrice?: number | null;
   activePromotion?: { id: string; kind: string; discount: number; student_cap: number | null; duration_days: number | null } | null;
+  /** Set when the class hasn't started and the tutor has opened preorders. */
+  preorder?: { firstSession: string; releaseDate: string; shortClass: boolean } | null;
 };
 
 function promoLabel(promo: { kind: string; discount: number; student_cap: number | null; duration_days: number | null; created_at?: string; used_count?: number }): string {
@@ -577,19 +579,38 @@ export default function FindTutorsPage() {
       // group_members, whose own policy self-references, so a browser read by a
       // non-member dies with 42P17 (infinite recursion) — which is why classes
       // with a live weekly session all read "Schedule TBD".
+      // Asked for EVERY class, not just the ones missing a schedule line: the
+      // same call also says whether a class can be preordered, which a class
+      // with a tutor-written schedule still needs to know.
       try {
-        const needSchedule = mapped.filter((l) => l.day === 'Schedule TBD').map((l) => l.id);
-        if (!needSchedule.length) { setGroupLessons(mapped); return; }
+        const ids = mapped.map((l) => l.id);
+        if (!ids.length) { setGroupLessons(mapped); return; }
 
-        const res = await fetch(`/api/groups/schedules?ids=${needSchedule.join(',')}`);
+        const res = await fetch(`/api/groups/schedules?ids=${ids.join(',')}`);
         const json = await res.json().catch(() => ({}));
-        const schedules: Record<string, { display: string | null; sessionLength: number | null }> = json?.schedules ?? {};
+        const schedules: Record<string, {
+          display: string | null;
+          sessionLength: number | null;
+          preorder?: { eligible: boolean; firstSession?: string; releaseDate?: string; shortClass?: boolean };
+        }> = json?.schedules ?? {};
 
         setGroupLessons(mapped.map((l) => {
           const s = schedules[l.id];
-          if (!s?.display) return l;
-          // display already carries the time range ("Mon, Wed & Fri · 4:00–5:00 PM AST")
-          return { ...l, day: s.display, time: '', sessionLength: s.sessionLength ?? l.sessionLength };
+          if (!s) return l;
+          const p = s.preorder;
+          return {
+            ...l,
+            // Only fill the schedule line if the card hasn't got one already —
+            // a tutor's hand-written schedule still wins.
+            ...(s.display && l.day === 'Schedule TBD'
+              // display already carries the time range ("Mon, Wed & Fri · 4:00–5:00 PM AST")
+              ? { day: s.display, time: '', sessionLength: s.sessionLength ?? l.sessionLength }
+              : {}),
+            preorder:
+              p?.eligible && p.firstSession && p.releaseDate
+                ? { firstSession: p.firstSession, releaseDate: p.releaseDate, shortClass: !!p.shortClass }
+                : null,
+          };
         }));
         return;
       } catch { /* non-critical */ }
@@ -1001,6 +1022,19 @@ export default function FindTutorsPage() {
                       </div>
 
                       <div className="space-y-1.5 text-xs">
+                        {/* Starts-on date, above the recurrence: for a class that
+                            hasn't begun, "when does this start" is the question
+                            the student is actually asking. */}
+                        {l.preorder && (
+                          <div className="inline-flex items-center gap-1.5 rounded-full bg-brand-soft px-2.5 py-1 font-semibold text-forest">
+                            <Calendar className="size-3.5 shrink-0" />
+                            Starts{' '}
+                            {new Date(l.preorder.firstSession).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                            })}
+                          </div>
+                        )}
                         {/* Schedule — structured (contains "–") or plain fallback */}
                         {l.day !== 'Schedule TBD' ? (
                           <div className="text-muted-foreground whitespace-pre-line leading-relaxed">{l.day}</div>
@@ -1073,7 +1107,15 @@ export default function FindTutorsPage() {
                             href={`/student/explore/${l.id}`}
                             className="px-3 py-1.5 rounded-xl bg-brand text-white text-xs font-semibold hover:bg-brand-deep transition"
                           >
-                            {full ? 'Join waitlist' : l.requireJoinRequests ? 'Request to join' : 'Join class'}
+                            {full
+                              ? 'Join waitlist'
+                              : l.preorder
+                                // Hasn't started yet: reserving a place, not joining
+                                // something already running.
+                                ? 'Secure your spot'
+                                : l.requireJoinRequests
+                                  ? 'Request to join'
+                                  : 'Join class'}
                           </Link>
                         )}
                       </div>

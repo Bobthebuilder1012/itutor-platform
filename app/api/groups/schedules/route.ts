@@ -18,6 +18,7 @@ import {
   sessionPatternsDuration,
   type SessionPattern,
 } from '@/lib/utils/scheduleFormat';
+import { preorderEligibility, computeReleaseDate, isShortClass } from '@/lib/payments/secureSpot';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +26,20 @@ export type GroupSchedule = {
   display: string | null;
   days: number[];
   sessionLength: number | null;
+  /**
+   * Whether this class can be preordered, and the dates that go with it.
+   * Decided here rather than in the browser for the same reason the schedule
+   * is: group_sessions is unreadable client-side. It also keeps the CTA and
+   * the route that takes the money reading the same rules.
+   */
+  preorder: {
+    eligible: boolean;
+    /** Why not, when it isn't: no_schedule | already_started | too_far_out | not_enabled */
+    reason?: string;
+    firstSession?: string;
+    releaseDate?: string;
+    shortClass?: boolean;
+  };
 };
 
 const PATTERN_COLUMNS = 'group_id, recurrence_type, recurrence_days, start_time, duration_minutes, starts_on, ends_on';
@@ -73,14 +88,45 @@ export async function GET(req: NextRequest) {
       byGroup.set(row.group_id, list);
     }
 
+    // A class is only preorderable if the tutor opened preorders on it.
+    const { data: groupRows } = await admin
+      .from('groups')
+      .select('id, secure_spot_enabled, end_date')
+      .in('id', groupIds);
+
+    const groupById = new Map((groupRows ?? []).map((g: any) => [g.id, g]));
+
     const schedules: Record<string, GroupSchedule> = {};
-    for (const [groupId, patterns] of byGroup) {
+    for (const groupId of groupIds) {
+      const patterns = byGroup.get(groupId) ?? [];
       const display = sessionPatternsToDisplay(patterns);
-      if (!display) continue;
+      const group = groupById.get(groupId);
+
+      const eligibility = preorderEligibility(patterns);
+      let preorder: GroupSchedule['preorder'];
+
+      if (!group?.secure_spot_enabled) {
+        preorder = { eligible: false, reason: 'not_enabled' };
+      } else if (!eligibility.eligible) {
+        preorder = { eligible: false, reason: eligibility.reason };
+      } else {
+        const endDate = group.end_date ?? null;
+        preorder = {
+          eligible: true,
+          firstSession: eligibility.firstSession.toISOString(),
+          releaseDate: computeReleaseDate({ firstSession: eligibility.firstSession, endDate }),
+          shortClass: isShortClass({ firstSession: eligibility.firstSession, endDate }),
+        };
+      }
+
+      // Skip only classes with nothing at all to say.
+      if (!display && !preorder.eligible) continue;
+
       schedules[groupId] = {
         display,
         days: sessionPatternWeekdays(patterns),
         sessionLength: sessionPatternsDuration(patterns),
+        preorder,
       };
     }
 

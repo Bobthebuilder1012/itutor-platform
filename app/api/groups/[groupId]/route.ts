@@ -3,6 +3,8 @@ import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 import type { UpdateGroupInput } from '@/lib/types/groups';
 import { generateUpcomingSessions } from '@/lib/recurrence';
+import { preorderEligibility } from '@/lib/payments/secureSpot';
+import type { SessionPattern } from '@/lib/utils/scheduleFormat';
 
 type Params = { params: Promise<{ groupId: string }> };
 function isSchemaMismatch(error: any): boolean {
@@ -396,6 +398,36 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (body.cover_image !== undefined) updates.cover_image = body.cover_image;
     if ((body as any).schedule_display !== undefined) updates.schedule_display = (body as any).schedule_display;
     if ((body as any).schedule_data !== undefined) updates.schedule_data = (body as any).schedule_data;
+    // Preorders can only be opened on a class that has a confirmed schedule
+    // with its first lesson still ahead. Checked here rather than trusted from
+    // the client, because this is the flag that lets the class take money
+    // before it has taught anything.
+    if ((body as any).secure_spot_enabled !== undefined) {
+      const wanted = (body as any).secure_spot_enabled === true;
+      if (wanted) {
+        const { data: sessionRows } = await service
+          .from('group_sessions')
+          .select('recurrence_type, recurrence_days, start_time, duration_minutes, starts_on, ends_on')
+          .eq('group_id', groupId);
+
+        const eligibility = preorderEligibility((sessionRows ?? []) as SessionPattern[]);
+        if (!eligibility.eligible) {
+          return NextResponse.json(
+            {
+              error:
+                eligibility.reason === 'no_schedule'
+                  ? 'Add a schedule to open reservations.'
+                  : eligibility.reason === 'already_started'
+                    ? 'This class has already started, so it cannot take reservations.'
+                    : 'This class starts too far ahead to open reservations yet.',
+              reason: eligibility.reason,
+            },
+            { status: 400 }
+          );
+        }
+      }
+      updates.secure_spot_enabled = wanted;
+    }
     if (body.header_image !== undefined) updates.header_image = body.header_image;
     if (body.content_blocks !== undefined) updates.content_blocks = body.content_blocks;
     if (body.status !== undefined) updates.status = body.status;
