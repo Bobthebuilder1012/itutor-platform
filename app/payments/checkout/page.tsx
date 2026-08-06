@@ -230,6 +230,18 @@ export default function PaymentCheckout() {
     d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
   const cancelBy = start ? new Date(start.getTime() - 24 * 3600 * 1000) : null;
 
+  // A subscription to a class that finishes inside the first billing month.
+  // Billing stops on the month boundary after the end date (endDateToCancelAt),
+  // so this is the student's only charge.
+  const classEndsSoon = (() => {
+    if (!summary.isSubscription || !summary.endDate) return false;
+    const endsAt = Date.parse(`${summary.endDate}T23:59:59-04:00`);
+    if (!Number.isFinite(endsAt)) return false;
+    const oneMonthOut = new Date();
+    oneMonthOut.setMonth(oneMonthOut.getMonth() + 1);
+    return endsAt < oneMonthOut.getTime();
+  })();
+
   return (
     <div className="min-h-screen bg-white">
       {/* Hero */}
@@ -383,22 +395,47 @@ export default function PaymentCheckout() {
                   {/* Recurring-payment disclaimer. Deliberately prominent and
                       stated before the card form: this is the one thing a
                       student must understand before entering card details. */}
-                  <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-                    <p className="text-xs leading-relaxed text-amber-900">
-                      <strong>This is a recurring payment.</strong> You&apos;ll
-                      be charged{' '}
-                      <strong>
-                        ${summary.total.toFixed(2)} {summary.currency}
-                      </strong>{' '}
-                      today and then every month
-                      {summary.endDate
-                        ? ' until the class ends'
-                        : ' until you cancel'}
-                      . You can <strong>cancel at any time</strong> from your
-                      account, and you&apos;ll keep access for the period
-                      you&apos;ve already paid for.
-                    </p>
-                  </div>
+                  {/* A class finishing inside this first month is a one-off
+                      purchase wearing a subscription's clothes: the student
+                      pays a full month for less class than that, and there is
+                      no second charge. Saying "then every month" there would
+                      be false, so it gets its own notice. */}
+                  {classEndsSoon ? (
+                    <div className="mt-2 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3">
+                      <p className="text-xs leading-relaxed text-orange-900">
+                        <strong>This class ends soon.</strong> It finishes on{' '}
+                        <strong>
+                          {new Date(`${summary.endDate}T00:00:00`).toLocaleDateString('en-US', {
+                            month: 'long', day: 'numeric', year: 'numeric',
+                          })}
+                        </strong>
+                        , which is less than a month away. You&apos;re paying for
+                        one full month —{' '}
+                        <strong>
+                          ${summary.total.toFixed(2)} {summary.currency}
+                        </strong>{' '}
+                        — and <strong>you won&apos;t be charged again</strong>; the
+                        subscription ends with the class.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                      <p className="text-xs leading-relaxed text-amber-900">
+                        <strong>This is a recurring payment.</strong> You&apos;ll
+                        be charged{' '}
+                        <strong>
+                          ${summary.total.toFixed(2)} {summary.currency}
+                        </strong>{' '}
+                        today and then every month
+                        {summary.endDate
+                          ? ' until the class ends'
+                          : ' until you cancel'}
+                        . You can <strong>cancel at any time</strong> from your
+                        account, and you&apos;ll keep access for the period
+                        you&apos;ve already paid for.
+                      </p>
+                    </div>
+                  )}
                 </div>
               ) : start ? (
                 <div className="flex items-center gap-4">

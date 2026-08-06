@@ -465,7 +465,14 @@ export async function POST(req: NextRequest, { params }: Params) {
           // confirmation_secret is the replacement.
           expand: ['latest_invoice.confirmation_secret'],
           // Stops billing when the class ends, without a cron to cancel it.
+          // The timestamp is rounded up to a whole-month boundary — see
+          // endDateToCancelAt — because a mid-period cancel_at makes Stripe
+          // bill a fraction of the month.
           ...(cancelAt ? { cancel_at: cancelAt } : {}),
+          // Tutors are paid by the month, never a part month. Belt and braces
+          // with the boundary rounding above: this switches off the proration
+          // Stripe would otherwise create when a cancel lands inside a period.
+          proration_behavior: 'none',
           // Stripe has no concept of "which class/tutor" — these are what
           // the webhook and the (deferred) pause/resume work key off.
           metadata: {
