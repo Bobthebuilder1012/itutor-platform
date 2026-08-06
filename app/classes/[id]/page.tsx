@@ -9,6 +9,7 @@ import { StarRating } from "@/components/classes/StarRating";
 import { ClassEnrollmentCard } from "@/components/classes/ClassEnrollmentCard";
 import { supabase } from "@/lib/supabase/client";
 import { useProfile } from "@/lib/hooks/useProfile";
+import { parseScheduleData, scheduleToDisplay } from "@/lib/utils/scheduleFormat";
 
 /* ─── Types ──────────────────────────────────────── */
 
@@ -66,12 +67,27 @@ export default function ClassDetailPage() {
         .select(`
           id, name, description, subject, tutor_id, visibility, require_join_requests,
           price_monthly, price_per_session, rating_average, rating_count,
-          schedule_display, content_blocks,
+          schedule_display, schedule_data, content_blocks,
           tutor:profiles!groups_tutor_id_fkey(id, full_name, display_name, avatar_url, tutor_verification_status)
         `)
         .eq('id', id)
         .single();
       if (!g) return;
+
+      // Most classes never get a hand-written schedule_display — their schedule
+      // lives in group_sessions, which only the server can read (group_sessions'
+      // RLS policy recurses through group_members).
+      let derivedSchedule: string | null = null;
+      const manualEntries = parseScheduleData((g as any).schedule_data);
+      if (manualEntries.length) {
+        derivedSchedule = scheduleToDisplay(manualEntries);
+      } else {
+        try {
+          const res = await fetch(`/api/groups/schedules?ids=${id}`);
+          const json = await res.json().catch(() => ({}));
+          derivedSchedule = json?.schedules?.[id]?.display ?? null;
+        } catch { /* falls back to schedule_display below */ }
+      }
 
       const tutor = Array.isArray(g.tutor) ? g.tutor[0] : g.tutor;
       setGroup({
@@ -84,7 +100,7 @@ export default function ClassDetailPage() {
         rating: Number(g.rating_average ?? 0),
         ratingCount: g.rating_count ?? 0,
         priceTTD: Number(g.price_monthly ?? g.price_per_session ?? 0),
-        schedule: g.schedule_display || 'Schedule TBD',
+        schedule: derivedSchedule || g.schedule_display || 'Schedule TBD',
         cover: [],
         highlights: [
           'Live weekly group session',
@@ -229,7 +245,7 @@ function AboutTab({ group }: { group: Group }) {
       )}
       <div className="rounded-xl border border-[#1F1F1F] bg-[#111111] p-4">
         <div className="text-xs uppercase tracking-wider text-[#A0A0A0]">Schedule</div>
-        <div className="mt-1 text-sm font-medium text-white">{group.schedule}</div>
+        <div className="mt-1 text-sm font-medium text-white whitespace-pre-line leading-relaxed">{group.schedule}</div>
       </div>
     </div>
   );

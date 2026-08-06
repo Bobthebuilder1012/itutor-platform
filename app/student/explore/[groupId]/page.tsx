@@ -15,7 +15,7 @@ import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { formatLevel } from '@/lib/utils/formatLevel';
-import { parseScheduleData, scheduleToDisplay } from '@/lib/utils/scheduleFormat';
+import { parseScheduleData, scheduleToDisplay, sessionPatternsToDisplay, sessionPatternWeekdays } from '@/lib/utils/scheduleFormat';
 import TutorCredentials from '@/components/TutorCredentials';
 
 type Step = 'detail' | 'join' | 'joined' | 'awaiting-approval';
@@ -32,6 +32,12 @@ type SessionRow = {
   id: string;
   title: string | null;
   duration_minutes: number | null;
+  // The tutor's recurrence — the source of truth for "when does this class meet"
+  recurrence_type: string | null;
+  recurrence_days: number[] | null;
+  start_time: string | null;
+  starts_on: string | null;
+  ends_on: string | null;
   occurrences: Occurrence[];
 };
 
@@ -202,6 +208,11 @@ export default function ExploreClassDetailPage() {
             id: s.id,
             title: s.title ?? null,
             duration_minutes: s.duration_minutes ?? null,
+            recurrence_type: s.recurrence_type ?? null,
+            recurrence_days: Array.isArray(s.recurrence_days) ? s.recurrence_days : null,
+            start_time: s.start_time ?? null,
+            starts_on: s.starts_on ?? null,
+            ends_on: s.ends_on ?? null,
             occurrences: Array.isArray(s.occurrences)
               ? s.occurrences
               : Array.isArray(s.group_session_occurrences)
@@ -336,30 +347,33 @@ function Detail({ group, onJoin }: { group: GroupData; onJoin: () => void }) {
   const tutorName = group.tutor?.display_name || group.tutor?.full_name || 'Tutor';
   const tutorInitials = tutorName.replace(/^(Mr\.|Ms\.|Mrs\.|Dr\.)\s*/i, '').split(' ').map((p) => p[0]).join('').slice(0, 2);
 
-  // Recurring schedule pattern (fallback when a class has no dated occurrences)
+  // Recurring schedule pattern (fallback when a class has no dated occurrences).
+  // Tutors set the schedule by adding a recurring session far more often than by
+  // filling in the class's own schedule field, so group_sessions comes second
+  // only to a hand-written schedule_data.
   const scheduleText = useMemo(() => {
     const entries = parseScheduleData(group.schedule_data);
     if (entries.length) return scheduleToDisplay(entries);
-    return group.schedule_display || null;
-  }, [group.schedule_data, group.schedule_display]);
+    return sessionPatternsToDisplay(group.sessions) ?? group.schedule_display ?? null;
+  }, [group.schedule_data, group.schedule_display, group.sessions]);
 
   // Real dated agenda from group_sessions occurrences
   const agenda = useMemo(() => buildAgenda(group.sessions), [group.sessions]);
   const nextSession = agenda[0] ?? null;
 
-  // Recurring class days: derived from the tutor's UPCOMING scheduled
-  // occurrences (distinct weekdays, viewer-local). Falls back to the tutor's
-  // recurring schedule_data pattern when a class has no dated occurrences yet.
+  // Recurring class days: the weekdays on the tutor's session recurrence, which
+  // is what the tutor sees on their own class page. Falls back to the distinct
+  // weekdays of upcoming dated occurrences, then to a hand-written schedule_data.
   const recurringDays = useMemo(() => {
-    const days = new Set<number>();
-    for (const a of agenda) days.add(a.start.getDay());
+    const days = new Set<number>(sessionPatternWeekdays(group.sessions));
+    if (days.size === 0) for (const a of agenda) days.add(a.start.getDay());
     if (days.size === 0) {
       for (const e of parseScheduleData(group.schedule_data)) {
         if (typeof e.day === 'number' && e.day >= 0 && e.day <= 6) days.add(e.day);
       }
     }
     return days;
-  }, [agenda, group.schedule_data]);
+  }, [agenda, group.schedule_data, group.sessions]);
 
   // Compact "at a glance" from real fields only
   const sessionSummary = useMemo(() => {
@@ -1075,7 +1089,7 @@ function ClassSummaryCard({ group }: { group: GroupData }) {
   const schedule = (() => {
     const entries = parseScheduleData(group.schedule_data);
     if (entries.length) return scheduleToDisplay(entries);
-    return group.schedule_display || null;
+    return sessionPatternsToDisplay(group.sessions) ?? group.schedule_display ?? null;
   })();
 
   return (
