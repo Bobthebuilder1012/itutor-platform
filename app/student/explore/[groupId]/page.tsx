@@ -456,6 +456,19 @@ function Detail({ group, onJoin }: { group: GroupData; onJoin: () => void }) {
 
       {/* Hero header with primary action */}
       <section className="overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-brand to-brand-deep text-white shadow-[0_20px_50px_-30px_rgba(16,120,70,0.7)]">
+        {group.cover_image && (
+          // Banners are authored 4:1 on light washes (lib/utils/bannerCanvas.ts),
+          // so they get their own strip above the hero rather than sitting behind
+          // it — a scrim dark enough to carry white type would bury the artwork.
+          // Classes with no banner keep the plain brand gradient.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={group.cover_image}
+            alt=""
+            className="block w-full object-cover"
+            style={{ aspectRatio: '4 / 1' }}
+          />
+        )}
         <div className="grid gap-4 p-5 sm:p-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:gap-8">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-wide">

@@ -79,7 +79,6 @@ type GroupLesson = {
   rating: number;
   tags: string[];
   color: string;
-  emoji: string;
   description?: string | null;
   coverImage?: string | null;
   requireJoinRequests?: boolean;
@@ -432,19 +431,19 @@ export default function FindTutorsPage() {
     }
   }
 
-  const SUBJECT_STYLE: Record<string, { color: string; emoji: string }> = {
-    math: { color: 'from-coral to-peach', emoji: '📐' },
-    physics: { color: 'from-sky to-lavender', emoji: '⚛️' },
-    chemistry: { color: 'from-brand-deep to-forest', emoji: '🧪' },
-    biology: { color: 'from-brand to-brand-deep', emoji: '🧬' },
-    english: { color: 'from-lavender to-brand-soft', emoji: '📚' },
-    history: { color: 'from-peach to-coral', emoji: '📜' },
-    economics: { color: 'from-peach to-coral', emoji: '📊' },
-    information: { color: 'from-sky to-lavender', emoji: '💻' },
-    spanish: { color: 'from-coral to-peach', emoji: '🇪🇸' },
-    french: { color: 'from-sky to-lavender', emoji: '🇫🇷' },
-    sea: { color: 'from-brand to-brand-deep', emoji: '✏️' },
-    accounting: { color: 'from-peach to-coral', emoji: '📒' },
+  const SUBJECT_STYLE: Record<string, { color: string }> = {
+    math: { color: 'from-coral to-peach' },
+    physics: { color: 'from-sky to-lavender' },
+    chemistry: { color: 'from-brand-deep to-forest' },
+    biology: { color: 'from-brand to-brand-deep' },
+    english: { color: 'from-lavender to-brand-soft' },
+    history: { color: 'from-peach to-coral' },
+    economics: { color: 'from-peach to-coral' },
+    information: { color: 'from-sky to-lavender' },
+    spanish: { color: 'from-coral to-peach' },
+    french: { color: 'from-sky to-lavender' },
+    sea: { color: 'from-brand to-brand-deep' },
+    accounting: { color: 'from-peach to-coral' },
   };
 
   function getSubjectStyle(subject: string) {
@@ -452,7 +451,7 @@ export default function FindTutorsPage() {
     for (const [key, val] of Object.entries(SUBJECT_STYLE)) {
       if (lower.includes(key)) return val;
     }
-    return { color: 'from-brand to-brand-deep', emoji: '📖' };
+    return { color: 'from-brand to-brand-deep' };
   }
 
   async function fetchGroupLessons() {
@@ -563,7 +562,7 @@ export default function FindTutorsPage() {
 
       const mapped: GroupLesson[] = groups.map((g: any) => {
         const tutor = tutorMap.get(g.tutor_id);
-        const { color, emoji } = getSubjectStyle(g.subject || '');
+        const { color } = getSubjectStyle(g.subject || '');
         return {
           id: g.id,
           title: g.name,
@@ -588,7 +587,6 @@ export default function FindTutorsPage() {
           rating: 0,
           tags: [],
           color,
-          emoji,
           description: g.description ?? null,
           coverImage: g.cover_image ?? null,
           requireJoinRequests: g.require_join_requests ?? false,
@@ -1106,14 +1104,13 @@ export default function FindTutorsPage() {
                 const pctFull = l.seats.total ? Math.round((l.seats.taken / l.seats.total) * 100) : null;
                 return (
                   <div key={l.id} className={cn('group rounded-3xl bg-background border overflow-hidden hover:shadow-card transition-all hover:-translate-y-0.5 flex flex-col', enrolledLessonIds.has(l.id) ? 'border-brand/40' : 'border-border')}>
-                    <div className={`relative h-24 flex items-end p-3 ${l.coverImage ? '' : `bg-gradient-to-br ${l.color}`}`}
+                    <div className={`relative h-24 ${l.coverImage ? '' : `bg-gradient-to-br ${l.color}`}`}
                       style={l.coverImage ? { backgroundImage: `url(${l.coverImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}>
                       {enrolledLessonIds.has(l.id) && (
                         <div className="absolute top-2.5 left-2.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-brand text-white">
                           Enrolled
                         </div>
                       )}
-                      <div className="size-12 rounded-2xl bg-white grid place-items-center text-2xl shadow-md">{l.emoji}</div>
                     </div>
                     <div className="p-4 space-y-3 flex-1 flex flex-col">
                       <div>
@@ -1412,11 +1409,10 @@ export default function FindTutorsPage() {
       {joinLesson && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40" onClick={() => setJoinLesson(null)}>
           <div className="bg-background w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className={`relative h-24 bg-gradient-to-br ${joinLesson.color} flex items-end p-4`}>
+            <div className={`relative h-24 bg-gradient-to-br ${joinLesson.color}`}>
               <button onClick={() => setJoinLesson(null)} className="absolute top-3 right-3 size-8 rounded-full bg-white/90 grid place-items-center hover:bg-white">
                 <X className="size-4 text-ink" />
               </button>
-              <div className="size-12 rounded-2xl bg-white grid place-items-center text-2xl shadow-md">{joinLesson.emoji}</div>
             </div>
             <div className="p-5 space-y-4">
               <div>

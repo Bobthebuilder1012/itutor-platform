@@ -135,9 +135,10 @@ export function renderBanner(canvas: HTMLCanvasElement, opts: BannerRenderOpts):
   }
 
   // Optional atmosphere line — centred in the band between the top-left icon
-  // tile (cards overlay a class-icon there, and the full banner width is shown,
-  // so text jammed at the left edge gets clipped by it) and the right-side
-  // photo. Vertically centred, clear of the bottom-left title chrome zone.
+  // tile and the right-side photo. The student marketplace card no longer
+  // overlays a class-icon there, but the parent and enrolled-class views still
+  // do, so the gutter stays. Vertically centred, clear of the bottom-left title
+  // chrome zone.
   const atmo = (opts.atmosphere ?? '').trim();
   if (atmo) {
     ctx.save();
