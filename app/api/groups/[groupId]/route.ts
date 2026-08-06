@@ -29,10 +29,15 @@ export async function GET(_req: NextRequest, { params }: Params) {
   try {
     const { groupId } = await params;
     const supabase = await getServerClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { data: { user } } = await supabase.auth.getUser();
+
+    // Anonymous reads are allowed so a QR code or a shared class link opens the
+    // class page without an account — you cannot ask someone to sign up for a
+    // class they have not been allowed to look at. Anonymous callers get a
+    // PUBLIC view only: the roster, member previews and membership state are
+    // stripped from the response below, and a private or archived class still
+    // 404s rather than leaking its existence.
+    const isAnonymous = !user;
 
     const service = getServiceClient();
     const groupSelects = [
@@ -158,8 +163,19 @@ export async function GET(_req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 
+    // A private or archived class is not browsable by a stranger. Signed-in
+    // users keep the previous behaviour (the tutor and members still need it).
+    if (isAnonymous) {
+      const isPublic = String(group.visibility ?? 'public').toLowerCase() === 'public';
+      if (!isPublic || group.archived_at) {
+        return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+      }
+    }
+
     const approvedMembers = (group.group_members ?? []).filter((m: any) => m.status === 'approved');
-    const currentUserMembership = (group.group_members ?? []).find((m: any) => m.user_id === user.id) ?? null;
+    const currentUserMembership = user
+      ? ((group.group_members ?? []).find((m: any) => m.user_id === user.id) ?? null)
+      : null;
 
     // Fetch sessions with upcoming occurrences (service client bypasses RLS so all users get schedule preview)
     let sessionsRaw: any[] | null = null;
@@ -300,9 +316,13 @@ export async function GET(_req: NextRequest, { params }: Params) {
       group: {
         ...group,
         group_members: undefined,
-        members: group.group_members,
+        // Counts are public; who the students are is not. An anonymous viewer
+        // gets neither the roster nor the preview avatars.
+        members: isAnonymous ? [] : group.group_members,
         member_count: approvedMembers.length,
-        member_previews: approvedMembers.slice(0, 3).map((m: any) => m.profile).filter(Boolean),
+        member_previews: isAnonymous
+          ? []
+          : approvedMembers.slice(0, 3).map((m: any) => m.profile).filter(Boolean),
         current_user_membership: currentUserMembership,
         sessions,
         next_occurrence: nextOccurrence,
@@ -318,9 +338,13 @@ export async function GET(_req: NextRequest, { params }: Params) {
         group: {
           ...group,
           group_members: undefined,
-          members: group.group_members,
+          // Mirrors the block above — this legacy `data` shape is still read by
+          // some callers, so it has to be stripped for anonymous viewers too.
+          members: isAnonymous ? [] : group.group_members,
           member_count: approvedMembers.length,
-          member_previews: approvedMembers.slice(0, 3).map((m: any) => m.profile).filter(Boolean),
+          member_previews: isAnonymous
+            ? []
+            : approvedMembers.slice(0, 3).map((m: any) => m.profile).filter(Boolean),
           current_user_membership: currentUserMembership,
           sessions,
           next_occurrence: nextOccurrence,
