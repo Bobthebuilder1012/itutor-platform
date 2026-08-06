@@ -22,6 +22,7 @@ type GroupListing = {
   cover_image: string | null; price_monthly: number | null; max_students: number;
   require_join_requests: boolean; feedback_mode: string | null; parent_feedback_price: number | null;
   schedule_display: string | null; schedule_data: string | null;
+  session_schedule: string | null;
   average_rating: number | null; status: string | null;
   tutor: { full_name: string | null; display_name: string | null; rating_average: number | null } | null;
   member_count: number;
@@ -81,10 +82,23 @@ function ClassesContent() {
         (counts ?? []).forEach((m: any) => { countMap[m.group_id] = (countMap[m.group_id] ?? 0) + 1; });
       }
 
+      // Recurring schedules come from the server: group_sessions is unreadable
+      // from the browser (its RLS policy recurses through group_members), so
+      // cards fell back to no schedule at all even for classes that meet weekly.
+      let scheduleMap: Record<string, { display: string | null }> = {};
+      if (ids.length) {
+        try {
+          const res = await fetch(`/api/groups/schedules?ids=${ids.join(',')}`);
+          const json = await res.json().catch(() => ({}));
+          scheduleMap = json?.schedules ?? {};
+        } catch { /* non-critical */ }
+      }
+
       setGroups((data ?? []).map((g: any) => ({
         ...g,
         tutor: Array.isArray(g.tutor) ? g.tutor[0] : g.tutor,
         member_count: countMap[g.id] ?? 0,
+        session_schedule: scheduleMap[g.id]?.display ?? null,
       })));
 
       // Fetch 1:1 tutors — the SAME "listed" set students see (complete profile
@@ -324,7 +338,7 @@ function ClassCard({ g, onJoin, joining }: { g: GroupListing; onJoin: () => void
   const schedule = (() => {
     const entries = parseScheduleData(g.schedule_data);
     if (entries.length) return scheduleToDisplay(entries).split('\n')[0];
-    return g.schedule_display?.split('\n')[0] || null;
+    return g.session_schedule?.split('\n')[0] || g.schedule_display?.split('\n')[0] || null;
   })();
 
   return (
