@@ -957,12 +957,6 @@ export default function FindTutorsPage() {
                           Enrolled
                         </div>
                       )}
-                      <button
-                        onClick={() => toggleSave(l.id)}
-                        className="absolute top-2.5 right-2.5 size-8 rounded-full bg-white/90 backdrop-blur grid place-items-center hover:bg-white"
-                      >
-                        <Heart className={cn('size-4', savedItems.has(l.id) ? 'fill-coral text-coral' : 'text-ink')} />
-                      </button>
                     </div>
                     <div className="p-4 space-y-3 flex-1 flex flex-col">
                       <div>
