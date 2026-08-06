@@ -12,7 +12,12 @@
 
 import { type SupabaseClient } from '@supabase/supabase-js';
 import { getStripeClient } from '@/lib/payments/stripeClient';
-import { computeReleaseDate, firstUpcomingSession, preorderEligibility } from '@/lib/payments/secureSpot';
+import {
+  computeReleaseDate,
+  firstUpcomingSession,
+  preorderEligibility,
+  preorderReasonMessage,
+} from '@/lib/payments/secureSpot';
 import type { SessionPattern } from '@/lib/utils/scheduleFormat';
 
 export interface ConfirmSecuredSpotParams {
@@ -61,14 +66,7 @@ export async function canOpenPreorders(
   const eligibility = preorderEligibility((sessions ?? []) as SessionPattern[]);
   if (eligibility.eligible) return { ok: true };
 
-  const message =
-    eligibility.reason === 'no_schedule'
-      ? 'Add a schedule to open reservations.'
-      : eligibility.reason === 'already_started'
-        ? 'This class has already started, so it cannot take reservations.'
-        : 'This class starts too far ahead to open reservations yet.';
-
-  return { ok: false, reason: eligibility.reason, message };
+  return { ok: false, reason: eligibility.reason, message: preorderReasonMessage(eligibility.reason) };
 }
 
 /**

@@ -17,6 +17,31 @@ import type { SessionPattern } from '@/lib/utils/scheduleFormat';
 
 export const TRINIDAD_TZ = 'America/Port_of_Spain';
 
+/** Why a class can't take preorders. Every caller renders a reason to someone. */
+export type PreorderIneligibility =
+  | 'no_schedule'
+  | 'already_started'
+  | 'starts_today'
+  | 'too_far_out';
+
+/**
+ * One wording per reason, shared by every surface that has to explain it —
+ * the tutor's toggle, both creation forms and the API. A disabled switch with
+ * no stated reason gets reported as a missing feature.
+ */
+export function preorderReasonMessage(reason: PreorderIneligibility): string {
+  switch (reason) {
+    case 'no_schedule':
+      return 'Add a schedule to open reservations.';
+    case 'already_started':
+      return 'This class has already started, so students join it rather than reserve a place.';
+    case 'starts_today':
+      return 'This class starts today — it is too late to take reservations.';
+    case 'too_far_out':
+      return 'This class starts too far ahead to open reservations yet.';
+  }
+}
+
 /** How long a checkout holds its seat before the seat returns to the pool. */
 export const SECURE_SPOT_HOLD_MINUTES = 30;
 
@@ -257,13 +282,24 @@ export function firstEverSession(patterns: SessionPattern[] | null | undefined):
 export function preorderEligibility(
   patterns: SessionPattern[] | null | undefined,
   now: Date = new Date()
-): { eligible: true; firstSession: Date } | { eligible: false; reason: 'no_schedule' | 'already_started' | 'too_far_out' } {
+): { eligible: true; firstSession: Date } | { eligible: false; reason: PreorderIneligibility } {
   const firstSession = firstUpcomingSession(patterns, now);
   if (!firstSession) return { eligible: false, reason: 'no_schedule' };
 
+  // The class's FIRST lesson ever, not its next one. A class that began in
+  // June and runs weekly always has a session a few days away, but selling a
+  // "first month" that started months ago would compute release_date from a
+  // date already past — wrong money, immediately.
   const firstEver = firstEverSession(patterns);
   if (firstEver && firstEver.getTime() < now.getTime()) {
     return { eligible: false, reason: 'already_started' };
+  }
+
+  // Strictly a later day than today, in Trinidad terms — not merely "later
+  // than this instant". A class starting at 6pm tonight leaves no room for the
+  // confirmation email to be any use, and makes the release-date edge awkward.
+  if (trinidadToday(firstSession) <= trinidadToday(now)) {
+    return { eligible: false, reason: 'starts_today' };
   }
 
   const leadDays = (firstSession.getTime() - now.getTime()) / 86_400_000;

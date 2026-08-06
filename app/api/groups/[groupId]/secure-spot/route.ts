@@ -35,9 +35,12 @@ type Params = { params: Promise<{ groupId: string }> };
 const SESSION_COLUMNS =
   'recurrence_type, recurrence_days, start_time, duration_minutes, starts_on, ends_on';
 
+// Student-facing wording. Deliberately not preorderReasonMessage(), which is
+// written for the tutor deciding whether to switch the feature on.
 const ELIGIBILITY_MESSAGE: Record<string, string> = {
   no_schedule: 'This class does not have a confirmed schedule yet.',
   already_started: 'This class has already started — you can join it directly.',
+  starts_today: 'This class starts today — you can join it directly.',
   too_far_out: 'This class starts too far in the future to reserve a place yet.',
 };
 
