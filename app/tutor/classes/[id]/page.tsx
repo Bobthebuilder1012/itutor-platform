@@ -1084,7 +1084,26 @@ function SessionsTab({ sessions, groupId, setSessions, meetingLink, reconnected 
     try {
       // The API expects a single session record with recurrence info —
       // it generates all occurrences server-side.
-      const title = `Session — ${new Date(form.date + 'T' + form.time).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}`;
+      // A recurring series covers many dates, so naming it after the first one
+      // is wrong the moment the second occurrence exists — that is how every
+      // row of a weekly class ended up reading "Session — Wed, Sep 9". One-off
+      // sessions keep the dated name, because for them it is accurate.
+      const startsAt = new Date(form.date + 'T' + form.time);
+      const title =
+        form.recurrence === 'weekly'
+          ? `Weekly session — ${
+              (form.weekdays ?? []).length
+                ? (form.weekdays as number[])
+                    .slice()
+                    .sort((a, b) => a - b)
+                    .map((d) => DAY_NAMES[d]?.slice(0, 3))
+                    .filter(Boolean)
+                    .join(', ')
+                : startsAt.toLocaleDateString(undefined, { weekday: 'long' })
+            }`
+          : form.recurrence === 'daily'
+            ? 'Daily session'
+            : `Session — ${startsAt.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}`;
       const payload = {
         title,
         start_time: form.time,             // "HH:MM"

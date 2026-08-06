@@ -12,6 +12,7 @@ import {
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
+import { occurrenceTitle } from '@/lib/utils/scheduleFormat';
 
 /* ─── Types ───────────────────────────────────────────────────────── */
 
@@ -943,7 +944,7 @@ function SessionsTab({ groupId }: { groupId: string }) {
         const occurrences: any[] = raw.flatMap((s: any) =>
           (s.occurrences ?? [s]).map((o: any) => ({
             id: o.id ?? s.id,
-            topic: o.topic ?? s.title ?? s.topic ?? 'Class session',
+            topic: o.topic ?? occurrenceTitle(s.title ?? s.topic, o.scheduled_start_at ?? s.scheduled_start_at),
             scheduled_start_at: o.scheduled_start_at ?? s.scheduled_start_at,
             duration_minutes: o.duration_minutes ?? s.duration_minutes ?? 60,
             meeting_link: groupLink,
