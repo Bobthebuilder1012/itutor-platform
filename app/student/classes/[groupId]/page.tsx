@@ -12,6 +12,7 @@ import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
 import { CommentSection } from '@/components/ratings/CommentSection';
+import { occurrenceTitle } from '@/lib/utils/scheduleFormat';
 
 /* ─── Types ──────────────────────────────────────────── */
 
@@ -775,7 +776,7 @@ function SessionsTab({ groupId, userId }: { groupId: string; userId: string }) {
           (s.occurrences ?? []).map((o: any) => ({
             id: o.id,
             sessionId: s.id,
-            topic: o.title ?? s.title ?? 'Class session',
+            topic: o.title ?? occurrenceTitle(s.title, o.scheduled_start_at),
             date: o.scheduled_start_at,
             durationMin: s.duration_minutes ?? 60,
             meetingLink: null as string | null,

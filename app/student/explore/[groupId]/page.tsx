@@ -15,7 +15,7 @@ import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { formatLevel } from '@/lib/utils/formatLevel';
-import { parseScheduleData, scheduleToDisplay, sessionPatternsToDisplay, sessionPatternWeekdays } from '@/lib/utils/scheduleFormat';
+import { parseScheduleData, scheduleToDisplay, sessionPatternsToDisplay, sessionPatternWeekdays, occurrenceTitle } from '@/lib/utils/scheduleFormat';
 import TutorCredentials from '@/components/TutorCredentials';
 
 type Step = 'detail' | 'join' | 'joined' | 'awaiting-approval';
@@ -1152,7 +1152,7 @@ function buildAgenda(sessions: SessionRow[]): AgendaItem[] {
       if (now >= start.getTime() && now <= end.getTime()) status = 'live';
       else if (ms > 0 && ms <= 30 * 60_000) status = 'soon';
       const durationMin = s.duration_minutes ?? Math.max(15, Math.round((end.getTime() - start.getTime()) / 60_000)) ?? 60;
-      items.push({ id: o.id, title: s.title ?? 'Class session', start, end, durationMin, status });
+      items.push({ id: o.id, title: occurrenceTitle(s.title, start), start, end, durationMin, status });
     }
   }
   return items.sort((a, b) => a.start.getTime() - b.start.getTime());

@@ -55,6 +55,43 @@ export function parseScheduleData(raw: string | null | undefined): ScheduleEntry
   try { return JSON.parse(raw); } catch { return []; }
 }
 
+/* ─── occurrence titles ───────────────────────────────── */
+
+// Auto-generated series names look like "Session — Wed, Sep 9" (see the tutor
+// class page). They are minted once, from the FIRST date, and then belong to
+// the whole recurring series.
+const AUTO_SESSION_TITLE = /^session\s*[—–-]/i;
+
+/**
+ * The heading for a single occurrence of a class.
+ *
+ * A recurring series carries one title, so listing occurrences with it repeats
+ * the first date against every row: a weekly class showed "Session — Wed,
+ * Sep 9" beside Sep 16, Sep 23 and Sep 30. Auto-generated titles are therefore
+ * re-derived from the occurrence's own date, in the same format they were
+ * minted in, so nothing looks relabelled.
+ *
+ * A title the tutor actually chose ("CSEC Algebra") is left alone — repeating
+ * that across dates is correct.
+ */
+export function occurrenceTitle(
+  seriesTitle: string | null | undefined,
+  start: Date | string | null | undefined,
+  fallback = 'Class session'
+): string {
+  const title = (seriesTitle ?? '').trim();
+  if (title && !AUTO_SESSION_TITLE.test(title)) return title;
+
+  const at = start instanceof Date ? start : start ? new Date(start) : null;
+  if (!at || Number.isNaN(at.getTime())) return title || fallback;
+
+  return `Session — ${at.toLocaleDateString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  })}`;
+}
+
 /* ─── group_sessions → human schedule ─────────────────── */
 
 function parseDateOnly(raw: string | null | undefined): Date | null {
