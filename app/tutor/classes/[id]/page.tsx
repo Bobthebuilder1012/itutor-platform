@@ -23,6 +23,17 @@ import TutorShell from '@/components/tutor/TutorShell';
 import { uploadStreamAttachment } from '@/lib/utils/streamAttachments';
 import PaymentHistoryPanel from '@/components/students/PaymentHistoryPanel';
 import { generateHistoryForMember, getPaymentStatus, getMembershipStatus, MEMBERSHIP_META, type MemberBilling } from '@/lib/utils/paymentCycles';
+import {
+  BANNER_ACCEPT,
+  BANNER_MAX_BYTES,
+  BANNER_MIN_H,
+  BANNER_MIN_W,
+  BANNER_W,
+  BANNER_H,
+  bannerToBlob,
+  loadBitmap,
+  renderBanner,
+} from '@/lib/utils/bannerCanvas';
 
 type DbSubject = { id: string; name: string; label: string; curriculum: string };
 
@@ -2550,18 +2561,74 @@ function SchedulePicker({ entries, onChange }: { entries: ScheduleEntry[]; onCha
   );
 }
 
-/* ─── Class banner (built in the Banner Builder) ──────── */
+/* ─── Class banner (Banner Builder, or upload your own) ──────── */
 function ClassBannerUpload({ groupId, currentUrl, onUploaded }: { groupId: string; currentUrl: string; onUploaded: (url: string) => void }) {
+  const { profile } = useProfile();
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [warn, setWarn] = useState('');
+
+  // Straight upload, for tutors who already have artwork and don't want to
+  // compose one. The file is still rasterised through renderBanner at
+  // 1600x400 rather than stored as-is: the card and listing assume that exact
+  // 4:1 frame, so an arbitrary aspect ratio would letterbox or crop badly.
+  // Same pipeline the builder uses for its 'upload' template, so both routes
+  // produce an identical artefact.
+  async function handleFile(file: File) {
+    setError(''); setWarn('');
+    if (!BANNER_ACCEPT.includes(file.type)) { setError('Use a JPG, PNG or WebP image.'); return; }
+    if (file.size > BANNER_MAX_BYTES) { setError('Image must be under 10MB.'); return; }
+    if (!profile?.id) { setError('Not signed in.'); return; }
+
+    setBusy(true);
+    try {
+      const bmp = await loadBitmap(file);
+      if (bmp.width < BANNER_MIN_W || bmp.height < BANNER_MIN_H) {
+        setWarn(`For the sharpest result use at least ${BANNER_MIN_W}×${BANNER_MIN_H}px (yours is ${bmp.width}×${bmp.height}).`);
+      }
+
+      const canvas = document.createElement('canvas');
+      renderBanner(canvas, {
+        template: 'upload',
+        wash: 'neutral',
+        upload: bmp,
+        uploadScale: 1,
+        uploadOffsetX: 0,
+        uploadOffsetY: 0,
+        atmosphere: '',
+        showGuides: false,
+      });
+      const blob = await bannerToBlob(canvas);
+      const out = new File([blob], 'banner.jpg', { type: 'image/jpeg' });
+
+      // Same bucket/prefix convention as the builder — `avatars` is the bucket
+      // whose RLS and public read are provisioned in every environment.
+      const path = `${profile.id}/groups/banner-${groupId}-${Date.now()}.jpg`;
+      const up = await supabase.storage.from('avatars').upload(path, out, { upsert: true, contentType: 'image/jpeg' });
+      if (up.error) throw up.error;
+
+      onUploaded(supabase.storage.from('avatars').getPublicUrl(path).data.publicUrl);
+    } catch (e: any) {
+      setError(e?.message ?? 'Could not read that image.');
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  }
+
   return (
     <div className="space-y-2">
       <div className="text-sm font-semibold text-ink">Banner image</div>
-      <p className="text-xs text-muted-foreground">Shown at the top of your class listing. Create or change it in the banner builder.</p>
+      <p className="text-xs text-muted-foreground">
+        Shown at the top of your class listing. Build one, or upload your own — {BANNER_W}×{BANNER_H} ({BANNER_W / BANNER_H}:1) works best.
+      </p>
       {currentUrl && (
         <div className="rounded-xl overflow-hidden h-24 border border-border">
           <img src={currentUrl} alt="Banner" className="w-full h-full object-cover" />
         </div>
       )}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Link
           href={`/tutor/classes/${groupId}/banner`}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-sm font-semibold hover:bg-muted transition"
@@ -2569,10 +2636,29 @@ function ClassBannerUpload({ groupId, currentUrl, onUploaded }: { groupId: strin
           <ArrowUpRight className="size-4 rotate-45" />
           {currentUrl ? 'Change banner' : 'Build banner'}
         </Link>
+
+        <input
+          ref={fileRef}
+          type="file"
+          accept={BANNER_ACCEPT.join(',')}
+          className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+        />
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={busy}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-sm font-semibold hover:bg-muted transition disabled:opacity-50"
+        >
+          {busy ? 'Uploading…' : 'Upload image'}
+        </button>
+
         {currentUrl && (
           <button onClick={() => onUploaded('')} className="text-xs text-muted-foreground hover:text-rose-600 transition">Remove</button>
         )}
       </div>
+      {warn && <p className="text-xs text-amber-600">{warn}</p>}
+      {error && <p className="text-xs text-rose-600">{error}</p>}
     </div>
   );
 }
