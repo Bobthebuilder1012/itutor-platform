@@ -2549,11 +2549,11 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
                   preorderReady === null
                     ? 'Checking the schedule…'
                     : preorderReady.ok
-                      ? `Students can pay their first month up front to hold a place${
+                      ? `On by default until the class starts${
                           preorderReady.firstSession
-                            ? `. Classes start ${new Date(preorderReady.firstSession).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}`
+                            ? ` on ${new Date(preorderReady.firstSession).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}`
                             : ''
-                        }.`
+                        }. Students pay their first month up front to hold a place; switch off if you'd rather they joined normally. Turning it off doesn't affect spots already secured.`
                       : preorderReasonMessage(
                           (preorderReady.reason ?? 'no_schedule') as PreorderIneligibility
                         )
