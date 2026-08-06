@@ -47,10 +47,14 @@ export default function QrCodePanel({
       ...(showProfile
         ? [{ key: 'profile', label: 'Profile', url: `${PUBLIC_BASE}/tutors/${tutorId}` }]
         : []),
+      // Point at the class page a prospective student should actually land on
+      // — the one with the banner, schedule and Join button. /classes/[id] is
+      // the older dark-themed view; it now redirects here, so QR codes already
+      // printed against that URL keep working.
       ...classes.map((c) => ({
         key: `class-${c.id}`,
         label: c.name || 'Untitled class',
-        url: `${PUBLIC_BASE}/classes/${c.id}`,
+        url: `${PUBLIC_BASE}/student/explore/${c.id}`,
       })),
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps

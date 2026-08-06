@@ -150,6 +150,7 @@ function WeekdayChips({ days }: { days: Set<number> }) {
 
 export default function ExploreClassDetailPage() {
   const { groupId } = useParams<{ groupId: string }>();
+  const router = useRouter();
   const { profile, loading: profileLoading } = useProfile();
   const [group, setGroup] = useState<GroupData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -311,7 +312,22 @@ export default function ExploreClassDetailPage() {
 
   return (
     <>
-      <Detail group={group} onJoin={() => setStep('join')} />
+      <Detail
+        group={group}
+        onJoin={() => {
+          // The page itself is public so a QR code or shared link opens for
+          // anyone. Joining is where an account becomes necessary — send them
+          // to sign in with `next` set, so they land back on this class and can
+          // finish joining instead of being dumped on a dashboard.
+          // `redirect` (not `next`) — that is the param the login page reads
+          // when deciding where to send someone after sign-in.
+          if (!profile?.id) {
+            router.push(`/login?redirect=${encodeURIComponent(`/student/explore/${groupId}`)}`);
+            return;
+          }
+          setStep('join');
+        }}
+      />
       {step !== 'detail' && (
         <Modal onClose={() => setStep('detail')}>
           {step === 'join' && (
