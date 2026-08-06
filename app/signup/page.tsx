@@ -72,6 +72,7 @@ function isNetworkError(err: unknown): boolean {
 export default function SignupPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const redirectParam = searchParams.get('redirect');
 
   const [step, setStep] = useState<Step>('details');
   const [userId, setUserId] = useState<string | null>(null);
@@ -473,7 +474,15 @@ export default function SignupPage() {
 
                       <p className="pt-1 text-center text-sm text-gray-500">
                         Already have an account?{' '}
-                        <Link href="/login" className="font-medium text-itutor-green underline">Log in</Link>
+                        {/* Carry `redirect` across, same as the login page does
+                            in the other direction — otherwise bouncing between
+                            the two loses where the visitor was headed. */}
+                        <Link
+                          href={redirectParam ? `/login?redirect=${encodeURIComponent(redirectParam)}` : '/login'}
+                          className="font-medium text-itutor-green underline"
+                        >
+                          Log in
+                        </Link>
                       </p>
                     </form>
                   </StepWrap>
