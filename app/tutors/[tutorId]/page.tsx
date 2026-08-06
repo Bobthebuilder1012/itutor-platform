@@ -50,6 +50,11 @@ export default function PublicTutorProfilePage() {
   const router = useRouter();
   const params = useParams();
   const tutorId = params.tutorId as string;
+  // Where auth should return to. This page is the public landing spot for a
+  // profile QR code, so every sign-in / sign-up link on it has to carry the
+  // way back — otherwise scanning a code and creating an account drops you on
+  // a dashboard with no idea which tutor you were looking at.
+  const authReturn = encodeURIComponent(`/tutors/${tutorId}`);
   const { isOpen: authPromptOpen, action: authAction, redirectUrl, promptAuth, closePrompt } = useAuthPrompt();
   
   const [tutor, setTutor] = useState<TutorProfile | null>(null);
@@ -319,13 +324,13 @@ export default function PublicTutorProfilePage() {
             </Link>
             <div className="flex items-center gap-3">
               <Link
-                href="/signup"
+                href={`/signup?redirect=${authReturn}`}
                 className="px-4 py-2 text-sm font-semibold text-white hover:text-itutor-green transition-colors"
               >
                 Sign Up
               </Link>
               <Link
-                href="/login"
+                href={`/login?redirect=${authReturn}`}
                 className="px-4 py-2 text-sm font-semibold text-gray-900 bg-itutor-green hover:bg-emerald-500 rounded-lg transition-colors"
               >
                 Log In
@@ -765,13 +770,13 @@ export default function PublicTutorProfilePage() {
 
             <div className="flex flex-col gap-3">
               <Link
-                href="/signup"
+                href={`/signup?redirect=${authReturn}`}
                 className="w-full px-6 py-4 bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-white font-bold rounded-lg transition shadow-lg shadow-itutor-green/30 text-center"
               >
                 🚀 Sign Up to Book
               </Link>
               <Link
-                href="/login"
+                href={`/login?redirect=${authReturn}`}
                 className="w-full px-6 py-4 border-2 border-gray-300 text-gray-700 font-semibold rounded-lg hover:border-itutor-green hover:text-itutor-green hover:bg-green-50 transition text-center"
               >
                 Already have an account? Log In
