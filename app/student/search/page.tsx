@@ -31,7 +31,20 @@ export default function StudentSearchResultsPage() {
 
   const [results, setResults] = useState<ProfileWithRating[]>([]);
   const [loading, setLoading] = useState(true);
-  const paidClassesEnabled = process.env.NEXT_PUBLIC_ENABLE_PAID_SESSIONS === 'true';
+  // NEXT_PUBLIC_ENABLE_PAID_SESSIONS is set nowhere, so this was permanently
+  // false and every tutor's price was stored as 0 — which also broke the
+  // "max price" filter, since every tutor matched any budget. The real flag is
+  // PAID_CLASSES_ENABLED, served by /api/feature-flags.
+  const [paidClassesEnabled, setPaidClassesEnabled] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/feature-flags', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled) setPaidClassesEnabled(Boolean(d?.paidClassesEnabled)); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   const [filters, setFilters] = useState({
     minRating: 0,
     school: 'all',
@@ -52,7 +65,10 @@ export default function StudentSearchResultsPage() {
       performSearch();
       fetchSchools();
     }
-  }, [profile, profileLoading, subject, mode, filters]);
+    // paidClassesEnabled is a dependency: it arrives after the first render,
+    // and the price map is built from it. Without it the results keep the
+    // zero prices from the initial pass.
+  }, [profile, profileLoading, subject, mode, filters, paidClassesEnabled]);
 
   async function fetchSchools() {
     try {
