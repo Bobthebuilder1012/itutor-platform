@@ -63,6 +63,7 @@ type GroupLesson = {
   title: string;
   tutor: string;
   tutorId: string;
+  tutorAvatar: string | null;
   tutorHue: number;
   subject: string;
   level: string;
@@ -116,11 +117,24 @@ function formatHHMM(t: string) {
 
 const SUBJECT_CHIPS = ['All', 'Maths', 'English', 'Physics', 'Chemistry', 'Biology', 'SEA'];
 
-function TutorInitialAvatar({ name, size = 40 }: { name: string; size?: number }) {
+// Square frame, matching the card's rounded-rect language. Shows the tutor's
+// picture when they have one and falls back to initials when they don't.
+function TutorAvatar({ avatarUrl, name, size = 40 }: { avatarUrl?: string | null; name: string; size?: number }) {
+  if (avatarUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={avatarUrl}
+        alt=""
+        className="rounded-md object-cover shrink-0"
+        style={{ width: size, height: size }}
+      />
+    );
+  }
   const initials = name.replace(/^(Mr\.|Ms\.|Mrs\.|Dr\.)\s*/i, '').split(' ').map((p: string) => p[0]).join('').slice(0, 2).toUpperCase();
   return (
     <div
-      className="inline-flex items-center justify-center rounded-full font-semibold shrink-0 bg-brand-soft text-forest"
+      className="inline-flex items-center justify-center rounded-md font-semibold shrink-0 bg-brand-soft text-forest"
       style={{ width: size, height: size, fontSize: size * 0.38 }}
       aria-hidden
     >
@@ -492,7 +506,7 @@ export default function FindTutorsPage() {
       // Fetch tutor names, enrollment status, and server-side member counts in parallel
       const [{ data: tutorProfiles }, { data: memberRows }, { data: subEnrollments }, countsRes] = await Promise.all([
         tutorIds.length
-          ? supabase.from('profiles').select('id, full_name, display_name, is_dev_account').in('id', tutorIds)
+          ? supabase.from('profiles').select('id, full_name, display_name, avatar_url, is_dev_account').in('id', tutorIds)
           : Promise.resolve({ data: [] as any[] }),
         supabase.from('group_members').select('group_id, user_id, status').in('group_id', groupIds),
         supabase
@@ -568,6 +582,8 @@ export default function FindTutorsPage() {
           title: g.name,
           tutor: tutor?.display_name || tutor?.full_name || 'Unknown Tutor',
           tutorId: g.tutor_id,
+          // The profiles row can be absent (RLS, deleted tutor), so guard.
+          tutorAvatar: tutor?.avatar_url ?? null,
           tutorHue: 145,
           subject: g.subject || 'General',
           level: formatLevel(g.form_level || g.difficulty || ''),
@@ -1124,7 +1140,7 @@ export default function FindTutorsPage() {
                           )}
                         </div>
                         <div className="mt-1.5 inline-flex items-center gap-2">
-                          <TutorInitialAvatar name={l.tutor} size={22} />
+                          <TutorAvatar avatarUrl={l.tutorAvatar} name={l.tutor} size={22} />
                           <span className="text-sm text-muted-foreground">by {l.tutor}</span>
                         </div>
                         <div className="text-xs text-muted-foreground mt-1">{l.subject}{l.level ? ` · ${l.level}` : ''}</div>
