@@ -1,0 +1,173 @@
+// =====================================================
+// Secure your spot — confirmation.
+//
+// Called from the Stripe webhook when a securing payment succeeds.
+// Modelled on handleSubscriptionPayment: the webhook branch stays thin,
+// the logic lives here, and the caller distinguishes transient failures
+// (retry) from terminal ones (dedupe and move on).
+//
+// The webhook is the only writer of payment state. Nothing here is ever
+// driven by the browser's confirmPayment result.
+// =====================================================
+
+import { type SupabaseClient } from '@supabase/supabase-js';
+import { getStripeClient } from '@/lib/payments/stripeClient';
+import { computeReleaseDate, firstUpcomingSession } from '@/lib/payments/secureSpot';
+import type { SessionPattern } from '@/lib/utils/scheduleFormat';
+
+export interface ConfirmSecuredSpotParams {
+  admin: SupabaseClient;
+  enrollmentId: string;
+  stripePaymentIntentId: string;
+  source?: 'webhook' | 'manual';
+}
+
+export interface ConfirmSecuredSpotResult {
+  ok: boolean;
+  idempotent?: boolean;
+  enrollmentId?: string;
+  releaseDate?: string | null;
+  refunded?: boolean;
+  /** Set when the caller should let Stripe retry rather than dedupe. */
+  transient?: boolean;
+  error?: string;
+}
+
+const SESSION_COLUMNS =
+  'recurrence_type, recurrence_days, start_time, duration_minutes, starts_on, ends_on';
+
+/**
+ * Turn a paid securing charge into a held seat.
+ *
+ * The class start is read from the schedule at confirmation time and the
+ * release date is computed from it ONCE, here, then stored. It is never
+ * recomputed later from groups.end_date: a tutor who kept extending the class
+ * would otherwise never be paid, and one who shortened it would be paid for a
+ * month they had not taught.
+ */
+export async function confirmSecuredSpot(
+  params: ConfirmSecuredSpotParams
+): Promise<ConfirmSecuredSpotResult> {
+  const { admin, enrollmentId, stripePaymentIntentId } = params;
+
+  const { data: enrollment, error: enrErr } = await admin
+    .from('group_enrollments')
+    .select('id, group_id, student_id, status')
+    .eq('id', enrollmentId)
+    .maybeSingle();
+
+  if (enrErr) return { ok: false, transient: true, error: `rpc_failed: ${enrErr.message}` };
+  if (!enrollment) return { ok: false, error: 'enrollment_not_found' };
+
+  // Already secured by an earlier delivery of the same event.
+  if ((enrollment as any).status === 'SECURED') {
+    return { ok: true, idempotent: true, enrollmentId };
+  }
+
+  const { data: group, error: grpErr } = await admin
+    .from('groups')
+    .select('id, name, tutor_id, end_date')
+    .eq('id', (enrollment as any).group_id)
+    .maybeSingle();
+
+  if (grpErr) return { ok: false, transient: true, error: `rpc_failed: ${grpErr.message}` };
+  if (!group) return { ok: false, error: 'group_not_found' };
+
+  const { data: sessions, error: sesErr } = await admin
+    .from('group_sessions')
+    .select(SESSION_COLUMNS)
+    .eq('group_id', (enrollment as any).group_id);
+
+  if (sesErr) return { ok: false, transient: true, error: `rpc_failed: ${sesErr.message}` };
+
+  // A class that lost its schedule between checkout and payment cannot be
+  // dated, and money we cannot date is money we must not hold. Refund.
+  const firstSession = firstUpcomingSession((sessions ?? []) as SessionPattern[]);
+  if (!firstSession) {
+    const refunded = await refundSecuringCharge(stripePaymentIntentId);
+    await releaseClaim(admin, enrollmentId, 'schedule_removed');
+    return { ok: false, error: 'no_schedule', refunded };
+  }
+
+  const releaseDate = computeReleaseDate({
+    firstSession,
+    endDate: (group as any).end_date ?? null,
+  });
+
+  const { data: rpc, error: rpcErr } = await (admin as any).rpc('secure_spot_confirm', {
+    p_payload: {
+      enrollment_id: enrollmentId,
+      payment_intent_id: stripePaymentIntentId,
+      release_date: releaseDate,
+      period_start: firstSession.toISOString(),
+      period_end: `${releaseDate}T23:59:59.000Z`,
+    },
+  });
+
+  // Transient: let Stripe retry rather than leaving a paid student unseated.
+  if (rpcErr) return { ok: false, transient: true, error: `rpc_failed: ${rpcErr.message}` };
+
+  if (rpc?.ok === false && rpc?.reason === 'oversubscribed') {
+    // Both students passed the claim check and both paid. The later webhook
+    // loses the seat and gets their money back automatically — overfilling
+    // the class or keeping the money would both be worse.
+    const refunded = await refundSecuringCharge(stripePaymentIntentId);
+    await releaseClaim(admin, enrollmentId, 'oversubscribed');
+    return { ok: false, error: 'oversubscribed', refunded, enrollmentId };
+  }
+
+  if (rpc?.ok === false) {
+    return { ok: false, error: String(rpc?.reason ?? 'confirm_failed'), enrollmentId };
+  }
+
+  return {
+    ok: true,
+    idempotent: rpc?.idempotent === true,
+    enrollmentId,
+    releaseDate,
+  };
+}
+
+/**
+ * Refund a securing charge in full.
+ *
+ * Returns false rather than throwing: a failed refund must not stop us from
+ * releasing the seat and recording the outcome, or the student ends up with
+ * neither a seat nor a refund and no record of either.
+ */
+async function refundSecuringCharge(paymentIntentId: string): Promise<boolean> {
+  try {
+    const stripe = getStripeClient();
+    await stripe.refunds.create(
+      { payment_intent: paymentIntentId },
+      { idempotencyKey: `secure-refund-${paymentIntentId}` }
+    );
+    return true;
+  } catch (err) {
+    console.error('[secureSpot] refund failed — needs manual attention', {
+      paymentIntentId,
+      error: (err as Error)?.message,
+    });
+    return false;
+  }
+}
+
+/** Give the seat back and mark the payment refunded. Never leaves it SECURED. */
+async function releaseClaim(admin: SupabaseClient, enrollmentId: string, reason: string) {
+  await admin
+    .from('group_enrollments')
+    .update({
+      status: 'CANCELLED',
+      payment_status: 'REFUNDED',
+      pending_payment_expires_at: null,
+      cancelled_at: new Date().toISOString(),
+      removal_reason: reason,
+    })
+    .eq('id', enrollmentId);
+
+  await admin
+    .from('subscription_payments')
+    .update({ status: 'REFUNDED', refunded_at: new Date().toISOString() })
+    .eq('enrollment_id', enrollmentId)
+    .eq('type', 'secure_spot');
+}
