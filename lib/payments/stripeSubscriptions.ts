@@ -162,20 +162,53 @@ export async function ensureGroupPrice(
  * Converts a class end date into the `cancel_at` timestamp Stripe uses
  * to stop billing automatically.
  *
+ * Rounded UP to the billing-period boundary that follows the class end date,
+ * never the end date itself. Tutors are paid by the month and never a part
+ * month, and a cancel_at that lands mid-period makes Stripe bill a fraction:
+ *
+ *   "cancel_at … If set to a date before the current period ends, this will
+ *    cause a proration if prorations have been enabled using
+ *    proration_behavior. If set during a future period, this will always
+ *    cause a proration for that period."   — Stripe API reference
+ *
+ * That is exactly what happened in production: a TT$250 class ending on 31
+ * August, subscribed to on 6 August, billed 25.23/31 of the month — TT$213.49
+ * against a recorded sale of TT$250 and a tutor payout of TT$232.50, so the
+ * platform would have paid out more than it collected. Note the second
+ * sentence: for a FUTURE period the proration is unconditional, so
+ * proration_behavior alone would not have saved the final month of a long
+ * class. The boundary has to be aligned.
+ *
+ * Landing on the boundary means the student keeps access for the remainder of
+ * the month they have paid for, which is the same deal as cancelling normally.
+ *
  * Returns undefined for a class with no end date, which Stripe treats as
  * "recurring until cancelled". Also returns undefined for a date already
  * in the past — Stripe rejects a cancel_at that isn't in the future, and
  * a backfilled class could legitimately have one.
  */
-export function endDateToCancelAt(endDate: string | null | undefined): number | undefined {
+export function endDateToCancelAt(
+  endDate: string | null | undefined,
+  /** Billing anchor — the subscription's start. Defaults to now. */
+  anchor: Date = new Date()
+): number | undefined {
   if (!endDate) return undefined;
   // End of the given day, Trinidad time (UTC-4), so a class "ending on
   // the 30th" bills through the 30th rather than stopping at midnight UTC.
-  const ts = Date.parse(`${String(endDate).slice(0, 10)}T23:59:59-04:00`);
-  if (!Number.isFinite(ts)) return undefined;
-  const seconds = Math.floor(ts / 1000);
-  if (seconds <= Math.floor(Date.now() / 1000)) return undefined;
-  return seconds;
+  const endTs = Date.parse(`${String(endDate).slice(0, 10)}T23:59:59-04:00`);
+  if (!Number.isFinite(endTs)) return undefined;
+  if (endTs <= anchor.getTime()) return undefined;
+
+  // Walk monthly anniversaries of the anchor until one falls on or after the
+  // class end, so the subscription always stops on a whole-month boundary.
+  // Capped so a far-future or malformed end date cannot spin.
+  const boundary = new Date(anchor.getTime());
+  for (let i = 0; i < 120 && boundary.getTime() < endTs; i += 1) {
+    boundary.setMonth(boundary.getMonth() + 1);
+  }
+  if (boundary.getTime() < endTs) return undefined; // beyond 10 years — let it run
+
+  return Math.floor(boundary.getTime() / 1000);
 }
 
 export type { Stripe };
