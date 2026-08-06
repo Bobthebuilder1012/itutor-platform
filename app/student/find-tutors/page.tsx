@@ -66,7 +66,6 @@ type GroupLesson = {
   rating: number;
   tags: string[];
   color: string;
-  emoji: string;
   description?: string | null;
   coverImage?: string | null;
   requireJoinRequests?: boolean;
@@ -392,19 +391,19 @@ export default function FindTutorsPage() {
     }
   }
 
-  const SUBJECT_STYLE: Record<string, { color: string; emoji: string }> = {
-    math: { color: 'from-coral to-peach', emoji: '📐' },
-    physics: { color: 'from-sky to-lavender', emoji: '⚛️' },
-    chemistry: { color: 'from-brand-deep to-forest', emoji: '🧪' },
-    biology: { color: 'from-brand to-brand-deep', emoji: '🧬' },
-    english: { color: 'from-lavender to-brand-soft', emoji: '📚' },
-    history: { color: 'from-peach to-coral', emoji: '📜' },
-    economics: { color: 'from-peach to-coral', emoji: '📊' },
-    information: { color: 'from-sky to-lavender', emoji: '💻' },
-    spanish: { color: 'from-coral to-peach', emoji: '🇪🇸' },
-    french: { color: 'from-sky to-lavender', emoji: '🇫🇷' },
-    sea: { color: 'from-brand to-brand-deep', emoji: '✏️' },
-    accounting: { color: 'from-peach to-coral', emoji: '📒' },
+  const SUBJECT_STYLE: Record<string, { color: string }> = {
+    math: { color: 'from-coral to-peach' },
+    physics: { color: 'from-sky to-lavender' },
+    chemistry: { color: 'from-brand-deep to-forest' },
+    biology: { color: 'from-brand to-brand-deep' },
+    english: { color: 'from-lavender to-brand-soft' },
+    history: { color: 'from-peach to-coral' },
+    economics: { color: 'from-peach to-coral' },
+    information: { color: 'from-sky to-lavender' },
+    spanish: { color: 'from-coral to-peach' },
+    french: { color: 'from-sky to-lavender' },
+    sea: { color: 'from-brand to-brand-deep' },
+    accounting: { color: 'from-peach to-coral' },
   };
 
   function getSubjectStyle(subject: string) {
@@ -412,7 +411,7 @@ export default function FindTutorsPage() {
     for (const [key, val] of Object.entries(SUBJECT_STYLE)) {
       if (lower.includes(key)) return val;
     }
-    return { color: 'from-brand to-brand-deep', emoji: '📖' };
+    return { color: 'from-brand to-brand-deep' };
   }
 
   async function fetchGroupLessons() {
@@ -501,7 +500,7 @@ export default function FindTutorsPage() {
 
       const mapped: GroupLesson[] = groups.map((g: any) => {
         const tutor = tutorMap.get(g.tutor_id);
-        const { color, emoji } = getSubjectStyle(g.subject || '');
+        const { color } = getSubjectStyle(g.subject || '');
         return {
           id: g.id,
           title: g.name,
@@ -522,7 +521,6 @@ export default function FindTutorsPage() {
           rating: 0,
           tags: [],
           color,
-          emoji,
           description: g.description ?? null,
           coverImage: g.cover_image ?? null,
           requireJoinRequests: g.require_join_requests ?? false,
@@ -572,45 +570,28 @@ export default function FindTutorsPage() {
         mapped.forEach((g) => { g.activePromotion = bestPromoByGroup.get(g.id) ?? null; });
       } catch { /* non-fatal */ }
 
-      // Batch-fetch sessions to get schedule for groups without a manual schedule_display
+      // Fill in the schedule for every card that has no tutor-written schedule
+      // of its own, from the recurring sessions the tutor set up.
+      //
+      // This has to go through the server: group_sessions' RLS policy subqueries
+      // group_members, whose own policy self-references, so a browser read by a
+      // non-member dies with 42P17 (infinite recursion) — which is why classes
+      // with a live weekly session all read "Schedule TBD".
       try {
-        const groupIds = groups.filter((g: any) => !g.schedule_display).map((g: any) => g.id);
-        if (!groupIds.length) { setGroupLessons(mapped); return; }
-        const { data: sessions } = await supabase
-          .from('group_sessions')
-          .select('group_id, start_time, recurrence_type, recurrence_days, duration_minutes')
-          .in('group_id', groupIds)
-          .neq('recurrence_type', 'NONE')
-          .order('created_at', { ascending: true });
+        const needSchedule = mapped.filter((l) => l.day === 'Schedule TBD').map((l) => l.id);
+        if (!needSchedule.length) { setGroupLessons(mapped); return; }
 
-        if (sessions?.length) {
-          const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-          const sessionByGroup = new Map<string, any>();
-          for (const s of sessions) {
-            if (!sessionByGroup.has(s.group_id)) sessionByGroup.set(s.group_id, s);
-          }
+        const res = await fetch(`/api/groups/schedules?ids=${needSchedule.join(',')}`);
+        const json = await res.json().catch(() => ({}));
+        const schedules: Record<string, { display: string | null; sessionLength: number | null }> = json?.schedules ?? {};
 
-          setGroupLessons(mapped.map((l) => {
-            const s = sessionByGroup.get(l.id);
-            if (!s) return l;
-            const recType = (s.recurrence_type ?? '').toUpperCase();
-            const days = Array.isArray(s.recurrence_days) && s.recurrence_days.length
-              ? s.recurrence_days.map((d: number) => dayNames[d] ?? '').filter(Boolean).join(', ')
-              : recType === 'DAILY' ? 'Daily' : recType === 'WEEKLY' ? 'Weekly' : recType === 'MONTHLY' ? 'Monthly' : null;
-            const time = s.start_time
-              ? new Date(`2000-01-01T${s.start_time}`).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-              : '';
-            const durMin = s.duration_minutes ?? l.sessionLength;
-            const durLabel = durMin ? (durMin < 60 ? `${durMin}m` : durMin % 60 === 0 ? `${durMin / 60}h` : `${Math.floor(durMin / 60)}h ${durMin % 60}m`) : '';
-            return {
-              ...l,
-              day: days || 'Schedule TBD',
-              time,
-              sessionLength: durMin ?? l.sessionLength,
-            };
-          }));
-          return;
-        }
+        setGroupLessons(mapped.map((l) => {
+          const s = schedules[l.id];
+          if (!s?.display) return l;
+          // display already carries the time range ("Mon, Wed & Fri · 4:00–5:00 PM AST")
+          return { ...l, day: s.display, time: '', sessionLength: s.sessionLength ?? l.sessionLength };
+        }));
+        return;
       } catch { /* non-critical */ }
 
       setGroupLessons(mapped);
@@ -969,7 +950,7 @@ export default function FindTutorsPage() {
                 const pctFull = l.seats.total ? Math.round((l.seats.taken / l.seats.total) * 100) : null;
                 return (
                   <div key={l.id} className={cn('group rounded-3xl bg-background border overflow-hidden hover:shadow-card transition-all hover:-translate-y-0.5 flex flex-col', enrolledLessonIds.has(l.id) ? 'border-brand/40' : 'border-border')}>
-                    <div className={`relative h-24 flex items-end p-3 ${l.coverImage ? '' : `bg-gradient-to-br ${l.color}`}`}
+                    <div className={`relative h-24 ${l.coverImage ? '' : `bg-gradient-to-br ${l.color}`}`}
                       style={l.coverImage ? { backgroundImage: `url(${l.coverImage})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}>
                       {enrolledLessonIds.has(l.id) && (
                         <div className="absolute top-2.5 left-2.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-brand text-white">
@@ -982,7 +963,6 @@ export default function FindTutorsPage() {
                       >
                         <Heart className={cn('size-4', savedItems.has(l.id) ? 'fill-coral text-coral' : 'text-ink')} />
                       </button>
-                      <div className="size-12 rounded-2xl bg-white grid place-items-center text-2xl shadow-md">{l.emoji}</div>
                     </div>
                     <div className="p-4 space-y-3 flex-1 flex flex-col">
                       <div>
@@ -1211,11 +1191,10 @@ export default function FindTutorsPage() {
       {joinLesson && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40" onClick={() => setJoinLesson(null)}>
           <div className="bg-background w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className={`relative h-24 bg-gradient-to-br ${joinLesson.color} flex items-end p-4`}>
+            <div className={`relative h-24 bg-gradient-to-br ${joinLesson.color}`}>
               <button onClick={() => setJoinLesson(null)} className="absolute top-3 right-3 size-8 rounded-full bg-white/90 grid place-items-center hover:bg-white">
                 <X className="size-4 text-ink" />
               </button>
-              <div className="size-12 rounded-2xl bg-white grid place-items-center text-2xl shadow-md">{joinLesson.emoji}</div>
             </div>
             <div className="p-5 space-y-4">
               <div>
