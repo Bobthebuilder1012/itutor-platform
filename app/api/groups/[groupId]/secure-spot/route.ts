@@ -203,6 +203,20 @@ export async function POST(_req: NextRequest, { params }: Params) {
       const stripe = getStripeClient();
       const customerId = await ensureStripeCustomer(admin as any, user.id);
 
+      // A resumed checkout leaves the abandoned intent open. Cancel it, or the
+      // student could still pay on a stale tab against a payment row this
+      // claim has already retired — money in, nothing to attach it to.
+      const superseded: string | null = claim.superseded_payment_intent_id ?? null;
+      if (superseded) {
+        try {
+          await stripe.paymentIntents.cancel(superseded, { cancellation_reason: 'abandoned' });
+        } catch (cancelError) {
+          // Already cancelled, already paid, or gone. Not worth failing the
+          // new reservation over; the webhook is still the only writer.
+          console.warn('[secure-spot] could not cancel superseded intent', superseded, cancelError);
+        }
+      }
+
       const intent = await stripe.paymentIntents.create(
         {
           amount: ttdToCents(fees!.grossAmount),
@@ -227,9 +241,11 @@ export async function POST(_req: NextRequest, { params }: Params) {
             processing_fee_ttd: String(fees!.processingFee),
           },
         },
-        // Keyed on the enrollment: a retry of the same claim reuses the intent,
-        // a fresh claim gets a fresh one.
-        { idempotencyKey: `secure-${enrollmentId}` }
+        // Keyed on the PAYMENT, not the enrollment. Resuming an abandoned
+        // checkout reuses the enrollment row but opens a new payment, and
+        // Stripe rejects a key replayed with different parameters — keyed on
+        // the enrollment, every resumed checkout would have failed outright.
+        { idempotencyKey: `secure-${subscriptionPaymentId ?? enrollmentId}` }
       );
 
       if (subscriptionPaymentId) {
