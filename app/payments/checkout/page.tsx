@@ -227,7 +227,9 @@ export default function PaymentCheckout() {
       ? new Date(start.getTime() + summary.durationMinutes * 60000)
       : null;
   const fmtTime = (d: Date) =>
-    d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    // 12-hour, like the rest of the product. "18:00" on a payment screen reads
+    // as a different service to the "6:00 PM" the class page advertises.
+    d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
   const cancelBy = start ? new Date(start.getTime() - 24 * 3600 * 1000) : null;
 
   // A subscription to a class that finishes inside the first billing month.
@@ -474,9 +476,9 @@ export default function PaymentCheckout() {
                   {cancelBy.toLocaleString('en-US', {
                     month: 'short',
                     day: 'numeric',
-                    hour: '2-digit',
+                    hour: 'numeric',
                     minute: '2-digit',
-                    hour12: false,
+                    hour12: true,
                   })}
                 </div>
               )}

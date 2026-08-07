@@ -17,8 +17,8 @@
 import { type SupabaseClient } from '@supabase/supabase-js';
 import { sendEmail } from '@/lib/services/emailService';
 
-/** Trinidad & Tobago is UTC-4 year round (no DST). */
-const TT_OFFSET_MS = 4 * 60 * 60 * 1000;
+/** All class times are Trinidad times. */
+const TRINIDAD_TZ = 'America/Port_of_Spain';
 
 export type GroupReminderType = 'today' | '10m';
 
@@ -109,14 +109,21 @@ async function claim(
   return true;
 }
 
+/** 12-hour, matching how times read everywhere else in the product. */
 function fmtTime(d: Date): string {
-  return new Date(d.getTime() - TT_OFFSET_MS).toISOString().slice(11, 16) + ' AST';
+  return (
+    d.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: TRINIDAD_TZ,
+    }) + ' AST'
+  );
 }
 
 function fmtDate(d: Date): string {
-  const tt = new Date(d.getTime() - TT_OFFSET_MS);
-  return tt.toLocaleDateString('en-US', {
-    weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC',
+  return d.toLocaleDateString('en-US', {
+    weekday: 'long', month: 'long', day: 'numeric', timeZone: TRINIDAD_TZ,
   });
 }
 
