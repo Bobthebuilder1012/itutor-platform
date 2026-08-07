@@ -12,6 +12,7 @@
 
 import { type SupabaseClient } from '@supabase/supabase-js';
 import { getStripeClient } from '@/lib/payments/stripeClient';
+import { sendEmail } from '@/lib/services/emailService';
 import {
   computeReleaseDate,
   firstUpcomingSession,
@@ -153,12 +154,145 @@ export async function confirmSecuredSpot(
     return { ok: false, error: String(rpc?.reason ?? 'confirm_failed'), enrollmentId };
   }
 
+  // Only on the transition, never on a replay — Stripe redelivers, and a
+  // second delivery must not email the tutor a second student who doesn't
+  // exist.
+  if (rpc?.idempotent !== true) {
+    await notifySpotSecured({
+      admin,
+      enrollmentId,
+      group: group as any,
+      studentId: (enrollment as any).student_id,
+      releaseDate,
+      firstSession,
+    });
+  }
+
   return {
     ok: true,
     idempotent: rpc?.idempotent === true,
     enrollmentId,
     releaseDate,
   };
+}
+
+/**
+ * Tells both sides a spot has been secured.
+ *
+ * The tutor gets told explicitly WHEN the money reaches them, because this is
+ * the one thing about secured spots that differs from every other enrolment
+ * they have ever had: a student has paid and the tutor has not. The generic
+ * "new student enrolled" email would imply the money is on its way.
+ *
+ * Fully non-fatal. The seat is secured and the money is taken by the time this
+ * runs; a bounced email must never turn that into a webhook failure, because
+ * Stripe would redeliver and the student would be processed twice.
+ */
+export async function notifySpotSecured(args: {
+  admin: SupabaseClient;
+  enrollmentId: string;
+  group: { id: string; name: string | null; tutor_id: string | null };
+  studentId: string;
+  releaseDate: string | null;
+  firstSession: Date;
+}): Promise<void> {
+  const { admin, enrollmentId, group, studentId, releaseDate, firstSession } = args;
+
+  try {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? '';
+    const className = group.name ?? 'your class';
+
+    const [{ data: student }, { data: tutor }, { data: payment }] = await Promise.all([
+      admin.from('profiles').select('full_name, email').eq('id', studentId).maybeSingle(),
+      group.tutor_id
+        ? admin.from('profiles').select('full_name, email').eq('id', group.tutor_id).maybeSingle()
+        : Promise.resolve({ data: null } as any),
+      admin
+        .from('subscription_payments')
+        .select('amount_ttd, tutor_payout_ttd')
+        .eq('enrollment_id', enrollmentId)
+        .eq('type', 'secure_spot')
+        .maybeSingle(),
+    ]);
+
+    const studentName = (student as any)?.full_name ?? 'A student';
+    const paidTtd = Number((payment as any)?.amount_ttd ?? 0);
+    const heldTtd = Number((payment as any)?.tutor_payout_ttd ?? 0);
+    const isFree = paidTtd <= 0;
+
+    const fmt = (iso: string | Date) =>
+      (iso instanceof Date ? iso : new Date(`${iso}T00:00:00`)).toLocaleDateString('en-US', {
+        weekday: 'long', month: 'long', day: 'numeric',
+      });
+    const releaseLabel = releaseDate ? fmt(releaseDate) : null;
+
+    // ---- Tutor ----
+    if ((tutor as any)?.email) {
+      await sendEmail({
+        to: (tutor as any).email,
+        subject: `${studentName} secured a spot in ${className}`,
+        html: `
+          <p>Hi ${(tutor as any).full_name ?? 'there'},</p>
+          <p><strong>${studentName}</strong> has secured a spot in
+             <strong>${className}</strong>, which starts ${fmt(firstSession)}.</p>
+          ${isFree
+            ? `<p>This is a free class, so there's no payment involved — the place is simply reserved.</p>`
+            : `<p><strong>When you'll be paid.</strong> ${studentName} paid for their first
+                 month up front. iTutor holds <strong>TT$${heldTtd.toFixed(2)}</strong> until
+                 you've taught that first month${releaseLabel ? ` — for this class, that's <strong>${releaseLabel}</strong>` : ''}.
+                 It's released with your next payout after that date, as long as the class
+                 runs as scheduled.</p>`}
+          <p><a href="${appUrl}/tutor/classes/${group.id}">View your class roster</a></p>
+        `.trim(),
+      });
+    }
+
+    if (group.tutor_id) {
+      await admin.from('notifications').insert({
+        user_id: group.tutor_id,
+        type: 'new_class_member',
+        title: 'Spot secured',
+        message: isFree
+          ? `${studentName} reserved a place in ${className}.`
+          : `${studentName} secured a spot in ${className}. TT$${heldTtd.toFixed(2)} is held until${releaseLabel ? ` ${releaseLabel}` : ' the first month is taught'}.`,
+        group_id: group.id,
+        metadata: { groupId: group.id, enrollmentId, heldTtd, releaseDate },
+      });
+    }
+
+    // ---- Student ----
+    if ((student as any)?.email) {
+      await sendEmail({
+        to: (student as any).email,
+        subject: `Your spot in ${className} is secured`,
+        html: `
+          <p>Hi ${(student as any).full_name ?? 'there'},</p>
+          <p>Your place in <strong>${className}</strong> is reserved. Classes start
+             <strong>${fmt(firstSession)}</strong>.</p>
+          ${isFree
+            ? `<p>This class is free — there's nothing to pay.</p>`
+            : `<p>You paid <strong>TT$${paidTtd.toFixed(2)}</strong> for your first month.
+                 iTutor holds that payment until your first month has been taught. If the
+                 tutor cancels the class before it starts, you'll be refunded automatically.</p>
+               ${releaseLabel ? `<p>Your first month runs until <strong>${releaseLabel}</strong>.
+                 We'll ask before then whether you'd like to continue —
+                 <strong>nothing is charged automatically</strong>.</p>` : ''}`}
+          <p><a href="${appUrl}/student/explore/${group.id}">View your class</a></p>
+        `.trim(),
+      });
+    }
+
+    await admin.from('notifications').insert({
+      user_id: studentId,
+      type: 'spot_secured',
+      title: 'Your spot is secured',
+      message: `Your place in ${className} is reserved. Classes start ${fmt(firstSession)}.`,
+      group_id: group.id,
+      metadata: { groupId: group.id, enrollmentId, releaseDate },
+    });
+  } catch (err) {
+    console.error('[secureSpot] notifications failed (non-fatal):', (err as Error)?.message);
+  }
 }
 
 /**

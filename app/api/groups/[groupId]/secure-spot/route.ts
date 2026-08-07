@@ -27,6 +27,7 @@ import {
   SECURE_SPOT_HOLD_MINUTES,
 } from '@/lib/payments/secureSpot';
 import type { SessionPattern } from '@/lib/utils/scheduleFormat';
+import { notifySpotSecured } from '@/lib/services/secureSpotService';
 
 export const dynamic = 'force-dynamic';
 
@@ -171,6 +172,20 @@ export async function POST(_req: NextRequest, { params }: Params) {
       if (confirmError || confirmed?.ok === false) {
         console.error('[secure-spot] free confirm failed:', confirmError?.message ?? confirmed?.reason);
         return NextResponse.json({ error: 'Could not reserve a place' }, { status: 500 });
+      }
+
+      // The paid path notifies from the webhook; a free reservation never goes
+      // near Stripe, so it has to notify here or the tutor would only ever be
+      // told about students who paid.
+      if (confirmed?.idempotent !== true) {
+        await notifySpotSecured({
+          admin,
+          enrollmentId,
+          group: { id: groupId, name: (group as any).name ?? null, tutor_id: (group as any).tutor_id ?? null },
+          studentId: user.id,
+          releaseDate: null,
+          firstSession,
+        });
       }
 
       return NextResponse.json({
