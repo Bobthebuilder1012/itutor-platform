@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, GraduationCap, Lightbulb, Loader2, UserRound, Users, X as XIcon } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
@@ -60,8 +60,19 @@ export default function CompleteRolePage() {
   const [error, setError] = useState('');
   const [checkingSession, setCheckingSession] = useState(true);
 
+  // Where to send them once this is finished. The auth callback forwards the
+  // page the visitor originally wanted (a class from a QR code, a tutor
+  // profile) as ?redirect=, since the role/profile step has to happen first.
+  // Relative paths only — see the same guard in the auth callback.
+  const searchParams = useSearchParams();
+  const redirectParam = searchParams.get('redirect');
+  const returnTo =
+    redirectParam && redirectParam.startsWith('/') && !redirectParam.startsWith('//')
+      ? redirectParam
+      : null;
+
   // Profile picture — last step, after the required details, and always skippable.
-  const [destination, setDestination] = useState('/student/dashboard');
+  const [destination, setDestination] = useState(returnTo ?? '/student/dashboard');
 
   // Student profile
   const [affiliation, setAffiliation] = useState<'attend' | 'teach' | 'no' | null>(null);
@@ -131,7 +142,7 @@ export default function CompleteRolePage() {
     setLoading(true);
     try {
       await saveProfile({ role: 'set-role', newRole: role });
-      if (role === 'parent') { router.push('/parent/dashboard'); return; }
+      if (role === 'parent') { router.push(returnTo ?? '/parent/dashboard'); return; }
       setStep('profile');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save role. Please try again.');
