@@ -268,7 +268,8 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/admin/verified-tutors', label: 'Verified iTutors', icon: icons.shield },
           // The marketplace ranking controls (boost/pin) shipped without a nav
           // entry, so the page was only reachable by typing the URL.
-          { href: '/admin/tutors', label: 'Promotion & Ranking', icon: icons.star },
+          { href: '/admin/tutors', label: 'Tutor Promotion', icon: icons.star },
+          { href: '/admin/marketplace/classes', label: 'Class Promotion', icon: icons.sparkles },
           { href: '/admin/signups', label: 'Signups & Onboarding', icon: icons.userPlus },
         ]},
         { label: 'Finance', items: [

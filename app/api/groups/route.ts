@@ -267,23 +267,40 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Default ("latest") order is by the owning tutor's marketplace ranking
-    // (mig 190): pinned tutors first, then ranking_score, then newest. Explicit
-    // user sorts (rating/members/price/nextSession) are unaffected. Skipped if
-    // the ranking view isn't present yet.
-    const rankMap = new Map<string, { pin: number | null; score: number }>();
+    // Default ("latest") order is the class marketplace ranking (mig 215):
+    // classes an admin pinned by hand, then classes whose TUTOR is pinned
+    // (mig 190's behaviour, kept so existing tutor pins still carry their
+    // classes), then the class ranking score, then newest. Explicit user sorts
+    // (rating/members/price/nextSession) are unaffected. Skipped if the
+    // ranking view isn't present yet.
+    type ClassRank = { pin: number | null; tutorPin: number | null; score: number };
+    const rankMap = new Map<string, ClassRank>();
     if (sortBy === 'latest') {
-      const rankTutorIds = [...new Set<string>(filtered.map((g: any) => g.tutor_id).filter(Boolean))];
-      if (rankTutorIds.length > 0) {
+      const rankGroupIds = filtered.map((g: any) => g.id).filter(Boolean);
+      if (rankGroupIds.length > 0) {
         const { data: rankRows, error: rankErr } = await service
-          .from('tutor_marketplace_rankings')
-          .select('tutor_id, pin_rank, ranking_score')
-          .in('tutor_id', rankTutorIds);
+          .from('group_marketplace_rankings')
+          .select('group_id, pin_rank, tutor_pin_rank, ranking_score')
+          .in('group_id', rankGroupIds);
         if (!rankErr && rankRows) {
-          rankRows.forEach((r: any) => rankMap.set(r.tutor_id, { pin: r.pin_rank ?? null, score: Number(r.ranking_score ?? 0) }));
+          rankRows.forEach((r: any) =>
+            rankMap.set(r.group_id, {
+              pin: r.pin_rank ?? null,
+              tutorPin: r.tutor_pin_rank ?? null,
+              score: Number(r.ranking_score ?? 0),
+            })
+          );
         }
       }
     }
+
+    // Unpinned always sorts after pinned; two pins compare by position.
+    const byPin = (a: number | null, b: number | null): number | null => {
+      if (a == null && b == null) return null;
+      if (a == null) return 1;
+      if (b == null) return -1;
+      return a === b ? null : a - b;
+    };
 
     const sorted = [...filtered].sort((a: any, b: any) => {
       const dir = sortDir === 'asc' ? 1 : -1;
@@ -301,13 +318,13 @@ export async function GET(request: NextRequest) {
       }
       // Default 'latest': marketplace ranking when available, else newest first.
       if (rankMap.size > 0) {
-        const ra = rankMap.get(a.tutor_id) ?? { pin: null, score: 0 };
-        const rb = rankMap.get(b.tutor_id) ?? { pin: null, score: 0 };
-        if (ra.pin != null || rb.pin != null) {
-          if (ra.pin == null) return 1;
-          if (rb.pin == null) return -1;
-          if (ra.pin !== rb.pin) return ra.pin - rb.pin;
-        }
+        const empty: ClassRank = { pin: null, tutorPin: null, score: 0 };
+        const ra = rankMap.get(a.id) ?? empty;
+        const rb = rankMap.get(b.id) ?? empty;
+        const classPin = byPin(ra.pin, rb.pin);
+        if (classPin !== null) return classPin;
+        const tutorPin = byPin(ra.tutorPin, rb.tutorPin);
+        if (tutorPin !== null) return tutorPin;
         if (rb.score !== ra.score) return rb.score - ra.score;
       }
       return (new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) * dir;
