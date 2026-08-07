@@ -149,7 +149,11 @@ export async function GET(request: NextRequest) {
 
     const { data: expired, error } = await admin
       .from('group_enrollments')
-      .select('id, student_id, group_id, release_date')
+      .select(`
+        id, student_id, group_id, release_date,
+        student:profiles!student_id ( id, full_name, email ),
+        group:groups!group_id ( id, name, price_monthly )
+      `)
       .eq('status', 'SECURED')
       .not('release_date', 'is', null)
       .lt('release_date', cutoff);
@@ -157,14 +161,26 @@ export async function GET(request: NextRequest) {
     if (error) throw error;
 
     for (const row of expired ?? []) {
+      const student = (row as any).student;
+      const group = (row as any).group;
+      const releaseDate: string = (row as any).release_date;
+
       // COMPLETED, not CANCELLED: the student received exactly what they paid
       // for. Cancelled would misreport it in every revenue view and imply a
       // refund that isn't owed.
-      await admin
+      //
+      // .select() so we know whether this actually transitioned. The status
+      // guard alone is not enough: if the student subscribed between the query
+      // above and this update, the update no-ops — and removing their
+      // membership anyway would cut off a student who had just paid.
+      const { data: transitioned } = await admin
         .from('group_enrollments')
         .update({ status: 'COMPLETED', updated_at: new Date().toISOString() })
         .eq('id', row.id)
-        .eq('status', 'SECURED'); // no-op if they subscribed in the meantime
+        .eq('status', 'SECURED')
+        .select('id');
+
+      if (!transitioned?.length) continue;
 
       // Access ends with the paid period. The seat is freed for resale by the
       // same change, since capacity counts SECURED but not COMPLETED.
@@ -173,6 +189,40 @@ export async function GET(request: NextRequest) {
         .update({ status: 'removed' })
         .eq('group_id', row.group_id)
         .eq('user_id', row.student_id);
+
+      // Tell them. Losing a class silently, a month after paying for it, is a
+      // support ticket at best and a chargeback at worst — the student has no
+      // way to know whether this was intended or a fault.
+      const rejoinLink = `${appUrl}/student/explore/${row.group_id}`;
+      const price = Number(group?.price_monthly ?? 0);
+
+      if (student?.email) {
+        await sendEmail({
+          to: student.email,
+          subject: `Your place in ${group?.name ?? 'your class'} has ended`,
+          html: `
+            <p>Hi ${student.full_name ?? 'there'},</p>
+            <p>Your place in <strong>${group?.name ?? 'your class'}</strong> has now ended.</p>
+            <p>You paid for your first month up front when you secured your spot, and that
+               month ran until <strong>${fmtDate(releaseDate)}</strong>. We held your place for a
+               further ${GRACE_DAYS_AFTER} days in case you wanted to continue, and as we
+               haven't heard from you, the place has been released.</p>
+            <p><strong>You have not been charged anything further</strong>, and there is nothing
+               you need to do.</p>
+            <p>If you'd like to come back, the class is still open to join${price > 0 ? ` from TT$${price} a month` : ''}:</p>
+            <p><a href="${rejoinLink}">Rejoin ${group?.name ?? 'this class'}</a></p>
+          `.trim(),
+        });
+      }
+
+      await admin.from('notifications').insert({
+        user_id: row.student_id,
+        type: 'secure_spot_lapsed',
+        title: 'Your place has ended',
+        message: `Your first month of ${group?.name ?? 'your class'} ended ${fmtDate(releaseDate)} and your place has been released. You can rejoin any time.`,
+        group_id: row.group_id,
+        metadata: { groupId: row.group_id, enrollmentId: row.id, releaseDate },
+      });
 
       result.lapsed += 1;
     }
