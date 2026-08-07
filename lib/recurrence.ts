@@ -1,5 +1,6 @@
 import { RRule, RRuleSet, Weekday } from 'rrule';
 import { getServiceClient } from '@/lib/supabase/server';
+import { trinidadInstant } from '@/lib/payments/secureSpot';
 
 type BuildRecurrenceType = 'DAILY' | 'WEEKLY' | 'MONTHLY';
 
@@ -89,7 +90,15 @@ export async function generateUpcomingSessions(groupId: string, daysAhead: numbe
           toDate,
         });
       } else {
-        const startsOn = new Date(`${session.starts_on}T${session.start_time}`);
+        // Trinidad time, like every other class time. `new Date('...T18:00')`
+        // with no zone is parsed as SERVER-local — UTC on Vercel — which put
+        // a 6pm class at 2pm AST. This is the third place occurrence instants
+        // are built (the other two are the sessions routes); all three now
+        // resolve the same way, or a class's times depend on which action
+        // happened to create them.
+        const [sy, sm, sd] = String(session.starts_on).slice(0, 10).split('-').map(Number);
+        const [sh, smin] = String(session.start_time).slice(0, 5).split(':').map(Number);
+        const startsOn = trinidadInstant(sy!, sm!, sd!, sh ?? 0, smin ?? 0);
         const recurrenceType = (session.recurrence_type ?? 'none').toUpperCase();
         if (recurrenceType === 'NONE') {
           if (startsOn >= now && startsOn <= toDate) dates = [startsOn];
