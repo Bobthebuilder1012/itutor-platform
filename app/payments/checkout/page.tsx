@@ -51,9 +51,6 @@ type Summary = {
   releaseDate?: string | null;
   /** Class finishes inside the first month: one-time purchase, nothing after. */
   shortClass?: boolean;
-  /** Itemised processing fee. The API has always returned this; the UI stopped
-   *  showing it. On a preorder an opaque "Processing fee" invites suspicion. */
-  feeBreakdown?: { label: string; rate: number | null; amountTtd: number }[];
 };
 
 export default function PaymentCheckout() {
@@ -99,7 +96,6 @@ export default function PaymentCheckout() {
           isSecureSpot: d.kind === 'secure_spot',
           releaseDate: d.releaseDate ?? null,
           shortClass: d.shortClass ?? false,
-          feeBreakdown: d.feeBreakdown ?? undefined,
           // Land on the confirmation page, which polls the status route and
           // then shows the receipt + download. Keyed on the intent id because
           // the payments row doesn't exist until the webhook creates it.
@@ -501,29 +497,16 @@ export default function PaymentCheckout() {
                     ${summary.amount.toFixed(2)} {summary.currency}
                   </span>
                 </div>
-                {/* Itemised on a preorder. Asking for a card weeks before the
-                    first lesson is exactly when an unexplained "Processing fee"
-                    line reads as something being hidden. */}
-                {summary.isSecureSpot && summary.feeBreakdown?.length ? (
-                  summary.feeBreakdown.map((f) => (
-                    <div key={f.label} className="flex justify-between text-xs">
-                      <span className="text-gray-500">
-                        {f.label}
-                        {f.rate !== null ? ` (${(f.rate * 100).toFixed(1)}%)` : ''}
-                      </span>
-                      <span className="text-gray-600">
-                        ${f.amountTtd.toFixed(2)} {summary.currency}
-                      </span>
-                    </div>
-                  ))
-                ) : (
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Processing fee</span>
-                    <span className="text-gray-900">
-                      ${summary.processingFee.toFixed(2)} {summary.currency}
-                    </span>
-                  </div>
-                )}
+                {/* One line, every payment type. The card/conversion/fixed
+                    split is Stripe's internal arithmetic, not something a
+                    student is buying, and itemising it made a small preorder
+                    look like it was mostly fees. */}
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Processing fee</span>
+                  <span className="text-gray-900">
+                    ${summary.processingFee.toFixed(2)} {summary.currency}
+                  </span>
+                </div>
                 <div className="flex items-center justify-between border-t border-gray-200 pt-3 text-xl font-bold">
                   <span className="text-gray-900">Total</span>
                   <span className="text-gray-900">
