@@ -162,6 +162,89 @@ export async function confirmSecuredSpot(
 }
 
 /**
+ * Refund every secured spot in a class, because the class is going away.
+ *
+ * The deal a student accepted was "your money is held until the first month is
+ * taught, and if the tutor cancels before it starts you're refunded
+ * automatically". This is the code that keeps the second half of that promise,
+ * so it is called from every path that archives or deletes a class rather than
+ * from one of them.
+ *
+ * Best-effort per student and never throws: one card that refuses a refund
+ * must not stop the other students being refunded, or block the deletion the
+ * tutor asked for. Failures are logged loudly and left in the ledger as
+ * 'owed' so they surface rather than vanish.
+ */
+export async function refundSecuredSpotsForClass(
+  admin: SupabaseClient,
+  groupId: string,
+  reason: string
+): Promise<{ refunded: number; failed: number }> {
+  const out = { refunded: 0, failed: 0 };
+
+  const { data: secured, error } = await admin
+    .from('group_enrollments')
+    .select('id, student_id, secure_payment_intent_id')
+    .eq('group_id', groupId)
+    .eq('status', 'SECURED');
+
+  if (error || !secured?.length) return out;
+
+  const { data: group } = await admin
+    .from('groups')
+    .select('name')
+    .eq('id', groupId)
+    .maybeSingle();
+
+  for (const enrolment of secured) {
+    const pi = (enrolment as any).secure_payment_intent_id as string | null;
+    let refunded = true;
+
+    // A free reservation has no payment intent — there is nothing to refund,
+    // but the seat and the enrolment still have to be closed out.
+    if (pi) refunded = await refundSecuringCharge(pi);
+
+    await releaseClaim(admin, (enrolment as any).id, reason);
+
+    // Reverse the tutor's held money. It was never theirs to keep: they are
+    // not teaching the class.
+    const { data: payment } = await admin
+      .from('subscription_payments')
+      .select('id, tutor_payout_ttd')
+      .eq('enrollment_id', (enrolment as any).id)
+      .eq('type', 'secure_spot')
+      .maybeSingle();
+
+    if (payment?.id) {
+      await admin
+        .from('payout_ledger')
+        .update({ status: 'reversed', updated_at: new Date().toISOString() })
+        .eq('subscription_payment_id', payment.id)
+        .eq('status', 'owed');
+    }
+
+    await admin.from('notifications').insert({
+      user_id: (enrolment as any).student_id,
+      type: 'secure_spot_refunded',
+      title: 'Your reserved place has been refunded',
+      message: `${group?.name ?? 'A class'} was cancelled before it started, so your payment has been refunded in full.`,
+      group_id: groupId,
+      metadata: { groupId, enrollmentId: (enrolment as any).id, reason },
+    });
+
+    if (refunded) out.refunded += 1;
+    else out.failed += 1;
+  }
+
+  if (out.failed > 0) {
+    console.error('[secureSpot] some refunds failed and need manual attention', {
+      groupId, ...out,
+    });
+  }
+  return out;
+}
+
+/**
  * Refund a securing charge in full.
  *
  * Returns false rather than throwing: a failed refund must not stop us from

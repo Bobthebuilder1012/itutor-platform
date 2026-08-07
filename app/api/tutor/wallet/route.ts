@@ -115,6 +115,62 @@ export async function GET() {
     0
   );
 
+  // -- Secured spots: paid by students, not yet payable to the tutor --
+  //
+  // This money IS inside pending_ttd, so it must never be added to a total —
+  // it is a breakdown of part of pending, not a new category. Without it a
+  // tutor sees a pending figure with no explanation of why weeks pass before
+  // it moves, which is how a short payout becomes a support ticket.
+  let securedHeld = { totalTtd: 0, students: 0, earliestRelease: null as string | null };
+  try {
+    const { data: securedPayments } = await admin
+      .from('subscription_payments')
+      .select('id, enrollment_id, tutor_payout_ttd, group_id')
+      .eq('type', 'secure_spot')
+      .eq('status', 'PAID');
+
+    const byEnrollment = new Map(
+      (securedPayments ?? []).map((p: any) => [p.enrollment_id, p])
+    );
+
+    if (byEnrollment.size > 0) {
+      // Only enrolments still holding — once released or lapsed it is no
+      // longer "held", and the ledger row has moved on.
+      const { data: stillSecured } = await admin
+        .from('group_enrollments')
+        .select('id, release_date, group:groups!group_id(tutor_id)')
+        .in('id', Array.from(byEnrollment.keys()))
+        .eq('status', 'SECURED');
+
+      const ledgerIds = (securedPayments ?? []).map((p: any) => p.id);
+      const { data: owedRows } = await admin
+        .from('payout_ledger')
+        .select('subscription_payment_id, amount_ttd')
+        .eq('tutor_id', user.id)
+        .eq('status', 'owed')
+        .in('subscription_payment_id', ledgerIds.length ? ledgerIds : ['00000000-0000-0000-0000-000000000000']);
+
+      const owedByPayment = new Map(
+        (owedRows ?? []).map((r: any) => [r.subscription_payment_id, Number(r.amount_ttd ?? 0)])
+      );
+
+      for (const enr of stillSecured ?? []) {
+        const payment = byEnrollment.get((enr as any).id);
+        const amount = payment ? owedByPayment.get(payment.id) : undefined;
+        if (amount === undefined) continue; // not this tutor's money
+        securedHeld.totalTtd += amount;
+        securedHeld.students += 1;
+        const rd = (enr as any).release_date as string | null;
+        if (rd && (!securedHeld.earliestRelease || rd < securedHeld.earliestRelease)) {
+          securedHeld.earliestRelease = rd;
+        }
+      }
+      securedHeld.totalTtd = Math.round(securedHeld.totalTtd * 100) / 100;
+    }
+  } catch (err) {
+    console.warn('[wallet] secured breakdown unavailable (non-fatal):', (err as Error)?.message);
+  }
+
   // -- Transaction history (ledger joined with sessions + subscription payments) --
   const { data: ledger } = await admin
     .from('payout_ledger')
@@ -355,6 +411,10 @@ export async function GET() {
       held_ttd:          Math.round(heldTtd * 100) / 100,
       last_updated:      balanceRow?.last_updated ?? null,
     },
+    // A slice OF pending_ttd, not an addition to it. The admin payments
+    // overview has already double-counted once by adding a term to a total
+    // that contained it; this is explicitly labelled to stop that repeating.
+    secured_held: securedHeld,
     pending_deductions: [],
     history,
   });
