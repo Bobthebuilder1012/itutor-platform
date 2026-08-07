@@ -465,7 +465,7 @@ export default function FindTutorsPage() {
           // PENDING_PAYMENT is an abandoned checkout, not an enrolment —
           // including it made the card read "Enrolled" for a class the
           // student had no access to, which opening the class then denied.
-          .in('status', ['ACTIVE', 'GRACE', 'SUSPENDED']),
+          .in('status', ['SECURED', 'ACTIVE', 'GRACE', 'SUSPENDED']),
         fetch(`/api/groups/member-counts?ids=${groupIds.join(',')}`).then((r) => r.json()).catch(() => ({ counts: {} })),
       ]);
 

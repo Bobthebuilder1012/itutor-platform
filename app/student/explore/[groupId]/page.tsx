@@ -202,7 +202,7 @@ export default function ExploreClassDetailPage() {
             // SUSPENDED included deliberately: they ARE in the class, just
             // access-restricted for non-payment. Offering "Request to join"
             // would be nonsense; the class page explains the suspension.
-            .in('status', ['ACTIVE', 'GRACE', 'SUSPENDED'])
+            .in('status', ['SECURED', 'ACTIVE', 'GRACE', 'SUSPENDED'])
             .maybeSingle(),
         ]);
         memberStatus = mem?.status ?? null;

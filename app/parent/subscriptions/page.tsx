@@ -58,7 +58,7 @@ function SubscriptionsContent() {
         `)
         .in('student_id', childIds)
         .eq('enrollment_type', 'SUBSCRIPTION')
-        .in('status', ['ACTIVE', 'GRACE', 'SUSPENDED', 'PENDING_PAYMENT'])
+        .in('status', ['SECURED', 'ACTIVE', 'GRACE', 'SUSPENDED', 'PENDING_PAYMENT'])
         .order('enrolled_at', { ascending: false });
 
       setSubs((enrollments ?? []).map((e: any) => ({

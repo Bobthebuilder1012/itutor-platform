@@ -127,7 +127,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       .eq('group_id', groupId)
       .eq('student_id', user.id)
       .eq('enrollment_type', 'SUBSCRIPTION')
-      .in('status', ['ACTIVE', 'GRACE', 'SUSPENDED'])
+      .in('status', ['SECURED', 'ACTIVE', 'GRACE', 'SUSPENDED'])
       .maybeSingle();
 
     if (activeEnrollment) {
@@ -178,7 +178,7 @@ export async function POST(req: NextRequest, { params }: Params) {
           .select('id', { count: 'exact', head: true })
           .eq('group_id', groupId)
           .eq('enrollment_type', 'SUBSCRIPTION')
-          .in('status', ['ACTIVE', 'GRACE', 'SUSPENDED']);
+          .in('status', ['SECURED', 'ACTIVE', 'GRACE', 'SUSPENDED']);
 
         const { count: pendingCount } = await admin
           .from('group_enrollments')
