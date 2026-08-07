@@ -1274,13 +1274,23 @@ function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent }: {
 
       <ClassSummaryCard group={group} />
 
+      {/* Billing. A preorder is a one-time charge for a class that hasn't
+          started — describing it as a monthly subscription that renews would
+          be false on every line, so the whole block switches. */}
       <section className="rounded-2xl border border-border bg-background p-5 space-y-3">
         <h2 className="font-bold text-ink text-sm">Billing</h2>
         <InfoRow icon={<CreditCard className="size-4 text-brand-deep" />} label="Model">
-          {price > 0
-            ? group.price_monthly ? 'Monthly subscription' : 'Per-session billing'
-            : 'Free — no payment required'}
+          {price <= 0
+            ? 'Free — no payment required'
+            : preorder
+              ? (preorder.shortClass ? 'One-time payment for the whole class' : 'One-time payment for your first month')
+              : group.price_monthly ? 'Monthly subscription' : 'Per-session billing'}
         </InfoRow>
+        {preorder && (
+          <InfoRow icon={<Calendar className="size-4 text-brand-deep" />} label="Classes start">
+            {preorder.firstSession.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+          </InfoRow>
+        )}
         {price > 0 && (
           <>
             {promo && discountedPrice !== null && (
@@ -1291,7 +1301,17 @@ function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent }: {
               </div>
             )}
             <p className="text-xs text-muted-foreground leading-relaxed">
-              You'll be charged {fmtTTD(totalPrice)}{group.price_monthly ? ' each month' : ' per session'}. Cancel any time from your account.
+              {preorder ? (
+                <>
+                  You&apos;ll be charged <strong className="text-ink">{fmtTTD(totalPrice)} once</strong>, today.
+                  {' '}iTutor holds it until your first month has been taught.
+                  {preorder.shortClass
+                    ? ' This class finishes inside that month, so there is nothing further to pay.'
+                    : " Nothing renews automatically — we'll ask before your first month ends."}
+                </>
+              ) : (
+                <>You&apos;ll be charged {fmtTTD(totalPrice)}{group.price_monthly ? ' each month' : ' per session'}. Cancel any time from your account.</>
+              )}
             </p>
           </>
         )}
@@ -1300,7 +1320,17 @@ function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent }: {
       <section className="rounded-2xl border border-border bg-background p-5 space-y-2">
         <h2 className="font-bold text-ink text-sm">Terms</h2>
         <ul className="text-xs text-muted-foreground space-y-2">
-          <li className="flex items-start gap-2"><Check className="size-3.5 text-brand-deep mt-0.5 shrink-0" /> You can cancel any time from your account.</li>
+          {preorder ? (
+            <>
+              <li className="flex items-start gap-2"><Check className="size-3.5 text-brand-deep mt-0.5 shrink-0" /> Your place is held for you from today.</li>
+              <li className="flex items-start gap-2"><Check className="size-3.5 text-brand-deep mt-0.5 shrink-0" /> If the tutor cancels the class before it starts, you&apos;re refunded automatically.</li>
+              {!preorder.shortClass && (
+                <li className="flex items-start gap-2"><Check className="size-3.5 text-brand-deep mt-0.5 shrink-0" /> Nothing is charged automatically after your first month — you choose whether to continue.</li>
+              )}
+            </>
+          ) : (
+            <li className="flex items-start gap-2"><Check className="size-3.5 text-brand-deep mt-0.5 shrink-0" /> You can cancel any time from your account.</li>
+          )}
           {isRequest && <li className="flex items-start gap-2"><Check className="size-3.5 text-brand-deep mt-0.5 shrink-0" /> The tutor will review your request and respond within 48 hours.</li>}
           {isFull && <li className="flex items-start gap-2"><Check className="size-3.5 text-brand-deep mt-0.5 shrink-0" /> You'll be notified the moment a seat opens — no obligation.</li>}
           <li className="flex items-start gap-2"><Check className="size-3.5 text-brand-deep mt-0.5 shrink-0" /> By joining you agree to iTutor's Terms of Service.</li>
