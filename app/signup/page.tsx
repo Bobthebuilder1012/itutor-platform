@@ -470,7 +470,15 @@ export default function SignupPage() {
                         </div>
                       </div>
 
-                      <GoogleButton redirectTo={`${typeof window !== 'undefined' ? window.location.origin : ''}/auth/callback?next=/signup/complete-role`} label="Continue with Google" />
+                      {/* The callback decides where to land; pass the visitor's
+                          destination so it can honour it instead of defaulting
+                          to a dashboard. */}
+                      <GoogleButton
+                        redirectTo={`${typeof window !== 'undefined' ? window.location.origin : ''}/auth/callback${
+                          redirectParam ? `?redirect=${encodeURIComponent(redirectParam)}` : ''
+                        }`}
+                        label="Continue with Google"
+                      />
 
                       <p className="pt-1 text-center text-sm text-gray-500">
                         Already have an account?{' '}

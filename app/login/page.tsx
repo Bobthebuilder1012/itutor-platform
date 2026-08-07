@@ -278,6 +278,9 @@ export default function LoginPage() {
 function GoogleOAuthButton({ className }: { className?: string }) {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleError, setGoogleError] = useState('');
+  // Read here rather than taking a prop — this is its own component, so the
+  // page's redirectParam is not in scope.
+  const redirectParam = useSearchParams().get('redirect');
 
   const handleGoogleLogin = async () => {
     setGoogleLoading(true);
@@ -285,7 +288,12 @@ function GoogleOAuthButton({ className }: { className?: string }) {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        // Carry the visitor's destination into the OAuth round trip — it comes
+        // back on the callback URL, which is the only way the callback can know
+        // where they were headed.
+        redirectTo: `${window.location.origin}/auth/callback${
+          redirectParam ? `?redirect=${encodeURIComponent(redirectParam)}` : ''
+        }`,
         queryParams: { access_type: 'offline', prompt: 'consent' },
       },
     });
