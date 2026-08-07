@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import type { CreateGroupSessionInput, DayOfWeek } from '@/lib/types/groups';
 import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
+import { trinidadInstant } from '@/lib/payments/secureSpot';
 
 type Params = { params: Promise<{ groupId: string }> };
 function isSchemaMismatch(error: any): boolean {
@@ -194,16 +195,30 @@ function generateOccurrences(session: any) {
 
   const [startHour, startMin] = session.start_time.split(':').map(Number);
   const durationMs = session.duration_minutes * 60 * 1000;
-  const offsetMs = (session.timezone_offset ?? 0) * 60 * 1000;
 
   const [y, m, d] = session.starts_on.split('-').map(Number);
   const endsOn = session.ends_on
     ? (() => { const [ey, em, ed] = session.ends_on.split('-').map(Number); return Date.UTC(ey, em - 1, ed, 23, 59, 59); })()
     : null;
 
+  /**
+   * A class time is a Trinidad time — the UI labels it AST — so it is resolved
+   * against that zone here rather than against whatever timezone the tutor's
+   * browser happened to be in.
+   *
+   * This previously added a client-supplied `timezone_offset`, and the callers
+   * disagreed about its sign: the tutor class page sent
+   * `-getTimezoneOffset()` while the five modals sent `getTimezoneOffset()`.
+   * The API had no way to tell which convention it was being handed, so the
+   * same 6pm class came out at 6pm or at 10am depending on which screen made
+   * it. Ms Maloney's Form 5 Geography was stored at 14:00Z — 10am AST — for a
+   * class its own header advertised as 6–8pm.
+   *
+   * Trusting the browser was also wrong in principle: a tutor scheduling from
+   * abroad would have set the class in their local time, not their students'.
+   */
   function localToUtc(year: number, month: number, day: number): Date {
-    const utcBase = Date.UTC(year, month - 1, day, startHour, startMin, 0, 0);
-    return new Date(utcBase + offsetMs);
+    return trinidadInstant(year, month, day, startHour, startMin);
   }
 
   if (session.recurrence_type === 'none') {

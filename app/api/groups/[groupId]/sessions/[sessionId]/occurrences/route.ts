@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
+import { trinidadInstant } from '@/lib/payments/secureSpot';
 
 type Params = { params: Promise<{ groupId: string; sessionId: string }> };
 
@@ -54,12 +55,13 @@ export async function POST(request: NextRequest, { params }: Params) {
         ? Math.floor(body.duration_minutes)
         : session.duration_minutes || 60;
 
-    const tzOffsetMinutes: number =
-      typeof body?.timezone_offset === 'number' ? body.timezone_offset : 0;
+    // Trinidad time, not the browser's. body.timezone_offset is deliberately
+    // ignored: its callers disagreed about the sign, which put whole classes
+    // eight hours out (see the note in ../../route.ts), and a tutor scheduling
+    // from abroad should still be setting a time their students recognise.
     const [hh, mm] = startTime.split(':').map((s: string) => parseInt(s, 10));
     const [yyyy, mo, dd] = scheduledDate.split('-').map((s) => parseInt(s, 10));
-    const localUtcMs = Date.UTC(yyyy, mo - 1, dd, hh, mm, 0);
-    const startMs = localUtcMs + tzOffsetMinutes * 60 * 1000;
+    const startMs = trinidadInstant(yyyy, mo, dd, hh, mm).getTime();
     const endMs = startMs + duration * 60 * 1000;
     const scheduled_start_at = new Date(startMs).toISOString();
     const scheduled_end_at = new Date(endMs).toISOString();

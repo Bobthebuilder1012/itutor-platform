@@ -1124,7 +1124,10 @@ function SessionsTab({ sessions, groupId, setSessions, meetingLink, reconnected 
         duration_minutes: form.duration,
         recurrence_type: form.recurrence,  // "none" | "daily" | "weekly"
         recurrence_days: form.recurrence === 'weekly' ? form.weekdays : [],
-        timezone_offset: -new Date().getTimezoneOffset(), // minutes from UTC
+        // Ignored by the API, which resolves class times in Trinidad time. Left
+        // only so older deployments keep working; note this caller used the
+        // opposite sign to every other one, which is what broke the times.
+        timezone_offset: new Date().getTimezoneOffset(),
       };
 
       const res = await fetch(`/api/groups/${groupId}/sessions`, {
