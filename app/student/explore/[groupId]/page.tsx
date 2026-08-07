@@ -72,6 +72,8 @@ type GroupData = {
   sessions: SessionRow[];
   secure_spot_enabled: boolean;
   end_date: string | null;
+  /** Set when THIS student holds a secured spot in the class. */
+  secured: { releaseDate: string | null } | null;
 };
 
 /**
@@ -186,6 +188,7 @@ export default function ExploreClassDetailPage() {
       // hands right now.
       let enrolled = false;
       let memberStatus: string | null = null;
+      let securedState: { releaseDate: string | null } | null = null;
       if (profile?.id) {
         const [{ data: mem }, { data: enr }] = await Promise.all([
           supabase
@@ -196,7 +199,7 @@ export default function ExploreClassDetailPage() {
             .maybeSingle(),
           supabase
             .from('group_enrollments')
-            .select('status')
+            .select('status, release_date')
             .eq('group_id', groupId)
             .eq('student_id', profile.id)
             // SUSPENDED included deliberately: they ARE in the class, just
@@ -208,6 +211,9 @@ export default function ExploreClassDetailPage() {
         memberStatus = mem?.status ?? null;
         enrolled =
           !!enr || !!(mem && ['approved', 'active', 'invited'].includes(mem.status));
+        if ((enr as any)?.status === 'SECURED') {
+          securedState = { releaseDate: (enr as any).release_date ?? null };
+        }
       }
 
       // Tutor verification + display name (defensive against schema drift)
@@ -279,6 +285,7 @@ export default function ExploreClassDetailPage() {
         sessions,
         secure_spot_enabled: g.secure_spot_enabled === true,
         end_date: g.end_date ?? null,
+        secured: securedState,
       });
 
       // Check if student has a linked parent account
@@ -502,6 +509,8 @@ function Detail({ group, onJoin }: { group: GroupData; onJoin: () => void }) {
       <Link href="/student/find-tutors" className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-brand-deep">
         <ArrowLeft className="size-3.5" /> All classes
       </Link>
+
+      <SecuredStatusBanner group={group} />
 
       {showExplainer && preorder && (
         <Modal onClose={() => setShowExplainer(false)}>
@@ -998,6 +1007,103 @@ function InfoRow({ icon, label, children }: { icon: React.ReactNode; label: stri
 }
 
 /* ─── Join flow ──────────────────────────────────────── */
+
+/**
+ * What a student with a secured spot sees on the class page.
+ *
+ * Three states, because "you're in" stops being the whole story as the paid
+ * month runs out:
+ *
+ *   before the last week  — reassurance: you're in, here's when it's covered to
+ *   final week / passed   — the ask: continue, or your place ends
+ *
+ * The prompt is opt-in by design. Nothing renews on its own, so if this is not
+ * shown (or is ignored) the student is never charged — which is the correct
+ * failure mode, but also why it has to be prominent.
+ */
+function SecuredStatusBanner({ group }: { group: GroupData }) {
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState('');
+  if (!group.secured) return null;
+
+  const releaseDate = group.secured.releaseDate;
+  const price = group.price_monthly ?? 0;
+  const endsAt = releaseDate ? new Date(`${releaseDate}T23:59:59-04:00`).getTime() : null;
+  const daysLeft = endsAt ? Math.ceil((endsAt - Date.now()) / 86_400_000) : null;
+
+  // A class finishing inside the first month was bought outright — there is
+  // nothing to continue, so never ask.
+  const shortClass = !!(group.end_date && releaseDate && group.end_date <= releaseDate);
+  const asking = !shortClass && daysLeft !== null && daysLeft <= 7;
+
+  const dateLabel = releaseDate
+    ? new Date(`${releaseDate}T00:00:00`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+    : null;
+
+  const handleContinue = async () => {
+    setSubmitting(true); setErr('');
+    try {
+      const res = await fetch(`/api/groups/${group.id}/subscribe`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (data.checkout_url) { window.location.href = data.checkout_url; return; }
+      throw new Error(data.error || 'Could not continue this class. Please try again.');
+    } catch (e: any) {
+      setErr(e?.message ?? 'Could not continue. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (!asking) {
+    return (
+      <div className="rounded-2xl border border-brand/30 bg-brand-soft/50 p-4">
+        <div className="flex items-start gap-3">
+          <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-brand-deep" />
+          <div>
+            <div className="text-sm font-bold text-ink">Your spot is secured</div>
+            <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+              {shortClass
+                ? <>You&apos;ve paid for this class in full{dateLabel ? <> — it runs until {dateLabel}</> : null}. There&apos;s nothing further to pay.</>
+                : <>You&apos;ve paid for your first month{dateLabel ? <>, which runs until <strong className="text-ink">{dateLabel}</strong></> : null}. We&apos;ll ask before then whether you&apos;d like to continue — nothing is charged automatically.</>}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <Clock className="mt-0.5 size-5 shrink-0 text-amber-700" />
+          <div>
+            <div className="text-sm font-bold text-amber-900">
+              {daysLeft !== null && daysLeft > 0
+                ? `Your first month ends in ${daysLeft} day${daysLeft === 1 ? '' : 's'}`
+                : 'Your first month has ended'}
+            </div>
+            <p className="mt-0.5 text-xs leading-relaxed text-amber-900">
+              {dateLabel && <>Your paid month runs to <strong>{dateLabel}</strong>. </>}
+              Continue to keep your place{price > 0 ? <> for {fmtTTD(price)} a month</> : null} — you
+              can cancel any time. If you do nothing, your place simply ends.
+            </p>
+            {err && <p className="mt-1 text-xs font-semibold text-rose-700">{err}</p>}
+          </div>
+        </div>
+        <button
+          onClick={handleContinue}
+          disabled={submitting}
+          className="rounded-2xl bg-ink px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+        >
+          {submitting ? 'Starting…' : 'Continue this class'}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 /**
  * The (i) copy.
