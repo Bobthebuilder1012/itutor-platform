@@ -256,13 +256,31 @@ export function isShortClass(args: { firstSession: Date; endDate?: string | null
  * three weeks" apart from "has been running since May". Both have a next
  * session; only the first can be preordered.
  */
-export function firstEverSession(patterns: SessionPattern[] | null | undefined): Date | null {
+export function firstEverSession(
+  patterns: SessionPattern[] | null | undefined,
+  now: Date = new Date()
+): Date | null {
   let earliestStart: Date | null = null;
 
   for (const p of patterns ?? []) {
     const startsOn = parseDateOnly(p.starts_on);
     if (!startsOn) continue;
     const at = trinidadInstant(startsOn.year, startsOn.month, startsOn.day, 0, 0);
+
+    // A ONE-OFF already in the past does not make a class "under way". Only a
+    // recurring series does, which is what this function is for.
+    //
+    // Such a row is invisible to students anyway: generateUpcomingSessions
+    // only writes an occurrence for a 'none' pattern when its date is still
+    // ahead, so a past one-off produces no session, shows on no calendar, and
+    // can be taught to nobody. Counting it as the class's first lesson took
+    // Secure your spot away from every future term the tutor had scheduled —
+    // seen on CSEC Principles of Business Form 4, which had a stray one-off
+    // dated the day before, no occurrences, and no members it could have been
+    // taught to, yet advertised "Starts Mon, Aug 31" and refused reservations.
+    const isOneOff = !p.recurrence_type || String(p.recurrence_type).toLowerCase() === 'none';
+    if (isOneOff && at.getTime() < now.getTime()) continue;
+
     if (!earliestStart || at.getTime() < earliestStart.getTime()) earliestStart = at;
   }
 
@@ -290,7 +308,7 @@ export function preorderEligibility(
   // June and runs weekly always has a session a few days away, but selling a
   // "first month" that started months ago would compute release_date from a
   // date already past — wrong money, immediately.
-  const firstEver = firstEverSession(patterns);
+  const firstEver = firstEverSession(patterns, now);
   if (firstEver && firstEver.getTime() < now.getTime()) {
     return { eligible: false, reason: 'already_started' };
   }
