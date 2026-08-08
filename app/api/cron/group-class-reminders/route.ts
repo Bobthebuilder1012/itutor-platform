@@ -59,6 +59,19 @@ export async function GET(request: NextRequest) {
   const now = new Date();
   const out = { ten_minute: 0, starts_today: 0, errors: [] as string[] };
 
+  // group_session_occurrences.meeting_link exists on staging but not on
+  // production. PostgREST rejects the WHOLE select for one unknown column, so
+  // asking for it unconditionally did not merely cost a per-occurrence join
+  // link — it failed both reminders outright, and production sent no class
+  // reminders at all. Ask for it; drop it where the column is not there.
+  const withOptionalOccurrenceLink = async (
+    run: (linkColumn: string) => PromiseLike<{ data: any; error: any }>
+  ): Promise<{ data: any; error: any }> => {
+    const first = await run('meeting_link,');
+    if (!first.error || String(first.error?.code) !== '42703') return first;
+    return run('');
+  };
+
   // ---------------------------------------------------------------
   // 1. TEN MINUTES OUT — every occurrence
   // ---------------------------------------------------------------
@@ -67,17 +80,19 @@ export async function GET(request: NextRequest) {
       const from = new Date(now.getTime() + 1 * 60_000).toISOString();
       const to = new Date(now.getTime() + TEN_MIN_WINDOW_MINUTES * 60_000).toISOString();
 
-      const { data: occurrences, error } = await admin
-        .from('group_session_occurrences')
-        .select(`
-          id, scheduled_start_at, status, cancelled_at, meeting_link,
-          session:group_sessions!group_session_id ( id, group_id,
-            group:groups!group_id ( id, name, tutor_id, meeting_link, archived_at ) )
-        `)
-        .gte('scheduled_start_at', from)
-        .lte('scheduled_start_at', to)
-        .neq('status', 'cancelled')
-        .is('cancelled_at', null);
+      const { data: occurrences, error } = await withOptionalOccurrenceLink((linkColumn) =>
+        admin
+          .from('group_session_occurrences')
+          .select(`
+            id, scheduled_start_at, status, cancelled_at, ${linkColumn}
+            session:group_sessions!group_session_id ( id, group_id,
+              group:groups!group_id ( id, name, tutor_id, meeting_link, archived_at ) )
+          `)
+          .gte('scheduled_start_at', from)
+          .lte('scheduled_start_at', to)
+          .neq('status', 'cancelled')
+          .is('cancelled_at', null)
+      );
 
       if (error) throw error;
 
@@ -117,17 +132,19 @@ export async function GET(request: NextRequest) {
       const dayStartUtc = new Date(dayStartTt + TT_OFFSET_MS).toISOString();
       const dayEndUtc = new Date(dayStartTt + TT_OFFSET_MS + 24 * 3_600_000).toISOString();
 
-      const { data: todays, error } = await admin
-        .from('group_session_occurrences')
-        .select(`
-          id, group_session_id, scheduled_start_at, status, cancelled_at, meeting_link,
-          session:group_sessions!group_session_id ( id, group_id, recurrence_type,
-            group:groups!group_id ( id, name, tutor_id, meeting_link, archived_at ) )
-        `)
-        .gte('scheduled_start_at', dayStartUtc)
-        .lt('scheduled_start_at', dayEndUtc)
-        .neq('status', 'cancelled')
-        .is('cancelled_at', null);
+      const { data: todays, error } = await withOptionalOccurrenceLink((linkColumn) =>
+        admin
+          .from('group_session_occurrences')
+          .select(`
+            id, group_session_id, scheduled_start_at, status, cancelled_at, ${linkColumn}
+            session:group_sessions!group_session_id ( id, group_id, recurrence_type,
+              group:groups!group_id ( id, name, tutor_id, meeting_link, archived_at ) )
+          `)
+          .gte('scheduled_start_at', dayStartUtc)
+          .lt('scheduled_start_at', dayEndUtc)
+          .neq('status', 'cancelled')
+          .is('cancelled_at', null)
+      );
 
       if (error) throw error;
 
