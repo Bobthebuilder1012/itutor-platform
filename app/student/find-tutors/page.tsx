@@ -1101,15 +1101,18 @@ export default function FindTutorsPage() {
                             href={`/student/explore/${l.id}`}
                             className="px-3 py-1.5 rounded-xl bg-brand text-white text-xs font-semibold hover:bg-brand-deep transition"
                           >
+                            {/* This link goes to the class page; joining happens
+                                there, so the card says what the click does
+                                (f6132c9 / f6b4162 — lost on this branch when
+                                dd7c04f restored main's copy of the file, and
+                                rebuilt from that base by the preorder CTA). */}
                             {full
                               ? 'Join waitlist'
                               : l.preorder
                                 // Hasn't started yet: reserving a place, not joining
                                 // something already running.
                                 ? 'Secure your spot'
-                                : l.requireJoinRequests
-                                  ? 'Request to join'
-                                  : 'Join class'}
+                                : 'View class'}
                           </Link>
                         )}
                       </div>
