@@ -1160,14 +1160,13 @@ export default function FindTutorsPage() {
                                 there, so the card says what the click does
                                 (f6132c9 / f6b4162 — lost on this branch when
                                 dd7c04f restored main's copy of the file, and
-                                rebuilt from that base by the preorder CTA). */}
-                            {full
-                              ? 'Join waitlist'
-                              : l.preorder
-                                // Hasn't started yet: reserving a place, not joining
-                                // something already running.
-                                ? 'Secure your spot'
-                                : 'View class'}
+                                rebuilt from that base by the preorder CTA).
+                                A preorderable class said "Secure your spot"
+                                here, which promised a checkout the click does
+                                not open. The "Starts <date>" badge above
+                                already tells a student the class is upcoming;
+                                reserving is offered on the class page itself. */}
+                            {full ? 'Join waitlist' : 'View class'}
                           </Link>
                         )}
                       </div>
