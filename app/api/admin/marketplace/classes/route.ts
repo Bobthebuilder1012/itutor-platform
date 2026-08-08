@@ -36,13 +36,22 @@ export async function GET(req: NextRequest) {
   const tutorIds = [...new Set(rows.map((r: any) => r.tutor_id).filter(Boolean))];
   const groupIds = rows.map((r: any) => r.group_id);
 
-  const [{ data: tutors }, { data: groups }] = await Promise.all([
+  const GROUP_COLUMNS = 'id, subject, cover_image, price_monthly, pricing_model, admin_boost_note, admin_boost_updated_at';
+
+  const [{ data: tutors }, groupsResult] = await Promise.all([
     admin.from('profiles').select('id, full_name, display_name, email, avatar_url').in('id', tutorIds),
-    admin
-      .from('groups')
-      .select('id, subject, cover_image, header_image, price_monthly, pricing_model, admin_boost_note, admin_boost_updated_at')
-      .in('id', groupIds),
+    // header_image exists on staging but not on production (mig 094 never ran
+    // there), and PostgREST rejects the WHOLE select for one unknown column —
+    // asking for it unconditionally would drop subject, cover and note from
+    // every row on prod rather than just the fallback image. Same drift the
+    // migration works around with to_jsonb, and the same retry shape the
+    // occurrences route uses.
+    admin.from('groups').select(`${GROUP_COLUMNS}, header_image`).in('id', groupIds),
   ]);
+
+  const groups = groupsResult.error
+    ? (await admin.from('groups').select(GROUP_COLUMNS).in('id', groupIds)).data
+    : groupsResult.data;
 
   const tmap = new Map((tutors ?? []).map((t: any) => [t.id, t]));
   const gmap = new Map((groups ?? []).map((g: any) => [g.id, g]));

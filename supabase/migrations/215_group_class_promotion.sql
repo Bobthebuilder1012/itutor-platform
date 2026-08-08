@@ -114,7 +114,13 @@ SECURITY DEFINER
 SET search_path = public
 AS $fn$
   SELECT round(
-    ( (CASE WHEN coalesce(g.cover_image, g.header_image, '') <> '' THEN 1 ELSE 0 END)
+    -- header_image is read through the row's JSON because production does not
+    -- have that column: migration 094 added it, but only staging ever got it.
+    -- `g.header_image` is resolved at CREATE time and fails outright there,
+    -- whereas the JSON lookup simply yields NULL where the column is absent.
+    -- The app already tolerates the same drift via its isSchemaMismatch
+    -- fallback chains.
+    ( (CASE WHEN coalesce(g.cover_image, to_jsonb(g) ->> 'header_image', '') <> '' THEN 1 ELSE 0 END)
     + (CASE WHEN g.description IS NOT NULL AND length(trim(g.description)) > 0 THEN 1 ELSE 0 END)
     + (CASE WHEN EXISTS (SELECT 1 FROM group_sessions s WHERE s.group_id = g.id) THEN 1 ELSE 0 END)
     + (CASE WHEN g.pricing_model = 'FREE'
