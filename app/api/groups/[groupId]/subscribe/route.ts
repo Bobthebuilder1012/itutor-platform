@@ -127,10 +127,18 @@ export async function POST(req: NextRequest, { params }: Params) {
       .eq('group_id', groupId)
       .eq('student_id', user.id)
       .eq('enrollment_type', 'SUBSCRIPTION')
-      .in('status', ['ACTIVE', 'GRACE', 'SUSPENDED'])
+      .in('status', ['SECURED', 'ACTIVE', 'GRACE', 'SUSPENDED'])
       .maybeSingle();
 
-    if (activeEnrollment) {
+    // A SECURED enrolment is the one case where "you already have an
+    // enrolment" is not a reason to refuse: this IS the month-one prompt
+    // being taken up. The student paid for their first month up front and is
+    // now choosing to continue, so the existing row is converted rather than
+    // duplicated — a second row would trip the unique index on
+    // (student_id, group_id) anyway.
+    const continuingFromSecured = activeEnrollment?.status === 'SECURED';
+
+    if (activeEnrollment && !continuingFromSecured) {
       return NextResponse.json({
         error: 'You already have an active subscription for this group',
         enrollment_id: activeEnrollment.id,
@@ -166,6 +174,13 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (pendingEnrollment) {
       enrollmentId = pendingEnrollment.id;
       isReusingEnrollment = true;
+    } else if (continuingFromSecured && activeEnrollment) {
+      // Converting a held spot into a subscription. Reused, and treated as an
+      // existing enrolment for the capacity check below — the student is
+      // already occupying this seat, so counting them against capacity would
+      // refuse them their own place in a full class.
+      enrollmentId = activeEnrollment.id;
+      isReusingEnrollment = true;
     }
 
     // Step 8: Capacity check (only for new enrollments)
@@ -178,7 +193,7 @@ export async function POST(req: NextRequest, { params }: Params) {
           .select('id', { count: 'exact', head: true })
           .eq('group_id', groupId)
           .eq('enrollment_type', 'SUBSCRIPTION')
-          .in('status', ['ACTIVE', 'GRACE', 'SUSPENDED']);
+          .in('status', ['SECURED', 'ACTIVE', 'GRACE', 'SUSPENDED']);
 
         const { count: pendingCount } = await admin
           .from('group_enrollments')

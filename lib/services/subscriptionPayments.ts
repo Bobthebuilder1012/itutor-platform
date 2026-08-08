@@ -242,7 +242,7 @@ export async function handleSubscriptionPayment(
         .from('group_enrollments')
         .select('id', { count: 'exact', head: true })
         .eq('group_id', sp.group_id)
-        .in('status', ['ACTIVE', 'GRACE', 'SUSPENDED'])
+        .in('status', ['SECURED', 'ACTIVE', 'GRACE', 'SUSPENDED'])
         .neq('id', sp.enrollment_id);
 
       const { count: pendingCount } = await admin
@@ -438,7 +438,7 @@ export async function countActiveSubscriptions(
     .select('id', { count: 'exact', head: true })
     .eq('group_id', groupId)
     .eq('enrollment_type', 'SUBSCRIPTION')
-    .in('status', ['ACTIVE', 'GRACE', 'SUSPENDED']);
+    .in('status', ['SECURED', 'ACTIVE', 'GRACE', 'SUSPENDED']);
 
   const { count: pendingCount } = await admin
     .from('group_enrollments')

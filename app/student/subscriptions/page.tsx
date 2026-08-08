@@ -404,7 +404,7 @@ export default function StudentSubscriptionsPage() {
     );
   }
 
-  const active   = subscriptions.filter((s) => ['ACTIVE','GRACE','SUSPENDED','PENDING_PAYMENT','ACTIVATION_FAILED'].includes(s.status));
+  const active   = subscriptions.filter((s) => ['SECURED','ACTIVE','GRACE','SUSPENDED','PENDING_PAYMENT','ACTIVATION_FAILED'].includes(s.status));
   const inactive = subscriptions.filter((s) => s.status === 'CANCELLED');
 
   const monthlyBill = active.reduce((sum, s) => sum + calcGross(s.plan_price_ttd ?? 0).gross, 0);

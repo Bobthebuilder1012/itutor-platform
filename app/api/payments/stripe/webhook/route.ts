@@ -36,6 +36,7 @@ import {
 } from '@/lib/payments/stripeClient';
 import { createSessionForBooking } from '@/lib/services/sessionService';
 import { handleSubscriptionPayment } from '@/lib/services/subscriptionPayments';
+import { confirmSecuredSpot } from '@/lib/services/secureSpotService';
 import { sendEmail } from '@/lib/services/emailService';
 import {
   buildReceiptData,
@@ -447,6 +448,60 @@ async function handleIntentSucceeded(
   // Stripe confirms the student paid.
   // See app/api/bookings/direct-book/route.ts.
   // -----------------------------------------------------------
+  // -----------------------------------------------------------
+  // Secure your spot: a one-time charge that holds a seat in a class
+  // which has not started yet. The enrollment and subscription_payment
+  // rows already exist (created by /secure-spot as
+  // SECURED_PENDING_PAYMENT); this marks them paid, stores the release
+  // date and parks the tutor's share as held money.
+  // -----------------------------------------------------------
+  if (intent.metadata?.kind === 'secure_spot') {
+    const enrollmentId = intent.metadata?.enrollment_id;
+    if (!enrollmentId) {
+      console.error('[stripe/webhook] secure_spot intent missing enrollment_id');
+      await markProcessed(admin, event, null, 'skipped', attempts, 'missing enrollment_id');
+      return NextResponse.json({ received: true, status: 'metadata_incomplete' });
+    }
+
+    const result = await confirmSecuredSpot({
+      admin: admin as any,
+      enrollmentId,
+      stripePaymentIntentId: intent.id,
+      source: 'webhook',
+    });
+
+    // Same rule as the subscription branch: a transient failure must not be
+    // recorded as processed, or Stripe's retry is deduped and the student is
+    // left holding a paid-for seat that was never confirmed.
+    if (result.transient) {
+      console.error(
+        '[stripe/webhook] Transient secure-spot confirmation failure — leaving event un-deduped',
+        { event_id: event.id, error: result.error }
+      );
+      await markRetryable(admin, event, null, attempts, result.error ?? 'rpc_failed');
+      return NextResponse.json(
+        { received: false, status: result.error, retry: true },
+        { status: 500 }
+      );
+    }
+
+    // Losing the last-seat race is a handled outcome, not a failure: the
+    // student has already been refunded by confirmSecuredSpot.
+    await markProcessed(
+      admin,
+      event,
+      null,
+      result.ok ? 'processed' : 'skipped',
+      attempts,
+      result.ok ? undefined : result.error ?? undefined
+    );
+    return NextResponse.json({
+      received: true,
+      status: result.ok ? 'spot_secured' : result.error,
+      refunded: result.refunded ?? false,
+    });
+  }
+
   // -----------------------------------------------------------
   // Group subscription cycle. The enrollment and subscription_payment
   // rows already exist (created by /subscribe as PENDING_PAYMENT);

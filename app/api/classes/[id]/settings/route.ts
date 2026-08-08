@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 import { classSettingsSchema } from '@/lib/validation/classSettings';
+import { canOpenPreorders } from '@/lib/services/secureSpotService';
 
 export const dynamic = 'force-dynamic';
 
@@ -73,6 +74,21 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       updates.require_join_requests = input.require_join_requests;
     }
     if (input.auto_suspend_missed_payment !== undefined) updates.auto_suspend_missed_payment = input.auto_suspend_missed_payment;
+    // Opening preorders lets the class take money before it has taught
+    // anything, so eligibility is re-checked here rather than trusted from the
+    // form. Turning it OFF is always allowed.
+    if (input.secure_spot_enabled !== undefined) {
+      if (input.secure_spot_enabled === true) {
+        const allowed = await canOpenPreorders(service as any, classId);
+        if (!allowed.ok) {
+          return NextResponse.json(
+            { ok: false, error: allowed.reason, message: allowed.message },
+            { status: 400 }
+          );
+        }
+      }
+      updates.secure_spot_enabled = input.secure_spot_enabled;
+    }
     if (input.grace_period_days !== undefined) updates.grace_period_days = input.grace_period_days;
     if (input.whatsapp_url !== undefined) updates.whatsapp_link = input.whatsapp_url || null;
     if (input.google_classroom_link !== undefined) updates.google_classroom_link = input.google_classroom_link || null;

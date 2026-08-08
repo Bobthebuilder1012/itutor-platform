@@ -98,7 +98,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
         .select('id', { count: 'exact', head: true })
         .eq('group_id', enrollment.group_id)
         .eq('enrollment_type', 'SUBSCRIPTION')
-        .in('status', ['ACTIVE', 'GRACE', 'SUSPENDED'])
+        .in('status', ['SECURED', 'ACTIVE', 'GRACE', 'SUSPENDED'])
         .neq('id', enrollmentId);
 
       const { count: pendingCount } = await admin

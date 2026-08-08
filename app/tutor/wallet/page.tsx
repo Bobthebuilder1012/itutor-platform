@@ -48,6 +48,8 @@ interface PendingDeduction {
 }
 
 interface WalletPayload {
+  /** A slice OF balances.pending_ttd — never add it to a total. */
+  secured_held?: { totalTtd: number; students: number; earliestRelease: string | null };
   balances: {
     pending_ttd: number;
     available_ttd: number;
@@ -327,6 +329,24 @@ function WalletContent() {
                     ? `TT$ ${fmtTTD(balances?.pending_ttd ?? 0)} in escrow — releases after 7 days`
                     : 'No pending earnings'}
             </div>
+            {/* Part of the escrow figure above, itemised. A tutor waiting weeks
+                for secured-spot money needs to see why here, not work it out
+                from a short payout. NOT added to any total — it is already
+                inside pending_ttd. */}
+            {(data?.secured_held?.totalTtd ?? 0) > 0 && (
+              <div className="mt-3 rounded-xl bg-white/10 px-3 py-2 text-sm">
+                <div className="font-semibold text-white">
+                  TT$ {fmtTTD(data!.secured_held!.totalTtd)} from secured spots
+                </div>
+                <div className="text-white/70">
+                  {data!.secured_held!.students} student
+                  {data!.secured_held!.students === 1 ? '' : 's'} paid up front · releases
+                  {data!.secured_held!.earliestRelease
+                    ? ` from ${new Date(`${data!.secured_held!.earliestRelease}T00:00:00`).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}`
+                    : ' once the first month is taught'}
+                </div>
+              </div>
+            )}
             {(balances?.held_ttd ?? 0) > 0 && (
               <div className="mt-3 flex items-center gap-2 rounded-xl bg-amber-500/20 px-3 py-2 text-sm">
                 <AlertCircle className="size-4 text-amber-300 shrink-0" />

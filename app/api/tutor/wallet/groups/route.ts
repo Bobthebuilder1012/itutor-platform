@@ -142,7 +142,7 @@ export async function GET() {
 
     // Active = ACTIVE + GRACE (still have access); SUSPENDED keeps seat
     const activeCount = groupEnrollments.filter(
-      (e: any) => ['ACTIVE', 'GRACE', 'SUSPENDED'].includes(e.status)
+      (e: any) => ['SECURED', 'ACTIVE', 'GRACE', 'SUSPENDED'].includes(e.status)
     ).length;
 
     // Pending = GRACE (overdue) + PENDING_PAYMENT (not expired)

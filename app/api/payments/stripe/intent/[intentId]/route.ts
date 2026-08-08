@@ -21,6 +21,8 @@ import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { getStripeClient, centsToTtd } from '@/lib/payments/stripeClient';
 import { calculateGrossAmountForProvider } from '@/lib/payments/grossUp';
+import { firstUpcomingSession, computeReleaseDate, isShortClass } from '@/lib/payments/secureSpot';
+import type { SessionPattern } from '@/lib/utils/scheduleFormat';
 
 /**
  * Rebuilds the fee breakdown for an intent created earlier.
@@ -97,7 +99,11 @@ export async function GET(
     //
     // This also covers renewals, whose intents we never created.
     // -----------------------------------------------------------------
-    if (md.kind !== 'create_booking' && md.kind !== 'group_subscription') {
+    if (
+      md.kind !== 'create_booking' &&
+      md.kind !== 'group_subscription' &&
+      md.kind !== 'secure_spot'
+    ) {
       const admin = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -219,6 +225,69 @@ export async function GET(
           id: group?.tutor_id ?? null,
           name:
             groupTutor?.display_name || groupTutor?.full_name || 'Your tutor',
+          avatarUrl: groupTutor?.avatar_url ?? null,
+        },
+        subject: group?.name || 'Group class',
+        groupId: md.group_id,
+        enrollmentId: md.enrollment_id ?? null,
+      });
+    }
+
+    // -------- Secure your spot --------
+    // A one-time charge covering the first month of a class that hasn't
+    // started. The student is being asked for a card weeks before any lesson,
+    // so the checkout has to say exactly when the class starts and what the
+    // money is for. Nothing renews.
+    if (md.kind === 'secure_spot') {
+      const { data: group } = await userClient
+        .from('groups')
+        .select('id, name, subject, tutor_id, session_length_minutes, end_date')
+        .eq('id', md.group_id)
+        .maybeSingle();
+
+      const { data: groupTutor } = group?.tutor_id
+        ? await userClient
+            .from('profiles')
+            .select('id, full_name, display_name, avatar_url')
+            .eq('id', group.tutor_id)
+            .maybeSingle()
+        : { data: null };
+
+      // Dates are recomputed for display only. The authoritative release_date
+      // is written once by the webhook; showing a figure here that was stored
+      // earlier would go stale if the tutor edited the schedule mid-checkout.
+      const { data: sessions } = await userClient
+        .from('group_sessions')
+        .select('recurrence_type, recurrence_days, start_time, duration_minutes, starts_on, ends_on')
+        .eq('group_id', md.group_id);
+
+      const firstSession = firstUpcomingSession((sessions ?? []) as SessionPattern[]);
+      const endDate = (group as any)?.end_date ?? null;
+      const releaseDate = firstSession ? computeReleaseDate({ firstSession, endDate }) : null;
+
+      const base = Number(md.base_amount_ttd ?? '0');
+      const fee = Number(md.processing_fee_ttd ?? '0');
+
+      return NextResponse.json({
+        kind: 'secure_spot',
+        status: intent.status,
+        clientSecret: intent.client_secret,
+        paymentIntentId: intent.id,
+        amount: base,
+        processingFee: fee,
+        feeBreakdown: feeBreakdownFor(base, fee),
+        total: centsToTtd(intent.amount),
+        currency: 'TTD',
+        durationMinutes: group?.session_length_minutes ?? null,
+        // The class start, not a session slot — this is what the student is
+        // really buying, so the checkout leads with it.
+        startAt: firstSession ? firstSession.toISOString() : null,
+        endDate,
+        releaseDate,
+        shortClass: firstSession ? isShortClass({ firstSession, endDate }) : false,
+        tutor: {
+          id: group?.tutor_id ?? null,
+          name: groupTutor?.display_name || groupTutor?.full_name || 'Your tutor',
           avatarUrl: groupTutor?.avatar_url ?? null,
         },
         subject: group?.name || 'Group class',

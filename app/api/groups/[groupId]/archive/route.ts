@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
+import { refundSecuredSpotsForClass } from '@/lib/services/secureSpotService';
 
 type Params = { params: Promise<{ groupId: string }> };
 
@@ -51,6 +52,10 @@ export async function POST(_req: NextRequest, { params }: Params) {
       .eq('id', groupId);
 
     if (error) throw error;
+
+    // Refund anyone holding a secured spot: the class they paid to reserve is
+    // no longer running.
+    await refundSecuredSpotsForClass(service as any, groupId, 'class_archived');
 
     await service.from('group_activity_log').insert({
       group_id: groupId,

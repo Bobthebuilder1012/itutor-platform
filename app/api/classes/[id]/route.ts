@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
+import { refundSecuredSpotsForClass } from '@/lib/services/secureSpotService';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,6 +60,11 @@ export async function DELETE(req: NextRequest, { params }: Params) {
         .eq('id', classId);
 
       if (archiveErr) throw archiveErr;
+
+      // Students who reserved a place have paid for a class that is now not
+      // happening. Refund before returning success, so the tutor is never told
+      // the class is gone while the money is still held.
+      await refundSecuredSpotsForClass(admin as any, classId, 'class_deleted');
 
       await auditAdminOverride(actor, 'class.archive', { force });
 

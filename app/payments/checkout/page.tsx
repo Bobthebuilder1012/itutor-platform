@@ -45,6 +45,12 @@ type Summary = {
   /** Monthly group subscription rather than a single session. */
   isSubscription?: boolean;
   endDate?: string | null;
+  /** Paying up front to hold a seat in a class that hasn't started yet. */
+  isSecureSpot?: boolean;
+  /** When the held first month is delivered — end of what this payment buys. */
+  releaseDate?: string | null;
+  /** Class finishes inside the first month: one-time purchase, nothing after. */
+  shortClass?: boolean;
 };
 
 export default function PaymentCheckout() {
@@ -87,6 +93,9 @@ export default function PaymentCheckout() {
           subject: d.subject,
           isSubscription: d.kind === 'group_subscription',
           endDate: d.endDate ?? null,
+          isSecureSpot: d.kind === 'secure_spot',
+          releaseDate: d.releaseDate ?? null,
+          shortClass: d.shortClass ?? false,
           // Land on the confirmation page, which polls the status route and
           // then shows the receipt + download. Keyed on the intent id because
           // the payments row doesn't exist until the webhook creates it.
@@ -94,8 +103,11 @@ export default function PaymentCheckout() {
           // Subscriptions get their own confirmation page: their money lands
           // in subscription_payments, not `payments`, so /payments/success
           // has nothing to render for them.
+          // A secured spot is also settled in subscription_payments, so it
+          // shares the subscription confirmation page rather than
+          // /payments/success, which reads the `payments` table.
           successHref:
-            d.kind === 'group_subscription'
+            d.kind === 'group_subscription' || d.kind === 'secure_spot'
               ? `/payments/subscription-success?pi=${d.paymentIntentId}`
               : `/payments/success?pi=${d.paymentIntentId}`,
         });
@@ -211,7 +223,9 @@ export default function PaymentCheckout() {
       ? new Date(start.getTime() + summary.durationMinutes * 60000)
       : null;
   const fmtTime = (d: Date) =>
-    d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    // 12-hour, like the rest of the product. "18:00" on a payment screen reads
+    // as a different service to the "6:00 PM" the class page advertises.
+    d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
   const cancelBy = start ? new Date(start.getTime() - 24 * 3600 * 1000) : null;
 
   // A subscription to a class that finishes inside the first billing month.
@@ -272,9 +286,84 @@ export default function PaymentCheckout() {
 
             <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
               <h2 className="text-lg font-bold text-gray-900 mb-4">
-                {summary.isSubscription ? 'Subscription details' : 'Lesson details'}
+                {summary.isSecureSpot
+                  ? 'What you’re reserving'
+                  : summary.isSubscription
+                    ? 'Subscription details'
+                    : 'Lesson details'}
               </h2>
-              {summary.isSubscription ? (
+              {summary.isSecureSpot ? (
+                <div className="space-y-3 text-sm">
+                  {/* The start date is the whole point of this checkout — the
+                      student is paying for a class that hasn't happened yet,
+                      so it leads rather than hiding in a schedule string. */}
+                  {start && (
+                    <div className="flex items-center gap-4 rounded-xl bg-brand-soft/60 px-4 py-3">
+                      <div className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-white text-center">
+                        <div>
+                          <div className="text-[10px] font-bold uppercase tracking-wide text-itutor-green">
+                            {start.toLocaleDateString('en-US', { month: 'short' })}
+                          </div>
+                          <div className="text-lg font-bold leading-none text-gray-900">
+                            {start.getDate()}
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <div className="font-semibold text-gray-900">
+                          Classes start {start.toLocaleDateString('en-US', {
+                            weekday: 'long', month: 'long', day: 'numeric',
+                          })}
+                        </div>
+                        <div className="text-sm text-gray-500">First lesson at {fmtTime(start)}</div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">You’re paying for</span>
+                    <span className="font-semibold text-gray-900">
+                      {summary.shortClass ? 'The whole class' : 'Your first month'}
+                    </span>
+                  </div>
+                  {summary.releaseDate && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">
+                        {summary.shortClass ? 'Class ends' : 'First month runs until'}
+                      </span>
+                      <span className="font-semibold text-gray-900">
+                        {new Date(`${summary.releaseDate}T00:00:00`).toLocaleDateString('en-US', {
+                          month: 'long', day: 'numeric', year: 'numeric',
+                        })}
+                      </span>
+                    </div>
+                  )}
+                  {summary.durationMinutes ? (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Session length</span>
+                      <span className="font-semibold text-gray-900">
+                        {summary.durationMinutes} minutes
+                      </span>
+                    </div>
+                  ) : null}
+
+                  {/* Stated before the card form, like the recurring-payment
+                      disclaimer: this is what the student must understand
+                      before paying weeks ahead of the first lesson. */}
+                  <div className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                    <p className="text-xs leading-relaxed text-emerald-900">
+                      <strong>This is a one-time payment, not a subscription.</strong>{' '}
+                      Your place is held for you and your payment is held by iTutor
+                      until your first month of classes has been taught. If the tutor
+                      cancels the class before it starts, you&apos;re refunded
+                      automatically.
+                      {summary.shortClass
+                        ? ' This class finishes inside that period, so there is nothing further to pay.'
+                        : ' After your first month you’ll be asked whether you’d like to continue — nothing is charged automatically.'}
+                    </p>
+                  </div>
+                </div>
+              ) : summary.isSubscription ? (
                 <div className="space-y-3 text-sm">
                   <div className="flex justify-between">
                     <span className="text-gray-600">Plan</span>
@@ -383,9 +472,9 @@ export default function PaymentCheckout() {
                   {cancelBy.toLocaleString('en-US', {
                     month: 'short',
                     day: 'numeric',
-                    hour: '2-digit',
+                    hour: 'numeric',
                     minute: '2-digit',
-                    hour12: false,
+                    hour12: true,
                   })}
                 </div>
               )}
@@ -398,12 +487,20 @@ export default function PaymentCheckout() {
               <div className="space-y-3 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-600">
-                    {summary.isSubscription ? `${summary.subject} — monthly` : `${summary.durationMinutes}-min lesson`}
+                    {summary.isSecureSpot
+                      ? `${summary.subject} — ${summary.shortClass ? 'full class' : 'first month'}`
+                      : summary.isSubscription
+                        ? `${summary.subject} — monthly`
+                        : `${summary.durationMinutes}-min lesson`}
                   </span>
                   <span className="text-gray-900">
                     ${summary.amount.toFixed(2)} {summary.currency}
                   </span>
                 </div>
+                {/* One line, every payment type. The card/conversion/fixed
+                    split is Stripe's internal arithmetic, not something a
+                    student is buying, and itemising it made a small preorder
+                    look like it was mostly fees. */}
                 <div className="flex justify-between">
                   <span className="text-gray-600">Processing fee</span>
                   <span className="text-gray-900">
@@ -440,7 +537,11 @@ export default function PaymentCheckout() {
                 total={summary.total}
                 currency={summary.currency}
                 hideBreakdown
-                submitLabel={`Book lesson and pay · $${summary.total.toFixed(2)} ${summary.currency}`}
+                submitLabel={
+                  summary.isSecureSpot
+                    ? `Secure your spot · $${summary.total.toFixed(2)} ${summary.currency}`
+                    : `Book lesson and pay · $${summary.total.toFixed(2)} ${summary.currency}`
+                }
                 returnUrl={`${typeof window !== 'undefined' ? window.location.origin : ''}${summary.successHref}`}
                 onConfirmed={() => router.push(summary.successHref)}
                 onCancel={() => router.back()}

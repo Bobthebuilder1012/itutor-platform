@@ -7,6 +7,9 @@ export const classSettingsSchema = z.object({
   visibility: z.enum(['public', 'private']).optional(),
   require_join_requests: z.boolean().optional(),
   auto_suspend_missed_payment: z.boolean().optional(),
+  // Opens paid preorders. The route re-checks that the class has a schedule
+  // starting in the future before honouring `true`.
+  secure_spot_enabled: z.boolean().optional(),
   grace_period_days: z.number().int().min(0).max(30).optional(),
   whatsapp_url: z.string().regex(WHATSAPP_RE, 'Must be a valid WhatsApp group link (https://chat.whatsapp.com/…)').or(z.literal('')).or(z.null()).optional(),
   google_classroom_link: z.string().regex(CLASSROOM_RE, 'Must be a valid Google Classroom link (https://classroom.google.com/c/… or /h/…)').or(z.literal('')).or(z.null()).optional(),
