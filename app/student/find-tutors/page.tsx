@@ -424,13 +424,19 @@ export default function FindTutorsPage() {
       // Query groups directly — avoids API column-schema issues
       let groups: any[] | null = null;
 
+      // The limit has to clear the whole catalogue, because it is applied by
+      // created_at BEFORE the marketplace ranking is (below). At 50 a pinned
+      // class older than the 50 newest would be cut before ordering ever saw
+      // it — pinned to position 1 in admin, absent here.
+      const CATALOGUE_LIMIT = 200;
+
       const { data: g1, error: e1 } = await supabase
         .from('groups')
         .select('*')
         .is('archived_at', null)
         .or('visibility.neq.private,visibility.is.null')
         .order('created_at', { ascending: false })
-        .limit(50);
+        .limit(CATALOGUE_LIMIT);
 
       if (!e1) {
         groups = g1;
@@ -441,7 +447,7 @@ export default function FindTutorsPage() {
           .select('*')
           .is('archived_at', null)
           .order('created_at', { ascending: false })
-          .limit(50);
+          .limit(CATALOGUE_LIMIT);
         if (e2) throw e2;
         groups = g2;
       }
@@ -451,8 +457,9 @@ export default function FindTutorsPage() {
       const groupIds = groups.map((g: any) => g.id);
       const tutorIds = [...new Set<string>(groups.map((g: any) => g.tutor_id).filter(Boolean))];
 
-      // Fetch tutor names, enrollment status, and server-side member counts in parallel
-      const [{ data: tutorProfiles }, { data: memberRows }, { data: subEnrollments }, countsRes] = await Promise.all([
+      // Fetch tutor names, enrollment status, server-side member counts and the
+      // marketplace ranking in parallel
+      const [{ data: tutorProfiles }, { data: memberRows }, { data: subEnrollments }, countsRes, { data: rankRows }] = await Promise.all([
         tutorIds.length
           ? supabase.from('profiles').select('id, full_name, display_name, is_dev_account').in('id', tutorIds)
           : Promise.resolve({ data: [] as any[] }),
@@ -467,6 +474,13 @@ export default function FindTutorsPage() {
           // student had no access to, which opening the class then denied.
           .in('status', ['SECURED', 'ACTIVE', 'GRACE', 'SUSPENDED']),
         fetch(`/api/groups/member-counts?ids=${groupIds.join(',')}`).then((r) => r.json()).catch(() => ({ counts: {} })),
+        // Granted to authenticated in mig 215. If the view is missing (an older
+        // database), this errors, data is null, and the order below falls back
+        // to newest-first exactly as before.
+        supabase
+          .from('group_marketplace_rankings')
+          .select('group_id, pin_rank, tutor_pin_rank, ranking_score')
+          .in('group_id', groupIds),
       ]);
 
       // Remove groups owned by dev-account tutors — but dev-account viewers
@@ -499,6 +513,47 @@ export default function FindTutorsPage() {
       (subEnrollments ?? []).forEach((e: any) => enrolledSet.add(e.group_id));
 
       setEnrolledLessonIds(enrolledSet);
+
+      // Order the cards the way the admin's Class Promotion page says they are
+      // ordered (mig 215): classes pinned by hand, then classes whose TUTOR is
+      // pinned, then the class ranking score, then newest.
+      //
+      // This page reads `groups` straight from the table rather than going
+      // through /api/groups, so it never inherited that ordering — an admin
+      // could pin a class to position 1 and this page would still show it
+      // wherever created_at put it.
+      const rankMap = new Map<string, { pin: number | null; tutorPin: number | null; score: number }>(
+        (rankRows ?? []).map((r: any) => [
+          r.group_id as string,
+          {
+            pin: r.pin_rank ?? null,
+            tutorPin: r.tutor_pin_rank ?? null,
+            score: Number(r.ranking_score ?? 0),
+          },
+        ])
+      );
+
+      if (rankMap.size > 0) {
+        // Unpinned always sorts after pinned; two pins compare by position.
+        // null means "these two are tied on this key, try the next one".
+        const byPin = (a: number | null, b: number | null): number | null => {
+          if (a == null && b == null) return null;
+          if (a == null) return 1;
+          if (b == null) return -1;
+          return a === b ? null : a - b;
+        };
+        const fallback = { pin: null, tutorPin: null, score: 0 };
+        groups = [...groups].sort((a: any, b: any) => {
+          const ra = rankMap.get(a.id) ?? fallback;
+          const rb = rankMap.get(b.id) ?? fallback;
+          return (
+            byPin(ra.pin, rb.pin) ??
+            byPin(ra.tutorPin, rb.tutorPin) ??
+            (rb.score - ra.score ||
+              new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          );
+        });
+      }
 
       const mapped: GroupLesson[] = groups.map((g: any) => {
         const tutor = tutorMap.get(g.tutor_id);
