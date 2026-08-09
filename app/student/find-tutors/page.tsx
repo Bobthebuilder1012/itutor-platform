@@ -56,6 +56,7 @@ type GroupLesson = {
   title: string;
   tutor: string;
   tutorId: string;
+  tutorAvatar: string | null;
   tutorHue: number;
   subject: string;
   level: string;
@@ -462,7 +463,7 @@ export default function FindTutorsPage() {
       // marketplace ranking in parallel
       const [{ data: tutorProfiles }, { data: memberRows }, { data: subEnrollments }, countsRes, { data: rankRows }] = await Promise.all([
         tutorIds.length
-          ? supabase.from('profiles').select('id, full_name, display_name, is_dev_account').in('id', tutorIds)
+          ? supabase.from('profiles').select('id, full_name, display_name, avatar_url, is_dev_account').in('id', tutorIds)
           : Promise.resolve({ data: [] as any[] }),
         supabase.from('group_members').select('group_id, user_id, status').in('group_id', groupIds),
         supabase
@@ -564,6 +565,7 @@ export default function FindTutorsPage() {
           title: g.name,
           tutor: tutor?.display_name || tutor?.full_name || 'Unknown Tutor',
           tutorId: g.tutor_id,
+          tutorAvatar: tutor?.avatar_url ?? null,
           tutorHue: 145,
           subject: g.subject || 'General',
           level: formatLevel(g.form_level || g.difficulty || ''),
@@ -1056,7 +1058,15 @@ export default function FindTutorsPage() {
                           )}
                         </div>
                         <div className="mt-1.5 inline-flex items-center gap-2">
-                          <TutorInitialAvatar name={l.tutor} size={22} />
+                          {/* The photo when there is one, branded initials when
+                              there is not. UserAvatar's own fallback is a grey
+                              silhouette, which would be a step down from the
+                              initials for every tutor without a picture. */}
+                          {l.tutorAvatar ? (
+                            <UserAvatar avatarUrl={l.tutorAvatar} name={l.tutor} size={22} />
+                          ) : (
+                            <TutorInitialAvatar name={l.tutor} size={22} />
+                          )}
                           <span className="text-sm text-muted-foreground">by {l.tutor}</span>
                         </div>
                         <div className="text-xs text-muted-foreground mt-1">{l.subject}{l.level ? ` · ${l.level}` : ''}</div>
