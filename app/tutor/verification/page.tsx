@@ -377,14 +377,9 @@ export default function TutorVerificationPage() {
                 <p className="text-gray-900">{new Date(verificationStatus.latestRequest.created_at).toLocaleString()}</p>
               </div>
 
-              {verificationStatus.latestRequest.system_recommendation && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">System Assessment</label>
-                  <p className="text-gray-900">
-                    <strong>{verificationStatus.latestRequest.system_recommendation}:</strong> {verificationStatus.latestRequest.system_reason}
-                  </p>
-                </div>
-              )}
+              {/* The system assessment is a reviewer's aid, not tutor-facing —
+                  same removal as the My Business page. Reviewer Feedback below
+                  is what a tutor should be told, once a human has written it. */}
 
               {verificationStatus.latestRequest.reviewer_reason && (
                 <div>
