@@ -13,10 +13,17 @@ export interface OCRResult {
     subjects?: Array<{ name: string; grade: string }>;
   };
   confidenceScore: number;
+  /**
+   * True when the "extraction" is canned sample data rather than anything read
+   * off the tutor's document. Nothing may be concluded from a stub result —
+   * see generateRecommendation.
+   */
+  stub: boolean;
 }
 
 export interface SystemRecommendation {
-  recommendation: 'APPROVE' | 'REJECT';
+  /** null = no automated verdict; a human decides with no steer either way. */
+  recommendation: 'APPROVE' | 'REJECT' | null;
   reason?: string;
 }
 
@@ -76,6 +83,24 @@ export class OCRProvider {
     tutorProfile: TutorProfile
   ): SystemRecommendation {
     const { extractedText, extractedJson, confidenceScore } = ocrResult;
+
+    // Nothing was read off the document, so there is nothing to conclude.
+    //
+    // This guard is the whole bug. The stub returns candidate_name "Sample
+    // Tutor" for any file that is not one of its named test fixtures, so Rule 2
+    // below compared every real tutor's name against "Sample Tutor", failed,
+    // and recorded REJECT. 55 of the 56 verification requests ever submitted on
+    // production carry that reason, and not one has ever been recommended
+    // APPROVE — the automated check has never passed anybody since it shipped.
+    //
+    // A wrong verdict is worse than no verdict: it told the tutor they had been
+    // rejected, and it steered the reviewer the same way.
+    if (ocrResult.stub) {
+      return {
+        recommendation: null,
+        reason: 'Automated document checks are not enabled — this needs a manual review.',
+      };
+    }
 
     // Rule 1: Low confidence or unreadable text
     if (confidenceScore < 60 || !extractedText || extractedText.length < 50) {
@@ -195,13 +220,15 @@ export class OCRProvider {
             { name: 'Physics', grade: 'III' }
           ]
         },
-        confidenceScore: 92
+        confidenceScore: 92,
+        stub: true
       };
     } else if (filePath.includes('unclear')) {
       return {
         extractedText: 'blurry text... unable to read clearly...',
         extractedJson: {},
-        confidenceScore: 35
+        confidenceScore: 35,
+        stub: true
       };
     } else if (filePath.includes('wrong_name')) {
       return {
@@ -215,7 +242,8 @@ export class OCRProvider {
             { name: 'English', grade: 'II' }
           ]
         },
-        confidenceScore: 88
+        confidenceScore: 88,
+        stub: true
       };
     } else {
       // Default good scenario
@@ -231,7 +259,8 @@ export class OCRProvider {
             { name: 'Chemistry Unit 1', grade: 'A' }
           ]
         },
-        confidenceScore: 87
+        confidenceScore: 87,
+        stub: true
       };
     }
   }
