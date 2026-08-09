@@ -17,6 +17,7 @@ import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { formatLevel } from '@/lib/utils/formatLevel';
 import { parseScheduleData, scheduleToDisplay, sessionPatternsToDisplay, sessionPatternWeekdays, occurrenceTitle } from '@/lib/utils/scheduleFormat';
 import { preorderEligibility, computeReleaseDate, isShortClass } from '@/lib/payments/secureSpot';
+import { classCapacityDisplay } from '@/lib/utils/classCapacity';
 import TutorCredentials from '@/components/TutorCredentials';
 
 type Step = 'detail' | 'join' | 'joined' | 'awaiting-approval';
@@ -384,6 +385,10 @@ function Detail({ group, onJoin }: { group: GroupData; onJoin: () => void }) {
   const spotsLeft = Math.max(0, group.max_students - group.member_count);
   const isFull = spotsLeft <= 0;
   const isLow = spotsLeft > 0 && spotsLeft <= 3;
+  // What a student is told about capacity. isFull still drives the CTA and
+  // the waitlist — those are behaviour, not display, and must keep reading
+  // the real numbers.
+  const capacity = classCapacityDisplay(group.member_count, group.max_students);
   const price = group.price_monthly ?? group.price_per_session ?? 0;
   const promo = group.active_promotion;
   const discountedPrice = promo ? Math.round(price * (1 - promo.discount / 100)) : null;
@@ -432,7 +437,10 @@ function Detail({ group, onJoin }: { group: GroupData; onJoin: () => void }) {
 
   const stats: { label: string; value: string }[] = [];
   if (group.form_level) stats.push({ label: 'Level', value: formatLevel(group.form_level) });
-  stats.push({ label: 'Seats', value: `${group.member_count}/${group.max_students}` });
+  // The "Seats 0/25" tile is dropped entirely rather than reworded — a stat
+  // box is the wrong place for scarcity, and the header badge already carries
+  // it once there is something to say.
+  if (capacity.kind !== 'hidden') stats.push({ label: 'Availability', value: capacity.label });
   stats.push({ label: 'Billing', value: price > 0 ? (group.price_monthly ? 'Monthly' : 'Per session') : 'Free' });
   if (group.session_length_minutes) stats.push({ label: 'Session', value: `${group.session_length_minutes} min` });
   else stats.push({ label: 'Joining', value: group.require_join_requests ? 'On approval' : 'Instant' });
@@ -566,15 +574,18 @@ function Detail({ group, onJoin }: { group: GroupData; onJoin: () => void }) {
                 <span className="inline-flex items-center gap-1 rounded-full bg-amber-400 px-2 py-1 text-amber-900 backdrop-blur">
                   🏷 {promoLabel(promo)}
                 </span>
-              ) : isLow ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-coral-soft/25 px-2 py-1 text-white backdrop-blur">
-                  <Flame className="size-3" /> {spotsLeft} seats left
+              ) : capacity.kind === 'spots_left' ? (
+                // Scarcity is stated only once it is real. The old badge
+                // announced "25 seats left" on an empty class, which told a
+                // visitor the room was empty in the loudest place on the page.
+                <span className={cn(
+                  'inline-flex items-center gap-1 rounded-full px-2 py-1 backdrop-blur',
+                  isLow ? 'bg-coral-soft/25 text-white' : 'bg-white/15'
+                )}>
+                  {isLow ? <Flame className="size-3" /> : <Sparkles className="size-3" />}
+                  {capacity.label}
                 </span>
-              ) : !isFull ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-2 py-1 backdrop-blur">
-                  <Sparkles className="size-3" /> {spotsLeft} seats left
-                </span>
-              ) : (
+              ) : !isFull ? null : (
                 <span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-2 py-1 backdrop-blur">Class full</span>
               )}
             </div>
@@ -670,12 +681,18 @@ function Detail({ group, onJoin }: { group: GroupData; onJoin: () => void }) {
               {!group.enrolled && !isPending && !isFull && <ChevronRight className="size-4" />}
             </button>
             <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground">
-              <span>{group.member_count}/{group.max_students} enrolled</span>
+              <span className={capacity.kind === 'spots_left' ? 'font-semibold text-coral' : undefined}>
+                {capacity.kind === 'hidden' ? '' : capacity.label}
+              </span>
               {nextSession && <span>Starts {formatShort(nextSession.start)}</span>}
             </div>
-            <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted">
-              <div className={cn('h-full rounded-full', isLow ? 'bg-coral' : 'bg-brand')} style={{ width: `${seatsPct}%` }} />
-            </div>
+            {/* The fill bar goes with the count: a bar sitting at 0% is the
+                same discouraging signal in a different form. */}
+            {capacity.kind !== 'hidden' && (
+              <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted">
+                <div className={cn('h-full rounded-full', isLow ? 'bg-coral' : 'bg-brand')} style={{ width: `${seatsPct}%` }} />
+              </div>
+            )}
           </div>
         </div>
       </section>

@@ -1,6 +1,7 @@
 'use client';
 
 import { formatDistanceToNowStrict } from 'date-fns';
+import { capacityLabel } from '@/lib/utils/classCapacity';
 
 type GroupCardData = {
   id: string;
@@ -24,7 +25,9 @@ export default function TutorGroupCard({
 }) {
   const next = group.nextSession?.scheduledAt ? new Date(group.nextSession.scheduledAt) : null;
   const countdown = next ? formatDistanceToNowStrict(next, { addSuffix: true }) : null;
-  const capacity = group.maxStudents ? `${group.enrollmentCount ?? 0}/${group.maxStudents}` : `${group.enrollmentCount ?? 0}`;
+  // "Capacity 0/20" told a student the room was empty. Withheld until it
+  // argues for joining — see lib/utils/classCapacity.
+  const capacity = capacityLabel(group.enrollmentCount, group.maxStudents);
   const tutorName = group.tutor?.full_name ?? 'Tutor';
   const initials = tutorName
     .split(' ')
@@ -73,8 +76,10 @@ export default function TutorGroupCard({
           <p className="text-sm text-gray-700 truncate">{tutorName}</p>
         </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-          <span className="rounded-lg bg-gray-100 px-2.5 py-2 text-gray-700">Capacity {capacity}</span>
+        <div className={`mt-3 grid ${capacity ? 'grid-cols-2' : 'grid-cols-1'} gap-2 text-xs`}>
+          {capacity && (
+            <span className="rounded-lg bg-coral-soft px-2.5 py-2 font-semibold text-coral">{capacity}</span>
+          )}
           <span className="rounded-lg bg-amber-50 px-2.5 py-2 text-amber-700">
             {group.totalReviews ? `${group.averageRating?.toFixed(1)} (${group.totalReviews})` : 'No reviews'}
           </span>
