@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { supabase } from '@/lib/supabase/client';
 import { parseScheduleData, scheduleToDisplay } from '@/lib/utils/scheduleFormat';
+import { classCapacityDisplay } from '@/lib/utils/classCapacity';
 import ParentShell from '@/components/parent/ParentShell';
 
 type TabType = 'classes' | 'tutors';
@@ -332,6 +333,9 @@ function ClassCard({ g, onJoin, joining }: { g: GroupListing; onJoin: () => void
   const spotsLeft = g.max_students - g.member_count;
   const isFull = spotsLeft <= 0;
   const isLow = spotsLeft > 0 && spotsLeft <= 3;
+  // Parents see the same scarcity rule as students. This card never showed a
+  // raw roster count, so it only needed the threshold widened from 3 to 9.
+  const capacity = classCapacityDisplay(g.member_count, g.max_students);
   const price = g.price_monthly ?? 0;
   const tutorName = g.tutor?.display_name || g.tutor?.full_name || 'Tutor';
   const rating = g.tutor?.rating_average ?? g.average_rating ?? null;
@@ -366,7 +370,7 @@ function ClassCard({ g, onJoin, joining }: { g: GroupListing; onJoin: () => void
           {g.require_join_requests && (
             <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full border border-border bg-muted text-muted-foreground">Approval required</span>
           )}
-          {isLow && <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-coral-soft text-coral"><Flame className="size-2.5"/> {spotsLeft} left</span>}
+          {capacity.kind === 'spots_left' && <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-coral-soft text-coral"><Flame className="size-2.5"/> {capacity.label}</span>}
         </div>
 
         {schedule && <div className="text-xs text-muted-foreground mt-2">{schedule}</div>}

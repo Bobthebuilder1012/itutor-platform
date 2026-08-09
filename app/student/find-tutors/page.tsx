@@ -14,6 +14,7 @@ import { Search, Star, Heart, Calendar, Clock, SlidersHorizontal, Users, Graduat
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { parseScheduleData, scheduleToDisplay } from '@/lib/utils/scheduleFormat';
 import { formatLevel } from '@/lib/utils/formatLevel';
+import { classCapacityDisplay, capacityLabel } from '@/lib/utils/classCapacity';
 
 type Tutor = {
   id: string;
@@ -1023,7 +1024,16 @@ export default function FindTutorsPage() {
                 const remaining = l.seats.total !== null ? l.seats.total - l.seats.taken : null;
                 const lowStock = remaining !== null && remaining > 0 && remaining <= 3;
                 const full = remaining !== null && remaining <= 0;
-                const pctFull = l.seats.total ? Math.round((l.seats.taken / l.seats.total) * 100) : null;
+                // Capacity is withheld until it argues for joining — see
+                // lib/utils/classCapacity. The fill bar is withheld with it:
+                // an empty bar says "nobody is here" just as plainly as the
+                // count did, so showing one without the other keeps the
+                // problem and only removes the words.
+                const capacity = classCapacityDisplay(l.seats.taken, l.seats.total);
+                const pctFull =
+                  capacity.kind === 'hidden' || !l.seats.total
+                    ? null
+                    : Math.round((l.seats.taken / l.seats.total) * 100);
                 return (
                   <div key={l.id} className={cn('group rounded-3xl bg-background border overflow-hidden hover:shadow-card transition-all hover:-translate-y-0.5 flex flex-col', enrolledLessonIds.has(l.id) ? 'border-brand/40' : 'border-border')}>
                     <div className={`relative h-24 ${l.coverImage ? '' : `bg-gradient-to-br ${l.color}`}`}
@@ -1105,12 +1115,15 @@ export default function FindTutorsPage() {
                             <Clock className="size-3.5" /> {formatDuration(l.sessionLength)} per session
                           </div>
                         )}
-                        <div className="flex items-center gap-1.5 text-muted-foreground">
-                          <Users className="size-3.5" />
-                          {l.seats.total !== null
-                            ? `${l.seats.taken}/${l.seats.total} enrolled`
-                            : `${l.seats.taken} enrolled`}
-                        </div>
+                        {capacity.kind !== 'hidden' && (
+                          <div className={cn(
+                            'flex items-center gap-1.5',
+                            capacity.kind === 'full' ? 'text-muted-foreground' : 'text-coral font-semibold'
+                          )}>
+                            <Users className="size-3.5" />
+                            {capacity.label}
+                          </div>
+                        )}
                         {pctFull !== null && (
                           <div className="h-1 rounded-full bg-muted overflow-hidden">
                             <div className={cn('h-full rounded-full', lowStock ? 'bg-coral' : 'bg-brand')} style={{ width: `${pctFull}%` }} />
@@ -1299,7 +1312,14 @@ export default function FindTutorsPage() {
                   { label: 'Day', value: joinLesson.day, show: !!joinLesson.day },
                   { label: 'Time', value: joinLesson.time, show: !!joinLesson.time },
                   { label: 'Session length', value: joinLesson.sessionLength ? formatDuration(joinLesson.sessionLength) : null, show: !!joinLesson.sessionLength },
-                  { label: 'Enrolled', value: joinLesson.seats.total !== null ? `${joinLesson.seats.taken} / ${joinLesson.seats.total}` : `${joinLesson.seats.taken} students`, show: true },
+                  // Same rule as the card: the roster count is withheld until
+                  // it argues for joining. The row disappears entirely rather
+                  // than reading "Enrolled —".
+                  {
+                    label: 'Availability',
+                    value: capacityLabel(joinLesson.seats.taken, joinLesson.seats.total),
+                    show: capacityLabel(joinLesson.seats.taken, joinLesson.seats.total) !== null,
+                  },
                   { label: 'Price', value: joinLesson.monthlyPrice > 0
                     ? joinLesson.activePromotion
                       ? `${fmtTTD(Math.round(joinLesson.monthlyPrice * (1 - joinLesson.activePromotion.discount / 100)))}/month (${joinLesson.activePromotion.discount}% off)`

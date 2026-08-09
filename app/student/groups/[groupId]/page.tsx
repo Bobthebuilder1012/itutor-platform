@@ -12,6 +12,7 @@ import {
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
+import { classCapacityDisplay } from '@/lib/utils/classCapacity';
 import { occurrenceTitle } from '@/lib/utils/scheduleFormat';
 
 /* ─── Types ───────────────────────────────────────────────────────── */
@@ -372,6 +373,9 @@ export default function StudentGroupPage({ params }: { params: { groupId: string
   const isPending = memberStatus === 'pending_approval' || memberStatus === 'pending';
   const isFull = group.max_students !== null && (group.enrollment_count ?? 0) >= group.max_students;
   const remaining = group.max_students !== null ? group.max_students - (group.enrollment_count ?? 0) : null;
+  // Scarcity is stated only once it is real — see lib/utils/classCapacity.
+  // isFull above still drives the CTA and waitlist from the true numbers.
+  const capacity = classCapacityDisplay(group.enrollment_count, group.max_students);
   const price = Number(group.pricing ?? 0);
   const billingLabel = group.pricing_model === 'per_session' ? '/session' : group.pricing_model === 'per_course' ? '/term' : '/mo';
   const whatsIncluded = [
@@ -511,13 +515,13 @@ export default function StudentGroupPage({ params }: { params: { groupId: string
             {nextSession?.duration_minutes && (
               <ScheduleRow icon={<Clock className="size-4 text-brand-deep" />} label="Duration" value={formatDuration(nextSession.duration_minutes)} />
             )}
-            <ScheduleRow
-              icon={<Users className="size-4 text-brand-deep" />}
-              label="Seats"
-              value={group.max_students !== null
-                ? `${group.enrollment_count ?? 0}/${group.max_students} enrolled${remaining !== null && remaining > 0 && remaining <= 4 ? ` · only ${remaining} left` : ''}`
-                : `${group.enrollment_count ?? 0} enrolled`}
-            />
+            {capacity.kind !== 'hidden' && (
+              <ScheduleRow
+                icon={<Users className="size-4 text-brand-deep" />}
+                label="Availability"
+                value={capacity.label}
+              />
+            )}
             {group.primary_channel && (
               <ScheduleRow icon={<MessageCircle className="size-4 text-brand-deep" />} label="Communication"
                 value={group.primary_channel === 'whatsapp' ? 'WhatsApp group' : group.primary_channel === 'classroom' ? 'Google Classroom' : 'iTutor platform'} />
@@ -654,7 +658,7 @@ export default function StudentGroupPage({ params }: { params: { groupId: string
               <div className="rounded-2xl border border-border p-4 space-y-2 text-sm">
                 {[
                   { label: 'Schedule', value: schedule },
-                  { label: 'Enrolled', value: group.max_students !== null ? `${group.enrollment_count ?? 0}/${group.max_students}` : `${group.enrollment_count ?? 0} students` },
+                  { label: 'Availability', value: capacity.kind === 'hidden' ? null : capacity.label },
                   { label: 'Price', value: price > 0 ? `TT$${price}${billingLabel}` : 'Free' },
                 ].filter(r => r.value).map(({ label, value }) => (
                   <div key={label} className="flex justify-between">
