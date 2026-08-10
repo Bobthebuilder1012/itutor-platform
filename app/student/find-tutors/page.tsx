@@ -23,6 +23,13 @@ import {
 } from '@/lib/utils/scheduleFormat';
 import { formatLevel } from '@/lib/utils/formatLevel';
 import { classCapacityDisplay, capacityLabel } from '@/lib/utils/classCapacity';
+import {
+  ANY_PRICE,
+  PRICE_BANDS,
+  RATING_OPTIONS,
+  priceBandById,
+  priceInBand,
+} from '@/lib/utils/marketplaceFilters';
 
 type Tutor = {
   id: string;
@@ -52,6 +59,8 @@ type Tutor = {
     stars: number;
     student_name: string;
   } | null;
+  /** Weekly booking windows, bucketed by /api/tutors/listed-ids. */
+  availability?: { days: number[]; bands: TimeBand[] };
 };
 
 type Institution = {
@@ -78,7 +87,13 @@ type GroupLesson = {
   monthlyPrice: number;
   seats: { taken: number; total: number | null };
   sessionLength: number | null;
-  rating: number;
+  /**
+   * The rating of the tutor who runs the class — classes carry no rating of
+   * their own yet, so this is what the Rating filter and the card badge use,
+   * labelled as the tutor's so it can't be misread as the class's.
+   */
+  tutorRating: number | null;
+  tutorReviews: number;
   tags: string[];
   color: string;
   description?: string | null;
@@ -258,15 +273,15 @@ export default function FindTutorsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
   const [selectedRating, setSelectedRating] = useState<number | null>(null);
-  const [priceMin, setPriceMin] = useState<string>('');
-  const [priceMax, setPriceMax] = useState<string>('');
+  const [priceBand, setPriceBand] = useState<string>(ANY_PRICE);
   const [selectedSchool, setSelectedSchool] = useState<string>('');
   const [currentPage, setCurrentPage] = useState(1);
   const [sortOrder, setSortOrder] = useState<'relevance' | 'price_low' | 'rating_high'>('relevance');
   const [tab, setTab] = useState<'lessons' | 'tutors'>('lessons');
   const [activeChip, setActiveChip] = useState('All');
-  // Day / time-of-day narrowing for group lessons. Both multi-select; a lesson
-  // matches when one of its recurring sessions satisfies every active filter.
+  // Day / time-of-day narrowing. Both multi-select; a lesson matches when one of
+  // its recurring sessions satisfies every active filter, and a tutor matches
+  // when one of their weekly availability windows does.
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
   const [selectedBands, setSelectedBands] = useState<TimeBand[]>([]);
   const [savedItems, setSavedItems] = useState<Set<string>>(new Set());
@@ -274,8 +289,7 @@ export default function FindTutorsPage() {
   // Draft values, edited inside a popover and copied onto the committed state
   // above by Apply. Held separately so the grid does not re-filter on every
   // keystroke, and so closing without applying discards the edit.
-  const [draftPriceMin, setDraftPriceMin] = useState('');
-  const [draftPriceMax, setDraftPriceMax] = useState('');
+  const [draftPriceBand, setDraftPriceBand] = useState(ANY_PRICE);
   const [draftRating, setDraftRating] = useState<number | null>(null);
   const [draftSchool, setDraftSchool] = useState('');
   const [draftDays, setDraftDays] = useState<number[]>([]);
@@ -372,6 +386,10 @@ export default function FindTutorsPage() {
       const listedRes = await fetch('/api/tutors/listed-ids', { cache: 'no-store' });
       const listedJson = listedRes.ok ? await listedRes.json() : { ids: [] };
       const listedSet = new Set<string>(listedJson.ids ?? []);
+      // Same response carries each tutor's weekly availability windows —
+      // tutor_availability_rules is unreadable from the browser (RLS).
+      const availabilityByTutor: Record<string, { days: number[]; bands: TimeBand[] }> =
+        listedJson.availability ?? {};
 
       const activeTutorProfiles = tutorProfilesWithBanners.filter(t => listedSet.has(t.id));
       const activeTutorIds = activeTutorProfiles.map((t) => t.id);
@@ -511,6 +529,7 @@ export default function FindTutorsPage() {
         return {
           ...tutor,
           institution_name: tutor.institution_id ? institutionsMap.get(tutor.institution_id) : null,
+          availability: availabilityByTutor[tutor.id],
           subjects,
           average_rating: avgRating,
           total_reviews: tutorRatings.length,
@@ -601,11 +620,16 @@ export default function FindTutorsPage() {
       const groupIds = groups.map((g: any) => g.id);
       const tutorIds = [...new Set<string>(groups.map((g: any) => g.tutor_id).filter(Boolean))];
 
-      // Fetch tutor names, enrollment status, server-side member counts and the
-      // marketplace ranking in parallel
-      const [{ data: tutorProfiles }, { data: memberRows }, { data: subEnrollments }, countsRes, { data: rankRows }] = await Promise.all([
+      // Fetch tutor names, tutor ratings, enrollment status, server-side member
+      // counts and the marketplace ranking in parallel
+      const [{ data: tutorProfiles }, { data: tutorRatingRows }, { data: memberRows }, { data: subEnrollments }, countsRes, { data: rankRows }] = await Promise.all([
         tutorIds.length
           ? supabase.from('profiles').select('id, full_name, display_name, avatar_url, is_dev_account').in('id', tutorIds)
+          : Promise.resolve({ data: [] as any[] }),
+        // The Rating filter has to mean something on this tab too. Classes have
+        // no rating of their own yet, so it goes on the tutor who runs them.
+        tutorIds.length
+          ? supabase.from('ratings').select('tutor_id, stars').in('tutor_id', tutorIds)
           : Promise.resolve({ data: [] as any[] }),
         supabase.from('group_members').select('group_id, user_id, status').in('group_id', groupIds),
         supabase
@@ -635,6 +659,16 @@ export default function FindTutorsPage() {
       if (!viewerIsDev && devTutorIdSet.size > 0) groups = groups.filter((g: any) => !devTutorIdSet.has(g.tutor_id));
 
       const tutorMap = new Map((tutorProfiles ?? []).map((p: any) => [p.id, p]));
+
+      // Average stars per class tutor.
+      const ratingTally = new Map<string, { sum: number; n: number }>();
+      (tutorRatingRows ?? []).forEach((r: any) => {
+        const t = ratingTally.get(r.tutor_id) ?? { sum: 0, n: 0 };
+        t.sum += r.stars;
+        t.n += 1;
+        ratingTally.set(r.tutor_id, t);
+      });
+
       // Server-side counts (service role, accurate) take priority over RLS-limited client query
       const serverCounts: Record<string, number> = countsRes?.counts ?? {};
       const memberCountMap = new Map<string, number>(
@@ -730,7 +764,10 @@ export default function FindTutorsPage() {
           monthlyPrice: Number(g.price_monthly ?? g.price_per_session ?? g.price_per_course ?? 0),
           seats: { taken: memberCountMap.get(g.id) ?? 0, total: g.max_students ?? null },
           sessionLength: g.session_length_minutes ?? null,
-          rating: 0,
+          ...(() => {
+            const tally = ratingTally.get(g.tutor_id);
+            return { tutorRating: tally ? tally.sum / tally.n : null, tutorReviews: tally?.n ?? 0 };
+          })(),
           tags: [],
           color,
           description: g.description ?? null,
@@ -945,18 +982,26 @@ export default function FindTutorsPage() {
       );
     }
 
-    // Filter by price range
-    const min = priceMin ? parseFloat(priceMin) : null;
-    const max = priceMax ? parseFloat(priceMax) : null;
-    if (min !== null || max !== null) {
+    // Filter by price band — a tutor matches when any subject they teach is
+    // priced inside it, since that's a rate the student could actually book.
+    const band = priceBandById(priceBand);
+    if (band.min !== null || band.max !== null) {
       filtered = filtered.filter(tutor =>
-        tutor.subjects.some(s => {
-          const p = s.price_per_hour_ttd;
-          if (min !== null && p < min) return false;
-          if (max !== null && p > max) return false;
-          return true;
-        })
+        tutor.subjects.some(s => priceInBand(s.price_per_hour_ttd, band))
       );
+    }
+
+    // Filter by when the tutor takes bookings. A tutor whose windows we don't
+    // have is kept rather than hidden — they're still bookable.
+    if (selectedDays.length > 0 || selectedBands.length > 0) {
+      filtered = filtered.filter((tutor) => {
+        const days = tutor.availability?.days ?? [];
+        const bands = tutor.availability?.bands ?? [];
+        if (!days.length && !bands.length) return true;
+        if (selectedDays.length > 0 && days.length > 0 && !selectedDays.some((d) => days.includes(d))) return false;
+        if (selectedBands.length > 0 && bands.length > 0 && !selectedBands.some((b) => bands.includes(b))) return false;
+        return true;
+      });
     }
 
     const minPrice = (t: Tutor) => {
@@ -979,10 +1024,10 @@ export default function FindTutorsPage() {
     // higher-scored one).
 
     return filtered;
-  }, [tutors, searchQuery, selectedSubjects, selectedRating, priceMin, priceMax, selectedSchool, profile, sortOrder]);
+  }, [tutors, searchQuery, selectedSubjects, selectedRating, priceBand, selectedSchool, selectedDays, selectedBands, profile, sortOrder]);
 
   // Reset to page 1 whenever filters change
-  useEffect(() => { setCurrentPage(1); }, [searchQuery, selectedSubjects, selectedRating, priceMin, priceMax, selectedSchool, sortOrder]);
+  useEffect(() => { setCurrentPage(1); }, [searchQuery, selectedSubjects, selectedRating, priceBand, selectedSchool, selectedDays, selectedBands, sortOrder]);
 
   const totalPages = Math.ceil(filteredTutors.length / TUTORS_PER_PAGE);
   const pagedTutors = filteredTutors.slice(
@@ -998,30 +1043,34 @@ export default function FindTutorsPage() {
     );
   }
 
-  const hasActiveFilters = searchQuery || selectedSubjects.length > 0 || selectedRating !== null || priceMin || priceMax || selectedSchool;
+  const hasActiveFilters =
+    !!searchQuery ||
+    selectedSubjects.length > 0 ||
+    selectedRating !== null ||
+    priceBand !== ANY_PRICE ||
+    !!selectedSchool ||
+    selectedDays.length > 0 ||
+    selectedBands.length > 0;
 
   const clearFilters = () => {
     setSearchQuery('');
     setSelectedSubjects([]);
     setSelectedRating(null);
-    setPriceMin('');
-    setPriceMax('');
+    setPriceBand(ANY_PRICE);
     setSelectedSchool('');
     setSelectedDays([]);
     setSelectedBands([]);
-    setDraftPriceMin(''); setDraftPriceMax('');
+    setDraftPriceBand(ANY_PRICE);
     setDraftRating(null); setDraftSchool('');
     setDraftDays([]); setDraftBands([]);
   };
 
   // What each pill reads when a filter is applied. null keeps the plain label.
-  const priceSummary = (() => {
-    if (priceMin && priceMax) return `TT$${priceMin}–${priceMax}`;
-    if (priceMin) return `From TT$${priceMin}`;
-    if (priceMax) return `Up to TT$${priceMax}`;
-    return null;
-  })();
-  const ratingSummary = selectedRating !== null ? `${selectedRating}+ stars` : null;
+  const priceSummary = priceBand === ANY_PRICE ? null : priceBandById(priceBand).label;
+  const ratingSummary =
+    selectedRating !== null
+      ? (RATING_OPTIONS.find((o) => o.value === selectedRating)?.label ?? `${selectedRating}+ stars`)
+      : null;
   const schoolSummary = selectedSchool
     ? (institutions.find((i) => i.id === selectedSchool)?.name ?? 'School')
     : null;
@@ -1057,9 +1106,17 @@ export default function FindTutorsPage() {
     return s.includes(activeChip.toLowerCase());
   };
 
+  // Price and rating apply here too. They used to be wired to the 1:1 grid
+  // only, so setting either one on this tab changed nothing at all — which is
+  // most of why the pills read as having no effect.
+  const classPriceBand = priceBandById(priceBand);
   const filteredGroupLessons = groupLessons
     .filter((l) => matchChip(l.subject))
     .filter((l) => scheduleMatchesDayTime(l.scheduleEntries, selectedDays, selectedBands))
+    // Free classes sit at 0, so they appear under "Under TT$100" and "Any
+    // price" and are correctly absent from every band starting at 100+.
+    .filter((l) => priceInBand(l.monthlyPrice, classPriceBand))
+    .filter((l) => selectedRating === null || (l.tutorRating !== null && l.tutorRating >= selectedRating))
     .filter((l) => !searchQuery || l.title.toLowerCase().includes(searchQuery.toLowerCase()) || l.tutor.toLowerCase().includes(searchQuery.toLowerCase()) || l.subject.toLowerCase().includes(searchQuery.toLowerCase()));
 
   // Still used by the empty state. The day/time toggles now edit the DRAFT
@@ -1081,7 +1138,9 @@ export default function FindTutorsPage() {
         {/* Tab switcher */}
         <div className="inline-flex p-1 rounded-2xl bg-muted">
           <button
-            onClick={() => setTab('lessons')}
+            // School is a 1:1-only filter, so drop it on the way out instead of
+            // leaving it counted in "Clear all" while narrowing nothing.
+            onClick={() => { setTab('lessons'); setSelectedSchool(''); setDraftSchool(''); }}
             className={cn('inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition', tab === 'lessons' ? 'bg-background text-ink shadow-sm' : 'text-muted-foreground hover:text-ink')}
           >
             <Users className="size-4" /> Group Lessons
@@ -1114,28 +1173,30 @@ export default function FindTutorsPage() {
           <FilterMenu
             label="Price"
             summary={priceSummary}
-            onOpen={() => { setDraftPriceMin(priceMin); setDraftPriceMax(priceMax); }}
-            onApply={() => { setPriceMin(draftPriceMin); setPriceMax(draftPriceMax); }}
-            onClear={() => {
-              setPriceMin(''); setPriceMax('');
-              setDraftPriceMin(''); setDraftPriceMax('');
-            }}
+            onOpen={() => setDraftPriceBand(priceBand)}
+            onApply={() => setPriceBand(draftPriceBand)}
+            onClear={() => { setPriceBand(ANY_PRICE); setDraftPriceBand(ANY_PRICE); }}
           >
             <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Price range (TT${tab === 'lessons' ? '/month' : '/hr'})
+              Price {tab === 'lessons' ? 'per month' : 'per hour'}
             </div>
-            <div className="mt-2 flex items-center gap-2">
-              <input
-                type="number" min={0} placeholder="Min" value={draftPriceMin}
-                onChange={(e) => setDraftPriceMin(e.target.value)}
-                className="w-full min-w-0 rounded-xl border border-border bg-background px-3 py-2 text-sm tabular-nums"
-              />
-              <span className="text-sm text-muted-foreground">—</span>
-              <input
-                type="number" min={0} placeholder="Max" value={draftPriceMax}
-                onChange={(e) => setDraftPriceMax(e.target.value)}
-                className="w-full min-w-0 rounded-xl border border-border bg-background px-3 py-2 text-sm tabular-nums"
-              />
+            <div className="mt-2 space-y-0.5">
+              {PRICE_BANDS.map((b) => (
+                <button
+                  key={b.id}
+                  type="button"
+                  onClick={() => setDraftPriceBand(b.id)}
+                  className={cn(
+                    'flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition',
+                    draftPriceBand === b.id
+                      ? 'bg-brand-soft font-semibold text-forest'
+                      : 'text-ink hover:bg-muted'
+                  )}
+                >
+                  <span>{b.label}</span>
+                  {draftPriceBand === b.id && <Check className="size-4 shrink-0" />}
+                </button>
+              ))}
             </div>
           </FilterMenu>
 
@@ -1147,30 +1208,39 @@ export default function FindTutorsPage() {
             onClear={() => { setSelectedRating(null); setDraftRating(null); }}
           >
             <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Minimum rating
+              Rating
             </div>
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              {[1, 2, 3, 4, 5].map((star) => (
+            <div className="mt-2 space-y-0.5">
+              {RATING_OPTIONS.map((opt) => (
                 <button
-                  key={star}
+                  key={opt.label}
                   type="button"
-                  onClick={() => setDraftRating(draftRating === star ? null : star)}
+                  onClick={() => setDraftRating(opt.value)}
                   className={cn(
-                    'inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm font-medium transition',
-                    draftRating === star
-                      ? 'border-coral bg-coral/10 text-coral'
-                      : 'border-border text-muted-foreground hover:border-coral/40'
+                    'flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition',
+                    draftRating === opt.value
+                      ? 'bg-brand-soft font-semibold text-forest'
+                      : 'text-ink hover:bg-muted'
                   )}
                 >
-                  <Star className={cn('size-3.5', draftRating !== null && star <= draftRating ? 'fill-coral text-coral' : 'text-current')} />
-                  {star}+
+                  <span className="inline-flex items-center gap-1.5">
+                    {opt.value !== null && <Star className="size-3.5 fill-amber-500 text-amber-500" />}
+                    {opt.label}
+                  </span>
+                  {draftRating === opt.value && <Check className="size-4 shrink-0" />}
                 </button>
               ))}
             </div>
+            {tab === 'lessons' && (
+              <p className="mt-3 text-[11px] text-muted-foreground">
+                Classes are matched on their tutor&apos;s rating.
+              </p>
+            )}
           </FilterMenu>
 
-          {tab === 'lessons' && (
-            <>
+          {/* Days / Time on both tabs: for classes it reads the recurring
+              schedule, for tutors their weekly availability windows. */}
+          <>
               <FilterMenu
                 label="Days"
                 summary={daysSummary}
@@ -1202,7 +1272,9 @@ export default function FindTutorsPage() {
                   ))}
                 </div>
                 <p className="mt-3 text-[11px] text-muted-foreground">
-                  One-off classes are hidden while a day filter is on.
+                  {tab === 'lessons'
+                    ? 'One-off classes are hidden while a day filter is on.'
+                    : 'Days the tutor takes 1:1 bookings.'}
                 </p>
               </FilterMenu>
 
@@ -1238,8 +1310,7 @@ export default function FindTutorsPage() {
                   Times are in AST (Trinidad &amp; Tobago).
                 </p>
               </FilterMenu>
-            </>
-          )}
+          </>
 
           {tab === 'tutors' && institutions.length > 0 && (
             <FilterMenu
@@ -1363,10 +1434,16 @@ export default function FindTutorsPage() {
                       <div>
                         <div className="flex items-center justify-between gap-2">
                           <h3 className="font-semibold text-ink leading-tight">{l.title}</h3>
-                          {l.rating > 0 && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-bold tabular-nums shrink-0">
+                          {/* The tutor's rating, not the class's — said out loud
+                              so it can't be read as a rating of this class. */}
+                          {l.tutorRating !== null && (
+                            <span
+                              title={`Tutor rating · ${l.tutorReviews} review${l.tutorReviews === 1 ? '' : 's'}`}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-bold tabular-nums shrink-0"
+                            >
                               <Star className="size-3 fill-amber-500 text-amber-500" />
-                              {l.rating.toFixed(1)}
+                              {l.tutorRating.toFixed(1)}
+                              <span className="font-medium text-amber-700/80">tutor</span>
                             </span>
                           )}
                         </div>
@@ -1512,7 +1589,9 @@ export default function FindTutorsPage() {
         {tab === 'tutors' && (
           <>
             <div className="text-sm text-muted-foreground">
-              {loadingTutors ? 'Loading tutors…' : `${pagedTutors.length} tutor${pagedTutors.length === 1 ? '' : 's'} for 1:1 sessions`}
+              {/* The full match count, not the page's — `pagedTutors.length`
+                  read "12 tutors" on every page of a longer list. */}
+              {loadingTutors ? 'Loading tutors…' : `${filteredTutors.length} tutor${filteredTutors.length === 1 ? '' : 's'} for 1:1 sessions`}
             </div>
 
             {loadingTutors ? (
@@ -1520,7 +1599,23 @@ export default function FindTutorsPage() {
                 <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand" />
               </div>
             ) : pagedTutors.length === 0 ? (
-              <div className="text-center py-16 text-muted-foreground text-sm">No tutors found. Try adjusting your search.</div>
+              <div className="text-center py-16 text-muted-foreground text-sm">
+                <p className="font-semibold text-ink">No tutors match those filters</p>
+                <p className="mt-1">
+                  {hasActiveFilters
+                    ? 'Try widening the price band, rating or availability.'
+                    : 'Check back soon — new tutors are being listed.'}
+                </p>
+                {hasActiveFilters && (
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="mt-3 px-4 py-2 rounded-xl bg-brand text-white text-xs font-semibold hover:bg-brand-deep transition"
+                  >
+                    Clear all filters
+                  </button>
+                )}
+              </div>
             ) : (
               <div className="grid sm:grid-cols-2 gap-3">
                 {pagedTutors.map((tutor) => (

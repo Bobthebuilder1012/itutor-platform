@@ -295,6 +295,25 @@ export function timeBandOf(time: string): TimeBand | null {
 }
 
 /**
+ * Every band a start→end window touches, e.g. a tutor open 10:00–19:00 is
+ * available in all three. `end` is exclusive, so 09:00–12:00 is morning only.
+ *
+ * Walks the window hour by hour rather than testing its two endpoints, which
+ * would miss the afternoon in a 09:00–19:00 window.
+ */
+export function timeBandsInRange(start: string, end: string): TimeBand[] {
+  const startHour = Number(String(start).split(':')[0]);
+  const endHour = Number(String(end).split(':')[0]);
+  if (!Number.isFinite(startHour) || !Number.isFinite(endHour)) return [];
+  const out = new Set<TimeBand>();
+  for (let h = startHour; h < Math.max(endHour, startHour + 1); h++) {
+    const band = timeBandOf(`${String(h % 24).padStart(2, '0')}:00`);
+    if (band) out.add(band);
+  }
+  return [...out];
+}
+
+/**
  * A class matches if ANY single recurring session satisfies every active
  * filter. Requiring one entry to satisfy both means "Saturday + evening" won't
  * match a class that meets Saturday morning and Tuesday evening.
