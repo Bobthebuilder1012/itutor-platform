@@ -1,7 +1,7 @@
 // @ts-nocheck
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -10,7 +10,7 @@ import { getDisplayName } from '@/lib/utils/displayName';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import UserAvatar from '@/components/UserAvatar';
 import { cn } from '@/lib/utils';
-import { Search, Star, Heart, Calendar, Clock, SlidersHorizontal, Users, GraduationCap, Flame, X, Check, Video, Sparkles } from 'lucide-react';
+import { Search, Star, Heart, Calendar, Clock, Users, GraduationCap, Flame, X, Check, Video, Sparkles, ChevronDown } from 'lucide-react';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 import {
   parseScheduleData,
@@ -146,6 +146,109 @@ function TutorAvatar({ avatarUrl, name, size = 40 }: { avatarUrl?: string | null
   );
 }
 
+/**
+ * One filter, as a pill that opens a popover.
+ *
+ * Replaces a full-width panel that pushed the results down the page whenever it
+ * was open, and that had no Apply — every keystroke in the price box re-filtered
+ * the grid underneath, so a half-typed "2" of "250" briefly filtered to TT$2+.
+ *
+ * The popover is absolutely positioned, so opening one covers the results rather
+ * than displacing them, and edits are held in a DRAFT until Apply. The pill
+ * shows the applied value, so the active filters are readable without opening
+ * anything.
+ */
+function FilterMenu({
+  label,
+  summary,
+  onOpen,
+  onApply,
+  onClear,
+  children,
+  widthClass = 'w-72',
+}: {
+  label: string;
+  /** The applied value, shown in place of the label. null = not filtering. */
+  summary?: string | null;
+  /** Seed the draft from what is currently applied. */
+  onOpen?: () => void;
+  onApply: () => void;
+  onClear: () => void;
+  children: React.ReactNode;
+  widthClass?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const active = !!summary;
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => {
+          // Discarding a half-finished edit is the point of Apply: reopening
+          // reseeds from what is actually applied.
+          if (!open) onOpen?.();
+          setOpen((o) => !o);
+        }}
+        className={cn(
+          'inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-medium transition whitespace-nowrap',
+          active
+            ? 'border-brand bg-brand-soft text-forest'
+            : 'border-border bg-background text-muted-foreground hover:border-ink/30 hover:text-ink'
+        )}
+      >
+        {active ? summary : label}
+        <ChevronDown className={cn('size-3.5 transition', open && 'rotate-180')} />
+      </button>
+
+      {open && (
+        <div
+          className={cn(
+            'absolute left-0 z-30 mt-2 rounded-2xl border border-border bg-background p-4 shadow-lg',
+            widthClass
+          )}
+        >
+          {children}
+          <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
+            <button
+              type="button"
+              onClick={() => { onClear(); setOpen(false); }}
+              className="text-xs font-semibold text-muted-foreground hover:text-ink"
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              onClick={() => { onApply(); setOpen(false); }}
+              className="rounded-xl bg-brand px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-deep"
+            >
+              Apply
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function FindTutorsPage() {
   const { profile, loading } = useProfile();
   const router = useRouter();
@@ -158,7 +261,6 @@ export default function FindTutorsPage() {
   const [priceMin, setPriceMin] = useState<string>('');
   const [priceMax, setPriceMax] = useState<string>('');
   const [selectedSchool, setSelectedSchool] = useState<string>('');
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [sortOrder, setSortOrder] = useState<'relevance' | 'price_low' | 'rating_high'>('relevance');
   const [tab, setTab] = useState<'lessons' | 'tutors'>('lessons');
@@ -168,6 +270,16 @@ export default function FindTutorsPage() {
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
   const [selectedBands, setSelectedBands] = useState<TimeBand[]>([]);
   const [savedItems, setSavedItems] = useState<Set<string>>(new Set());
+
+  // Draft values, edited inside a popover and copied onto the committed state
+  // above by Apply. Held separately so the grid does not re-filter on every
+  // keystroke, and so closing without applying discards the edit.
+  const [draftPriceMin, setDraftPriceMin] = useState('');
+  const [draftPriceMax, setDraftPriceMax] = useState('');
+  const [draftRating, setDraftRating] = useState<number | null>(null);
+  const [draftSchool, setDraftSchool] = useState('');
+  const [draftDays, setDraftDays] = useState<number[]>([]);
+  const [draftBands, setDraftBands] = useState<TimeBand[]>([]);
   const [groupLessons, setGroupLessons] = useState<GroupLesson[]>([]);
   const [loadingGroupLessons, setLoadingGroupLessons] = useState(true);
   const [enrolledLessonIds, setEnrolledLessonIds] = useState<Set<string>>(new Set());
@@ -887,7 +999,6 @@ export default function FindTutorsPage() {
   }
 
   const hasActiveFilters = searchQuery || selectedSubjects.length > 0 || selectedRating !== null || priceMin || priceMax || selectedSchool;
-  const activeFilterCount = [selectedRating !== null, !!(priceMin || priceMax), !!selectedSchool].filter(Boolean).length;
 
   const clearFilters = () => {
     setSearchQuery('');
@@ -896,7 +1007,47 @@ export default function FindTutorsPage() {
     setPriceMin('');
     setPriceMax('');
     setSelectedSchool('');
+    setSelectedDays([]);
+    setSelectedBands([]);
+    setDraftPriceMin(''); setDraftPriceMax('');
+    setDraftRating(null); setDraftSchool('');
+    setDraftDays([]); setDraftBands([]);
   };
+
+  // What each pill reads when a filter is applied. null keeps the plain label.
+  const priceSummary = (() => {
+    if (priceMin && priceMax) return `TT$${priceMin}–${priceMax}`;
+    if (priceMin) return `From TT$${priceMin}`;
+    if (priceMax) return `Up to TT$${priceMax}`;
+    return null;
+  })();
+  const ratingSummary = selectedRating !== null ? `${selectedRating}+ stars` : null;
+  const schoolSummary = selectedSchool
+    ? (institutions.find((i) => i.id === selectedSchool)?.name ?? 'School')
+    : null;
+  const daysSummary = selectedDays.length
+    ? selectedDays.length <= 3
+      ? selectedDays
+          .slice()
+          .sort((a, b) => a - b)
+          .map((d) => DAY_FILTER_OPTIONS.find((o) => o.value === d)?.short)
+          .filter(Boolean)
+          .join(', ')
+      : `${selectedDays.length} days`
+    : null;
+  const bandsSummary = selectedBands.length
+    ? selectedBands.length === 1
+      ? (TIME_BANDS.find((b) => b.value === selectedBands[0])?.label ?? 'Time')
+      : `${selectedBands.length} times`
+    : null;
+
+  const anyFilterApplied =
+    !!priceSummary || !!ratingSummary || !!schoolSummary || !!daysSummary || !!bandsSummary;
+
+  const toggleDraftDay = (d: number) =>
+    setDraftDays((prev) => (prev.includes(d) ? prev.filter((v) => v !== d) : [...prev, d]));
+  const toggleDraftBand = (b: TimeBand) =>
+    setDraftBands((prev) => (prev.includes(b) ? prev.filter((v) => v !== b) : [...prev, b]));
 
   const matchChip = (subject: string) => {
     if (activeChip === 'All') return true;
@@ -911,11 +1062,10 @@ export default function FindTutorsPage() {
     .filter((l) => scheduleMatchesDayTime(l.scheduleEntries, selectedDays, selectedBands))
     .filter((l) => !searchQuery || l.title.toLowerCase().includes(searchQuery.toLowerCase()) || l.tutor.toLowerCase().includes(searchQuery.toLowerCase()) || l.subject.toLowerCase().includes(searchQuery.toLowerCase()));
 
+  // Still used by the empty state. The day/time toggles now edit the DRAFT
+  // inside their popover (toggleDraftDay / toggleDraftBand) rather than
+  // committing on every click.
   const scheduleFilterActive = selectedDays.length > 0 || selectedBands.length > 0;
-  const toggleDay = (d: number) =>
-    setSelectedDays((prev) => (prev.includes(d) ? prev.filter((v) => v !== d) : [...prev, d]));
-  const toggleBand = (b: TimeBand) =>
-    setSelectedBands((prev) => (prev.includes(b) ? prev.filter((v) => v !== b) : [...prev, b]));
   const toggleSave = (id: string) => setSavedItems((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   return (
@@ -955,99 +1105,177 @@ export default function FindTutorsPage() {
               className="flex-1 bg-transparent outline-none text-sm py-2 min-w-0"
             />
           </div>
-          <button
-            onClick={() => setFiltersOpen((o) => !o)}
-            className={cn(
-              'inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-xl transition',
-              filtersOpen || activeFilterCount > 0
-                ? 'bg-brand text-white'
-                : 'text-muted-foreground hover:bg-muted'
-            )}
-          >
-            <SlidersHorizontal className="size-4" />
-            Filters
-            {activeFilterCount > 0 && (
-              <span className="size-5 rounded-full bg-white text-brand text-xs font-bold grid place-items-center">{activeFilterCount}</span>
-            )}
-          </button>
         </div>
 
-        {/* Filters panel */}
-        {filtersOpen && (
-          <div className="rounded-2xl border border-border bg-background p-4 space-y-5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-ink text-sm">Filters</h3>
-              {hasActiveFilters && (
-                <button onClick={clearFilters} className="text-xs text-brand-deep font-semibold hover:underline">
-                  Clear all
-                </button>
-              )}
+        {/* Filter row — one pill per filter, each opening a popover with its own
+            Apply. Replaces a full-width panel that pushed the results down and
+            filtered live as you typed. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <FilterMenu
+            label="Price"
+            summary={priceSummary}
+            onOpen={() => { setDraftPriceMin(priceMin); setDraftPriceMax(priceMax); }}
+            onApply={() => { setPriceMin(draftPriceMin); setPriceMax(draftPriceMax); }}
+            onClear={() => {
+              setPriceMin(''); setPriceMax('');
+              setDraftPriceMin(''); setDraftPriceMax('');
+            }}
+          >
+            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Price range (TT${tab === 'lessons' ? '/month' : '/hr'})
             </div>
-
-            {/* Price range */}
-            <div>
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Price range (TT$/hr)</label>
-              <div className="flex items-center gap-2 mt-2">
-                <input
-                  type="number"
-                  min={0}
-                  placeholder="Min"
-                  value={priceMin}
-                  onChange={(e) => setPriceMin(e.target.value)}
-                  className="w-24 px-3 py-2 rounded-xl border border-border bg-background text-sm tabular-nums"
-                />
-                <span className="text-muted-foreground text-sm">—</span>
-                <input
-                  type="number"
-                  min={0}
-                  placeholder="Max"
-                  value={priceMax}
-                  onChange={(e) => setPriceMax(e.target.value)}
-                  className="w-24 px-3 py-2 rounded-xl border border-border bg-background text-sm tabular-nums"
-                />
-              </div>
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                type="number" min={0} placeholder="Min" value={draftPriceMin}
+                onChange={(e) => setDraftPriceMin(e.target.value)}
+                className="w-full min-w-0 rounded-xl border border-border bg-background px-3 py-2 text-sm tabular-nums"
+              />
+              <span className="text-sm text-muted-foreground">—</span>
+              <input
+                type="number" min={0} placeholder="Max" value={draftPriceMax}
+                onChange={(e) => setDraftPriceMax(e.target.value)}
+                className="w-full min-w-0 rounded-xl border border-border bg-background px-3 py-2 text-sm tabular-nums"
+              />
             </div>
+          </FilterMenu>
 
-            {/* Star rating */}
-            <div>
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Minimum rating</label>
-              <div className="flex items-center gap-1.5 mt-2">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <button
-                    key={star}
-                    onClick={() => setSelectedRating(selectedRating === star ? null : star)}
-                    className={cn(
-                      'inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium border transition',
-                      selectedRating === star
-                        ? 'bg-coral/10 border-coral text-coral'
-                        : 'border-border text-muted-foreground hover:border-coral/40'
-                    )}
-                  >
-                    <Star className={cn('size-3.5', selectedRating !== null && star <= selectedRating ? 'fill-coral text-coral' : 'text-current')} />
-                    {star}+
-                  </button>
-                ))}
-              </div>
+          <FilterMenu
+            label="Rating"
+            summary={ratingSummary}
+            onOpen={() => setDraftRating(selectedRating)}
+            onApply={() => setSelectedRating(draftRating)}
+            onClear={() => { setSelectedRating(null); setDraftRating(null); }}
+          >
+            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Minimum rating
             </div>
-
-            {/* School filter */}
-            {institutions.length > 0 && (
-              <div>
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">School / Institution</label>
-                <select
-                  value={selectedSchool}
-                  onChange={(e) => setSelectedSchool(e.target.value)}
-                  className="mt-2 w-full px-3 py-2 rounded-xl border border-border bg-background text-sm"
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                  key={star}
+                  type="button"
+                  onClick={() => setDraftRating(draftRating === star ? null : star)}
+                  className={cn(
+                    'inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm font-medium transition',
+                    draftRating === star
+                      ? 'border-coral bg-coral/10 text-coral'
+                      : 'border-border text-muted-foreground hover:border-coral/40'
+                  )}
                 >
-                  <option value="">All schools</option>
-                  {institutions.map((inst) => (
-                    <option key={inst.id} value={inst.id}>{inst.name}</option>
+                  <Star className={cn('size-3.5', draftRating !== null && star <= draftRating ? 'fill-coral text-coral' : 'text-current')} />
+                  {star}+
+                </button>
+              ))}
+            </div>
+          </FilterMenu>
+
+          {tab === 'lessons' && (
+            <>
+              <FilterMenu
+                label="Days"
+                summary={daysSummary}
+                widthClass="w-80"
+                onOpen={() => setDraftDays(selectedDays)}
+                onApply={() => setSelectedDays(draftDays)}
+                onClear={() => { setSelectedDays([]); setDraftDays([]); }}
+              >
+                <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Meets on
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {DAY_FILTER_OPTIONS.map((d) => (
+                    <button
+                      key={d.value}
+                      type="button"
+                      aria-pressed={draftDays.includes(d.value)}
+                      aria-label={d.label}
+                      onClick={() => toggleDraftDay(d.value)}
+                      className={cn(
+                        'rounded-full border px-3 py-1.5 text-xs font-semibold transition',
+                        draftDays.includes(d.value)
+                          ? 'border-brand bg-brand text-white'
+                          : 'border-border bg-background text-muted-foreground hover:border-brand/40'
+                      )}
+                    >
+                      {d.short}
+                    </button>
                   ))}
-                </select>
+                </div>
+                <p className="mt-3 text-[11px] text-muted-foreground">
+                  One-off classes are hidden while a day filter is on.
+                </p>
+              </FilterMenu>
+
+              <FilterMenu
+                label="Time"
+                summary={bandsSummary}
+                onOpen={() => setDraftBands(selectedBands)}
+                onApply={() => setSelectedBands(draftBands)}
+                onClear={() => { setSelectedBands([]); setDraftBands([]); }}
+              >
+                <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Time of day
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {TIME_BANDS.map((b) => (
+                    <button
+                      key={b.value}
+                      type="button"
+                      aria-pressed={draftBands.includes(b.value)}
+                      onClick={() => toggleDraftBand(b.value)}
+                      className={cn(
+                        'rounded-full border px-3 py-1.5 text-xs font-semibold transition',
+                        draftBands.includes(b.value)
+                          ? 'border-brand bg-brand text-white'
+                          : 'border-border bg-background text-muted-foreground hover:border-brand/40'
+                      )}
+                    >
+                      {b.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-3 text-[11px] text-muted-foreground">
+                  Times are in AST (Trinidad &amp; Tobago).
+                </p>
+              </FilterMenu>
+            </>
+          )}
+
+          {tab === 'tutors' && institutions.length > 0 && (
+            <FilterMenu
+              label="School"
+              summary={schoolSummary}
+              widthClass="w-80"
+              onOpen={() => setDraftSchool(selectedSchool)}
+              onApply={() => setSelectedSchool(draftSchool)}
+              onClear={() => { setSelectedSchool(''); setDraftSchool(''); }}
+            >
+              <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                School / institution
               </div>
-            )}
-          </div>
-        )}
+              <select
+                value={draftSchool}
+                onChange={(e) => setDraftSchool(e.target.value)}
+                className="mt-2 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+              >
+                <option value="">All schools</option>
+                {institutions.map((inst) => (
+                  <option key={inst.id} value={inst.id}>{inst.name}</option>
+                ))}
+              </select>
+            </FilterMenu>
+          )}
+
+          {anyFilterApplied && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="ml-1 text-xs font-semibold text-brand-deep hover:underline"
+            >
+              Clear all
+            </button>
+          )}
+        </div>
 
         {/* Subject chips */}
         <div className="flex gap-2 overflow-x-auto pb-1">
@@ -1065,66 +1293,6 @@ export default function FindTutorsPage() {
         {/* Group Lessons tab */}
         {tab === 'lessons' && (
           <>
-            {/* Day + time narrowing — "does this fit our week?" */}
-            <div className="rounded-2xl border border-border bg-background p-3 space-y-3">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                <span className="text-xs font-semibold text-ink shrink-0">Meets on</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {DAY_FILTER_OPTIONS.map((d) => (
-                    <button
-                      key={d.value}
-                      type="button"
-                      aria-pressed={selectedDays.includes(d.value)}
-                      aria-label={d.label}
-                      onClick={() => toggleDay(d.value)}
-                      className={cn(
-                        'px-3 py-1.5 rounded-full text-xs font-semibold border transition',
-                        selectedDays.includes(d.value)
-                          ? 'bg-brand text-white border-brand'
-                          : 'bg-background text-muted-foreground border-border hover:border-brand/40'
-                      )}
-                    >
-                      {d.short}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                <span className="text-xs font-semibold text-ink shrink-0">Time</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {TIME_BANDS.map((b) => (
-                    <button
-                      key={b.value}
-                      type="button"
-                      aria-pressed={selectedBands.includes(b.value)}
-                      onClick={() => toggleBand(b.value)}
-                      className={cn(
-                        'px-3 py-1.5 rounded-full text-xs font-semibold border transition',
-                        selectedBands.includes(b.value)
-                          ? 'bg-brand text-white border-brand'
-                          : 'bg-background text-muted-foreground border-border hover:border-brand/40'
-                      )}
-                    >
-                      {b.label}
-                    </button>
-                  ))}
-                </div>
-                {scheduleFilterActive && (
-                  <button
-                    type="button"
-                    onClick={() => { setSelectedDays([]); setSelectedBands([]); }}
-                    className="ml-auto text-xs font-semibold text-brand-deep hover:underline"
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Times are in AST (Trinidad &amp; Tobago).
-                {scheduleFilterActive && ' One-off classes are hidden while a day or time filter is on.'}
-              </p>
-            </div>
-
             <div className="text-sm text-muted-foreground">
               {loadingGroupLessons ? 'Loading lessons…' : (() => {
                 const enrolledCount = filteredGroupLessons.filter(l => enrolledLessonIds.has(l.id)).length;
