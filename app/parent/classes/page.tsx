@@ -14,7 +14,7 @@ type TabType = 'classes' | 'tutors';
 
 type TutorListing = {
   id: string; full_name: string | null; display_name: string | null; username: string | null;
-  avatar_url: string | null; bio: string | null; average_rating: number | null; total_reviews: number;
+  avatar_url: string | null; bio: string | null; rating_average: number | null; total_reviews: number;
   subjects: { name: string; label: string; price_per_hour_ttd: number }[];
 };
 
@@ -58,18 +58,31 @@ function ClassesContent() {
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase
-        .from('groups')
-        .select(`
+      // schedule_display and schedule_data exist on production but NOT on
+      // staging, and PostgREST rejects the whole select for one unknown
+      // column — so the entire class marketplace came back empty on staging
+      // and read as "No classes match". They are only a fallback for the
+      // schedule line (the real source is /api/groups/schedules below), so
+      // the query drops them rather than failing.
+      const GROUP_COLUMNS = `
           id, name, subject, form_level, cover_image, price_monthly, max_students,
-          require_join_requests, feedback_mode, parent_feedback_price,
-          schedule_display, schedule_data, status,
+          require_join_requests, feedback_mode, parent_feedback_price, status,
           tutor:profiles!groups_tutor_id_fkey(full_name, display_name, rating_average)
-        `)
-        .or('status.eq.PUBLISHED,status.is.null')
-        .is('archived_at', null)
-        .order('created_at', { ascending: false })
-        .limit(60);
+      `;
+      const fetchGroups = (extra: string) =>
+        supabase
+          .from('groups')
+          .select(`${GROUP_COLUMNS}${extra}`)
+          .or('status.eq.PUBLISHED,status.is.null')
+          .is('archived_at', null)
+          .order('created_at', { ascending: false })
+          .limit(60);
+
+      let { data, error: groupsErr } = await fetchGroups(', schedule_display, schedule_data');
+      if (groupsErr) {
+        ({ data, error: groupsErr } = await fetchGroups(''));
+      }
+      if (groupsErr) console.error('[parent/classes] group fetch failed:', groupsErr.message);
 
       // Get member counts
       const ids = (data ?? []).map((g: any) => g.id);
@@ -109,12 +122,18 @@ function ClassesContent() {
       const listedJson = listedRes.ok ? await listedRes.json() : { ids: [] };
       const listedSet = new Set<string>(listedJson.ids ?? []);
 
-      const { data: tutorProfiles } = await supabase
+      // The column is rating_average. Asking for "average_rating" — which
+      // exists on NEITHER database — made PostgREST reject the whole select,
+      // so tutorProfiles came back null and the 1:1 tab has been empty on
+      // every environment since this page shipped.
+      const { data: tutorProfiles, error: tutorErr } = await supabase
         .from('profiles')
-        .select('id, full_name, display_name, username, avatar_url, bio, average_rating')
+        .select('id, full_name, display_name, username, avatar_url, bio, rating_average')
         .eq('role', 'tutor')
         .or('pause_1on1.is.null,pause_1on1.eq.false')
         .limit(200);
+
+      if (tutorErr) console.error('[parent/classes] tutor fetch failed:', tutorErr.message);
 
       const listedTutors = (tutorProfiles ?? []).filter((t: any) => listedSet.has(t.id));
 
@@ -415,9 +434,9 @@ function TutorCard({ t }: { t: TutorListing }) {
             <h3 className="font-semibold text-ink truncate">{name}</h3>
             <div className="text-xs text-muted-foreground truncate mt-0.5">{subjectList || 'Tutor'}</div>
           </div>
-          {t.average_rating && t.average_rating > 0 && (
+          {t.rating_average && t.rating_average > 0 && (
             <span className="inline-flex items-center gap-0.5 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 shrink-0">
-              <Star className="size-3 fill-amber-500 text-amber-500"/> {t.average_rating.toFixed(1)}
+              <Star className="size-3 fill-amber-500 text-amber-500"/> {t.rating_average.toFixed(1)}
             </span>
           )}
         </div>
