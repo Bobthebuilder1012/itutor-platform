@@ -49,6 +49,9 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [customDuration, setCustomDuration] = useState('');
   const [sessionDate, setSessionDate] = useState(new Date().toISOString().slice(0, 10));
+  // Required by /api/groups — billing recurs until this date, so a class
+  // without one would charge students forever.
+  const [endDate, setEndDate] = useState('');
 
   const effectiveDuration = durationMinutes === -1 ? (parseInt(customDuration) || 0) : durationMinutes;
 
@@ -139,6 +142,7 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
     if (step === 1) return !!form.name.trim();
     if (step === 2) {
       if (recurrenceType === 'weekly' && recurrenceDays.length === 0) return false;
+      if (!endDate) return false;
       return !!startTime;
     }
     return true;
@@ -146,10 +150,11 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
 
   const handleSubmit = async () => {
     if (!form.name.trim()) { setError('Class title is required'); return; }
+    if (!endDate) { setError('A class end date is required'); return; }
     setSubmitting(true);
     setError('');
     try {
-      const payload = { ...form };
+      const payload = { ...form, end_date: endDate };
       if (!payload.cover_image || isDefaultThumbnail(payload.cover_image)) {
         payload.cover_image = randomDefaultThumbnailValue();
       }
@@ -308,6 +313,14 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
                     </div>
                   </div>
                 )}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Class End Date <span className="text-red-400">*</span></label>
+                  <p className="text-xs text-gray-500 mb-1.5">Billing stops after this date. Students are charged monthly until it passes.</p>
+                  <input type="date" value={endDate} min={new Date().toISOString().slice(0, 10)}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                </div>
 
                 {recurrenceType === 'none' && (
                   <div>

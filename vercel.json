@@ -23,6 +23,14 @@
     {
       "path": "/api/cron/send-onboarding-emails",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/secure-spot-transitions",
+      "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/cron/group-class-reminders",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

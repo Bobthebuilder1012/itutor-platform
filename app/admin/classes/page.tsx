@@ -90,6 +90,50 @@ export default function AdminClassesPage() {
     }
   }
 
+  async function deleteClass(cls: AdminClass) {
+    const label = cls.name || 'Untitled class';
+    // Typed confirmation rather than a plain OK/Cancel: this cascades to
+    // enrollments, payments, reviews, messages and sessions, and there is no
+    // undo. Archive sits right next to it and is one click.
+    const typed = prompt(
+      `Permanently DELETE "${label}"?\n\nThis also deletes its enrollments, payments, reviews, messages, announcements and sessions. It cannot be undone — Archive is reversible.\n\nType the class name to confirm:`
+    );
+    if (typed === null) return;
+    if (typed.trim() !== label.trim()) {
+      alert('Name did not match — nothing was deleted.');
+      return;
+    }
+
+    setBusyId(cls.id);
+    try {
+      const send = (force: boolean) =>
+        fetch(`/api/admin/classes/${cls.id}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ force }),
+        });
+
+      let res = await send(false);
+      let data = await res.json();
+
+      // The server refuses by default when paid payments or live enrollments
+      // would be destroyed, and tells us exactly what. Surface that and let the
+      // superadmin decide, rather than forcing silently.
+      if (res.status === 409 && data?.requires_force) {
+        if (!confirm(`${data.error}\n\nDelete anyway?`)) return;
+        res = await send(true);
+        data = await res.json();
+      }
+
+      if (!res.ok) throw new Error(data.error || 'Delete failed');
+      await load();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   if (authLoading) {
     return (
       <DashboardLayout role="admin" userName="Admin">
@@ -201,11 +245,20 @@ export default function AdminClassesPage() {
                             {busyId === cls.id ? '…' : cls.archived ? 'Unarchive' : 'Archive'}
                           </button>
                           <button
-                            disabled
-                            title="Permanent delete is superadmin-only (coming soon). Prefer Archive."
-                            className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-200 text-gray-400 cursor-not-allowed"
+                            onClick={() => deleteClass(cls)}
+                            disabled={!isSuperadmin || busyId === cls.id}
+                            title={
+                              isSuperadmin
+                                ? 'Permanently delete this class and everything attached to it. Cannot be undone — prefer Archive.'
+                                : 'Permanent delete is superadmin-only. Prefer Archive.'
+                            }
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition disabled:cursor-not-allowed ${
+                              isSuperadmin
+                                ? 'border-red-300 text-red-700 hover:bg-red-50 disabled:opacity-50'
+                                : 'border-gray-200 text-gray-400'
+                            }`}
                           >
-                            Delete
+                            {busyId === cls.id ? '…' : 'Delete'}
                           </button>
                         </div>
                       </td>

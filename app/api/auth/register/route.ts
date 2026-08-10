@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServiceClient } from '@/lib/supabase/server';
 import { createHash } from 'crypto';
+import { isParentAccountsEnabled, PARENT_ACCOUNTS_DISABLED_MESSAGE } from '@/lib/featureFlags/parentAccounts';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,6 +25,10 @@ function validate(body: Record<string, unknown>): string | null {
     return 'Password must be 8-128 characters';
   if (!role || !VALID_ROLES.has(role as string))
     return 'Role must be student, tutor, or parent';
+  // Hiding the card in the UI is not the control — this is. Without it an
+  // account could still be registered as a parent by posting here directly.
+  if (role === 'parent' && !isParentAccountsEnabled())
+    return PARENT_ACCOUNTS_DISABLED_MESSAGE;
   if (!verificationCode || typeof verificationCode !== 'string' || !/^\d{6}$/.test(verificationCode))
     return 'Verification code must be 6 digits';
 

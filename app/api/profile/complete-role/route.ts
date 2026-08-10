@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { getServiceClient } from '@/lib/supabase/server';
 import { bootstrapProfileIfMissing } from '@/lib/server/bootstrapProfileIfMissing';
+import { isParentAccountsEnabled, PARENT_ACCOUNTS_DISABLED_MESSAGE } from '@/lib/featureFlags/parentAccounts';
 
 type SelectableRole = 'student' | 'tutor' | 'parent';
 
@@ -36,6 +37,12 @@ export async function POST(request: NextRequest) {
 
     if (role !== 'student' && role !== 'tutor' && role !== 'parent') {
       return NextResponse.json({ error: 'Invalid role selected.' }, { status: 400 });
+    }
+
+    // Hiding the card in the UI is not the control — this is. Without it the
+    // role could still be set by posting here directly.
+    if (role === 'parent' && !isParentAccountsEnabled()) {
+      return NextResponse.json({ error: PARENT_ACCOUNTS_DISABLED_MESSAGE }, { status: 403 });
     }
 
     if (!isValidUsername(trimmedUsername)) {

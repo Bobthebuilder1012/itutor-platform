@@ -151,7 +151,7 @@ export default function ITutorRequirementsPage() {
             </ul>
             <div className="mt-6 p-4 bg-white rounded-lg">
               <p className="text-sm text-gray-600">
-                <strong>Platform commission:</strong> iTutor takes 10-20% commission (based on session price) to cover platform maintenance, payment processing, and support.
+                <strong>Platform commission:</strong> iTutor takes a 7% commission to cover platform maintenance, payment processing, and support.
               </p>
             </div>
           </div>

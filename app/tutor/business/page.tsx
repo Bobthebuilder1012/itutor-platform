@@ -626,6 +626,23 @@ interface VerificationRequest {
   created_at: string;
 }
 
+/** Internal status enums are not tutor-facing copy. */
+function verificationStatusLabel(status: string | null | undefined): string {
+  switch (String(status ?? '').toUpperCase()) {
+    case 'SUBMITTED':
+    case 'PROCESSING':
+      return 'Processing';
+    case 'READY_FOR_REVIEW':
+      return 'Awaiting review';
+    case 'APPROVED':
+      return 'Approved';
+    case 'REJECTED':
+      return 'Not approved';
+    default:
+      return status ? String(status).replace(/_/g, ' ').toLowerCase() : '—';
+  }
+}
+
 function VerificationSection() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -697,7 +714,12 @@ function VerificationSection() {
   }
 
   const canUpload = status !== 'VERIFIED' && status !== 'PENDING';
-  const rejectionReason = latestRequest?.reviewer_reason || latestRequest?.system_reason;
+  // Only what a REVIEWER wrote. Falling back to system_reason published the
+  // automated note, which on every real upload was the "Sample Tutor" name
+  // mismatch — so a tutor rejected for any reason was told it was because
+  // their name did not match a document belonging to somebody who does not
+  // exist. If a reviewer left no note, say nothing rather than invent one.
+  const rejectionReason = latestRequest?.reviewer_reason || null;
 
   return (
     <div className="space-y-5">
@@ -782,18 +804,19 @@ function VerificationSection() {
           <div className="grid sm:grid-cols-2 gap-3 text-sm">
             <div>
               <div className="text-xs text-muted-foreground">Status</div>
-              <div className="text-ink font-medium mt-0.5">{latestRequest.status}</div>
+              <div className="text-ink font-medium mt-0.5">{verificationStatusLabel(latestRequest.status)}</div>
             </div>
             <div>
               <div className="text-xs text-muted-foreground">Submitted</div>
               <div className="text-ink font-medium mt-0.5">{new Date(latestRequest.created_at).toLocaleString()}</div>
             </div>
-            {latestRequest.system_recommendation && (
-              <div className="sm:col-span-2">
-                <div className="text-xs text-muted-foreground">System assessment</div>
-                <div className="text-ink mt-0.5"><span className="font-medium">{latestRequest.system_recommendation}:</span> {latestRequest.system_reason}</div>
-              </div>
-            )}
+            {/* The system assessment is a REVIEWER's note and is not shown here.
+                It read "REJECT: Name does not match profile. Extracted: 'Sample
+                Tutor' vs Profile: '<their name>'" — an internal string, about a
+                document belonging to nobody, telling a tutor they had been
+                rejected directly underneath a banner saying their upload was
+                being processed. A reviewer's decision reaches them through
+                reviewer_reason below, once a human has actually made one. */}
             {latestRequest.reviewed_at && (
               <div>
                 <div className="text-xs text-muted-foreground">Reviewed</div>

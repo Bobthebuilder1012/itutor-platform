@@ -14,7 +14,12 @@ import {
 import * as React from 'react';
 
 export type SessionReminderRecipientType = 'student' | 'tutor';
-export type SessionReminderType = '24h' | '1h';
+/**
+ * 'today' is the morning-of batch (08:00 Trinidad time); '10m' is the
+ * final nudge just before the session starts. Both are queued as rows in
+ * session_reminders with an absolute send_at, exactly like 24h/1h.
+ */
+export type SessionReminderType = '24h' | '1h' | 'today' | '10m';
 
 export interface SessionReminderEmailProps {
   recipientType: SessionReminderRecipientType;
@@ -29,7 +34,29 @@ export interface SessionReminderEmailProps {
 }
 
 function formatReminderLead(reminderType: SessionReminderType): string {
-  return reminderType === '24h' ? '24 hours' : '1 hour';
+  switch (reminderType) {
+    case '24h':
+      return '24 hours';
+    case '1h':
+      return '1 hour';
+    case '10m':
+      return '10 minutes';
+    case 'today':
+    default:
+      return 'today';
+  }
+}
+
+/** Headline copy, since "coming up in today" doesn't read. */
+export function reminderHeadline(reminderType: SessionReminderType): string {
+  switch (reminderType) {
+    case 'today':
+      return 'Your session is today';
+    case '10m':
+      return 'Your session starts in 10 minutes';
+    default:
+      return `Your session is coming up in ${formatReminderLead(reminderType)}`;
+  }
 }
 
 function formatSessionDate(date: string): string {
@@ -40,6 +67,11 @@ function formatSessionDate(date: string): string {
     year: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
+    // Pin to Trinidad rather than the server's zone: this string is
+    // rendered server-side, so without it a UTC host would print times
+    // four hours off for every recipient.
+    timeZone: 'America/Port_of_Spain',
+    timeZoneName: 'short',
   }).format(new Date(date));
 }
 
@@ -65,7 +97,9 @@ export function SessionReminderEmail({
     <Html>
       <Head />
       <Preview>
-        Your iTutor {subjectName} session starts in {leadTime}.
+        {reminderType === 'today'
+          ? `Your iTutor ${subjectName} session is today.`
+          : `Your iTutor ${subjectName} session starts in ${leadTime}.`}
       </Preview>
       <Body style={body}>
         <Container style={container}>
@@ -73,9 +107,11 @@ export function SessionReminderEmail({
             <Text style={brandBadge}>iTutor</Text>
           </Section>
 
-          <Heading style={heading}>Your session is coming up in {leadTime}</Heading>
+          <Heading style={heading}>{reminderHeadline(reminderType)}</Heading>
           <Text style={intro}>
-            This is a quick reminder that your upcoming iTutor session is almost here.
+            {reminderType === '10m'
+              ? 'Your session is about to begin — use the link below to join now.'
+              : 'This is a quick reminder that your upcoming iTutor session is almost here.'}
           </Text>
 
           <Section style={detailsCard}>

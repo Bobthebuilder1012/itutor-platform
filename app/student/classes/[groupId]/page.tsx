@@ -12,6 +12,7 @@ import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
 import { CommentSection } from '@/components/ratings/CommentSection';
+import { occurrenceTitle } from '@/lib/utils/scheduleFormat';
 
 /* ─── Types ──────────────────────────────────────────── */
 
@@ -368,15 +369,60 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
 
 /* ─── Join session button ───────────────────────────── */
 
-function JoinSessionButton({ groupId: _groupId, staticLink }: { groupId: string; staticLink: string | null }) {
-  if (!staticLink) {
+function JoinSessionButton({ groupId, staticLink }: { groupId: string; staticLink: string | null }) {
+  // The group payload is read once at page load, so a link the tutor
+  // generates afterwards would leave this stuck on "Link not ready yet"
+  // until a full refresh — which is what it did. It also went dead if the
+  // group query fell back to a select tier without meeting_link.
+  //
+  // GET /api/groups/[id]/meeting-link is the authoritative, membership-gated
+  // source, so ask it directly whenever the payload didn't carry a link, and
+  // re-check periodically while the page is open.
+  const [fetched, setFetched] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
+
+  const link = staticLink ?? fetched;
+
+  useEffect(() => {
+    if (staticLink || fetched) return;
+    let cancelled = false;
+
+    const check = async () => {
+      setChecking(true);
+      try {
+        const res = await fetch(`/api/groups/${groupId}/meeting-link`, {
+          cache: 'no-store',
+        });
+        if (!cancelled && res.ok) {
+          const d = await res.json();
+          if (d?.join_url) setFetched(d.join_url);
+        }
+      } catch {
+        /* 404 just means the tutor hasn't generated one yet */
+      } finally {
+        if (!cancelled) setChecking(false);
+      }
+    };
+
+    check();
+    // Cheap poll so a student sitting on the page before class sees the
+    // button light up without reloading.
+    const timer = setInterval(check, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [groupId, staticLink, fetched]);
+
+  if (!link) {
     return (
       <div className="shrink-0">
         <button
           disabled
+          title="Your tutor hasn't generated the class link yet. It'll appear here automatically."
           className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-muted text-muted-foreground font-semibold text-sm cursor-not-allowed opacity-60"
         >
-          <Video className="size-4" /> Link not ready yet
+          <Video className="size-4" /> {checking ? 'Checking for link…' : 'Link not ready yet'}
         </button>
       </div>
     );
@@ -385,7 +431,7 @@ function JoinSessionButton({ groupId: _groupId, staticLink }: { groupId: string;
   return (
     <div className="shrink-0">
       <a
-        href={staticLink}
+        href={link}
         target="_blank"
         rel="noopener noreferrer"
         className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-brand text-white font-semibold text-sm hover:bg-brand/90 transition"
@@ -730,7 +776,7 @@ function SessionsTab({ groupId, userId }: { groupId: string; userId: string }) {
           (s.occurrences ?? []).map((o: any) => ({
             id: o.id,
             sessionId: s.id,
-            topic: o.title ?? s.title ?? 'Class session',
+            topic: o.title ?? occurrenceTitle(s.title, o.scheduled_start_at),
             date: o.scheduled_start_at,
             durationMin: s.duration_minutes ?? 60,
             meetingLink: null as string | null,

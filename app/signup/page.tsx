@@ -72,6 +72,7 @@ function isNetworkError(err: unknown): boolean {
 export default function SignupPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const redirectParam = searchParams.get('redirect');
 
   const [step, setStep] = useState<Step>('details');
   const [userId, setUserId] = useState<string | null>(null);
@@ -89,6 +90,16 @@ export default function SignupPage() {
 
   // Step 2
   const [role, setRole] = useState<UserRole | null>(null);
+  // Default false so the parent card never flashes in before the flag lands —
+  // showing then withdrawing an option reads as a bug.
+  const [parentAccountsEnabled, setParentAccountsEnabled] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/feature-flags', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => setParentAccountsEnabled(Boolean(d?.parentAccountsEnabled)))
+      .catch(() => setParentAccountsEnabled(false));
+  }, []);
 
   // Step 3
   const [code, setCode] = useState<string[]>(['', '', '', '', '', '']);
@@ -459,11 +470,27 @@ export default function SignupPage() {
                         </div>
                       </div>
 
-                      <GoogleButton redirectTo={`${typeof window !== 'undefined' ? window.location.origin : ''}/auth/callback?next=/signup/complete-role`} label="Continue with Google" />
+                      {/* The callback decides where to land; pass the visitor's
+                          destination so it can honour it instead of defaulting
+                          to a dashboard. */}
+                      <GoogleButton
+                        redirectTo={`${typeof window !== 'undefined' ? window.location.origin : ''}/auth/callback${
+                          redirectParam ? `?redirect=${encodeURIComponent(redirectParam)}` : ''
+                        }`}
+                        label="Continue with Google"
+                      />
 
                       <p className="pt-1 text-center text-sm text-gray-500">
                         Already have an account?{' '}
-                        <Link href="/login" className="font-medium text-itutor-green underline">Log in</Link>
+                        {/* Carry `redirect` across, same as the login page does
+                            in the other direction — otherwise bouncing between
+                            the two loses where the visitor was headed. */}
+                        <Link
+                          href={redirectParam ? `/login?redirect=${encodeURIComponent(redirectParam)}` : '/login'}
+                          className="font-medium text-itutor-green underline"
+                        >
+                          Log in
+                        </Link>
                       </p>
                     </form>
                   </StepWrap>
@@ -479,8 +506,10 @@ export default function SignupPage() {
                         icon={<GraduationCap className="h-5 w-5" />} title="I'm a student" desc="Find tutors and join lessons" />
                       <RoleCard active={role === 'tutor'} onClick={() => setRole('tutor')}
                         icon={<UserRound className="h-5 w-5" />} title="I'm an iTutor" desc="Teach 1:1s and run lessons" />
-                      <RoleCard active={role === 'parent'} onClick={() => setRole('parent')}
-                        icon={<Users className="h-5 w-5" />} title="I'm a parent / guardian" desc="Manage my child's learning" />
+                      {parentAccountsEnabled && (
+                        <RoleCard active={role === 'parent'} onClick={() => setRole('parent')}
+                          icon={<Users className="h-5 w-5" />} title="I'm a parent / guardian" desc="Manage my child's learning" />
+                      )}
                     </div>
                     <button onClick={handleStep2} disabled={!role || loading}
                       className="mt-6 w-full rounded-xl bg-itutor-green py-3 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:opacity-40">

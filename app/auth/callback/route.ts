@@ -14,6 +14,35 @@ export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get('code');
   const next = requestUrl.searchParams.get('next');
+
+  // Where the visitor was headed before they were asked to authenticate —
+  // a class page from a QR code, a tutor profile, whatever. `next` was being
+  // parsed here and then never used, so every OAuth sign-in landed on a
+  // dashboard regardless. `redirect` is the param the login and signup pages
+  // already use; `next` is still read so existing links keep working.
+  //
+  // Only same-origin relative paths are honoured. A protocol-relative value
+  // like //evil.example would otherwise turn this into an open redirect that
+  // sends a freshly-authenticated visitor off-site.
+  const requestedRedirect = requestUrl.searchParams.get('redirect') ?? next;
+  const safeRedirect =
+    requestedRedirect &&
+    requestedRedirect.startsWith('/') &&
+    !requestedRedirect.startsWith('//')
+      ? requestedRedirect
+      : null;
+
+  /** Terminal destination: the visitor's target if we have one, else the default. */
+  const finalDest = (fallback: string) => safeRedirect ?? fallback;
+
+  /**
+   * The role/profile step still has to happen first, so carry the target
+   * through it rather than dropping it here.
+   */
+  const completeRolePath = () =>
+    safeRedirect
+      ? `/signup/complete-role?redirect=${encodeURIComponent(safeRedirect)}`
+      : '/signup/complete-role';
   const type = requestUrl.searchParams.get('type'); // email confirmation type
   const error_code = requestUrl.searchParams.get('error_code');
   const error_description = requestUrl.searchParams.get('error_description');
@@ -73,7 +102,7 @@ export async function GET(request: NextRequest) {
   const isEmailConfirmationFlow = type === 'signup' || type === 'email';
   if (isEmailConfirmationFlow) {
     console.log('✅ Email confirmation detected - redirecting to role selection');
-    return NextResponse.redirect(new URL('/signup/complete-role', request.url));
+    return NextResponse.redirect(new URL(completeRolePath(), request.url));
   }
 
   // Check if profile exists
@@ -115,11 +144,11 @@ export async function GET(request: NextRequest) {
 
         const role = existingProfileByEmail.role as string;
         if (role === 'student') {
-          return NextResponse.redirect(new URL(existingProfileByEmail.form_level ? '/student/dashboard' : '/signup/complete-role', request.url));
+          return NextResponse.redirect(new URL(existingProfileByEmail.form_level ? finalDest('/student/dashboard') : completeRolePath(), request.url));
         }
-        if (role === 'tutor') return NextResponse.redirect(new URL('/tutor/dashboard', request.url));
-        if (role === 'parent') return NextResponse.redirect(new URL('/parent/dashboard', request.url));
-        if (role === 'admin') return NextResponse.redirect(new URL(getAdminHomePath(userEmail!), request.url));
+        if (role === 'tutor') return NextResponse.redirect(new URL(finalDest('/tutor/dashboard'), request.url));
+        if (role === 'parent') return NextResponse.redirect(new URL(finalDest('/parent/dashboard'), request.url));
+        if (role === 'admin') return NextResponse.redirect(new URL(finalDest(getAdminHomePath(userEmail!)), request.url));
       }
     }
 
@@ -132,11 +161,11 @@ export async function GET(request: NextRequest) {
 
     if (!metadataRole && oauthProvider === 'google') {
       console.log('✅ New Google user — redirecting to role selection');
-      return NextResponse.redirect(new URL('/signup/complete-role', request.url));
+      return NextResponse.redirect(new URL(completeRolePath(), request.url));
     }
 
     console.log('✅ Profile created, redirecting to role selection');
-    return NextResponse.redirect(new URL('/signup/complete-role', request.url));
+    return NextResponse.redirect(new URL(completeRolePath(), request.url));
   }
 
   if (profileError) {
@@ -173,14 +202,14 @@ export async function GET(request: NextRequest) {
 
           const r = emailProfile.role as string;
           if (r === 'student') {
-            return NextResponse.redirect(new URL(emailProfile.form_level ? '/student/dashboard' : '/signup/complete-role', request.url));
+            return NextResponse.redirect(new URL(emailProfile.form_level ? finalDest('/student/dashboard') : completeRolePath(), request.url));
           }
-          if (r === 'tutor') return NextResponse.redirect(new URL('/tutor/dashboard', request.url));
-          if (r === 'parent') return NextResponse.redirect(new URL('/parent/dashboard', request.url));
-          if (r === 'admin') return NextResponse.redirect(new URL(getAdminHomePath(userEmail), request.url));
+          if (r === 'tutor') return NextResponse.redirect(new URL(finalDest('/tutor/dashboard'), request.url));
+          if (r === 'parent') return NextResponse.redirect(new URL(finalDest('/parent/dashboard'), request.url));
+          if (r === 'admin') return NextResponse.redirect(new URL(finalDest(getAdminHomePath(userEmail)), request.url));
         }
         console.log('➡️ No linked account found — redirecting to role selection');
-        return NextResponse.redirect(new URL('/signup/complete-role', request.url));
+        return NextResponse.redirect(new URL(completeRolePath(), request.url));
       }
       console.log('⚠️ No role set, checking user metadata');
       // Try to determine role from user metadata
@@ -189,18 +218,18 @@ export async function GET(request: NextRequest) {
       
       if (metadataRole === 'tutor') {
         console.log('➡️ Redirecting to tutor role completion');
-        return NextResponse.redirect(new URL('/signup/complete-role', request.url));
+        return NextResponse.redirect(new URL(completeRolePath(), request.url));
       }
       if (metadataRole === 'parent') {
         console.log('➡️ Redirecting to parent dashboard');
-        return NextResponse.redirect(new URL('/parent/dashboard', request.url));
+        return NextResponse.redirect(new URL(finalDest('/parent/dashboard'), request.url));
       }
       if (metadataRole === 'student') {
         console.log('➡️ Redirecting to student role selection');
-        return NextResponse.redirect(new URL('/signup/complete-role', request.url));
+        return NextResponse.redirect(new URL(completeRolePath(), request.url));
       }
       console.log('➡️ Redirecting to role selection');
-      return NextResponse.redirect(new URL('/signup/complete-role', request.url));
+      return NextResponse.redirect(new URL(completeRolePath(), request.url));
     }
 
     if (isEmailManagementOnlyAdmin(userEmail)) {
@@ -212,21 +241,21 @@ export async function GET(request: NextRequest) {
     if (role === 'student') {
       if (!profile.form_level) {
         console.log('➡️ Student profile incomplete (no form_level), redirecting to complete-role');
-        return NextResponse.redirect(new URL('/signup/complete-role', request.url));
+        return NextResponse.redirect(new URL(completeRolePath(), request.url));
       }
 
       console.log('➡️ Redirecting to student dashboard');
-      return NextResponse.redirect(new URL('/student/dashboard', request.url));
+      return NextResponse.redirect(new URL(finalDest('/student/dashboard'), request.url));
     } else if (role === 'parent') {
       console.log('➡️ Redirecting to parent dashboard');
-      return NextResponse.redirect(new URL('/parent/dashboard', request.url));
+      return NextResponse.redirect(new URL(finalDest('/parent/dashboard'), request.url));
     } else if (role === 'tutor') {
       console.log('➡️ Redirecting to tutor dashboard');
-      return NextResponse.redirect(new URL('/tutor/dashboard', request.url));
+      return NextResponse.redirect(new URL(finalDest('/tutor/dashboard'), request.url));
     } else if (role === 'admin') {
       const adminPath = getAdminHomePath(userEmail);
       console.log('➡️ Redirecting to admin area:', adminPath);
-      return NextResponse.redirect(new URL(adminPath, request.url));
+      return NextResponse.redirect(new URL(finalDest(adminPath), request.url));
     }
 
     // If role exists but didn't match any case above, send to login with error

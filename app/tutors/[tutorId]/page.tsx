@@ -50,10 +50,22 @@ export default function PublicTutorProfilePage() {
   const router = useRouter();
   const params = useParams();
   const tutorId = params.tutorId as string;
+  // Where auth should return to. This page is the public landing spot for a
+  // profile QR code, so every sign-in / sign-up link on it has to carry the
+  // way back — otherwise scanning a code and creating an account drops you on
+  // a dashboard with no idea which tutor you were looking at.
+  const authReturn = encodeURIComponent(`/tutors/${tutorId}`);
   const { isOpen: authPromptOpen, action: authAction, redirectUrl, promptAuth, closePrompt } = useAuthPrompt();
   
   const [tutor, setTutor] = useState<TutorProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  // Whether paid sessions are live, from the real server-side flag. This page
+  // used to test process.env.NEXT_PUBLIC_ENABLE_PAID_SESSIONS, which is set
+  // nowhere — so the test was always false and every tutor was advertised at
+  // $0.00/hr to anyone who scanned their QR code. The actual flag is
+  // PAID_CLASSES_ENABLED, read server-side and exposed by /api/feature-flags,
+  // which is what the signed-in tutor page already uses.
+  const [paidClassesEnabled, setPaidClassesEnabled] = useState<boolean | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [selectedSubject, setSelectedSubject] = useState<TutorProfile['subjects'][0] | null>(null);
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<{ start: string; end: string } | null>(null);
@@ -69,7 +81,34 @@ export default function PublicTutorProfilePage() {
     fetchTutorProfile();
     fetchVerifiedSubjects();
     checkAuth();
+    fetchPaidClassesFlag();
   }, [tutorId]);
+
+  async function fetchPaidClassesFlag() {
+    try {
+      const res = await fetch('/api/feature-flags', { cache: 'no-store' });
+      const data = await res.json();
+      setPaidClassesEnabled(Boolean(data?.paidClassesEnabled));
+    } catch {
+      // Unknown, not "free" — rateLabel holds back the price rather than
+      // quoting a number (or a zero) we aren't sure about.
+      setPaidClassesEnabled(null);
+    }
+  }
+
+  /**
+   * What to show where a rate goes.
+   *
+   * Never "$0.00" for a tutor who has a rate: quoting a price of zero to a
+   * prospective student is worse than quoting nothing. "Free" is only shown
+   * when paid sessions are genuinely switched off platform-wide.
+   */
+  function rateLabel(price: number | null | undefined, suffix = ''): string {
+    if (paidClassesEnabled === null) return '—';
+    if (!paidClassesEnabled) return 'Free';
+    const value = Number(price ?? 0);
+    return value > 0 ? `$${value}${suffix}` : 'Rate not set';
+  }
 
   async function checkAuth() {
     const { data: { session } } = await supabase.auth.getSession();
@@ -285,13 +324,13 @@ export default function PublicTutorProfilePage() {
             </Link>
             <div className="flex items-center gap-3">
               <Link
-                href="/signup"
+                href={`/signup?redirect=${authReturn}`}
                 className="px-4 py-2 text-sm font-semibold text-white hover:text-itutor-green transition-colors"
               >
                 Sign Up
               </Link>
               <Link
-                href="/login"
+                href={`/login?redirect=${authReturn}`}
                 className="px-4 py-2 text-sm font-semibold text-gray-900 bg-itutor-green hover:bg-emerald-500 rounded-lg transition-colors"
               >
                 Log In
@@ -524,7 +563,7 @@ export default function PublicTutorProfilePage() {
                         </div>
                         <div className="text-right ml-2">
                           <p className="text-lg font-bold text-itutor-green">
-                            {process.env.NEXT_PUBLIC_ENABLE_PAID_SESSIONS === 'true' ? `$${subject.price_per_hour_ttd}` : '$0.00'}
+                            {rateLabel(subject.price_per_hour_ttd)}
                           </p>
                           <p className="text-xs text-gray-600">per hour</p>
                         </div>
@@ -561,7 +600,7 @@ export default function PublicTutorProfilePage() {
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      Booking: {selectedSubject.name} • {process.env.NEXT_PUBLIC_ENABLE_PAID_SESSIONS === 'true' ? `$${selectedSubject.price_per_hour_ttd}` : '$0.00'}/hour
+                      Booking: {selectedSubject.name} • {rateLabel(selectedSubject.price_per_hour_ttd, '/hour')}
                     </div>
                   </div>
                   <TutorCalendarWidget
@@ -722,9 +761,7 @@ export default function PublicTutorProfilePage() {
                   <div className="flex justify-between pt-2 border-t border-blue-300">
                     <span className="text-gray-600">Price:</span>
                     <span className="font-bold text-itutor-green text-lg">
-                      {process.env.NEXT_PUBLIC_ENABLE_PAID_SESSIONS === 'true' 
-                        ? `$${selectedSubject.price_per_hour_ttd}/hr`
-                        : '$0.00/hr'}
+                      {rateLabel(selectedSubject.price_per_hour_ttd, '/hr')}
                     </span>
                   </div>
                 </div>
@@ -733,13 +770,13 @@ export default function PublicTutorProfilePage() {
 
             <div className="flex flex-col gap-3">
               <Link
-                href="/signup"
+                href={`/signup?redirect=${authReturn}`}
                 className="w-full px-6 py-4 bg-gradient-to-r from-itutor-green to-emerald-600 hover:from-emerald-600 hover:to-itutor-green text-white font-bold rounded-lg transition shadow-lg shadow-itutor-green/30 text-center"
               >
                 🚀 Sign Up to Book
               </Link>
               <Link
-                href="/login"
+                href={`/login?redirect=${authReturn}`}
                 className="w-full px-6 py-4 border-2 border-gray-300 text-gray-700 font-semibold rounded-lg hover:border-itutor-green hover:text-itutor-green hover:bg-green-50 transition text-center"
               >
                 Already have an account? Log In

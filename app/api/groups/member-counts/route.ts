@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
         .from('group_enrollments')
         .select('group_id')
         .in('group_id', groupIds)
-        .in('status', ['ACTIVE', 'GRACE', 'SUSPENDED']),
+        .in('status', ['SECURED', 'ACTIVE', 'GRACE', 'SUSPENDED']),
       admin
         .from('group_members')
         .select('group_id')

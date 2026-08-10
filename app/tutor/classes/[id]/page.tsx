@@ -23,6 +23,17 @@ import TutorShell from '@/components/tutor/TutorShell';
 import { uploadStreamAttachment } from '@/lib/utils/streamAttachments';
 import PaymentHistoryPanel from '@/components/students/PaymentHistoryPanel';
 import { generateHistoryForMember, getPaymentStatus, getMembershipStatus, MEMBERSHIP_META, type MemberBilling } from '@/lib/utils/paymentCycles';
+import {
+  BANNER_ACCEPT,
+  BANNER_MAX_BYTES,
+  BANNER_MIN_H,
+  BANNER_MIN_W,
+  BANNER_W,
+  BANNER_H,
+  bannerToBlob,
+  loadBitmap,
+  renderBanner,
+} from '@/lib/utils/bannerCanvas';
 
 type DbSubject = { id: string; name: string; label: string; curriculum: string };
 
@@ -43,6 +54,10 @@ type Subscriber = {
   cancel_at_period_end: boolean;
   cancelled_at: string | null;
   grace_period_ends_at: string | null;
+  secured_at?: string | null;
+  release_date?: string | null;
+  /** Present only for SECURED enrolments — a held spot, not a live subscription. */
+  secured?: { releaseDate: string | null; heldTtd: number; free: boolean; shortClass: boolean } | null;
   student: { id: string; full_name: string | null; avatar_url: string | null; email: string | null } | null;
 };
 
@@ -50,7 +65,10 @@ type GroupMember = {
   id: string;
   studentId: string;
   name: string;
-  paymentStatus: 'paid' | 'pending' | 'overdue';
+  // 'secured' = paid up front and held by iTutor until the first month is
+  // taught. Distinct from 'paid' on purpose: the money exists but the tutor
+  // has not been paid it yet, and the roster must not imply otherwise.
+  paymentStatus: 'paid' | 'pending' | 'overdue' | 'secured';
   status: 'active' | 'approved' | 'invited' | 'pending' | 'suspended' | 'banned' | 'removed';
   joinedAt: string | null;
   outstandingTtd?: number;
@@ -81,6 +99,7 @@ type GroupSession = {
 };
 
 import { type ScheduleEntry, formatScheduleEntry, scheduleToDisplay } from '@/lib/utils/scheduleFormat';
+import { preorderReasonMessage, type PreorderIneligibility } from '@/lib/payments/secureSpot';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -103,6 +122,7 @@ type GroupDetail = {
   visibility: 'public' | 'private';
   isPublic: boolean;
   requireJoinRequests: boolean;
+  secureSpotEnabled: boolean;
   autoSuspendMissedPayment: boolean;
   gracePeriodDays: number;
   primaryChannel: 'native' | 'whatsapp' | 'classroom';
@@ -253,6 +273,7 @@ function ClassHubContent() {
           visibility: visibilityVal,
           isPublic: visibilityVal === 'public',
           requireJoinRequests: g.require_join_requests ?? false,
+          secureSpotEnabled: g.secure_spot_enabled === true,
           autoSuspendMissedPayment: g.auto_suspend_missed_payment ?? false,
           gracePeriodDays: g.grace_period_days ?? 7,
           primaryChannel: (g.primary_channel ?? 'native') as GroupDetail['primaryChannel'],
@@ -286,8 +307,12 @@ function ClassHubContent() {
       } catch { /* leave empty */ }
 
       const now = new Date();
-      function derivePaymentStatus(sub: any): 'paid' | 'pending' | 'overdue' {
+      function derivePaymentStatus(sub: any): 'paid' | 'pending' | 'overdue' | 'secured' {
         if (!sub) return 'pending';
+        // Held money reads as neither paid nor pending: the student has paid,
+        // the tutor has not been paid. Checked first — a SECURED enrolment has
+        // no current period and would otherwise fall through to 'pending'.
+        if (sub.status === 'SECURED') return 'secured';
         const periodEnd = sub.current_period_end ? new Date(sub.current_period_end) : null;
         // Active subscription within a current paid period → paid.
         // Use status='ACTIVE' as the primary signal; payment_status is a secondary
@@ -1071,7 +1096,26 @@ function SessionsTab({ sessions, groupId, setSessions, meetingLink, reconnected 
     try {
       // The API expects a single session record with recurrence info —
       // it generates all occurrences server-side.
-      const title = `Session — ${new Date(form.date + 'T' + form.time).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}`;
+      // A recurring series covers many dates, so naming it after the first one
+      // is wrong the moment the second occurrence exists — that is how every
+      // row of a weekly class ended up reading "Session — Wed, Sep 9". One-off
+      // sessions keep the dated name, because for them it is accurate.
+      const startsAt = new Date(form.date + 'T' + form.time);
+      const title =
+        form.recurrence === 'weekly'
+          ? `Weekly session — ${
+              (form.weekdays ?? []).length
+                ? (form.weekdays as number[])
+                    .slice()
+                    .sort((a, b) => a - b)
+                    .map((d) => DAY_NAMES[d]?.slice(0, 3))
+                    .filter(Boolean)
+                    .join(', ')
+                : startsAt.toLocaleDateString(undefined, { weekday: 'long' })
+            }`
+          : form.recurrence === 'daily'
+            ? 'Daily session'
+            : `Session — ${startsAt.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}`;
       const payload = {
         title,
         start_time: form.time,             // "HH:MM"
@@ -1080,7 +1124,10 @@ function SessionsTab({ sessions, groupId, setSessions, meetingLink, reconnected 
         duration_minutes: form.duration,
         recurrence_type: form.recurrence,  // "none" | "daily" | "weekly"
         recurrence_days: form.recurrence === 'weekly' ? form.weekdays : [],
-        timezone_offset: -new Date().getTimezoneOffset(), // minutes from UTC
+        // Ignored by the API, which resolves class times in Trinidad time. Left
+        // only so older deployments keep working; note this caller used the
+        // opposite sign to every other one, which is what broke the times.
+        timezone_offset: new Date().getTimezoneOffset(),
       };
 
       const res = await fetch(`/api/groups/${groupId}/sessions`, {
@@ -1467,6 +1514,8 @@ function RosterTab({ members, setMembers, group, isOneOnOne, atCapacity, onRefre
           body="New invites are paused. Increase max class size in Settings or wait for a member to leave." />
       )}
 
+      <SecuredSpotsSummary members={members} />
+
       {inviteOpen === 'link' && (
         <div className="rounded-2xl bg-card border border-border p-5 space-y-3">
           <div className="font-semibold text-ink">Invite link</div>
@@ -1615,6 +1664,121 @@ function PardonButton({ studentId, groupId, onPardon }: { studentId: string; gro
   );
 }
 
+/**
+ * Class-level summary of held money.
+ *
+ * A tutor waiting weeks between a student paying and being paid needs to see
+ * why in one place. Discovering it through an unexpectedly short payout is how
+ * tutors leave.
+ */
+function SecuredSpotsSummary({ members }: { members: GroupMember[] }) {
+  const secured = members.filter((m) => m.paymentStatus === 'secured');
+  if (secured.length === 0) return null;
+
+  const totalHeld = secured.reduce((sum, m) => sum + (m.subscription?.secured?.heldTtd ?? 0), 0);
+  const releaseDates = secured
+    .map((m) => m.subscription?.secured?.releaseDate)
+    .filter((d): d is string => !!d)
+    .sort();
+  const earliest = releaseDates[0] ?? null;
+  const allFree = totalHeld <= 0;
+
+  return (
+    <div className="rounded-2xl border border-brand/30 bg-brand-soft/40 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="text-sm font-bold text-ink">
+            {secured.length} spot{secured.length === 1 ? '' : 's'} secured
+          </div>
+          <div className="mt-0.5 text-xs text-muted-foreground">
+            {allFree
+              ? 'Reserved places on a free class — no payment involved.'
+              : <>
+                  <span className="font-semibold text-ink">{fmtTTD(totalHeld)}</span> held
+                  {earliest && (
+                    <> · releasing from{' '}
+                      {new Date(`${earliest}T00:00:00`).toLocaleDateString('en-US', {
+                        month: 'long', day: 'numeric', year: 'numeric',
+                      })}
+                    </>
+                  )}
+                </>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The (i) beside a secured student. Three variants, because the single line
+ * "you'll be paid after the first month" is only true for long classes.
+ *
+ * Deliberately about timing only. The full release conditions (class not
+ * deleted, no open report) belong in the terms and at the point the tutor
+ * switches the feature on — reading them beside a student's name, when the
+ * overwhelming majority of tutors will never trip them, reads as accusatory.
+ */
+function SecuredPayoutInfo({ secured }: { secured: NonNullable<Subscriber['secured']> }) {
+  const [open, setOpen] = useState(false);
+  const dateLabel = secured.releaseDate
+    ? new Date(`${secured.releaseDate}T00:00:00`).toLocaleDateString('en-US', {
+        month: 'long', day: 'numeric', year: 'numeric',
+      })
+    : null;
+
+  if (secured.free) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="grid size-4 place-items-center rounded-full border border-border text-[9px] font-bold text-muted-foreground hover:border-brand hover:text-brand-deep"
+        aria-label="About reserved spots"
+      >
+        i
+        {open && (
+          <span className="absolute z-20 mt-24 w-64 rounded-xl border border-border bg-background p-3 text-left text-[11px] font-normal leading-relaxed text-muted-foreground shadow-lg">
+            This student has reserved a place before the class starts. This is a
+            free class, so there is no payment involved.
+          </span>
+        )}
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setOpen((v) => !v)}
+      className="relative grid size-4 place-items-center rounded-full border border-border text-[9px] font-bold text-muted-foreground hover:border-brand hover:text-brand-deep"
+      aria-label="When you'll be paid"
+    >
+      i
+      {open && (
+        <span className="absolute left-0 top-5 z-20 w-72 rounded-xl border border-border bg-background p-3 text-left text-[11px] font-normal leading-relaxed text-muted-foreground shadow-lg">
+          <span className="mb-1 block text-xs font-bold text-ink">When you&apos;ll be paid</span>
+          {secured.shortClass ? (
+            <>
+              Students pay for this class up front. iTutor holds that payment
+              until the class finishes{dateLabel ? <> on <span className="font-semibold text-ink">{dateLabel}</span></> : null},
+              then releases it with your next payout.
+            </>
+          ) : (
+            <>
+              Students who secure a spot pay for their first month up front.
+              iTutor holds that payment until you&apos;ve taught the first month
+              of classes — for this class, that&apos;s{' '}
+              <span className="font-semibold text-ink">{dateLabel ?? 'a month after the first lesson'}</span>.
+              {' '}Payment is released with your next payout after that date, as
+              long as the class runs as scheduled.
+            </>
+          )}
+        </span>
+      )}
+    </button>
+  );
+}
+
 function RosterRow({ m, groupId, onUpdate, onRemoved, externalChannels }: { m: GroupMember; groupId: string; onUpdate: (p: Partial<GroupMember>) => void; onRemoved?: () => void; externalChannels?: string }) {
   const [menu, setMenu] = useState(false);
   const [menuPos, setMenuPos] = useState({ top: 0, right: 0 });
@@ -1735,7 +1899,38 @@ function RosterRow({ m, groupId, onUpdate, onRemoved, externalChannels }: { m: G
               {m.name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
             </div>
             <div>
-              <div className="font-semibold text-ink">{m.name}</div>
+              <div className="flex items-center gap-1.5">
+                <span className="font-semibold text-ink">{m.name}</span>
+                {/* Visually distinct from an active subscriber: this student
+                    has paid, but the tutor has not been paid yet. */}
+                {m.paymentStatus === 'secured' && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-brand/40 bg-brand-soft px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand-deep">
+                    Spot secured
+                  </span>
+                )}
+              </div>
+              {m.paymentStatus === 'secured' && m.subscription?.secured && (
+                <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  {m.subscription.secured.free ? (
+                    <span>Reserved · free class</span>
+                  ) : (
+                    <span>
+                      <span className="font-semibold text-ink">
+                        {fmtTTD(m.subscription.secured.heldTtd)}
+                      </span>{' '}
+                      held
+                      {m.subscription.secured.releaseDate && (
+                        <> · releases{' '}
+                          {new Date(`${m.subscription.secured.releaseDate}T00:00:00`).toLocaleDateString(
+                            'en-US', { month: 'long', day: 'numeric' }
+                          )}
+                        </>
+                      )}
+                    </span>
+                  )}
+                  <SecuredPayoutInfo secured={m.subscription.secured} />
+                </div>
+              )}
               {m.paymentStatus === 'overdue' && <div className="text-[11px] text-rose-600 font-semibold">Outstanding {fmtTTD(m.outstandingTtd ?? 0)}</div>}
               {m.subscription?.cancel_at_period_end && (
                 <div className="text-[10px] text-zinc-500 font-medium flex items-center gap-1">
@@ -1979,6 +2174,28 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
   const d = <K extends keyof GroupDetail>(k: K, v: GroupDetail[K]) =>
     setDraft((prev) => ({ ...prev, [k]: v }));
 
+  // Can this class open preorders at all? Answered by the server, because the
+  // recurrence lives in group_sessions and this page only holds flattened
+  // occurrences — and because the same rule has to gate the save anyway.
+  const [preorderReady, setPreorderReady] =
+    useState<{ ok: boolean; reason?: string; firstSession?: string } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/groups/schedules?ids=${group.id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (cancelled) return;
+        setPreorderReady(json?.schedules?.[group.id]?.preorderReady ?? { ok: false, reason: 'no_schedule' });
+      })
+      .catch(() => {
+        // Leaving it null keeps the switch disabled rather than offering
+        // something the save would then reject.
+        if (!cancelled) setPreorderReady({ ok: false, reason: 'no_schedule' });
+      });
+    return () => { cancelled = true; };
+  }, [group.id]);
+
   // Track saved snapshot to compute dirty state
   const savedRef = useRef(JSON.stringify(group));
   const dirty = JSON.stringify(draft) !== savedRef.current;
@@ -2077,6 +2294,7 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
         body: JSON.stringify({
           visibility: draft.visibility,
           require_join_requests: draft.requireJoinRequests,
+          secure_spot_enabled: draft.secureSpotEnabled,
           auto_suspend_missed_payment: draft.autoSuspendMissedPayment,
           grace_period_days: draft.gracePeriodDays,
           primary_channel: draft.primaryChannel,
@@ -2323,6 +2541,32 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
                 onChange={(v) => d('requireJoinRequests', v)}
                 disabled={draft.visibility === 'private'}
               />
+              {/* Preorders. The switch is only offered once the class has a
+                  schedule whose first lesson is still ahead — students must
+                  never see a payment button next to "schedule to be
+                  confirmed", and a class already running is joined, not
+                  reserved. The server re-checks this on save. */}
+              <Toggle
+                label="Let students secure a spot before it starts"
+                hint={
+                  preorderReady === null
+                    ? 'Checking the schedule…'
+                    : preorderReady.ok
+                      ? `On by default until the class starts${
+                          preorderReady.firstSession
+                            ? ` on ${new Date(preorderReady.firstSession).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}`
+                            : ''
+                        }. Students pay their first month up front to hold a place; switch off if you'd rather they joined normally. Turning it off doesn't affect spots already secured.`
+                      : preorderReasonMessage(
+                          (preorderReady.reason ?? 'no_schedule') as PreorderIneligibility
+                        )
+                }
+                value={draft.secureSpotEnabled}
+                // Never blocked while it's already on, so a tutor can always
+                // switch it back off — including after the class has started.
+                disabled={!draft.secureSpotEnabled && !(preorderReady?.ok ?? false)}
+                onChange={(v) => d('secureSpotEnabled', v)}
+              />
               <Toggle label="Auto-suspend on overdue payment" hint="When a payment goes overdue past the grace window, the member is suspended until they pay." value={draft.autoSuspendMissedPayment} onChange={(v) => d('autoSuspendMissedPayment', v)} />
               {draft.autoSuspendMissedPayment && (
                 <SetField label="Grace window (days)" infoTitle="Grace window" infoBlurb="How many days after a missed payment before the member is auto-suspended. Set to 0 to suspend immediately.">
@@ -2531,18 +2775,74 @@ function SchedulePicker({ entries, onChange }: { entries: ScheduleEntry[]; onCha
   );
 }
 
-/* ─── Class banner (built in the Banner Builder) ──────── */
+/* ─── Class banner (Banner Builder, or upload your own) ──────── */
 function ClassBannerUpload({ groupId, currentUrl, onUploaded }: { groupId: string; currentUrl: string; onUploaded: (url: string) => void }) {
+  const { profile } = useProfile();
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [warn, setWarn] = useState('');
+
+  // Straight upload, for tutors who already have artwork and don't want to
+  // compose one. The file is still rasterised through renderBanner at
+  // 1600x400 rather than stored as-is: the card and listing assume that exact
+  // 4:1 frame, so an arbitrary aspect ratio would letterbox or crop badly.
+  // Same pipeline the builder uses for its 'upload' template, so both routes
+  // produce an identical artefact.
+  async function handleFile(file: File) {
+    setError(''); setWarn('');
+    if (!BANNER_ACCEPT.includes(file.type)) { setError('Use a JPG, PNG or WebP image.'); return; }
+    if (file.size > BANNER_MAX_BYTES) { setError('Image must be under 10MB.'); return; }
+    if (!profile?.id) { setError('Not signed in.'); return; }
+
+    setBusy(true);
+    try {
+      const bmp = await loadBitmap(file);
+      if (bmp.width < BANNER_MIN_W || bmp.height < BANNER_MIN_H) {
+        setWarn(`For the sharpest result use at least ${BANNER_MIN_W}×${BANNER_MIN_H}px (yours is ${bmp.width}×${bmp.height}).`);
+      }
+
+      const canvas = document.createElement('canvas');
+      renderBanner(canvas, {
+        template: 'upload',
+        wash: 'neutral',
+        upload: bmp,
+        uploadScale: 1,
+        uploadOffsetX: 0,
+        uploadOffsetY: 0,
+        atmosphere: '',
+        showGuides: false,
+      });
+      const blob = await bannerToBlob(canvas);
+      const out = new File([blob], 'banner.jpg', { type: 'image/jpeg' });
+
+      // Same bucket/prefix convention as the builder — `avatars` is the bucket
+      // whose RLS and public read are provisioned in every environment.
+      const path = `${profile.id}/groups/banner-${groupId}-${Date.now()}.jpg`;
+      const up = await supabase.storage.from('avatars').upload(path, out, { upsert: true, contentType: 'image/jpeg' });
+      if (up.error) throw up.error;
+
+      onUploaded(supabase.storage.from('avatars').getPublicUrl(path).data.publicUrl);
+    } catch (e: any) {
+      setError(e?.message ?? 'Could not read that image.');
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  }
+
   return (
     <div className="space-y-2">
       <div className="text-sm font-semibold text-ink">Banner image</div>
-      <p className="text-xs text-muted-foreground">Shown at the top of your class listing. Create or change it in the banner builder.</p>
+      <p className="text-xs text-muted-foreground">
+        Shown at the top of your class listing. Build one, or upload your own — {BANNER_W}×{BANNER_H} ({BANNER_W / BANNER_H}:1) works best.
+      </p>
       {currentUrl && (
         <div className="rounded-xl overflow-hidden h-24 border border-border">
           <img src={currentUrl} alt="Banner" className="w-full h-full object-cover" />
         </div>
       )}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Link
           href={`/tutor/classes/${groupId}/banner`}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-sm font-semibold hover:bg-muted transition"
@@ -2550,10 +2850,29 @@ function ClassBannerUpload({ groupId, currentUrl, onUploaded }: { groupId: strin
           <ArrowUpRight className="size-4 rotate-45" />
           {currentUrl ? 'Change banner' : 'Build banner'}
         </Link>
+
+        <input
+          ref={fileRef}
+          type="file"
+          accept={BANNER_ACCEPT.join(',')}
+          className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+        />
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={busy}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-sm font-semibold hover:bg-muted transition disabled:opacity-50"
+        >
+          {busy ? 'Uploading…' : 'Upload image'}
+        </button>
+
         {currentUrl && (
           <button onClick={() => onUploaded('')} className="text-xs text-muted-foreground hover:text-rose-600 transition">Remove</button>
         )}
       </div>
+      {warn && <p className="text-xs text-amber-600">{warn}</p>}
+      {error && <p className="text-xs text-rose-600">{error}</p>}
     </div>
   );
 }

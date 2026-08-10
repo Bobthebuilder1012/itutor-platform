@@ -10,7 +10,7 @@ import { getDisplayName } from '@/lib/utils/displayName';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import UserAvatar from '@/components/UserAvatar';
 import { cn } from '@/lib/utils';
-import { Search, Star, Clock, SlidersHorizontal, Users, GraduationCap, Flame, X, Check, Video, Sparkles, BadgeCheck, MessageSquare, TrendingUp, Play } from 'lucide-react';
+import { Search, Star, Heart, Calendar, Clock, SlidersHorizontal, Users, GraduationCap, Flame, X, Check, Video, Sparkles } from 'lucide-react';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 import {
   parseScheduleData,
@@ -22,6 +22,7 @@ import {
   type TimeBand,
 } from '@/lib/utils/scheduleFormat';
 import { formatLevel } from '@/lib/utils/formatLevel';
+import { classCapacityDisplay, capacityLabel } from '@/lib/utils/classCapacity';
 
 type Tutor = {
   id: string;
@@ -86,6 +87,8 @@ type GroupLesson = {
   feedbackMode?: string | null;
   parentFeedbackPrice?: number | null;
   activePromotion?: { id: string; kind: string; discount: number; student_cap: number | null; duration_days: number | null } | null;
+  /** Set when the class hasn't started and the tutor has opened preorders. */
+  preorder?: { firstSession: string; releaseDate: string; shortClass: boolean } | null;
 };
 
 function promoLabel(promo: { kind: string; discount: number; student_cap: number | null; duration_days: number | null; created_at?: string; used_count?: number }): string {
@@ -143,33 +146,11 @@ function TutorAvatar({ avatarUrl, name, size = 40 }: { avatarUrl?: string | null
   );
 }
 
-// Map a stored country (ISO2 code or full name) to a flag emoji for the card.
-// Returns '' when we can't confidently resolve one — never a fabricated flag.
-function countryToFlag(country?: string | null): string {
-  if (!country) return '';
-  const c = country.trim();
-  if (/^[A-Za-z]{2}$/.test(c)) {
-    return c.toUpperCase().replace(/./g, (ch) => String.fromCodePoint(127397 + ch.charCodeAt(0)));
-  }
-  const MAP: Record<string, string> = {
-    'trinidad and tobago': '🇹🇹', 'trinidad & tobago': '🇹🇹', 'trinidad': '🇹🇹',
-    'jamaica': '🇯🇲', 'guyana': '🇬🇾', 'barbados': '🇧🇧', 'grenada': '🇬🇩',
-    'saint lucia': '🇱🇨', 'st. lucia': '🇱🇨', 'st lucia': '🇱🇨', 'dominica': '🇩🇲',
-    'saint vincent and the grenadines': '🇻🇨', 'antigua and barbuda': '🇦🇬',
-    'the bahamas': '🇧🇸', 'bahamas': '🇧🇸', 'suriname': '🇸🇷', 'belize': '🇧🇿',
-    'united states': '🇺🇸', 'united kingdom': '🇬🇧', 'canada': '🇨🇦',
-  };
-  return MAP[c.toLowerCase()] ?? '';
-}
-
 export default function FindTutorsPage() {
   const { profile, loading } = useProfile();
   const router = useRouter();
   const [tutors, setTutors] = useState<Tutor[]>([]);
   const [loadingTutors, setLoadingTutors] = useState(true);
-  // Real per-tutor stats (lessons taught, students taught, recent bookings),
-  // aggregated server-side (service role) so counts are RLS-correct.
-  const [tutorStats, setTutorStats] = useState<Record<string, { lessonsTaught: number; studentsTaught: number; recentBookings: number }>>({});
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
@@ -186,6 +167,7 @@ export default function FindTutorsPage() {
   // matches when one of its recurring sessions satisfies every active filter.
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
   const [selectedBands, setSelectedBands] = useState<TimeBand[]>([]);
+  const [savedItems, setSavedItems] = useState<Set<string>>(new Set());
   const [groupLessons, setGroupLessons] = useState<GroupLesson[]>([]);
   const [loadingGroupLessons, setLoadingGroupLessons] = useState(true);
   const [enrolledLessonIds, setEnrolledLessonIds] = useState<Set<string>>(new Set());
@@ -259,9 +241,19 @@ export default function FindTutorsPage() {
         throw profilesError ?? new Error('No tutor profiles');
       }
 
-      // Final ordering is applied after we know the listed set, using the
-      // marketplace ranking view (mig 190). Verification-status order is kept
-      // only as a fallback below if that view isn't available yet.
+      const verificationRank: Record<string, number> = {
+        VERIFIED: 0,
+        PENDING: 1,
+        PROCESSING: 2,
+        UNVERIFIED: 3,
+        REJECTED: 4,
+      };
+      tutorProfiles.sort(
+        (a, b) =>
+          (verificationRank[String(a.tutor_verification_status ?? 'UNVERIFIED')] ?? 9) -
+          (verificationRank[String(b.tutor_verification_status ?? 'UNVERIFIED')] ?? 9)
+      );
+
       const tutorProfilesWithBanners = tutorProfiles as Array<Record<string, unknown> & { id: string }>;
 
       // Fetch listed tutor IDs from server API (bypasses RLS on protected tables)
@@ -272,11 +264,11 @@ export default function FindTutorsPage() {
       const activeTutorProfiles = tutorProfilesWithBanners.filter(t => listedSet.has(t.id));
       const activeTutorIds = activeTutorProfiles.map((t) => t.id);
 
-      console.log(`✅ Showing ${activeTutorProfiles.length} listed tutors (of ${tutorProfilesWithBanners.length} total)`);
-
       // Marketplace ordering (mig 190): pinned tutors first in pin order,
-      // then everyone else by ranking_score desc. Falls back to
-      // verification-status order if the ranking view isn't present yet.
+      // then everyone else by ranking_score desc. This is what the admin
+      // Promotion & Ranking page controls — without it, boost/pin have no
+      // effect on what students see. Falls back to verification-status order
+      // if the ranking view isn't present.
       try {
         const { data: rankRows, error: rankErr } = activeTutorIds.length > 0
           ? await supabase
@@ -300,13 +292,14 @@ export default function FindTutorsPage() {
           return rb.score - ra.score;
         });
       } catch {
-        const verificationRank: Record<string, number> = { VERIFIED: 0, PENDING: 1, PROCESSING: 2, UNVERIFIED: 3, REJECTED: 4 };
         activeTutorProfiles.sort(
           (a, b) =>
-            (verificationRank[String((a as any).tutor_verification_status ?? 'UNVERIFIED')] ?? 9) -
-            (verificationRank[String((b as any).tutor_verification_status ?? 'UNVERIFIED')] ?? 9)
+            (verificationRank[String(a.tutor_verification_status ?? 'UNVERIFIED')] ?? 9) -
+            (verificationRank[String(b.tutor_verification_status ?? 'UNVERIFIED')] ?? 9)
         );
       }
+
+      console.log(`✅ Showing ${activeTutorProfiles.length} listed tutors (of ${tutorProfilesWithBanners.length} total)`);
 
       // Fetch subjects for all tutor profiles
       const { data: tutorSubjects, error: subjectsError } =
@@ -425,19 +418,6 @@ export default function FindTutorsPage() {
       console.log('Tutors with subjects:', tutorsWithSubjects.length);
 
       setTutors(tutorsWithSubjects);
-
-      // Real marketplace stats (lessons taught, students taught, recent bookings).
-      const statIds = tutorsWithSubjects.map((t) => t.id);
-      if (statIds.length > 0) {
-        fetch('/api/public/tutors/stats', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tutorIds: statIds }),
-        })
-          .then((r) => (r.ok ? r.json() : { byTutorId: {} }))
-          .then((j) => setTutorStats(j.byTutorId ?? {}))
-          .catch(() => {});
-      }
     } catch (error) {
       console.error('Error fetching tutors:', error);
     } finally {
@@ -476,13 +456,19 @@ export default function FindTutorsPage() {
       // Query groups directly — avoids API column-schema issues
       let groups: any[] | null = null;
 
+      // The limit has to clear the whole catalogue, because it is applied by
+      // created_at BEFORE the marketplace ranking is (below). At 50 a pinned
+      // class older than the 50 newest would be cut before ordering ever saw
+      // it — pinned to position 1 in admin, absent here.
+      const CATALOGUE_LIMIT = 200;
+
       const { data: g1, error: e1 } = await supabase
         .from('groups')
         .select('*')
         .is('archived_at', null)
         .or('visibility.neq.private,visibility.is.null')
         .order('created_at', { ascending: false })
-        .limit(50);
+        .limit(CATALOGUE_LIMIT);
 
       if (!e1) {
         groups = g1;
@@ -493,7 +479,7 @@ export default function FindTutorsPage() {
           .select('*')
           .is('archived_at', null)
           .order('created_at', { ascending: false })
-          .limit(50);
+          .limit(CATALOGUE_LIMIT);
         if (e2) throw e2;
         groups = g2;
       }
@@ -503,8 +489,9 @@ export default function FindTutorsPage() {
       const groupIds = groups.map((g: any) => g.id);
       const tutorIds = [...new Set<string>(groups.map((g: any) => g.tutor_id).filter(Boolean))];
 
-      // Fetch tutor names, enrollment status, and server-side member counts in parallel
-      const [{ data: tutorProfiles }, { data: memberRows }, { data: subEnrollments }, countsRes] = await Promise.all([
+      // Fetch tutor names, enrollment status, server-side member counts and the
+      // marketplace ranking in parallel
+      const [{ data: tutorProfiles }, { data: memberRows }, { data: subEnrollments }, countsRes, { data: rankRows }] = await Promise.all([
         tutorIds.length
           ? supabase.from('profiles').select('id, full_name, display_name, avatar_url, is_dev_account').in('id', tutorIds)
           : Promise.resolve({ data: [] as any[] }),
@@ -514,8 +501,18 @@ export default function FindTutorsPage() {
           .select('group_id')
           .eq('student_id', profile.id)
           .in('group_id', groupIds)
-          .in('status', ['ACTIVE', 'GRACE', 'SUSPENDED', 'PENDING_PAYMENT']),
+          // PENDING_PAYMENT is an abandoned checkout, not an enrolment —
+          // including it made the card read "Enrolled" for a class the
+          // student had no access to, which opening the class then denied.
+          .in('status', ['SECURED', 'ACTIVE', 'GRACE', 'SUSPENDED']),
         fetch(`/api/groups/member-counts?ids=${groupIds.join(',')}`).then((r) => r.json()).catch(() => ({ counts: {} })),
+        // Granted to authenticated in mig 215. If the view is missing (an older
+        // database), this errors, data is null, and the order below falls back
+        // to newest-first exactly as before.
+        supabase
+          .from('group_marketplace_rankings')
+          .select('group_id, pin_rank, tutor_pin_rank, ranking_score')
+          .in('group_id', groupIds),
       ]);
 
       // Remove groups owned by dev-account tutors — but dev-account viewers
@@ -538,6 +535,10 @@ export default function FindTutorsPage() {
       // 'pending' request is not membership, and badging it "Enrolled" here sent
       // students to a class page they have no access to yet.
       (memberRows ?? []).forEach((m: any) => {
+        // Allowlist, not a denylist: `!== 'denied'` also counted 'pending',
+        // 'suspended', 'banned' and 'removed' members as enrolled. The three
+        // allowed values match viewer_membership on /api/groups/[groupId], so
+        // the card and the class page cannot disagree about who is in.
         if (m.user_id === profile.id && ['approved', 'active', 'invited'].includes(m.status)) enrolledSet.add(m.group_id);
         // Only fall back to group_members count when server didn't return a count
         if (!(m.group_id in serverCounts)) {
@@ -550,28 +551,45 @@ export default function FindTutorsPage() {
 
       setEnrolledLessonIds(enrolledSet);
 
-      // Order classes by their tutor's marketplace ranking (mig 190): pinned
-      // tutors' classes first in pin order, then by ranking_score. Keeps the
-      // created_at order within a tutor; falls back to it entirely if the
-      // ranking view isn't present yet.
-      {
-        const { data: rankRows, error: rankErr } = tutorIds.length
-          ? await supabase.from('tutor_marketplace_rankings').select('tutor_id, pin_rank, ranking_score').in('tutor_id', tutorIds)
-          : { data: [] as any[], error: null };
-        if (!rankErr && rankRows) {
-          const rankMap = new Map<string, { pin: number | null; score: number }>();
-          rankRows.forEach((r: any) => rankMap.set(r.tutor_id, { pin: r.pin_rank ?? null, score: Number(r.ranking_score ?? 0) }));
-          groups = [...groups].sort((a: any, b: any) => {
-            const ra = rankMap.get(a.tutor_id) ?? { pin: null, score: 0 };
-            const rb = rankMap.get(b.tutor_id) ?? { pin: null, score: 0 };
-            if (ra.pin != null || rb.pin != null) {
-              if (ra.pin == null) return 1;
-              if (rb.pin == null) return -1;
-              if (ra.pin !== rb.pin) return ra.pin - rb.pin;
-            }
-            return rb.score - ra.score;
-          });
-        }
+      // Order the cards the way the admin's Class Promotion page says they are
+      // ordered (mig 215): classes pinned by hand, then classes whose TUTOR is
+      // pinned, then the class ranking score, then newest.
+      //
+      // This page reads `groups` straight from the table rather than going
+      // through /api/groups, so it never inherited that ordering — an admin
+      // could pin a class to position 1 and this page would still show it
+      // wherever created_at put it.
+      const rankMap = new Map<string, { pin: number | null; tutorPin: number | null; score: number }>(
+        (rankRows ?? []).map((r: any) => [
+          r.group_id as string,
+          {
+            pin: r.pin_rank ?? null,
+            tutorPin: r.tutor_pin_rank ?? null,
+            score: Number(r.ranking_score ?? 0),
+          },
+        ])
+      );
+
+      if (rankMap.size > 0) {
+        // Unpinned always sorts after pinned; two pins compare by position.
+        // null means "these two are tied on this key, try the next one".
+        const byPin = (a: number | null, b: number | null): number | null => {
+          if (a == null && b == null) return null;
+          if (a == null) return 1;
+          if (b == null) return -1;
+          return a === b ? null : a - b;
+        };
+        const fallback = { pin: null, tutorPin: null, score: 0 };
+        groups = [...groups].sort((a: any, b: any) => {
+          const ra = rankMap.get(a.id) ?? fallback;
+          const rb = rankMap.get(b.id) ?? fallback;
+          return (
+            byPin(ra.pin, rb.pin) ??
+            byPin(ra.tutorPin, rb.tutorPin) ??
+            (rb.score - ra.score ||
+              new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          );
+        });
       }
 
       const mapped: GroupLesson[] = groups.map((g: any) => {
@@ -653,24 +671,46 @@ export default function FindTutorsPage() {
       } catch { /* non-fatal */ }
 
       // Resolve each class's recurring pattern server-side. Sessions and
-      // occurrences are RLS-scoped, so a student who isn't enrolled can't read
-      // them from the browser — and that's exactly the student who needs to see
-      // the schedule before joining. Mirrors the /member-counts workaround.
+      // occurrences are RLS-scoped (group_sessions' policy subqueries
+      // group_members, whose own policy self-references, so a non-member's
+      // browser read dies with 42P17) — and that's exactly the student who
+      // needs to see the schedule before joining.
+      //
+      // One call now carries both: the resolved weekly pattern AND whether the
+      // class can be preordered. Asked for EVERY class, not just those missing a
+      // schedule line — a class with a hand-written schedule still needs to know
+      // whether it takes reservations.
       try {
-        const groupIds = groups.map((g: any) => g.id);
+        const groupIds = mapped.map((l) => l.id);
         if (!groupIds.length) { setGroupLessons(mapped); return; }
 
         const schedRes = await fetch(`/api/groups/schedules?ids=${groupIds.join(',')}`, { cache: 'no-store' })
           .then((r) => (r.ok ? r.json() : null))
           .catch(() => null);
-        const schedules: Record<string, ScheduleEntry[]> = schedRes?.schedules ?? {};
+        const schedules: Record<string, {
+          entries?: ScheduleEntry[];
+          display: string | null;
+          sessionLength: number | null;
+          preorder?: { eligible: boolean; firstSession?: string; releaseDate?: string; shortClass?: boolean };
+        }> = schedRes?.schedules ?? {};
 
-        if (Object.keys(schedules).length > 0) {
-          setGroupLessons(mapped.map((l) => {
-            const entries = schedules[l.id];
-            if (!entries?.length) return l;
-            const compact = scheduleToCompact(entries);
-            if (!compact) return { ...l, scheduleEntries: entries };
+        setGroupLessons(mapped.map((l) => {
+          const s = schedules[l.id];
+          if (!s) return l;
+
+          const p = s.preorder;
+          const preorder =
+            p?.eligible && p.firstSession && p.releaseDate
+              ? { firstSession: p.firstSession, releaseDate: p.releaseDate, shortClass: !!p.shortClass }
+              : null;
+
+          // Structured entries win: they drive the day / time-of-day filters and
+          // produce the compact one-line schedule. `display` is the fallback for
+          // classes whose pattern could not be resolved into entries.
+          const entries = s.entries ?? [];
+          const compact = entries.length ? scheduleToCompact(entries) : null;
+
+          if (compact) {
             return {
               ...l,
               day: compact,
@@ -678,10 +718,22 @@ export default function FindTutorsPage() {
               time: '',
               hasCompactSchedule: true,
               scheduleEntries: entries,
+              preorder,
             };
-          }));
-          return;
-        }
+          }
+
+          return {
+            ...l,
+            scheduleEntries: entries,
+            // Only fill the schedule line if the card hasn't got one already —
+            // a tutor's hand-written schedule still wins.
+            ...(s.display && !l.day
+              ? { day: s.display, time: '', sessionLength: s.sessionLength ?? l.sessionLength }
+              : {}),
+            preorder,
+          };
+        }));
+        return;
       } catch { /* non-critical */ }
 
       setGroupLessons(mapped);
@@ -810,8 +862,9 @@ export default function FindTutorsPage() {
     // — pinned first, then ranking_score desc. We intentionally do NOT re-sort
     // here. The previous default re-sorted by the *viewer's* subjects_of_study
     // and then rating, which overrode the ranking and made the marketplace
-    // disagree with the admin Tutor Ranking page (e.g. a new, unrated tutor who
-    // happened to match the viewer's subjects jumped above a higher-scored one).
+    // disagree with the admin Promotion & Ranking page (e.g. a new, unrated
+    // tutor who happened to match the viewer's subjects jumped above a
+    // higher-scored one).
 
     return filtered;
   }, [tutors, searchQuery, selectedSubjects, selectedRating, priceMin, priceMax, selectedSchool, profile, sortOrder]);
@@ -863,6 +916,7 @@ export default function FindTutorsPage() {
     setSelectedDays((prev) => (prev.includes(d) ? prev.filter((v) => v !== d) : [...prev, d]));
   const toggleBand = (b: TimeBand) =>
     setSelectedBands((prev) => (prev.includes(b) ? prev.filter((v) => v !== b) : [...prev, b]));
+  const toggleSave = (id: string) => setSavedItems((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   return (
     <>
@@ -1117,7 +1171,16 @@ export default function FindTutorsPage() {
                 const remaining = l.seats.total !== null ? l.seats.total - l.seats.taken : null;
                 const lowStock = remaining !== null && remaining > 0 && remaining <= 3;
                 const full = remaining !== null && remaining <= 0;
-                const pctFull = l.seats.total ? Math.round((l.seats.taken / l.seats.total) * 100) : null;
+                // Capacity is withheld until it argues for joining — see
+                // lib/utils/classCapacity. The fill bar is withheld with it:
+                // an empty bar says "nobody is here" just as plainly as the
+                // count did, so showing one without the other keeps the
+                // problem and only removes the words.
+                const capacity = classCapacityDisplay(l.seats.taken, l.seats.total);
+                const pctFull =
+                  capacity.kind === 'hidden' || !l.seats.total
+                    ? null
+                    : Math.round((l.seats.taken / l.seats.total) * 100);
                 return (
                   <div key={l.id} className={cn('group rounded-3xl bg-background border overflow-hidden hover:shadow-card transition-all hover:-translate-y-0.5 flex flex-col', enrolledLessonIds.has(l.id) ? 'border-brand/40' : 'border-border')}>
                     <div className={`relative h-24 ${l.coverImage ? '' : `bg-gradient-to-br ${l.color}`}`}
@@ -1140,6 +1203,8 @@ export default function FindTutorsPage() {
                           )}
                         </div>
                         <div className="mt-1.5 inline-flex items-center gap-2">
+                          {/* TutorAvatar already does photo-then-initials, which
+                              is what the payment branch built separately. */}
                           <TutorAvatar avatarUrl={l.tutorAvatar} name={l.tutor} size={22} />
                           <span className="text-sm text-muted-foreground">by {l.tutor}</span>
                         </div>
@@ -1165,10 +1230,24 @@ export default function FindTutorsPage() {
                       </div>
 
                       <div className="space-y-1.5 text-xs">
+                        {/* Starts-on date, above the recurrence: for a class that
+                            hasn't begun, "when does this start" is the question
+                            the student is actually asking. */}
+                        {l.preorder && (
+                          <div className="inline-flex items-center gap-1.5 rounded-full bg-brand-soft px-2.5 py-1 font-semibold text-forest">
+                            <Calendar className="size-3.5 shrink-0" />
+                            Starts{' '}
+                            {new Date(l.preorder.firstSession).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                            })}
+                          </div>
+                        )}
                         {/* Recurring schedule — days and time on one line, e.g.
                             "Recurring every Monday and Wednesday · 5:00–7:00 PM AST".
                             Renders nothing when the class has no recurring
-                            schedule, rather than a "Schedule TBD" placeholder. */}
+                            schedule, rather than a "Schedule TBD" placeholder —
+                            `day` is '' in that case, not the placeholder string. */}
                         {l.day && (
                           <div className="text-muted-foreground whitespace-pre-line leading-relaxed">{l.day}</div>
                         )}
@@ -1185,12 +1264,15 @@ export default function FindTutorsPage() {
                             <Clock className="size-3.5" /> {formatDuration(l.sessionLength)} per session
                           </div>
                         )}
-                        <div className="flex items-center gap-1.5 text-muted-foreground">
-                          <Users className="size-3.5" />
-                          {l.seats.total !== null
-                            ? `${l.seats.taken}/${l.seats.total} enrolled`
-                            : `${l.seats.taken} enrolled`}
-                        </div>
+                        {capacity.kind !== 'hidden' && (
+                          <div className={cn(
+                            'flex items-center gap-1.5',
+                            capacity.kind === 'full' ? 'text-muted-foreground' : 'text-coral font-semibold'
+                          )}>
+                            <Users className="size-3.5" />
+                            {capacity.label}
+                          </div>
+                        )}
                         {pctFull !== null && (
                           <div className="h-1 rounded-full bg-muted overflow-hidden">
                             <div className={cn('h-full rounded-full', lowStock ? 'bg-coral' : 'bg-brand')} style={{ width: `${pctFull}%` }} />
@@ -1236,6 +1318,16 @@ export default function FindTutorsPage() {
                             href={`/student/explore/${l.id}`}
                             className="px-3 py-1.5 rounded-xl bg-brand text-white text-xs font-semibold hover:bg-brand-deep transition"
                           >
+                            {/* This link goes to the class page; joining happens
+                                there, so the card says what the click does
+                                (f6132c9 / f6b4162 — lost on this branch when
+                                dd7c04f restored main's copy of the file, and
+                                rebuilt from that base by the preorder CTA).
+                                A preorderable class said "Secure your spot"
+                                here, which promised a checkout the click does
+                                not open. The "Starts <date>" badge above
+                                already tells a student the class is upcoming;
+                                reserving is offered on the class page itself. */}
                             {full ? 'Join waitlist' : 'View class'}
                           </Link>
                         )}
@@ -1252,7 +1344,7 @@ export default function FindTutorsPage() {
         {tab === 'tutors' && (
           <>
             <div className="text-sm text-muted-foreground">
-              {loadingTutors ? 'Loading tutors…' : `${filteredTutors.length} tutor${filteredTutors.length === 1 ? '' : 's'}${totalPages > 1 ? ` · Page ${currentPage} of ${totalPages}` : ''}`}
+              {loadingTutors ? 'Loading tutors…' : `${pagedTutors.length} tutor${pagedTutors.length === 1 ? '' : 's'} for 1:1 sessions`}
             </div>
 
             {loadingTutors ? (
@@ -1262,151 +1354,80 @@ export default function FindTutorsPage() {
             ) : pagedTutors.length === 0 ? (
               <div className="text-center py-16 text-muted-foreground text-sm">No tutors found. Try adjusting your search.</div>
             ) : (
-              <div className="grid lg:grid-cols-[1fr_320px] gap-6 items-start">
-                {/* Tutor list */}
-                <div className="space-y-3 min-w-0">
-                  {pagedTutors.map((tutor) => {
-                    const stats = tutorStats[tutor.id];
-                    const isVerified = (tutor.tutor_verification_status ?? '').toUpperCase() === 'VERIFIED';
-                    const curricula = Array.from(new Set(tutor.subjects.map((s) => s.curriculum).filter(Boolean)));
-                    const subjectNames = Array.from(new Set(tutor.subjects.map((s) => s.name)));
-                    const minRate = tutor.subjects.length ? Math.min(...tutor.subjects.map((s) => s.price_per_hour_ttd ?? 0)) : 0;
-                    const flag = countryToFlag(tutor.country);
-                    return (
-                      <div key={tutor.id} className="group rounded-2xl bg-background border border-border p-4 hover:shadow-card hover:border-brand/40 transition-all">
-                        <div className="flex gap-4">
-                          {/* Avatar (placeholder) */}
-                          <div className="shrink-0 flex flex-col items-center gap-2">
-                            <button
-                              onClick={() => router.push(`/student/tutors/${tutor.id}/book`)}
-                              className="size-20 rounded-2xl grid place-items-center text-2xl font-bold text-white bg-gradient-to-br from-brand to-brand-deep overflow-hidden"
-                              aria-label={`View ${getDisplayName(tutor)}`}
-                            >
-                              {tutor.avatar_url
-                                ? <img src={tutor.avatar_url} alt="" className="size-full object-cover" />
-                                : getDisplayName(tutor).charAt(0).toUpperCase()}
-                            </button>
+              <div className="grid sm:grid-cols-2 gap-3">
+                {pagedTutors.map((tutor) => (
+                  // This is the 1:1 marketplace, so the card opens the
+                  // dedicated 1:1 booking route — NOT the class-led profile at
+                  // /student/tutors/[id], which leads with "<tutor>'s classes"
+                  // and Join-class buttons and is the wrong destination for
+                  // someone shopping for a one-to-one lesson.
+                  <div
+                    key={tutor.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => router.push(`/student/tutors/${tutor.id}/book`)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); router.push(`/student/tutors/${tutor.id}/book`); } }}
+                    className="group rounded-2xl bg-background border border-border p-4 hover:shadow-card hover:border-brand/40 transition-all flex gap-3 items-start cursor-pointer w-full min-w-0"
+                  >
+                    <UserAvatar avatarUrl={tutor.avatar_url} name={getDisplayName(tutor)} size={56} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <h3 className="font-semibold text-ink truncate">{getDisplayName(tutor)}</h3>
                           </div>
-
-                          {/* Main */}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <button onClick={() => router.push(`/student/tutors/${tutor.id}/book`)} className="flex items-center gap-1.5 text-left max-w-full">
-                                  <h3 className="font-bold text-ink text-lg truncate group-hover:text-brand-deep transition-colors">{getDisplayName(tutor)}</h3>
-                                  {isVerified && <BadgeCheck className="size-4 shrink-0 text-brand-deep" />}
-                                  {flag && <span className="text-sm shrink-0" title={tutor.country}>{flag}</span>}
-                                </button>
-                                <div className="flex items-center gap-2 mt-1 text-sm flex-wrap">
-                                  {tutor.average_rating !== null ? (
-                                    <span className="inline-flex items-center gap-1 font-bold text-ink tabular-nums">
-                                      <Star className="size-3.5 fill-amber-400 text-amber-400" /> {tutor.average_rating.toFixed(2)}
-                                    </span>
-                                  ) : (
-                                    <span className="inline-flex items-center gap-1 text-muted-foreground"><Star className="size-3.5" /> New</span>
-                                  )}
-                                  {tutor.total_reviews > 0 && <span className="text-muted-foreground">({tutor.total_reviews} review{tutor.total_reviews === 1 ? '' : 's'})</span>}
-                                  {subjectNames.length > 0 && (
-                                    <span className="text-muted-foreground truncate">· {subjectNames.slice(0, 3).join(', ')}{subjectNames.length > 3 ? ` +${subjectNames.length - 3}` : ''}</span>
-                                  )}
-                                </div>
-                                {curricula.length > 0 && (
-                                  <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                                    {curricula.map((c) => (
-                                      <span key={c} className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-brand-soft text-brand-deep">{c}</span>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                              <div className="text-right shrink-0">
-                                {minRate > 0 ? (
-                                  <>
-                                    <div className="text-xl font-bold text-ink">TT${minRate}</div>
-                                    <div className="text-[11px] text-muted-foreground">60-min lesson</div>
-                                  </>
-                                ) : (
-                                  <div className="text-xs text-muted-foreground">Rate not set</div>
-                                )}
-                              </div>
-                            </div>
-
-                            {tutor.bio && <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{tutor.bio}</p>}
-
-                            {/* Real, tracked stats */}
-                            <div className="flex items-center gap-6 mt-3">
-                              <div>
-                                <div className="text-sm font-bold text-ink tabular-nums">{stats?.studentsTaught ?? 0}</div>
-                                <div className="text-[11px] text-muted-foreground">Students taught</div>
-                              </div>
-                              <div>
-                                <div className="text-sm font-bold text-ink tabular-nums">{stats?.lessonsTaught ?? 0}</div>
-                                <div className="text-[11px] text-muted-foreground">Lessons taught</div>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center justify-between gap-3 mt-3 pt-3 border-t border-border">
-                              <div className="text-xs text-muted-foreground inline-flex items-center gap-1 min-w-0">
-                                {stats && stats.recentBookings > 0 && (
-                                  <><TrendingUp className="size-3.5 text-brand-deep shrink-0" /> <span className="truncate">Booked {stats.recentBookings} time{stats.recentBookings === 1 ? '' : 's'} recently</span></>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <button
-                                  onClick={() => router.push('/student/messages')}
-                                  className="size-9 rounded-xl border border-border grid place-items-center hover:bg-muted transition"
-                                  aria-label="Message tutor"
-                                >
-                                  <MessageSquare className="size-4 text-muted-foreground" />
-                                </button>
-                                <button
-                                  onClick={() => router.push(`/student/tutors/${tutor.id}/book`)}
-                                  className="px-4 py-2 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep transition"
-                                >
-                                  Book a lesson
-                                </button>
-                              </div>
-                            </div>
+                          <div className="text-xs text-muted-foreground truncate">
+                            {tutor.subjects.slice(0, 3).map((s) => s.name).join(' · ')}
+                            {tutor.subjects.length > 3 && ` +${tutor.subjects.length - 3}`}
                           </div>
                         </div>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); toggleSave(tutor.id); }}
+                          className="size-8 rounded-full hover:bg-muted grid place-items-center shrink-0"
+                        >
+                          <Heart className={cn('size-4', savedItems.has(tutor.id) ? 'fill-coral text-coral' : 'text-muted-foreground')} />
+                        </button>
                       </div>
-                    );
-                  })}
-                </div>
 
-                {/* Featured tutor panel (top-ranked). Video area is a placeholder. */}
-                {filteredTutors[0] && (() => {
-                  const f = filteredTutors[0];
-                  const fname = getDisplayName(f).split(' ')[0];
-                  const fsubjects = Array.from(new Set(f.subjects.map((s) => s.name))).slice(0, 2).join(' · ');
-                  return (
-                    <aside className="hidden lg:block sticky top-4 space-y-3">
-                      <div className="rounded-2xl overflow-hidden border border-border">
-                        <div className="relative aspect-[4/5] bg-gradient-to-br from-brand to-brand-deep grid place-items-center">
-                          <button
-                            onClick={() => router.push(`/student/tutors/${f.id}/book`)}
-                            className="size-16 rounded-full bg-white/90 grid place-items-center hover:bg-white transition shadow-lg"
-                            aria-label={`Book ${getDisplayName(f)}`}
-                          >
-                            <Play className="size-7 text-brand-deep fill-brand-deep translate-x-0.5" />
-                          </button>
-                          <div className="absolute bottom-0 inset-x-0 p-4 bg-gradient-to-t from-black/60 to-transparent">
-                            <div className="font-bold text-white flex items-center gap-1.5">
-                              {getDisplayName(f)}
-                              {(f.tutor_verification_status ?? '').toUpperCase() === 'VERIFIED' && <BadgeCheck className="size-4 text-white" />}
-                            </div>
-                            {fsubjects && <div className="text-xs text-white/80">{fsubjects}</div>}
-                          </div>
-                        </div>
+                      <div className="flex items-center gap-2 mt-1.5 text-xs">
+                        {tutor.average_rating !== null ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold tabular-nums">
+                            <Star className="size-3 fill-amber-500 text-amber-500" />
+                            {tutor.average_rating.toFixed(1)}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-muted-foreground font-semibold">
+                            <Star className="size-3 text-muted-foreground" /> —
+                          </span>
+                        )}
+                        {tutor.total_reviews > 0 && <span className="text-muted-foreground">({tutor.total_reviews} reviews)</span>}
                       </div>
-                      <button onClick={() => router.push(`/student/tutors/${f.id}/book`)} className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-sm font-semibold text-ink hover:bg-muted transition">
-                        View full schedule
-                      </button>
-                      <button onClick={() => router.push(`/student/tutors/${f.id}`)} className="w-full px-4 py-2.5 rounded-xl border border-border bg-background text-sm font-semibold text-ink hover:bg-muted transition">
-                        See {fname}&apos;s profile
-                      </button>
-                    </aside>
-                  );
-                })()}
+
+                      {tutor.bio && <p className="text-xs text-muted-foreground mt-2 line-clamp-1">{tutor.bio}</p>}
+
+                      {tutor.institution_name && (
+                        <div className="text-[11px] text-muted-foreground mt-1">{tutor.institution_name}</div>
+                      )}
+
+                      <div className="flex items-end justify-between mt-3 pt-3 border-t border-border">
+                        <div>
+                          {tutor.subjects.length > 0 && (() => {
+                            const minRate = Math.min(...tutor.subjects.map((s) => s.price_per_hour_ttd ?? 0));
+                            return minRate > 0 ? (
+                              <>
+                                <span className="text-base font-bold text-ink">TT${minRate}</span>
+                                <span className="text-[11px] text-muted-foreground">/hr</span>
+                              </>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">Rate not set</span>
+                            );
+                          })()}
+                        </div>
+                        <span className="text-xs font-semibold text-brand-deep group-hover:underline">View profile →</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 
@@ -1440,7 +1461,14 @@ export default function FindTutorsPage() {
                   { label: 'Day', value: joinLesson.day, show: !!joinLesson.day },
                   { label: 'Time', value: joinLesson.time, show: !!joinLesson.time },
                   { label: 'Session length', value: joinLesson.sessionLength ? formatDuration(joinLesson.sessionLength) : null, show: !!joinLesson.sessionLength },
-                  { label: 'Enrolled', value: joinLesson.seats.total !== null ? `${joinLesson.seats.taken} / ${joinLesson.seats.total}` : `${joinLesson.seats.taken} students`, show: true },
+                  // Same rule as the card: the roster count is withheld until
+                  // it argues for joining. The row disappears entirely rather
+                  // than reading "Enrolled —".
+                  {
+                    label: 'Availability',
+                    value: capacityLabel(joinLesson.seats.taken, joinLesson.seats.total),
+                    show: capacityLabel(joinLesson.seats.taken, joinLesson.seats.total) !== null,
+                  },
                   { label: 'Price', value: joinLesson.monthlyPrice > 0
                     ? joinLesson.activePromotion
                       ? `${fmtTTD(Math.round(joinLesson.monthlyPrice * (1 - joinLesson.activePromotion.discount / 100)))}/month (${joinLesson.activePromotion.discount}% off)`

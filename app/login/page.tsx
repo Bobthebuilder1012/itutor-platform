@@ -17,6 +17,7 @@ function isNetworkError(error: unknown): boolean {
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const redirectParam = searchParams.get('redirect');
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -255,7 +256,16 @@ export default function LoginPage() {
 
               <p className="mt-6 text-center text-sm text-gray-500">
                 New to iTutor?{' '}
-                <Link href="/signup" className="font-medium text-itutor-green underline">Create an account</Link>
+                {/* Carry `redirect` across. Someone who scanned a QR code and
+                    has no account lands here first; without this the hop to
+                    signup drops where they were going and they finish on a
+                    dashboard instead of the class or tutor they came for. */}
+                <Link
+                  href={redirectParam ? `/signup?redirect=${encodeURIComponent(redirectParam)}` : '/signup'}
+                  className="font-medium text-itutor-green underline"
+                >
+                  Create an account
+                </Link>
               </p>
             </motion.div>
           </div>
@@ -268,6 +278,9 @@ export default function LoginPage() {
 function GoogleOAuthButton({ className }: { className?: string }) {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleError, setGoogleError] = useState('');
+  // Read here rather than taking a prop — this is its own component, so the
+  // page's redirectParam is not in scope.
+  const redirectParam = useSearchParams().get('redirect');
 
   const handleGoogleLogin = async () => {
     setGoogleLoading(true);
@@ -275,7 +288,12 @@ function GoogleOAuthButton({ className }: { className?: string }) {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        // Carry the visitor's destination into the OAuth round trip — it comes
+        // back on the callback URL, which is the only way the callback can know
+        // where they were headed.
+        redirectTo: `${window.location.origin}/auth/callback${
+          redirectParam ? `?redirect=${encodeURIComponent(redirectParam)}` : ''
+        }`,
         queryParams: { access_type: 'offline', prompt: 'consent' },
       },
     });

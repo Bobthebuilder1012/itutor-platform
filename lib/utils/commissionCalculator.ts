@@ -1,35 +1,29 @@
 /**
  * Commission Calculator Utility
- * Calculates iTutor's commission based on session price tiers,
- * honoring per-tutor and global commission overrides (migration 180).
+ * Calculates iTutor's commission — a flat base rate, honoring per-tutor
+ * and global commission overrides (migration 180).
  */
 
 import { type SupabaseClient } from '@supabase/supabase-js';
 
-export type CommissionTier = {
-  rate: number; // percentage (e.g., 10, 15, 20)
-  threshold: number; // price threshold in TTD
-};
-
-// Commission structure:
-// - Sessions < $100: 10%
-// - Sessions $100-$199: 15%
-// - Sessions $200+: 20%
-export const COMMISSION_TIERS: CommissionTier[] = [
-  { threshold: 200, rate: 20 },
-  { threshold: 100, rate: 15 },
-  { threshold: 0, rate: 10 },
-];
+// The platform's base commission: a FLAT 7% of the session price,
+// regardless of what the session costs.
+//
+// This replaced a price-tiered schedule (10% under TT$100, 15% under
+// TT$200, 20% above) that charged a tutor selling a TT$250 session double
+// the rate of one selling a TT$90 session. The rate is now uniform, and
+// the only way it differs for a given tutor is a deliberate admin
+// override — see getEffectiveCommissionRate below.
+export const BASE_COMMISSION_RATE = 0.07;
 
 /**
- * Calculate commission rate based on session price
- * @param pricePerSession - Total session price in TTD
- * @returns Commission rate as a decimal (e.g., 0.10, 0.15, 0.20)
+ * The base commission rate as a decimal, before any admin override.
+ *
+ * Takes the price purely for call-site compatibility; the rate no longer
+ * varies with it.
  */
-export function getCommissionRate(pricePerSession: number): number {
-  if (pricePerSession < 100) return 0.10;
-  if (pricePerSession < 200) return 0.15;
-  return 0.20;
+export function getCommissionRate(_pricePerSession?: number): number {
+  return BASE_COMMISSION_RATE;
 }
 
 /**
@@ -54,11 +48,9 @@ export function calculateCommission(chargeAmount: number): {
 }
 
 /**
- * Get commission rate as percentage for display
- * @param pricePerSession - Total session price in TTD
- * @returns Commission rate as percentage (e.g., 10, 15, 20)
+ * Get the base commission rate as a percentage for display (e.g. 7).
  */
-export function getCommissionRatePercentage(pricePerSession: number): number {
+export function getCommissionRatePercentage(pricePerSession?: number): number {
   return getCommissionRate(pricePerSession) * 100;
 }
 
@@ -75,7 +67,7 @@ export function getCommissionRatePercentage(pricePerSession: number): number {
 //      → use that rate (including 0%)
 //   2. global_commission_settings with commission_mode='constant'
 //      → use the global rate
-//   3. otherwise → the hardcoded price tiers (reflexive)
+//   3. otherwise → the flat base rate (BASE_COMMISSION_RATE)
 //
 // rate columns are percentages (numeric(5,2), e.g. 0.00, 10.00, 20.00).
 
@@ -116,7 +108,7 @@ export async function getEffectiveCommissionRate(
     return clampRate(Number(g.commission_rate) / 100);
   }
 
-  // 3. Reflexive (price tiers)
+  // 3. Base rate
   return getCommissionRate(amount);
 }
 

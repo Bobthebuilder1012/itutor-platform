@@ -446,8 +446,9 @@ export default function TutorProfilePage() {
       setTutor(fetchedTutor);
       if (subjects.length === 1) setSelectedSubject(subjects[0]);
 
-      // Calendar availability is loaded lazily when the booking modal first
-      // opens (see loadCalendarOnce) — no always-visible sidebar needs it now.
+      // Calendar availability is loaded by loadCalendarOnce(): on mount in
+      // 1:1 book mode, where the sidebar shows it straight away, and lazily
+      // when the booking sheet opens elsewhere.
     } catch (error) {
       console.error('Error fetching tutor profile:', error);
       alert('Failed to load tutor profile');
@@ -482,14 +483,42 @@ export default function TutorProfilePage() {
           : result?.error || 'Failed to book session';
         throw new Error(msg);
       }
-      setShowBookingSheet(false);
-      setBookingNotes('');
-      // Paid path: server returns a LuniPay hosted-checkout URL and no
-      // booking has been created yet. Send the user straight to LuniPay
-      // — the booking is materialised by the webhook on payment success.
-      if (result.paymentUrl) { window.location.href = result.paymentUrl; return; }
-      alert('Session booked! You\'ll receive a confirmation shortly.');
-      router.push('/student/bookings');
+      // Paid path: the server returns a Stripe clientSecret and no booking
+      // has been created yet. Hand off to the full checkout page, which
+      // rebuilds the summary from the PaymentIntent metadata. The booking is
+      // materialised by the webhook on payment success.
+      if (result.paymentIntentId) {
+        setShowBookingSheet(false);
+        setBookingNotes('');
+        router.push(`/payments/checkout?pi=${result.paymentIntentId}`);
+        return;
+      }
+      // Free path: the server actually inserted a booking, so it returns
+      // a booking_id. Only claim success when we have that proof.
+      //
+      // Without this guard a version-skewed client (old JS in a stale tab
+      // talking to a newer API) silently showed "Session booked!" for a
+      // response it didn't understand — the pay-first API had returned a
+      // clientSecret and created NO booking, so the student was told their
+      // session was booked when nothing had been booked or paid.
+      if (result.booking_id) {
+        setShowBookingSheet(false);
+        setBookingNotes('');
+        // The duplicate-booking branch returns an existing booking that may
+        // still be unpaid. Send those to checkout rather than telling the
+        // student it's booked when payment is outstanding.
+        if (result.requires_payment) {
+          router.push(`/payments/checkout?bookingId=${result.booking_id}`);
+          return;
+        }
+        alert('Session booked! You\'ll receive a confirmation shortly.');
+        router.push('/student/bookings');
+        return;
+      }
+
+      throw new Error(
+        'This page is out of date — please refresh and try again.'
+      );
     } catch (err: any) {
       setConfirmError(err.message || 'Failed to book session');
     } finally {
@@ -514,6 +543,16 @@ export default function TutorProfilePage() {
   };
   const openBookingSheet = () => { setBookingStep(1); setPickedTime(null); setShowBookingSheet(true); loadCalendarOnce(); };
 
+  // The 1:1 sidebar shows the calendar immediately, so it cannot wait for the
+  // booking sheet to open — which was the only thing that ever called
+  // loadCalendarOnce(). Once the sheet stopped auto-opening in book mode, the
+  // sidebar was left spinning forever on calendarLoading's initial `true`.
+  useEffect(() => {
+    if (mode !== 'book' || loading || !tutor) return;
+    loadCalendarOnce();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, loading, tutor]);
+
   // Deep-link: arriving from the 1:1 marketplace "Book a lesson" button
   // (/student/tutors/[id]?book=1on1) opens the 1:1 booking sheet straight away,
   // instead of landing on the (class-led) profile and hunting for the button.
@@ -522,7 +561,14 @@ export default function TutorProfilePage() {
   const autoOpenedRef = useRef(false);
   useEffect(() => {
     if (autoOpenedRef.current || loading || !tutor) return;
-    if (mode === 'book' || new URLSearchParams(window.location.search).get('book') === '1on1') {
+    // Only an EXPLICIT ?book=1on1 deep-link auto-opens the sheet.
+    //
+    // `mode === 'book'` used to trigger it too, which now fights the booking
+    // sidebar: a student arriving from the 1:1 marketplace would get the
+    // calendar rendered beside the profile AND a modal thrown over it on load.
+    // Desktop uses the sidebar; below lg the "Book a 1:1" button (which is not
+    // mode-gated) still opens the sheet.
+    if (new URLSearchParams(window.location.search).get('book') === '1on1') {
       autoOpenedRef.current = true;
       openBookingSheet();
     }
@@ -613,9 +659,41 @@ export default function TutorProfilePage() {
                 </div>
               ))}
             </div>
+
+            {/*
+              Booking mode hides the class-led sections, which left /book a
+              dead end — a student arriving from the 1:1 marketplace had no
+              route to this tutor's classes, reviews or fuller profile.
+              This is the way back.
+
+              Points at the EXISTING class-led profile rather than a new page:
+              same component, same data, just without `mode === 'book'`. No
+              second page to keep in sync.
+            */}
+            {mode === 'book' && (
+              <Link
+                href={`/student/tutors/${tutorId}`}
+                className="mt-3 flex items-center justify-center gap-2 rounded-2xl border border-border px-4 py-2.5 text-sm font-semibold text-ink transition hover:bg-muted/50"
+              >
+                View full profile
+                <ChevronRight className="size-4" />
+              </Link>
+            )}
           </div>
         </div>
 
+        {/*
+          Booking mode restores the two-column layout with the sticky booking
+          sidebar — the flow that's live in production. Clicking a tutor in the
+          1:1 marketplace routes to /book, so that's the flow they get: rate,
+          Available badge, subject chips and "Pick a day" visible immediately,
+          rather than a modal they have to open first.
+
+          The class-led profile stays single-column: its primary action is
+          browsing classes, and a 1:1 booking sidebar there would compete with
+          the subscribe CTAs.
+        */}
+        <div className={mode === 'book' ? 'lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-6 lg:items-start' : ''}>
         <div className="space-y-6">
             {/* Verified credential (structured text + badge only — never the document) */}
             <TutorCredentials tutorId={tutorId} />
@@ -658,11 +736,28 @@ export default function TutorProfilePage() {
               )}
             </section>
 
-            {/* 1:1 tutoring — secondary to the tutor's classes above */}
-            <section className="rounded-3xl bg-background border border-border p-6">
+            {/* 1:1 tutoring — secondary to the tutor's classes above.
+                In book mode this duplicates the booking sidebar, so it's
+                hidden from lg up. It stays below lg, where the sidebar is
+                hidden and this is the ONLY way into the booking sheet —
+                dropping it outright would leave mobile with no way to book. */}
+            <section
+              className={cn(
+                'rounded-3xl bg-background border border-border p-6',
+                mode === 'book' && 'lg:hidden'
+              )}
+            >
               <h2 className="font-semibold text-ink mb-1">1:1 tutoring</h2>
               <p className="text-sm text-muted-foreground mb-4">Prefer a private session? Book a one-on-one at a time that works for you.</p>
-              <button onClick={openBookingSheet} className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-brand text-white font-semibold hover:bg-brand-deep transition">
+              {/* In profile mode this sends the student to the dedicated 1:1
+                  route rather than opening the sheet here. Otherwise a 1:1
+                  booking gets completed on the class-led profile — whichever
+                  way the student arrived — which is the wrong page for it.
+                  In book mode we're already on that route, so open the sheet. */}
+              <button
+                onClick={() => (mode === 'book' ? openBookingSheet() : router.push(`/student/tutors/${tutorId}/book`))}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-brand text-white font-semibold hover:bg-brand-deep transition"
+              >
                 <Video className="size-4" /> Book a 1:1{paidClassesEnabled && minPrice > 0 ? ` — TT$${minPrice}/hr` : ''}
               </button>
             </section>
@@ -756,6 +851,42 @@ export default function TutorProfilePage() {
               )}
             </section>
         </div>
+
+        {/* Desktop booking sidebar — 1:1 mode only.
+            Same BookingCard the sheet uses, so the calendar, subject chips and
+            duration logic exist once; this just surfaces them immediately
+            instead of behind a tap. Hidden below lg, where the sheet remains
+            the right interaction. */}
+        {mode === 'book' && (
+          <aside className="hidden lg:block lg:sticky lg:top-20 self-start">
+            {calendarLoading ? (
+              <div className="rounded-2xl border border-border bg-background p-8 flex items-center justify-center min-h-[200px]">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand" />
+              </div>
+            ) : (
+              <BookingCard
+                priceLabel={priceLabel}
+                subjects={tutor.subjects}
+                pickedSubject={selectedSubject}
+                setPickedSubject={setSelectedSubject}
+                slots={slots}
+                pickedDay={pickedDay}
+                setPickedDay={setPickedDay}
+                pickedTime={pickedTime}
+                setPickedTime={setPickedTime}
+                duration={duration}
+                setDuration={setDuration}
+                scrollRef={dayScrollRef}
+                scrollDays={scrollDays}
+                // Straight to Confirm: subject and slot are already chosen in
+                // the sidebar, so re-asking for them in the sheet would be a
+                // pointless extra step.
+                onContinue={() => { setBookingStep(3); setShowBookingSheet(true); }}
+              />
+            )}
+          </aside>
+        )}
+        </div>
       </div>
 
       {/* Mobile booking sheet */}
@@ -764,9 +895,17 @@ export default function TutorProfilePage() {
           <div className="bg-background w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="sticky top-0 bg-background border-b border-border px-5 py-3 flex items-center justify-between">
               <div>
-                <div className="text-xs text-muted-foreground">Step {bookingStep} of 3</div>
+                <div className="text-xs text-muted-foreground">
+                  Step {bookingStep} of 3
+                </div>
                 <div className="font-semibold text-ink text-sm">
-                  {bookingStep === 1 ? 'Pick a subject' : bookingStep === 2 ? 'Pick a date & time' : 'Confirm booking'}
+                  {bookingStep === 1
+                    ? 'Pick a subject'
+                    : bookingStep === 2
+                      ? 'Pick a date & time'
+                      : bookingStep === 3
+                        ? 'Confirm booking'
+                        : 'Payment'}
                 </div>
               </div>
               <button onClick={() => setShowBookingSheet(false)} className="size-8 rounded-full hover:bg-muted grid place-items-center"><X className="size-4" /></button>

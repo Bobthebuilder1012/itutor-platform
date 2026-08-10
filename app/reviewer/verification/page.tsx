@@ -310,6 +310,17 @@ export default function ReviewerVerificationPage() {
                               <p className="text-xs text-gray-600 mt-1">{request.system_reason}</p>
                             )}
                           </div>
+                        ) : request.status === 'READY_FOR_REVIEW' ? (
+                          // Processed, but no automated verdict — judge it on
+                          // the document. Not the same as "still processing".
+                          <div>
+                            <span className="px-3 py-1 rounded-full text-sm font-semibold bg-gray-100 text-gray-700">
+                              Manual review
+                            </span>
+                            {request.system_reason && (
+                              <p className="text-xs text-gray-600 mt-1">{request.system_reason}</p>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-gray-400">Processing...</span>
                         )}
@@ -363,9 +374,13 @@ export default function ReviewerVerificationPage() {
                 <p className="font-semibold text-gray-900">{getTutorName(showDecisionModal.request.tutor)}</p>
                 <p className="text-sm text-gray-600 mt-3 mb-2">System Recommendation:</p>
                 <p className={`font-semibold ${
-                  showDecisionModal.request.system_recommendation === 'APPROVE' ? 'text-green-600' : 'text-red-600'
+                  !showDecisionModal.request.system_recommendation ? 'text-gray-600'
+                    : showDecisionModal.request.system_recommendation === 'APPROVE' ? 'text-green-600'
+                    : 'text-red-600'
                 }`}>
-                  {showDecisionModal.request.system_recommendation}
+                  {/* Rendered bare, a null recommendation printed nothing in
+                      red — which reads as a rejection nobody made. */}
+                  {showDecisionModal.request.system_recommendation ?? 'None — decide on the document'}
                 </p>
                 {showDecisionModal.request.system_reason && (
                   <>

@@ -21,6 +21,7 @@ import TutorStreamView from '../stream/TutorStreamView';
 import TutorFeedbackTab from './TutorFeedbackTab';
 import GroupAnalyticsTab from './GroupAnalyticsTab';
 import RemoveMemberModal from '@/components/RemoveMemberModal';
+import { occurrenceTitle } from '@/lib/utils/scheduleFormat';
 
 type Tab = 'stream' | 'sessions' | 'feedback' | 'whatsapp' | 'analytics';
 type ManageSection = 'profile' | 'members' | 'access' | 'danger';
@@ -374,7 +375,7 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
       for (const o of s.occurrences ?? []) {
         const d = new Date(o.scheduled_start_at);
         if (d.getTime() > now && o.status !== 'cancelled') {
-          all.push({ date: d, title: s.title, end: new Date(o.scheduled_end_at) });
+          all.push({ date: d, title: occurrenceTitle(s.title, d), end: new Date(o.scheduled_end_at) });
         }
       }
     }

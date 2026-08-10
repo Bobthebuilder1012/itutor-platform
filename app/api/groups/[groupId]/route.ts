@@ -3,6 +3,7 @@ import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 import type { UpdateGroupInput } from '@/lib/types/groups';
 import { generateUpcomingSessions } from '@/lib/recurrence';
+import { canOpenPreorders } from '@/lib/services/secureSpotService';
 
 type Params = { params: Promise<{ groupId: string }> };
 function isSchemaMismatch(error: any): boolean {
@@ -29,10 +30,15 @@ export async function GET(_req: NextRequest, { params }: Params) {
   try {
     const { groupId } = await params;
     const supabase = await getServerClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { data: { user } } = await supabase.auth.getUser();
+
+    // Anonymous reads are allowed so a QR code or a shared class link opens the
+    // class page without an account — you cannot ask someone to sign up for a
+    // class they have not been allowed to look at. Anonymous callers get a
+    // PUBLIC view only: the roster, member previews and membership state are
+    // stripped from the response below, and a private or archived class still
+    // 404s rather than leaking its existence.
+    const isAnonymous = !user;
 
     const service = getServiceClient();
     const groupSelects = [
@@ -42,7 +48,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
         form_level, topic, session_length_minutes, session_frequency, price_per_course, pricing_mode, availability_window, media_gallery,
         timezone, max_students, cover_image, header_image, content_blocks, status, updated_at,
         whatsapp_url, google_classroom_link, primary_channel, meeting_link,
-        require_join_requests, auto_suspend_missed_payment, grace_period_days,
+        require_join_requests, auto_suspend_missed_payment, grace_period_days, secure_spot_enabled, end_date,
         visibility, parent_feedback_mode, parent_feedback_price, member_service_fee,
         tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, response_time_minutes),
         group_members(id, user_id, status, profile:profiles!group_members_user_id_fkey(id, full_name, avatar_url))
@@ -52,7 +58,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
         form_level, topic, session_length_minutes, session_frequency, price_per_course, pricing_mode, availability_window,
         max_students, price_per_session, price_monthly, cover_image, whatsapp_url, whatsapp_link,
         google_classroom_link, primary_channel, meeting_link, schedule_display, schedule_data,
-        require_join_requests, auto_suspend_missed_payment, grace_period_days,
+        require_join_requests, auto_suspend_missed_payment, grace_period_days, secure_spot_enabled, end_date,
         visibility, parent_feedback_mode, parent_feedback_price, feedback_mode, status,
         tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url),
         group_members(id, user_id, status, profile:profiles!group_members_user_id_fkey(id, full_name, avatar_url))
@@ -60,13 +66,19 @@ export async function GET(_req: NextRequest, { params }: Params) {
       `
         id, name, description, tutor_id, subject, pricing, created_at,
         max_students, price_per_session, price_monthly, cover_image, whatsapp_url, whatsapp_link,
-        google_classroom_link, schedule_display, schedule_data, require_join_requests, visibility, status,
+        google_classroom_link, schedule_display, schedule_data, require_join_requests, visibility, status, secure_spot_enabled, end_date,
         tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url),
         group_members(id, user_id, status, profile:profiles!group_members_user_id_fkey(id, full_name, avatar_url))
       `,
+      // Last resort. It must still carry the columns the class page cannot
+      // work without, or a single missing column earlier in the chain silently
+      // strips them: on staging, content_blocks/whatsapp_url/parent_feedback_mode
+      // are absent, every earlier select 42703s, and this one wins — which is
+      // why "Secure your spot" never appeared there despite the flag being on.
       `
         id, name, description, tutor_id, subject, pricing, created_at,
         max_students, price_per_session, price_monthly, require_join_requests, visibility,
+        secure_spot_enabled, end_date,
         tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url),
         group_members(id, user_id, status, profile:profiles!group_members_user_id_fkey(id, full_name, avatar_url))
       `,
@@ -158,8 +170,19 @@ export async function GET(_req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 
+    // A private or archived class is not browsable by a stranger. Signed-in
+    // users keep the previous behaviour (the tutor and members still need it).
+    if (isAnonymous) {
+      const isPublic = String(group.visibility ?? 'public').toLowerCase() === 'public';
+      if (!isPublic || group.archived_at) {
+        return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+      }
+    }
+
     const approvedMembers = (group.group_members ?? []).filter((m: any) => m.status === 'approved');
-    const currentUserMembership = (group.group_members ?? []).find((m: any) => m.user_id === user.id) ?? null;
+    const currentUserMembership = user
+      ? ((group.group_members ?? []).find((m: any) => m.user_id === user.id) ?? null)
+      : null;
 
     // Viewer membership must consider BOTH tables. Free / approval-gated classes
     // create a `group_members` row, but a paid class enrols through
@@ -167,33 +190,45 @@ export async function GET(_req: NextRequest, { params }: Params) {
     // no group_members row at all. Resolving this server-side keeps every page
     // that renders a join CTA from having to remember both.
     let viewerEnrollmentStatus: string | null = null;
-    {
+    let viewerReleaseDate: string | null = null;
+    // Guarded: this page is now browsable by signed-out visitors, who have no
+    // membership to resolve. Unguarded, the merge of anonymous access with this
+    // block would have dereferenced a null user on every public class view.
+    if (user) {
       const { data: enrolRows, error: enrolErr } = await service
         .from('group_enrollments')
-        .select('status')
+        .select('status, release_date')
         .eq('group_id', groupId)
         .eq('student_id', user.id);
 
       if (enrolErr && !isSchemaMismatch(enrolErr)) {
         console.warn('[GET /api/groups/[groupId]] viewer enrollment load failed (non-fatal):', enrolErr?.message ?? enrolErr);
       }
+      // SECURED belongs in this list. A student who paid their first month up
+      // front holds a place, so omitting it offered them "Secure your spot" on
+      // a class they had already paid for.
       const statuses = (enrolRows ?? []).map((r: any) => String(r.status));
       viewerEnrollmentStatus =
-        statuses.find((s) => ['ACTIVE', 'GRACE', 'SUSPENDED'].includes(s)) ??
+        statuses.find((s) => ['SECURED', 'ACTIVE', 'GRACE', 'SUSPENDED'].includes(s)) ??
         statuses.find((s) => s === 'PENDING_PAYMENT') ??
         null;
+      viewerReleaseDate =
+        (enrolRows ?? []).find((r: any) => String(r.status) === 'SECURED')?.release_date ?? null;
     }
 
     const viewerMemberStatus = currentUserMembership?.status ? String(currentUserMembership.status) : null;
     const viewerEnrolled =
       (!!viewerMemberStatus && ['approved', 'active', 'invited'].includes(viewerMemberStatus)) ||
-      (!!viewerEnrollmentStatus && ['ACTIVE', 'GRACE', 'SUSPENDED'].includes(viewerEnrollmentStatus));
+      (!!viewerEnrollmentStatus && ['SECURED', 'ACTIVE', 'GRACE', 'SUSPENDED'].includes(viewerEnrollmentStatus));
     const viewerMembership = {
       member_status: viewerMemberStatus,
       enrollment_status: viewerEnrollmentStatus,
       enrolled: viewerEnrolled,
       pending_approval: viewerMemberStatus === 'pending',
       payment_pending: !viewerEnrolled && viewerEnrollmentStatus === 'PENDING_PAYMENT',
+      /** Place held by an up-front first-month payment (Secure your spot). */
+      secured: viewerEnrollmentStatus === 'SECURED',
+      release_date: viewerReleaseDate,
     };
 
     // Fetch sessions with upcoming occurrences (service client bypasses RLS so all users get schedule preview)
@@ -335,9 +370,13 @@ export async function GET(_req: NextRequest, { params }: Params) {
       group: {
         ...group,
         group_members: undefined,
-        members: group.group_members,
+        // Counts are public; who the students are is not. An anonymous viewer
+        // gets neither the roster nor the preview avatars.
+        members: isAnonymous ? [] : group.group_members,
         member_count: approvedMembers.length,
-        member_previews: approvedMembers.slice(0, 3).map((m: any) => m.profile).filter(Boolean),
+        member_previews: isAnonymous
+          ? []
+          : approvedMembers.slice(0, 3).map((m: any) => m.profile).filter(Boolean),
         current_user_membership: currentUserMembership,
         viewer_membership: viewerMembership,
         sessions,
@@ -354,9 +393,13 @@ export async function GET(_req: NextRequest, { params }: Params) {
         group: {
           ...group,
           group_members: undefined,
-          members: group.group_members,
+          // Mirrors the block above — this legacy `data` shape is still read by
+          // some callers, so it has to be stripped for anonymous viewers too.
+          members: isAnonymous ? [] : group.group_members,
           member_count: approvedMembers.length,
-          member_previews: approvedMembers.slice(0, 3).map((m: any) => m.profile).filter(Boolean),
+          member_previews: isAnonymous
+            ? []
+            : approvedMembers.slice(0, 3).map((m: any) => m.profile).filter(Boolean),
           current_user_membership: currentUserMembership,
           viewer_membership: viewerMembership,
           sessions,
@@ -433,6 +476,20 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (body.cover_image !== undefined) updates.cover_image = body.cover_image;
     if ((body as any).schedule_display !== undefined) updates.schedule_display = (body as any).schedule_display;
     if ((body as any).schedule_data !== undefined) updates.schedule_data = (body as any).schedule_data;
+    // Preorders can only be opened on a class that has a confirmed schedule
+    // with its first lesson still ahead. Checked here rather than trusted from
+    // the client, because this is the flag that lets the class take money
+    // before it has taught anything.
+    if ((body as any).secure_spot_enabled !== undefined) {
+      const wanted = (body as any).secure_spot_enabled === true;
+      if (wanted) {
+        const allowed = await canOpenPreorders(service as any, groupId);
+        if (!allowed.ok) {
+          return NextResponse.json({ error: allowed.message, reason: allowed.reason }, { status: 400 });
+        }
+      }
+      updates.secure_spot_enabled = wanted;
+    }
     if (body.header_image !== undefined) updates.header_image = body.header_image;
     if (body.content_blocks !== undefined) updates.content_blocks = body.content_blocks;
     if (body.status !== undefined) updates.status = body.status;

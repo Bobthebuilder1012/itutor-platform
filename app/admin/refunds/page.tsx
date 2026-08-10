@@ -26,11 +26,25 @@ interface RefundablePayment {
   session_status: string | null;
 }
 
+interface ReversiblePayment {
+  id: string;
+  type: string;
+  payment_status: string;
+  amount_ttd: number;
+  tutor_payout_ttd: number;
+  paid_at: string | null;
+  class_name: string | null;
+  student_name: string | null;
+  ledger_statuses: string[];
+  held_ttd: number;
+}
+
 export default function AdminRefundsPage() {
   const router = useRouter();
   const [authLoading, setAuthLoading] = useState(true);
   const [awaiting, setAwaiting] = useState<RefundablePayment[]>([]);
   const [processed, setProcessed] = useState<RefundablePayment[]>([]);
+  const [reversible, setReversible] = useState<ReversiblePayment[]>([]);
   const [working, setWorking] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -60,6 +74,44 @@ export default function AdminRefundsPage() {
     }
     setAwaiting(json.awaiting ?? json.payments ?? []);
     setProcessed(json.processed ?? []);
+
+    // Group payments (subscriptions + secured spots) whose payout we still hold.
+    try {
+      const r2 = await fetch('/api/admin/payments/reversible');
+      const j2 = await r2.json();
+      if (r2.ok) setReversible(j2.payments ?? []);
+    } catch { /* non-fatal — the 1:1 refund list still renders */ }
+  }
+
+  /**
+   * Corrects our records without calling Stripe. For money that never really
+   * moved or was returned out of band. The reason is mandatory because from
+   * the outside this is indistinguishable from a refund, and only the reason
+   * separates a correction from a quiet write-off.
+   */
+  async function reverse(paymentId: string) {
+    const reason = window.prompt(
+      'Why is this being reversed? This does NOT refund through Stripe — use it only when the money never moved or was already returned another way.\n\nReason (min 10 characters):'
+    );
+    if (reason === null) return;
+    if (reason.trim().length < 10) { setError('A reason of at least 10 characters is required.'); return; }
+
+    setError(''); setMessage(''); setWorking(paymentId);
+    try {
+      const res = await fetch(`/api/admin/payments/subscription/${paymentId}/reverse`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: reason.trim() }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Reversal failed');
+      setMessage(`Reversed ${paymentId.slice(0, 8)} — ${json.ledger_rows_reversed} ledger row(s). No Stripe refund was issued.`);
+      await load();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setWorking(null);
+    }
   }
 
   async function refund(paymentId: string) {
@@ -160,6 +212,66 @@ export default function AdminRefundsPage() {
                           className="px-3 py-1 rounded-lg bg-coral hover:bg-coral/90 text-white text-xs font-semibold disabled:opacity-40"
                         >
                           {working === p.id ? 'Refunding…' : 'Refund full amount'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        {/* Class payments whose payout we still hold. Separate from the 1:1
+            refund list above because these do NOT call Stripe — they correct
+            our own records only. */}
+        <section className="rounded-2xl border border-border bg-card p-6 space-y-4">
+          <div>
+            <h2 className="text-base font-semibold text-ink">Class payments — mark as reversed</h2>
+            <p className="text-xs text-muted-foreground">
+              Subscription and secured-spot payments whose tutor payout is still held by us.
+              Reversing here <strong>does not refund through Stripe</strong> — it corrects our
+              records for money that never moved or was returned another way. A written reason
+              is required and every use is audited. Already-released payouts cannot be reversed.
+            </p>
+          </div>
+
+          {reversible.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No class payments are currently held.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+                    <th className="py-2 pr-4">Class</th>
+                    <th className="py-2 pr-4">Student</th>
+                    <th className="py-2 pr-4">Type</th>
+                    <th className="py-2 pr-4">Paid</th>
+                    <th className="py-2 pr-4">Held</th>
+                    <th className="py-2 pr-4">Ledger</th>
+                    <th className="py-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {reversible.map((p) => (
+                    <tr key={p.id} className="border-t border-border">
+                      <td className="py-2 pr-4 font-medium text-ink">{p.class_name ?? '—'}</td>
+                      <td className="py-2 pr-4">{p.student_name ?? '—'}</td>
+                      <td className="py-2 pr-4">
+                        {p.type === 'secure_spot' ? 'Secured spot' : 'Subscription'}
+                      </td>
+                      <td className="py-2 pr-4 tabular-nums">TT${p.amount_ttd.toFixed(2)}</td>
+                      <td className="py-2 pr-4 tabular-nums">TT${p.held_ttd.toFixed(2)}</td>
+                      <td className="py-2 pr-4 text-xs text-muted-foreground">
+                        {p.ledger_statuses.join(', ')}
+                      </td>
+                      <td className="py-2 text-right">
+                        <button
+                          onClick={() => reverse(p.id)}
+                          disabled={working === p.id}
+                          className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-ink hover:border-rose-300 hover:text-rose-700 disabled:opacity-50"
+                        >
+                          {working === p.id ? 'Reversing…' : 'Mark reversed'}
                         </button>
                       </td>
                     </tr>

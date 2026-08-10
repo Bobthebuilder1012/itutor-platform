@@ -346,23 +346,40 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Default ("latest") order is by the owning tutor's marketplace ranking
-    // (mig 190): pinned tutors first, then ranking_score, then newest. Explicit
-    // user sorts (rating/members/price/nextSession) are unaffected. Skipped if
-    // the ranking view isn't present yet.
-    const rankMap = new Map<string, { pin: number | null; score: number }>();
+    // Default ("latest") order is the class marketplace ranking (mig 215):
+    // classes an admin pinned by hand, then classes whose TUTOR is pinned
+    // (mig 190's behaviour, kept so existing tutor pins still carry their
+    // classes), then the class ranking score, then newest. Explicit user sorts
+    // (rating/members/price/nextSession) are unaffected. Skipped if the
+    // ranking view isn't present yet.
+    type ClassRank = { pin: number | null; tutorPin: number | null; score: number };
+    const rankMap = new Map<string, ClassRank>();
     if (sortBy === 'latest') {
-      const rankTutorIds = [...new Set<string>(filtered.map((g: any) => g.tutor_id).filter(Boolean))];
-      if (rankTutorIds.length > 0) {
+      const rankGroupIds = filtered.map((g: any) => g.id).filter(Boolean);
+      if (rankGroupIds.length > 0) {
         const { data: rankRows, error: rankErr } = await service
-          .from('tutor_marketplace_rankings')
-          .select('tutor_id, pin_rank, ranking_score')
-          .in('tutor_id', rankTutorIds);
+          .from('group_marketplace_rankings')
+          .select('group_id, pin_rank, tutor_pin_rank, ranking_score')
+          .in('group_id', rankGroupIds);
         if (!rankErr && rankRows) {
-          rankRows.forEach((r: any) => rankMap.set(r.tutor_id, { pin: r.pin_rank ?? null, score: Number(r.ranking_score ?? 0) }));
+          rankRows.forEach((r: any) =>
+            rankMap.set(r.group_id, {
+              pin: r.pin_rank ?? null,
+              tutorPin: r.tutor_pin_rank ?? null,
+              score: Number(r.ranking_score ?? 0),
+            })
+          );
         }
       }
     }
+
+    // Unpinned always sorts after pinned; two pins compare by position.
+    const byPin = (a: number | null, b: number | null): number | null => {
+      if (a == null && b == null) return null;
+      if (a == null) return 1;
+      if (b == null) return -1;
+      return a === b ? null : a - b;
+    };
 
     const sorted = [...filtered].sort((a: any, b: any) => {
       const dir = sortDir === 'asc' ? 1 : -1;
@@ -380,13 +397,13 @@ export async function GET(request: NextRequest) {
       }
       // Default 'latest': marketplace ranking when available, else newest first.
       if (rankMap.size > 0) {
-        const ra = rankMap.get(a.tutor_id) ?? { pin: null, score: 0 };
-        const rb = rankMap.get(b.tutor_id) ?? { pin: null, score: 0 };
-        if (ra.pin != null || rb.pin != null) {
-          if (ra.pin == null) return 1;
-          if (rb.pin == null) return -1;
-          if (ra.pin !== rb.pin) return ra.pin - rb.pin;
-        }
+        const empty: ClassRank = { pin: null, tutorPin: null, score: 0 };
+        const ra = rankMap.get(a.id) ?? empty;
+        const rb = rankMap.get(b.id) ?? empty;
+        const classPin = byPin(ra.pin, rb.pin);
+        if (classPin !== null) return classPin;
+        const tutorPin = byPin(ra.tutorPin, rb.tutorPin);
+        if (tutorPin !== null) return tutorPin;
         if (rb.score !== ra.score) return rb.score - ra.score;
       }
       return (new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) * dir;
@@ -501,10 +518,46 @@ export async function POST(request: NextRequest) {
       price_monthly: rawBody.price_monthly ?? rawBody.priceMonthly ?? undefined,
       form_level: rawBody.form_level ?? rawBody.formLevel ?? undefined,
       pricing_model: rawBody.pricing_model ?? rawBody.billingModel ?? undefined,
+      end_date: rawBody.end_date ?? rawBody.endDate ?? undefined,
     };
     if (!body.name?.trim()) {
       return NextResponse.json({ error: 'Group name is required' }, { status: 400 });
     }
+
+    // Every NEW class must carry an end date — "ongoing / no end date" is not
+    // an allowed class type. Billing stops after this date, so a class without
+    // one would recur indefinitely. Existing classes predating this rule are
+    // handled by the tutor backfill flow, which is why the column is nullable.
+    const endDateRaw = (body as any).end_date;
+    if (!endDateRaw) {
+      return NextResponse.json(
+        { error: 'An end date is required. Classes must have a date they finish.' },
+        { status: 400 }
+      );
+    }
+    const endDate = new Date(`${String(endDateRaw).slice(0, 10)}T00:00:00Z`);
+    if (!Number.isFinite(endDate.getTime())) {
+      return NextResponse.json({ error: 'End date is not a valid date' }, { status: 400 });
+    }
+    // Compare on the date, not the instant, so "today" isn't rejected for
+    // being a few hours in the past.
+    const todayUtc = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z');
+    if (endDate.getTime() < todayUtc.getTime()) {
+      return NextResponse.json(
+        { error: 'End date cannot be in the past' },
+        { status: 400 }
+      );
+    }
+    const MAX_CLASS_YEARS = 2;
+    const maxEnd = new Date(todayUtc);
+    maxEnd.setUTCFullYear(maxEnd.getUTCFullYear() + MAX_CLASS_YEARS);
+    if (endDate.getTime() > maxEnd.getTime()) {
+      return NextResponse.json(
+        { error: `End date cannot be more than ${MAX_CLASS_YEARS} years away` },
+        { status: 400 }
+      );
+    }
+    const endDateValue = endDate.toISOString().slice(0, 10);
 
     // Store multiple subjects as a comma-separated string
     const subjectString =
@@ -537,6 +590,7 @@ export async function POST(request: NextRequest) {
         price_per_course: body.price_per_course ?? null,
         member_service_fee: body.member_service_fee ?? 0,
         max_students: body.max_students ?? null,
+        end_date: endDateValue,
         availability_window: body.availability_window ?? null,
         cover_image: body.cover_image ?? null,
         header_image: body.header_image ?? null,

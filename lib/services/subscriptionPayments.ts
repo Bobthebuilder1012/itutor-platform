@@ -93,8 +93,16 @@ export async function expireSubscriptionPayment(
 export interface HandleSubscriptionPaymentParams {
   admin: SupabaseClient;
   subscriptionPaymentId: string;
-  lunipaySessionId: string;
+  /**
+   * Provider reference. Exactly one of these is set depending on which
+   * gateway took the money — Stripe for new subscriptions, LuniPay for
+   * ones started before the migration. They're written to separate
+   * columns so the provider stays legible from the row.
+   */
+  lunipaySessionId?: string | null;
   lunipayTransactionId?: string | null;
+  stripePaymentIntentId?: string | null;
+  stripeChargeId?: string | null;
   receiptUrl?: string | null;
   source: 'webhook' | 'finalize';
 }
@@ -120,7 +128,16 @@ export interface HandleSubscriptionPaymentResult {
 export async function handleSubscriptionPayment(
   params: HandleSubscriptionPaymentParams
 ): Promise<HandleSubscriptionPaymentResult> {
-  const { admin, subscriptionPaymentId, lunipaySessionId, lunipayTransactionId, receiptUrl, source } = params;
+  const {
+    admin,
+    subscriptionPaymentId,
+    lunipaySessionId,
+    lunipayTransactionId,
+    stripePaymentIntentId,
+    stripeChargeId,
+    receiptUrl,
+    source,
+  } = params;
 
   // Fetch the subscription_payment row + enrollment + group
   const { data: sp, error: spErr } = await admin
@@ -166,14 +183,22 @@ export async function handleSubscriptionPayment(
     return { ok: false, error: 'enrollment_not_found' };
   }
 
-  // Store session id on the payment row (non-blocking metadata)
+  // Store the provider reference on the payment row (non-blocking metadata).
+  // Only the keys for the gateway that actually took the money are written,
+  // so a Stripe payment never leaves ids in lunipay_* columns.
+  const providerRefs: Record<string, unknown> = { receipt_url: receiptUrl ?? null };
+  if (lunipaySessionId) {
+    providerRefs.lunipay_checkout_session_id = lunipaySessionId;
+    providerRefs.lunipay_transaction_id = lunipayTransactionId ?? null;
+  }
+  if (stripePaymentIntentId) {
+    providerRefs.stripe_payment_intent_id = stripePaymentIntentId;
+    providerRefs.stripe_charge_id = stripeChargeId ?? null;
+  }
+
   await admin
     .from('subscription_payments')
-    .update({
-      lunipay_checkout_session_id: lunipaySessionId,
-      lunipay_transaction_id: lunipayTransactionId ?? null,
-      receipt_url: receiptUrl ?? null,
-    })
+    .update(providerRefs)
     .eq('id', subscriptionPaymentId);
 
   // Calculate period dates
@@ -217,7 +242,7 @@ export async function handleSubscriptionPayment(
         .from('group_enrollments')
         .select('id', { count: 'exact', head: true })
         .eq('group_id', sp.group_id)
-        .in('status', ['ACTIVE', 'GRACE', 'SUSPENDED'])
+        .in('status', ['SECURED', 'ACTIVE', 'GRACE', 'SUSPENDED'])
         .neq('id', sp.enrollment_id);
 
       const { count: pendingCount } = await admin
@@ -300,6 +325,45 @@ export async function handleSubscriptionPayment(
     if (ne) console.warn('[handleSubscriptionPayment] notification insert failed:', ne);
   });
 
+  // Notify the TUTOR that a student joined. Placed here rather than in the
+  // Stripe webhook so LuniPay-billed classes get it too — activation is the
+  // one point both providers pass through.
+  //
+  // Only on the FIRST cycle: a renewal isn't someone joining, and a tutor
+  // doesn't want "X joined your class" once a month forever.
+  if (sp.type === 'subscription_initial' || sp.type === 'subscription_reactivation') {
+    const group = (sp as any).enrollment?.group;
+    const tutorId = group?.tutor_id;
+    if (tutorId) {
+      const { data: studentProfile } = await admin
+        .from('profiles')
+        .select('full_name, display_name')
+        .eq('id', sp.student_id)
+        .maybeSingle();
+      const studentName =
+        (studentProfile as any)?.display_name ||
+        (studentProfile as any)?.full_name ||
+        'A student';
+      const className = group?.name ?? 'your class';
+
+      const { error: tutorNotifyError } = await admin.from('notifications').insert({
+        user_id: tutorId,
+        type: 'new_class_member',
+        title: `${studentName} joined ${className}`,
+        message: `${studentName} has joined "${className}" and their payment has cleared.`,
+        link: `/tutor/classes/${sp.group_id}?tab=roster`,
+        group_id: sp.group_id,
+        metadata: { enrollment_id: sp.enrollment_id, student_id: sp.student_id },
+      });
+      if (tutorNotifyError) {
+        console.warn(
+          '[handleSubscriptionPayment] tutor notification failed:',
+          tutorNotifyError
+        );
+      }
+    }
+  }
+
   return { ok: true, enrollmentId: sp.enrollment_id, receipt };
 }
 
@@ -374,7 +438,7 @@ export async function countActiveSubscriptions(
     .select('id', { count: 'exact', head: true })
     .eq('group_id', groupId)
     .eq('enrollment_type', 'SUBSCRIPTION')
-    .in('status', ['ACTIVE', 'GRACE', 'SUSPENDED']);
+    .in('status', ['SECURED', 'ACTIVE', 'GRACE', 'SUSPENDED']);
 
   const { count: pendingCount } = await admin
     .from('group_enrollments')
