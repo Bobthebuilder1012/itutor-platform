@@ -251,6 +251,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           // before the class and sends no email when it does (§4.2).
           { href: '/parent/approvals',     label: 'Approvals',     icon: icons.shield },
           { href: '/parent/children',      label: 'Children',      icon: icons.userPlus },
+          { href: '/parent/feedback',      label: 'Feedback',      icon: icons.chatFeedback },
           { href: '/parent/classes',       label: 'Find Classes',  icon: icons.groups },
           { href: '/parent/subscriptions', label: 'Subscriptions', icon: icons.calendar },
           { href: '/parent/transactions',  label: 'Transactions',  icon: icons.calendar },
