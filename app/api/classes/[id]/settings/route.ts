@@ -27,7 +27,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       groupId: classId,
       userId: user.id,
       email: user.email,
-      columns: 'whatsapp_link, google_classroom_link, feedback_mode, parent_feedback_price, primary_channel, meeting_link, visibility',
+      columns: 'whatsapp_link, google_classroom_link, feedback_mode, parent_feedback_price, primary_channel, meeting_link, visibility, secure_spot_enabled',
     });
     if (actor.notFound) return NextResponse.json({ ok: false, error: 'not_found' }, { status: 404 });
     if (!actor.authorized) return NextResponse.json({ ok: false, error: 'forbidden' }, { status: 403 });
@@ -77,8 +77,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     // Opening preorders lets the class take money before it has taught
     // anything, so eligibility is re-checked here rather than trusted from the
     // form. Turning it OFF is always allowed.
+    // Only re-check when preorders are actually being OPENED. This form resends
+    // every field on every save, so re-validating an unchanged `true` made the
+    // whole request 400 with a bare "already_started" the moment the class
+    // began — which is what stopped tutors editing capacity on a live class.
     if (input.secure_spot_enabled !== undefined) {
-      if (input.secure_spot_enabled === true) {
+      const alreadyOpen = (existing as any).secure_spot_enabled === true;
+      if (input.secure_spot_enabled === true && !alreadyOpen) {
         const allowed = await canOpenPreorders(service as any, classId);
         if (!allowed.ok) {
           return NextResponse.json(

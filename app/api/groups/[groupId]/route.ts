@@ -4,6 +4,7 @@ import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 import type { UpdateGroupInput } from '@/lib/types/groups';
 import { generateUpcomingSessions } from '@/lib/recurrence';
 import { canOpenPreorders } from '@/lib/services/secureSpotService';
+import { classOccupancy } from '@/lib/services/classOccupancy';
 
 type Params = { params: Promise<{ groupId: string }> };
 function isSchemaMismatch(error: any): boolean {
@@ -391,6 +392,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     }
 
     const body: UpdateGroupInput = await request.json();
+    // `secure_spot_enabled` is needed to tell "opening preorders" apart from
+    // "resending the flag unchanged"; see the guard further down.
+    const { data: currentGroup } = await service
+      .from('groups')
+      .select('secure_spot_enabled')
+      .eq('id', groupId)
+      .maybeSingle();
     const updates: Record<string, any> = {};
     if (body.name !== undefined) updates.name = body.name.trim();
     if (body.description !== undefined) updates.description = body.description;
@@ -423,7 +431,32 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (body.recurrence_type !== undefined) updates.recurrence_type = body.recurrence_type;
     if (body.recurrence_rule !== undefined) updates.recurrence_rule = body.recurrence_rule;
     if (body.timezone !== undefined) updates.timezone = body.timezone;
-    if (body.max_students !== undefined) updates.max_students = body.max_students;
+    // Capacity is editable at any point in a class's life, including after it
+    // has started — a tutor who wants to take more students should not have to
+    // wait for a new term. The only floor is the seats already taken: dropping
+    // the limit below that would leave enrolled students over the line, with no
+    // rule for who gets removed.
+    if (body.max_students !== undefined) {
+      const wantedCapacity = Number(body.max_students);
+      let taken: number;
+      try {
+        taken = await classOccupancy(service as any, groupId);
+      } catch (occErr: any) {
+        console.error('[PATCH /api/groups] occupancy lookup failed:', occErr?.message);
+        return NextResponse.json({ error: 'Could not check how many students are enrolled. Please try again.' }, { status: 503 });
+      }
+      if (Number.isFinite(wantedCapacity) && wantedCapacity < taken) {
+        return NextResponse.json(
+          {
+            error: `This class already has ${taken} student${taken === 1 ? '' : 's'}. Set the limit to ${taken} or more, or remove a student first.`,
+            reason: 'below_current_enrolment',
+            enrolled: taken,
+          },
+          { status: 400 }
+        );
+      }
+      updates.max_students = body.max_students;
+    }
     if (body.cover_image !== undefined) updates.cover_image = body.cover_image;
     if ((body as any).schedule_display !== undefined) updates.schedule_display = (body as any).schedule_display;
     if ((body as any).schedule_data !== undefined) updates.schedule_data = (body as any).schedule_data;
@@ -433,7 +466,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     // before it has taught anything.
     if ((body as any).secure_spot_enabled !== undefined) {
       const wanted = (body as any).secure_spot_enabled === true;
-      if (wanted) {
+      // Only re-check when preorders are actually being OPENED. The class
+      // settings form resends every field on every save, so re-validating an
+      // unchanged `true` made the whole request 400 with "already_started" once
+      // the class began — blocking edits to capacity, price and everything else
+      // on this endpoint for any class that had preorders left switched on.
+      const alreadyOpen = currentGroup?.secure_spot_enabled === true;
+      if (wanted && !alreadyOpen) {
         const allowed = await canOpenPreorders(service as any, groupId);
         if (!allowed.ok) {
           return NextResponse.json({ error: allowed.message, reason: allowed.reason }, { status: 400 });

@@ -2163,6 +2163,11 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
   onDirtyChange: (dirty: boolean) => void;
   enrolledCount: number;
 }) {
+  // Capacity can be raised or lowered at any time, including on a class that
+  // has already started — but never below the seats already taken, since there
+  // is no rule for who would be dropped.
+  const capacityFloor = Math.max(2, enrolledCount);
+
   const gradients = [
     'from-orange-500 to-amber-400', 'from-fuchsia-500 to-purple-500', 'from-sky-500 to-cyan-400',
     'from-emerald-500 to-teal-400', 'from-rose-500 to-pink-400', 'from-indigo-500 to-blue-500',
@@ -2310,7 +2315,12 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
       });
       const settingsJson = await settingsRes.json().catch(() => ({}));
       if (!settingsRes.ok) {
-        const detail = settingsJson?.details?.[0]?.message ?? settingsJson?.error ?? `Save failed (${settingsRes.status})`;
+        // `error` is a machine code ("already_started", "validation_failed") —
+        // it surfaced raw in the red banner. Prefer the human `message`.
+        const detail = settingsJson?.details?.[0]?.message
+          ?? settingsJson?.message
+          ?? settingsJson?.error
+          ?? `Save failed (${settingsRes.status})`;
         throw new Error(detail);
       }
 
@@ -2475,18 +2485,31 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
                   This is a 1-on-1 class — capacity is fixed at 1.
                 </div>
               ) : (
-                <SetField label="Student limit" hint="Min 2 · Max 500.">
+                <SetField
+                  label="Student limit"
+                  // The floor is the seats already taken — the server enforces
+                  // the same rule, so saying it here saves a rejected save.
+                  hint={capacityFloor > 2
+                    ? `Min ${capacityFloor} (students already enrolled) · Max 500.`
+                    : 'Min 2 · Max 500.'}
+                >
                   <div className="inline-flex items-center gap-2">
-                    <button onClick={() => d('capacity', Math.max(2, draft.capacity - 1))}
-                      className="size-9 grid place-items-center rounded-lg border border-border hover:bg-muted text-lg font-semibold">−</button>
+                    <button onClick={() => d('capacity', Math.max(capacityFloor, draft.capacity - 1))}
+                      disabled={draft.capacity <= capacityFloor}
+                      className="size-9 grid place-items-center rounded-lg border border-border hover:bg-muted text-lg font-semibold disabled:opacity-40 disabled:hover:bg-transparent">−</button>
                     <input
-                      type="number" value={draft.capacity} min={2} max={500}
-                      onChange={(e) => d('capacity', Math.max(2, Math.min(500, Number(e.target.value))))}
+                      type="number" value={draft.capacity} min={capacityFloor} max={500}
+                      onChange={(e) => d('capacity', Math.max(capacityFloor, Math.min(500, Number(e.target.value))))}
                       className="w-20 text-center px-3 py-2 rounded-lg border border-border bg-background text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-brand"
                     />
                     <button onClick={() => d('capacity', Math.min(500, draft.capacity + 1))}
                       className="size-9 grid place-items-center rounded-lg border border-border hover:bg-muted text-lg font-semibold">+</button>
                   </div>
+                  {capacityFloor > 2 && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      To go below {capacityFloor}, remove a student from the Students tab first.
+                    </p>
+                  )}
                 </SetField>
               )}
             </>
