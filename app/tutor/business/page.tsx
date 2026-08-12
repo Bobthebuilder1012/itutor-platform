@@ -713,7 +713,18 @@ function VerificationSection() {
     return <div className="flex items-center gap-2 text-sm text-muted-foreground py-10"><Loader2 className="size-4 animate-spin" /> Loading verification…</div>;
   }
 
-  const canUpload = status !== 'VERIFIED' && status !== 'PENDING';
+  // A pending review no longer hides the upload card. Blocking on 'PENDING'
+  // stranded any tutor who submitted the wrong file, a blurry scan or the wrong
+  // side of a results slip: the card vanished the moment they submitted, so
+  // their only route to fixing it was to wait for a rejection or ask support.
+  // Uploading again replaces the document under review (the server retires the
+  // earlier request once the new one is processed).
+  //
+  // Still hidden once VERIFIED: a fresh request against an already-verified
+  // tutor is a live hazard, because rejecting it strips the badge they already
+  // hold and unpublishes every verified subject.
+  const canUpload = status !== 'VERIFIED';
+  const reviewPending = status === 'PENDING' || status === 'PROCESSING';
   // Only what a REVIEWER wrote. Falling back to system_reason published the
   // automated note, which on every real upload was the "Sample Tutor" name
   // mismatch — so a tutor rejected for any reason was told it was because
@@ -781,8 +792,19 @@ function VerificationSection() {
       {canUpload && (
         <div className="rounded-2xl bg-card border border-border p-5 space-y-3">
           <div>
-            <div className="font-bold text-ink">{status === 'REJECTED' ? 'Resubmit your document' : 'Upload verification document'}</div>
+            <div className="font-bold text-ink">
+              {status === 'REJECTED'
+                ? 'Resubmit your document'
+                : reviewPending
+                  ? 'Upload a different document'
+                  : 'Upload verification document'}
+            </div>
             <p className="text-xs text-muted-foreground mt-0.5">CSEC, CAPE, or other teaching qualification — PDF, JPG, PNG or WEBP (max 10MB).</p>
+            {reviewPending && (
+              <p className="mt-1.5 text-xs text-amber-700">
+                You have a document under review. Uploading a new one replaces it — only the newest document is reviewed.
+              </p>
+            )}
           </div>
           <label className={cn(
             'flex items-center gap-3 rounded-xl border-2 border-dashed border-border p-4',
