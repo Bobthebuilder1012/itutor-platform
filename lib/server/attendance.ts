@@ -265,6 +265,208 @@ export async function verifyJoinEvent(
  * group_members predates it and still holds rows on older classes, so a
  * student legitimately on an old roster is not turned away.
  */
+/**
+ * Records a verified student join with its derived status (§6, mig 220).
+ *
+ * The status is written at join time rather than computed on read because
+ * lateness is a fact about a moment that has passed: if the session is later
+ * rescheduled, a student who arrived punctually must not retroactively become
+ * late because the start time moved under them.
+ */
+export async function recordStudentJoin(
+  admin: SupabaseClient,
+  params: {
+    studentId: string;
+    occurrenceType: JoinOccurrenceType;
+    occurrenceId: string;
+    groupId: string | null;
+    scheduledStart: string;
+    joinSource: string;
+    joinedAt?: Date;
+  }
+): Promise<DerivedAttendance> {
+  const joinedAt = params.joinedAt ?? new Date();
+  const derived = deriveAttendanceStatus({
+    joinedAt,
+    scheduledStart: params.scheduledStart,
+  });
+
+  await admin.from('session_attendance_log').upsert(
+    {
+      student_id: params.studentId,
+      occurrence_type: params.occurrenceType,
+      occurrence_id: params.occurrenceId,
+      group_id: params.groupId,
+      joined_at: joinedAt.toISOString(),
+      status: derived.status,
+      late_minutes: derived.lateMinutes,
+      derived_at: new Date().toISOString(),
+      join_source: params.joinSource,
+    },
+    // ignoreDuplicates: the FIRST join is the one that counts. Re-joining after
+    // a dropped connection must not turn an on-time arrival into a late one.
+    { onConflict: 'student_id,occurrence_type,occurrence_id', ignoreDuplicates: true }
+  );
+
+  return derived;
+}
+
+/**
+ * Records that the TUTOR turned up (§6). Without this the tutor-absent guard
+ * has no evidence to work from and every student in a class the tutor never
+ * joined is marked absent — invisibly, and against the one party at no fault.
+ */
+export async function recordTutorJoin(
+  admin: SupabaseClient,
+  params: {
+    tutorId: string;
+    occurrenceType: JoinOccurrenceType;
+    occurrenceId: string;
+    groupId: string | null;
+    joinSource: string;
+  }
+): Promise<void> {
+  await admin.from('session_tutor_join_log').upsert(
+    {
+      tutor_id: params.tutorId,
+      occurrence_type: params.occurrenceType,
+      occurrence_id: params.occurrenceId,
+      group_id: params.groupId,
+      join_source: params.joinSource,
+    },
+    { onConflict: 'tutor_id,occurrence_type,occurrence_id', ignoreDuplicates: true }
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Reading: statuses for a set of occurrences, with the §6 guard applied
+// ---------------------------------------------------------------------------
+
+/**
+ * `excluded` is not an attendance status — it means this occurrence does not
+ * count for or against anyone, because the tutor never joined and so the session
+ * did not happen.
+ */
+export type AttendanceOutcome = AttendanceStatus | 'excluded';
+
+export type OccurrenceInput = {
+  occurrenceType: JoinOccurrenceType;
+  occurrenceId: string;
+  scheduledStart: string;
+  scheduledEnd?: string | null;
+  cancelled?: boolean;
+};
+
+export type OccurrenceResult = OccurrenceInput & {
+  outcome: AttendanceOutcome;
+  lateMinutes: number | null;
+  /** Only set when outcome is 'excluded', so a surface can explain itself. */
+  excludedReason?: 'tutor_absent';
+};
+
+/**
+ * Turns occurrences into per-occurrence outcomes for one student.
+ *
+ * The order of the tests is the specification:
+ *   cancelled          -> 'cancelled', excluded from rates but shown
+ *   tutor never joined -> 'excluded'  (§6 tutor-absent guard)
+ *   attendance row     -> its stored status, or 'attended' for pre-220 rows
+ *   otherwise          -> 'absent'
+ *
+ * Only occurrences whose join window has fully closed are judged. An occurrence
+ * still in progress has no outcome yet — calling it absent while the class is
+ * running is how a rate becomes wrong for the twenty minutes before it becomes
+ * right, which is exactly when a parent is most likely to be looking.
+ */
+export async function buildAttendanceOutcomes(
+  admin: SupabaseClient,
+  params: {
+    studentId: string;
+    occurrences: OccurrenceInput[];
+    now?: Date;
+  }
+): Promise<OccurrenceResult[]> {
+  const now = params.now ?? new Date();
+  if (params.occurrences.length === 0) return [];
+
+  const settled = params.occurrences.filter((o) => {
+    if (o.cancelled) return true;
+    return windowVerdict(o.scheduledStart, o.scheduledEnd ?? null, now) === 'window_closed';
+  });
+  if (settled.length === 0) return [];
+
+  const ids = settled.map((o) => o.occurrenceId);
+
+  const { data: attendanceRows } = await admin
+    .from('session_attendance_log')
+    .select('occurrence_type, occurrence_id, status, late_minutes, joined_at')
+    .eq('student_id', params.studentId)
+    .in('occurrence_id', ids);
+
+  const rows = (attendanceRows ?? []) as unknown as Array<{
+    occurrence_type: string;
+    occurrence_id: string;
+    status: string | null;
+    late_minutes: number | null;
+    joined_at: string;
+  }>;
+  const attendance = new Map(rows.map((r) => [`${r.occurrence_type}:${r.occurrence_id}`, r]));
+
+  const { data: tutorRows } = await admin
+    .from('session_tutor_join_log')
+    .select('occurrence_type, occurrence_id')
+    .in('occurrence_id', ids);
+
+  const tutorJoined = new Set(
+    ((tutorRows ?? []) as unknown as Array<{ occurrence_type: string; occurrence_id: string }>).map(
+      (r) => `${r.occurrence_type}:${r.occurrence_id}`
+    )
+  );
+
+  return settled.map((o) => {
+    const key = `${o.occurrenceType}:${o.occurrenceId}`;
+
+    if (o.cancelled) {
+      return { ...o, outcome: 'cancelled' as const, lateMinutes: null };
+    }
+
+    const row = attendance.get(key);
+
+    // §6 tutor-absent guard. Applied BEFORE absence is inferred, and only when
+    // the student has no record either — a student who did join proves the
+    // session ran, whatever the tutor log says (the tutor may have joined by a
+    // route that predates migration 220 and left no row).
+    if (!tutorJoined.has(key) && !row) {
+      return {
+        ...o,
+        outcome: 'excluded' as const,
+        lateMinutes: null,
+        excludedReason: 'tutor_absent' as const,
+      };
+    }
+
+    if (!row) {
+      return { ...o, outcome: 'absent' as const, lateMinutes: null };
+    }
+
+    // Rows written before migration 220 have no status: presence was recorded,
+    // punctuality was never judged. 'attended' is the truthful reading — we know
+    // they turned up and have no basis to call them late.
+    const status = (row.status as AttendanceStatus | null) ?? 'attended';
+    return { ...o, outcome: status, lateMinutes: row.late_minutes ?? null };
+  });
+}
+
+/** Tally that honours the guard: 'excluded' occurrences count for nothing. */
+export function tallyOutcomes(results: OccurrenceResult[]): AttendanceTally {
+  const tally = emptyTally();
+  for (const r of results) {
+    if (r.outcome === 'excluded') continue;
+    tally[r.outcome] += 1;
+  }
+  return tally;
+}
+
 export async function isEnrolledInGroup(
   admin: SupabaseClient,
   studentId: string,

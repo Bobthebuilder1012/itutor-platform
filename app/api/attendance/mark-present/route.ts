@@ -14,7 +14,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
-import { verifyJoinEvent } from '@/lib/server/attendance';
+import { recordStudentJoin, verifyJoinEvent } from '@/lib/server/attendance';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,17 +46,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, recorded: false, reason: verified.reason });
     }
 
-    await admin.from('session_attendance_log').upsert(
-      {
-        student_id: user.id,
-        occurrence_type: occurrenceType,
-        occurrence_id: occurrenceId,
-        // Taken from the verified occurrence, not from the caller.
-        group_id: verified.groupId ?? body.groupId ?? null,
-      },
-      { onConflict: 'student_id,occurrence_type,occurrence_id', ignoreDuplicates: true }
-    );
-    return NextResponse.json({ ok: true, recorded: true });
+    // §6: the status is derived here, from the verified occurrence's scheduled
+    // start — never from anything the client sent.
+    const derived = await recordStudentJoin(admin, {
+      studentId: user.id,
+      occurrenceType,
+      occurrenceId,
+      // Taken from the verified occurrence, not from the caller.
+      groupId: verified.groupId ?? body.groupId ?? null,
+      scheduledStart: verified.scheduledStart,
+      joinSource: 'mark-present',
+    });
+
+    return NextResponse.json({ ok: true, recorded: true, status: derived.status });
   } catch {
     // Never let attendance capture surface an error to the joining student.
     return NextResponse.json({ ok: false }, { status: 200 });
