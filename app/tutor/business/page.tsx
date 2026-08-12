@@ -651,6 +651,7 @@ function VerificationSection() {
   const [showSupport, setShowSupport] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [latestRequest, setLatestRequest] = useState<VerificationRequest | null>(null);
+  const [pendingCount, setPendingCount] = useState(0);
 
   async function load() {
     try {
@@ -659,6 +660,7 @@ function VerificationSection() {
       if (res.ok) {
         setStatus(data.verificationStatus ?? null);
         setLatestRequest(data.latestRequest ?? null);
+        setPendingCount(data.pendingCount ?? 0);
       }
     } catch (e) {
       console.error('[VerificationSection] failed to load status:', e);
@@ -717,14 +719,13 @@ function VerificationSection() {
   // stranded any tutor who submitted the wrong file, a blurry scan or the wrong
   // side of a results slip: the card vanished the moment they submitted, so
   // their only route to fixing it was to wait for a rejection or ask support.
-  // Uploading again replaces the document under review (the server retires the
-  // earlier request once the new one is processed).
+  // Documents now queue — submit as many as you like, each reviewed separately.
   //
   // Still hidden once VERIFIED: a fresh request against an already-verified
   // tutor is a live hazard, because rejecting it strips the badge they already
   // hold and unpublishes every verified subject.
   const canUpload = status !== 'VERIFIED';
-  const reviewPending = status === 'PENDING' || status === 'PROCESSING';
+  const hasQueue = pendingCount > 0;
   // Only what a REVIEWER wrote. Falling back to system_reason published the
   // automated note, which on every real upload was the "Sample Tutor" name
   // mismatch — so a tutor rejected for any reason was told it was because
@@ -795,14 +796,15 @@ function VerificationSection() {
             <div className="font-bold text-ink">
               {status === 'REJECTED'
                 ? 'Resubmit your document'
-                : reviewPending
-                  ? 'Upload a different document'
+                : hasQueue
+                  ? 'Upload another document'
                   : 'Upload verification document'}
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">CSEC, CAPE, or other teaching qualification — PDF, JPG, PNG or WEBP (max 10MB).</p>
-            {reviewPending && (
-              <p className="mt-1.5 text-xs text-amber-700">
-                You have a document under review. Uploading a new one replaces it — only the newest document is reviewed.
+            {hasQueue && (
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                {pendingCount === 1 ? '1 document is' : `${pendingCount} documents are`} waiting to be reviewed.
+                You can add more — each one is reviewed on its own.
               </p>
             )}
           </div>
