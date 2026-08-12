@@ -64,9 +64,13 @@ export async function POST(request: NextRequest) {
       childId?: string;
       tutorId?: string;
     };
-    const { childId, tutorId } = body;
-    if (!childId || !tutorId) {
-      return NextResponse.json({ error: 'childId and tutorId are required' }, { status: 400 });
+    // A student requesting for themselves need not name themselves, and must not
+    // have to discover their own id to do it. Decision 15 makes this the common
+    // case: students may request independently, linked parent or not.
+    const childId = body.childId ?? user.id;
+    const { tutorId } = body;
+    if (!tutorId) {
+      return NextResponse.json({ error: 'tutorId is required' }, { status: 400 });
     }
 
     const admin = getServiceClient();

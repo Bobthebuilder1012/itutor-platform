@@ -8,6 +8,7 @@ import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
 import PendingRequestsSection from '@/components/student/PendingRequestsSection';
+import YourTutorsSection from '@/components/student/YourTutorsSection';
 
 type Lesson = {
   key: string;
@@ -222,6 +223,11 @@ export default function MyClassesPage() {
             </div>
           </>
         )}
+
+        {/* §9.2: one card per tutor, group or 1:1, with Request feedback and
+            Message. Outside the branch above so it shows even before the class
+            list loads. Renders nothing when the student has no tutors. */}
+        <YourTutorsSection />
       </div>
   );
 }
