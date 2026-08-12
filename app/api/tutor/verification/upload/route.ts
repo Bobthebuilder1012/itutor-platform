@@ -33,47 +33,36 @@ export async function POST(request: NextRequest) {
   const tutorId = auth.profile!.id;
 
   try {
-    // Check for pending submissions (only truly pending ones, not old rejected ones)
+    // A pending review no longer blocks a new upload.
+    //
+    // It used to 429 for 7 days, which stranded any tutor who uploaded the
+    // wrong file, a blurry scan, or the wrong side of a results slip: their
+    // only options were to wait out the week or ask support. Uploading again
+    // now REPLACES the pending request — the newest document is the one that
+    // gets reviewed.
+    //
+    // Replace rather than stack: two pending requests for one tutor is a trap,
+    // because rejecting either one wipes the tutor's badge and hides every
+    // verified subject if the other has already been approved (see
+    // app/api/admin/verification/requests/[id]/reject). Keeping exactly one
+    // pending request per tutor leaves that behaviour untouched.
     const { data: pendingSubmissions, error: checkError } = await supabase
       .from('tutor_verification_requests')
       .select('id, status, created_at')
       .eq('tutor_id', tutorId)
       .in('status', ['SUBMITTED', 'PROCESSING', 'READY_FOR_REVIEW'])
-      .order('created_at', { ascending: false })
-      .limit(1);
+      .order('created_at', { ascending: false });
 
     if (checkError) {
       console.error('Error checking pending submissions:', checkError);
       return NextResponse.json({ error: 'Failed to check submission status' }, { status: 500 });
     }
 
-    // Only block if there's a recent pending submission (within last 7 days)
-    if (pendingSubmissions && pendingSubmissions.length > 0) {
-      const submissionDate = new Date(pendingSubmissions[0].created_at);
-      const daysSinceSubmission = (Date.now() - submissionDate.getTime()) / (1000 * 60 * 60 * 24);
-      
-      if (daysSinceSubmission < 7) {
-        return NextResponse.json(
-          { 
-            error: 'You have a pending verification request. Please wait for it to be reviewed.',
-            request_id: pendingSubmissions[0].id,
-            submitted_at: pendingSubmissions[0].created_at
-          },
-          { status: 429 }
-        );
-      }
-      
-      // Old pending request (>7 days) - auto-reject it and allow new submission
-      console.log('Auto-rejecting old pending request:', pendingSubmissions[0].id);
-      await supabase
-        .from('tutor_verification_requests')
-        .update({
-          status: 'REJECTED',
-          reviewer_reason: 'Request expired - no action taken after 7 days',
-          reviewed_at: new Date().toISOString()
-        })
-        .eq('id', pendingSubmissions[0].id);
-    }
+    // Superseding happens AFTER the new document is safely stored, further
+    // down. Cancelling the old request first (as the old >7-day path did) means
+    // a failed upload leaves the tutor with nothing under review at all —
+    // strictly worse than the request they started with.
+    const supersededIds = (pendingSubmissions ?? []).map((r) => r.id);
 
     // Parse form data
     const formData = await request.formData();
@@ -167,11 +156,36 @@ export async function POST(request: NextRequest) {
       console.error('Update error details:', JSON.stringify(updateError, null, 2));
     }
 
+    // The new document is stored, so retire whatever was pending before it.
+    // Recorded as REJECTED with an explicit reason because the status CHECK
+    // constraint (migration 024) has no SUPERSEDED value and the admin queue
+    // filters on these statuses — the same shape the old expiry path used.
+    // Note this is a direct write, NOT the admin reject route, so it cannot
+    // strip an existing verified badge.
+    if (supersededIds.length > 0) {
+      console.log('Superseding pending verification requests:', supersededIds);
+      const { error: supersedeError } = await supabase
+        .from('tutor_verification_requests')
+        .update({
+          status: 'REJECTED',
+          reviewer_reason: 'Superseded — the tutor uploaded a newer document before this was reviewed.',
+          reviewed_at: new Date().toISOString(),
+        })
+        .in('id', supersededIds);
+
+      // Non-fatal: the tutor's new document is already in the queue. Leaving a
+      // stale row behind is a tidiness problem, not a broken submission.
+      if (supersedeError) {
+        console.error('Failed to supersede previous requests:', supersedeError.message);
+      }
+    }
+
     console.log('✅ Upload complete! Request ID:', request_record.id);
     return NextResponse.json({
       message: 'Verification document uploaded successfully',
       request_id: request_record.id,
       status: 'SUBMITTED',
+      superseded_count: supersededIds.length,
       success: true
     });
   } catch (error) {

@@ -143,6 +143,45 @@ export async function POST(
       throw updateError;
     }
 
+    // This document is now stored, read and queued, so retire any EARLIER
+    // request from the same tutor that is still waiting on a reviewer.
+    //
+    // A tutor may upload again while a review is pending — they usually do
+    // because the first file was the wrong one — and the newest document is
+    // the one that should be judged. Two pending requests for one tutor is
+    // actively unsafe: once either is approved, rejecting the other wipes the
+    // tutor's badge and hides every verified subject (see
+    // app/api/admin/verification/requests/[id]/reject).
+    //
+    // Superseded here rather than when the request row was created, because
+    // until the file is uploaded and processed there is nothing to review — and
+    // cancelling the old one first would leave a tutor who abandoned the upload
+    // with no submission at all.
+    const { data: superseded, error: supersedeError } = await supabase
+      .from('tutor_verification_requests')
+      .update({
+        // No SUPERSEDED value exists in the status CHECK constraint
+        // (migration 024) and the admin queue filters on these statuses, so
+        // the state is carried in reviewer_reason. This is a direct write, not
+        // the admin reject route, so it cannot strip an existing badge.
+        status: 'REJECTED',
+        reviewer_reason: 'Superseded — the tutor uploaded a newer document before this one was reviewed.',
+        reviewed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('tutor_id', verificationRequest.tutor_id)
+      .neq('id', requestId)
+      .in('status', ['SUBMITTED', 'PROCESSING', 'READY_FOR_REVIEW'])
+      .select('id');
+
+    // Non-fatal: the new document is already queued. A stale sibling row is a
+    // tidiness problem, not a broken submission.
+    if (supersedeError) {
+      console.error('Failed to supersede earlier requests:', supersedeError.message);
+    } else if (superseded?.length) {
+      console.log('Superseded earlier verification requests:', superseded.map((r) => r.id));
+    }
+
     console.log('✅ Verification processing complete:', {
       requestId,
       recommendation: recommendation.recommendation,
