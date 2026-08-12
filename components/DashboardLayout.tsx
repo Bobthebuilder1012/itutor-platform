@@ -243,6 +243,9 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
       case 'parent': return [
         { label: 'Menu', items: [
           { href: '/parent/dashboard',     label: 'Home',          icon: icons.dashboard },
+          // Second, not buried: a request that is never seen expires two hours
+          // before the class and sends no email when it does (§4.2).
+          { href: '/parent/approvals',     label: 'Approvals',     icon: icons.shield },
           { href: '/parent/children',      label: 'Children',      icon: icons.userPlus },
           { href: '/parent/classes',       label: 'Find Classes',  icon: icons.groups },
           { href: '/parent/subscriptions', label: 'Subscriptions', icon: icons.calendar },
