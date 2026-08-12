@@ -2,7 +2,7 @@
 // BOOKING SYSTEM TYPES
 // =====================================================
 
-export type BookingStatus = 
+export type BookingStatus =
   | 'PENDING'
   | 'PENDING_PARENT_APPROVAL'
   | 'PARENT_APPROVED'
@@ -12,7 +12,15 @@ export type BookingStatus =
   | 'DECLINED'
   | 'CANCELLED'
   | 'COMPLETED'
-  | 'NO_SHOW';
+  | 'NO_SHOW'
+  // Added with migration 219, alongside the parent-approval request flow.
+  // §4.5: paid for, then the place turned out to be gone — refunded automatically.
+  | 'SEAT_UNAVAILABLE_REFUNDED'
+  // §4.2: closed unanswered two hours before the session. No email is sent, so
+  // this state is the only way either party finds out.
+  | 'EXPIRED'
+  // Decision 28: the student pulled the request from the parent's queue.
+  | 'WITHDRAWN';
 
 export type MessageType = 'text' | 'time_proposal' | 'system';
 
@@ -294,6 +302,11 @@ export function getBookingStatusColor(status: BookingStatus): string {
       return 'text-emerald-400 bg-emerald-400/10 border-emerald-400/30';
     case 'NO_SHOW':
       return 'text-orange-400 bg-orange-400/10 border-orange-400/30';
+    case 'SEAT_UNAVAILABLE_REFUNDED':
+      return 'text-amber-400 bg-amber-400/10 border-amber-400/30';
+    case 'EXPIRED':
+    case 'WITHDRAWN':
+      return 'text-gray-400 bg-gray-400/10 border-gray-400/30';
     default:
       return 'text-gray-400 bg-gray-400/10 border-gray-400/30';
   }
@@ -321,6 +334,14 @@ export function getBookingStatusLabel(status: BookingStatus): string {
       return 'Completed';
     case 'NO_SHOW':
       return 'No Show';
+    case 'SEAT_UNAVAILABLE_REFUNDED':
+      // Worded for the person reading it, who is a parent wanting to know
+      // whether they are out of pocket. They are not.
+      return 'Place taken · refunded';
+    case 'EXPIRED':
+      return 'Expired';
+    case 'WITHDRAWN':
+      return 'Withdrawn';
     default:
       return status;
   }

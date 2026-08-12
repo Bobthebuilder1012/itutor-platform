@@ -233,7 +233,27 @@ export async function GET(request: NextRequest) {
 
   try {
     const result = await processDueReminders(request);
-    return NextResponse.json({ success: true, ...result });
+
+    // §4.2 booking-request expiry rides on this cron deliberately: "Runs on the
+    // existing /api/cron/send-reminders. Do not add a second cron."
+    //
+    // It is run in its own try/catch and after the reminders, so a failure in
+    // the sweep cannot stop reminder emails going out — and the reverse, since
+    // the sweep is idempotent and simply catches up on the next tick.
+    //
+    // Nothing is emailed here. §4.2: no email on expiry, the state is
+    // discoverable only on platform.
+    let expiredRequests = 0;
+    try {
+      const { getServiceClient } = await import('@/lib/supabase/server');
+      const { expireDueRequests } = await import('@/lib/server/bookingRequests');
+      const swept = await expireDueRequests(getServiceClient());
+      expiredRequests = swept.expired;
+    } catch (sweepError) {
+      console.error('Booking-request expiry sweep failed', sweepError);
+    }
+
+    return NextResponse.json({ success: true, ...result, expiredRequests });
   } catch (error) {
     console.error('Session reminder cron failed', error);
     return NextResponse.json({ error: 'Failed to process reminders' }, { status: 500 });

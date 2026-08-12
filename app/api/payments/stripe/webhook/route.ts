@@ -35,6 +35,10 @@ import {
   extractChargeFees,
 } from '@/lib/payments/stripeClient';
 import { createSessionForBooking } from '@/lib/services/sessionService';
+import {
+  fulfilParentApproval,
+  isParentApprovalSession,
+} from '@/lib/server/parentApprovalFulfilment';
 import { handleSubscriptionPayment } from '@/lib/services/subscriptionPayments';
 import { confirmSecuredSpot } from '@/lib/services/secureSpotService';
 import { sendEmail } from '@/lib/services/emailService';
@@ -320,6 +324,8 @@ export async function POST(request: NextRequest) {
         return await handleInvoicePaymentFailed(admin, event, attempts);
       case 'customer.subscription.deleted':
         return await handleSubscriptionDeleted(admin, event, attempts);
+      case 'checkout.session.completed':
+        return await handleCheckoutSessionCompleted(admin, event, attempts);
       default:
         console.log(
           `[stripe/webhook] Ignoring unhandled event type: ${event.type}`
@@ -1577,6 +1583,47 @@ async function handleInvoicePaymentFailed(
  * Fires when retries are exhausted, the student cancels, or `cancel_at`
  * (the class end date) is reached. This is where access actually ends.
  */
+/**
+ * Hosted Checkout completed — the parent-approval flow (§4.6).
+ *
+ * Only sessions this flow created are touched; any other checkout.session
+ * arriving here is skipped rather than guessed at, so adding a second hosted
+ * Checkout use later cannot accidentally be fulfilled as a booking approval.
+ *
+ * Errors are deliberately left to bubble into the caller's catch, which marks
+ * the event retryable. At this point the money is in and the booking is not yet
+ * confirmed, so a Stripe redelivery is exactly what should happen.
+ */
+async function handleCheckoutSessionCompleted(
+  admin: AdminClient,
+  event: Stripe.Event,
+  attempts: number
+) {
+  const session = event.data.object as Stripe.Checkout.Session;
+
+  if (!isParentApprovalSession(session)) {
+    await markProcessed(admin, event, null, 'skipped', attempts, 'not a parent-approval session');
+    return NextResponse.json({ received: true, status: 'ignored' });
+  }
+
+  const result = await fulfilParentApproval(admin, session);
+
+  if (!result.handled) {
+    await markProcessed(admin, event, null, 'skipped', attempts, result.reason);
+    return NextResponse.json({ received: true, status: result.reason });
+  }
+
+  await markProcessed(
+    admin,
+    event,
+    session.metadata?.booking_id ?? null,
+    'processed',
+    attempts,
+    result.outcome
+  );
+  return NextResponse.json({ received: true, status: result.outcome });
+}
+
 async function handleSubscriptionDeleted(
   admin: AdminClient,
   event: Stripe.Event,
