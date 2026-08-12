@@ -7,6 +7,7 @@ import { ArrowRight, Users, BookOpen, Search, Star } from 'lucide-react';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
+import PendingRequestsSection from '@/components/student/PendingRequestsSection';
 
 type Lesson = {
   key: string;
@@ -141,6 +142,12 @@ export default function MyClassesPage() {
             </Link>
           )}
         </div>
+
+        {/* §9.2: the pending section belongs in My Classes, not the dashboard.
+            Mounted above the enrolled list and outside the loading/empty branch
+            below, so a student whose only class is still awaiting approval sees
+            it instead of "No classes yet". Renders nothing when empty. */}
+        <PendingRequestsSection />
 
         {loading ? (
           <div className="py-20 flex justify-center">
