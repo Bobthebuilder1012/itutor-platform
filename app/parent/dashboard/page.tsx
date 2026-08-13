@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Plus, ChevronRight, AlertCircle, Check, GraduationCap, Receipt } from 'lucide-react';
 import { useProfile } from '@/lib/hooks/useProfile';
 import ParentShell from '@/components/parent/ParentShell';
+import AttentionCard from '@/components/parent/AttentionCard';
 
 type ChildData = {
   id: string; name: string; initials: string; hue: number;
@@ -48,6 +49,18 @@ function DashboardContent() {
         <h1 className="text-2xl lg:text-3xl font-bold text-ink mt-1">Welcome back, {firstName}</h1>
         <p className="text-sm text-muted-foreground mt-1">Manage your children's classes, feedback and billing.</p>
       </div>
+
+      {/* §9.1's dominant element, above the tiles. A pending approval closes two
+          hours before the class and sends no email when it lapses, so it cannot
+          sit below a stats row. The child tiles below are kept — this combines
+          with them rather than replacing them. */}
+      <AttentionCard
+        nextClassLine={
+          children.length > 0
+            ? `Nothing needs you. ${children.length === 1 ? children[0].name.split(' ')[0] + ' has' : 'Your children have'} ${totalActive} active ${totalActive === 1 ? 'class' : 'classes'}.`
+            : null
+        }
+      />
 
       {children.length > 0 && (
         <div className="grid grid-cols-3 gap-3">

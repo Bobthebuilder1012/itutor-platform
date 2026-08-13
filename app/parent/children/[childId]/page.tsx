@@ -3,7 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, GraduationCap, FileText, Calendar, Clock, Check, AlertCircle, X, BookOpen, ChevronRight, Trash2, ClipboardCheck } from 'lucide-react';
+import { ArrowLeft, GraduationCap, FileText, Calendar, Clock, Check, AlertCircle, X, BookOpen, ChevronRight, Trash2, ClipboardCheck, MessageSquare, CreditCard } from 'lucide-react';
+import ChildMessageHistory from '@/components/parent/ChildMessageHistory';
+import ChildBillingControls from '@/components/parent/ChildBillingControls';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -23,7 +25,7 @@ function ChildContent() {
   const { childId } = useParams<{ childId: string }>();
   const router = useRouter();
   const { profile } = useProfile();
-  const [tab, setTab] = useState<'classes' | 'bookings' | 'attendance' | 'feedback'>('classes');
+  const [tab, setTab] = useState<'classes' | 'bookings' | 'attendance' | 'feedback' | 'messages' | 'billing'>('classes');
   const [childName, setChildName] = useState('');
   const [initials, setInitials] = useState('');
   const [hue, setHue] = useState(145);
@@ -124,17 +126,23 @@ function ChildContent() {
       </header>
 
 
-      <div className="inline-flex p-1 rounded-2xl bg-muted">
+      {/* Scrolls rather than wraps on a phone: six tabs will not fit at 390px,
+          and a wrapped tab strip pushes the content below the fold. */}
+      <div className="-mx-1 flex gap-1 overflow-x-auto p-1 rounded-2xl bg-muted sm:inline-flex sm:mx-0">
         {([
           { id: 'classes' as const, label: 'Classes', icon: GraduationCap },
           { id: 'bookings' as const, label: 'Bookings', icon: Calendar },
           { id: 'attendance' as const, label: 'Attendance', icon: ClipboardCheck },
           { id: 'feedback' as const, label: 'Feedback', icon: FileText },
+          // Added per the kit's tab set. Messages is read-only (§9.4) and
+          // Billing keeps a child's money in the same place as their classes.
+          { id: 'messages' as const, label: 'Messages', icon: MessageSquare },
+          { id: 'billing' as const, label: 'Billing', icon: CreditCard },
         ]).map((t) => {
           const Icon = t.icon;
           return (
             <button key={t.id} onClick={() => setTab(t.id)}
-              className={cn('inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition',
+              className={cn('inline-flex shrink-0 items-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl text-sm font-semibold transition',
                 tab === t.id ? 'bg-background text-ink shadow-sm' : 'text-muted-foreground hover:text-ink')}>
               <Icon className="size-4" /> {t.label}
             </button>
@@ -150,6 +158,14 @@ function ChildContent() {
         <BookingsTab bookings={bookings} />
       ) : tab === 'attendance' ? (
         <AttendanceTab rows={attendance} summary={attSummary} loading={attLoading} />
+      ) : tab === 'messages' ? (
+        /* §9.4: read-only, no composer, two-way disclosure. */
+        <ChildMessageHistory childId={childId} childName={childName} />
+      ) : tab === 'billing' ? (
+        /* The per-child money controls, beside that child's classes rather than
+           only in Settings — a parent looking at one child's spend is already
+           here. */
+        <ChildBillingControls childId={childId} childName={childName} />
       ) : (
         <FeedbackTab feedback={feedback} onOpen={setOpenReport} />
       )}
