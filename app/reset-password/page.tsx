@@ -63,8 +63,21 @@ export default function ResetPasswordPage() {
         return;
       }
 
+      // §7 step 4: completing a password change turns self-pay back off for
+      // every child on the account. This is the recovery path for a child who
+      // enabled it on a parent's unlocked phone, so it runs before the redirect
+      // and is awaited — navigating away first would abort the request.
+      //
+      // It never blocks the reset: the endpoint always answers 200, and a
+      // non-parent account simply has nothing to revoke.
+      try {
+        await fetch('/api/parent/self-pay/revoke-all', { method: 'POST' });
+      } catch {
+        // A completed password change must not look broken because this failed.
+      }
+
       setSuccess(true);
-      
+
       // Redirect to login after 3 seconds
       setTimeout(() => {
         router.push('/login');

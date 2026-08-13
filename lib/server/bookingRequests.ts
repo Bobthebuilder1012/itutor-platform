@@ -15,6 +15,7 @@
 // caller's job and is asserted here, not assumed.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { checkSpendLimit, getChildBilling } from '@/lib/server/childBilling';
 
 // ---------------------------------------------------------------------------
 // Timing
@@ -101,34 +102,29 @@ export async function resolveBilling(
   admin: SupabaseClient,
   studentId: string
 ): Promise<BillingResolution> {
-  const { data: link } = await admin
-    .from('parent_child_links')
-    .select('parent_id')
-    .eq('child_id', studentId)
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  // Migration 224 moved the decision onto the link. Decision 25: one parent per
+  // child, so the earliest link is the only link.
+  const settings = await getChildBilling(admin, studentId);
 
-  // Decision 25: one parent per child.
-  const parentId = link?.parent_id ?? null;
-
-  if (!parentId) {
+  if (!settings) {
     return { mode: 'self_pay', parentId: null, reason: 'no_linked_parent' };
   }
 
-  const { data: profile } = await admin
-    .from('profiles')
-    .select('billing_mode')
-    .eq('id', studentId)
-    .maybeSingle();
+  // §10.5: "At the limit, force approval regardless of the toggle." The ceiling
+  // outranks self-pay — a parent who sets both means both, and the ceiling is
+  // the one they will be angry about if it is ignored.
+  const spend = await checkSpendLimit(admin, settings);
+  if (spend.reached) {
+    return { mode: 'parent_approval', parentId: settings.parentId, requiresApproval: true };
+  }
 
   // §7: self-pay is a per-child setting the parent controls. When it is on, the
   // child pays for themselves and no approval is required.
-  if (profile?.billing_mode === 'self_allowed') {
+  if (settings.billingMode === 'self_allowed' && !settings.requiresApproval) {
     return { mode: 'self_pay', parentId: null, reason: 'self_pay_enabled_by_parent' };
   }
 
-  return { mode: 'parent_approval', parentId, requiresApproval: true };
+  return { mode: 'parent_approval', parentId: settings.parentId, requiresApproval: true };
 }
 
 /** Is this parent actually this child's parent? Asserted, never assumed. */
