@@ -24,6 +24,7 @@ import {
 } from '@/lib/server/attendance';
 import { sendEmail, logEmailSend } from '@/lib/services/emailService';
 import { notifyInApp } from '@/lib/server/bookingRequestNotify';
+import { shouldNotifyForType } from '@/lib/server/notificationPreferences';
 
 export type Participation = 'yes' | 'occasionally' | 'not_often' | 'never_recall';
 
@@ -317,15 +318,23 @@ export async function deliverFeedback(
         ${parentId ? 'A copy has gone to your parent as well.' : 'This was sent to you.'}
       </p>
     `);
-    const result = await sendEmail({ to: child.email, subject, html });
-    await logEmailSend({
+    // §10.6 — the in-app row above is always written; only the email is muted.
+    const allowed = await shouldNotifyForType(admin, {
       userId: params.childId,
-      emailType: 'feedback_delivered_student',
-      recipientEmail: child.email,
-      subject,
-      status: result.success ? 'success' : 'failed',
-      errorMessage: result.error,
+      type: 'new_feedback',
+      channel: 'email',
     });
+    if (allowed) {
+      const result = await sendEmail({ to: child.email, subject, html });
+      await logEmailSend({
+        userId: params.childId,
+        emailType: 'feedback_delivered_student',
+        recipientEmail: child.email,
+        subject,
+        status: result.success ? 'success' : 'failed',
+        errorMessage: result.error,
+      });
+    }
   }
 
   // ---- the parent's copy: third person, about their child ------------------
@@ -346,14 +355,24 @@ export async function deliverFeedback(
         ${esc(childFirst)} received their own copy of this.
       </p>
     `);
-    const result = await sendEmail({ to: parent.email, subject, html });
-    await logEmailSend({
+    // Per-child mute applies here: a parent with two children may want feedback
+    // email for one and not the other.
+    const allowed = await shouldNotifyForType(admin, {
       userId: parentId!,
-      emailType: 'feedback_delivered_parent',
-      recipientEmail: parent.email,
-      subject,
-      status: result.success ? 'success' : 'failed',
-      errorMessage: result.error,
+      type: 'new_feedback',
+      channel: 'email',
+      childId: params.childId,
     });
+    if (allowed) {
+      const result = await sendEmail({ to: parent.email, subject, html });
+      await logEmailSend({
+        userId: parentId!,
+        emailType: 'feedback_delivered_parent',
+        recipientEmail: parent.email,
+        subject,
+        status: result.success ? 'success' : 'failed',
+        errorMessage: result.error,
+      });
+    }
   }
 }

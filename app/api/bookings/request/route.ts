@@ -96,6 +96,7 @@ export async function POST(request: NextRequest) {
           parentId: ctx.parent.id,
           parentEmail: ctx.parent.email,
           parentName: ctx.parent.name,
+          childId: ctx.student.id,
           childName: ctx.student.name,
           tutorName: ctx.tutor.name,
           subjectLabel: ctx.subjectLabel,

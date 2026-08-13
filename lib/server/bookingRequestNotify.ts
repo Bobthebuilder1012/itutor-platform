@@ -20,6 +20,60 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { sendEmail, logEmailSend } from '@/lib/services/emailService';
+import { shouldNotifyForType } from '@/lib/server/notificationPreferences';
+
+/**
+ * One gate for every email in this module — §10.6.
+ *
+ * Only push and email are suppressible; the in-app row is always written, since
+ * the design's own wording is "everything stays visible in this list either
+ * way". A parent who muted approval outcomes should stop being emailed, not lose
+ * the record of what happened.
+ *
+ * Skips are logged as 'skipped' rather than not logged at all, so a parent
+ * asking "why didn't I get that" has an answer in email_send_logs.
+ */
+async function sendIfAllowed(
+  admin: SupabaseClient,
+  params: {
+    userId: string;
+    type: string;
+    childId?: string | null;
+    to: string;
+    subject: string;
+    html: string;
+    emailType: string;
+  }
+): Promise<void> {
+  const allowed = await shouldNotifyForType(admin, {
+    userId: params.userId,
+    type: params.type,
+    channel: 'email',
+    childId: params.childId ?? null,
+  });
+
+  if (!allowed) {
+    await logEmailSend({
+      userId: params.userId,
+      emailType: params.emailType,
+      recipientEmail: params.to,
+      subject: params.subject,
+      status: 'failed',
+      errorMessage: 'skipped: muted by notification preferences',
+    });
+    return;
+  }
+
+  const result = await sendEmail({ to: params.to, subject: params.subject, html: params.html });
+  await logEmailSend({
+    userId: params.userId,
+    emailType: params.emailType,
+    recipientEmail: params.to,
+    subject: params.subject,
+    status: result.success ? 'success' : 'failed',
+    errorMessage: result.error,
+  });
+}
 
 export const TEMPLATE_PARENT_APPROVAL_REQUEST = 'parent_approval_request';
 export const TEMPLATE_STUDENT_REQUEST_DECLINED = 'student_request_declined';
@@ -115,6 +169,8 @@ export async function notifyParentOfRequest(
     parentId: string;
     parentEmail: string | null;
     parentName: string | null;
+    /** Needed so a per-child mute can apply (§10.6). */
+    childId: string;
     childName: string;
     tutorName: string;
     subjectLabel: string;
@@ -202,14 +258,16 @@ export async function notifyParentOfRequest(
     vars
   );
 
-  const result = await sendEmail({ to: params.parentEmail, subject, html });
-  await logEmailSend({
+  await sendIfAllowed(admin, {
     userId: params.parentId,
-    emailType: TEMPLATE_PARENT_APPROVAL_REQUEST,
-    recipientEmail: params.parentEmail,
+    type: 'parent_approval_request',
+    // Named so a per-child mute applies: "two children means twice the
+    // notifications" is the reason that axis exists.
+    childId: params.childId,
+    to: params.parentEmail,
     subject,
-    status: result.success ? 'success' : 'failed',
-    errorMessage: result.error,
+    html,
+    emailType: TEMPLATE_PARENT_APPROVAL_REQUEST,
   });
 }
 
@@ -277,14 +335,13 @@ export async function notifyStudentOfDecline(
     }
   );
 
-  const result = await sendEmail({ to: params.studentEmail, subject, html });
-  await logEmailSend({
+  await sendIfAllowed(admin, {
     userId: params.studentId,
-    emailType: TEMPLATE_STUDENT_REQUEST_DECLINED,
-    recipientEmail: params.studentEmail,
+    type: 'parent_approval_outcome',
+    to: params.studentEmail,
     subject,
-    status: result.success ? 'success' : 'failed',
-    errorMessage: result.error,
+    html,
+    emailType: TEMPLATE_STUDENT_REQUEST_DECLINED,
   });
 }
 
@@ -337,14 +394,13 @@ export async function notifyStudentOfApproval(
     }
   );
 
-  const result = await sendEmail({ to: params.studentEmail, subject, html });
-  await logEmailSend({
+  await sendIfAllowed(admin, {
     userId: params.studentId,
-    emailType: TEMPLATE_STUDENT_REQUEST_APPROVED,
-    recipientEmail: params.studentEmail,
+    type: 'parent_approval_outcome',
+    to: params.studentEmail,
     subject,
-    status: result.success ? 'success' : 'failed',
-    errorMessage: result.error,
+    html,
+    emailType: TEMPLATE_STUDENT_REQUEST_APPROVED,
   });
 }
 
@@ -413,13 +469,13 @@ export async function notifySeatUnavailableRefunded(
     }
   );
 
-  const result = await sendEmail({ to: params.parentEmail, subject, html });
-  await logEmailSend({
+  await sendIfAllowed(admin, {
     userId: params.parentId,
-    emailType: TEMPLATE_SEAT_UNAVAILABLE_REFUNDED,
-    recipientEmail: params.parentEmail,
+    type: 'seat_unavailable_refunded',
+    childId: params.studentId,
+    to: params.parentEmail,
     subject,
-    status: result.success ? 'success' : 'failed',
-    errorMessage: result.error,
+    html,
+    emailType: TEMPLATE_SEAT_UNAVAILABLE_REFUNDED,
   });
 }
