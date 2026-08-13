@@ -2,10 +2,10 @@
 //
 // Handover §9.1: "Feedback threads, with realistic sparsity in fixtures."
 //
-// This reads the unified feedback table (migration 222). It is deliberately a
-// NEW route rather than a change to /api/parent/feedback, which serves the older
-// tutor_feedback and rating data and is left working — §12.3 has not decided
-// whether the two models merge.
+// This reads the unified feedback table (migration 222) and is now the only
+// parent-facing feedback read. The route that used to sit at /api/parent/feedback
+// served the legacy tutor_feedback data and was removed with it in migration 223,
+// once §12.3 was settled in favour of this model.
 //
 // Sparsity is expected, not a bug. §8 makes feedback optional and pull-based,
 // and most classes produce none, so the empty state has to read as normal rather
