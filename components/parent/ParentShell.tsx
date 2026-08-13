@@ -7,7 +7,7 @@ import { useEffect, useState, type ComponentType } from 'react';
 import {
   LayoutDashboard, Users, Receipt, Settings, Bell,
   PanelLeftClose, PanelLeftOpen, ChevronUp, LogOut,
-  GraduationCap, CreditCard, ReceiptText, ShieldCheck, MessageSquareQuote, CalendarDays,
+  ShieldCheck, MessageSquareQuote, CalendarDays,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -25,10 +25,24 @@ const nav: NavItem[] = [
   { to: '/parent/children',      label: 'Children',      icon: Users,                        tint: 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-400/30' },
   { to: '/parent/calendar',      label: 'Calendar',      icon: CalendarDays,                 tint: 'bg-sky-500/20 text-sky-300 ring-1 ring-sky-400/30' },
   { to: '/parent/feedback',      label: 'Feedback',      icon: MessageSquareQuote,           tint: 'bg-fuchsia-500/20 text-fuchsia-300 ring-1 ring-fuchsia-400/30' },
-  { to: '/parent/classes',       label: 'Find Classes',  icon: GraduationCap,                tint: 'bg-rose-500/20 text-rose-300 ring-1 ring-rose-400/30' },
-  { to: '/parent/subscriptions', label: 'Subscriptions', icon: CreditCard,                   tint: 'bg-purple-500/20 text-purple-300 ring-1 ring-purple-400/30' },
-  { to: '/parent/transactions',  label: 'Transactions',  icon: ReceiptText,                  tint: 'bg-sky-500/20 text-sky-300 ring-1 ring-sky-400/30' },
 ];
+
+// WHAT IS DELIBERATELY NOT IN THIS NAV
+//
+// Billing is not a destination: the design kit puts subscriptions and
+// transactions inside Settings → Billing, and this follows it. The five items
+// above are exactly the kit's sidebar — Dashboard, Approvals, Children, Calendar,
+// Feedback — which is also all the mobile bottom bar's five columns can hold.
+// Adding Approvals, Calendar and Feedback without removing the old three would
+// have put eight items into a grid-cols-5 bar.
+//
+// Find Classes is not here either, matching the kit, where browsing starts from a
+// "Find a class" action on the dashboard rather than a permanent sidebar slot —
+// browsing is neutral and occasional, not somewhere a parent lives.
+//
+// /parent/classes, /parent/subscriptions and /parent/transactions all still exist
+// and still work. Nothing is deleted and no bookmark breaks; they are simply
+// reached from the dashboard and from Settings now.
 
 const COLLAPSE_KEY = 'itutor.parentSidebar.collapsed';
 

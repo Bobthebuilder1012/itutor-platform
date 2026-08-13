@@ -9,10 +9,14 @@ import ParentShell from '@/components/parent/ParentShell';
 import LogoutConfirmModal from '@/components/LogoutConfirmModal';
 import ChildBillingControls from '@/components/parent/ChildBillingControls';
 import NotificationPreferences from '@/components/parent/NotificationPreferences';
+import BillingSection from '@/components/parent/BillingSection';
 
 const SECTIONS = [
   { id: 'profile', label: 'Profile', icon: User },
   { id: 'household', label: 'Household', icon: Users },
+  // The design kit puts billing INSIDE Settings rather than as its own
+  // destination, so subscriptions and transactions live here.
+  { id: 'billing', label: 'Billing', icon: CreditCard },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'security', label: 'Security', icon: Lock },
 ] as const;
@@ -140,6 +144,8 @@ function SettingsContent() {
               </div>
             </>
           )}
+
+          {section === 'billing' && <BillingSection />}
 
           {section === 'notifications' && (
             /* Replaces a decorative placeholder: four labels and the word

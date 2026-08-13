@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Plus, ChevronRight, AlertCircle, Check, GraduationCap, Receipt } from 'lucide-react';
+import { Plus, ChevronRight, AlertCircle, Check, GraduationCap, Receipt, Search } from 'lucide-react';
 import { useProfile } from '@/lib/hooks/useProfile';
 import ParentShell from '@/components/parent/ParentShell';
 import AttentionCard from '@/components/parent/AttentionCard';
@@ -44,10 +44,22 @@ function DashboardContent() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <div className="text-xs uppercase tracking-wider font-bold text-muted-foreground">Parent dashboard</div>
-        <h1 className="text-2xl lg:text-3xl font-bold text-ink mt-1">Welcome back, {firstName}</h1>
-        <p className="text-sm text-muted-foreground mt-1">Manage your children's classes, feedback and billing.</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <div className="text-xs uppercase tracking-wider font-bold text-muted-foreground">Parent dashboard</div>
+          <h1 className="text-2xl lg:text-3xl font-bold text-ink mt-1">Welcome back, {firstName}</h1>
+          <p className="text-sm text-muted-foreground mt-1">Manage your children&apos;s classes, feedback and billing.</p>
+        </div>
+        {/* Browsing starts here rather than from a permanent sidebar slot, per the
+            kit: it is neutral and occasional, not somewhere a parent lives. This
+            is also what keeps /parent/classes reachable now that Find Classes has
+            left the nav. */}
+        <Link
+          href="/parent/classes"
+          className="inline-flex shrink-0 items-center gap-2 self-start rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-deep sm:self-auto"
+        >
+          <Search className="size-4" /> Find a class
+        </Link>
       </div>
 
       {/* §9.1's dominant element, above the tiles. A pending approval closes two
