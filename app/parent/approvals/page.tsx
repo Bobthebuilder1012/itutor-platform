@@ -21,6 +21,7 @@ import { useSearchParams } from 'next/navigation';
 import { AlertTriangle, Check, Clock, Loader2, ShieldCheck, X } from 'lucide-react';
 import ParentShell from '@/components/parent/ParentShell';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
+import CheckoutStateBanner from '@/components/parent/CheckoutStateBanner';
 
 type PendingRequest = {
   id: string;
@@ -88,19 +89,16 @@ function ApprovalsContent() {
     void load();
   }, [load]);
 
-  // §9.1's checkout states. Stripe sends the parent back here, so the outcome is
-  // reported on the surface they already know rather than a dead-end page.
-  useEffect(() => {
-    const checkout = params.get('checkout');
-    if (!checkout) return;
-    if (checkout === 'success') {
-      setToast(
-        'Payment received. Your child is enrolled once it clears — we email them, not you, when it does.'
-      );
-    } else if (checkout === 'cancelled') {
-      setToast('Payment not completed. Nothing was charged and the request is still waiting for you.');
-    }
-  }, [params]);
+  // §9.1's five checkout states. Stripe returns the parent here, so the outcome
+  // is reported on the surface they already know rather than a dead-end page.
+  //
+  // The banner resolves the state from the BOOKING, not from this query string:
+  // payment-failed and seat-taken are decided in the webhook after the redirect,
+  // so a success_url arrival whose card later failed must not be shown as paid.
+  // The query string is passed only as a hint about how they got here.
+  const checkoutBookingId = params.get('booking');
+  const checkoutHint = params.get('checkout');
+  const [checkoutDismissed, setCheckoutDismissed] = useState(false);
 
   const flash = (message: string) => {
     setToast(message);
@@ -180,6 +178,14 @@ function ApprovalsContent() {
           No place is held while you decide. Each request closes two hours before its class starts.
         </p>
       </header>
+
+      {checkoutBookingId && !checkoutDismissed && (
+        <CheckoutStateBanner
+          bookingId={checkoutBookingId}
+          hint={checkoutHint}
+          onDismiss={() => setCheckoutDismissed(true)}
+        />
+      )}
 
       {toast && (
         <div className="rounded-xl border border-brand/30 bg-brand/10 px-4 py-3 text-sm text-ink">

@@ -7,7 +7,7 @@ import { useEffect, useState, type ComponentType } from 'react';
 import {
   LayoutDashboard, Users, Receipt, Settings, Bell,
   PanelLeftClose, PanelLeftOpen, ChevronUp, LogOut,
-  GraduationCap, CreditCard, ReceiptText, ShieldCheck, MessageSquareQuote,
+  GraduationCap, CreditCard, ReceiptText, ShieldCheck, MessageSquareQuote, CalendarDays,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -23,6 +23,7 @@ const nav: NavItem[] = [
   // so this cannot be buried.
   { to: '/parent/approvals',     label: 'Approvals',     icon: ShieldCheck,                  tint: 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-400/30' },
   { to: '/parent/children',      label: 'Children',      icon: Users,                        tint: 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-400/30' },
+  { to: '/parent/calendar',      label: 'Calendar',      icon: CalendarDays,                 tint: 'bg-sky-500/20 text-sky-300 ring-1 ring-sky-400/30' },
   { to: '/parent/feedback',      label: 'Feedback',      icon: MessageSquareQuote,           tint: 'bg-fuchsia-500/20 text-fuchsia-300 ring-1 ring-fuchsia-400/30' },
   { to: '/parent/classes',       label: 'Find Classes',  icon: GraduationCap,                tint: 'bg-rose-500/20 text-rose-300 ring-1 ring-rose-400/30' },
   { to: '/parent/subscriptions', label: 'Subscriptions', icon: CreditCard,                   tint: 'bg-purple-500/20 text-purple-300 ring-1 ring-purple-400/30' },
