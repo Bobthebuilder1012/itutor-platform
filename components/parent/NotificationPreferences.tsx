@@ -101,40 +101,40 @@ export default function NotificationPreferences() {
 
   if (loading) {
     return (
-      <div className="flex justify-center py-10 text-muted">
+      <div className="flex justify-center py-10 text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin" />
       </div>
     );
   }
 
   return (
-    <section className="rounded-2xl border border-white/10 bg-card p-5">
-      <h2 className="text-base font-bold text-white">Notifications</h2>
-      <p className="mt-1 text-sm text-muted">
+    <section className="rounded-2xl border border-border bg-background p-5">
+      <h2 className="text-base font-bold text-ink">Notifications</h2>
+      <p className="mt-1 text-sm text-muted-foreground">
         Turn off what you don’t need — everything stays visible in your notifications list either
         way.
       </p>
 
       {error && (
-        <p className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+        <p className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-700">
           {error}
         </p>
       )}
 
       <div className="mt-4 grid grid-cols-[1fr_64px_64px] items-center gap-y-1">
         <span />
-        <span className="text-center text-[11px] font-semibold uppercase tracking-wider text-muted">
+        <span className="text-center text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
           Push
         </span>
-        <span className="text-center text-[11px] font-semibold uppercase tracking-wider text-muted">
+        <span className="text-center text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
           Email
         </span>
 
         {categories.map((c) => (
-          <div key={c.key} className="col-span-3 grid grid-cols-[1fr_64px_64px] items-center border-t border-white/5 py-3">
+          <div key={c.key} className="col-span-3 grid grid-cols-[1fr_64px_64px] items-center border-t border-border py-3">
             <div className="pr-3">
-              <div className="text-sm text-white">{c.label}</div>
-              <div className="text-xs text-muted">{c.detail}</div>
+              <div className="text-sm text-ink">{c.label}</div>
+              <div className="text-xs text-muted-foreground">{c.detail}</div>
             </div>
             {(['push', 'email'] as const).map((ch) => (
               <div key={ch} className="grid place-items-center">
@@ -164,8 +164,8 @@ export default function NotificationPreferences() {
           {perChildOpen && (
             <div className="mt-3 grid gap-3">
               {children.map((child) => (
-                <div key={child.id} className="rounded-xl border border-white/10 p-3">
-                  <div className="text-sm font-bold text-white">{child.name}</div>
+                <div key={child.id} className="rounded-xl border border-border p-3">
+                  <div className="text-sm font-bold text-ink">{child.name}</div>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {categories.map((c) => {
                       const muted = isMuted(child.id, c.key);
@@ -175,8 +175,8 @@ export default function NotificationPreferences() {
                           onClick={() => toggleMute(child.id, c.key)}
                           className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
                             muted
-                              ? 'border-white/10 bg-white/10 text-muted line-through'
-                              : 'border-white/15 text-white hover:bg-white/5'
+                              ? 'border-border bg-muted text-muted-foreground line-through'
+                              : 'border-border text-ink hover:bg-muted/50'
                           }`}
                         >
                           {c.label}
@@ -184,7 +184,7 @@ export default function NotificationPreferences() {
                       );
                     })}
                   </div>
-                  <p className="mt-2 text-xs text-muted">
+                  <p className="mt-2 text-xs text-muted-foreground">
                     Struck through means muted for {child.name.split(' ')[0]}.
                   </p>
                 </div>
@@ -211,7 +211,7 @@ function Toggle({
       onClick={onToggle}
       aria-label={label}
       aria-pressed={on}
-      className={`relative h-6 w-11 rounded-full transition ${on ? 'bg-brand' : 'bg-white/15'}`}
+      className={`relative h-6 w-11 rounded-full transition ${on ? 'bg-brand' : 'bg-border'}`}
     >
       <span
         className={`absolute top-0.5 size-5 rounded-full bg-white transition-all ${

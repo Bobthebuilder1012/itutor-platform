@@ -7,7 +7,7 @@ import { useEffect, useState, type ComponentType } from 'react';
 import {
   LayoutDashboard, Users, Receipt, Settings, Bell,
   PanelLeftClose, PanelLeftOpen, ChevronUp, LogOut,
-  GraduationCap, CreditCard, ReceiptText,
+  GraduationCap, CreditCard, ReceiptText, ShieldCheck, MessageSquareQuote,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -18,7 +18,12 @@ type NavItem = { to: string; label: string; icon: ComponentType<{ className?: st
 
 const nav: NavItem[] = [
   { to: '/parent/dashboard',     label: 'Home',          icon: LayoutDashboard, exact: true, tint: 'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-400/30' },
+  // Second, per §9.1's sidebar order. A booking request that is never seen
+  // expires two hours before the class and sends no email when it does (§4.2),
+  // so this cannot be buried.
+  { to: '/parent/approvals',     label: 'Approvals',     icon: ShieldCheck,                  tint: 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-400/30' },
   { to: '/parent/children',      label: 'Children',      icon: Users,                        tint: 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-400/30' },
+  { to: '/parent/feedback',      label: 'Feedback',      icon: MessageSquareQuote,           tint: 'bg-fuchsia-500/20 text-fuchsia-300 ring-1 ring-fuchsia-400/30' },
   { to: '/parent/classes',       label: 'Find Classes',  icon: GraduationCap,                tint: 'bg-rose-500/20 text-rose-300 ring-1 ring-rose-400/30' },
   { to: '/parent/subscriptions', label: 'Subscriptions', icon: CreditCard,                   tint: 'bg-purple-500/20 text-purple-300 ring-1 ring-purple-400/30' },
   { to: '/parent/transactions',  label: 'Transactions',  icon: ReceiptText,                  tint: 'bg-sky-500/20 text-sky-300 ring-1 ring-sky-400/30' },

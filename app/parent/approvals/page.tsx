@@ -166,7 +166,7 @@ function ApprovalsContent() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-24 text-muted">
+      <div className="flex items-center justify-center py-24 text-muted-foreground">
         <Loader2 className="h-5 w-5 animate-spin" />
       </div>
     );
@@ -175,54 +175,54 @@ function ApprovalsContent() {
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6">
       <header>
-        <h1 className="text-2xl font-bold text-white sm:text-3xl">Booking requests</h1>
-        <p className="mt-1 text-sm text-muted">
+        <h1 className="text-2xl font-bold text-ink sm:text-3xl">Booking requests</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
           No place is held while you decide. Each request closes two hours before its class starts.
         </p>
       </header>
 
       {toast && (
-        <div className="rounded-xl border border-brand/30 bg-brand/10 px-4 py-3 text-sm text-white">
+        <div className="rounded-xl border border-brand/30 bg-brand/10 px-4 py-3 text-sm text-ink">
           {toast}
         </div>
       )}
 
       {error && (
-        <div className="flex items-start gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+        <div className="flex items-start gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-700">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
       {!hasChildren && (
-        <div className="rounded-2xl border border-white/10 bg-card p-6">
-          <p className="text-sm text-white">No children are linked to your account yet.</p>
-          <p className="mt-1 text-sm text-muted">
+        <div className="rounded-2xl border border-border bg-background p-6">
+          <p className="text-sm text-ink">No children are linked to your account yet.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
             Once a child accepts your invite, their class requests arrive here first.
           </p>
         </div>
       )}
 
       {hasChildren && pending.length === 0 && (
-        <div className="rounded-2xl border border-white/10 bg-card p-6">
+        <div className="rounded-2xl border border-border bg-background p-6">
           <ShieldCheck className="h-8 w-8 text-brand" />
-          <p className="mt-3 text-sm text-white">Nothing is waiting on you.</p>
-          <p className="mt-1 text-sm text-muted">
+          <p className="mt-3 text-sm text-ink">Nothing is waiting on you.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
             When your child asks to join a class, it comes here before anything is paid.
           </p>
         </div>
       )}
 
       {pending.map((r) => (
-        <article key={r.id} className="rounded-2xl border border-white/10 bg-card p-5">
+        <article key={r.id} className="rounded-2xl border border-border bg-background p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-sm font-semibold text-white">{r.childName} wants to join</div>
+            <div className="text-sm font-semibold text-ink">{r.childName} wants to join</div>
             {r.closesAt && (
               <span
                 className={
                   r.closed
-                    ? 'inline-flex items-center gap-1.5 text-xs font-semibold text-rose-300'
-                    : 'inline-flex items-center gap-1.5 text-xs font-semibold text-amber-300'
+                    ? 'inline-flex items-center gap-1.5 text-xs font-semibold text-rose-600'
+                    : 'inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700'
                 }
               >
                 <Clock className="h-3.5 w-3.5" />
@@ -231,19 +231,19 @@ function ApprovalsContent() {
             )}
           </div>
 
-          <h2 className="mt-2 text-lg font-bold text-white">{r.tutorName}</h2>
-          <p className="text-sm text-muted">
+          <h2 className="mt-2 text-lg font-bold text-ink">{r.tutorName}</h2>
+          <p className="text-sm text-muted-foreground">
             {r.when} · {r.minutes} min
           </p>
 
-          <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+          <div className="mt-4 rounded-xl border border-border bg-muted/40 p-4">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               Price as listed when requested
             </div>
-            <div className="text-2xl font-extrabold tabular-nums text-white">
+            <div className="text-2xl font-extrabold tabular-nums text-ink">
               {r.isFree ? 'Free' : fmtTTD(r.priceWhenRequested)}
             </div>
-            <p className="mt-1 text-xs text-muted">
+            <p className="mt-1 text-xs text-muted-foreground">
               {r.isFree
                 ? 'No payment is involved. You are approving the enrolment itself.'
                 : 'The tutor’s current price may differ.'}
@@ -252,8 +252,8 @@ function ApprovalsContent() {
 
           {/* Both halves, together. Never one without the other. */}
           <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
-            <p className="text-xs leading-relaxed text-amber-100">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+            <p className="text-xs leading-relaxed text-amber-900">
               <strong>This spot is not reserved.</strong> Another student can take the last place
               while this sits here.
               {r.closesAt ? ` The request closes ${r.closesAt}, two hours before the class starts.` : ''}
@@ -261,12 +261,12 @@ function ApprovalsContent() {
           </div>
 
           {r.closed ? (
-            <p className="mt-4 text-xs text-muted">
+            <p className="mt-4 text-xs text-muted-foreground">
               This request closed before it was answered, so it can no longer be approved.
             </p>
           ) : decliningId === r.id ? (
             <div className="mt-4 space-y-2">
-              <label className="block text-xs font-medium text-muted" htmlFor={`reason-${r.id}`}>
+              <label className="block text-xs font-medium text-muted-foreground" htmlFor={`reason-${r.id}`}>
                 Reason (optional — sent to your child word for word)
               </label>
               <input
@@ -274,13 +274,13 @@ function ApprovalsContent() {
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 placeholder="Clashes with football practice — try Saturdays."
-                className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white placeholder:text-muted focus:border-brand focus:outline-none"
+                className="w-full rounded-xl border border-border bg-muted/40 px-3 py-2.5 text-sm text-ink placeholder:text-muted-foreground focus:border-brand focus:outline-none"
               />
               <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => decline(r.id)}
                   disabled={busyId === r.id}
-                  className="rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                  className="rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-ink disabled:opacity-60"
                 >
                   {busyId === r.id ? 'Sending…' : 'Send decline'}
                 </button>
@@ -289,7 +289,7 @@ function ApprovalsContent() {
                     setDecliningId(null);
                     setReason('');
                   }}
-                  className="rounded-xl border border-white/15 px-4 py-2.5 text-sm font-semibold text-white"
+                  className="rounded-xl border border-border px-4 py-2.5 text-sm font-semibold text-ink"
                 >
                   Keep pending
                 </button>
@@ -300,7 +300,7 @@ function ApprovalsContent() {
               <button
                 onClick={() => approve(r.id)}
                 disabled={busyId === r.id}
-                className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-ink disabled:opacity-60"
               >
                 {busyId === r.id ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -311,12 +311,12 @@ function ApprovalsContent() {
               </button>
               <button
                 onClick={() => setDecliningId(r.id)}
-                className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2.5 text-sm font-semibold text-white"
+                className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2.5 text-sm font-semibold text-ink"
               >
                 <X className="h-4 w-4" />
                 Decline
               </button>
-              <span className="text-xs text-muted">
+              <span className="text-xs text-muted-foreground">
                 {r.isFree ? 'Confirms on the spot — no payment page.' : 'Continues to Stripe.'}
               </span>
             </div>
@@ -327,23 +327,23 @@ function ApprovalsContent() {
       {/* Past decisions carries expiry and withdrawal because no email is sent
           for either — this list is the only place they ever surface. */}
       {decided.length > 0 && (
-        <section className="rounded-2xl border border-white/10 bg-card p-5">
-          <h2 className="text-base font-bold text-white">Past decisions</h2>
-          <p className="mt-0.5 text-xs text-muted">Approved, declined, expired and withdrawn.</p>
-          <ul className="mt-3 divide-y divide-white/5">
+        <section className="rounded-2xl border border-border bg-background p-5">
+          <h2 className="text-base font-bold text-ink">Past decisions</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">Approved, declined, expired and withdrawn.</p>
+          <ul className="mt-3 divide-y divide-border">
             {decided.map((d) => (
               <li key={d.id} className="py-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="flex-1 text-sm text-white">
+                  <span className="flex-1 text-sm text-ink">
                     {d.childName} · {d.tutorName}
                   </span>
-                  {d.at && <span className="text-xs text-muted">{d.at}</span>}
+                  {d.at && <span className="text-xs text-muted-foreground">{d.at}</span>}
                   <span className={badgeClass(d.decision)}>{d.decision}</span>
                 </div>
                 {d.reason && (
-                  <p className="mt-1 text-xs text-muted">Reason sent: “{d.reason}”</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Reason sent: “{d.reason}”</p>
                 )}
-                {d.note && <p className="mt-1 text-xs text-muted">{d.note}</p>}
+                {d.note && <p className="mt-1 text-xs text-muted-foreground">{d.note}</p>}
               </li>
             ))}
           </ul>
@@ -359,10 +359,10 @@ function badgeClass(decision: DecidedRequest['decision']): string {
     case 'Approved':
       return `${base} bg-brand/15 text-brand`;
     case 'Declined':
-      return `${base} bg-white/10 text-muted`;
+      return `${base} bg-muted text-muted-foreground`;
     case 'Expired':
-      return `${base} bg-amber-500/15 text-amber-300`;
+      return `${base} bg-amber-500/15 text-amber-700`;
     default:
-      return `${base} bg-white/10 text-muted`;
+      return `${base} bg-muted text-muted-foreground`;
   }
 }

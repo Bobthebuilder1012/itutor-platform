@@ -83,7 +83,7 @@ function FeedbackContent() {
 
   if (loading) {
     return (
-      <div className="flex justify-center py-24 text-muted">
+      <div className="flex justify-center py-24 text-muted-foreground">
         <Loader2 className="h-5 w-5 animate-spin" />
       </div>
     );
@@ -92,16 +92,16 @@ function FeedbackContent() {
   return (
     <div className="mx-auto w-full max-w-3xl space-y-5">
       <header>
-        <h1 className="text-2xl font-bold text-white sm:text-3xl">Feedback</h1>
-        <p className="mt-1 text-sm text-muted">
+        <h1 className="text-2xl font-bold text-ink sm:text-3xl">Feedback</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
           What your children’s tutors have written. You and your child share one request a month per
           tutor.
         </p>
       </header>
 
       {!hasChildren && (
-        <div className="rounded-2xl border border-white/10 bg-card p-6">
-          <p className="text-sm text-white">No children are linked to your account yet.</p>
+        <div className="rounded-2xl border border-border bg-background p-6">
+          <p className="text-sm text-ink">No children are linked to your account yet.</p>
         </div>
       )}
 
@@ -109,23 +109,23 @@ function FeedbackContent() {
       {openRequests.map((r) => (
         <div
           key={r.id}
-          className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-card px-4 py-3"
+          className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-background px-4 py-3"
         >
-          <Clock className="h-4 w-4 shrink-0 text-muted" />
-          <span className="text-sm text-white">
+          <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <span className="text-sm text-ink">
             {r.byYou ? 'You' : r.childName} asked {r.tutorName} for feedback on {r.requestedOn}.
           </span>
-          <span className="text-xs text-muted">
+          <span className="text-xs text-muted-foreground">
             Tutors answer in their own time — nothing chases them.
           </span>
         </div>
       ))}
 
       {hasChildren && reports.length === 0 && (
-        <div className="rounded-2xl border border-white/10 bg-card p-6">
-          <MessageSquareQuote className="h-8 w-8 text-muted" />
-          <p className="mt-3 text-sm text-white">No feedback yet.</p>
-          <p className="mt-1 text-sm text-muted">
+        <div className="rounded-2xl border border-border bg-background p-6">
+          <MessageSquareQuote className="h-8 w-8 text-muted-foreground" />
+          <p className="mt-3 text-sm text-ink">No feedback yet.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
             Most classes produce none — tutors write it when there is something worth saying, or when
             you ask. Attendance is tracked either way, on each child’s page.
           </p>
@@ -133,22 +133,22 @@ function FeedbackContent() {
       )}
 
       {reports.map((f) => (
-        <article key={f.id} className="rounded-2xl border border-white/10 bg-card p-5">
+        <article key={f.id} className="rounded-2xl border border-border bg-background p-5">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-base font-bold text-white">
+            <h2 className="text-base font-bold text-ink">
               {f.childName} · {f.tutorName}
             </h2>
-            <span className="text-xs text-muted">{f.date}</span>
+            <span className="text-xs text-muted-foreground">{f.date}</span>
           </div>
 
           <div className="mt-1 flex flex-wrap gap-2">
-            <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-[11px] font-bold text-muted">
+            <span className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-bold text-muted-foreground">
               {f.answeredARequest ? 'You asked' : 'Sent unprompted'}
             </span>
             {/* §8.2: an edit is surfaced, never silent. A parent who read the
                 first version needs to know a second exists. */}
             {f.edited && (
-              <span className="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[11px] font-bold text-amber-300">
+              <span className="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[11px] font-bold text-amber-700">
                 Edited {f.editedOn}
               </span>
             )}
@@ -157,20 +157,20 @@ function FeedbackContent() {
           {/* Attendance: automatic, and labelled as such so nobody asks the
               tutor to change it. */}
           {f.attendance.label && (
-            <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+            <div className="mt-3 rounded-xl border border-border bg-muted/40 p-3">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Attendance · recorded automatically
               </div>
-              <div className="text-lg font-extrabold tabular-nums text-white">
+              <div className="text-lg font-extrabold tabular-nums text-ink">
                 {f.attendance.label}
               </div>
-              <div className="mt-0.5 text-xs text-muted">
+              <div className="mt-0.5 text-xs text-muted-foreground">
                 {f.attendance.attended ?? 0} attended · {f.attendance.late ?? 0} late ·{' '}
                 {f.attendance.absent ?? 0} absent
                 {(f.attendance.cancelled ?? 0) > 0 && ` · ${f.attendance.cancelled} cancelled`}
               </div>
               {(f.attendance.excluded ?? 0) > 0 && (
-                <div className="mt-1 text-xs text-muted">
+                <div className="mt-1 text-xs text-muted-foreground">
                   {f.attendance.excluded} session{f.attendance.excluded === 1 ? '' : 's'} not counted
                   — the class did not run.
                 </div>
@@ -179,27 +179,27 @@ function FeedbackContent() {
           )}
 
           {f.attendanceNote && (
-            <p className="mt-2 text-sm text-white/80">
-              <span className="text-muted">Tutor’s note: </span>
+            <p className="mt-2 text-sm text-ink/80">
+              <span className="text-muted-foreground">Tutor’s note: </span>
               {f.attendanceNote}
             </p>
           )}
 
-          <p className="mt-3 text-sm text-white/80">
-            <span className="text-muted">Participation: </span>
+          <p className="mt-3 text-sm text-ink/80">
+            <span className="text-muted-foreground">Participation: </span>
             {f.participationLabel}
           </p>
 
           {f.sections.map((s) => (
-            <div key={s.key} className="mt-3 border-t border-white/5 pt-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+            <div key={s.key} className="mt-3 border-t border-border pt-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                 {s.label}
               </p>
-              <p className="mt-0.5 text-sm leading-relaxed text-white/85">{s.body}</p>
+              <p className="mt-0.5 text-sm leading-relaxed text-ink/80">{s.body}</p>
             </div>
           ))}
 
-          <p className="mt-3 text-xs text-muted">
+          <p className="mt-3 text-xs text-muted-foreground">
             Sent to you and to {f.childName.split(' ')[0]}.
           </p>
         </article>
