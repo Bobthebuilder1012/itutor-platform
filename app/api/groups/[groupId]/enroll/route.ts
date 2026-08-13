@@ -79,6 +79,35 @@ export async function POST(req: NextRequest, { params }: Params) {
       return fail('Group is not published', 400);
     }
 
+    // Seats are held during a tutor break, so new enrolment is shut. Checked
+    // BEFORE the already-enrolled test because it applies to everyone, and read
+    // separately from the group select above so a schema without the column
+    // (older environments) degrades to "open" rather than failing the whole
+    // select and taking enrolment down with it.
+    try {
+      const { data: closure } = await service
+        .from('groups')
+        .select('enrolment_closed_until')
+        .eq('id', groupId)
+        .maybeSingle();
+
+      const closedUntil = (closure as { enrolment_closed_until: string | null } | null)
+        ?.enrolment_closed_until;
+
+      if (closedUntil && new Date(closedUntil).getTime() > Date.now()) {
+        const when = new Date(closedUntil).toLocaleDateString('en-TT', {
+          day: 'numeric',
+          month: 'long',
+          timeZone: 'America/Port_of_Spain',
+        });
+        // Not "full" — the class is on a break, and saying so stops a would-be
+        // family concluding there is no room for them.
+        return fail(`This class is on a break and reopens on ${when}.`, 409);
+      }
+    } catch {
+      // Column absent: treat as open.
+    }
+
     const { count: existingActiveCount } = await service
       .from('group_enrollments')
       .select('*', { count: 'exact', head: true })
