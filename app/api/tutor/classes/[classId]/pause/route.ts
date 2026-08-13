@@ -25,6 +25,90 @@ export const dynamic = 'force-dynamic';
 
 type Params = { params: Promise<{ classId: string }> };
 
+/**
+ * Current pause state for the control in the class's Danger zone.
+ *
+ * Reports the earliest notice date too, so the form can refuse an impossible
+ * date before the tutor commits to it rather than after.
+ */
+export async function GET(_request: NextRequest, { params }: Params) {
+  try {
+    const server = await getServerClient();
+    const {
+      data: { user },
+    } = await server.auth.getUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const { classId } = await params;
+    const admin = getServiceClient();
+
+    const { data: group } = await admin
+      .from('groups')
+      .select('id, tutor_id, name, enrolment_closed_until')
+      .eq('id', classId)
+      .maybeSingle();
+
+    const g = group as {
+      id: string;
+      tutor_id: string;
+      name: string | null;
+      enrolment_closed_until: string | null;
+    } | null;
+    if (!g) return NextResponse.json({ error: 'Class not found' }, { status: 404 });
+    if (g.tutor_id !== user.id) {
+      return NextResponse.json({ error: 'Not your class' }, { status: 403 });
+    }
+
+    const { data: rows } = await admin
+      .from('group_enrollments')
+      .select('id, pause_start, pause_end, paused_at, adjusted_renewal_date')
+      .eq('group_id', classId)
+      .eq('pause_reason', 'tutor_break')
+      .in('status', ['ACTIVE', 'GRACE'])
+      .limit(1);
+
+    const row = ((rows ?? []) as unknown as Array<{
+      pause_start: string | null;
+      pause_end: string | null;
+      paused_at: string | null;
+      adjusted_renewal_date: string | null;
+    }>)[0];
+
+    const { count: familyCount } = await admin
+      .from('group_enrollments')
+      .select('*', { count: 'exact', head: true })
+      .eq('group_id', classId)
+      .in('status', ['ACTIVE', 'GRACE'])
+      .is('cancelled_at', null);
+
+    const earliestStart = new Date(Date.now() + PAUSE_NOTICE_DAYS * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+
+    return NextResponse.json({
+      className: g.name,
+      familyCount: familyCount ?? 0,
+      noticeDays: PAUSE_NOTICE_DAYS,
+      earliestStart,
+      enrolmentClosedUntil: g.enrolment_closed_until,
+      pause: row
+        ? {
+            scheduled: true,
+            // A pause can be announced but not yet begun; the tutor needs to see
+            // which, because only one of those has already stopped billing.
+            active: Boolean(row.paused_at),
+            start: row.pause_start,
+            end: row.pause_end,
+            adjustedRenewal: row.adjusted_renewal_date,
+          }
+        : { scheduled: false, active: false, start: null, end: null, adjustedRenewal: null },
+    });
+  } catch (err) {
+    console.error('[GET /api/tutor/classes/[classId]/pause]', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
 const NOTICE_MESSAGE = `A change to a class break needs at least ${PAUSE_NOTICE_DAYS} days' notice, so families are not surprised by it.`;
 
 export async function POST(request: NextRequest, { params }: Params) {

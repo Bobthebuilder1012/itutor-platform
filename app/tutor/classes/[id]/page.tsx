@@ -100,6 +100,7 @@ type GroupSession = {
 
 import { type ScheduleEntry, formatScheduleEntry, scheduleToDisplay } from '@/lib/utils/scheduleFormat';
 import { preorderReasonMessage, type PreorderIneligibility } from '@/lib/payments/secureSpot';
+import ClassPausePanel from '@/components/tutor/ClassPausePanel';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -2638,6 +2639,12 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
             <>
               <SettingsHead title="Danger zone" desc="Irreversible actions. Double-check before confirming." tone="danger" />
               <div className="space-y-3">
+                {/* Pausing is reversible, unlike everything else in this section,
+                    and the panel says so. It lives here because of who it
+                    affects: it stops billing and moves the renewal date for every
+                    enrolled family at once. */}
+                <ClassPausePanel classId={group.id} />
+
                 <button onClick={() => { setDeleteOpen(true); setDeleteConfirmText(''); setDeleteReason(''); setDeleteError(''); }}
                   className="w-full flex items-start gap-3 rounded-xl border border-rose-200 bg-background px-4 py-3 text-left hover:bg-rose-50 transition-colors">
                   <Trash2 className="size-4 mt-0.5 text-rose-600" />
@@ -2992,46 +2999,76 @@ function Toggle({ label, hint, value, onChange, disabled }: { label: string; hin
 }
 
 /* ----------- Analytics ----------- */
+// Real figures only. Enrollment is derived from each member's own joinedAt;
+// money comes from the group's actual totals. There is deliberately no
+// revenue-by-month chart: the client has a collected TOTAL but no per-month
+// payment history, and a tutor's earnings are the last thing to guess at.
 function AnalyticsTab({ group, members }: { group: GroupDetail; members: GroupMember[] }) {
-  const months = ['Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May'];
-  const activeCount = members.filter((m) => ['active', 'approved'].includes(m.status)).length || 3;
-  const earningsTtd = group.earningsTtd && group.earningsTtd > 0 ? group.earningsTtd : 297;
-  const enroll = [0, 0, 1, 2, 2, activeCount];
-  const revenue = [0, 0, Math.round(earningsTtd * 0.3), Math.round(earningsTtd * 0.6), Math.round(earningsTtd * 0.9), earningsTtd];
-  const maxE = Math.max(...enroll, 1);
-  const maxR = Math.max(...revenue, 1);
+  const activeCount = members.filter((m) => ['active', 'approved'].includes(m.status)).length;
+  const collected = group.earningsTtd ?? 0;
+  const outstanding = members.reduce((s, m) => s + (m.paymentStatus === 'overdue' ? (m.outstandingTtd ?? 0) : 0), 0);
+
+  // Trailing six months ending with the current one, from the real clock.
+  const now = new Date();
+  const buckets = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+    return {
+      key: `${d.getFullYear()}-${d.getMonth()}`,
+      label: d.toLocaleDateString(undefined, { month: 'short' }),
+      count: 0,
+    };
+  });
+  const byKey = new Map(buckets.map((b) => [b.key, b]));
+  for (const m of members) {
+    if (!m.joinedAt) continue;
+    const d = new Date(m.joinedAt);
+    if (Number.isNaN(d.getTime())) continue;
+    const bucket = byKey.get(`${d.getFullYear()}-${d.getMonth()}`);
+    if (bucket) bucket.count += 1;
+  }
+
+  const joins = buckets.map((b) => b.count);
+  const maxJoins = Math.max(...joins, 1);
+  const joinedInWindow = joins.reduce((s, v) => s + v, 0);
+  const thisMonth = joins[joins.length - 1];
+  const prevMonth = joins[joins.length - 2];
+  // A percentage change off a zero baseline is meaningless — show nothing.
+  const momE = prevMonth > 0 ? Math.round(((thisMonth - prevMonth) / prevMonth) * 100) : null;
   // max bar height in px (container is h-40 = 160px; ~28px reserved for label + gap)
   const BAR_MAX_PX = 128;
-  const outstanding = members.reduce((s, m) => s + (m.paymentStatus === 'overdue' ? (m.outstandingTtd ?? 0) : 0), 0);
-  const momE = Math.round(((enroll[enroll.length - 1] - enroll[enroll.length - 2]) / (enroll[enroll.length - 2] || 1)) * 100);
-  const momR = Math.round(((revenue[revenue.length - 1] - revenue[revenue.length - 2]) / (revenue[revenue.length - 2] || 1)) * 100);
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <MomCard label="Enrollment MoM" value={`${momE > 0 ? '+' : ''}${momE}%`} positive={momE >= 0} />
-        <MomCard label="Revenue MoM" value={`${momR > 0 ? '+' : ''}${momR}%`} positive={momR >= 0} />
-        <MomCard label="Active members" value={String(activeCount)} positive />
-        <MomCard label="Outstanding (TTD)" value={outstanding.toLocaleString()} positive={outstanding === 0} />
+        {momE === null ? (
+          <StatCard label="Enrollment MoM" value="—" hint="No joins last month to compare against" />
+        ) : (
+          <MomCard label="Enrollment MoM" value={`${momE > 0 ? '+' : ''}${momE}%`} positive={momE >= 0} />
+        )}
+        <StatCard label="Active members" value={`${activeCount}${group.capacity ? ` / ${group.capacity}` : ''}`} />
+        <StatCard label="Collected (TTD)" value={fmtTTD(collected)} />
+        <StatCard label="Outstanding (TTD)" value={fmtTTD(outstanding)} />
       </div>
-      <div className="grid lg:grid-cols-2 gap-4">
-        <ChartCard title="Enrollment by month" caption={`Peak: ${maxE} members`}>
-          {enroll.map((v, i) => (
-            <div key={i} className="flex-1 self-stretch flex flex-col items-center justify-end gap-1">
-              <div className="w-full rounded-t-md bg-gradient-to-t from-brand to-emerald-300" style={{ height: `${Math.round((v / maxE) * BAR_MAX_PX)}px`, flexShrink: 0 }} />
-              <div className="text-[10px] text-muted-foreground shrink-0">{months[i]}</div>
+      {joinedInWindow === 0 ? (
+        <div className="rounded-2xl bg-card border border-border p-8 text-center">
+          <div className="font-semibold text-ink">No enrolments yet</div>
+          <div className="mt-1 text-sm text-muted-foreground">
+            Once students join this class, their sign-ups will show up here month by month.
+          </div>
+        </div>
+      ) : (
+        <ChartCard title="New members by month" caption={`${joinedInWindow} in the last 6 months`}>
+          {joins.map((v, i) => (
+            <div key={buckets[i].key} className="flex-1 self-stretch flex flex-col items-center justify-end gap-1">
+              <div
+                className="w-full rounded-t-md bg-gradient-to-t from-brand to-emerald-300"
+                style={{ height: `${Math.round((v / maxJoins) * BAR_MAX_PX)}px`, flexShrink: 0 }}
+              />
+              <div className="text-[10px] text-muted-foreground shrink-0">{buckets[i].label}</div>
             </div>
           ))}
         </ChartCard>
-        <ChartCard title="Revenue by month (TT$)" caption={`Peak: ${fmtTTD(maxR)}`}>
-          {revenue.map((v, i) => (
-            <div key={i} className="flex-1 self-stretch flex flex-col items-center justify-end gap-1">
-              <div className="w-full rounded-t-md bg-gradient-to-t from-amber-500 to-amber-300" style={{ height: `${Math.round((v / maxR) * BAR_MAX_PX)}px`, flexShrink: 0 }} />
-              <div className="text-[10px] text-muted-foreground shrink-0">{months[i]}</div>
-            </div>
-          ))}
-        </ChartCard>
-      </div>
+      )}
     </div>
   );
 }
@@ -3136,6 +3173,18 @@ function MomCard({ label, value, positive }: { label: string; value: string; pos
         {value}
         {positive ? <ArrowUp className="size-4" /> : <ArrowDown className="size-4" />}
       </div>
+    </div>
+  );
+}
+
+// For absolute figures. Deliberately has no arrow — a count is not a trend,
+// and MomCard's arrow made "3 members" read as "up".
+function StatCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <div className="rounded-2xl bg-card border border-border p-4">
+      <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-bold">{label}</div>
+      <div className="mt-2 text-2xl font-bold text-ink">{value}</div>
+      {hint && <div className="mt-1 text-[11px] text-muted-foreground">{hint}</div>}
     </div>
   );
 }

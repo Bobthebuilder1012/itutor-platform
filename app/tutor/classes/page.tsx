@@ -14,6 +14,7 @@ import { useTutorCompletion } from '@/lib/hooks/useTutorCompletion';
 import { supabase } from '@/lib/supabase/client';
 import TutorShell from '@/components/tutor/TutorShell';
 import { formatLevel } from '@/lib/utils/formatLevel';
+import PauseAllClasses from '@/components/tutor/PauseAllClasses';
 
 type LessonKind = '1on1-oneoff' | '1on1-recurring' | 'group-oneoff' | 'group-recurring';
 type KindFilter = 'all' | 'group' | '1on1';
@@ -202,6 +203,12 @@ function LessonsContent() {
           <Plus className="size-4" /> Create a class
         </Link>
       </header>
+
+      {/* Break control and the persistent paused banner. Above the stats because
+          a tutor who paused weeks ago and forgot needs to see it before they
+          wonder why nobody is enrolling. Renders nothing when they have no
+          classes. */}
+      <PauseAllClasses />
 
       {/* Quick stats */}
       <div className="grid grid-cols-3 gap-3 sm:gap-4">
