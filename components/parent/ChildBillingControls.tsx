@@ -136,13 +136,17 @@ export default function ChildBillingControls({
             )}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        {/* Wraps and takes the full row on a phone: input + "TTD" + Save beside a
+            label does not fit at 390px, and a squeezed number field is the one
+            control here a parent has to type into. */}
+        <div className="flex w-full items-center gap-2 sm:w-auto">
           <input
             value={limitDraft}
             onChange={(e) => setLimitDraft(e.target.value.replace(/[^\d.]/g, ''))}
             placeholder="No limit"
             inputMode="decimal"
-            className="w-28 rounded-lg border border-border bg-background px-3 py-2 text-sm text-ink"
+            aria-label={`Monthly spend limit for ${first} in TTD`}
+            className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-ink sm:w-28 sm:flex-none"
           />
           <span className="text-xs text-muted-foreground">TTD</span>
           <button

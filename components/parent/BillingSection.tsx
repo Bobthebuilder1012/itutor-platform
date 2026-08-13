@@ -250,8 +250,12 @@ export default function BillingSection() {
       {/* Pause offered before cancel: a parent wanting a break in payments should
           not have to give up the seat to get one. */}
       {cancelling && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-ink/40 p-4">
-          <div className="w-full max-w-md space-y-3 rounded-2xl border border-border bg-background p-5">
+        /* Scrolls, and aligns to the top on short screens. Centred with no
+           overflow put the reason list and both buttons off-screen on a phone in
+           landscape — the parent could see the modal and not reach "Cancel
+           subscription" or "Keep subscription". */
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/40 p-4 sm:items-center">
+          <div className="my-auto w-full max-w-md space-y-3 rounded-2xl border border-border bg-background p-5">
             <h3 className="text-base font-bold text-ink">Cancel {cancelling.className}?</h3>
 
             <div className="flex items-start gap-2.5 rounded-xl border border-amber-300 bg-amber-50 p-3">
