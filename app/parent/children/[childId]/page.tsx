@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, GraduationCap, FileText, Calendar, Clock, Check, AlertCircle, X, BookOpen, ChevronRight, Trash2, ClipboardCheck, MessageSquare, CreditCard } from 'lucide-react';
+import { ArrowLeft, GraduationCap, FileText, Calendar, Clock, Check, AlertCircle, X, BookOpen, ChevronRight, Trash2, ClipboardCheck, MessageSquare, CreditCard, Ban } from 'lucide-react';
 import ChildMessageHistory from '@/components/parent/ChildMessageHistory';
 import ChildBillingControls from '@/components/parent/ChildBillingControls';
 import { useRouter } from 'next/navigation';
@@ -14,8 +14,52 @@ import ParentShell from '@/components/parent/ParentShell';
 type Enrollment = { groupId: string; name: string; subject: string | null; status: string; joinedAt: string | null };
 type Booking = { id: string; tutorName: string; subject: string | null; status: string; start: string | null; priceTtd: number | null; durationMinutes: number | null; createdAt: string };
 type FeedbackReport = { id: string; month: string; tutorName: string; classTitle: string; body: string; deliveredAt: string; attendance: string };
-type AttRow = { key: string; type: '1:1' | 'group'; label: string; start: string; present: boolean };
-type AttSummary = { present: number; absent: number; total: number };
+// present is kept for anything still reading it; status is the §6 model —
+// attended | late | absent | cancelled | excluded. `excluded` means the tutor
+// never started the class, so the session counts for nobody.
+type AttStatus = 'attended' | 'late' | 'absent' | 'cancelled' | 'excluded';
+type AttRow = {
+  key: string;
+  type: '1:1' | 'group';
+  label: string;
+  start: string;
+  present: boolean;
+  status?: AttStatus | null;
+  lateMinutes?: number | null;
+};
+
+/** One place for the vocabulary. §6 keeps it character-identical across the
+ *  parent, student and tutor surfaces, so it is not re-worded per screen. */
+const ATT_STATUS: Record<AttStatus, { label: string; icon: typeof Check; chip: string; text: string }> = {
+  attended:  { label: 'Attended',  icon: Check,          chip: 'bg-brand-soft text-brand-deep',      text: 'text-brand-deep' },
+  late:      { label: 'Late',      icon: Clock,          chip: 'bg-amber-100 text-amber-700',        text: 'text-amber-700' },
+  absent:    { label: 'Absent',    icon: X,              chip: 'bg-rose-100 text-rose-600',          text: 'text-rose-600' },
+  cancelled: { label: 'Cancelled', icon: Ban,            chip: 'bg-muted text-muted-foreground',     text: 'text-muted-foreground' },
+  excluded:  { label: 'Didn’t run', icon: Ban,           chip: 'bg-muted text-muted-foreground',     text: 'text-muted-foreground' },
+};
+
+function Tally({ n, label, tone }: { n: number; label: string; tone: string }) {
+  return (
+    <span className="inline-flex items-baseline gap-1">
+      <strong className={cn('tabular-nums', tone)}>{n}</strong> {label}
+    </span>
+  );
+}
+// The first three are the original shape, kept so nothing else breaks. The rest
+// is what the §6 helper actually produces — rateLabel included, so the rate is
+// never recomputed on a surface and never printed without its denominator.
+type AttSummary = {
+  present: number;
+  absent: number;
+  total: number;
+  attended?: number;
+  late?: number;
+  cancelled?: number;
+  excluded?: number;
+  rate?: number | null;
+  counted?: number;
+  rateLabel?: string;
+};
 
 export default function ChildDetailPage() {
   return <ParentShell><ChildContent /></ParentShell>;
@@ -376,37 +420,86 @@ function AttendanceTab({ rows, summary, loading }: { rows: AttRow[]; summary: At
       </div>
     );
   }
-  const rate = summary && summary.total > 0 ? Math.round((summary.present / summary.total) * 100) : 0;
   return (
     <div className="space-y-4">
       {summary && (
-        <div className="grid grid-cols-3 gap-3">
-          {[['Attendance', `${rate}%`], ['Present', summary.present], ['Absent', summary.absent]].map(([l, v]) => (
-            <div key={l as string} className="rounded-2xl bg-background border border-border p-4">
-              <div className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">{l}</div>
-              <div className="text-2xl font-bold text-ink mt-1 tabular-nums">{v}</div>
+        <div className="rounded-2xl border border-border bg-background p-4">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <div className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
+              Attendance
             </div>
-          ))}
+            {/* §6: never a bare percentage. rateLabel comes from the shared
+                helper — this used to recompute present/total locally, which is
+                exactly how two surfaces start quoting different numbers for the
+                same child. */}
+            <div className="text-2xl font-bold text-ink tabular-nums">
+              {summary.rateLabel ?? 'No sessions yet'}
+            </div>
+          </div>
+
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <Tally n={summary.attended ?? 0} label="attended" tone="text-brand-deep" />
+            <Tally n={summary.late ?? 0} label="late" tone="text-amber-700" />
+            <Tally n={summary.absent ?? 0} label="absent" tone="text-rose-600" />
+            {(summary.cancelled ?? 0) > 0 && (
+              <Tally n={summary.cancelled ?? 0} label="cancelled" tone="text-muted-foreground" />
+            )}
+          </div>
+
+          {/* The §6 tutor-absent guard, explained where it changes the number.
+              A denominator that silently shrinks looks like a bug. */}
+          {(summary.excluded ?? 0) > 0 && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              {summary.excluded} session{summary.excluded === 1 ? '' : 's'} not counted — the tutor
+              never started the class, so nobody was marked absent for it.
+            </p>
+          )}
+
+          {/* Decisions 16/17: automatic, and editable by nobody. Saying so stops
+              a parent asking the tutor to change a record the tutor cannot
+              change either. */}
+          <p className="mt-2 border-t border-border pt-2 text-xs text-muted-foreground">
+            Recorded automatically from when your child joins each class. Cancelled classes don&rsquo;t
+            count against the rate, and nobody can edit these records — not the tutor, not iTutor
+            support.
+          </p>
         </div>
       )}
+
       <div className="space-y-2">
-        {rows.map((r) => (
-          <div key={r.key} className="flex items-center gap-3 rounded-2xl bg-background border border-border p-4">
-            <span className={cn('size-9 rounded-xl grid place-items-center shrink-0', r.present ? 'bg-brand-soft text-brand-deep' : 'bg-rose-100 text-rose-600')}>
-              {r.present ? <Check className="size-4" /> : <X className="size-4" />}
-            </span>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-semibold text-ink truncate">{r.label}</div>
-              <div className="text-xs text-muted-foreground">
-                {new Date(r.start).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · {new Date(r.start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                <span className="ml-2 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{r.type}</span>
+        {rows.map((r) => {
+          const s = ATT_STATUS[r.status ?? (r.present ? 'attended' : 'absent')] ?? ATT_STATUS.absent;
+          const Icon = s.icon;
+          return (
+            <div key={r.key} className="flex items-center gap-3 rounded-2xl bg-background border border-border p-4">
+              <span className={cn('size-9 rounded-xl grid place-items-center shrink-0', s.chip)}>
+                <Icon className="size-4" />
+              </span>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold text-ink truncate">{r.label}</div>
+                <div className="text-xs text-muted-foreground">
+                  {new Date(r.start).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · {new Date(r.start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                  <span className="ml-2 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{r.type}</span>
+                </div>
+                {r.status === 'excluded' && (
+                  <div className="mt-0.5 text-[11px] text-muted-foreground">
+                    The class didn&rsquo;t run — not counted either way.
+                  </div>
+                )}
               </div>
+              <span className={cn('shrink-0 text-xs font-bold uppercase tracking-wider text-right', s.text)}>
+                {s.label}
+                {/* The lateness, not just the label: "12 min late" is a
+                    conversation, "Late" is a verdict. */}
+                {r.status === 'late' && r.lateMinutes ? (
+                  <span className="block text-[10px] font-semibold normal-case tracking-normal text-muted-foreground">
+                    {r.lateMinutes} min late
+                  </span>
+                ) : null}
+              </span>
             </div>
-            <span className={cn('text-xs font-bold uppercase tracking-wider', r.present ? 'text-brand-deep' : 'text-rose-600')}>
-              {r.present ? 'Present' : 'Absent'}
-            </span>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
