@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
 import PendingRequestsSection from '@/components/student/PendingRequestsSection';
 import YourTutorsSection from '@/components/student/YourTutorsSection';
+import MyAttendance from '@/components/student/MyAttendance';
 
 type Lesson = {
   key: string;
@@ -223,6 +224,11 @@ export default function MyClassesPage() {
             </div>
           </>
         )}
+
+        {/* §9.2: the student's own attendance, read-only. It existed for their
+            parent and their tutor and not for them. Renders nothing until there
+            is a past session. */}
+        <MyAttendance />
 
         {/* §9.2: one card per tutor, group or 1:1, with Request feedback and
             Message. Outside the branch above so it shows even before the class
