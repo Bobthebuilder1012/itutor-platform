@@ -69,7 +69,7 @@ function ChildContent() {
   const { childId } = useParams<{ childId: string }>();
   const router = useRouter();
   const { profile } = useProfile();
-  const [tab, setTab] = useState<'classes' | 'bookings' | 'attendance' | 'feedback' | 'messages' | 'billing'>('classes');
+  const [tab, setTab] = useState<'overview' | 'classes' | 'attendance' | 'feedback' | 'messages' | 'billing'>('overview');
   const [childName, setChildName] = useState('');
   const [initials, setInitials] = useState('');
   const [hue, setHue] = useState(145);
@@ -112,7 +112,9 @@ function ChildContent() {
 
   // Attendance is lazy-loaded the first time the tab is opened.
   useEffect(() => {
-    if (tab !== 'attendance' || attLoaded || attLoading || !childId) return;
+    // Overview shows the rate too, so it loads there as well — otherwise the
+    // default tab reads "Open to load" where a figure belongs.
+    if ((tab !== 'attendance' && tab !== 'overview') || attLoaded || attLoading || !childId) return;
     setAttLoading(true);
     (async () => {
       try {
@@ -173,15 +175,20 @@ function ChildContent() {
       {/* Scrolls rather than wraps on a phone: six tabs will not fit at 390px,
           and a wrapped tab strip pushes the content below the fold. */}
       <div className="-mx-1 flex gap-1 overflow-x-auto p-1 rounded-2xl bg-muted sm:inline-flex sm:mx-0">
+        {/* The kit's tab set, in its order: Overview / Progress / Schedule /
+            Classes / Billing / Messages. This previously kept four pre-existing
+            tabs and bolted two on, which is where it drifted. Progress and
+            Schedule are the kit's names for what was called Feedback and
+            Attendance; Bookings folded into Overview, since pending requests are
+            something a parent acts on at account level (Approvals) and only
+            needs to SEE here. */}
         {([
+          { id: 'overview' as const, label: 'Overview', icon: BookOpen },
+          { id: 'feedback' as const, label: 'Progress', icon: FileText },
+          { id: 'attendance' as const, label: 'Schedule', icon: ClipboardCheck },
           { id: 'classes' as const, label: 'Classes', icon: GraduationCap },
-          { id: 'bookings' as const, label: 'Bookings', icon: Calendar },
-          { id: 'attendance' as const, label: 'Attendance', icon: ClipboardCheck },
-          { id: 'feedback' as const, label: 'Feedback', icon: FileText },
-          // Added per the kit's tab set. Messages is read-only (§9.4) and
-          // Billing keeps a child's money in the same place as their classes.
-          { id: 'messages' as const, label: 'Messages', icon: MessageSquare },
           { id: 'billing' as const, label: 'Billing', icon: CreditCard },
+          { id: 'messages' as const, label: 'Messages', icon: MessageSquare },
         ]).map((t) => {
           const Icon = t.icon;
           return (
@@ -196,10 +203,23 @@ function ChildContent() {
 
       {loading ? (
         <div className="space-y-3">{[1,2].map(i=><div key={i} className="h-32 rounded-2xl bg-muted animate-pulse"/>)}</div>
+      ) : tab === 'overview' ? (
+        /* The kit's Overview: next class, then what a parent glances at — the
+           attendance figure and the most recent feedback — with the pending
+           requests that used to have their own tab folded in. */
+        <div className="space-y-4">
+          <OverviewTab
+            childName={childName}
+            enrollments={enrollments}
+            bookings={bookings}
+            summary={attSummary}
+            feedback={feedback}
+            onOpenReport={setOpenReport}
+            onGoTo={setTab}
+          />
+        </div>
       ) : tab === 'classes' ? (
         <ClassesTab enrollments={enrollments} childId={childId} />
-      ) : tab === 'bookings' ? (
-        <BookingsTab bookings={bookings} />
       ) : tab === 'attendance' ? (
         <AttendanceTab rows={attendance} summary={attSummary} loading={attLoading} />
       ) : tab === 'messages' ? (
@@ -363,47 +383,127 @@ function ClassesTab({ enrollments, childId }: { enrollments: Enrollment[]; child
   );
 }
 
-function BookingsTab({ bookings }: { bookings: Booking[] }) {
-  if (bookings.length === 0) {
-    return (
-      <div className="rounded-2xl border-2 border-dashed border-border bg-card/50 p-10 text-center">
-        <div className="mx-auto size-12 rounded-2xl bg-brand-soft text-brand-deep grid place-items-center mb-4"><Calendar className="size-5" /></div>
-        <h2 className="font-bold text-ink">No 1:1 bookings yet</h2>
-        <p className="text-sm text-muted-foreground mt-1">One-on-one sessions your child books will appear here.</p>
-      </div>
-    );
-  }
-  const statusMeta: Record<string, { label: string; cls: string }> = {
-    confirmed:  { label: 'Confirmed',  cls: 'bg-brand-soft text-brand-deep' },
-    completed:  { label: 'Completed',  cls: 'bg-emerald-100 text-emerald-800' },
-    pending:    { label: 'Pending',    cls: 'bg-sky-100 text-sky-800' },
-    counter_offer: { label: 'Counter-offer', cls: 'bg-amber-100 text-amber-800' },
-    cancelled:  { label: 'Cancelled',  cls: 'bg-muted text-muted-foreground' },
-    declined:   { label: 'Declined',   cls: 'bg-rose-100 text-rose-700' },
-  };
+function OverviewTab({
+  childName,
+  enrollments,
+  bookings,
+  summary,
+  feedback,
+  onOpenReport,
+  onGoTo,
+}: {
+  childName: string;
+  enrollments: Enrollment[];
+  bookings: Booking[];
+  summary: AttSummary | null;
+  feedback: FeedbackReport[];
+  onOpenReport: (r: FeedbackReport) => void;
+  onGoTo: (t: 'feedback' | 'attendance' | 'classes') => void;
+}) {
+  const first = (childName || 'Your child').split(' ')[0];
+  const active = enrollments.filter((e) => ['approved', 'active'].includes(e.status));
+  // Soonest future booking. The kit leads with "Next class" because it is the
+  // one thing a parent opens a child's page to check.
+  const next = bookings
+    .filter((b) => b.start && new Date(b.start).getTime() > Date.now())
+    .sort((a, b) => new Date(a.start!).getTime() - new Date(b.start!).getTime())[0];
+  const pending = bookings.filter((b) => b.status === 'PENDING_PARENT_APPROVAL');
+  const latest = feedback[0];
+
   return (
-    <div className="space-y-3">
-      {bookings.map((b) => {
-        const sm = statusMeta[b.status] ?? { label: b.status, cls: 'bg-muted text-muted-foreground' };
-        return (
-          <article key={b.id} className="rounded-2xl bg-background border border-border p-5">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <h3 className="font-bold text-ink truncate">{b.subject ?? '1:1 session'}</h3>
-                <div className="text-xs text-muted-foreground mt-0.5">with {b.tutorName}</div>
-              </div>
-              <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full whitespace-nowrap', sm.cls)}>{sm.label}</span>
+    <>
+      <div className="rounded-2xl border border-border bg-background p-4">
+        <div className="text-[10px] font-bold uppercase tracking-wider text-brand-deep">
+          Next class
+        </div>
+        {next ? (
+          <>
+            <div className="mt-0.5 text-lg font-bold text-ink">
+              {next.subject || 'Tutoring session'}
             </div>
-            <div className="mt-4 pt-3 border-t border-border flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              {b.start && <span className="inline-flex items-center gap-1"><Calendar className="size-3.5" /> {new Date(b.start).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>}
-              {b.start && <span className="inline-flex items-center gap-1"><Clock className="size-3.5" /> {new Date(b.start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>}
-              {b.durationMinutes ? <span>{b.durationMinutes} min</span> : null}
-              {b.priceTtd != null && b.priceTtd > 0 ? <span className="ml-auto font-semibold text-ink">TT${b.priceTtd}</span> : null}
+            <div className="text-sm text-muted-foreground">
+              {new Date(next.start!).toLocaleString('en-TT', {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true,
+                timeZone: 'America/Port_of_Spain',
+              })}{' '}
+              · {next.tutorName}
             </div>
-          </article>
-        );
-      })}
-    </div>
+          </>
+        ) : (
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Nothing scheduled. {first} is in {active.length}{' '}
+            {active.length === 1 ? 'class' : 'classes'}.
+          </p>
+        )}
+      </div>
+
+      {/* Folded in from the old Bookings tab: visible here, actioned in
+          Approvals, since that is where the decision lives. */}
+      {pending.length > 0 && (
+        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4">
+          <div className="text-sm font-semibold text-ink">
+            {pending.length} request{pending.length === 1 ? '' : 's'} waiting on you
+          </div>
+          <p className="mt-0.5 text-xs text-amber-900">
+            No place is held while a request waits, and each one closes two hours before its class.
+          </p>
+          <Link
+            href="/parent/approvals"
+            className="mt-2 inline-block rounded-lg bg-ink px-3 py-1.5 text-xs font-semibold text-white"
+          >
+            Review requests
+          </Link>
+        </div>
+      )}
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <button
+          onClick={() => onGoTo('attendance')}
+          className="rounded-2xl border border-border bg-background p-4 text-left hover:bg-muted/40"
+        >
+          <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            Attendance
+          </div>
+          {/* §6: the figure arrives with its denominator and is not recomputed. */}
+          <div className="mt-0.5 text-xl font-extrabold tabular-nums text-ink">
+            {summary?.rateLabel ?? 'Open to load'}
+          </div>
+          <div className="mt-0.5 text-xs text-muted-foreground">See every session →</div>
+        </button>
+
+        <button
+          onClick={() => onGoTo('feedback')}
+          className="rounded-2xl border border-border bg-background p-4 text-left hover:bg-muted/40"
+        >
+          <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            Latest feedback
+          </div>
+          <div className="mt-0.5 line-clamp-2 text-sm text-ink">
+            {latest ? latest.body : 'None yet — most classes produce none.'}
+          </div>
+          <div className="mt-0.5 text-xs text-muted-foreground">
+            {latest ? `${latest.tutorName} · read it →` : 'You can request it once a month →'}
+          </div>
+        </button>
+      </div>
+
+      {latest && (
+        <button
+          onClick={() => onOpenReport(latest)}
+          className="w-full rounded-2xl border border-border bg-background p-4 text-left hover:bg-muted/40"
+        >
+          <div className="text-sm font-semibold text-ink">
+            {latest.classTitle} · {latest.month}
+          </div>
+          <p className="mt-1 line-clamp-3 text-sm text-muted-foreground">{latest.body}</p>
+        </button>
+      )}
+    </>
   );
 }
 
