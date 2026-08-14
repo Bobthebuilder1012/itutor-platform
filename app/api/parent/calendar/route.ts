@@ -15,7 +15,13 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { ParentAccessError, requireParentContext } from '@/lib/server/parentAccess';
-import { buildAttendanceOutcomes, type OccurrenceInput } from '@/lib/server/attendance';
+import {
+  attendanceRate,
+  buildAttendanceOutcomes,
+  formatAttendanceRate,
+  tallyOutcomes,
+  type OccurrenceInput,
+} from '@/lib/server/attendance';
 
 export const dynamic = 'force-dynamic';
 
@@ -280,7 +286,37 @@ export async function GET(_request: NextRequest) {
 
     events.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
 
-    return NextResponse.json({ children, events });
+    // Per-child summaries for the kit's attendance cards. Built from the SAME
+    // helper output the events carry (§6) rather than recomputed on the client,
+    // so the card and the grid cannot disagree about the same child.
+    const perChild = children.map((c) => {
+      const mine = events.filter((e) => e.childId === c.id && e.outcome);
+      const tally = tallyOutcomes(
+        mine.map((e) => ({
+          occurrenceType: 'session' as const,
+          occurrenceId: e.key,
+          scheduledStart: e.start,
+          outcome: e.outcome,
+          lateMinutes: e.lateMinutes,
+        })) as never
+      );
+      const { rate, counted } = attendanceRate(tally);
+      return {
+        childId: c.id,
+        ...tally,
+        excluded: mine.filter((e) => e.outcome === 'excluded').length,
+        rate,
+        counted,
+        rateLabel: formatAttendanceRate(tally),
+        // The most recent absence, for the "last absence" line on the card.
+        lastAbsence:
+          mine
+            .filter((e) => e.outcome === 'absent')
+            .sort((a, b) => new Date(b.start).getTime() - new Date(a.start).getTime())[0] ?? null,
+      };
+    });
+
+    return NextResponse.json({ children, events, perChild });
   } catch (err) {
     if (err instanceof ParentAccessError) {
       return NextResponse.json({ error: err.message }, { status: err.status });
