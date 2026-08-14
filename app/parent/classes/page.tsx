@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase/client';
 import { parseScheduleData, scheduleToDisplay } from '@/lib/utils/scheduleFormat';
 import { classCapacityDisplay } from '@/lib/utils/classCapacity';
 import ParentShell from '@/components/parent/ParentShell';
+import ChildPickerCheck from '@/components/parent/ChildPickerCheck';
 
 type TabType = 'classes' | 'tutors';
 
@@ -53,6 +54,10 @@ function ClassesContent() {
   const [activeChip, setActiveChip] = useState('All');
   const [children, setChildren] = useState<{ id: string; name: string }[]>([]);
   const [selectorGroup, setSelectorGroup] = useState<GroupListing | null>(null);
+  // Set by ChildPickerCheck only once BOTH §5 checks pass for the chosen child:
+  // no schedule clash, and any level mismatch acknowledged. Null means the Join
+  // button stays disabled.
+  const [readyChildId, setReadyChildId] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
@@ -212,7 +217,12 @@ function ClassesContent() {
 
   function startJoin(g: GroupListing) {
     if (children.length === 0) { setToast({ kind: 'err', text: 'Link a child first (Your children) before joining a class.' }); return; }
-    if (children.length === 1) { doEnroll(children[0].id, g); return; }
+    // Opens for ONE child as well as several. §5 skips the picker for a single
+    // child, not the checks — enrolling straight from the card was skipping the
+    // schedule conflict and level confirmation entirely for one-child parents,
+    // which is the majority case. ChildPickerCheck hides its own picker when
+    // there is only one child and still runs both checks.
+    setReadyChildId(null);
     setSelectorGroup(g);
   }
 
@@ -312,23 +322,39 @@ function ClassesContent() {
         )
       )}
 
-      {/* Child selector — only shown when the parent has more than one child */}
+      {/* §5 booking flow: the child is chosen here, inside the flow, and only
+          then do the schedule-conflict and level checks resolve. Browsing stays
+          neutral — there is no child in the header and no "shopping as" mode. */}
       {selectorGroup && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={() => setSelectorGroup(null)}>
-          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-2xl bg-background border border-border shadow-xl p-5 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="font-bold text-ink">Which child?</div>
-              <button onClick={() => setSelectorGroup(null)} className="size-8 rounded-full hover:bg-muted grid place-items-center"><X className="size-4" /></button>
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:items-center"
+          onClick={() => setSelectorGroup(null)}
+        >
+          <div onClick={(e) => e.stopPropagation()} className="my-auto w-full max-w-md rounded-2xl bg-background border border-border shadow-xl p-5 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="font-bold text-ink">Join {selectorGroup.name}</div>
+              <button onClick={() => setSelectorGroup(null)} className="size-8 shrink-0 rounded-full hover:bg-muted grid place-items-center"><X className="size-4" /></button>
             </div>
-            <p className="text-sm text-muted-foreground">Join <span className="font-semibold text-ink">{selectorGroup.name}</span> on behalf of:</p>
-            <div className="space-y-2">
-              {children.map((c) => (
-                <button key={c.id} onClick={() => doEnroll(c.id, selectorGroup)} disabled={joining}
-                  className="w-full flex items-center justify-between gap-2 px-4 py-3 rounded-xl border border-border hover:border-brand-deep/40 hover:bg-muted/50 text-left disabled:opacity-50">
-                  <span className="font-semibold text-ink text-sm">{c.name}</span>
-                  {joining ? <Loader2 className="size-4 animate-spin text-muted-foreground" /> : <UserPlus className="size-4 text-brand-deep" />}
-                </button>
-              ))}
+
+            <ChildPickerCheck groupId={selectorGroup.id} onReady={setReadyChildId} />
+
+            <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+              {/* Disabled until the checks pass. A clash blocks; a level mismatch
+                  only needs the confirmation ticked — that asymmetry is §5's. */}
+              <button
+                onClick={() => readyChildId && doEnroll(readyChildId, selectorGroup)}
+                disabled={!readyChildId || joining}
+                className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {joining ? <Loader2 className="size-4 animate-spin" /> : <UserPlus className="size-4" />}
+                {selectorGroup.require_join_requests ? 'Send join request' : 'Join this class'}
+              </button>
+              <button
+                onClick={() => setSelectorGroup(null)}
+                className="rounded-xl border border-border px-4 py-2.5 text-sm font-semibold text-ink"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
