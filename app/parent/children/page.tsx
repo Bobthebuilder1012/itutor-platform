@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Send, Loader2, Check, ChevronRight, AlertCircle, GraduationCap, RefreshCw, UserPlus } from 'lucide-react';
+import { Send, Loader2, Check, ChevronRight, AlertCircle, GraduationCap, RefreshCw, UserPlus, Settings2 } from 'lucide-react';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import { getDisplayName } from '@/lib/utils/displayName';
@@ -128,6 +128,11 @@ function ChildrenContent() {
                   ? <span className="inline-flex items-center gap-1 text-emerald-700 font-semibold"><Check className="size-3.5" /> {c.activeClasses} active class{c.activeClasses !== 1 ? 'es' : ''}</span>
                   : <span className="inline-flex items-center gap-1 text-muted-foreground"><GraduationCap className="size-3.5" /> No classes yet</span>}
                 {c.pendingCount > 0 && <span className="inline-flex items-center gap-1 text-amber-700 font-semibold"><AlertCircle className="size-3.5" /> {c.pendingCount} pending</span>}
+              </div>
+              {/* Same explicit CTA as the dashboard card, so both entry points
+                  name what is behind them: schedule, classes, messages, billing. */}
+              <div className="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-semibold text-ink group-hover:border-brand-deep/40 group-hover:bg-muted/50">
+                <Settings2 className="size-3.5" /> Manage child
               </div>
             </Link>
           ))}

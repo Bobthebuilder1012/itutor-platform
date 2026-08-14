@@ -69,7 +69,12 @@ function ChildContent() {
   const { childId } = useParams<{ childId: string }>();
   const router = useRouter();
   const { profile } = useProfile();
-  const [tab, setTab] = useState<'overview' | 'classes' | 'attendance' | 'feedback' | 'messages' | 'billing'>('overview');
+  // Progress is gone from child configuration: feedback visibility now lives on
+  // the Feedback page, which carries a child selector so a parent switches
+  // students without leaving the page. Keeping a per-child copy would have meant
+  // two places to request feedback and two places for the monthly quota to be
+  // shown, which is how the two drift apart.
+  const [tab, setTab] = useState<'overview' | 'classes' | 'attendance' | 'messages' | 'billing'>('overview');
   const [childName, setChildName] = useState('');
   const [initials, setInitials] = useState('');
   const [hue, setHue] = useState(145);
@@ -184,11 +189,10 @@ function ChildContent() {
             needs to SEE here. */}
         {([
           { id: 'overview' as const, label: 'Overview', icon: BookOpen },
-          { id: 'feedback' as const, label: 'Progress', icon: FileText },
           { id: 'attendance' as const, label: 'Schedule', icon: ClipboardCheck },
           { id: 'classes' as const, label: 'Classes', icon: GraduationCap },
-          { id: 'billing' as const, label: 'Billing', icon: CreditCard },
           { id: 'messages' as const, label: 'Messages', icon: MessageSquare },
+          { id: 'billing' as const, label: 'Billing', icon: CreditCard },
         ]).map((t) => {
           const Icon = t.icon;
           return (
@@ -225,13 +229,11 @@ function ChildContent() {
       ) : tab === 'messages' ? (
         /* §9.4: read-only, no composer, two-way disclosure. */
         <ChildMessageHistory childId={childId} childName={childName} />
-      ) : tab === 'billing' ? (
+      ) : (
         /* The per-child money controls, beside that child's classes rather than
            only in Settings — a parent looking at one child's spend is already
            here. */
         <ChildBillingControls childId={childId} childName={childName} />
-      ) : (
-        <FeedbackTab feedback={feedback} onOpen={setOpenReport} />
       )}
 
       {openReport && (
@@ -398,7 +400,7 @@ function OverviewTab({
   summary: AttSummary | null;
   feedback: FeedbackReport[];
   onOpenReport: (r: FeedbackReport) => void;
-  onGoTo: (t: 'feedback' | 'attendance' | 'classes') => void;
+  onGoTo: (t: 'attendance' | 'classes') => void;
 }) {
   const first = (childName || 'Your child').split(' ')[0];
   const active = enrollments.filter((e) => ['approved', 'active'].includes(e.status));
@@ -476,8 +478,11 @@ function OverviewTab({
           <div className="mt-0.5 text-xs text-muted-foreground">See every session →</div>
         </button>
 
-        <button
-          onClick={() => onGoTo('feedback')}
+        {/* Feedback lives on its own page now, with the child selector and the
+            request action. Linking out rather than duplicating keeps the monthly
+            quota shown in exactly one place. */}
+        <Link
+          href="/parent/feedback"
           className="rounded-2xl border border-border bg-background p-4 text-left hover:bg-muted/40"
         >
           <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -489,7 +494,7 @@ function OverviewTab({
           <div className="mt-0.5 text-xs text-muted-foreground">
             {latest ? `${latest.tutorName} · read it →` : 'You can request it once a month →'}
           </div>
-        </button>
+        </Link>
       </div>
 
       {latest && (

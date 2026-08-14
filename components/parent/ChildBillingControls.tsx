@@ -39,6 +39,9 @@ export default function ChildBillingControls({
 }) {
   const [state, setState] = useState<Billing | null>(null);
   const [limitDraft, setLimitDraft] = useState('');
+  // Mirrors "is a cap stored", but held separately so a parent can switch limits
+  // ON and see the amount field before anything is saved.
+  const [limitsOn, setLimitsOn] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -52,6 +55,7 @@ export default function ChildBillingControls({
       const json = (await res.json()) as Billing;
       setState(json);
       setLimitDraft(json.monthlySpendLimit == null ? '' : String(json.monthlySpendLimit));
+      setLimitsOn(json.monthlySpendLimit != null);
     } catch {
       /* section simply shows nothing */
     }
@@ -115,54 +119,83 @@ export default function ChildBillingControls({
         />
       </Row>
 
-      {/* 2. Spend limit */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold text-ink">Monthly spend limit</div>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Once reached, every new request needs approval regardless of the self-pay setting below.
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
+      {/* 2. Limits — an on/off switch that gates its own configuration, so a
+             parent who does not want a cap never sees an amount field, and one
+             who does is not left wondering whether an empty box means "no limit"
+             or "not saved yet". */}
+      <Row
+        title="Spending limits"
+        detail={
+          limitsOn
+            ? `Capped each calendar month. At the cap every new request needs your approval, even with self-pay on.`
+            : `No cap. ${first}’s spending is governed only by the settings above.`
+        }
+      >
+        <Toggle
+          on={limitsOn}
+          busy={busy === 'limit'}
+          onToggle={() => {
+            const next = !limitsOn;
+            setLimitsOn(next);
+            // Turning it OFF clears the stored cap immediately; turning it ON
+            // waits for an amount, so a bare toggle never invents a number.
+            if (!next) void patch({ monthlySpendLimit: null }, 'limit');
+          }}
+          label={`Spending limits for ${first}`}
+        />
+      </Row>
+
+      {limitsOn && (
+        <div className="rounded-xl border border-border bg-muted/30 p-3">
+          <label
+            className="block text-xs font-medium text-muted-foreground"
+            htmlFor={`limit-${childId}`}
+          >
+            Monthly cap
+          </label>
+          {/* Full row on a phone: label + input + TTD + Save does not fit at
+              390px, and this is the one control here a parent must type into. */}
+          <div className="mt-1 flex w-full items-center gap-2">
+            <input
+              id={`limit-${childId}`}
+              value={limitDraft}
+              onChange={(e) => setLimitDraft(e.target.value.replace(/[^\d.]/g, ''))}
+              placeholder="e.g. 1500"
+              inputMode="decimal"
+              aria-label={`Monthly spend limit for ${first} in TTD`}
+              className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-ink sm:w-32 sm:flex-none"
+            />
+            <span className="text-xs text-muted-foreground">TTD</span>
+            <button
+              onClick={() =>
+                patch(
+                  { monthlySpendLimit: limitDraft.trim() === '' ? null : Number(limitDraft) },
+                  'limit'
+                )
+              }
+              disabled={busy === 'limit' || limitDraft.trim() === ''}
+              className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-ink disabled:opacity-60"
+            >
+              {busy === 'limit' ? <Loader2 className="size-3.5 animate-spin" /> : 'Save'}
+            </button>
+          </div>
+
+          <p className="mt-2 text-xs text-muted-foreground">
             Spent this month: <strong className="text-ink">{fmtTTD(state.spend.spent)}</strong>
             {state.spend.limit != null && (
               <>
                 {' '}of {fmtTTD(state.spend.limit)}
                 {state.spend.limitReached ? (
-                  <span className="ml-1 font-semibold text-amber-700">— limit reached</span>
+                  <span className="ml-1 font-semibold text-amber-700">— cap reached</span>
                 ) : (
                   <> · {fmtTTD(state.spend.remaining ?? 0)} left</>
                 )}
               </>
             )}
+            {state.spend.limit == null && ' · no cap saved yet'}
           </p>
         </div>
-        {/* Wraps and takes the full row on a phone: input + "TTD" + Save beside a
-            label does not fit at 390px, and a squeezed number field is the one
-            control here a parent has to type into. */}
-        <div className="flex w-full items-center gap-2 sm:w-auto">
-          <input
-            value={limitDraft}
-            onChange={(e) => setLimitDraft(e.target.value.replace(/[^\d.]/g, ''))}
-            placeholder="No limit"
-            inputMode="decimal"
-            aria-label={`Monthly spend limit for ${first} in TTD`}
-            className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-ink sm:w-28 sm:flex-none"
-          />
-          <span className="text-xs text-muted-foreground">TTD</span>
-          <button
-            onClick={() =>
-              patch(
-                { monthlySpendLimit: limitDraft.trim() === '' ? null : Number(limitDraft) },
-                'limit'
-              )
-            }
-            disabled={busy === 'limit'}
-            className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-ink disabled:opacity-60"
-          >
-            {busy === 'limit' ? <Loader2 className="size-3.5 animate-spin" /> : 'Save'}
-          </button>
-        </div>
-      </div>
+      )}
 
       {/* 3. Self-pay — the one with consequences, so it is last and loudest. */}
       <div className="rounded-xl border border-amber-300 bg-amber-50/60 p-3">
