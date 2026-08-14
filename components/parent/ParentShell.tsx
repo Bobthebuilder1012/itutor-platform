@@ -7,7 +7,7 @@ import { useEffect, useState, type ComponentType } from 'react';
 import {
   LayoutDashboard, Users, Receipt, Settings, Bell,
   PanelLeftClose, PanelLeftOpen, ChevronUp, LogOut,
-  ShieldCheck, MessageSquareQuote, CalendarDays,
+  ShieldCheck, MessageSquareQuote, CalendarDays, Search,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -54,6 +54,8 @@ export default function ParentShell({ children }: { children: React.ReactNode })
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [unread, setUnread] = useState(0);
+  const [pendingApprovals, setPendingApprovals] = useState(0);
+  const [newFeedback, setNewFeedback] = useState(0);
 
   useEffect(() => { try { const v = localStorage.getItem(COLLAPSE_KEY); if (v) setCollapsed(v === '1'); } catch {} }, []);
   useEffect(() => { try { localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0'); } catch {} }, [collapsed]);
@@ -69,11 +71,44 @@ export default function ParentShell({ children }: { children: React.ReactNode })
       .then(({ count }) => setUnread(count ?? 0));
   }, [profile?.id]);
 
+  // Kit README: "count badges on Approvals and Feedback". Not decoration — §4.2
+  // requests close two hours before the class and send NO email when they lapse,
+  // so a badge is the only thing that makes an unanswered one visible without
+  // opening the page. Feedback carries one for the same reason: it arrives when
+  // a tutor gets to it, with no prompt.
+  useEffect(() => {
+    if (!profile?.id) return;
+    (async () => {
+      try {
+        const [approvals, feedback] = await Promise.all([
+          fetch('/api/parent/approvals', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)),
+          fetch('/api/parent/feedback/reports', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)),
+        ]);
+        setPendingApprovals(approvals?.pending?.length ?? 0);
+        // Unread is not modelled on feedback, so this counts what arrived in the
+        // last week — enough to draw the eye once without nagging forever.
+        const week = Date.now() - 7 * 86_400_000;
+        setNewFeedback(
+          (feedback?.reports ?? []).filter((f: { date?: string }) => {
+            const t = f.date ? new Date(f.date).getTime() : NaN;
+            return Number.isFinite(t) && t >= week;
+          }).length
+        );
+      } catch {
+        /* badges are additive; their absence must not break the shell */
+      }
+    })();
+  }, [profile?.id]);
+
   const handleLogout = async () => {
     localStorage.clear(); sessionStorage.clear();
     await supabase.auth.signOut({ scope: 'local' });
     window.location.href = '/login';
   };
+
+  /** Kit README: count badges on Approvals and Feedback, and nowhere else. */
+  const badgeFor = (href: string) =>
+    href === '/parent/approvals' ? pendingApprovals : href === '/parent/feedback' ? newFeedback : 0;
 
   const displayName = profile?.display_name || profile?.full_name || 'Parent';
   const initials = displayName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
@@ -103,10 +138,20 @@ export default function ParentShell({ children }: { children: React.ReactNode })
               return (
                 <Link key={item.to} href={item.to} title={collapsed ? item.label : undefined}
                   className={cn('flex items-center rounded-xl text-sm font-medium transition-colors group', collapsed ? 'justify-center p-2' : 'gap-3 px-2 py-2', active ? 'bg-white/10 text-white' : 'text-white/70 hover:bg-white/5 hover:text-white')}>
-                  <span className={cn('size-8 rounded-lg grid place-items-center transition', item.tint, !active && 'opacity-80 group-hover:opacity-100')}>
+                  <span className={cn('relative size-8 rounded-lg grid place-items-center transition', item.tint, !active && 'opacity-80 group-hover:opacity-100')}>
                     <Icon className="size-4" />
+                    {/* Collapsed: the count has nowhere to sit, so a dot keeps
+                        the signal without a number nobody can read. */}
+                    {collapsed && badgeFor(item.to) > 0 && (
+                      <span className="absolute -right-0.5 -top-0.5 size-2.5 rounded-full bg-brand ring-2 ring-ink" />
+                    )}
                   </span>
-                  {!collapsed && <span>{item.label}</span>}
+                  {!collapsed && <span className="flex-1">{item.label}</span>}
+                  {!collapsed && badgeFor(item.to) > 0 && (
+                    <span className="min-w-5 rounded-full bg-brand px-1.5 py-0.5 text-center text-[10px] font-bold text-white">
+                      {badgeFor(item.to)}
+                    </span>
+                  )}
                 </Link>
               );
             })}
@@ -146,6 +191,20 @@ export default function ParentShell({ children }: { children: React.ReactNode })
             <Link href="/" className="lg:hidden"><Image src="/assets/logo/itutor-logo-new.png" alt="iTutor" width={70} height={22} /></Link>
             <div className="flex-1" />
             <div className="flex items-center gap-1">
+              {/* Find a class lives in the top bar, on every page.
+                  Removing it from the sidebar for kit fidelity left the
+                  marketplace reachable ONLY from the dashboard button — and on
+                  mobile, where the kit puts it behind a "More" tab this shell
+                  does not have, not reachable at all. Browsing is occasional, so
+                  it does not deserve a nav slot; it does need to exist. */}
+              <Link
+                href="/parent/classes"
+                className="mr-1 inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-ink hover:bg-muted"
+                title="Find a class"
+              >
+                <Search className="size-3.5" />
+                <span className="hidden sm:inline">Find a class</span>
+              </Link>
               <Link href="/parent/notifications" className="relative size-9 grid place-items-center rounded-full hover:bg-muted text-muted-foreground" title="Notifications">
                 <Bell className="size-4" />
                 {unread > 0 && <span className="absolute top-1.5 right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-brand text-[10px] font-bold text-white grid place-items-center">{unread}</span>}
@@ -168,7 +227,16 @@ export default function ParentShell({ children }: { children: React.ReactNode })
               const Icon = item.icon;
               return (
                 <Link key={item.to} href={item.to} className={cn('flex flex-col items-center gap-1 py-2 text-[10px] font-medium', active ? 'text-brand-deep' : 'text-muted-foreground')}>
-                  <span className={cn('size-8 rounded-lg grid place-items-center', active ? item.tint : '')}><Icon className="size-4" /></span>
+                  <span className={cn('relative size-8 rounded-lg grid place-items-center', active ? item.tint : '')}>
+                    <Icon className="size-4" />
+                    {/* The kit's bottom bar carries an Approvals count. Same
+                        reason as the sidebar: a request nobody sees expires. */}
+                    {badgeFor(item.to) > 0 && (
+                      <span className="absolute -right-1 -top-1 grid min-w-[16px] place-items-center rounded-full bg-brand px-1 text-[9px] font-bold text-white">
+                        {badgeFor(item.to)}
+                      </span>
+                    )}
+                  </span>
                   {item.label}
                 </Link>
               );
