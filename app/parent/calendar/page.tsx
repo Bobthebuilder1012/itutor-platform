@@ -18,7 +18,7 @@
 // figure anywhere.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Ban, Calendar as CalendarIcon, Check, Clock, Copy, Loader2, X } from 'lucide-react';
+import { Ban, Calendar as CalendarIcon, Check, Clock, Copy, Loader2, RefreshCw, X } from 'lucide-react';
 import ParentShell from '@/components/parent/ParentShell';
 
 type Child = { id: string; name: string; color: string };
@@ -58,6 +58,36 @@ function CalendarContent() {
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [subscribeUrl, setSubscribeUrl] = useState<string | null>(null);
+  const [rotating, setRotating] = useState(false);
+  const [rotated, setRotated] = useState<string | null>(null);
+
+  // Fetched separately from the calendar data: minting the token on first view
+  // means a parent who never opens this page never has a live credential.
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/parent/calendar/subscribe-link', { cache: 'no-store' });
+        if (res.ok) setSubscribeUrl((await res.json()).url ?? null);
+      } catch {
+        /* the copy button stays disabled */
+      }
+    })();
+  }, []);
+
+  const rotate = async () => {
+    setRotating(true);
+    try {
+      const res = await fetch('/api/parent/calendar/subscribe-link', { method: 'POST' });
+      if (res.ok) {
+        const json = await res.json();
+        setSubscribeUrl(json.url ?? null);
+        setRotated(json.note ?? 'The old link no longer works.');
+      }
+    } finally {
+      setRotating(false);
+    }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -198,25 +228,49 @@ function CalendarContent() {
                   Paste this into Google, Apple or Outlook Calendar and every class stays in sync.
                 </p>
                 <code className="mt-2 block break-all rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                  {icsUrl()}
+                  {subscribeUrl ?? 'Loading your link…'}
                 </code>
               </div>
             </div>
-            <button
-              onClick={() => {
-                void navigator.clipboard?.writeText(icsUrl());
-                setCopied(true);
-                window.setTimeout(() => setCopied(false), 2000);
-              }}
-              className="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-border px-3.5 py-2 text-xs font-semibold text-ink hover:bg-muted"
-            >
-              <Copy className="size-3.5" />
-              {copied ? 'Copied' : 'Copy subscribe link'}
-            </button>
-            {/* Stated rather than left to be discovered: the feed is not built. */}
-            <p className="mt-2 text-[11px] text-muted-foreground">
-              The subscribe feed is not switched on yet — the link is shown so it can be tested once
-              it is.
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                onClick={() => {
+                  if (!subscribeUrl) return;
+                  void navigator.clipboard?.writeText(subscribeUrl);
+                  setCopied(true);
+                  window.setTimeout(() => setCopied(false), 2000);
+                }}
+                disabled={!subscribeUrl}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3.5 py-2 text-xs font-semibold text-ink hover:bg-muted disabled:opacity-50"
+              >
+                <Copy className="size-3.5" />
+                {copied ? 'Copied' : 'Copy subscribe link'}
+              </button>
+              <button
+                onClick={rotate}
+                disabled={rotating}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3.5 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50"
+              >
+                {rotating ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+                Reset link
+              </button>
+            </div>
+
+            {rotated && (
+              <p className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
+                {rotated}
+              </p>
+            )}
+
+            {/* The honest warning. This link is the credential — there is no
+                password on it — and a parent who forwards it is handing over
+                their children's timetable. Rotation is the only recovery, which
+                is why the button sits right here rather than in Settings. */}
+            <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+              Anyone with this link can see your children&rsquo;s class times, so treat it like a
+              password. Reset it if you have shared it by accident — the old link stops working
+              straight away. Attendance is never included in the feed.
             </p>
           </div>
         </>
@@ -225,10 +279,6 @@ function CalendarContent() {
   );
 }
 
-function icsUrl(): string {
-  const base = typeof window === 'undefined' ? '' : window.location.origin;
-  return `${base}/api/parent/calendar.ics`;
-}
 
 function Section({
   title,
