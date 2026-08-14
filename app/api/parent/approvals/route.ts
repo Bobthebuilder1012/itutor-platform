@@ -42,6 +42,9 @@ export async function GET(_request: NextRequest) {
         id: r.id,
         childId: r.studentId,
         childName: nameById.get(r.studentId)?.name ?? 'Your child',
+        // The kit's queue links to the tutor's profile: half of an approval
+        // decision is "do I trust this person with my child".
+        tutorId: r.tutorId,
         tutorName: nameById.get(r.tutorId)?.name ?? 'Tutor',
         tutorAvatar: nameById.get(r.tutorId)?.avatar ?? null,
         when: formatWhen(r.requestedStartAt),

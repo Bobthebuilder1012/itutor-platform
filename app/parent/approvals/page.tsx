@@ -17,6 +17,7 @@
 // §9.1 are read off the query string on arrival.
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { AlertTriangle, Check, Clock, Loader2, ShieldCheck, X } from 'lucide-react';
 import ParentShell from '@/components/parent/ParentShell';
@@ -27,6 +28,7 @@ type PendingRequest = {
   id: string;
   childId: string;
   childName: string;
+  tutorId: string;
   tutorName: string;
   tutorAvatar: string | null;
   when: string;
@@ -237,7 +239,17 @@ function ApprovalsContent() {
             )}
           </div>
 
-          <h2 className="mt-2 text-lg font-bold text-ink">{r.tutorName}</h2>
+          <div className="mt-2 flex flex-wrap items-baseline gap-x-2">
+            <h2 className="text-lg font-bold text-ink">{r.tutorName}</h2>
+            {/* The kit's "View profile →". A parent deciding whether to approve
+                needs to be able to look up who will be teaching their child. */}
+            <Link
+              href={`/parent/tutors/${r.tutorId}`}
+              className="text-xs font-semibold text-brand hover:underline"
+            >
+              View profile →
+            </Link>
+          </div>
           <p className="text-sm text-muted-foreground">
             {r.when} · {r.minutes} min
           </p>

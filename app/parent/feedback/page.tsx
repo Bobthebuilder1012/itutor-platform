@@ -17,7 +17,8 @@
 // more — a countdown would promise a response the platform never guarantees.
 
 import { useCallback, useEffect, useState } from 'react';
-import { Clock, Loader2, MessageSquareQuote } from 'lucide-react';
+import Link from 'next/link';
+import { Clock, Loader2, MessageSquare, MessageSquareQuote } from 'lucide-react';
 import ParentShell from '@/components/parent/ParentShell';
 
 type Report = {
@@ -97,6 +98,17 @@ function FeedbackContent() {
           What your children’s tutors have written. You and your child share one request a month per
           tutor.
         </p>
+        {/* The kit titles this surface "Feedback & messages" and renders feedback
+            as cards inside each tutor thread. Split here into two pages rather
+            than merged, so the link is explicit instead of a parent wondering
+            where they reply. */}
+        <Link
+          href="/parent/messages"
+          className="mt-2 inline-flex items-center gap-1.5 text-sm font-semibold text-brand hover:underline"
+        >
+          <MessageSquare className="size-4" />
+          Message a tutor
+        </Link>
       </header>
 
       {!hasChildren && (
