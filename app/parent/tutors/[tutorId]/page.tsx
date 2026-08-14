@@ -33,6 +33,13 @@ type Tutor = {
   via: string;
 };
 
+type Extra = {
+  availability: Array<{ day: string; windows: string[] }>;
+  reviews: Array<{ id: string; stars: number; comment: string | null; who: string; when: string }>;
+  averageRating: number | null;
+  ratingCount: number;
+};
+
 export default function ParentTutorProfilePage() {
   return (
     <ParentShell>
@@ -44,16 +51,23 @@ export default function ParentTutorProfilePage() {
 function TutorProfileContent() {
   const { tutorId } = useParams<{ tutorId: string }>();
   const [tutor, setTutor] = useState<Tutor | null>(null);
+  const [extra, setExtra] = useState<Extra | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch('/api/parent/tutors', { cache: 'no-store' });
-        if (res.ok) {
-          const json = await res.json();
+        // In parallel: the identity block gates the page, the availability and
+        // reviews only fill it, so one slow query should not delay the other.
+        const [listRes, detailRes] = await Promise.all([
+          fetch('/api/parent/tutors', { cache: 'no-store' }),
+          fetch(`/api/parent/tutors/${tutorId}`, { cache: 'no-store' }),
+        ]);
+        if (listRes.ok) {
+          const json = await listRes.json();
           setTutor((json.tutors ?? []).find((t: Tutor) => t.id === tutorId) ?? null);
         }
+        if (detailRes.ok) setExtra(await detailRes.json());
       } finally {
         setLoading(false);
       }
@@ -172,13 +186,69 @@ function TutorProfileContent() {
         </section>
       )}
 
-      {/* Nothing is invented to fill the page. The kit shows availability and
-          reviews; neither is exposed to parents by an existing API, and a made-up
-          block would be worse than an absent one on the screen a parent uses to
-          decide whether to trust someone. */}
-      <p className="text-xs text-muted-foreground">
-        Availability and reviews are shown on the class listing when you book.
-      </p>
+      {/* Availability — the weekly pattern, not bookable slots. A parent is
+          judging "does this fit our week", not picking a time. */}
+      {extra?.availability && extra.availability.length > 0 && (
+        <section className="rounded-2xl border border-border bg-background p-5">
+          <h2 className="text-sm font-bold text-ink">Availability</h2>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            {extra.availability.map((a) => (
+              <div key={a.day} className="rounded-xl bg-muted/40 px-3 py-2">
+                <div className="text-xs font-semibold text-muted-foreground">{a.day}</div>
+                <div className="text-sm text-ink">{a.windows.join(', ')}</div>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            The tutor&rsquo;s usual teaching hours. Actual class times are set per class.
+          </p>
+        </section>
+      )}
+
+      {/* Reviews from students who were taught. Only ones with something
+          written — a wall of bare stars tells a parent nothing. */}
+      {extra?.reviews && extra.reviews.length > 0 && (
+        <section className="rounded-2xl border border-border bg-background p-5">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-sm font-bold text-ink">Reviews</h2>
+            {extra.averageRating != null && (
+              <span className="text-xs text-muted-foreground">
+                <strong className="text-ink">{extra.averageRating.toFixed(1)}</strong> from{' '}
+                {extra.ratingCount} {extra.ratingCount === 1 ? 'review' : 'reviews'}
+              </span>
+            )}
+          </div>
+          <ul className="mt-2 space-y-3">
+            {extra.reviews.map((r) => (
+              <li key={r.id} className="border-t border-border pt-3 first:border-0 first:pt-0">
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: 5 }, (_, i) => (
+                    <Star
+                      key={i}
+                      className={`size-3 ${i < r.stars ? 'fill-amber-400 text-amber-400' : 'text-border'}`}
+                    />
+                  ))}
+                </div>
+                {r.comment && (
+                  <p className="mt-1 text-sm leading-relaxed text-ink/80">“{r.comment}”</p>
+                )}
+                <div className="mt-0.5 text-xs text-muted-foreground">
+                  {r.who} · {r.when}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* Said rather than left blank: an empty page under a tutor's name reads
+          as a bad sign when it usually means a new tutor. */}
+      {extra && extra.availability.length === 0 && extra.reviews.length === 0 && (
+        <p className="text-xs text-muted-foreground">
+          {first} hasn&rsquo;t published teaching hours yet, and no student has left a written
+          review. Neither means anything is wrong — both are common for a newer tutor.
+        </p>
+      )}
     </div>
   );
 }

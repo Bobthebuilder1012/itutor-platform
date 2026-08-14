@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Plus, ChevronRight, AlertCircle, Check, GraduationCap, Receipt, Search } from 'lucide-react';
+import { Plus, ChevronRight, AlertCircle, Check, GraduationCap, Receipt, Search, UserPlus } from 'lucide-react';
 import { useProfile } from '@/lib/hooks/useProfile';
 import ParentShell from '@/components/parent/ParentShell';
 import AttentionCard from '@/components/parent/AttentionCard';
+import { cn } from '@/lib/utils';
+import { supabase } from '@/lib/supabase/client';
 
 type ChildData = {
   id: string; name: string; initials: string; hue: number;
@@ -135,9 +137,131 @@ function DashboardContent() {
         </section>
       )}
 
+      {/* The kit's LinkChildRow: inline on the dashboard, not only buried on
+          /parent/children. A parent with one child linked and a second to add
+          should not have to go looking for the form. */}
+      {children.length > 0 && (
+        <Link
+          href="/parent/children"
+          className="flex flex-wrap items-center gap-3 rounded-2xl border border-dashed border-border bg-background p-5 hover:border-brand-deep/40"
+        >
+          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand-deep">
+            <UserPlus className="size-4" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-bold text-ink">Link another child</span>
+            <span className="block text-xs text-muted-foreground">
+              We email them a secure link. They appear here once they accept — you cannot add a child
+              without their agreement.
+            </span>
+          </span>
+          <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+        </Link>
+      )}
+
+      {/* The kit's ActivityFeed. Collapsed by default: it is history, not a task,
+          and expanding it is a deliberate act rather than something competing
+          with the attention card above. */}
+      {children.length > 0 && <ActivityFeed />}
     </div>
   );
 }
 
 // AddChildModal (parent-creates-credentials) removed — linking is now invite +
 // student consent, handled on /parent/children. See app/api/parent/invite-child.
+
+/**
+ * Recent activity — the kit's ActivityFeed.
+ *
+ * Reads the notifications the parent has already received rather than assembling
+ * a second history from bookings and payments. Two reasons: it cannot drift from
+ * what they were actually told, and anything that never generated a notification
+ * has no business appearing here as though it did.
+ */
+function ActivityFeed() {
+  const { profile } = useProfile();
+  const [open, setOpen] = useState(false);
+  const [items, setItems] = useState<
+    { id: string; title: string; message: string | null; created_at: string; link: string | null }[]
+  >([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!open || loaded || !profile?.id) return;
+    (async () => {
+      const { data } = await supabase
+        .from('notifications')
+        .select('id, title, message, created_at, link')
+        .eq('user_id', profile.id)
+        .order('created_at', { ascending: false })
+        .limit(12);
+      setItems((data ?? []) as never);
+      setLoaded(true);
+    })();
+  }, [open, loaded, profile?.id]);
+
+  return (
+    <section className="rounded-2xl border border-border bg-background p-5">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-3 text-left"
+      >
+        <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+          <Receipt className="size-4" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-bold text-ink">Recent activity</span>
+          <span className="block text-xs text-muted-foreground">
+            Requests, payments and feedback
+          </span>
+        </span>
+        <ChevronRight
+          className={cn('size-4 shrink-0 text-muted-foreground transition', open && 'rotate-90')}
+        />
+      </button>
+
+      {open && (
+        <div className="mt-3 border-t border-border pt-3">
+          {!loaded ? (
+            <p className="text-xs text-muted-foreground">Loading…</p>
+          ) : items.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Nothing yet.</p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {items.map((n) => {
+                const row = (
+                  <>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm text-ink">{n.title}</span>
+                      {n.message && (
+                        <span className="block text-xs text-muted-foreground">{n.message}</span>
+                      )}
+                    </span>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {new Date(n.created_at).toLocaleDateString('en-TT', {
+                        day: 'numeric',
+                        month: 'short',
+                        timeZone: 'America/Port_of_Spain',
+                      })}
+                    </span>
+                  </>
+                );
+                return (
+                  <li key={n.id} className="py-2.5">
+                    {n.link ? (
+                      <Link href={n.link} className="flex items-start gap-3 hover:opacity-80">
+                        {row}
+                      </Link>
+                    ) : (
+                      <div className="flex items-start gap-3">{row}</div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
