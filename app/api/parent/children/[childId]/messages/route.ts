@@ -162,6 +162,9 @@ export async function GET(_request: NextRequest, { params }: Params) {
       return {
         // No thread yet still needs a stable key for the UI to open on.
         id: convoId || `tutor:${tutorId}`,
+        // The teacher themself, so callers that act on the tutor rather than the
+        // thread (requesting feedback) do not have to parse it back out of `id`.
+        tutorId,
         tutorName: other?.display_name || other?.full_name || 'Tutor',
         tutorAvatar: other?.avatar_url ?? null,
         messages: list.map((m) => ({

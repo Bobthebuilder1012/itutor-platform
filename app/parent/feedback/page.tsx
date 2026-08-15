@@ -20,6 +20,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Clock, Loader2, MessageSquare, MessageSquareQuote } from 'lucide-react';
 import ParentShell from '@/components/parent/ParentShell';
+import RequestFeedbackPanel from '@/components/parent/RequestFeedbackPanel';
 
 type Report = {
   id: string;
@@ -110,6 +111,8 @@ function FeedbackContent() {
           Message a tutor
         </Link>
       </header>
+
+      {hasChildren && <RequestFeedbackPanel />}
 
       {!hasChildren && (
         <div className="rounded-2xl border border-border bg-background p-6">
