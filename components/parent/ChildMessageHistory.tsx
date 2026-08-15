@@ -21,7 +21,7 @@
 // child about a conversation they cannot actually see.
 
 import { useCallback, useEffect, useState } from 'react';
-import { Eye, Loader2, Lock } from 'lucide-react';
+import { ArrowLeft, Eye, Loader2, Lock } from 'lucide-react';
 
 type Message = { id: string; fromChild: boolean; text: string; at: string };
 type Thread = { id: string; tutorName: string; tutorAvatar: string | null; messages: Message[] };
@@ -36,6 +36,8 @@ export default function ChildMessageHistory({
   const [threads, setThreads] = useState<Thread[]>([]);
   const [since, setSince] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // null = the teacher grid; a conversation id = that one history, read-only.
+  const [openId, setOpenId] = useState<string | null>(null);
 
   const first = childName.split(' ')[0];
 
@@ -92,14 +94,57 @@ export default function ChildMessageHistory({
 
       {threads.length === 0 ? (
         <div className="rounded-2xl border border-border bg-background p-6">
-          <p className="text-sm text-ink">No messages with a tutor yet.</p>
+          <p className="text-sm text-ink">No teachers with messages yet.</p>
           <p className="mt-1 text-sm text-muted-foreground">
-            When {first} messages one of their tutors, the conversation appears here.
+            When {first} messages one of their teachers, the conversation appears here.
           </p>
         </div>
+      ) : !openId ? (
+        /* One card per teacher, three across. The parent picks a teacher first
+           rather than scrolling a stack of full conversations — with four
+           teachers the old layout put the last one several screens down. */
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {threads.map((t) => (
+            <div key={t.id} className="rounded-2xl border border-border bg-background p-4">
+              <div className="flex items-center gap-3">
+                {t.tutorAvatar ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={t.tutorAvatar} alt="" className="size-10 shrink-0 rounded-full object-cover" />
+                ) : (
+                  <span className="grid size-10 shrink-0 place-items-center rounded-full bg-brand-soft text-sm font-bold text-brand-deep">
+                    {t.tutorName.charAt(0).toUpperCase()}
+                  </span>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-bold text-ink">{t.tutorName}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {t.messages.length === 0
+                      ? 'Nothing since you were linked'
+                      : `${t.messages.length} message${t.messages.length === 1 ? '' : 's'}`}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setOpenId(t.id)}
+                className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-semibold text-ink hover:bg-muted"
+              >
+                <Eye className="size-3.5" />
+                View message history
+              </button>
+            </div>
+          ))}
+        </div>
       ) : (
-        threads.map((t) => (
+        threads
+          .filter((t) => t.id === openId)
+          .map((t) => (
           <div key={t.id} className="overflow-hidden rounded-2xl border border-border bg-background">
+            <button
+              onClick={() => setOpenId(null)}
+              className="flex w-full items-center gap-1.5 border-b border-border px-3.5 py-2 text-left text-xs font-semibold text-muted-foreground hover:text-ink"
+            >
+              <ArrowLeft className="size-3.5" /> All teachers
+            </button>
             <div className="flex items-center gap-3 border-b border-border p-3.5">
               {t.tutorAvatar ? (
                 // eslint-disable-next-line @next/next/no-img-element
