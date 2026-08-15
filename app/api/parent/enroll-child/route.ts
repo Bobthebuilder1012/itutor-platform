@@ -22,11 +22,39 @@ export async function POST(request: NextRequest) {
 
     const { data: group } = await admin
       .from('groups')
-      .select('id, tutor_id, require_join_requests, archived_at')
+      .select('id, tutor_id, require_join_requests, archived_at, pricing_model, price_monthly')
       .eq('id', groupId)
       .maybeSingle();
     if (!group) return NextResponse.json({ error: 'Class not found' }, { status: 404 });
     if (group.archived_at) return NextResponse.json({ error: 'This class is no longer available' }, { status: 410 });
+
+    // PAID CLASSES FAIL CLOSED HERE.
+    //
+    // This route writes group_members directly. The student equivalent
+    // (/api/groups/[groupId]/subscribe) will not touch membership until Stripe
+    // Checkout completes — it requires MONTHLY + a positive price and tracks
+    // PENDING_PAYMENT. This route never read price at all, so a parent pressing
+    // "Join for child" on a paid class was granted an APPROVED membership and no
+    // charge was ever raised.
+    //
+    // Refusing is the only safe answer while the parent checkout does not exist.
+    // Enrolling free and reconciling later is not a lesser evil: it hands out the
+    // class, and the tutor is the one who goes unpaid for it.
+    //
+    // Nothing on production is unwound by this — prod has 0 parent accounts and
+    // 0 parent_child_links, so the path has never been reached. It is a hole to
+    // close before the parent rollout, not a leak to stop.
+    const priceMonthly = Number(group.price_monthly ?? 0);
+    if (priceMonthly > 0 || group.pricing_model === 'MONTHLY') {
+      return NextResponse.json(
+        {
+          error:
+            'This class is paid, and paying for a child’s class isn’t available yet. Your child can subscribe from their own account, or choose a free class.',
+          reason: 'payment_required',
+        },
+        { status: 402 }
+      );
+    }
 
     // Already a member?
     const { data: existing } = await admin

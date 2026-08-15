@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Search, Star, Users, GraduationCap, Sparkles, Flame, UserCheck, Loader2, X, UserPlus } from 'lucide-react';
+import { Search, Star, Users, GraduationCap, Sparkles, Flame, UserCheck, Loader2, X, UserPlus, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { supabase } from '@/lib/supabase/client';
@@ -22,7 +22,7 @@ type TutorListing = {
 
 type GroupListing = {
   id: string; name: string; subject: string | null; form_level: string | null;
-  cover_image: string | null; price_monthly: number | null; max_students: number;
+  cover_image: string | null; price_monthly: number | null; pricing_model: string | null; max_students: number;
   require_join_requests: boolean; feedback_mode: string | null; parent_feedback_price: number | null;
   schedule_display: string | null; schedule_data: string | null;
   session_schedule: string | null;
@@ -65,7 +65,7 @@ function ClassesContent() {
       // schedule line (the real source is /api/groups/schedules below), so
       // the query drops them rather than failing.
       const GROUP_COLUMNS = `
-          id, name, subject, form_level, cover_image, price_monthly, max_students,
+          id, name, subject, form_level, cover_image, price_monthly, pricing_model, max_students,
           require_join_requests, feedback_mode, parent_feedback_price, status,
           tutor:profiles!groups_tutor_id_fkey(full_name, display_name, rating_average)
       `;
@@ -376,6 +376,7 @@ function ClassCard({ g, onJoin, joining }: { g: GroupListing; onJoin: () => void
   // raw roster count, so it only needed the threshold widened from 3 to 9.
   const capacity = classCapacityDisplay(g.member_count, g.max_students);
   const price = g.price_monthly ?? 0;
+  const isPaid = price > 0 || g.pricing_model === 'MONTHLY';
   const tutorName = g.tutor?.display_name || g.tutor?.full_name || 'Tutor';
   const rating = g.tutor?.rating_average ?? g.average_rating ?? null;
   const schedule = (() => {
@@ -410,14 +411,28 @@ function ClassCard({ g, onJoin, joining }: { g: GroupListing; onJoin: () => void
         </>
       }
       action={
-        <button
-          onClick={onJoin}
-          disabled={isFull || joining}
-          className={cn('inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition disabled:opacity-50',
-            isFull ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'bg-brand text-white hover:bg-brand-deep')}>
-          <UserPlus className="size-3.5" />
-          {isFull ? 'Full' : g.require_join_requests ? 'Request for child' : 'Join for child'}
-        </button>
+        // A paid class cannot be joined from here: the parent route refuses it
+        // (402) because there is no parent checkout, and the student subscribe
+        // flow assumes the payer is the student. Saying so on the card beats
+        // offering a button whose only outcome is an error toast.
+        isPaid ? (
+          <span
+            title="Your child can subscribe from their own account."
+            className="inline-flex items-center gap-1.5 rounded-xl bg-muted px-3 py-1.5 text-xs font-semibold text-muted-foreground"
+          >
+            <Lock className="size-3.5" />
+            Child subscribes
+          </span>
+        ) : (
+          <button
+            onClick={onJoin}
+            disabled={isFull || joining}
+            className={cn('inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition disabled:opacity-50',
+              isFull ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'bg-brand text-white hover:bg-brand-deep')}>
+            <UserPlus className="size-3.5" />
+            {isFull ? 'Full' : g.require_join_requests ? 'Request for child' : 'Join for child'}
+          </button>
+        )
       }
     />
   );
