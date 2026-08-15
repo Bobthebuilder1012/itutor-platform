@@ -10,6 +10,7 @@ import { parseScheduleData, scheduleToDisplay } from '@/lib/utils/scheduleFormat
 import { classCapacityDisplay } from '@/lib/utils/classCapacity';
 import ParentShell from '@/components/parent/ParentShell';
 import ChildPickerCheck from '@/components/parent/ChildPickerCheck';
+import ParentClassCard from '@/components/parent/ParentClassCard';
 
 type TabType = 'classes' | 'tutors';
 
@@ -32,14 +33,8 @@ type GroupListing = {
 
 const SUBJECT_CHIPS = ['All', 'Maths', 'English', 'Physics', 'Chemistry', 'Biology', 'SEA', 'Accounts'];
 
-const GRADIENTS = [
-  'from-brand to-emerald-400', 'from-sky-500 to-cyan-400', 'from-orange-500 to-amber-400',
-  'from-fuchsia-500 to-purple-500', 'from-rose-500 to-pink-400', 'from-indigo-500 to-blue-500',
-];
-
-function gradientFor(name: string) {
-  return GRADIENTS[Math.abs([...name].reduce((a, c) => a + c.charCodeAt(0), 0)) % GRADIENTS.length];
-}
+// GRADIENTS / gradientFor moved into ParentClassCard — same list, same hash — so
+// the child's Classes tab draws a class in the colour it has here.
 
 export default function ParentClassesPage() {
   return <ParentShell><ClassesContent /></ParentShell>;
@@ -374,7 +369,6 @@ function ClassesContent() {
 }
 
 function ClassCard({ g, onJoin, joining }: { g: GroupListing; onJoin: () => void; joining: boolean }) {
-  const gradient = gradientFor(g.name);
   const spotsLeft = g.max_students - g.member_count;
   const isFull = spotsLeft <= 0;
   const isLow = spotsLeft > 0 && spotsLeft <= 3;
@@ -391,54 +385,41 @@ function ClassCard({ g, onJoin, joining }: { g: GroupListing; onJoin: () => void
   })();
 
   return (
-    <div className="rounded-2xl border border-border bg-background overflow-hidden hover:shadow-card transition flex flex-col">
-      {/* Banner */}
-      <div className={cn('relative h-28 flex items-end p-3', !g.cover_image && `bg-gradient-to-br ${gradient}`)}
-        style={g.cover_image ? { backgroundImage: `url(${g.cover_image})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}>
-        {isFull && <span className="absolute top-2 right-2 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-ink/80 text-white">Class full</span>}
-        <div className="size-12 rounded-2xl bg-white/90 backdrop-blur grid place-items-center text-2xl shadow-md">📚</div>
-      </div>
-
-      <div className="p-4 flex-1 flex flex-col">
-        <div className="flex items-start justify-between gap-2 mb-1">
-          <h3 className="font-bold text-ink leading-tight">{g.name}</h3>
-          {rating && rating > 0 && (
-            <span className="inline-flex items-center gap-0.5 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 shrink-0">
-              <Star className="size-3 fill-amber-500 text-amber-500"/> {rating.toFixed(1)}
-            </span>
-          )}
-        </div>
-        <div className="text-xs text-muted-foreground">by {tutorName}{g.subject ? ` · ${g.subject}` : ''}{g.form_level ? ` · ${g.form_level}` : ''}</div>
-
-        <div className="mt-2 flex flex-wrap gap-1">
+    <ParentClassCard
+      c={{
+        id: g.id,
+        name: g.name,
+        subject: g.subject,
+        formLevel: g.form_level,
+        tutorName,
+        coverImage: g.cover_image,
+        rating,
+        scheduleLine: schedule,
+        priceMonthly: price,
+      }}
+      cornerBadge={isFull ? (
+        <span className="absolute top-2 right-2 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-ink/80 text-white">Class full</span>
+      ) : undefined}
+      chips={
+        <>
           {/* Parent feedback hidden — coming soon */}
           {g.require_join_requests && (
             <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full border border-border bg-muted text-muted-foreground">Approval required</span>
           )}
           {capacity.kind === 'spots_left' && <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-coral-soft text-coral"><Flame className="size-2.5"/> {capacity.label}</span>}
-        </div>
-
-        {schedule && <div className="text-xs text-muted-foreground mt-2">{schedule}</div>}
-
-        <div className="mt-auto pt-3 border-t border-border flex items-center justify-between gap-2">
-          <div>
-            {price > 0 ? (
-              <><span className="font-bold text-ink">{fmtTTD(price)}</span><span className="text-[11px] text-muted-foreground">/mo</span></>
-            ) : (
-              <span className="font-bold text-brand-deep">Free</span>
-            )}
-          </div>
-          <button
-            onClick={onJoin}
-            disabled={isFull || joining}
-            className={cn('inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition disabled:opacity-50',
-              isFull ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'bg-brand text-white hover:bg-brand-deep')}>
-            <UserPlus className="size-3.5" />
-            {isFull ? 'Full' : g.require_join_requests ? 'Request for child' : 'Join for child'}
-          </button>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+      action={
+        <button
+          onClick={onJoin}
+          disabled={isFull || joining}
+          className={cn('inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition disabled:opacity-50',
+            isFull ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'bg-brand text-white hover:bg-brand-deep')}>
+          <UserPlus className="size-3.5" />
+          {isFull ? 'Full' : g.require_join_requests ? 'Request for child' : 'Join for child'}
+        </button>
+      }
+    />
   );
 }
 

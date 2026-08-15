@@ -6,12 +6,20 @@ import Link from 'next/link';
 import { ArrowLeft, GraduationCap, FileText, Calendar, Clock, Check, AlertCircle, X, BookOpen, ChevronRight, Trash2, ClipboardCheck, MessageSquare, CreditCard, Ban } from 'lucide-react';
 import ChildMessageHistory from '@/components/parent/ChildMessageHistory';
 import ChildBillingControls from '@/components/parent/ChildBillingControls';
+import ParentClassCard from '@/components/parent/ParentClassCard';
+import { parseScheduleData, scheduleToDisplay } from '@/lib/utils/scheduleFormat';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
 import ParentShell from '@/components/parent/ParentShell';
 
-type Enrollment = { groupId: string; name: string; subject: string | null; status: string; joinedAt: string | null };
+type Enrollment = {
+  groupId: string; name: string; subject: string | null; status: string; joinedAt: string | null;
+  // Carried so the Classes tab can render the marketplace card rather than a
+  // parent-only variant of it.
+  formLevel?: string | null; coverImage?: string | null; priceMonthly?: number | null;
+  rating?: number | null; tutorName?: string | null; scheduleData?: string | null; sessionSchedule?: string | null;
+};
 type Booking = { id: string; tutorName: string; subject: string | null; status: string; start: string | null; priceTtd: number | null; durationMinutes: number | null; createdAt: string };
 type FeedbackReport = { id: string; month: string; tutorName: string; classTitle: string; body: string; deliveredAt: string; attendance: string };
 // present is kept for anything still reading it; status is the §6 model —
@@ -354,31 +362,51 @@ function ClassesTab({ enrollments, childId }: { enrollments: Enrollment[]; child
     suspended:{ label: 'Suspended',         cls: 'bg-amber-100 text-amber-800' },
     removed:  { label: 'Removed',           cls: 'bg-muted text-muted-foreground' },
   };
+  // Same card as the marketplace, same grid. What differs is only what a class
+  // the child is already in has to say: its enrolment status instead of its
+  // scarcity, and View instead of Join.
   return (
-    <div className="space-y-3">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
       {enrollments.map((e) => {
         const sm = statusMeta[e.status] ?? { label: e.status, cls: 'bg-muted text-muted-foreground' };
+        const scheduleLine = (() => {
+          const entries = parseScheduleData(e.scheduleData);
+          if (entries.length) return scheduleToDisplay(entries).split('\n')[0];
+          return e.sessionSchedule?.split('\n')[0] || null;
+        })();
         return (
-          <article key={e.groupId} className="rounded-2xl bg-background border border-border p-5">
-            <div className="flex items-start gap-4">
-              <div className="size-12 rounded-2xl bg-muted grid place-items-center text-2xl shrink-0">📚</div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2">
-                  <h3 className="font-bold text-ink truncate">{e.name}</h3>
-                  <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full whitespace-nowrap', sm.cls)}>{sm.label}</span>
-                </div>
-                {e.subject && <div className="text-xs text-muted-foreground mt-0.5">{e.subject}</div>}
-              </div>
-            </div>
-            <div className="mt-4 pt-3 border-t border-border flex items-center justify-between">
-              {e.joinedAt && (
-                <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <Check className="size-3.5"/> Enrolled {new Date(e.joinedAt).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})}
-                </div>
-              )}
-              <Link href={`/parent/children/${childId}/classes/${e.groupId}`} className="text-xs font-semibold text-brand-deep hover:underline ml-auto">View as student →</Link>
-            </div>
-          </article>
+          <ParentClassCard
+            key={e.groupId}
+            c={{
+              id: e.groupId,
+              name: e.name,
+              subject: e.subject,
+              formLevel: e.formLevel,
+              tutorName: e.tutorName || 'Tutor',
+              coverImage: e.coverImage,
+              rating: e.rating,
+              scheduleLine,
+              priceMonthly: e.priceMonthly,
+            }}
+            chips={
+              <>
+                <span className={cn('text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full', sm.cls)}>{sm.label}</span>
+                {e.joinedAt && (
+                  <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full border border-border bg-muted text-muted-foreground">
+                    <Check className="size-2.5" /> Enrolled {new Date(e.joinedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </span>
+                )}
+              </>
+            }
+            action={
+              <Link
+                href={`/parent/children/${childId}/classes/${e.groupId}`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-brand text-white hover:bg-brand-deep"
+              >
+                View as student
+              </Link>
+            }
+          />
         );
       })}
     </div>
