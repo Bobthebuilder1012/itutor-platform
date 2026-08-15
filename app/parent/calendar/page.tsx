@@ -2,10 +2,14 @@
 
 // Family calendar — handover §9.1.
 //
-// An agenda, not a grid. Seven columns of boxes is unreadable on a 390px phone
-// and the parent app is phone-first, so this lists days downward — which is also
-// the shape the mobile design kit uses. The child filter doubles as the legend,
-// so a colour never appears without a name attached to it.
+// A grid AND an agenda. The kit's seven-column week answers "what does this week
+// look like"; the agenda under it answers "what is next". Seven columns do not
+// fit on a 390px phone, so the grid pans sideways at its real column width rather
+// than being hidden — the parent app is phone-first, but that is a reason to make
+// the week reachable on a phone, not to delete it there.
+//
+// The child filter doubles as the legend, so a colour never appears without a
+// name attached to it.
 //
 // ATTENDANCE ONLY ON THE PAST
 // Upcoming classes carry no attendance value: an occurrence still to happen is
@@ -18,7 +22,7 @@
 // figure anywhere.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Ban, Calendar as CalendarIcon, Check, Clock, Copy, Loader2, RefreshCw, X } from 'lucide-react';
+import { Ban, Calendar as CalendarIcon, Check, Clock, Loader2, X } from 'lucide-react';
 import ParentShell from '@/components/parent/ParentShell';
 
 type Child = { id: string; name: string; color: string };
@@ -70,40 +74,8 @@ function CalendarContent() {
   const [events, setEvents] = useState<Event[]>([]);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
-  const [copied, setCopied] = useState(false);
   const [perChild, setPerChild] = useState<PerChild[]>([]);
   const [view, setView] = useState<'Week' | 'Month'>('Week');
-  const [subscribeUrl, setSubscribeUrl] = useState<string | null>(null);
-  const [rotating, setRotating] = useState(false);
-  const [rotated, setRotated] = useState<string | null>(null);
-
-  // Fetched separately from the calendar data: minting the token on first view
-  // means a parent who never opens this page never has a live credential.
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch('/api/parent/calendar/subscribe-link', { cache: 'no-store' });
-        if (res.ok) setSubscribeUrl((await res.json()).url ?? null);
-      } catch {
-        /* the copy button stays disabled */
-      }
-    })();
-  }, []);
-
-  const rotate = async () => {
-    setRotating(true);
-    try {
-      const res = await fetch('/api/parent/calendar/subscribe-link', { method: 'POST' });
-      if (res.ok) {
-        const json = await res.json();
-        setSubscribeUrl(json.url ?? null);
-        setRotated(json.note ?? 'The old link no longer works.');
-      }
-    } finally {
-      setRotating(false);
-    }
-  };
-
   const load = useCallback(async () => {
     try {
       const res = await fetch('/api/parent/calendar', { cache: 'no-store' });
@@ -142,14 +114,25 @@ function CalendarContent() {
   }, [shown]);
 
   const tally = useMemo(() => {
-    const t = { attended: 0, late: 0, absent: 0, cancelled: 0 };
+    const t = { attended: 0, late: 0, absent: 0, cancelled: 0, excluded: 0 };
     for (const e of shown) {
       if (e.outcome && e.outcome in t) t[e.outcome as keyof typeof t] += 1;
     }
     const counted = t.attended + t.late + t.absent;
+    // A class that did not run for the child — cancelled, or the tutor never
+    // joined (§6). Reported separately and never folded into absent: the child
+    // did nothing wrong, and a rate that says otherwise is the one number a
+    // parent would act on unfairly.
+    const missed = t.cancelled + t.excluded;
+    const pct = (n: number) => (counted ? Math.round((n / counted) * 100) : 0);
     return {
       ...t,
       counted,
+      missed,
+      scheduled: counted + missed,
+      latePct: pct(t.late),
+      absentPct: pct(t.absent),
+      attendedPct: pct(t.attended),
       rate: counted ? Math.round(((t.attended + t.late) / counted) * 100) : null,
     };
   }, [shown]);
@@ -248,7 +231,35 @@ function CalendarContent() {
               </div>
               <div className="mt-1 text-xs text-muted-foreground">
                 {tally.attended} attended · {tally.late} late · {tally.absent} absent
-                {tally.cancelled > 0 && ` · ${tally.cancelled} cancelled (not counted)`}
+                {tally.missed > 0 && ` · ${tally.missed} missed (not counted)`}
+              </div>
+
+              {/* The kit's percentage bar. Proportions of the SAME denominator
+                  printed above it, so the widths and the number agree — a bar
+                  drawn over a different base than the headline figure is worse
+                  than no bar. */}
+              <div className="mt-3 flex h-2.5 w-full overflow-hidden rounded-full bg-muted">
+                {tally.attended > 0 && (
+                  <div className="bg-emerald-500" style={{ width: `${tally.attendedPct}%` }} />
+                )}
+                {tally.late > 0 && <div className="bg-amber-500" style={{ width: `${tally.latePct}%` }} />}
+                {tally.absent > 0 && <div className="bg-rose-500" style={{ width: `${tally.absentPct}%` }} />}
+              </div>
+
+              {/* §6 again: each rate carries its own denominator, and "missed"
+                  is measured against classes SCHEDULED, not classes counted,
+                  because that is the only base on which it means anything. */}
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+                <Rate dot="bg-amber-500" label="Late" n={tally.late} pct={tally.latePct} of={tally.counted} />
+                <Rate dot="bg-rose-500" label="Absent" n={tally.absent} pct={tally.absentPct} of={tally.counted} />
+                <Rate
+                  dot="bg-muted-foreground/40"
+                  label="Missed"
+                  n={tally.missed}
+                  pct={tally.scheduled ? Math.round((tally.missed / tally.scheduled) * 100) : 0}
+                  of={tally.scheduled}
+                  ofLabel="scheduled"
+                />
               </div>
             </div>
           )}
@@ -274,10 +285,12 @@ function CalendarContent() {
             </span>
           </div>
 
-          {/* Week/Month grid on desktop — the kit's shape. Hidden on mobile,
-              where seven columns at 390px is unreadable and the mobile kit uses
-              an agenda for exactly that reason. */}
-          <div className="hidden lg:block">
+          {/* Week/Month grid — the kit's shape, now on every width. Seven columns
+              do not fit at 390px, so instead of hiding the grid on a phone the
+              row pans sideways at its real column width. The agenda below stays:
+              panning is for reading the shape of a week, the agenda for reading
+              what is next. */}
+          <div>
             <div className="mb-2 flex items-center justify-between gap-2">
               <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                 {view === 'Week' ? 'This week' : 'This month'}
@@ -297,7 +310,10 @@ function CalendarContent() {
               </div>
             </div>
 
-            <div className="grid grid-cols-7 gap-2">
+            {/* -mx-1/px-1 so a focus ring on the first tile is not clipped by
+                the scroll container. */}
+            <div className="-mx-1 overflow-x-auto px-1 pb-1 [scrollbar-width:thin]">
+            <div className="grid min-w-[900px] grid-cols-7 gap-2 lg:min-w-0">
               {gridDays.map((d) => {
                 const dayEvents = shown.filter(
                   (e) => new Date(e.start).toDateString() === d.toDateString()
@@ -356,11 +372,13 @@ function CalendarContent() {
                 );
               })}
             </div>
+            </div>
           </div>
 
           {/* Agenda — the mobile kit's shape, and the only one that works at
-              390px. Shown below the grid on desktop as the scrollable detail. */}
-          <div className="lg:hidden">
+              390px. Kept on every width now that the grid pans: the grid shows
+              the shape of a week, the agenda answers what is next. */}
+          <div>
             <Section title="Coming up" days={upcoming} empty="Nothing scheduled ahead." colorOf={colorOf} nameOf={nameOf} />
             <div className="mt-4">
               <Section title="Already happened" days={past} empty="Nothing yet." colorOf={colorOf} nameOf={nameOf} />
@@ -445,70 +463,39 @@ function CalendarContent() {
             </section>
           )}
 
-          {/* ICS subscribe. A copyable link rather than a download, so the
-              calendar stays in sync instead of going stale the day it is added. */}
-          <div className="rounded-2xl border border-border bg-background p-4">
-            <div className="flex items-start gap-3">
-              <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-sky-100 text-sky-700">
-                <CalendarIcon className="size-4" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <h2 className="text-sm font-bold text-ink">Add to your own calendar</h2>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  Paste this into Google, Apple or Outlook Calendar and every class stays in sync.
-                </p>
-                <code className="mt-2 block break-all rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                  {subscribeUrl ?? 'Loading your link…'}
-                </code>
-              </div>
-            </div>
-
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                onClick={() => {
-                  if (!subscribeUrl) return;
-                  void navigator.clipboard?.writeText(subscribeUrl);
-                  setCopied(true);
-                  window.setTimeout(() => setCopied(false), 2000);
-                }}
-                disabled={!subscribeUrl}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3.5 py-2 text-xs font-semibold text-ink hover:bg-muted disabled:opacity-50"
-              >
-                <Copy className="size-3.5" />
-                {copied ? 'Copied' : 'Copy subscribe link'}
-              </button>
-              <button
-                onClick={rotate}
-                disabled={rotating}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3.5 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50"
-              >
-                {rotating ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
-                Reset link
-              </button>
-            </div>
-
-            {rotated && (
-              <p className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
-                {rotated}
-              </p>
-            )}
-
-            {/* The honest warning. This link is the credential — there is no
-                password on it — and a parent who forwards it is handing over
-                their children's timetable. Rotation is the only recovery, which
-                is why the button sits right here rather than in Settings. */}
-            <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-              Anyone with this link can see your children&rsquo;s class times, so treat it like a
-              password. Reset it if you have shared it by accident — the old link stops working
-              straight away. Attendance is never included in the feed.
-            </p>
-          </div>
         </>
       )}
     </div>
   );
 }
 
+
+/** One rate, never bare: percentage, count and the base it was taken over. */
+function Rate({
+  dot,
+  label,
+  n,
+  pct,
+  of,
+  ofLabel = 'sessions',
+}: {
+  dot: string;
+  label: string;
+  n: number;
+  pct: number;
+  of: number;
+  ofLabel?: string;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className={`size-2 rounded-full ${dot}`} />
+      <span className="font-semibold text-ink">{label}</span>
+      <span className="tabular-nums">
+        {pct}% · {n} of {of} {ofLabel}
+      </span>
+    </span>
+  );
+}
 
 function Section({
   title,

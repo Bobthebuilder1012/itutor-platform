@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, GraduationCap, FileText, Calendar, Clock, Check, AlertCircle, X, BookOpen, ChevronRight, Trash2, ClipboardCheck, MessageSquare, CreditCard, Ban } from 'lucide-react';
@@ -540,6 +540,114 @@ function OverviewTab({
   );
 }
 
+/**
+ * Attendance split as a bar — Late, Absent and Missed against their own bases.
+ *
+ * Missed (cancelled, or the tutor never started the class) sits outside the
+ * counted denominator and is reported against sessions SCHEDULED. Folding it in
+ * with absent would blame a child for a class that never ran, and that is the one
+ * figure a parent is most likely to act on.
+ */
+function RateBar({ attended, late, absent, missed }: { attended: number; late: number; absent: number; missed: number }) {
+  const counted = attended + late + absent;
+  if (counted === 0 && missed === 0) return null;
+  const pct = (n: number) => (counted ? Math.round((n / counted) * 100) : 0);
+  const scheduled = counted + missed;
+  return (
+    <>
+      <div className="mt-3 flex h-2.5 w-full overflow-hidden rounded-full bg-muted">
+        {attended > 0 && <div className="bg-emerald-500" style={{ width: `${pct(attended)}%` }} />}
+        {late > 0 && <div className="bg-amber-500" style={{ width: `${pct(late)}%` }} />}
+        {absent > 0 && <div className="bg-rose-500" style={{ width: `${pct(absent)}%` }} />}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-2 rounded-full bg-amber-500" />
+          <span className="font-semibold text-ink">Late</span>
+          <span className="tabular-nums">{pct(late)}% · {late} of {counted}</span>
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-2 rounded-full bg-rose-500" />
+          <span className="font-semibold text-ink">Absent</span>
+          <span className="tabular-nums">{pct(absent)}% · {absent} of {counted}</span>
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-2 rounded-full bg-muted-foreground/40" />
+          <span className="font-semibold text-ink">Missed</span>
+          <span className="tabular-nums">
+            {scheduled ? Math.round((missed / scheduled) * 100) : 0}% · {missed} of {scheduled} scheduled
+          </span>
+        </span>
+      </div>
+    </>
+  );
+}
+
+/**
+ * The child's sessions as a strip that pans sideways — newest last, so it opens
+ * scrolled to the most recent, which is what a parent came to look at.
+ *
+ * Built from the rows already on the page rather than a second fetch, so the
+ * strip and the list below it can never disagree.
+ */
+function SessionStrip({ rows }: { rows: AttRow[] }) {
+  const days = useMemo(() => {
+    const byDay = new Map<string, AttRow[]>();
+    for (const r of rows) {
+      const k = new Date(r.start).toDateString();
+      (byDay.get(k) ?? byDay.set(k, []).get(k)!).push(r);
+    }
+    return [...byDay.entries()]
+      .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
+      .map(([day, list]) => ({ day, list }));
+  }, [rows]);
+
+  const stripRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = stripRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [days.length]);
+
+  if (days.length === 0) return null;
+
+  return (
+    <div className="rounded-2xl border border-border bg-background p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Session history</h3>
+        <span className="text-[10px] text-muted-foreground">Swipe or scroll sideways</span>
+      </div>
+      <div ref={stripRef} className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:thin]">
+        {days.map(({ day, list }) => {
+          const d = new Date(day);
+          return (
+            <div key={day} className="w-[104px] shrink-0 rounded-xl border border-border bg-muted/20 p-2">
+              <div className="text-[10px] font-semibold text-muted-foreground">
+                {d.toLocaleDateString('en-TT', { weekday: 'short', day: 'numeric', month: 'short' })}
+              </div>
+              <div className="mt-1.5 space-y-1">
+                {list.map((r) => {
+                  const st = (r.status ?? (r.present ? 'attended' : 'absent')) as string;
+                  const tone =
+                    st === 'attended' ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                    : st === 'late' ? 'bg-amber-50 text-amber-700 border-amber-300'
+                    : st === 'absent' ? 'bg-rose-50 text-rose-700 border-rose-300'
+                    : 'bg-muted text-muted-foreground border-border';
+                  return (
+                    <div key={r.key} className={cn('rounded-lg border px-1.5 py-1', tone)} title={r.label}>
+                      <div className="truncate text-[10px] font-semibold">{r.label}</div>
+                      <div className="text-[9px] capitalize opacity-80">{st}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function AttendanceTab({ rows, summary, loading }: { rows: AttRow[]; summary: AttSummary | null; loading: boolean }) {
   if (loading) {
     return <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="h-16 rounded-2xl bg-muted animate-pulse" />)}</div>;
@@ -579,6 +687,16 @@ function AttendanceTab({ rows, summary, loading }: { rows: AttRow[]; summary: At
             )}
           </div>
 
+          {/* The same bar the family calendar draws, over the same denominator
+              the rate above quotes. One child's number should not depend on
+              which page a parent read it from. */}
+          <RateBar
+            attended={summary.attended ?? 0}
+            late={summary.late ?? 0}
+            absent={summary.absent ?? 0}
+            missed={(summary.cancelled ?? 0) + (summary.excluded ?? 0)}
+          />
+
           {/* The §6 tutor-absent guard, explained where it changes the number.
               A denominator that silently shrinks looks like a bug. */}
           {(summary.excluded ?? 0) > 0 && (
@@ -598,6 +716,8 @@ function AttendanceTab({ rows, summary, loading }: { rows: AttRow[]; summary: At
           </p>
         </div>
       )}
+
+      <SessionStrip rows={rows} />
 
       <div className="space-y-2">
         {rows.map((r) => {
