@@ -440,22 +440,17 @@ function ClassCard({ g, onJoin, joining }: { g: GroupListing; onJoin: () => void
         // (402) because there is no parent checkout, and the student subscribe
         // flow assumes the payer is the student. Saying so on the card beats
         // offering a button whose only outcome is an error toast.
-        <button
-          onClick={onJoin}
-          disabled={isFull || joining}
-          className={cn('inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition disabled:opacity-50',
-            isFull ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'bg-brand text-white hover:bg-brand-deep')}>
+        /* The card no longer starts a payment. It opens the class, the same way
+           the student marketplace does — a parent has not sat in the class or met
+           the tutor, so a name and a price is not enough to buy on. Child choice
+           and the §5 checks happen on that page, before any card. */
+        <Link
+          href={`/parent/classes/${g.id}`}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-brand px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-deep"
+        >
           {isPaid ? <CreditCard className="size-3.5" /> : <UserPlus className="size-3.5" />}
-          {/* The label states what pressing it does. "Join for child" on a class
-              that charges a card is the kind of wording a chargeback quotes. */}
-          {isFull
-            ? 'Full'
-            : isPaid
-              ? 'Subscribe for child'
-              : g.require_join_requests
-                ? 'Request for child'
-                : 'Join for child'}
-        </button>
+          View this class
+        </Link>
       }
     />
   );
