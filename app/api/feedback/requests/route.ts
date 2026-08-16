@@ -154,7 +154,7 @@ async function notifyTutor(
     title: `Feedback requested for ${childName}`,
     // No date pressure, no "by when". The request date is the only fact given.
     message: 'They asked for a general update on how this student is doing.',
-    link: '/tutor/students',
+    link: '/tutor/feedback',
     metadata: { request_id: params.requestId, child_id: params.childId },
   });
 

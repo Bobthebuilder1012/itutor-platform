@@ -7,7 +7,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard, BookOpen, CalendarDays, Users, Wallet,
   Sparkles, Settings, Bell, Search, LogOut, ChevronUp, PanelLeftClose, PanelLeftOpen, Lock,
-  Calendar as CalendarIcon, Star, Rocket, Menu, X,
+  Calendar as CalendarIcon, Star, Rocket, Menu, X, MessageSquareQuote,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -24,6 +24,11 @@ const nav: NavItem[] = [
   { to: '/tutor/classes', label: 'My Classes', icon: BookOpen },
   { to: '/tutor/sessions', label: 'Sessions', icon: CalendarDays },
   { to: '/tutor/students', label: 'My Students', icon: Users },
+  // /tutor/feedback existed and worked, but was only ever listed in
+  // DashboardLayout — a shell the tutor pages stopped using. So a parent could
+  // request feedback, the tutor got the email and the in-app notification, and
+  // then had nowhere to go: the page was reachable only by typing the URL.
+  { to: '/tutor/feedback', label: 'Feedback', icon: MessageSquareQuote },
   { to: '/tutor/wallet', label: 'My Wallet', icon: Wallet },
   { to: '/tutor/reviews', label: 'Reviews', icon: Star },
   { to: '/tutor/business', label: 'My Business', icon: Rocket, gated: true },
