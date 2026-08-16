@@ -51,6 +51,18 @@ type Summary = {
   releaseDate?: string | null;
   /** Class finishes inside the first month: one-time purchase, nothing after. */
   shortClass?: boolean;
+  /** The class being bought — so checkout says WHAT, not only how much. */
+  classProfile?: {
+    name: string;
+    coverImage: string | null;
+    subject: string | null;
+    formLevel: string | null;
+    description: string | null;
+    maxStudents: number | null;
+  } | null;
+  /** Named when the payer is not the student (a parent buying for a child). */
+  forStudent?: string | null;
+  groupId?: string | null;
 };
 
 export default function PaymentCheckout() {
@@ -122,6 +134,9 @@ export default function PaymentCheckout() {
           isSecureSpot: d.kind === 'secure_spot',
           releaseDate: d.releaseDate ?? null,
           shortClass: d.shortClass ?? false,
+          classProfile: d.classProfile ?? null,
+          forStudent: d.forStudent ?? null,
+          groupId: d.groupId ?? null,
           // Land on the confirmation page, which polls the status route and
           // then shows the receipt + download. Keyed on the intent id because
           // the payments row doesn't exist until the webhook creates it.

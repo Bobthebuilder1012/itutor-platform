@@ -140,7 +140,13 @@ export async function GET(
 
       const { data: group } = await admin
         .from('groups')
-        .select('id, name, tutor_id, session_length_minutes, end_date')
+        // cover_image / subject / form_level / description feed the class
+        // profile block on the checkout. schedule_data and session_schedule are
+        // deliberately NOT selected: they exist on production and not on
+        // staging, and PostgREST rejects the whole select for one unknown
+        // column — which would blank the checkout summary on staging. The
+        // schedule line comes from /api/groups/schedules instead.
+        .select('id, name, tutor_id, session_length_minutes, end_date, cover_image, subject, form_level, description, max_students')
         .eq('id', sp.group_id)
         .maybeSingle();
 
@@ -151,6 +157,19 @@ export async function GET(
             .eq('id', group.tutor_id)
             .maybeSingle()
         : { data: null };
+
+      // Only when the payer is someone else — a student paying for themself
+      // does not need to be told whose class it is.
+      let studentName: string | null = null;
+      if (sp.payer_id && sp.payer_id !== sp.student_id) {
+        const { data: st } = await admin
+          .from('profiles')
+          .select('full_name, display_name')
+          .eq('id', sp.student_id)
+          .maybeSingle();
+        const s = st as { full_name: string | null; display_name: string | null } | null;
+        studentName = s?.display_name || s?.full_name || null;
+      }
 
       const base = Number(sp.amount_ttd ?? 0);
       const fee = Number(sp.charged_processing_fee_ttd ?? 0);
@@ -176,6 +195,20 @@ export async function GET(
         subject: group?.name || 'Group class',
         groupId: sp.group_id,
         enrollmentId: sp.enrollment_id,
+        // The class as an object, so checkout can show WHAT is being bought
+        // rather than only what it costs.
+        classProfile: {
+          name: group?.name ?? 'Group class',
+          coverImage: (group as any)?.cover_image ?? null,
+          subject: (group as any)?.subject ?? null,
+          formLevel: (group as any)?.form_level ?? null,
+          description: (group as any)?.description ?? null,
+          maxStudents: (group as any)?.max_students ?? null,
+        },
+        // Who the seat is for, when that is not the person paying. A parent
+        // buying for two children needs the checkout to name which one — the
+        // page otherwise says "your class" about someone else's.
+        forStudent: studentName,
       });
     }
 

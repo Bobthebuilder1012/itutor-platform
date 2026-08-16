@@ -15,7 +15,8 @@
 // rather than leaving a parent to discover it by looking for a reply box in the
 // wrong place.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Loader2, MessageSquare, Send, ShieldCheck } from 'lucide-react';
 import ParentShell from '@/components/parent/ParentShell';
@@ -40,13 +41,17 @@ type Msg = { id: string; content: string; sender_id: string; created_at: string 
 export default function ParentMessagesPage() {
   return (
     <ParentShell>
-      <MessagesContent />
+      {/* useSearchParams needs a Suspense boundary for the ?tutor= deep link. */}
+      <Suspense fallback={null}>
+        <MessagesContent />
+      </Suspense>
     </ParentShell>
   );
 }
 
 function MessagesContent() {
   const { profile } = useProfile();
+  const searchParams = useSearchParams();
   const [tutors, setTutors] = useState<Tutor[]>([]);
   const [openTutor, setOpenTutor] = useState<Tutor | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -89,6 +94,20 @@ function MessagesContent() {
     },
     [profile?.id]
   );
+
+  // ?tutor=<id> opens that thread directly, so "Message tutor" elsewhere in the
+  // parent app lands IN the conversation rather than on a list the parent then
+  // has to search. Runs once the tutor list is in — the id has to resolve to a
+  // real tutor of one of their children before anything opens.
+  const deepLinkTutor = searchParams.get('tutor');
+  const deepLinked = useRef(false);
+  useEffect(() => {
+    if (deepLinked.current || !deepLinkTutor || tutors.length === 0) return;
+    const match = tutors.find((t) => t.id === deepLinkTutor);
+    if (!match) return;
+    deepLinked.current = true;
+    void openThread(match);
+  }, [deepLinkTutor, tutors, openThread]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end' });

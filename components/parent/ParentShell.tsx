@@ -7,7 +7,7 @@ import { useEffect, useState, type ComponentType } from 'react';
 import {
   LayoutDashboard, Users, Receipt, Settings, Bell,
   PanelLeftClose, PanelLeftOpen, ChevronUp, LogOut,
-  ShieldCheck, MessageSquareQuote, CalendarDays, Search,
+  ShieldCheck, MessageSquareQuote, CalendarDays, Search, Compass,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -18,13 +18,18 @@ type NavItem = { to: string; label: string; icon: ComponentType<{ className?: st
 
 const nav: NavItem[] = [
   { to: '/parent/dashboard',     label: 'Home',          icon: LayoutDashboard, exact: true, tint: 'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-400/30' },
-  // Second, per §9.1's sidebar order. A booking request that is never seen
-  // expires two hours before the class and sends no email when it does (§4.2),
-  // so this cannot be buried.
-  { to: '/parent/approvals',     label: 'Approvals',     icon: ShieldCheck,                  tint: 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-400/30' },
+  // Explore earns a permanent slot. It was kept out on kit-fidelity grounds and
+  // reached only from a top-bar button, which made browsing feel like a detour —
+  // for a parent with no classes yet it is the first thing they need.
+  { to: '/parent/classes',       label: 'Explore',       icon: Compass,                      tint: 'bg-rose-500/20 text-rose-300 ring-1 ring-rose-400/30' },
   { to: '/parent/children',      label: 'Children',      icon: Users,                        tint: 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-400/30' },
   { to: '/parent/calendar',      label: 'Calendar',      icon: CalendarDays,                 tint: 'bg-sky-500/20 text-sky-300 ring-1 ring-sky-400/30' },
   { to: '/parent/feedback',      label: 'Feedback',      icon: MessageSquareQuote,           tint: 'bg-fuchsia-500/20 text-fuchsia-300 ring-1 ring-fuchsia-400/30' },
+  // Last, and violet rather than amber. It sat second because an unseen request
+  // expires two hours before the class with no email (§4.2) — the badge is what
+  // actually carries that urgency, not the position, and amber made every other
+  // item compete with Children for the same colour.
+  { to: '/parent/approvals',     label: 'Approvals',     icon: ShieldCheck,                  tint: 'bg-violet-500/20 text-violet-300 ring-1 ring-violet-400/30' },
 ];
 
 // WHAT IS DELIBERATELY NOT IN THIS NAV
@@ -32,17 +37,17 @@ const nav: NavItem[] = [
 // Billing is not a destination: the design kit puts subscriptions and
 // transactions inside Settings → Billing, and this follows it. The five items
 // above are exactly the kit's sidebar — Dashboard, Approvals, Children, Calendar,
-// Feedback — which is also all the mobile bottom bar's five columns can hold.
-// Adding Approvals, Calendar and Feedback without removing the old three would
-// have put eight items into a grid-cols-5 bar.
+// Feedback, plus Explore. The mobile bar now sizes itself from nav.length, so
+// the five-column ceiling that shaped this list no longer applies.
 //
-// Find Classes is not here either, matching the kit, where browsing starts from a
-// "Find a class" action on the dashboard rather than a permanent sidebar slot —
-// browsing is neutral and occasional, not somewhere a parent lives.
+// Explore DOES have a permanent slot now. It was previously reached only from a
+// "Find a class" action on the dashboard, on the kit's reasoning that browsing is
+// neutral and occasional. That reasoning holds for a parent whose children are
+// already enrolled and not for one whose aren't — and the second is every new
+// parent. The dashboard's "Find a class" button stays as well.
 //
-// /parent/classes, /parent/subscriptions and /parent/transactions all still exist
-// and still work. Nothing is deleted and no bookmark breaks; they are simply
-// reached from the dashboard and from Settings now.
+// /parent/subscriptions and /parent/transactions still exist and still work.
+// Nothing is deleted and no bookmark breaks; they are reached from Settings.
 
 const COLLAPSE_KEY = 'itutor.parentSidebar.collapsed';
 
@@ -221,7 +226,10 @@ export default function ParentShell({ children }: { children: React.ReactNode })
         </main>
 
         <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-border bg-background/95 backdrop-blur">
-          <div className="grid grid-cols-5">
+          {/* Six columns now that Explore has a permanent slot. Driven off the
+              nav length rather than a literal, so the bar cannot silently
+              squash the next time an item is added. */}
+          <div className="grid" style={{ gridTemplateColumns: `repeat(${nav.length}, minmax(0, 1fr))` }}>
             {nav.map((item) => {
               const active = item.exact ? pathname === item.to : pathname === item.to || pathname.startsWith(item.to + '/');
               const Icon = item.icon;

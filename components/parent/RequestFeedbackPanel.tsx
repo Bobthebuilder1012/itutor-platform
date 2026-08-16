@@ -20,7 +20,8 @@
 // recreates the chasing pressure decision 12 removed.
 
 import { useCallback, useEffect, useState } from 'react';
-import { Check, Loader2, MessageSquareQuote, Users } from 'lucide-react';
+import Link from 'next/link';
+import { Check, Loader2, MessageSquare, MessageSquareQuote, Users } from 'lucide-react';
 
 type Child = { id: string; name: string };
 type Teacher = { tutorId: string; tutorName: string; tutorAvatar: string | null };
@@ -237,6 +238,19 @@ export default function RequestFeedbackPanel() {
                     ) : null}
                     {used ? 'Requested this month' : 'Request feedback'}
                   </button>
+
+                  {/* Always available, and deliberately NOT disabled by the
+                      quota. The monthly limit is on formal written feedback;
+                      asking the tutor a question is not rationed, and a parent
+                      whose request is spent still needs a way to reach them —
+                      that is exactly when they most want one. */}
+                  <Link
+                    href={`/parent/messages?tutor=${encodeURIComponent(t.tutorId)}`}
+                    className="mt-1.5 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-ink hover:bg-muted"
+                  >
+                    <MessageSquare className="size-3.5" />
+                    Message tutor
+                  </Link>
 
                   {used && q?.nextOpens && (
                     // The next opening, not a due date. §8.1.

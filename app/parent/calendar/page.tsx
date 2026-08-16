@@ -21,7 +21,7 @@
 // Every percentage on this page carries its denominator (§6). There is no bare
 // figure anywhere.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Ban, Calendar as CalendarIcon, Check, Clock, Loader2, X } from 'lucide-react';
 import ParentShell from '@/components/parent/ParentShell';
 
@@ -144,9 +144,12 @@ function CalendarContent() {
     const start = new Date(now);
 
     if (view === 'Week') {
-      // Monday-first, matching the kit.
+      // Monday-first, matching the kit — but starting a week BACK and running
+      // three weeks forward. The grid used to render exactly the current week
+      // and stop, so there was no way to look at next week at all; now the row
+      // is longer than the viewport by design and pans side to side.
       const dow = (start.getDay() + 6) % 7;
-      start.setDate(start.getDate() - dow);
+      start.setDate(start.getDate() - dow - 7);
     } else {
       start.setDate(1);
       const dow = (start.getDay() + 6) % 7;
@@ -154,13 +157,25 @@ function CalendarContent() {
     }
     start.setHours(0, 0, 0, 0);
 
-    const count = view === 'Week' ? 7 : 42;
+    // 28 = last week, this week, and two ahead. Enough to plan around without
+    // the row becoming an endless scroll with no landmarks.
+    const count = view === 'Week' ? 28 : 42;
     return Array.from({ length: count }, (_, i) => {
       const d = new Date(start);
       d.setDate(start.getDate() + i);
       return d;
     });
   }, [view]);
+
+  // The row starts a week in the past, so it must open scrolled to today —
+  // otherwise the first thing a parent sees is last week.
+  const gridRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const box = gridRef.current;
+    const today = box?.querySelector<HTMLElement>('[data-today="true"]');
+    if (!box || !today) return;
+    box.scrollLeft = Math.max(0, today.offsetLeft - box.clientWidth / 2 + today.clientWidth / 2);
+  }, [view, gridDays, loading]);
 
   const colorOf = (childId: string) => children.find((c) => c.id === childId)?.color ?? '#9ca3af';
   const nameOf = (childId: string) =>
@@ -311,18 +326,27 @@ function CalendarContent() {
             </div>
 
             {/* -mx-1/px-1 so a focus ring on the first tile is not clipped by
-                the scroll container. */}
-            <div className="-mx-1 overflow-x-auto px-1 pb-1 [scrollbar-width:thin]">
-            <div className="grid min-w-[900px] grid-cols-7 gap-2 lg:min-w-0">
+                the scroll container. Week pans as one long row of fixed-width
+                days; Month keeps the seven-column block, where panning would
+                just break the weekday alignment that makes a month readable. */}
+            <div
+              ref={gridRef}
+              className="-mx-1 overflow-x-auto px-1 pb-1 [scrollbar-width:thin]"
+            >
+            <div className={view === 'Week' ? 'flex gap-2' : 'grid min-w-[900px] grid-cols-7 gap-2 lg:min-w-0'}>
               {gridDays.map((d) => {
                 const dayEvents = shown.filter(
                   (e) => new Date(e.start).toDateString() === d.toDateString()
                 );
+                const isToday = d.toDateString() === new Date().toDateString();
                 return (
                   <div
                     key={d.toISOString()}
+                    data-today={isToday ? 'true' : undefined}
                     className={`min-h-[110px] rounded-xl border p-2 ${
-                      d.toDateString() === new Date().toDateString()
+                      view === 'Week' ? 'w-[132px] shrink-0' : ''
+                    } ${
+                      isToday
                         ? 'border-brand/40 bg-brand/5'
                         : 'border-border bg-background'
                     }`}
@@ -379,7 +403,7 @@ function CalendarContent() {
               390px. Kept on every width now that the grid pans: the grid shows
               the shape of a week, the agenda answers what is next. */}
           <div>
-            <Section title="Coming up" days={upcoming} empty="Nothing scheduled ahead." colorOf={colorOf} nameOf={nameOf} />
+            <Section title="Coming up" days={upcoming} empty="Nothing scheduled ahead." colorOf={colorOf} nameOf={nameOf} initialCount={3} />
             <div className="mt-4">
               <Section title="Already happened" days={past} empty="Nothing yet." colorOf={colorOf} nameOf={nameOf} />
             </div>
@@ -503,14 +527,39 @@ function Section({
   empty,
   colorOf,
   nameOf,
+  initialCount,
 }: {
   title: string;
   days: Record<string, Event[]>;
   empty: string;
   colorOf: (id: string) => string;
   nameOf: (id: string) => string;
+  /** Cap the CLASSES shown before a Show-more; omit for no cap. */
+  initialCount?: number;
 }) {
-  const keys = Object.keys(days);
+  const [expanded, setExpanded] = useState(false);
+  const allKeys = Object.keys(days);
+
+  // Counted in CLASSES, not day-groups: "the next 3 upcoming classes" means
+  // three classes, and a day holding two of them must not spend two slots.
+  const { keys, shownDays, hiddenCount } = (() => {
+    if (!initialCount || expanded) {
+      return { keys: allKeys, shownDays: days, hiddenCount: 0 };
+    }
+    const out: Record<string, Event[]> = {};
+    const kept: string[] = [];
+    let budget = initialCount;
+    let total = 0;
+    for (const k of allKeys) total += days[k].length;
+    for (const k of allKeys) {
+      if (budget <= 0) break;
+      const slice = days[k].slice(0, budget);
+      out[k] = slice;
+      kept.push(k);
+      budget -= slice.length;
+    }
+    return { keys: kept, shownDays: out, hiddenCount: Math.max(0, total - initialCount) };
+  })();
   return (
     <section>
       <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{title}</h2>
@@ -522,7 +571,7 @@ function Section({
             <div key={day}>
               <div className="text-xs font-semibold text-ink">{day}</div>
               <div className="mt-1.5 space-y-2">
-                {days[day].map((e) => {
+                {shownDays[day].map((e) => {
                   const o = e.outcome && e.outcome in OUTCOME ? OUTCOME[e.outcome as keyof typeof OUTCOME] : null;
                   const Icon = o?.icon;
                   return (
@@ -561,6 +610,17 @@ function Section({
               </div>
             </div>
           ))}
+
+          {hiddenCount > 0 && (
+            <button
+              onClick={() => setExpanded(true)}
+              className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-xs font-semibold text-ink hover:bg-muted"
+            >
+              {/* The count is stated, so pressing it is a known quantity rather
+                  than an unknown amount of scrolling. */}
+              Show {hiddenCount} more {hiddenCount === 1 ? 'class' : 'classes'}
+            </button>
+          )}
         </div>
       )}
     </section>

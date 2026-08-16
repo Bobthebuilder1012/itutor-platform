@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Send, Loader2, Check, ChevronRight, AlertCircle, GraduationCap, RefreshCw, UserPlus, Settings2 } from 'lucide-react';
+import { Send, Loader2, Check, ChevronRight, AlertCircle, GraduationCap, RefreshCw, Settings2 } from 'lucide-react';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import { getDisplayName } from '@/lib/utils/displayName';
@@ -97,15 +97,12 @@ function ChildrenContent() {
 
   return (
     <div className="space-y-6 max-w-3xl">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="text-xs text-muted-foreground">Welcome back, {parentName}</div>
-          <h1 className="text-2xl lg:text-3xl font-bold text-ink mt-0.5">Your children</h1>
-        </div>
-        <button onClick={() => { emailRef.current?.focus(); emailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep">
-          <UserPlus className="size-4" /> Invite a child
-        </button>
+      {/* No "Invite a child" button here. It only scrolled to the invite form
+          further down the same short page, so it was a second control for
+          something already fully on screen. */}
+      <div>
+        <div className="text-xs text-muted-foreground">Welcome back, {parentName}</div>
+        <h1 className="text-2xl lg:text-3xl font-bold text-ink mt-0.5">Your children</h1>
       </div>
 
       {/* Linked children */}
@@ -139,8 +136,11 @@ function ChildrenContent() {
         </div>
       )}
 
-      {/* Invite card */}
-      <section className="rounded-2xl border border-border bg-card p-6">
+      {/* Connection status — its own card. It was a bordered box nested inside
+          the invite card, which read as one control with a decorative header
+          rather than two separate things: this shows where a pending connection
+          has got to, the card below is the form that starts one. */}
+      <section className="rounded-2xl border border-border bg-card p-4">
         <div className="rounded-xl bg-muted/40 border border-border/60 p-4 flex items-center justify-center gap-4">
           <div className="flex flex-col items-center gap-1">
             <div className="size-11 rounded-full bg-brand/15 text-brand-deep grid place-items-center font-bold">{parentInitials}</div>
@@ -156,7 +156,11 @@ function ChildrenContent() {
           </div>
         </div>
 
-        <h2 className="mt-5 font-bold text-ink">Invite your child to connect</h2>
+      </section>
+
+      {/* Invite form — the second, separate card. */}
+      <section className="rounded-2xl border border-border bg-card p-6">
+        <h2 className="font-bold text-ink">Invite your child to connect</h2>
         <p className="text-sm text-muted-foreground mt-0.5">A connection is made by them, not by you — here’s the sequence.</p>
 
         <ol className="mt-4 space-y-3">
