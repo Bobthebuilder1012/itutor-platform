@@ -193,6 +193,29 @@ sites are scoped, and the RLS policy requires `user_id IS NULL OR user_id =
 auth.uid()`. Do not issue coupons against an environment where migration 231 has
 not been applied.
 
+### Precedence is undefined, and this phase must define it
+
+Found while leak-testing 231 on staging. The resolver orders `created_at desc`
+and takes the **first applicable** row — it has no notion of the *best* discount.
+Two consequences, both live:
+
+- **A personal coupon does not reliably beat a group-wide promotion.** A class
+  carrying a standing early-bird or open-ended offer can out-rank the campaign
+  coupon that was issued to bring the family back, purely on which row is newer.
+- **Ties are nondeterministic.** In the staging test both rows landed with an
+  identical `created_at` (same transaction), and which one won was arbitrary.
+  Coupons issued in a batch — the likely shape of campaign issuance — will
+  collide this way.
+
+The attendee is told they unlocked a specific percentage, so the checkout has to
+honour that number or the campaign's central promise breaks at the moment of
+payment.
+
+**Rule to implement:** a personal coupon owned by the buyer always outranks a
+group-wide promotion; within the same class, higher discount wins; break
+remaining ties deterministically on `id`. Order explicitly rather than relying on
+`created_at`, which is not unique.
+
 ---
 
 ## 3.5 Enrolment handoff

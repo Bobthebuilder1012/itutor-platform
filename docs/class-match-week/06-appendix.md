@@ -50,6 +50,7 @@ someone will look for them.
 | 13 | Whether past sessions disappear from Explore or remain visible as ended | 4 |
 | 14 | Whether the banner can be dismissed, and whether it returns | 4 |
 | 15 | Which enrolment status a reservation produces, reconciled with `ENROLLED_STATUSES` | 3 |
+| 15a | **Promotion precedence.** The resolver takes the newest applicable row, not the best — a personal coupon can lose to a standing class promotion, and identical `created_at` values tie nondeterministically. Found while leak-testing migration 231 | 3 |
 | 16 | Whether a campaign/opt-in entity is added, or the session row *is* the opt-in record | 1 |
 | 17 | How a class rejected by the manual audit is kept out — no "excluded from campaign" field exists | 1 |
 | 18 | Which column Phase 1.3 writes the Meet link to. The two options fail differently | 1 |
