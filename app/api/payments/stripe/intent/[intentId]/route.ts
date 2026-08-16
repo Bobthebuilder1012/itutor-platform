@@ -112,7 +112,7 @@ export async function GET(
 
       const { data: sp } = await admin
         .from('subscription_payments')
-        .select('id, enrollment_id, group_id, student_id, amount_ttd, charged_processing_fee_ttd')
+        .select('id, enrollment_id, group_id, student_id, payer_id, amount_ttd, charged_processing_fee_ttd')
         .eq('stripe_payment_intent_id', intentId)
         .maybeSingle();
 
@@ -121,9 +121,16 @@ export async function GET(
       }
 
       // Authorize against our own row, since there's no metadata to trust.
-      // The payer may be a parent, so allow the enrolment's student or a
-      // caller who is that student.
-      if (sp.student_id !== user.id) {
+      //
+      // EITHER PARTY may open this checkout: the student it enrols, or the payer
+      // when that is someone else. The comment here already said "the payer may
+      // be a parent" but the check only ever compared student_id — so a parent
+      // paying for a child was sent to their own checkout page and shown
+      // "Forbidden". There was no payer column to compare against until
+      // migration 230; now there is.
+      //
+      // The 1:1 branch below has always allowed both. This is the same rule.
+      if (sp.student_id !== user.id && sp.payer_id !== user.id) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
 

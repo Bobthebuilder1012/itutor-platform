@@ -66,9 +66,35 @@ export default function PaymentCheckout() {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // The payer is not always a student. Every "get me out of here" link on this
+  // page pointed at /student/*, which for a parent is a route AuthProvider
+  // bounces them straight back out of — so a failed checkout dead-ended.
+  const [role, setRole] = useState<string | null>(null);
+  // Checkout waits for this. The role arrives asynchronously, and an
+  // already-paid intent redirects on the very first pass — without the gate a
+  // parent would be sent to /student/bookings before their role was known.
+  const [roleLoaded, setRoleLoaded] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      // A signed-out visitor still has to stop waiting, or the page spins.
+      if (!user) { setRoleLoaded(true); return; }
+      const { data } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle();
+      setRole((data as { role: string | null } | null)?.role ?? null);
+      setRoleLoaded(true);
+    })();
+  }, []);
+
+  const isParent = role === 'parent';
+  const browseHref = isParent ? '/parent/classes' : '/student/explore';
+  const browseLabel = isParent ? 'Back to classes' : 'Back to Explore';
 
   // ---- Load whichever flow we're in -------------------------------
   const load = useCallback(async () => {
+    // Hold until the role is known — an already-paid intent redirects on the
+    // first pass, and redirecting a parent into /student/* is a bounce.
+    if (!roleLoaded) return;
     try {
       if (intentId) {
         const res = await fetch(`/api/payments/stripe/intent/${intentId}`, {
@@ -76,7 +102,7 @@ export default function PaymentCheckout() {
         });
         const d = await res.json();
         if (d?.alreadyPaid) {
-          router.replace('/student/bookings');
+          router.replace(isParent ? '/parent/dashboard' : '/student/bookings');
           return;
         }
         if (!res.ok) throw new Error(d?.error || 'Could not load checkout');
@@ -166,7 +192,7 @@ export default function PaymentCheckout() {
     } finally {
       setLoading(false);
     }
-  }, [bookingId, intentId, router]);
+  }, [bookingId, intentId, router, roleLoaded, isParent]);
 
   useEffect(() => {
     load();
@@ -207,7 +233,7 @@ export default function PaymentCheckout() {
           </h1>
           <p className="text-gray-600 mb-6">{error || 'Something went wrong.'}</p>
           <Link
-            href="/student/explore"
+            href={browseHref}
             className="inline-block rounded-lg bg-itutor-green px-6 py-3 font-semibold text-white transition hover:opacity-90"
           >
             Back to Explore
