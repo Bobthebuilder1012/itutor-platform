@@ -200,3 +200,5 @@ OAUTH_IMPLEMENTATION_COMPLETE.md
 
 migration-list.txt
 .env*
+itutor-planner/
+.claude/settings.json
