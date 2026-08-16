@@ -285,16 +285,83 @@ export default function PaymentCheckout() {
     <div className="min-h-screen bg-white">
       {/* Hero */}
       <div className="bg-brand-soft/60 px-4 py-10 text-center">
+        {/* "lesson" is wrong for a monthly class and wrong again for a held
+            seat, and "your" is wrong whenever a parent is paying for a child.
+            The heading now says what is actually being bought, and for whom. */}
         <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-gray-900">
-          Confirm and pay for your{' '}
-          <span className="text-itutor-green">{summary.subject}</span> lesson
+          {summary.isSecureSpot ? (
+            <>
+              Reserve {summary.forStudent ? `${summary.forStudent.split(' ')[0]}’s` : 'your'} place in{' '}
+              <span className="text-itutor-green">{summary.subject}</span>
+            </>
+          ) : summary.isSubscription ? (
+            <>
+              {summary.forStudent
+                ? `Subscribe ${summary.forStudent.split(' ')[0]} to `
+                : 'Subscribe to '}
+              <span className="text-itutor-green">{summary.subject}</span>
+            </>
+          ) : (
+            <>
+              Confirm and pay for {summary.forStudent ? `${summary.forStudent.split(' ')[0]}’s` : 'your'}{' '}
+              <span className="text-itutor-green">{summary.subject}</span> lesson
+            </>
+          )}
         </h1>
+        {summary.forStudent && (
+          <p className="mx-auto mt-2 max-w-xl text-sm text-gray-600">
+            You are paying. {summary.forStudent} is the one enrolled — the class, the schedule and
+            the attendance record are theirs.
+          </p>
+        )}
       </div>
 
       <div className="mx-auto max-w-5xl px-4 pb-16 -mt-6">
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] items-start">
           {/* ---------------- LEFT: summary ---------------- */}
           <div className="space-y-4">
+            {/* THE CLASS ITSELF, first. A checkout that shows a tutor, a price
+                and a plan but never the class is asking someone to confirm a
+                purchase they cannot see — and for a parent, who did not browse
+                to it, the class name alone is not enough to recognise it. */}
+            {summary.classProfile && (
+              <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                {summary.classProfile.coverImage ? (
+                  <div
+                    className="h-28 w-full"
+                    style={{
+                      backgroundImage: `url(${summary.classProfile.coverImage})`,
+                      backgroundSize: 'cover',
+                      backgroundPosition: 'center',
+                    }}
+                  />
+                ) : (
+                  <div className="h-28 w-full bg-gradient-to-br from-emerald-400 to-teal-500" />
+                )}
+                <div className="p-6">
+                  <h2 className="text-lg font-bold text-gray-900">{summary.classProfile.name}</h2>
+                  <p className="mt-0.5 text-sm text-gray-500">
+                    {[summary.classProfile.subject, summary.classProfile.formLevel]
+                      .filter(Boolean)
+                      .join(' · ') || 'Group class'}
+                  </p>
+                  {summary.classProfile.description && (
+                    <p className="mt-3 line-clamp-4 text-sm leading-relaxed text-gray-600">
+                      {summary.classProfile.description}
+                    </p>
+                  )}
+                  {summary.groupId && (
+                    <Link
+                      href={`/parent/classes`}
+                      className="mt-3 inline-block text-sm font-semibold text-itutor-green hover:underline"
+                    >
+                      Back to classes
+                    </Link>
+                  )}
+                </div>
+              </section>
+            )}
+
             <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
               <h2 className="text-sm font-semibold text-gray-500 mb-4">
                 Your tutor
