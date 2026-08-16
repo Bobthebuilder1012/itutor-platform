@@ -121,7 +121,7 @@ export default function ChildPickerCheck({
 
   if (children.length === 0) {
     return (
-      <p className="text-sm text-muted">
+      <p className="text-sm text-muted-foreground">
         Link a child to your account before booking a class for them.
       </p>
     );
@@ -130,12 +130,12 @@ export default function ChildPickerCheck({
   return (
     <div className="space-y-3">
       {children.length === 1 ? (
-        <p className="text-xs text-muted">
+        <p className="text-xs text-muted-foreground">
           Booking for {children[0].name} — your only linked child.
         </p>
       ) : (
         <>
-          <p className="text-sm font-semibold text-white">Who is this for?</p>
+          <p className="text-sm font-semibold text-ink">Who is this for?</p>
           <div className="flex flex-wrap gap-2">
             {children.map((c) => (
               <button
@@ -143,19 +143,19 @@ export default function ChildPickerCheck({
                 onClick={() => setChildId(c.id)}
                 className={`inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold transition ${
                   childId === c.id
-                    ? 'border-brand bg-brand/10 text-white'
-                    : 'border-white/15 text-muted hover:bg-white/5'
+                    ? 'border-brand bg-brand/10 text-ink'
+                    : 'border-border text-muted-foreground hover:bg-muted'
                 }`}
               >
                 {c.name}
                 {c.formLevel && (
-                  <span className="text-xs font-normal text-muted">{c.formLevel}</span>
+                  <span className="text-xs font-normal text-muted-foreground">{c.formLevel}</span>
                 )}
               </button>
             ))}
           </div>
           {/* Decision 26, said before it becomes a surprise at the card form. */}
-          <p className="text-xs text-muted">
+          <p className="text-xs text-muted-foreground">
             One child per checkout. Two children in the same class means two separate payments — do
             this one first, then repeat.
           </p>
@@ -163,7 +163,7 @@ export default function ChildPickerCheck({
       )}
 
       {checking && (
-        <div className="flex items-center gap-2 text-sm text-muted">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="size-4 animate-spin" />
           Checking {children.find((c) => c.id === childId)?.name.split(' ')[0]}’s schedule…
         </div>
@@ -184,28 +184,28 @@ export default function ChildPickerCheck({
               <Row tone="neutral" icon={<Info className="size-4" />}>
                 <strong>{result.schedule.message}</strong>
                 {result.schedule.detail && (
-                  <span className="mt-0.5 block text-muted">{result.schedule.detail}</span>
+                  <span className="mt-0.5 block text-muted-foreground">{result.schedule.detail}</span>
                 )}
               </Row>
 
               {result.alternatives.length > 0 ? (
-                <div className="rounded-xl border border-white/10 p-3.5">
-                  <p className="text-sm font-semibold text-white">Instead try these classes</p>
+                <div className="rounded-xl border border-border p-3.5">
+                  <p className="text-sm font-semibold text-ink">Instead try these classes</p>
                   <div className="mt-2 grid gap-2">
                     {result.alternatives.map((a) => (
                       <div key={a.groupId} className="flex flex-wrap items-center gap-2">
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-xs font-semibold text-white">
+                          <span className="block truncate text-xs font-semibold text-ink">
                             {a.name}
                           </span>
-                          <span className="block text-[11px] text-muted">
+                          <span className="block text-[11px] text-muted-foreground">
                             {a.tutorName}
                             {a.when ? ` · ${a.when}` : ''}
                           </span>
                         </span>
                         <a
                           href={`/student/explore/${a.groupId}`}
-                          className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-semibold text-white"
+                          className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-ink"
                         >
                           View
                         </a>
@@ -216,7 +216,7 @@ export default function ChildPickerCheck({
               ) : (
                 /* Not an error state, and styled as ordinary text so it does not
                    read as one. */
-                <p className="text-sm text-muted">No tutors found.</p>
+                <p className="text-sm text-muted-foreground">No tutors found.</p>
               )}
             </>
           )}
@@ -243,14 +243,14 @@ export default function ChildPickerCheck({
       )}
 
       {!childId && children.length > 1 && (
-        <p className="text-xs text-muted">Pick a child first.</p>
+        <p className="text-xs text-muted-foreground">Pick a child first.</p>
       )}
       {clashes && (
-        <p className="text-xs text-muted">Resolve the clash to continue.</p>
+        <p className="text-xs text-muted-foreground">Resolve the clash to continue.</p>
       )}
       {canProceed && (
         /* §5: no approval step — the parent is the decision-maker. */
-        <p className="text-xs text-muted">
+        <p className="text-xs text-muted-foreground">
           You are the decision-maker, so this needs no approval step.
         </p>
       )}
@@ -269,11 +269,11 @@ function Row({
 }) {
   const cls =
     tone === 'ok'
-      ? 'border-brand/30 bg-brand/10 text-white'
-      : 'border-white/10 bg-white/5 text-white';
+      ? 'border-brand/30 bg-brand/10 text-ink'
+      : 'border-border bg-muted/40 text-ink';
   return (
     <div className={`flex items-start gap-2 rounded-xl border px-3.5 py-2.5 text-sm ${cls}`}>
-      <span className={tone === 'ok' ? 'mt-0.5 text-brand' : 'mt-0.5 text-muted'}>{icon}</span>
+      <span className={tone === 'ok' ? 'mt-0.5 text-brand' : 'mt-0.5 text-muted-foreground'}>{icon}</span>
       <div className="min-w-0">{children}</div>
     </div>
   );
