@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Search, Star, Users, GraduationCap, Sparkles, Flame, UserCheck, Loader2, X, UserPlus, Lock } from 'lucide-react';
+import { Search, Star, Users, GraduationCap, Sparkles, Flame, UserCheck, Loader2, X, UserPlus, CreditCard } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { supabase } from '@/lib/supabase/client';
@@ -194,13 +194,38 @@ function ClassesContent() {
   async function doEnroll(childId: string, g: GroupListing) {
     setJoining(true);
     setToast(null);
+    const isPaidGroup = (g.price_monthly ?? 0) > 0 || g.pricing_model === 'MONTHLY';
     try {
-      const res = await fetch('/api/parent/enroll-child', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ childId, groupId: g.id }),
-      });
+      // A paid class goes through checkout; the membership is written by the
+      // webhook after the money clears, never here. A free class is still a
+      // direct join — there is nothing to charge, so there is nothing to wait for.
+      const res = await fetch(
+        isPaidGroup ? '/api/parent/enroll-child/subscribe' : '/api/parent/enroll-child',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ childId, groupId: g.id }),
+        }
+      );
       const data = await res.json();
       const childName = children.find((c) => c.id === childId)?.name ?? 'your child';
       if (!res.ok) { setToast({ kind: 'err', text: data.error || 'Could not join this class.' }); return; }
+
+      // 202 = the class was full and the child took a waitlist place. Not a
+      // failure, and not an enrolment either, so it says neither.
+      if (res.status === 202 && data.waitlisted) {
+        setToast({ kind: 'ok', text: `${g.name} is full — ${childName} is number ${data.position} on the waitlist.` });
+        return;
+      }
+
+      if (isPaidGroup && data.checkout_url) {
+        // Straight to payment. The seat is held for 30 minutes and the
+        // enrolment stays PENDING_PAYMENT until Stripe confirms, so leaving
+        // this page loses nothing but the reservation.
+        window.location.href = data.checkout_url;
+        return;
+      }
+
       setToast({ kind: 'ok', text: g.require_join_requests ? `Request sent for ${childName} to join ${g.name}.` : `${childName} joined ${g.name}.` });
     } catch {
       setToast({ kind: 'err', text: 'Could not join this class.' });
@@ -415,24 +440,22 @@ function ClassCard({ g, onJoin, joining }: { g: GroupListing; onJoin: () => void
         // (402) because there is no parent checkout, and the student subscribe
         // flow assumes the payer is the student. Saying so on the card beats
         // offering a button whose only outcome is an error toast.
-        isPaid ? (
-          <span
-            title="Your child can subscribe from their own account."
-            className="inline-flex items-center gap-1.5 rounded-xl bg-muted px-3 py-1.5 text-xs font-semibold text-muted-foreground"
-          >
-            <Lock className="size-3.5" />
-            Child subscribes
-          </span>
-        ) : (
-          <button
-            onClick={onJoin}
-            disabled={isFull || joining}
-            className={cn('inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition disabled:opacity-50',
-              isFull ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'bg-brand text-white hover:bg-brand-deep')}>
-            <UserPlus className="size-3.5" />
-            {isFull ? 'Full' : g.require_join_requests ? 'Request for child' : 'Join for child'}
-          </button>
-        )
+        <button
+          onClick={onJoin}
+          disabled={isFull || joining}
+          className={cn('inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition disabled:opacity-50',
+            isFull ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'bg-brand text-white hover:bg-brand-deep')}>
+          {isPaid ? <CreditCard className="size-3.5" /> : <UserPlus className="size-3.5" />}
+          {/* The label states what pressing it does. "Join for child" on a class
+              that charges a card is the kind of wording a chargeback quotes. */}
+          {isFull
+            ? 'Full'
+            : isPaid
+              ? 'Subscribe for child'
+              : g.require_join_requests
+                ? 'Request for child'
+                : 'Join for child'}
+        </button>
       }
     />
   );

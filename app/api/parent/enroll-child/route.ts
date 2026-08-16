@@ -28,28 +28,21 @@ export async function POST(request: NextRequest) {
     if (!group) return NextResponse.json({ error: 'Class not found' }, { status: 404 });
     if (group.archived_at) return NextResponse.json({ error: 'This class is no longer available' }, { status: 410 });
 
-    // PAID CLASSES FAIL CLOSED HERE.
+    // FREE CLASSES ONLY. A paid class belongs to
+    // /api/parent/enroll-child/subscribe, which takes payment first and lets the
+    // webhook write the membership once the money clears.
     //
-    // This route writes group_members directly. The student equivalent
-    // (/api/groups/[groupId]/subscribe) will not touch membership until Stripe
-    // Checkout completes — it requires MONTHLY + a positive price and tracks
-    // PENDING_PAYMENT. This route never read price at all, so a parent pressing
-    // "Join for child" on a paid class was granted an APPROVED membership and no
-    // charge was ever raised.
-    //
-    // Refusing is the only safe answer while the parent checkout does not exist.
-    // Enrolling free and reconciling later is not a lesser evil: it hands out the
-    // class, and the tutor is the one who goes unpaid for it.
-    //
-    // Nothing on production is unwound by this — prod has 0 parent accounts and
-    // 0 parent_child_links, so the path has never been reached. It is a hole to
-    // close before the parent rollout, not a leak to stop.
+    // This route writes group_members directly, so it must never see a paid
+    // class: it originally selected neither price nor pricing_model, and a parent
+    // pressing "Join for child" on a paid class got an APPROVED seat with no
+    // charge raised. The guard stays even now that checkout exists, because the
+    // defect was this route being able to grant a paid seat at all — a caller
+    // pointing at the wrong endpoint should be refused, not quietly obeyed.
     const priceMonthly = Number(group.price_monthly ?? 0);
     if (priceMonthly > 0 || group.pricing_model === 'MONTHLY') {
       return NextResponse.json(
         {
-          error:
-            'This class is paid, and paying for a child’s class isn’t available yet. Your child can subscribe from their own account, or choose a free class.',
+          error: 'This class is paid. Use the subscribe flow so the class is paid for.',
           reason: 'payment_required',
         },
         { status: 402 }

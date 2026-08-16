@@ -19,6 +19,9 @@ export interface CreatePendingPaymentParams {
   originalAmountTtd?: number | null;
   discountPercent?: number | null;
   promotionId?: string | null;
+  /** Who is charged, when that is not the student. Omitted = the student pays.
+   *  Recorded so a refund and a receipt reach the card that was actually used. */
+  payerId?: string | null;
 }
 
 export interface PendingPaymentRow {
@@ -60,6 +63,8 @@ export async function createPendingSubscriptionPayment(
       enrollment_id: params.enrollmentId,
       group_id: params.groupId,
       student_id: params.studentId,
+      payer_id:
+        params.payerId && params.payerId !== params.studentId ? params.payerId : null,
       type: params.type,
       amount_ttd: params.amountTtd,
       original_amount_ttd: params.originalAmountTtd ?? null,
