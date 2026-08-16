@@ -14,18 +14,23 @@ export async function GET(_req: NextRequest, { params }: Params) {
     if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const service = getServiceClient();
-    // Use rpc to bypass PostgREST schema cache (handles newly created tables)
-    const { data, error } = await service.rpc('get_group_promotions', { p_group_id: groupId });
-    if (!error && data) {
-      return NextResponse.json({ promotions: data });
-    }
 
-    // Fallback: direct table query
+    // This used to try an rpc('get_group_promotions') first and fall back to a
+    // direct query. That function does not exist in the database — the rpc has
+    // always errored and the fallback has always served the response. It is
+    // removed rather than created, because a future implementation that forgot
+    // the user_id filter below would silently reopen the leak that migration
+    // 231 closes.
+    //
+    // Class-level promotions only: personal coupons belong to one attendee and
+    // are not part of a tutor's class-promotion management. Service client, so
+    // RLS does not scope this.
     const { data: rows, error: err2 } = await service
       .from('group_promotions')
       .select('*')
       .eq('group_id', groupId)
       .eq('active', true)
+      .is('user_id', null)
       .order('created_at', { ascending: false });
 
     if (err2) {
@@ -115,12 +120,17 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     if (actor.notFound) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
     if (!actor.authorized) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
+    // Scoped to class-level promotions for the same reason GET is: this endpoint
+    // backs the tutor's class-promotions UI, which cannot see personal coupons.
+    // Without this, a supplied id could deactivate a campaign coupon that the
+    // caller was never shown.
     const { error } = await service
       .from('group_promotions')
       .update({ active: false })
       .eq('id', id)
       .eq('group_id', groupId)
-      .eq('tutor_id', actor.group.tutor_id);
+      .eq('tutor_id', actor.group.tutor_id)
+      .is('user_id', null);
 
     if (error) throw error;
 

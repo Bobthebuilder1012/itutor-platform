@@ -281,11 +281,20 @@ export async function createGroupSubscriptionCheckout(params: {
 
   let promotions: any[] | null = null;
   if (!isReusingEnrollment) {
+    // This runs on the ADMIN client, so RLS does not scope it — the filter has
+    // to be explicit here. A personal coupon (migration 231) belongs to one
+    // buyer; without `user_id`, one coupon row would discount this class for
+    // everyone who checks out. `user_id IS NULL` is a group-wide promotion,
+    // which is every row created before 231.
+    const nowIso = new Date().toISOString();
     const { data: promoRows } = await admin
       .from('group_promotions')
-      .select('id, kind, discount, student_cap, duration_days')
+      .select('id, kind, discount, student_cap, duration_days, user_id, expires_at, price_duration_months')
       .eq('group_id', groupId)
       .eq('active', true)
+      .or(`user_id.is.null,user_id.eq.${studentId}`)
+      .or(`expires_at.is.null,expires_at.gt.${nowIso}`)
+      .is('redeemed_at', null)
       .order('created_at', { ascending: false })
       .limit(5);
     promotions = promoRows;

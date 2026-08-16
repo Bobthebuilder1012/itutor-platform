@@ -314,11 +314,16 @@ export async function GET(_req: NextRequest, { params }: Params) {
     // Fetch active promotion for this group
     let activePromotion: any = null;
     try {
+      // Class-level promotions only. Personal coupons (migration 231) carry a
+      // user_id and belong to one attendee — surfacing one here would badge
+      // the class with a discount every other viewer cannot actually get.
+      // This runs on the service client, so RLS does not scope it.
       const { data: promos } = await service
         .from('group_promotions')
         .select('id, kind, discount, student_cap, duration_days, created_at')
         .eq('group_id', groupId)
         .eq('active', true)
+        .is('user_id', null)
         .order('created_at', { ascending: false });
 
       const now = new Date();

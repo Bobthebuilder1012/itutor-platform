@@ -426,11 +426,15 @@ export async function GET(request: NextRequest) {
     const promotionsByGroupId = new Map<string, any>();
     if (paginatedGroupIds.length > 0) {
       try {
+        // Class-level promotions only — a personal coupon (migration 231)
+        // belongs to one attendee and must not badge the class in a listing.
+        // Service client, so RLS does not scope this.
         const { data: promos } = await service
           .from('group_promotions')
           .select('id, group_id, kind, discount, student_cap, duration_days, created_at')
           .in('group_id', paginatedGroupIds)
           .eq('active', true)
+          .is('user_id', null)
           .order('created_at', { ascending: false });
         const now = new Date();
         for (const promo of promos ?? []) {

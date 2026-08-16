@@ -244,7 +244,11 @@ function ClassHubContent() {
         adminMode
           ? Promise.resolve({ data: adminGroupRow })
           : supabase.from('groups').select('*').eq('id', groupId).single(),
-        supabase.from('group_promotions').select('*').eq('group_id', groupId).eq('active', true).limit(1),
+        // `.is('user_id', null)` keeps this to class-level promotions. Personal
+        // coupons (migration 231) belong to one attendee; with `.limit(1)` here
+        // an unfiltered read could return a coupon instead of the real class
+        // promotion and misreport the class's own discount to its tutor.
+        supabase.from('group_promotions').select('*').eq('group_id', groupId).eq('active', true).is('user_id', null).limit(1),
       ]);
       const g = (groupRes as { data: any }).data;
       if (g) {

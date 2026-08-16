@@ -72,11 +72,14 @@ function MyBusinessContent() {
       let promotionsByGroup: Record<string, any> = {};
 
       if (classIds.length > 0) {
+        // Class-level promotions only — personal coupons (migration 231) are
+        // per-attendee and are not this tutor's class-promotion state.
         const { data: promoData } = await supabase
           .from('group_promotions')
           .select('*')
           .in('group_id', classIds)
-          .eq('active', true);
+          .eq('active', true)
+          .is('user_id', null);
         (promoData ?? []).forEach((p: any) => {
           if (!promotionsByGroup[p.group_id]) promotionsByGroup[p.group_id] = p;
         });
