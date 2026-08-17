@@ -607,6 +607,23 @@ export async function POST(request: NextRequest) {
     const resolvedVisibility: string | null =
       rawBody.visibility ?? (rawBody.isPublic === true ? 'public' : rawBody.isPublic === false ? 'unlisted' : null);
 
+    /**
+     * DRAFT or PUBLISHED. `groups.status` is NOT NULL DEFAULT 'PUBLISHED', and no
+     * insert here used to set it — so this endpoint could only ever publish, and
+     * the creation form's "Save as draft" button had nothing to call. It navigated
+     * away instead, discarding everything typed.
+     *
+     * Anything other than an explicit 'DRAFT' stays PUBLISHED, so every existing
+     * caller keeps its behaviour.
+     *
+     * SET ON EVERY FALLBACK TIER BELOW, not just the primary. The comment on
+     * end_date in those tiers is the cautionary tale: it lived on the primary
+     * insert alone, the primary always failed on production because of a column
+     * that does not exist there, and classes were created without it. A draft
+     * that silently published would be the same bug with worse consequences.
+     */
+    const resolvedStatus = rawBody.status === 'DRAFT' ? 'DRAFT' : 'PUBLISHED';
+
     let { data: group, error } = await service
       .from('groups')
       .insert({
@@ -618,6 +635,8 @@ export async function POST(request: NextRequest) {
         session_length_minutes: body.session_length_minutes ?? null,
         session_frequency: body.session_frequency ?? null,
         tutor_id: user.id,
+        // On every tier — see resolvedStatus above.
+        status: resolvedStatus,
         pricing: 'free',
         pricing_mode: body.pricing_mode ?? body.pricing_model ?? 'FREE',
         pricing_model: body.pricing_model ?? (
@@ -649,6 +668,8 @@ export async function POST(request: NextRequest) {
           session_length_minutes: body.session_length_minutes ?? null,
           session_frequency: body.session_frequency ?? null,
           tutor_id: user.id,
+          // On every tier — see resolvedStatus above.
+          status: resolvedStatus,
           // end_date is VALIDATED AS REQUIRED above, so it has to survive every
           // rung of this fallback chain. It was on the primary insert only, and
           // header_image — which the primary also carries — does not exist on
@@ -680,6 +701,8 @@ export async function POST(request: NextRequest) {
           description: body.description?.trim() ?? null,
           subject: subjectString,
           tutor_id: user.id,
+          // On every tier — see resolvedStatus above.
+          status: resolvedStatus,
           // end_date is VALIDATED AS REQUIRED above, so it has to survive every
           // rung of this fallback chain. It was on the primary insert only, and
           // header_image — which the primary also carries — does not exist on
@@ -701,6 +724,8 @@ export async function POST(request: NextRequest) {
           description: body.description?.trim() ?? null,
           subject: subjectString,
           tutor_id: user.id,
+          // On every tier — see resolvedStatus above.
+          status: resolvedStatus,
           // end_date is VALIDATED AS REQUIRED above, so it has to survive every
           // rung of this fallback chain. It was on the primary insert only, and
           // header_image — which the primary also carries — does not exist on

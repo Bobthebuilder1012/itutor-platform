@@ -33,7 +33,8 @@ function CreateClassContent() {
   const { profile } = useProfile();
   const [step, setStep] = useState<1 | 2>(1);
   const [type, setType] = useState<ClassType | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [submitting, setSubmitting] = useState<'PUBLISHED' | 'DRAFT' | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const [allSubjects, setAllSubjects] = useState<DbSubject[]>([]);
   const [subjectSearch, setSubjectSearch] = useState('');
@@ -92,14 +93,29 @@ function CreateClassContent() {
     setSubjectDropdownOpen(false);
   };
 
-  const handlePublish = async () => {
+  /**
+   * `status` decides whether this publishes or saves a draft.
+   *
+   * "Save as draft" used to call router.push and nothing else, so it discarded
+   * everything typed — the endpoint had no draft path to call (groups.status is
+   * NOT NULL DEFAULT 'PUBLISHED' and no insert set it). Both buttons now go
+   * through the same request; only the status differs.
+   *
+   * A draft still needs a name and an end date, because the endpoint requires
+   * both of every new class. Relaxing that for drafts would create rows that
+   * EndDateGate then blocks, which is the trap the duplicate-end-date bug came
+   * from.
+   */
+  const handleSubmit = async (status: 'PUBLISHED' | 'DRAFT') => {
     if (!profile?.id || !title.trim() || !endDate) return;
-    setSubmitting(true);
+    setSubmitting(status);
+    setSaveError(null);
     try {
       const res = await fetch('/api/groups', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          status,
           tutorId: profile.id,
           name: title,
           subject,
@@ -122,13 +138,18 @@ function CreateClassContent() {
       if (res.ok) {
         const data = await res.json();
         router.push(`/tutor/classes/${data.group?.id ?? data.id ?? ''}`);
-      } else {
-        router.push('/tutor/classes');
+        return;
       }
+      // Previously this navigated to /tutor/classes on failure, so a rejected
+      // save looked exactly like a successful one that had vanished — the tutor
+      // lost the form and was told nothing. The endpoint's messages are written
+      // for a person ("An end date is required..."), so show them.
+      const json = await res.json().catch(() => ({}));
+      setSaveError(json.error ?? 'We could not save this class — please try again.');
     } catch {
-      router.push('/tutor/classes');
+      setSaveError('We could not save this class — please check your connection and try again.');
     } finally {
-      setSubmitting(false);
+      setSubmitting(null);
     }
   };
 
@@ -346,18 +367,28 @@ function CreateClassContent() {
             </p>
           </div>
 
+          {saveError && (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 p-3">
+              <p className="text-sm text-rose-800">{saveError}</p>
+            </div>
+          )}
+
           <div className="flex justify-between items-center">
             <button onClick={() => setStep(1)} className="text-sm font-semibold text-muted-foreground hover:text-ink">← Back</button>
             <div className="flex items-center gap-2">
-              <button onClick={() => router.push('/tutor/classes')} className="px-4 py-2 rounded-lg border border-border text-sm font-semibold hover:bg-muted">
-                Save as draft
+              <button onClick={() => handleSubmit('DRAFT')} disabled={!!submitting || !title.trim() || !endDate}
+                className="px-4 py-2 rounded-lg border border-border text-sm font-semibold hover:bg-muted disabled:opacity-60">
+                {submitting === 'DRAFT' ? 'Saving…' : 'Save as draft'}
               </button>
-              <button onClick={handlePublish} disabled={submitting || !title.trim() || !endDate}
+              <button onClick={() => handleSubmit('PUBLISHED')} disabled={!!submitting || !title.trim() || !endDate}
                 className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand/90 disabled:opacity-60">
-                <Check className="size-4" /> {submitting ? 'Publishing…' : 'Publish Class'}
+                <Check className="size-4" /> {submitting === 'PUBLISHED' ? 'Publishing…' : 'Publish Class'}
               </button>
             </div>
           </div>
+          <p className="text-xs text-muted-foreground text-right -mt-3">
+            A draft is saved but not listed. You can publish it from the class page.
+          </p>
         </div>
       )}
     </div>
