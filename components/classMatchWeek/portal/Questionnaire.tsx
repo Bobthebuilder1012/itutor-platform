@@ -170,11 +170,11 @@ export default function Questionnaire({
       setSubjectOptions(null);
       setOptionsError(false);
     }
-    // Auto-advance after a short beat so the tap is visibly registered first.
-    advanceTimer.current = setTimeout(() => {
-      setStep(1);
-      void persist(buildPayload({ level: value, subjects: nextSubjects }));
-    }, 250);
+    // No auto-advance. Q1 now waits for Continue like every other step: the
+    // save still happens on selection, so nothing is lost, but the visitor
+    // decides when to move on. A single question that jumps forward under the
+    // finger is also the one people most often try to go back to.
+    void persist(buildPayload({ level: value, subjects: nextSubjects }));
   };
 
   const continueFrom = (index: number) => {
@@ -303,7 +303,9 @@ export default function Questionnaire({
   ];
 
   const canContinue =
-    step === 1
+    step === 0
+      ? level !== null
+      : step === 1
       ? subjects.length > 0
       : step === 2
         ? availability.length > 0
@@ -318,6 +320,19 @@ export default function Questionnaire({
   const rowIdle = 'border-border bg-white text-ink hover:border-brand';
   const rowSelected = 'border-brand bg-brand-soft text-brand-deep';
   const rowLocked = 'cursor-not-allowed border-border bg-muted text-ink-muted opacity-60';
+
+  /** The circle on the right of every option. Empty when unchosen, filled when
+   *  chosen — so a row looks selectable before it is touched. */
+  const Indicator = ({ selected, shape }: { selected: boolean; shape: 'radio' | 'check' }) => (
+    <span
+      aria-hidden
+      className={`grid size-5 shrink-0 place-items-center rounded-full border-2 transition-colors ${
+        selected ? 'border-brand bg-brand text-white' : 'border-border bg-white'
+      }`}
+    >
+      {selected && (shape === 'check' ? <Check className="size-3" /> : <span className="size-2 rounded-full bg-white" />)}
+    </span>
+  );
 
   const renderMaxTwo = (options: string[], current: string[], set: (next: string[]) => void) => (
     <div className="mt-4 grid gap-2">
@@ -341,7 +356,19 @@ export default function Questionnaire({
   );
 
   return (
-    <main className="min-h-screen bg-background px-4 pb-16 pt-6">
+    // Split shell: a tinted illustration panel on the left, the question on the
+    // right. The panel is decorative and carries no controls, so it is dropped
+    // below lg rather than stacked — on a phone it would push the first option
+    // off the fold, and this flow is targeted at phones over mobile data.
+    <main className="min-h-screen bg-background lg:grid lg:grid-cols-2">
+      <aside
+        aria-hidden
+        className="hidden lg:flex lg:min-h-screen lg:items-center lg:justify-center bg-mint p-12"
+      >
+        <StepArt step={step} />
+      </aside>
+
+      <div className="px-4 pb-16 pt-6 lg:flex lg:min-h-screen lg:items-center lg:px-12">
       <div className="mx-auto w-full max-w-md">
         {/* header: back (mandatory — subjects depend on level), campaign clock */}
         <div className="flex items-center justify-between gap-3">
@@ -411,7 +438,7 @@ export default function Questionnaire({
                   className={`${rowBase} ${selected ? rowSelected : rowIdle}`}
                 >
                   {l.label}
-                  {selected && <Check className="size-4 shrink-0" />}
+                  <Indicator selected={selected} shape="radio" />
                 </button>
               );
             })}
@@ -535,8 +562,10 @@ export default function Questionnaire({
         {/* Q5 — what matters in a teacher, same mechanics */}
         {step === 4 && renderMaxTwo(TEACHER_OPTIONS, prefs, setPrefs)}
 
-        {/* multi-select steps need an explicit Continue */}
-        {step >= 1 && (
+        {/* On every step now, disabled until the step is answered. The reference
+            flow is explicit throughout, and a first question that advances itself
+            while the other four wait makes the back button feel unreliable. */}
+        {(
           <button
             type="button"
             disabled={!canContinue || (step === 4 && submitting)}
@@ -547,6 +576,60 @@ export default function Questionnaire({
           </button>
         )}
       </div>
+      </div>
     </main>
   );
+}
+
+/**
+ * The left-hand panel's artwork — one per question, so moving forward is
+ * visible from the corner of the eye rather than only in the progress bar.
+ *
+ * Inline SVG on purpose: this flow is aimed at mid-range Android over mobile
+ * data, and five image requests to illustrate five questions is bandwidth spent
+ * on decoration. These are a few hundred bytes each and need no network at all.
+ */
+function StepArt({ step }: { step: number }) {
+  const common = 'w-full max-w-xs text-brand';
+  switch (step) {
+    case 0: // level — steps rising
+      return (
+        <svg viewBox="0 0 120 90" className={common} fill="none" stroke="currentColor" strokeWidth="4">
+          <path d="M10 78h26V58h26V38h26V18h22" strokeLinejoin="round" strokeLinecap="round" />
+          <path d="M84 18h26v26" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case 1: // subjects — stacked books
+      return (
+        <svg viewBox="0 0 120 90" className={common} fill="none" stroke="currentColor" strokeWidth="4">
+          <rect x="20" y="20" width="80" height="16" rx="4" />
+          <rect x="20" y="42" width="80" height="16" rx="4" />
+          <rect x="20" y="64" width="80" height="16" rx="4" />
+        </svg>
+      );
+    case 2: // availability — a clock
+      return (
+        <svg viewBox="0 0 120 90" className={common} fill="none" stroke="currentColor" strokeWidth="4">
+          <circle cx="60" cy="45" r="32" />
+          <path d="M60 26v19l13 9" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case 3: // support — a lifebuoy
+      return (
+        <svg viewBox="0 0 120 90" className={common} fill="none" stroke="currentColor" strokeWidth="4">
+          <circle cx="60" cy="45" r="30" />
+          <circle cx="60" cy="45" r="13" />
+          <path d="M39 24l11 11M81 24L70 35M39 66l11-11M81 66L70 55" strokeLinecap="round" />
+        </svg>
+      );
+    default: // teacher — a star
+      return (
+        <svg viewBox="0 0 120 90" className={common} fill="none" stroke="currentColor" strokeWidth="4">
+          <path
+            d="M60 16l12 24 27 4-19 19 4 27-24-13-24 13 4-27-19-19 27-4z"
+            strokeLinejoin="round"
+          />
+        </svg>
+      );
+  }
 }
