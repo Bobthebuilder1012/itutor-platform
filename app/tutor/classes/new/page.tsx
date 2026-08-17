@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, Users, User as UserIcon, ChevronRight, Check, X,
-  Globe, Lock, DollarSign, Info,
+  Globe, Lock, DollarSign, Info, AlertTriangle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -329,6 +329,22 @@ function CreateClassContent() {
             </div>
             <p className="text-xs text-muted-foreground">AI-drafted monthly reports reviewed and approved by you before being sent to parents. Available soon.</p>
           </Card>
+
+          {/*
+            * Stated here because this form never asks for a schedule — it is set
+            * afterwards, on the class page. Publishing therefore does NOT put the
+            * class on the marketplace on its own, and a tutor who is not told that
+            * reasonably assumes it did. On production 18 of 38 published classes
+            * have no schedule, which is what this gap produces.
+            */}
+          <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />
+            <p className="text-xs leading-relaxed text-amber-800">
+              <span className="font-semibold">One more step after this.</span> A class only appears
+              on the marketplace once it has a weekly schedule, and you add that on the class page
+              next. Until then students and parents can&rsquo;t find or enrol in it.
+            </p>
+          </div>
 
           <div className="flex justify-between items-center">
             <button onClick={() => setStep(1)} className="text-sm font-semibold text-muted-foreground hover:text-ink">← Back</button>

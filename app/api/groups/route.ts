@@ -307,9 +307,43 @@ export async function GET(request: NextRequest) {
       enriched = enriched.filter((g: any) => scheduleMatchesDayTime(g.schedule_entries, filterDays, filterBands));
     }
 
-    // No profile-completeness gate for group classes — visibility (public/private) and
-    // archived_at are the sole gating mechanisms. Tutor profile quality checks apply to
-    // the 1:1 tutor search (/api/tutors/listed-ids), not here.
+    // No profile-completeness gate for group classes — visibility (public/private),
+    // archived_at and the schedule requirement below are the gating mechanisms. Tutor
+    // profile quality checks apply to the 1:1 tutor search (/api/tutors/listed-ids).
+
+    /**
+     * A CLASS WITH NO SCHEDULE IS NOT LISTED.
+     *
+     * `schedule_entries` is the same resolved pattern every card and class page
+     * renders (`resolveScheduleEntries`: manual `schedule_data`, then a
+     * `group_sessions` recurrence rule, then two or more dated occurrences). If it
+     * resolves to nothing, the marketplace cannot tell a customer when the class
+     * meets — so the listing is an invitation to enrol in something with no
+     * stated time, which is the one thing a recurring class has to state.
+     *
+     * Gating on the RESOLVED pattern rather than on `group_sessions.recurrence_days`
+     * is deliberate: a tutor who typed their days into `schedule_data` has
+     * answered the question, even with no recurrence row behind it.
+     *
+     * THE OWNING TUTOR ALWAYS SEES THEIR OWN, and the exemption is PER ROW, not
+     * per request. It cannot be keyed on `tutor_id=<self>` being passed, because
+     * the tutor's own lessons home (components/groups/tutor/TutorLessonsHome)
+     * fetches this endpoint with no tutor_id at all and filters by owner on the
+     * client — a request-level exemption would strip their unscheduled classes
+     * before that filter ran, hiding from a tutor the very classes they need to
+     * open in order to fix. Per row also keeps the gate correct for the public
+     * profile card (components/tutor/public/ClassesSection), which passes someone
+     * else's tutor_id: a student browsing it still gets the gate.
+     *
+     * This removes real supply — 18 of 38 published classes on production at the
+     * time of writing. That is the point: those 18 are already broken for paying
+     * customers, and most of them are why Class Match Week's ineligible list exists.
+     */
+    if (!fetchArchived) {
+      enriched = enriched.filter(
+        (g: any) => (g.schedule_entries ?? []).length > 0 || g.tutor_id === user.id
+      );
+    }
 
     if (availability) {
       const now = new Date();

@@ -417,7 +417,7 @@ export default function ClassMatchWeekTab({ profile }: { profile: Profile | null
               {sessionableCount === 0 && (
                 <p className="text-[11px] text-muted-foreground">
                   {blocked.length > 0
-                    ? 'Fix a blocked class below to create a session.'
+                    ? 'Add a schedule to a class below to create a session.'
                     : 'Publish a monthly-priced class first.'}
                 </p>
               )}
@@ -440,13 +440,20 @@ export default function ClassMatchWeekTab({ profile }: { profile: Profile | null
           {blocked.length > 0 && (
             <section className="space-y-3">
               <div>
-                <h3 className="text-lg font-bold text-ink">Classes that need a fix</h3>
+                <h3 className="text-lg font-bold text-ink">Classes not eligible yet</h3>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  These classes can&apos;t host a taster session yet. Fix the issues and they&apos;ll
-                  appear as choices when you create one.
+                  Sort these and they become choices when you create a session — and they start
+                  appearing on the marketplace, which needs the same weekly schedule.
                 </p>
               </div>
-              {blocked.map((b) => (
+              {blocked.map((b) => {
+                // Almost always the schedule (15 of 16 blocked classes on
+                // production), so the button names that rather than saying "fix",
+                // which tells a teacher nothing about what they are about to do.
+                // Still defect-aware: a missing subject is not a missing schedule.
+                const needsSchedule =
+                  b.defects.includes('no_schedule') || b.defects.includes('schedule_expired');
+                return (
                 <div key={b.groupId} className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -465,11 +472,13 @@ export default function ClassMatchWeekTab({ profile }: { profile: Profile | null
                       href={`/tutor/classes/${b.groupId}`}
                       className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
                     >
-                      <Wrench className="size-3.5" /> Fix this class
+                      <Wrench className="size-3.5" />{' '}
+                      {needsSchedule ? 'Add a schedule' : 'Make it eligible'}
                     </Link>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </section>
           )}
         </>
