@@ -22,6 +22,7 @@
  */
 
 import { useMemo, useState } from 'react';
+import { ChevronDown, ChevronUp, SlidersHorizontal } from 'lucide-react';
 import TeacherResultCard from '@/components/classMatchWeek/portal/TeacherResultCard';
 import {
   classServesLevel,
@@ -226,6 +227,21 @@ export default function ExploreView({
   const [bands, setBands] = useState<ExploreTimeBand[]>(prefillBands);
   const [minDiscount, setMinDiscount] = useState<MinDiscount>(0);
 
+  /**
+   * Filters start COLLAPSED. Four rows of chips pushed the first result card
+   * below the fold on a phone, and the day tabs above are the primary
+   * navigation — the filters are a refinement, so they should not outrank the
+   * thing they refine.
+   *
+   * Collapsed even when prefilled, which is the risky half of that decision:
+   * level, subject and time prefill from the questionnaire, so a student can
+   * arrive already filtered. Hiding an active filter behind a closed panel is
+   * how someone concludes the week is empty when it is only their answers being
+   * applied. The collapsed bar therefore carries its own state — a count and the
+   * filters spelled out — and Clear all stays reachable without expanding.
+   */
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
   const annotated = useMemo(
     () =>
       cards.map((card) => ({
@@ -330,8 +346,25 @@ export default function ExploreView({
     return best === null ? null : best.tab;
   }, [dayTabs, dayKey, filtered.dayCounts]);
 
-  const anyFilterActive =
-    level !== null || selectedSubjects.length > 0 || bands.length > 0 || minDiscount > 0;
+  /**
+   * Every active filter, named, for the collapsed bar. Counts individual
+   * selections rather than categories — "Form 5 · Morning · Afternoon" is three
+   * things a student would recognise, where "3 categories" is not.
+   */
+  const activeFilters = useMemo(() => {
+    const parts: string[] = [];
+    if (level !== null) {
+      parts.push(QUESTIONNAIRE_LEVELS.find((l) => l.value === level)?.label ?? level);
+    }
+    parts.push(...selectedSubjects);
+    parts.push(...bands.map((b) => TIME_BAND_OPTIONS.find((o) => o.value === b)?.label ?? b));
+    if (minDiscount > 0) {
+      parts.push(DISCOUNT_OPTIONS.find((d) => d.value === minDiscount)?.label ?? `${minDiscount}%+`);
+    }
+    return parts;
+  }, [level, selectedSubjects, bands, minDiscount]);
+
+  const anyFilterActive = activeFilters.length > 0;
 
   /** One teacher card, shared by the results grid and the fallback suggestions. */
   const renderEntry = ({
@@ -455,21 +488,49 @@ export default function ExploreView({
         </div>
       </div>
 
-      {/* Filters — all clearable, prefilled from the questionnaire where present. */}
-      <div className="mt-4 rounded-3xl border border-border bg-white p-4 shadow-card">
-        <div className="flex items-center justify-between">
-          <p className="text-[11px] font-bold uppercase tracking-wide text-ink-muted">Filters</p>
+      {/* Filters — collapsed by default, all clearable, prefilled from the
+          questionnaire where present. */}
+      <div className="mt-4 rounded-3xl border border-border bg-white shadow-card">
+        <div className="flex items-center gap-2 px-4 py-3">
+          <button
+            type="button"
+            onClick={() => setFiltersOpen((open) => !open)}
+            aria-expanded={filtersOpen}
+            className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          >
+            <SlidersHorizontal className="size-4 shrink-0 text-ink-muted" />
+            <span className="shrink-0 text-[11px] font-bold uppercase tracking-wide text-ink-muted">
+              Filters
+            </span>
+            {anyFilterActive && (
+              <span className="shrink-0 rounded-full bg-brand-soft px-1.5 py-0.5 text-[10px] font-bold text-brand-deep">
+                {activeFilters.length}
+              </span>
+            )}
+            {/* Closed and filtered is the state that misleads, so it is the one
+                that gets spelled out. Truncated rather than wrapped: the bar
+                must stay one line tall on a phone. */}
+            {!filtersOpen && anyFilterActive && (
+              <span className="min-w-0 flex-1 truncate text-[11px] text-ink-muted">
+                {activeFilters.join(' · ')}
+              </span>
+            )}
+            <span className="ml-auto shrink-0 pl-1 text-ink-muted">
+              {filtersOpen ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+            </span>
+          </button>
           {anyFilterActive && (
             <button
               type="button"
               onClick={clearFilters}
-              className="text-[11px] font-semibold text-brand-deep underline underline-offset-2"
+              className="shrink-0 text-[11px] font-semibold text-brand-deep underline underline-offset-2"
             >
               Clear all
             </button>
           )}
         </div>
 
+        <div className={filtersOpen ? 'border-t border-border px-4 pb-4' : 'hidden'}>
         <FilterRow label="Level">
           <Chip active={level === null} onClick={() => setLevel(null)}>
             Any level
@@ -520,6 +581,7 @@ export default function ExploreView({
             </Chip>
           ))}
         </FilterRow>
+        </div>
       </div>
 
       {/* Results grid — the same one-card-per-teacher presentation as results. */}
@@ -568,7 +630,10 @@ export default function ExploreView({
                 ? 'Teachers are still adding their free sessions — check back soon.'
                 : 'Nothing matches every filter at once. Clear them to see the full week.'}
             </p>
-            {anyFilterActive && (
+            {/* Only when the filters are actually the cause. With nothing
+                published at all, clearing them changes nothing, and offering it
+                implies the student did something wrong. */}
+            {anyFilterActive && cards.length > 0 && (
               <button
                 type="button"
                 onClick={clearFilters}
