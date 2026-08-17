@@ -157,6 +157,9 @@ could collapse on the day with no prior signal, surfacing as a bare 500.
 | Staging sends real mail | **Resolved** — `EMAIL_ALLOWLIST`, see §5 |
 | Commission pre- or post-discount | **Open** — call-site decision, blocks Phase 3 checkout |
 | Campaign dates | **Open** — blocks countdown configuration |
+| Discount percentage shape | **Resolved** — free-form 10–50, migration 235, supersedes the 10/15/20 tiers |
+| Teacher entry point | **Resolved** — dashboard countdown + My Business tab, see [01-foundations §1.3](./01-foundations.md) |
+| `price_duration_months` enforcement | **Open** — captured, never applied; see [03-conversion-loop §3.4](./03-conversion-loop.md) |
 
 **On Meet links — "nothing to build" is wrong for group classes.**
 `lib/services/videoProviders.ts` is the 1:1 session path. Group classes go

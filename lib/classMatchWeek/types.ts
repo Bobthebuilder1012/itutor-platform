@@ -21,8 +21,22 @@ export type SubmissionRole = 'parent' | 'student';
  */
 export type MatchOutcome = 'matched' | 'subject_unsupported';
 
-/** Fixed tiers, so cards stay comparable and teachers are not pushed to undercut. */
-export type DiscountTier = 10 | 15 | 20;
+/**
+ * Discount bounds (migration 235). The teacher names their own number now;
+ * 232's fixed 10/15/20 tiers were widened on the owner's decision.
+ *
+ * `DISCOUNT_MAX` is a typo guard, not a product rule — nothing downstream
+ * questions this percentage before it is spent against real money.
+ */
+export const DISCOUNT_MIN = 10;
+export const DISCOUNT_MAX = 50;
+
+/**
+ * Retained as a plain number so existing call sites keep compiling. It is no
+ * longer a union of literals: the DB CHECK is now a range, and a type that
+ * still said `10 | 15 | 20` would be a lie the compiler enforced.
+ */
+export type DiscountTier = number;
 
 export interface ClassMatchCampaign {
   id: string;
@@ -59,11 +73,29 @@ export interface ClassMatchSession {
   cancelled_at: string | null;
   published_at: string | null;
   created_at: string;
+  /** Teacher-set, 10–50 (migration 235). */
   discount_percent: DiscountTier;
-  /** How long the coupon stays claimable, 7–30 days. */
+  /** How long the coupon stays claimable after the attendee joins, 7–30 days. */
   redemption_window_days: number;
-  /** How long the reduced price holds once enrolled. Finite by design. */
+  /**
+   * How long the reduced price holds once enrolled, counted from the enrolment
+   * — not from when the class starts. Finite by design.
+   *
+   * CAPTURED BUT NOT YET ENFORCED. The value reaches the coupon and the savings
+   * quote, and checkout then ignores it: `groupSubscriptionCheckout` selects
+   * `price_duration_months` and computes the price-hold from `duration_days`
+   * instead, which campaign coupons never set. Nothing reads
+   * `group_enrollments.promotion_expires_at` either, and Stripe owns the billing
+   * cycle, so a discounted subscription currently stays discounted. Tracked in
+   * docs 03; do not present this to a teacher as a guarantee until that lands.
+   */
   price_duration_months: number;
+  /**
+   * Optional hard deadline for claiming the discount (migration 235). NULL means
+   * `redemption_window_days` alone decides. When set, an issued coupon expires at
+   * whichever comes first — see `issueCouponForJoin`.
+   */
+  discount_expires_at: string | null;
 }
 
 export interface ClassMatchReservation {

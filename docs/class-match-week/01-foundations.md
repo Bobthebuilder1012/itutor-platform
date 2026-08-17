@@ -71,10 +71,26 @@ Adding columns later is easy; recovering data never captured is impossible.
 
 ### Discount configuration (per session)
 
-- Percentage — fixed tiers 10, 15, 20. Minimum 10.
-- Qualifying classes
-- Redemption window — 7 to 30 days
-- Price duration — finite month count
+- **Percentage — free-form, 10 to 50.** Superseded 2026-08-17 (migration 235,
+  owner decision). 232 shipped fixed tiers of 10/15/20 to keep cards comparable
+  and stop teachers undercutting each other on percentage; the owner wants the
+  teacher to name their own number. The floor of 10 is the product rule. The
+  ceiling of 50 is a **typo guard**, not a rule — nothing downstream questions
+  this number before it is spent against real money at checkout, and 200 typed
+  for 20 would otherwise reach Stripe.
+- Qualifying classes — `class_match_qualifying_groups`, with the session's own
+  class as an enforced floor. Exposed in the session form since 2026-08-17;
+  before that the API accepted `qualifyingGroupIds` and no UI ever sent it, so
+  every session discounted exactly one class.
+- Redemption window — 7 to 30 days, counted per attendee from their join click
+- **Absolute deadline — `discount_expires_at`, nullable** (migration 235). The
+  window alone cannot express "this offer is over on the 31st", so a taster on
+  the final evening would issue a coupon redeemable into the next term at a
+  campaign price. Both exist and the coupon takes the **earlier** of the two;
+  resolution lives in `issueCouponForJoin`, not in SQL, for the same reason
+  231 resolved `duration_days` at issue time rather than storing a relative value.
+- Price duration — finite month count. **Captured but not enforced — see
+  [03-conversion-loop](./03-conversion-loop.md) §3.4.**
 
 ### Coupons extend `group_promotions` — they are not a new system
 
@@ -278,6 +294,30 @@ no-match rate is recruiting **Form 2, Form 3 and weekend supply**.
 6. Configure the discount
 7. Publish
 
+**As built (2026-08-17), the form is two sections rather than one list**, because
+the session and the offer are two different objects and teachers conflated them:
+the session is a one-off free half hour tied to one class, while the offer is a
+discount that can span several classes and outlives the session. The offer block
+is expanded rather than hidden behind the §1.4 customise toggle — an owner
+decision that these are terms a teacher should choose deliberately. Every offer
+field still ships with a working default, so §1.4's "publishing is one tap" holds
+for a teacher who changes nothing.
+
+**Where a teacher enters this**, all added 2026-08-17 — before that date the only
+teacher surface was `/tutor/class-match-week`, which nothing anywhere linked to:
+
+- The tutor dashboard header carries a live countdown and a Join button, which
+  renders nothing when no campaign is live. It is the only thing that tells a
+  teacher the campaign exists.
+- The surface itself is now a **My Business tab** flagged *Limited time*, at
+  `/tutor/business?tab=class-match-week`. `/tutor/class-match-week` redirects there.
+- `/class-match-week/for-teachers` explains the campaign publicly, for teachers
+  who are still deciding, and `/class-match-week/teach` routes anyone from the
+  landing page to signup, to the tab, or back with an explanation.
+- The requirements checklist mirrors §1.2's gate client-side so a teacher missing
+  a Meet connection or a published class is told **before** tapping Join rather
+  than by a 422 afterwards. The server gate stays authoritative.
+
 **Inherited automatically, never re-entered:** teacher name, teacher image,
 subject, student level, regular class day and time, class price, teacher profile,
 paid-class enrolment link.
@@ -390,19 +430,26 @@ hours off. Hard-code Trinidad, as the occurrence generator already does.
 
 ---
 
-## Open item — no campaign or opt-in entity exists
+## Resolved — the campaign and opt-in entities exist
 
-§1.2 and §1.3 step 1 both describe a teacher *joining* the campaign as a
-persisted act, but the data model above contains no record of it. There is
-nowhere to store opt-in timestamp, terms acceptance, or the gate snapshot, and a
-teacher who opts in and creates nothing is invisible to funnel reporting. The
-week's start and end dates also have nowhere to live, so a second Class Match
-Week is a schema change rather than a row.
+This was an open item asking whether to add `Campaign` and
+`CampaignParticipation` or to declare the session row the opt-in record. It was
+answered by **migration 232**, which added both:
 
-Either add `Campaign` and `CampaignParticipation`, or state that the session row
-*is* the opt-in record and reword §1.2 and §1.3 accordingly.
+- `class_match_campaigns` — one row per run, holding the countdown window, with a
+  partial unique index enforcing at most one `status = 'live'`. A second Class
+  Match Week is a row, not a migration.
+- `class_match_participation` — `(campaign_id, tutor_id)` unique, carrying
+  `opted_in_at` and a `gate_snapshot` jsonb. Every gate clause is mutable
+  afterwards (a teacher can be suspended, revoke Meet, unpublish or reprice
+  mid-week), so the snapshot records what was true at opt-in.
 
-Confirmed: no campaign, opt-in or coupon entity exists anywhere in the repo today.
+A teacher who opts in and creates nothing is therefore visible to funnel
+reporting, which was the reason for asking.
+
+**Creating a first session also opts you in**, via an `ignoreDuplicates` upsert in
+`POST /api/class-match/sessions` — a teacher who schedules a taster has joined
+whether or not they pressed the button, and an earlier snapshot is preserved.
 
 ---
 

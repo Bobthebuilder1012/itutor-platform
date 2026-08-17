@@ -74,12 +74,22 @@ on top.
 - **Two different param names.** `middleware.ts` sets `?next=`; the login and
   signup pages read only `?redirect=`. Only the auth callback reads both, so a
   `?next=` destination is silently dropped at the login page. **Use `?redirect=`.**
-- **`complete-role` drops the destination on its auto-resolve path.**
-  `app/signup/complete-role/page.tsx` computes a guarded `returnTo`, then calls
-  `router.replace(data.redirect)` from `/api/auth/resolve-role` without ever
-  consulting it. Any user complete enough for that endpoint to answer is thrown to
-  a dashboard before restoration runs. Prefer `returnTo`, or restore from the
-  cookie token on the dashboard rather than depending on the URL.
+- **`complete-role` dropped the destination — fixed 2026-08-17, on all three of
+  its paths.** It computed a guarded `returnTo` and then ignored it. The
+  auto-resolve path (`router.replace(data.redirect)` from
+  `/api/auth/resolve-role`) was fixed first. Two more remained and were found
+  while building the teacher signup path: `handleStudentProfile` and
+  `handleTutorProfile` both called `setDestination('/…/dashboard')`
+  unconditionally, discarding `returnTo` at the very last step — after the auth
+  callback had carried it the whole way. Only the parent branch was correct.
+  Every branch now reads `returnTo ?? '/…/dashboard'`, matching the initial state
+  which had defaulted to `returnTo` all along.
+
+  This was load-bearing for both sides of the campaign. The Google button cannot
+  preset `?role=`, so **every Google signup** goes through this page: a teacher
+  arriving from the landing page landed on `/tutor/dashboard` instead of the
+  campaign, and a learner from the questionnaire landed on `/student/dashboard`
+  instead of their results.
 - **Open redirect — fixed, keep it fixed.** The login and signup pages pushed
   `decodeURIComponent(redirectUrl)` with no validation; `/signup?redirect=//evil.example`
   worked. `lib/utils/safeRedirect.ts` now holds the rule and all five call sites
@@ -200,6 +210,39 @@ new plumbing.
 **Redemption marking is this phase's job.** Migration 231 adds `redeemed_at` but
 nothing writes it. The checkout resolver already filters `redeemed_at IS NULL`, so
 until this phase writes it, a coupon remains reusable.
+
+### BLOCKING — `price_duration_months` is captured and then ignored
+
+Found 2026-08-17 while building the teacher's offer form. The teacher sets how
+long the discounted price holds, it reaches `class_match_sessions`, it is copied
+onto the coupon by `issueCouponForJoin`, and it is quoted to the family as
+`price × discount × months` in `savingsValue`. **Nothing then enforces it.**
+
+The chain, each link verified:
+
+- `groupSubscriptionCheckout.ts` **selects** `price_duration_months` and never
+  reads it again.
+- It computes the price-hold from `promo.duration_days` instead — the *claim
+  window*, a different quantity — and campaign coupons never set `duration_days`,
+  so `promotionExpiresAt` resolves to NULL for every one of them.
+- `group_enrollments.promotion_expires_at` is written and **no code anywhere
+  reads it**. There is no cron that lifts a price at expiry.
+- Stripe owns the billing cycle (`process-subscriptions` says so in four places),
+  so a subscription created at the discounted price stays there.
+
+**Consequence:** a teacher who offers 20% off for 3 months gives 20% off
+indefinitely, and the savings figure shown to the family understates what
+actually happens. It costs the teacher money, silently, which is the worst
+direction for a campaign asking teachers to trust it.
+
+**Owner decision (2026-08-17):** capture the setting now, fix enforcement in a
+separate payments slice. The teacher-facing form is built and correct; the form
+does not promise a duration in copy beyond "counted from the day they enrol".
+
+Fixing it means either a Stripe coupon carrying `duration_in_months`, or a cron
+that reverts the subscription price once `promotion_expires_at` passes — and it
+lands in the same code as the unanswered commission question below, so decide
+that first.
 
 **The leak that made this dangerous is closed** — see
 [01-foundations §1.1](./01-foundations.md). Checkout filters by owner, the read

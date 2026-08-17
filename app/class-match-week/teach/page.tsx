@@ -35,8 +35,12 @@ import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
-/** Where a teacher's campaign work actually happens: opt-in and taster sessions. */
-const TEACHER_HOME = '/tutor/class-match-week';
+/**
+ * Where a teacher's campaign work actually happens: opt-in and taster sessions.
+ * The My Business tab, not the old /tutor/class-match-week route — that now only
+ * redirects here, and sending someone through two hops costs a render.
+ */
+const TEACHER_HOME = '/tutor/business?tab=class-match-week';
 
 export default async function ClassMatchWeekTeachPage() {
   const authed = await getServerClient();

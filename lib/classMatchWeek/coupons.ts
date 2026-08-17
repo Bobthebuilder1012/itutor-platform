@@ -74,8 +74,17 @@ export async function issueCouponForJoin(
     .eq('id', session.group_id)
     .maybeSingle();
 
+  // The window is per-attendee and starts now, so whoever joins on the last
+  // evening of the campaign gets the same days to decide as whoever joined
+  // first. Where the teacher also set a hard deadline (migration 235), the
+  // EARLIER instant wins: a taster on the final night must not issue a coupon
+  // that outlives the offer it came from, priced for a campaign that has ended.
+  const windowExpiry = Date.now() + session.redemption_window_days * 24 * 60 * 60 * 1000;
+  const deadline = session.discount_expires_at
+    ? new Date(session.discount_expires_at).getTime()
+    : null;
   const expiresAt = new Date(
-    Date.now() + session.redemption_window_days * 24 * 60 * 60 * 1000
+    deadline !== null && !Number.isNaN(deadline) ? Math.min(windowExpiry, deadline) : windowExpiry
   ).toISOString();
 
   const { data: coupon, error } = await admin

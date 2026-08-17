@@ -13,6 +13,7 @@ import { useTutorCompletion } from '@/lib/hooks/useTutorCompletion';
 import { supabase } from '@/lib/supabase/client';
 import TutorShell from '@/components/tutor/TutorShell';
 import ReliabilityPanel from '@/components/reliability/ReliabilityPanel';
+import ClassMatchWeekDashboardPrompt from '@/components/tutor/ClassMatchWeekDashboardPrompt';
 
 type DashboardStats = {
   activeStudents: number;
@@ -215,7 +216,9 @@ function DashboardContent() {
             {listed ? "Here's what's happening with your students today." : 'Finish setting up your profile to unlock teaching tools.'}
           </p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          {/* Renders nothing unless a campaign is live. */}
+          <ClassMatchWeekDashboardPrompt profileComplete={listed} />
           <Link href="/tutor/settings?section=teaching"
             className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-border bg-background text-sm font-semibold text-ink hover:bg-muted transition">
             <PenLine className="size-3.5" /> Edit profile

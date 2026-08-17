@@ -7,11 +7,9 @@ import {
 } from '@/lib/classMatchWeek/eligibility';
 import { getLiveCampaign, getParticipation, listTeacherSessions } from '@/lib/classMatchWeek/portalData';
 import { mintCampaignMeetLink } from '@/lib/classMatchWeek/meetLink';
-import type { DiscountTier } from '@/lib/classMatchWeek/types';
+import { DISCOUNT_MIN, DISCOUNT_MAX } from '@/lib/classMatchWeek/types';
 
 export const dynamic = 'force-dynamic';
-
-const DISCOUNT_TIERS: ReadonlyArray<DiscountTier> = [10, 15, 20];
 
 function invalid(field: string) {
   return NextResponse.json({ error: 'invalid_field', field }, { status: 400 });
@@ -74,6 +72,7 @@ export async function POST(req: NextRequest) {
       discountPercent,
       redemptionWindowDays,
       priceDurationMonths,
+      discountExpiresAt,
       qualifyingGroupIds,
       publish,
     } = body as Record<string, unknown>;
@@ -105,9 +104,15 @@ export async function POST(req: NextRequest) {
       return invalid('maxAttendees');
     }
 
-    // Fixed tiers, mirroring the DB CHECK — so cards stay comparable and
-    // teachers are not pushed into undercutting each other on percentage.
-    if (!DISCOUNT_TIERS.includes(discountPercent as DiscountTier)) {
+    // Teacher-set percentage, mirroring the widened DB CHECK (migration 235).
+    // The floor is the product rule; the ceiling is a typo guard — this number
+    // is spent against real money and nothing downstream questions it.
+    if (
+      typeof discountPercent !== 'number' ||
+      !Number.isInteger(discountPercent) ||
+      discountPercent < DISCOUNT_MIN ||
+      discountPercent > DISCOUNT_MAX
+    ) {
       return invalid('discountPercent');
     }
     if (
@@ -126,6 +131,20 @@ export async function POST(req: NextRequest) {
     ) {
       return invalid('priceDurationMonths');
     }
+    // Optional hard deadline (migration 235). It must land AFTER the taster
+    // itself — a deadline before the session runs would issue every attendee a
+    // coupon that had already expired at the moment they earned it, which reads
+    // as the campaign lying rather than as a misconfigured date.
+    let discountDeadline: Date | null = null;
+    if (discountExpiresAt !== null && discountExpiresAt !== undefined && discountExpiresAt !== '') {
+      if (typeof discountExpiresAt !== 'string') return invalid('discountExpiresAt');
+      const parsed = new Date(discountExpiresAt);
+      if (Number.isNaN(parsed.getTime()) || parsed.getTime() <= scheduled.getTime()) {
+        return invalid('discountExpiresAt');
+      }
+      discountDeadline = parsed;
+    }
+
     if (
       qualifyingGroupIds !== undefined &&
       (!Array.isArray(qualifyingGroupIds) ||
@@ -211,6 +230,7 @@ export async function POST(req: NextRequest) {
         discount_percent: discountPercent,
         redemption_window_days: redemptionWindowDays,
         price_duration_months: priceDurationMonths,
+        discount_expires_at: discountDeadline?.toISOString() ?? null,
       })
       .select()
       .single();
