@@ -36,10 +36,22 @@ export type MintMeetLinkArgs = {
 
 export type MintMeetLinkResult =
   | { ok: true; url: string }
-  | { ok: false; reason: string; reconnectUrl: string };
+  /**
+   * `reconnectUrl` is OPTIONAL, and absent means reconnecting cannot help. Every
+   * failure used to carry it, so the one failure it can do nothing about — a
+   * deployment with no TOKEN_ENCRYPTION_KEY — still offered the button, and the
+   * teacher who pressed it landed on a Google error instead of a fix. A remedy
+   * offered for a problem it does not solve is worse than no remedy.
+   */
+  | { ok: false; reason: string; reconnectUrl?: string };
 
 function fail(reason: string): MintMeetLinkResult {
   return { ok: false, reason, reconnectUrl: RECONNECT_URL };
+}
+
+/** A failure the teacher cannot act on. Deliberately carries no reconnect link. */
+function failOurFault(reason: string): MintMeetLinkResult {
+  return { ok: false, reason };
 }
 
 /**
@@ -71,7 +83,7 @@ function readToken(
     );
     return {
       ok: false,
-      result: fail(
+      result: failOurFault(
         'Video setup is misconfigured on our side, so we could not create the meeting link. Please contact support — reconnecting will not help.'
       ),
     };

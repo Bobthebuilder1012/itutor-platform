@@ -511,7 +511,15 @@ export default function SessionCreateFlow({
     ['Covers', coveredCount ? `${coveredCount} ${coveredCount === 1 ? 'class' : 'classes'}` : 'No classes yet', Layers],
     [
       'Claim window',
-      `${windowDays} days from attending${endsOn ? `, or ${endsOn}` : ''}`,
+      `${windowDays} days from attending${
+        endsOn
+          ? `, and never past ${new Date(`${endsOn}T00:00`).toLocaleDateString('en-GB', {
+              day: 'numeric',
+              month: 'short',
+              year: 'numeric',
+            })}`
+          : ''
+      }`,
       Timer,
     ],
   ];
