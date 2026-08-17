@@ -463,20 +463,32 @@ function TutorCard({ t }: { t: TutorListing }) {
   const subjectList = t.subjects.slice(0, 3).map(s => s.label || s.name).filter(Boolean).join(' · ');
 
   return (
-    <Link href={`/student/tutors/${t.id}`}
+    // /student/tutors/* is a route AuthProvider bounces a parent out of. The
+    // parent-side profile already exists; this card was pointing at the wrong one.
+    <Link href={`/parent/tutors/${t.id}`}
       className="group rounded-2xl bg-background border border-border p-4 hover:border-brand-deep/40 hover:shadow-card transition flex gap-3 items-start">
-      <div className="size-12 rounded-xl bg-gradient-to-br from-brand to-emerald-400 grid place-items-center text-white font-bold text-sm shrink-0">
-        {initials}
-      </div>
+      {t.avatar_url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={t.avatar_url} alt="" className="size-12 shrink-0 rounded-xl object-cover" />
+      ) : (
+        <div className="size-12 rounded-xl bg-gradient-to-br from-brand to-emerald-400 grid place-items-center text-white font-bold text-sm shrink-0">
+          {initials}
+        </div>
+      )}
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <h3 className="font-semibold text-ink truncate">{name}</h3>
             <div className="text-xs text-muted-foreground truncate mt-0.5">{subjectList || 'Tutor'}</div>
           </div>
-          {t.rating_average && t.rating_average > 0 && (
+          {/* `{t.rating_average && …}` printed a bare "0" on every unrated tutor:
+              JSX renders the number 0, it does not treat it as "render nothing".
+              A leading `> 0` test makes the guard a boolean, so an unrated tutor
+              shows nothing at all rather than a score of zero — which reads as a
+              bad rating rather than an absent one. */}
+          {(t.rating_average ?? 0) > 0 && (
             <span className="inline-flex items-center gap-0.5 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 shrink-0">
-              <Star className="size-3 fill-amber-500 text-amber-500"/> {t.rating_average.toFixed(1)}
+              <Star className="size-3 fill-amber-500 text-amber-500"/> {t.rating_average!.toFixed(1)}
             </span>
           )}
         </div>
