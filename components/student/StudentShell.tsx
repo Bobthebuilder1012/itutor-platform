@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { StudentStoreProvider } from '@/lib/student-store';
+import CampaignCta from '@/components/classMatchWeek/CampaignCta';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import dynamic from 'next/dynamic';
@@ -231,6 +232,11 @@ function ShellInner({ children, navItems }: { children: ReactNode; navItems: Nav
                 />
               </div>
             </form>
+
+            {/* Campaign entry point. In the shell rather than on the dashboard
+                so it is reachable from every student page; it renders nothing
+                when no campaign is live, or once inside the campaign itself. */}
+            <CampaignCta />
 
             <div className="flex items-center gap-1">
               <Link href="/student/notifications" className="relative size-9 grid place-items-center rounded-full hover:bg-muted text-muted-foreground" title="Notifications">
