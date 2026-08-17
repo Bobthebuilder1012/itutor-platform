@@ -76,10 +76,22 @@ export async function GET(_req: NextRequest, { params }: Params) {
       // strips them: on staging, content_blocks/whatsapp_url/parent_feedback_mode
       // are absent, every earlier select 42703s, and this one wins — which is
       // why "Secure your spot" never appeared there despite the flag being on.
+      //
+      // cover_image and friends were missing from THIS select while appearing in
+      // every earlier one — so on staging, where this select is the one that
+      // wins, the class banner never rendered and neither did the level, topic,
+      // session length or frequency. It read as a styling bug on the parent's
+      // class page; it was a column list.
+      //
+      // Every column added here was checked to exist on BOTH staging and prod
+      // before being added, because one absent column 42703s this select too —
+      // and this is the last resort, so there is nothing left to fall back to.
       `
-        id, name, description, tutor_id, subject, pricing, created_at,
-        max_students, price_per_session, price_monthly, require_join_requests, visibility,
-        secure_spot_enabled, end_date,
+        id, name, description, tutor_id, subject, pricing, created_at, archived_at, status,
+        max_students, price_per_session, price_monthly, pricing_model, require_join_requests, visibility,
+        secure_spot_enabled, end_date, cover_image, form_level, topic,
+        session_length_minutes, session_frequency, recurrence_type,
+        grace_period_days, auto_suspend_missed_payment, google_classroom_link,
         tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url),
         group_members(id, user_id, status, profile:profiles!group_members_user_id_fkey(id, full_name, avatar_url))
       `,
