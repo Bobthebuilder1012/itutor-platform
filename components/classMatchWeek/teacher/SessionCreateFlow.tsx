@@ -125,13 +125,91 @@ function iconForSubject(subject: string | null): React.ComponentType<{ className
 const INPUT =
   'w-full rounded-xl border border-surface-border bg-white px-3.5 py-2.5 text-sm text-ink outline-none transition-colors focus:border-brand focus:ring-4 focus:ring-brand-light';
 
+const AST = 'America/Port_of_Spain';
+
 /** Campaign dates are Trinidad wall-clock — never read groups.timezone. */
 function astDay(iso: string): string {
   return new Date(iso).toLocaleDateString('en-TT', {
-    timeZone: 'America/Port_of_Spain',
+    timeZone: AST,
     day: 'numeric',
     month: 'short',
   });
+}
+
+/** Which Trinidad calendar date an instant falls on — 'YYYY-MM-DD', sortable. */
+function astDateKey(iso: string | Date): string {
+  return new Date(iso).toLocaleDateString('en-CA', { timeZone: AST });
+}
+
+/**
+ * The campaign's days, as the only dates a session may be scheduled on.
+ *
+ * A select rather than a date input with min/max: min/max marks an out-of-range
+ * value invalid but still lets someone type or paste one, and it leaves the whole
+ * calendar navigable so the constraint reads as a suggestion. A taster outside
+ * the week cannot be attended by anyone browsing the week, so the constraint is
+ * absolute and the control should say so.
+ *
+ * Derived from the campaign row, never hard-coded — that row exists precisely so
+ * a second Class Match Week is a row and not a code change (migration 232).
+ * Capped at 14 like the Explore day tabs, so a bad `ends_at` cannot generate an
+ * endless list.
+ */
+function campaignDays(startsAt: string, endsAt: string): Array<{ value: string; label: string }> {
+  const out: Array<{ value: string; label: string }> = [];
+  const endKey = astDateKey(endsAt);
+  let cursor = new Date(startsAt);
+  if (Number.isNaN(cursor.getTime())) return out;
+
+  for (let i = 0; i < 14; i++) {
+    const value = astDateKey(cursor);
+    out.push({
+      value,
+      label: cursor.toLocaleDateString('en-TT', {
+        timeZone: AST,
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+      }),
+    });
+    if (value >= endKey) break;
+    cursor = new Date(cursor.getTime() + 24 * 3600 * 1000);
+  }
+  return out;
+}
+
+/**
+ * Start times on the half hour, grouped by the same bands the questionnaire asks
+ * about (lib/classMatchWeek/types AVAILABILITY_BLOCKS, boundaries in
+ * ExploreView.astBand): morning 05:00–11:59, afternoon 12:00–16:59, evening
+ * 17:00–21:59.
+ *
+ * Bounded at 05:00–21:30 for a reason beyond taste: a start outside 05:00–22:00
+ * lands in no band at all, so it would be filtered out of Explore for every
+ * family who picked a time of day. Offering such a slot would let a teacher
+ * schedule a session almost nobody can find.
+ */
+const TIME_SLOTS: ReadonlyArray<{ band: string; times: string[] }> = (() => {
+  const bands: Array<{ band: string; from: number; to: number }> = [
+    { band: 'Morning', from: 5 * 60, to: 12 * 60 },
+    { band: 'Afternoon', from: 12 * 60, to: 17 * 60 },
+    { band: 'Evening', from: 17 * 60, to: 22 * 60 },
+  ];
+  return bands.map(({ band, from, to }) => ({
+    band,
+    times: Array.from({ length: (to - from) / 30 }, (_, i) => {
+      const m = from + i * 30;
+      return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+    }),
+  }));
+})();
+
+/** 14:30 → "2:30 PM", so the select reads the way a teacher says it. */
+function timeLabel(hhmm: string): string {
+  const [h, m] = hhmm.split(':').map(Number);
+  const suffix = h! < 12 ? 'AM' : 'PM';
+  const hour12 = h! % 12 === 0 ? 12 : h! % 12;
+  return `${hour12}:${String(m).padStart(2, '0')} ${suffix}`;
 }
 
 function Pill({
@@ -290,13 +368,19 @@ export default function SessionCreateFlow({
 
   const selected = sessionable.find((c) => c.id === classId) ?? null;
 
+  const days = useMemo(
+    () => campaignDays(campaign.starts_at, campaign.ends_at),
+    [campaign.starts_at, campaign.ends_at]
+  );
+
   const when = useMemo(() => {
     if (!date) return '';
+    // Parsed as local midnight, not UTC, so the label never slips a day.
     const day = new Date(`${date}T00:00`).toLocaleDateString('en-GB', {
       day: 'numeric',
       month: 'short',
     });
-    return time ? `${day} · ${time}` : day;
+    return time ? `${day} · ${timeLabel(time)}` : day;
   }, [date, time]);
 
   const discountNumber = discount.trim() === '' ? NaN : Number(discount);
@@ -390,6 +474,12 @@ export default function SessionCreateFlow({
 
       if (Array.isArray(json.messages) && json.messages.length > 0) {
         setDefects(json.messages);
+      } else if (json.error === 'outside_campaign_window') {
+        setError(
+          `Sessions have to run during Class Match Week — ${astDay(campaign.starts_at)} to ${astDay(
+            campaign.ends_at
+          )}. Pick another day.`
+        );
       } else if (json.error === 'meet_link_failed' || json.reconnectUrl) {
         setError(json.reason ?? 'We could not create the Google Meet link.');
         if (json.reconnectUrl) setReconnectUrl(json.reconnectUrl);
@@ -593,25 +683,47 @@ export default function SessionCreateFlow({
                 </div>
               </Section>
 
-              <Section step="3" label="When is it?" hint="Trinidad &amp; Tobago time.">
+              <Section
+                step="3"
+                label="When is it?"
+                hint={`Trinidad & Tobago time. Sessions run during the campaign — ${astDay(
+                  campaign.starts_at
+                )} to ${astDay(campaign.ends_at)}.`}
+              >
                 <div className="grid gap-2.5 sm:grid-cols-[1.2fr_1fr]">
                   <label className="grid gap-2">
                     <span className="text-xs font-semibold text-ink-muted">Date</span>
-                    <input
-                      type="date"
+                    <select
                       value={date}
                       onChange={(e) => setDate(e.target.value)}
                       className={INPUT}
-                    />
+                    >
+                      <option value="">Pick a day…</option>
+                      {days.map((d) => (
+                        <option key={d.value} value={d.value}>
+                          {d.label}
+                        </option>
+                      ))}
+                    </select>
                   </label>
                   <label className="grid gap-2">
                     <span className="text-xs font-semibold text-ink-muted">Start time</span>
-                    <input
-                      type="time"
+                    <select
                       value={time}
                       onChange={(e) => setTime(e.target.value)}
                       className={INPUT}
-                    />
+                    >
+                      <option value="">Pick a time…</option>
+                      {TIME_SLOTS.map((group) => (
+                        <optgroup key={group.band} label={group.band}>
+                          {group.times.map((t) => (
+                            <option key={t} value={t}>
+                              {timeLabel(t)}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
                   </label>
                 </div>
                 <div className="grid gap-2">

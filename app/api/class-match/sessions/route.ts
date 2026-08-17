@@ -161,6 +161,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'no_live_campaign' }, { status: 409 });
     }
 
+    // A taster outside the campaign window cannot be found by anyone browsing the
+    // week, so the window is a hard bound rather than a hint. The builder offers
+    // only the campaign's days, but that is a select in a browser — this is the
+    // rule. Compared as instants, which is what both sides are.
+    const campaignStart = Date.parse(campaign.starts_at);
+    const campaignEnd = Date.parse(campaign.ends_at);
+    if (
+      Number.isFinite(campaignStart) &&
+      Number.isFinite(campaignEnd) &&
+      (scheduled.getTime() < campaignStart || scheduled.getTime() > campaignEnd)
+    ) {
+      return NextResponse.json(
+        { error: 'outside_campaign_window', startsAt: campaign.starts_at, endsAt: campaign.ends_at },
+        { status: 422 }
+      );
+    }
+
     // Ownership before anything else. Missing group gets the same 403 as a
     // foreign one — this endpoint should not confirm which ids exist.
     const { data: group } = await service
