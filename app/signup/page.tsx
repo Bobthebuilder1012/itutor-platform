@@ -14,6 +14,7 @@ import { Institution } from '@/lib/hooks/useInstitutionsSearch';
 import { setUserSubjects } from '@/lib/supabase/userSubjects';
 import { ensureSchoolCommunityAndMembership } from '@/lib/actions/community';
 import { cn } from '@/lib/utils';
+import { safeRedirectOr } from '@/lib/utils/safeRedirect';
 
 type UserRole = 'student' | 'tutor' | 'parent';
 type Step = 'details' | 'role' | 'verify' | 'confirmed' | 'profile';
@@ -285,8 +286,7 @@ export default function SignupPage() {
       else {
         // Parent: account is created with role='parent'; go straight to their
         // dashboard (no extra profile step — children are added there).
-        const redirectUrl = searchParams.get('redirect');
-        router.push(redirectUrl ? decodeURIComponent(redirectUrl) : '/parent/dashboard');
+        router.push(safeRedirectOr(searchParams.get('redirect'), '/parent/dashboard'));
       }
     }, 1400);
   };
@@ -310,8 +310,7 @@ export default function SignupPage() {
       if (updateError) { setError(`Error saving profile: ${updateError.message}`); return; }
 
       if (showSchool && studentInstitution) await ensureSchoolCommunityAndMembership(userId!);
-      const redirectUrl = searchParams.get('redirect');
-      router.push(redirectUrl ? decodeURIComponent(redirectUrl) : '/student/dashboard');
+      router.push(safeRedirectOr(searchParams.get('redirect'), '/student/dashboard'));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
     } finally { setLoading(false); }
@@ -327,8 +326,7 @@ export default function SignupPage() {
     try {
       await supabase.from('profiles').update({ teaching_levels: tLevels }).eq('id', userId);
       if (tSubjects.length > 0) await setUserSubjects(userId!, tSubjects);
-      const redirectUrl = searchParams.get('redirect');
-      router.push(redirectUrl ? decodeURIComponent(redirectUrl) : '/tutor/dashboard');
+      router.push(safeRedirectOr(searchParams.get('redirect'), '/tutor/dashboard'));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
     } finally { setLoading(false); }

@@ -94,9 +94,12 @@ export default function CompleteRolePage() {
       try {
         const res = await fetch('/api/auth/resolve-role', { method: 'POST' });
         const data = await res.json();
-        // Only redirect if it's a real destination — never redirect back to this page
+        // Only redirect if it's a real destination — never redirect back to this page.
+        // Prefer the visitor's original destination: a user complete enough for
+        // resolve-role to answer must land back where they were headed (a campaign
+        // page, a class from a QR code), not on a dashboard.
         if (data.redirect && !data.redirect.includes('complete-role')) {
-          router.replace(data.redirect);
+          router.replace(returnTo ?? data.redirect);
           return;
         }
         // Role already set but profile incomplete — skip role picker, go straight to profile form
@@ -105,8 +108,9 @@ export default function CompleteRolePage() {
           if (data.role !== 'parent') {
             setStep('profile');
           } else {
-            // Parents need no extra profile step — straight to their dashboard.
-            router.replace('/parent/dashboard');
+            // Parents need no extra profile step — back to where they were
+            // headed, or their dashboard when nothing was carried across.
+            router.replace(returnTo ?? '/parent/dashboard');
             return;
           }
         }

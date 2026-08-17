@@ -35,6 +35,46 @@ const DISMISS_KEY = 'cmw_banner_dismissed';
 let cachedCampaign: ClassMatchCampaign | null | undefined;
 let inflight: Promise<ClassMatchCampaign | null> | null = null;
 
+/**
+ * Personal state for the role/state-aware copy (docs 04 §4.3, recommended
+ * variant): a visitor with a reservation sees their next session; one with a
+ * completed questionnaire sees "view your matches". Cached the same way as the
+ * campaign; a failed fetch silently falls back to the generic copy tiers.
+ */
+type BannerState = {
+  hasSubmission: boolean;
+  authed: boolean;
+  nextSession: null | { sessionId: string; title: string; scheduledAt: string };
+};
+let cachedState: BannerState | null | undefined;
+let stateInflight: Promise<BannerState | null> | null = null;
+
+function loadBannerState(): Promise<BannerState | null> {
+  if (cachedState !== undefined) return Promise.resolve(cachedState);
+  if (!stateInflight) {
+    stateInflight = fetch('/api/class-match/banner-state')
+      .then(async (res) => (res.ok ? ((await res.json()) as BannerState) : null))
+      .catch(() => null)
+      .then((state) => {
+        cachedState = state;
+        stateInflight = null;
+        return state;
+      });
+  }
+  return stateInflight;
+}
+
+function astShortTime(iso: string): string {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '';
+  return d.toLocaleString('en-US', {
+    timeZone: 'America/Port_of_Spain',
+    weekday: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
 function loadCampaign(): Promise<ClassMatchCampaign | null> {
   if (cachedCampaign !== undefined) return Promise.resolve(cachedCampaign);
   if (!inflight) {
@@ -83,6 +123,7 @@ export default function ClassMatchBanner({
   const [campaign, setCampaign] = useState<ClassMatchCampaign | null | undefined>(
     () => cachedCampaign,
   );
+  const [state, setState] = useState<BannerState | null | undefined>(() => cachedState);
   const [dismissed, setDismissed] = useState(
     () => typeof window !== 'undefined' && sessionStorage.getItem(DISMISS_KEY) === '1',
   );
@@ -92,6 +133,12 @@ export default function ClassMatchBanner({
     let alive = true;
     void loadCampaign().then((c) => {
       if (alive) setCampaign(c);
+      // Personal state only matters when a campaign renders at all.
+      if (c) {
+        void loadBannerState().then((s) => {
+          if (alive) setState(s);
+        });
+      }
     });
     return () => {
       alive = false;
@@ -111,23 +158,35 @@ export default function ClassMatchBanner({
   if (!Number.isFinite(startsAt) || !Number.isFinite(endsAt)) return null;
 
   const isTutor = role === 'tutor';
-  const href = isTutor ? '/tutor/class-match-week' : '/class-match-week';
 
+  // Copy precedence (docs 04 §4.3): a reserved session beats everything, a
+  // completed questionnaire beats the generic pitch, teachers get their own
+  // call-to-action, and only then the default per time state.
+  let href: string;
   let copy: string;
-  if (now < startsAt) {
-    copy = isTutor
-      ? `Class Match Week — create a free taster session · Starts in ${formatCountdown(startsAt - now)}`
-      : `Class Match Week — free classes in the subjects you choose · Starts in ${formatCountdown(startsAt - now)}`;
-  } else if (now < endsAt) {
-    copy = isTutor
-      ? `Class Match Week — create a free taster session · Ends in ${formatCountdown(endsAt - now)}`
-      : `Class Match Week is on — free classes all week · Ends in ${formatCountdown(endsAt - now)}`;
-  } else if (now - endsAt <= AFTER_WINDOW_MS) {
-    // A dead countdown makes the site look abandoned; attendees hold coupons
-    // that are quietly expiring for up to a month, so the message flips.
-    copy = 'Class Match Week discounts are still live';
+  if (state?.nextSession) {
+    href = '/class-match-week/my-classes';
+    copy = `Your next session: ${state.nextSession.title} · ${astShortTime(state.nextSession.scheduledAt)}`;
+  } else if (state?.hasSubmission && !isTutor) {
+    href = '/class-match-week/results';
+    copy = 'Class Match Week — view your matches';
   } else {
-    return null;
+    href = isTutor ? '/tutor/class-match-week' : '/class-match-week';
+    if (now < startsAt) {
+      copy = isTutor
+        ? `Class Match Week — create a free taster session · Starts in ${formatCountdown(startsAt - now)}`
+        : `Class Match Week — free classes in the subjects you choose · Starts in ${formatCountdown(startsAt - now)}`;
+    } else if (now < endsAt) {
+      copy = isTutor
+        ? `Class Match Week — create a free taster session · Ends in ${formatCountdown(endsAt - now)}`
+        : `Class Match Week is on — free classes all week · Ends in ${formatCountdown(endsAt - now)}`;
+    } else if (now - endsAt <= AFTER_WINDOW_MS) {
+      // A dead countdown makes the site look abandoned; attendees hold coupons
+      // that are quietly expiring for up to a month, so the message flips.
+      copy = 'Class Match Week discounts are still live';
+    } else {
+      return null;
+    }
   }
 
   const dismiss = () => {

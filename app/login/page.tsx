@@ -7,6 +7,7 @@ import { motion } from 'framer-motion';
 import { Eye, EyeOff, Check } from 'lucide-react';
 import { supabase, setRememberMePreference, createSupabaseClient } from '@/lib/supabase/client';
 import { getAdminHomePath, isEmailManagementOnlyAdmin } from '@/lib/auth/adminAccess';
+import { safeRedirectPath } from '@/lib/utils/safeRedirect';
 
 function isNetworkError(error: unknown): boolean {
   if (error instanceof TypeError && error.message === 'Failed to fetch') return true;
@@ -105,10 +106,12 @@ export default function LoginPage() {
 
       if (!profileData.role) { router.push('/signup/complete-role'); return; }
 
-      const redirectUrl = searchParams.get('redirect');
+      // Same-origin paths only — see lib/utils/safeRedirect. An unchecked
+      // `?redirect=` here was an open redirect for anyone who signed in.
+      const redirectUrl = safeRedirectPath(searchParams.get('redirect'));
 
       if (isEmailManagementOnlyAdmin(profileData.email)) { router.push('/admin/emails'); return; }
-      if (redirectUrl) { router.push(decodeURIComponent(redirectUrl)); return; }
+      if (redirectUrl) { router.push(redirectUrl); return; }
       if (profileData.role === 'admin') { router.push(getAdminHomePath(profileData.email)); return; }
       if (profileData.is_reviewer) { router.push('/reviewer/dashboard'); return; }
 

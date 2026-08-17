@@ -20,6 +20,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Check, Search, X } from 'lucide-react';
+import { supabase } from '@/lib/supabase/client';
 import { QUESTIONNAIRE_LEVELS, type CanonicalLevel } from '@/lib/classMatchWeek/levels';
 import {
   AVAILABILITY_BLOCKS,
@@ -191,7 +192,15 @@ export default function Questionnaire({
     // and let the results page re-run live, so nothing here can drift.)
     const ok = await persist(buildPayload());
     if (ok) {
-      router.push('/class-match-week/results');
+      // Signup sits BETWEEN the questionnaire and results: the anonymous
+      // phase ends at Q5, and results require an authenticated user. A
+      // visitor who already has a session skips straight through —
+      // getSession() reads local auth state, not the database, so the
+      // no-Supabase-queries rule in the header still holds.
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      router.push(session ? '/class-match-week/results' : '/class-match-week/signup');
       return;
     }
     setSubmitting(false);

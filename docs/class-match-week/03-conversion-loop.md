@@ -6,6 +6,20 @@
 
 ---
 
+## Flow amendment (owner decision, 2026-08-16 — supersedes §3.1's sequence)
+
+**Signup now sits between the questionnaire and results**, not at Reserve:
+Q5 → `/class-match-week/signup` ("Complete your profile", Google first) → results.
+v2 §6.1 placed signup after results ("after the parent has seen something worth
+signing up for"); the owner reversed that. Consequences as built: results,
+Explore, My classes and Dashboard are all auth-gated; the cookie-token
+submission is claimed onto the account at first authed load (last-write-wins,
+§2.4), which also backfills `profiles.role` from the questionnaire's role
+answer — that is what keeps "role is never asked again" true. The
+return-to-the-card contract survives via `?session=` carried through signup.
+
+---
+
 ## Why this is third
 
 This is where the campaign makes money. At the end of this phase a parent can go

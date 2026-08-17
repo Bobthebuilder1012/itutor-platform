@@ -1,11 +1,14 @@
+'use client';
+
 /**
- * One teacher/class result on the Class Match Week results page.
+ * One teacher/class result card — results page and Explore both render it.
  *
- * Deliberately server-compatible (no 'use client'): the results page is a
- * service-client server component and the only interactivity here is
- * navigation. Props are declared structurally against the runMatch contract
- * rather than imported from the matching module, so the card stands alone and
- * a rename over there fails the typecheck at the page, not inside the card.
+ * Reserve is REAL here (Phase 3): the button POSTs /api/class-match/reserve and
+ * walks the documented outcomes — a clash warns and lets the family proceed
+ * (docs 03 §3.3: discovering the clash on the day produces a no-show that was
+ * not their fault), 'full' is terminal until the Phase 5 join queue, and 401
+ * routes into the campaign signup carrying the chosen session so the flow
+ * resumes exactly where the tap happened.
  *
  * Rendering rules this card owns:
  *  - Price is `groups.price_monthly` as "TT$N/mo". Null or 0 omits the price
@@ -16,10 +19,15 @@
  *  - "N spots left" renders only when the cap is non-null (NULL = unlimited).
  *  - `fallback_class` cards carry no campaign session: they get a View class
  *    link to the ongoing class and no Reserve.
+ *  - `highlightSessionId` is the "return to the card" contract (docs 03 §3.1):
+ *    the row is visually emphasised and the card carries an anchor id the
+ *    results page scrolls to. Not the top of the page.
  */
 
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { CalendarDays } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { CalendarDays, Check } from 'lucide-react';
 import { formatAstDate, formatAstTimeRange } from '@/lib/utils/scheduleFormat';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 
@@ -47,16 +55,15 @@ export type TeacherResultCardData = {
   mismatchNote?: string;
 };
 
-/**
- * Reserve behaviour THIS PHASE: reservation itself is Phase 3. The button is
- * a plain link into signup carrying a redirect back to these results with the
- * chosen session, so Phase 3 can pick the flow up exactly where it left off.
- * `?redirect=` is the repo's convention (never `?next=`); we only construct
- * the URL here, never consume one.
- */
-function reserveHref(sessionId: string): string {
-  return `/signup?redirect=${encodeURIComponent(`/class-match-week/results?session=${sessionId}`)}`;
-}
+type Clash = { sessionId: string; title: string; scheduledAt: string };
+
+type SlotState =
+  | { kind: 'idle' }
+  | { kind: 'busy' }
+  | { kind: 'clash'; clash: Clash }
+  | { kind: 'reserved'; confirmation: string | null }
+  | { kind: 'full' }
+  | { kind: 'error'; message: string };
 
 /** "10% off after attending", or "10–20% off after attending" across sessions. */
 function discountBadge(sessions: TeacherResultSession[]): string | null {
@@ -67,18 +74,112 @@ function discountBadge(sessions: TeacherResultSession[]): string | null {
   return min === max ? `${min}% off after attending` : `${min}–${max}% off after attending`;
 }
 
-export default function TeacherResultCard({ card }: { card: TeacherResultCardData }) {
+function astShort(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleString('en-US', {
+    timeZone: 'America/Port_of_Spain',
+    weekday: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+export default function TeacherResultCard({
+  card,
+  reservedSessionIds = [],
+  highlightSessionId,
+  authed = false,
+  ended = false,
+}: {
+  card: TeacherResultCardData;
+  reservedSessionIds?: string[];
+  highlightSessionId?: string;
+  authed?: boolean;
+  /** Explore renders past sessions muted with Reserve suppressed. */
+  ended?: boolean;
+}) {
+  const router = useRouter();
   const badge = discountBadge(card.sessions);
   const price = card.priceMonthly && Number(card.priceMonthly) > 0 ? `${fmtTTD(card.priceMonthly)}/mo` : null;
   const classOnly = card.tier === 'fallback_class';
 
+  const initialStates = useMemo(() => {
+    const m: Record<string, SlotState> = {};
+    for (const s of card.sessions) {
+      m[s.sessionId] = reservedSessionIds.includes(s.sessionId)
+        ? { kind: 'reserved', confirmation: null }
+        : { kind: 'idle' };
+    }
+    return m;
+    // reservedSessionIds is server-supplied per load; identity churn is fine here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [card.sessions.map((s) => s.sessionId).join(','), reservedSessionIds.join(',')]);
+
+  const [states, setStates] = useState<Record<string, SlotState>>(initialStates);
+  const [taken, setTaken] = useState<Record<string, number>>({});
+
+  function setState(sessionId: string, next: SlotState) {
+    setStates((prev) => ({ ...prev, [sessionId]: next }));
+  }
+
+  async function reserve(sessionId: string, confirm: boolean) {
+    if (!authed) {
+      router.push(`/class-match-week/signup?session=${sessionId}`);
+      return;
+    }
+    setState(sessionId, { kind: 'busy' });
+    try {
+      const res = await fetch('/api/class-match/reserve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(confirm ? { sessionId, confirm: true } : { sessionId }),
+      });
+      if (res.status === 401) {
+        router.push(`/class-match-week/signup?session=${sessionId}`);
+        return;
+      }
+      const json = await res.json().catch(() => ({}));
+      if (res.status === 201) {
+        setTaken((prev) => ({ ...prev, [sessionId]: (prev[sessionId] ?? 0) + 1 }));
+        const c = json?.confirmation;
+        setState(sessionId, {
+          kind: 'reserved',
+          confirmation: c
+            ? `You will meet ${c.teacherName} for “${c.title}” on ${c.scheduledAtDisplay}.`
+            : null,
+        });
+        return;
+      }
+      if (json?.error === 'already_reserved') {
+        setState(sessionId, { kind: 'reserved', confirmation: null });
+        return;
+      }
+      if (json?.error === 'clash' && json.clash) {
+        setState(sessionId, { kind: 'clash', clash: json.clash });
+        return;
+      }
+      if (json?.error === 'full') {
+        setState(sessionId, { kind: 'full' });
+        return;
+      }
+      setState(sessionId, { kind: 'error', message: 'Could not reserve — try again.' });
+    } catch {
+      setState(sessionId, { kind: 'error', message: 'Could not reserve — check your connection.' });
+    }
+  }
+
   return (
-    <article className="overflow-hidden rounded-3xl border border-border bg-white shadow-card">
+    <article
+      id={`cmw-card-${card.classId}`}
+      className={`overflow-hidden rounded-3xl border bg-white shadow-card ${
+        card.sessions.some((s) => s.sessionId === highlightSessionId)
+          ? 'border-brand ring-2 ring-brand/30'
+          : 'border-border'
+      } ${ended ? 'opacity-60' : ''}`}
+    >
       <div className="p-4">
         <div className="flex items-start gap-3">
           {card.avatarUrl ? (
-            // Plain <img>: avatars are public Supabase storage URLs and the
-            // card must render for anonymous visitors with zero client JS.
             // eslint-disable-next-line @next/next/no-img-element
             <img src={card.avatarUrl} alt="" className="size-12 shrink-0 rounded-2xl object-cover" />
           ) : (
@@ -97,6 +198,11 @@ export default function TeacherResultCard({ card }: { card: TeacherResultCardDat
               </span>
             )}
           </div>
+          {ended && (
+            <span className="shrink-0 rounded-full bg-border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+              Ended
+            </span>
+          )}
         </div>
 
         {card.mismatchNote && (
@@ -125,30 +231,90 @@ export default function TeacherResultCard({ card }: { card: TeacherResultCardDat
         <ul className="divide-y divide-border border-t border-border">
           {card.sessions.map((s) => {
             const at = new Date(s.scheduledAt);
+            const state = states[s.sessionId] ?? { kind: 'idle' as const };
+            const spaces =
+              s.spacesRemaining == null ? null : Math.max(0, s.spacesRemaining - (taken[s.sessionId] ?? 0));
+            const highlighted = s.sessionId === highlightSessionId;
             return (
-              <li key={s.sessionId} className="flex items-center gap-3 p-4">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-ink">{s.title}</p>
-                  <p className="mt-0.5 text-[11px] text-ink-muted">
-                    {formatAstDate(at, { weekday: 'short', month: 'short', day: 'numeric' })} ·{' '}
-                    {formatAstTimeRange(at, s.durationMinutes)} · {s.durationMinutes} min
-                  </p>
-                  <p className="mt-0.5 text-[11px] font-medium text-brand-deep">
-                    {s.discountPercent}% off the class if you continue
-                    {s.spacesRemaining != null && (
-                      <span className="font-semibold text-coral">
-                        {' '}
-                        · {s.spacesRemaining} {s.spacesRemaining === 1 ? 'spot' : 'spots'} left
-                      </span>
-                    )}
-                  </p>
+              <li
+                key={s.sessionId}
+                className={`p-4 ${highlighted ? 'bg-brand-soft/40' : ''}`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-ink">{s.title}</p>
+                    <p className="mt-0.5 text-[11px] text-ink-muted">
+                      {formatAstDate(at, { weekday: 'short', month: 'short', day: 'numeric' })} ·{' '}
+                      {formatAstTimeRange(at, s.durationMinutes)} · {s.durationMinutes} min
+                    </p>
+                    <p className="mt-0.5 text-[11px] font-medium text-brand-deep">
+                      {s.discountPercent}% off the class if you continue
+                      {spaces != null && state.kind !== 'reserved' && (
+                        <span className="font-semibold text-coral">
+                          {' '}
+                          · {spaces} {spaces === 1 ? 'spot' : 'spots'} left
+                        </span>
+                      )}
+                    </p>
+                  </div>
+
+                  {ended ? null : state.kind === 'reserved' ? (
+                    <Link
+                      href="/class-match-week/my-classes"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-2xl bg-brand-soft px-3 py-2 text-xs font-bold text-brand-deep"
+                    >
+                      <Check className="size-3.5" /> Reserved
+                    </Link>
+                  ) : state.kind === 'full' || spaces === 0 ? (
+                    <span className="shrink-0 rounded-2xl bg-border px-4 py-2.5 text-xs font-bold text-ink-muted">
+                      Full
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={state.kind === 'busy'}
+                      onClick={() => reserve(s.sessionId, false)}
+                      className={`shrink-0 rounded-2xl px-4 py-2.5 text-xs font-bold text-white transition-colors ${
+                        highlighted ? 'bg-brand-deep ring-2 ring-brand/40' : 'bg-brand hover:bg-brand-deep'
+                      } ${state.kind === 'busy' ? 'opacity-60' : ''}`}
+                    >
+                      {state.kind === 'busy' ? 'Reserving…' : 'Reserve'}
+                    </button>
+                  )}
                 </div>
-                <Link
-                  href={reserveHref(s.sessionId)}
-                  className="shrink-0 rounded-2xl bg-brand px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-brand-deep"
-                >
-                  Reserve
-                </Link>
+
+                {state.kind === 'clash' && (
+                  <div className="mt-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-900">
+                    This overlaps with <span className="font-semibold">{state.clash.title}</span> at{' '}
+                    {astShort(state.clash.scheduledAt)} — reserve anyway?
+                    <span className="mt-1.5 flex gap-3">
+                      <button
+                        type="button"
+                        onClick={() => reserve(s.sessionId, true)}
+                        className="font-bold text-brand-deep underline underline-offset-2"
+                      >
+                        Reserve anyway
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setState(s.sessionId, { kind: 'idle' })}
+                        className="text-ink-muted underline underline-offset-2"
+                      >
+                        Never mind
+                      </button>
+                    </span>
+                  </div>
+                )}
+
+                {state.kind === 'reserved' && state.confirmation && (
+                  <p className="mt-2 rounded-xl bg-brand-soft/60 px-3 py-2 text-[11px] leading-relaxed text-brand-deep">
+                    Your free session has been reserved. {state.confirmation}
+                  </p>
+                )}
+
+                {state.kind === 'error' && (
+                  <p className="mt-2 text-[11px] text-coral">{state.message}</p>
+                )}
               </li>
             );
           })}

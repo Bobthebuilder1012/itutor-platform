@@ -782,11 +782,15 @@ export default function FindTutorsPage() {
       // Fetch active promotions + usage counts for all groups
       try {
         const [{ data: promos }, { data: usageRows }] = await Promise.all([
+          // Class-level promotions only. RLS would also let this viewer read
+          // their own personal coupon (migration 231), but this list badges
+          // classes generically — a coupon belongs on the campaign surfaces.
           supabase
             .from('group_promotions')
             .select('id, group_id, kind, discount, student_cap, duration_days, created_at')
             .in('group_id', groupIds)
             .eq('active', true)
+            .is('user_id', null)
             .order('created_at', { ascending: false }),
           supabase
             .from('group_enrollments')

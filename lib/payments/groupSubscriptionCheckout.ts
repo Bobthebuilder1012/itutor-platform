@@ -281,18 +281,37 @@ export async function createGroupSubscriptionCheckout(params: {
 
   let promotions: any[] | null = null;
   if (!isReusingEnrollment) {
+    // This runs on the ADMIN client, so RLS does not scope it — the filter has
+    // to be explicit here. A personal coupon (migration 231) belongs to one
+    // buyer; without `user_id`, one coupon row would discount this class for
+    // everyone who checks out. `user_id IS NULL` is a group-wide promotion,
+    // which is every row created before 231.
+    const nowIso = new Date().toISOString();
     const { data: promoRows } = await admin
       .from('group_promotions')
-      .select('id, kind, discount, student_cap, duration_days')
+      .select('id, kind, discount, student_cap, duration_days, user_id, expires_at, price_duration_months')
       .eq('group_id', groupId)
       .eq('active', true)
+      .or(`user_id.is.null,user_id.eq.${studentId}`)
+      .or(`expires_at.is.null,expires_at.gt.${nowIso}`)
+      .is('redeemed_at', null)
       .order('created_at', { ascending: false })
       .limit(5);
-    promotions = promoRows;
+    // Precedence is explicit, not newest-first (docs 03: identical created_at
+    // values tie nondeterministically, and a campaign coupon must not lose to
+    // a standing class promotion): the buyer's personal coupon outranks
+    // group-wide offers, then higher discount wins, then id as a stable tie-break.
+    promotions = (promoRows ?? []).slice().sort((a: any, b: any) => {
+      const aPersonal = a.user_id != null ? 0 : 1;
+      const bPersonal = b.user_id != null ? 0 : 1;
+      if (aPersonal !== bPersonal) return aPersonal - bPersonal;
+      if ((b.discount ?? 0) !== (a.discount ?? 0)) return (b.discount ?? 0) - (a.discount ?? 0);
+      return String(a.id).localeCompare(String(b.id));
+    });
 
-    if (promoRows && promoRows.length > 0) {
-      // Find first applicable promotion
-      for (const promo of promoRows) {
+    if (promotions && promotions.length > 0) {
+      // Find first applicable promotion, in precedence order (sorted above).
+      for (const promo of promotions) {
         let applicable = true;
 
         if (promo.kind === 'early-bird' && promo.student_cap) {
