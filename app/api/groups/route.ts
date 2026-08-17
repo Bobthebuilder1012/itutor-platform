@@ -532,6 +532,13 @@ export async function POST(request: NextRequest) {
           session_length_minutes: body.session_length_minutes ?? null,
           session_frequency: body.session_frequency ?? null,
           tutor_id: user.id,
+          // end_date is VALIDATED AS REQUIRED above, so it has to survive every
+          // rung of this fallback chain. It was on the primary insert only, and
+          // header_image — which the primary also carries — does not exist on
+          // production, so the primary always failed there and the class was
+          // created with end_date NULL. EndDateGate then demanded it on the next
+          // screen, which is why tutors were asked for the same date twice.
+          end_date: endDateValue,
           pricing: 'free',
           pricing_mode: body.pricing_mode ?? body.pricing_model ?? 'FREE',
           pricing_model: body.pricing_model ?? (
@@ -556,6 +563,13 @@ export async function POST(request: NextRequest) {
           description: body.description?.trim() ?? null,
           subject: subjectString,
           tutor_id: user.id,
+          // end_date is VALIDATED AS REQUIRED above, so it has to survive every
+          // rung of this fallback chain. It was on the primary insert only, and
+          // header_image — which the primary also carries — does not exist on
+          // production, so the primary always failed there and the class was
+          // created with end_date NULL. EndDateGate then demanded it on the next
+          // screen, which is why tutors were asked for the same date twice.
+          end_date: endDateValue,
           pricing: 'free',
         })
         .select()
@@ -570,6 +584,13 @@ export async function POST(request: NextRequest) {
           description: body.description?.trim() ?? null,
           subject: subjectString,
           tutor_id: user.id,
+          // end_date is VALIDATED AS REQUIRED above, so it has to survive every
+          // rung of this fallback chain. It was on the primary insert only, and
+          // header_image — which the primary also carries — does not exist on
+          // production, so the primary always failed there and the class was
+          // created with end_date NULL. EndDateGate then demanded it on the next
+          // screen, which is why tutors were asked for the same date twice.
+          end_date: endDateValue,
         })
         .select()
         .single());
