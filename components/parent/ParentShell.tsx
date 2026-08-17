@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import LogoutConfirmModal from '@/components/LogoutConfirmModal';
+import { FEEDBACK_SEEN_EVENT } from '@/lib/parent/feedbackSeen';
 
 type NavItem = { to: string; label: string; icon: ComponentType<{ className?: string }>; exact?: boolean; tint: string };
 
@@ -90,20 +91,27 @@ export default function ParentShell({ children }: { children: React.ReactNode })
           fetch('/api/parent/feedback/reports', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)),
         ]);
         setPendingApprovals(approvals?.pending?.length ?? 0);
-        // Unread is not modelled on feedback, so this counts what arrived in the
-        // last week — enough to draw the eye once without nagging forever.
-        const week = Date.now() - 7 * 86_400_000;
-        setNewFeedback(
-          (feedback?.reports ?? []).filter((f: { date?: string }) => {
-            const t = f.date ? new Date(f.date).getTime() : NaN;
-            return Number.isFinite(t) && t >= week;
-          }).length
-        );
+        // Unseen, not merely recent. This used to filter the reports here by a
+        // seven-day window, which made the badge undismissable — opening the
+        // page changed nothing and the count sat there until the report aged
+        // out. The endpoint now decides it against `feedback_seen_at`
+        // (migration 236), where the unformatted timestamps are.
+        setNewFeedback(feedback?.unseenCount ?? 0);
       } catch {
         /* badges are additive; their absence must not break the shell */
       }
     })();
   }, [profile?.id]);
+
+  // The counts above are fetched once per profile, so without this the badge
+  // would keep its old number for the rest of the session after the parent read
+  // the page — the server would have recorded the visit and the sidebar would
+  // still disagree. The feedback page dispatches this once its stamp lands.
+  useEffect(() => {
+    const clear = () => setNewFeedback(0);
+    window.addEventListener(FEEDBACK_SEEN_EVENT, clear);
+    return () => window.removeEventListener(FEEDBACK_SEEN_EVENT, clear);
+  }, []);
 
   const handleLogout = async () => {
     localStorage.clear(); sessionStorage.clear();

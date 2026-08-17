@@ -21,6 +21,7 @@ import Link from 'next/link';
 import { Clock, Loader2, MessageSquare, MessageSquareQuote } from 'lucide-react';
 import ParentShell from '@/components/parent/ParentShell';
 import RequestFeedbackPanel from '@/components/parent/RequestFeedbackPanel';
+import { markFeedbackSeen } from '@/lib/parent/feedbackSeen';
 
 type Report = {
   id: string;
@@ -82,6 +83,13 @@ function FeedbackContent() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Opening the page IS reading it. Stamped once on mount rather than per
+  // report — both counters render a single number, so a per-report receipt
+  // would be a finer distinction than either surface can show.
+  useEffect(() => {
+    void markFeedbackSeen();
+  }, []);
 
   if (loading) {
     return (

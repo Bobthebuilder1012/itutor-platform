@@ -102,8 +102,32 @@ export async function GET(_request: NextRequest) {
         timeZone: 'America/Port_of_Spain',
       });
 
+    // The sidebar badge's count, decided here rather than in the shell.
+    //
+    // The shell used to derive it from the `date` field below, which is a
+    // FORMATTED string — parsing "3 Sep 2026" back yields local midnight, which
+    // is fine against a seven-day window and wrong against a precise mark: a
+    // report filed at 14:00 would compare as 00:00 and read as already seen.
+    // The real timestamps only exist here, so the comparison belongs here.
+    //
+    // Unseen means created after `feedback_seen_at` (migration 236), stamped
+    // when the parent opens this page. The seven-day window still applies on a
+    // first visit, so a parent who has never opened the page is not met with a
+    // badge counting every report on file.
+    const { data: seenRow } = await admin
+      .from('profiles')
+      .select('feedback_seen_at')
+      .eq('id', parentProfile.id)
+      .maybeSingle();
+
+    const seenAt = (seenRow as { feedback_seen_at: string | null } | null)?.feedback_seen_at ?? null;
+    const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
+    const badgeCutoff = seenAt && seenAt > weekAgo ? seenAt : weekAgo;
+    const unseenCount = reports.filter((r) => r.created_at > badgeCutoff).length;
+
     return NextResponse.json({
       hasChildren: true,
+      unseenCount,
       reports: reports.map((r) => {
         const snap = (r.attendance_snapshot ?? {}) as {
           rateLabel?: string;
