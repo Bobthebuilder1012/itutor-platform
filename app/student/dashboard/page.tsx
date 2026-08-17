@@ -17,6 +17,7 @@ import { Clock, Video, Flame, Trophy, ChevronRight, Calendar, CheckCircle2, Sett
 import { cn } from '@/lib/utils';
 import { ALL_TOOLS, useStudentStore, type ToolKey } from '@/lib/student-store';
 import ReliabilityPanel from '@/components/reliability/ReliabilityPanel';
+import JoinCampaignCard from '@/components/classMatchWeek/JoinCampaignCard';
 
 type RecentTutor = {
   tutorId: string;
@@ -263,11 +264,18 @@ export default function StudentDashboard() {
               : "Welcome to iTutor! Find a tutor to get started."}
           </p>
         </div>
-        {completedSessionsCount > 0 && (
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-coral-soft text-coral text-sm font-semibold">
-            <Flame className="size-4" /> {completedSessionsCount} sessions completed
-          </div>
-        )}
+        {/* Top-right slot. The streak pill and the campaign invitation share it:
+            the pill only exists once there are sessions, and the invitation
+            disappears once the student has joined, so both showing at once is
+            possible but uncommon and reads fine stacked. */}
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          {completedSessionsCount > 0 && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-coral-soft text-coral text-sm font-semibold">
+              <Flame className="size-4" /> {completedSessionsCount} sessions completed
+            </div>
+          )}
+          <JoinCampaignCard />
+        </div>
       </div>
 
       {/* Next session hero */}
