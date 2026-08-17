@@ -297,11 +297,21 @@ export async function createGroupSubscriptionCheckout(params: {
       .is('redeemed_at', null)
       .order('created_at', { ascending: false })
       .limit(5);
-    promotions = promoRows;
+    // Precedence is explicit, not newest-first (docs 03: identical created_at
+    // values tie nondeterministically, and a campaign coupon must not lose to
+    // a standing class promotion): the buyer's personal coupon outranks
+    // group-wide offers, then higher discount wins, then id as a stable tie-break.
+    promotions = (promoRows ?? []).slice().sort((a: any, b: any) => {
+      const aPersonal = a.user_id != null ? 0 : 1;
+      const bPersonal = b.user_id != null ? 0 : 1;
+      if (aPersonal !== bPersonal) return aPersonal - bPersonal;
+      if ((b.discount ?? 0) !== (a.discount ?? 0)) return (b.discount ?? 0) - (a.discount ?? 0);
+      return String(a.id).localeCompare(String(b.id));
+    });
 
-    if (promoRows && promoRows.length > 0) {
-      // Find first applicable promotion
-      for (const promo of promoRows) {
+    if (promotions && promotions.length > 0) {
+      // Find first applicable promotion, in precedence order (sorted above).
+      for (const promo of promotions) {
         let applicable = true;
 
         if (promo.kind === 'early-bird' && promo.student_cap) {

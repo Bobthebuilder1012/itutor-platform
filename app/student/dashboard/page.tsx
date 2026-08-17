@@ -263,6 +263,8 @@ export default function StudentDashboard() {
               : "Welcome to iTutor! Find a tutor to get started."}
           </p>
         </div>
+        {/* The Class Match Week call-to-action used to sit here; it moved into
+            the shell's topbar so it is reachable from every student page. */}
         {completedSessionsCount > 0 && (
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-coral-soft text-coral text-sm font-semibold">
             <Flame className="size-4" /> {completedSessionsCount} sessions completed

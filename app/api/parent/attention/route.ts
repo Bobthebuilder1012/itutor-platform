@@ -112,14 +112,32 @@ export async function GET(_request: NextRequest) {
       });
     }
 
-    // 3. Feedback filed in the last fortnight. Not a task, but it is the one
-    //    thing a parent asked for and would otherwise only see by email.
-    const since = new Date(Date.now() - 14 * 86_400_000).toISOString();
+    // 3. Feedback filed in the last fortnight AND not yet seen. Not a task, but
+    //    it is the one thing a parent asked for and would otherwise only see by
+    //    email.
+    //
+    //    The fortnight alone used to decide this, which made the item
+    //    undismissable: "Read feedback" opened the page and the card kept
+    //    counting until the report aged out. `feedback_seen_at` (migration 236)
+    //    is stamped when the parent opens /parent/feedback, and anything at or
+    //    before it is read. The age window still applies on top — a parent
+    //    returning after a month should not meet a fortnight of history.
+    const { data: seenRow } = await admin
+      .from('profiles')
+      .select('feedback_seen_at')
+      .eq('id', parentProfile.id)
+      .maybeSingle();
+    const seenAt = (seenRow as { feedback_seen_at: string | null } | null)?.feedback_seen_at ?? null;
+
+    const fortnightAgo = new Date(Date.now() - 14 * 86_400_000).toISOString();
+    // Whichever is later: the parent's own high-water mark, or the age window.
+    const since = seenAt && seenAt > fortnightAgo ? seenAt : fortnightAgo;
+
     const { data: feedback } = await admin
       .from('feedback')
       .select('id, child_id, tutor_id, created_at')
       .in('child_id', childIds)
-      .gte('created_at', since)
+      .gt('created_at', since)
       .order('created_at', { ascending: false })
       .limit(10);
 

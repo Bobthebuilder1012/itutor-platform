@@ -2742,7 +2742,24 @@ function SchedulePicker({ entries, onChange }: { entries: ScheduleEntry[]; onCha
   return (
     <div className="space-y-3">
       <div className="text-sm font-semibold text-ink">Schedule</div>
-      <p className="text-xs text-muted-foreground -mt-1">Add your recurring sessions. Students see this on the marketplace.</p>
+      <p className="text-xs text-muted-foreground -mt-1">
+        Add your recurring sessions. Students see this on the marketplace, and a class without a
+        schedule isn&rsquo;t listed at all.
+      </p>
+
+      {/* The requirement, stated where it is acted on. A listing that cannot say
+          when the class meets is an invitation to enrol in an unstated time, so
+          the marketplace filters these out rather than showing them half-formed. */}
+      {entries.length === 0 && (
+        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />
+          <p className="text-xs leading-relaxed text-amber-800">
+            <span className="font-semibold">This class isn&rsquo;t on the marketplace yet.</span>{' '}
+            Students and parents can&rsquo;t find or enrol in it until it has a weekly schedule. Add
+            one below and it&rsquo;s listed straight away.
+          </p>
+        </div>
+      )}
 
       {entries.length > 0 && (
         <div className="space-y-2">
