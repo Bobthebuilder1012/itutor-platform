@@ -309,10 +309,17 @@ export async function deliverFeedback(
     const subject = params.isEdit
       ? `${params.tutorName} updated your feedback`
       : `Feedback from ${params.tutorName}`;
+    // "X wrote this about how you are getting on" put the reader in the third
+    // person about themselves, and "wrote this about" made the note sound like a
+    // report filed on them rather than written for them. The line now says who
+    // it is from and what it covers, and takes no view on whether the news is
+    // good — the tutor's own words below do that, and a framing sentence that
+    // pre-judges them is the one thing a student reads before deciding whether
+    // to keep reading.
     const html = shell(`
       <p>Hi ${esc(childFirst)},</p>
       ${editedNote}
-      <p>${esc(params.tutorName)} wrote this about how you are getting on.</p>
+      <p>${esc(params.tutorName)} has shared an update on your classes.</p>
       ${common}
       <p style="margin:14px 0 0;font-size:12px;color:#9ca3af">
         ${parentId ? 'A copy has gone to your parent as well.' : 'This was sent to you.'}
