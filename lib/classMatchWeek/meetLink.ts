@@ -42,6 +42,56 @@ function fail(reason: string): MintMeetLinkResult {
   return { ok: false, reason, reconnectUrl: RECONNECT_URL };
 }
 
+/**
+ * Decrypt a stored token, distinguishing the two ways it fails.
+ *
+ * These look identical from a bare `catch` and they are not the same problem:
+ *
+ *   - **`TOKEN_ENCRYPTION_KEY` is not set on this deployment.** A server
+ *     misconfiguration affecting every teacher. Reconnecting cannot fix it —
+ *     `encrypt()` throws on the same missing key, so the reconnect would fail on
+ *     the way back and the teacher would loop. Telling them to reconnect here is
+ *     actively wrong advice, which is why this returns different copy.
+ *   - **The value will not decrypt with the key we have.** Usually a row
+ *     encrypted under a different key — the shape you get when a preview or
+ *     staging deployment reads a database whose tokens were written elsewhere.
+ *     Reconnecting DOES fix this, because it re-encrypts under the current key.
+ *
+ * Both are logged, because the previous silent catch left no trace in the
+ * runtime logs at all: the only evidence was the sentence the teacher saw.
+ */
+function readToken(
+  encrypted: string,
+  label: 'access' | 'refresh'
+): { ok: true; token: string } | { ok: false; result: MintMeetLinkResult } {
+  if (!process.env.TOKEN_ENCRYPTION_KEY) {
+    console.error(
+      `[class-match-week] TOKEN_ENCRYPTION_KEY is not set — cannot read the ${label} token. ` +
+        'This is a deployment configuration problem, not a teacher problem.'
+    );
+    return {
+      ok: false,
+      result: fail(
+        'Video setup is misconfigured on our side, so we could not create the meeting link. Please contact support — reconnecting will not help.'
+      ),
+    };
+  }
+
+  try {
+    return { ok: true, token: decrypt(encrypted) };
+  } catch (err) {
+    console.error(
+      `[class-match-week] Failed to decrypt the ${label} token for a tutor. The stored value ` +
+        'does not match this deployment\'s TOKEN_ENCRYPTION_KEY:',
+      err instanceof Error ? err.message : err
+    );
+    return {
+      ok: false,
+      result: fail('Stored Google credentials could not be read. Reconnect Google Meet.'),
+    };
+  }
+}
+
 async function createCalendarEvent(
   accessToken: string,
   args: MintMeetLinkArgs,
@@ -142,12 +192,9 @@ export async function mintCampaignMeetLink(
       return fail('No Google Meet connection found. Connect Google Meet in Settings.');
     }
 
-    let accessToken: string;
-    try {
-      accessToken = decrypt(connection.access_token_encrypted);
-    } catch {
-      return fail('Stored Google credentials could not be read. Reconnect Google Meet.');
-    }
+    const access = readToken(connection.access_token_encrypted, 'access');
+    if (!access.ok) return access.result;
+    const accessToken = access.token;
 
     const start = new Date(args.scheduledAt);
     if (Number.isNaN(start.getTime())) {
@@ -168,14 +215,10 @@ export async function mintCampaignMeetLink(
         return fail('Google session expired and no refresh token is stored. Reconnect Google Meet.');
       }
 
-      let refreshToken: string;
-      try {
-        refreshToken = decrypt(connection.refresh_token_encrypted);
-      } catch {
-        return fail('Stored Google credentials could not be read. Reconnect Google Meet.');
-      }
+      const refresh = readToken(connection.refresh_token_encrypted, 'refresh');
+      if (!refresh.ok) return refresh.result;
 
-      const refreshed = await refreshAccessToken(admin, args.tutorId, refreshToken);
+      const refreshed = await refreshAccessToken(admin, args.tutorId, refresh.token);
       if (!refreshed.ok) return fail(refreshed.reason);
 
       response = await createCalendarEvent(refreshed.accessToken, args, requestId);
