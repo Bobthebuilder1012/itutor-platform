@@ -291,6 +291,29 @@ export default function ExploreView({
     return { visible, dayCounts, allCount };
   }, [annotated, level, selectedSubjects, bands, minDiscount, dayKey, serverNow]);
 
+  /**
+   * What is running regardless of the filters — the escape hatch for a dead end.
+   *
+   * A filter combination that matches nothing is a statement about the filters,
+   * not about the week, and a student who sees an empty page has no way to tell
+   * those apart. Rather than asking them to guess which filter to loosen, the
+   * page shows what IS on and lets them recognise something. Ignores every
+   * filter including the day, takes only sessions that have not already run,
+   * soonest first, and caps at four so the suggestion reads as a nudge rather
+   * than a second results page.
+   */
+  const fallback = useMemo(() => {
+    const out: Array<{ card: ExploreCardData; upcoming: AnnotatedSession[] }> = [];
+    for (const { card, sessions } of annotated) {
+      const upcoming = sessions.filter((s) => s.endsAtMs > serverNow);
+      if (upcoming.length > 0) out.push({ card, upcoming });
+    }
+    out.sort((a, b) =>
+      (a.upcoming[0]?.scheduledAt ?? '9999').localeCompare(b.upcoming[0]?.scheduledAt ?? '9999')
+    );
+    return out.slice(0, 4);
+  }, [annotated, serverNow]);
+
   // The docs are explicit that with this catalogue some days WILL be empty, so
   // the empty-day state links the nearest non-empty day instead of dead-ending.
   const nearestDay = useMemo(() => {
@@ -309,6 +332,71 @@ export default function ExploreView({
 
   const anyFilterActive =
     level !== null || selectedSubjects.length > 0 || bands.length > 0 || minDiscount > 0;
+
+  /** One teacher card, shared by the results grid and the fallback suggestions. */
+  const renderEntry = ({
+    card,
+    upcoming,
+    ended = [],
+  }: {
+    card: ExploreCardData;
+    upcoming: AnnotatedSession[];
+    ended?: AnnotatedSession[];
+  }) => {
+    const { formLevel: _formLevel, sessions: _sessions, ...rest } = card;
+    return (
+      <div key={`${card.tutorId}-${card.classId}`}>
+        <TeacherResultCard
+          card={{ ...rest, sessions: upcoming, tier: 'exact' }}
+          reservedSessionIds={reservedSessionIds}
+          authed={true}
+        />
+        {/* Ended sessions: visible, muted, Reserve suppressed — the
+            remain-visible decision on docs 04 §4.5's open item. */}
+        {ended.length > 0 && (
+          <ul className="mt-2 divide-y divide-border rounded-2xl border border-border bg-mint opacity-75">
+            {ended.map((s) => (
+              <li key={s.sessionId} className="flex items-center gap-3 p-3">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-ink-muted">{s.title}</p>
+                  <p className="mt-0.5 text-[11px] text-ink-muted">
+                    {formatAstDate(new Date(s.scheduledAt), {
+                      weekday: 'short',
+                      month: 'short',
+                      day: 'numeric',
+                    })}{' '}
+                    · {formatAstTimeRange(new Date(s.scheduledAt), s.durationMinutes)}
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full border border-border bg-white px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink-muted">
+                  Ended
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  };
+
+  /**
+   * "Nothing here, but here is what is on" — rendered under every empty state.
+   *
+   * The rule this enforces: a student must never reach a screen that shows them
+   * no teachers at all while teachers are in fact running sessions.
+   */
+  const fallbackBlock =
+    fallback.length > 0 ? (
+      <div className="mt-6">
+        <h2 className="text-sm font-bold text-ink">Other classes running this week</h2>
+        <p className="mt-0.5 text-xs text-ink-muted">
+          These are outside what you picked, but they are free and still open.
+        </p>
+        <div className="mt-3 grid gap-4">
+          {fallback.map(({ card, upcoming }) => renderEntry({ card, upcoming }))}
+        </div>
+      </div>
+    ) : null;
 
   const clearFilters = () => {
     setLevel(null);
@@ -437,90 +525,61 @@ export default function ExploreView({
       {/* Results grid — the same one-card-per-teacher presentation as results. */}
       {filtered.visible.length > 0 ? (
         <div className="mt-5 grid gap-4">
-          {filtered.visible.map(({ card, upcoming, ended }) => {
-            const { formLevel: _formLevel, sessions: _sessions, ...rest } = card;
-            return (
-              <div key={`${card.tutorId}-${card.classId}`}>
-                <TeacherResultCard
-                  card={{ ...rest, sessions: upcoming, tier: 'exact' }}
-                  reservedSessionIds={reservedSessionIds}
-                  authed={true}
-                />
-                {/* Ended sessions: visible, muted, Reserve suppressed — the
-                    remain-visible decision on docs 04 §4.5's open item. */}
-                {ended.length > 0 && (
-                  <ul className="mt-2 divide-y divide-border rounded-2xl border border-border bg-mint opacity-75">
-                    {ended.map((s) => (
-                      <li key={s.sessionId} className="flex items-center gap-3 p-3">
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-semibold text-ink-muted">{s.title}</p>
-                          <p className="mt-0.5 text-[11px] text-ink-muted">
-                            {formatAstDate(new Date(s.scheduledAt), {
-                              weekday: 'short',
-                              month: 'short',
-                              day: 'numeric',
-                            })}{' '}
-                            · {formatAstTimeRange(new Date(s.scheduledAt), s.durationMinutes)}
-                          </p>
-                        </div>
-                        <span className="shrink-0 rounded-full border border-border bg-white px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink-muted">
-                          Ended
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            );
-          })}
+          {filtered.visible.map((entry) => renderEntry(entry))}
         </div>
       ) : dayKey !== 'all' ? (
         // Designed empty-day state, never a blank screen: with this catalogue
         // some days WILL be empty (docs 04 §4.5).
-        <div className="mt-5 rounded-3xl border border-border bg-white p-6 text-center shadow-card">
-          <p className="text-sm font-bold text-ink">No sessions this day</p>
-          <p className="mt-1 text-xs leading-relaxed text-ink-muted">
-            Everything matching your filters runs on another day — try All days.
-          </p>
-          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-            <button
-              type="button"
-              onClick={() => setDayKey('all')}
-              className="rounded-2xl bg-brand px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-brand-deep"
-            >
-              Show all days
-            </button>
-            {nearestDay && (
+        <>
+          <div className="mt-5 rounded-3xl border border-border bg-white p-6 text-center shadow-card">
+            <p className="text-sm font-bold text-ink">No results for these filters</p>
+            <p className="mt-1 text-xs leading-relaxed text-ink-muted">
+              Nothing matching runs on this day — try All days.
+            </p>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
               <button
                 type="button"
-                onClick={() => setDayKey(nearestDay.key)}
-                className="rounded-2xl border border-border bg-white px-4 py-2.5 text-xs font-bold text-ink transition-colors hover:bg-mint"
+                onClick={() => setDayKey('all')}
+                className="rounded-2xl bg-brand px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-brand-deep"
               >
-                Try {nearestDay.label}
+                Show all days
+              </button>
+              {nearestDay && (
+                <button
+                  type="button"
+                  onClick={() => setDayKey(nearestDay.key)}
+                  className="rounded-2xl border border-border bg-white px-4 py-2.5 text-xs font-bold text-ink transition-colors hover:bg-mint"
+                >
+                  Try {nearestDay.label}
+                </button>
+              )}
+            </div>
+          </div>
+          {fallbackBlock}
+        </>
+      ) : (
+        <>
+          <div className="mt-5 rounded-3xl border border-border bg-white p-6 text-center shadow-card">
+            <p className="text-sm font-bold text-ink">
+              {cards.length === 0 ? 'No sessions published yet' : 'No results for these filters'}
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-ink-muted">
+              {cards.length === 0
+                ? 'Teachers are still adding their free sessions — check back soon.'
+                : 'Nothing matches every filter at once. Clear them to see the full week.'}
+            </p>
+            {anyFilterActive && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="mt-4 rounded-2xl bg-brand px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-brand-deep"
+              >
+                Clear filters
               </button>
             )}
           </div>
-        </div>
-      ) : (
-        <div className="mt-5 rounded-3xl border border-border bg-white p-6 text-center shadow-card">
-          <p className="text-sm font-bold text-ink">
-            {cards.length === 0 ? 'No sessions published yet' : 'Nothing matches these filters'}
-          </p>
-          <p className="mt-1 text-xs leading-relaxed text-ink-muted">
-            {cards.length === 0
-              ? 'Teachers are still adding their free sessions — check back soon.'
-              : 'Loosen a filter or clear them all to see the full week.'}
-          </p>
-          {anyFilterActive && (
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="mt-4 rounded-2xl bg-brand px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-brand-deep"
-            >
-              Clear filters
-            </button>
-          )}
-        </div>
+          {fallbackBlock}
+        </>
       )}
     </div>
   );
