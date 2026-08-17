@@ -30,6 +30,7 @@ import {
 } from '@/lib/classMatchWeek/types';
 import CountdownPill from './CountdownPill';
 import QuestionArt from './QuestionArt';
+import SignupOverlay from './SignupOverlay';
 
 const TOTAL_STEPS = 5;
 const NOT_SURE = 'Not sure yet';
@@ -114,6 +115,7 @@ export default function Questionnaire({
 
   const [saveFailed, setSaveFailed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [signupOpen, setSignupOpen] = useState(false);
 
   // Q2 option list — fetched per level, refetched when the user goes back and
   // changes level (optionsLevel tracks which level the current list answers).
@@ -260,15 +262,25 @@ export default function Questionnaire({
     // and let the results page re-run live, so nothing here can drift.)
     const ok = await persist(buildPayload());
     if (ok) {
-      // Signup sits BETWEEN the questionnaire and results: the anonymous
-      // phase ends at Q5, and results require an authenticated user. A
-      // visitor who already has a session skips straight through —
-      // getSession() reads local auth state, not the database, so the
-      // no-Supabase-queries rule in the header still holds.
+      // Signup sits BETWEEN the questionnaire and results: the anonymous phase
+      // ends at Q5, and results require an authenticated user. A visitor who
+      // already has a session skips straight through — getSession() reads local
+      // auth state, not the database, so the no-Supabase-queries rule in the
+      // header still holds.
+      //
+      // Without a session the account card opens OVER this screen rather than
+      // navigating to /signup. The answered questionnaire stays visible and
+      // blurred behind it, so the last step reads as part of the same flow
+      // instead of a hard cut to an unrelated page.
       const {
         data: { session },
       } = await supabase.auth.getSession();
-      router.push(session ? '/class-match-week/results' : '/class-match-week/signup');
+      if (session) {
+        router.push('/class-match-week/results');
+        return;
+      }
+      setSignupOpen(true);
+      setSubmitting(false);
       return;
     }
     setSubmitting(false);
@@ -643,6 +655,15 @@ export default function Questionnaire({
         </button>
         </div>
       </div>
+
+      {/* Account creation opens over the answered questionnaire rather than
+          replacing it — see SignupOverlay for why. */}
+      <SignupOverlay
+        open={signupOpen}
+        onClose={() => setSignupOpen(false)}
+        role={role}
+        redirectTo="/class-match-week/results"
+      />
     </main>
   );
 }
