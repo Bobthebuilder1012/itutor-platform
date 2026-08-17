@@ -19,7 +19,6 @@
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { ArrowLeft } from 'lucide-react';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { getLiveCampaign, getSubmissionByToken } from '@/lib/classMatchWeek/portalData';
 import { classWeeklySlots, formatSlot } from '@/lib/classMatchWeek/schedule';
@@ -278,21 +277,15 @@ export default async function ClassMatchWeekExplorePage() {
   ];
 
   return (
-    <main className="min-h-screen bg-background px-4 pb-16 pt-6">
-      <div className="mx-auto w-full max-w-xl">
+    <main className="max-w-6xl mx-auto space-y-6">
+      <div className="w-full">
         <div className="flex items-center justify-between gap-3">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-1 text-xs font-semibold text-ink-muted transition-colors hover:text-ink"
-          >
-            <ArrowLeft className="size-3.5" /> iTutor
-          </Link>
           <CountdownPill startsAt={campaign.starts_at} endsAt={campaign.ends_at} size="sm" />
         </div>
         <div className="mt-6">
           <CampaignBadge />
         </div>
-        <h1 className="mt-3 text-2xl font-bold tracking-tight text-ink">Explore the week</h1>
+        <h1 className="mt-3 text-2xl lg:text-3xl font-bold text-ink">Explore the week</h1>
         <p className="mt-2 text-sm leading-relaxed text-ink-muted">
           Every free session running this Class Match Week — pick a day, or filter by level,
           subject and time.

@@ -56,7 +56,14 @@ export type SessionSlotCard = {
   spacesRemaining: number | null;
 };
 
-/** One card per teacher per class, the results page's unit of render. */
+/**
+ * One matched teacher, as the results page renders them.
+ *
+ * `tier` is retained with its original vocabulary because it drives the card's
+ * layout, not the ranking: a card with bookable sessions renders Reserve
+ * ('exact'), a subject-matching class with no campaign session renders View
+ * class ('fallback_class'). Suitability lives in `score` and `reasons`.
+ */
 export type TeacherCard = {
   tutorId: string;
   teacherName: string;
@@ -70,13 +77,32 @@ export type TeacherCard = {
   classSlots: string[];
   sessions: SessionSlotCard[];
   tier: 'exact' | 'fallback_schedule' | 'fallback_class';
-  /** Present on fallback tiers: names the mismatch instead of silently showing it. */
+  /** Names a soft mismatch (level or timing) instead of silently showing it. */
   mismatchNote?: string;
+  /** Ranking weight. Higher is a better fit; never used to exclude. */
+  score: number;
+  /** Plain-language reasons this teacher was surfaced, best first. */
+  reasons: string[];
+  levelMatch: boolean;
+  availabilityMatch: boolean;
 };
 
+/** Alias that says what the output actually is: a ranked set of teachers. */
+export type TutorMatch = TeacherCard;
+
 export type MatchResult = {
-  outcome: 'exact' | 'fallback' | 'none';
+  /**
+   * 'matched' whenever the chosen subject is taught by anyone.
+   * 'subject_unsupported' is the ONLY empty outcome — it means the platform
+   * has no teacher for that subject at all, which is a supply fact worth
+   * telling the family plainly and worth recording as demand.
+   */
+  outcome: 'matched' | 'subject_unsupported';
   cards: TeacherCard[];
+  /** Subjects the visitor chose that are taught by someone. */
+  matchedSubjects: string[];
+  /** Subjects the visitor chose that nobody teaches. */
+  unsupportedSubjects: string[];
   /** Every sessionId across returned cards, in render order — snapshotted onto the submission. */
   recommendedSessionIds: string[];
 };
@@ -199,11 +225,87 @@ async function slotsByGroup(
   return map;
 }
 
-/** Does the class pass the never-relaxed filters: level, and subject when any is selected? */
-function passesSubjectAndLevel(group: GroupRow, input: MatchInput): boolean {
-  if (!classServesLevel(group.form_level, input.level)) return false;
+/**
+ * The ONE hard filter: does this class teach a subject the visitor chose?
+ *
+ * Level and availability used to exclude here too, and between them they
+ * emptied roughly five results pages in six — the measured level x
+ * availability grid returned nothing in ~83% of combinations. They are now
+ * ranking signals (see `scoreClass`), so a family who picks a supported
+ * subject always gets teachers, and "no results" means exactly one thing:
+ * nobody on the platform teaches that subject.
+ *
+ * An empty subject selection cannot happen through the questionnaire (Q2 is
+ * required); if it ever does, everything passes rather than nothing.
+ */
+function passesSubject(group: GroupRow, input: MatchInput): boolean {
   if (input.subjects.length === 0) return true;
   return subjectMatches(group.subject, input.subjects);
+}
+
+/** Ranking weights. Relative size is the design; absolute values are arbitrary. */
+const SCORE = {
+  /** A bookable free session is the campaign's entire proposition. */
+  hasSession: 100,
+  /** Right level is the strongest suitability signal after having a session. */
+  level: 40,
+  /** The paid class's weekly slot fits the times they said they can attend. */
+  availability: 25,
+} as const;
+
+type ClassScore = {
+  score: number;
+  reasons: string[];
+  levelMatch: boolean;
+  availabilityMatch: boolean;
+  mismatchNote?: string;
+};
+
+/**
+ * Rank one class for one questionnaire. Never returns "excluded" — every class
+ * reaching here already passed the subject gate and will be shown; this only
+ * decides the order and what the card says about fit.
+ */
+function scoreClass(
+  group: GroupRow,
+  input: MatchInput,
+  slots: WeeklySlot[],
+  hasSession: boolean
+): ClassScore {
+  const levelMatch = classServesLevel(group.form_level, input.level);
+  const availabilityMatch =
+    input.availability.length === 0 || classMatchesAvailability(slots, input.availability);
+
+  let score = 0;
+  const reasons: string[] = [];
+
+  if (hasSession) {
+    score += SCORE.hasSession;
+    reasons.push('Running a free session this week');
+  }
+  if (levelMatch) {
+    score += SCORE.level;
+    reasons.push(`Teaches ${levelLabel(input.level)}`);
+  }
+  if (availabilityMatch && slots.length > 0) {
+    score += SCORE.availability;
+    reasons.push('Fits the times you chose');
+  }
+
+  // Soft mismatches are named on the card rather than hidden. Level is stated
+  // first because being at the wrong level matters more than the hour.
+  let mismatchNote: string | undefined;
+  if (!levelMatch) {
+    const taught = normaliseClassLevel(group.form_level).map(levelLabel);
+    mismatchNote =
+      taught.length > 0
+        ? `This class is ${taught.join(' and ')}, not ${levelLabel(input.level)}.`
+        : undefined;
+  } else if (!availabilityMatch && slots.length > 0) {
+    mismatchNote = scheduleMismatchNote(slots);
+  }
+
+  return { score, reasons, levelMatch, availabilityMatch, ...(mismatchNote ? { mismatchNote } : {}) };
 }
 
 /**
@@ -213,7 +315,13 @@ function passesSubjectAndLevel(group: GroupRow, input: MatchInput): boolean {
  * get zero rows under RLS, silently, so this must never run browser-side.
  */
 export async function runMatch(admin: SupabaseClient, input: MatchInput): Promise<MatchResult> {
-  const empty: MatchResult = { outcome: 'none', cards: [], recommendedSessionIds: [] };
+  const empty: MatchResult = {
+    outcome: 'subject_unsupported',
+    cards: [],
+    matchedSubjects: [],
+    unsupportedSubjects: input.subjects,
+    recommendedSessionIds: [],
+  };
 
   // 1. There is at most one live campaign; no campaign means no results page.
   const { data: campaign } = await admin
@@ -254,57 +362,42 @@ export async function runMatch(admin: SupabaseClient, input: MatchInput): Promis
     sessionsByGroup.set(session.group_id, bucket);
   }
 
-  // 4. The never-relaxed filters, applied to the classes behind the sessions.
-  const eligibleGroups = sessionGroups.filter((g) => passesSubjectAndLevel(g, input));
+  // 4. Every subject-matching class that has a campaign session behind it.
+  const sessionCandidates = sessionGroups.filter((g) => passesSubject(g, input));
 
-  // 5. Availability, judged against the paid class's own weekly schedule.
-  //    Fetched for ALL session groups because step 8 may need every one.
-  const slots = await slotsByGroup(admin, sessionGroupIds);
-
-  const exactGroups: GroupRow[] = [];
-  const scheduleFallbackGroups: GroupRow[] = [];
-  for (const group of eligibleGroups) {
-    if (classMatchesAvailability(slots.get(group.id) ?? [], input.availability)) {
-      exactGroups.push(group);
-    } else {
-      scheduleFallbackGroups.push(group);
-    }
-  }
-
-  // 7. Paid classes with the right subject and level but no campaign session.
-  //    price_monthly = 0 rows are suppressed — a TT$0 enrol CTA is the live
-  //    pricing bug this campaign must not reproduce. (groups.pricing is the
-  //    literal string 'free' on every row; price_monthly is the money column.)
-  const { data: fallbackData } = await admin
+  // 5. Plus every OTHER published paid class teaching the subject, so a family
+  //    whose subject is supported never sees an empty page just because no
+  //    teacher happened to schedule a taster for it. price_monthly = 0 rows are
+  //    suppressed — a TT$0 enrol CTA is the live pricing bug this campaign must
+  //    not reproduce. (groups.pricing is the literal string 'free' on every row.)
+  const { data: classOnlyData } = await admin
     .from('groups')
     .select('id, name, subject, form_level, price_monthly, tutor_id')
     .eq('status', 'PUBLISHED')
     .eq('pricing_model', 'MONTHLY')
     .is('archived_at', null)
     .gt('price_monthly', 0);
-  const fallbackClassGroups = ((fallbackData ?? []) as GroupRow[]).filter(
-    (g) => !groupById.has(g.id) && passesSubjectAndLevel(g, input)
+  const classOnlyCandidates = ((classOnlyData ?? []) as GroupRow[]).filter(
+    (g) => !groupById.has(g.id) && passesSubject(g, input)
   );
 
-  const fallbackSlots = await slotsByGroup(
-    admin,
-    fallbackClassGroups.map((g) => g.id)
-  );
+  // 6. The only empty outcome: nobody teaches the subject at all. Everything
+  //    else ranks rather than excludes.
+  if (sessionCandidates.length === 0 && classOnlyCandidates.length === 0) {
+    return empty;
+  }
 
-  // 8. The page must never be empty while any published session exists: with
-  //    all three tiers empty, every campaign session comes back as a schedule
-  //    fallback with a generic note.
-  const nothingMatched =
-    exactGroups.length === 0 &&
-    scheduleFallbackGroups.length === 0 &&
-    fallbackClassGroups.length === 0;
-  const rescueGroups = nothingMatched ? sessionGroups : [];
+  // 7. Weekly schedules, for the availability RANKING signal (not a filter).
+  const slots = await slotsByGroup(admin, [
+    ...sessionCandidates.map((g) => g.id),
+    ...classOnlyCandidates.map((g) => g.id),
+  ]);
 
   // Teacher names for every card in one query. coalesce(display_name,
   // full_name) — two eligible teachers have a handle in full_name.
   const tutorIds = [
     ...new Set(
-      [...sessionGroups, ...fallbackClassGroups].map((g) => g.tutor_id).filter(Boolean)
+      [...sessionCandidates, ...classOnlyCandidates].map((g) => g.tutor_id).filter(Boolean)
     ),
   ];
   const { data: profileData } = tutorIds.length
@@ -315,20 +408,18 @@ export async function runMatch(admin: SupabaseClient, input: MatchInput): Promis
     : { data: [] as ProfileRow[] };
   const profileById = new Map(((profileData ?? []) as ProfileRow[]).map((p) => [p.id, p]));
 
-  const buildCard = (
-    group: GroupRow,
-    tier: TeacherCard['tier'],
-    mismatchNote?: string
-  ): TeacherCard => {
+  const buildCard = (group: GroupRow, hasSession: boolean): TeacherCard => {
     const profile = profileById.get(group.tutor_id);
-    const groupSlots =
-      tier === 'fallback_class' ? fallbackSlots.get(group.id) ?? [] : slots.get(group.id) ?? [];
-    const groupSessions =
-      tier === 'fallback_class'
-        ? []
-        : (sessionsByGroup.get(group.id) ?? [])
-            .slice()
-            .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
+    const groupSlots = slots.get(group.id) ?? [];
+    const groupSessions = hasSession
+      ? (sessionsByGroup.get(group.id) ?? [])
+          .slice()
+          .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at))
+      : [];
+    const ranked = scoreClass(group, input, groupSlots, hasSession);
+    // `tier` drives the card's LAYOUT only: sessions render Reserve, a class
+    // with none renders View class. Suitability is score/reasons.
+    const tier: TeacherCard['tier'] = hasSession ? 'exact' : 'fallback_class';
 
     return {
       tutorId: group.tutor_id,
@@ -350,39 +441,48 @@ export async function runMatch(admin: SupabaseClient, input: MatchInput): Promis
           s.max_attendees === null ? null : Math.max(0, s.max_attendees - (counts.get(s.id) ?? 0)),
       })),
       tier,
-      ...(mismatchNote ? { mismatchNote } : {}),
+      score: ranked.score,
+      reasons: ranked.reasons,
+      levelMatch: ranked.levelMatch,
+      availabilityMatch: ranked.availabilityMatch,
+      ...(ranked.mismatchNote ? { mismatchNote: ranked.mismatchNote } : {}),
     };
   };
 
-  // 9. One card per teacher per class. Within the session-backed tiers, the
-  //    soonest session leads. NEVER sorted by discount size — that turns the
-  //    page into price comparison and pushes teachers to undercut each other.
+  // 8. One card per teacher per class, ordered by fit. NEVER sorted by discount
+  //    size — that turns the page into price comparison and pushes teachers to
+  //    undercut each other. Ties break on the soonest session, then class name,
+  //    so the order is stable across loads.
   const soonest = (card: TeacherCard): string => card.sessions[0]?.scheduledAt ?? '9999';
 
-  const exactCards = exactGroups
-    .map((g) => buildCard(g, 'exact'))
-    .sort((a, b) => soonest(a).localeCompare(soonest(b)));
+  const cards = [
+    ...sessionCandidates.map((g) => buildCard(g, true)),
+    ...classOnlyCandidates.map((g) => buildCard(g, false)),
+  ].sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    const bySession = soonest(a).localeCompare(soonest(b));
+    if (bySession !== 0) return bySession;
+    return a.className.localeCompare(b.className);
+  });
 
-  const scheduleFallbackCards = scheduleFallbackGroups
-    .map((g) => buildCard(g, 'fallback_schedule', scheduleMismatchNote(slots.get(g.id) ?? [])))
-    .sort((a, b) => soonest(a).localeCompare(soonest(b)));
-
-  const rescueCards = rescueGroups
-    .map((g) => buildCard(g, 'fallback_schedule', GENERIC_MISMATCH_NOTE))
-    .sort((a, b) => soonest(a).localeCompare(soonest(b)));
-
-  const fallbackClassCards = fallbackClassGroups
-    .map((g) => buildCard(g, 'fallback_class'))
-    .sort((a, b) => a.className.localeCompare(b.className));
-
-  const cards = [...exactCards, ...scheduleFallbackCards, ...rescueCards, ...fallbackClassCards];
+  // 9. Which of the chosen subjects actually exist on the platform. Reported
+  //    separately from the cards so a partially-supported selection can say so
+  //    ("we teach Maths, nobody teaches Physics yet") instead of quietly
+  //    dropping the unsupported half.
+  const matchedSubjects = input.subjects.filter((s) =>
+    cards.some((c) => subjectMatches(c.subject, [s]))
+  );
+  const unsupportedSubjects = input.subjects.filter((s) => !matchedSubjects.includes(s));
 
   // 10. recommendedSessionIds snapshots exactly what was shown, in order, so
   //     the export can reproduce the page a family saw.
   const recommendedSessionIds = cards.flatMap((card) => card.sessions.map((s) => s.sessionId));
 
-  const outcome: MatchResult['outcome'] =
-    exactCards.length > 0 ? 'exact' : cards.length > 0 ? 'fallback' : 'none';
-
-  return { outcome, cards, recommendedSessionIds };
+  return {
+    outcome: cards.length > 0 ? 'matched' : 'subject_unsupported',
+    cards,
+    matchedSubjects,
+    unsupportedSubjects,
+    recommendedSessionIds,
+  };
 }

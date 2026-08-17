@@ -12,7 +12,14 @@ export type CampaignStatus = 'draft' | 'live' | 'ended';
 export type SessionStatus = 'draft' | 'published' | 'cancelled';
 export type ReservationStatus = 'reserved' | 'cancelled' | 'requested' | 'declined';
 export type SubmissionRole = 'parent' | 'student';
-export type MatchOutcome = 'exact' | 'fallback' | 'none';
+/**
+ * Only two outcomes exist. Subject is the single hard filter, so a supported
+ * subject always produces teachers; 'subject_unsupported' means nobody on the
+ * platform teaches what they asked for — a supply fact, and the demand signal
+ * worth recruiting against. The older 'exact' | 'fallback' | 'none' vocabulary
+ * described a three-tier filter that no longer exists (migration 234).
+ */
+export type MatchOutcome = 'matched' | 'subject_unsupported';
 
 /** Fixed tiers, so cards stay comparable and teachers are not pushed to undercut. */
 export type DiscountTier = 10 | 15 | 20;
@@ -97,6 +104,12 @@ export interface ClassMatchSubmission {
   recommended_session_ids: string[];
   created_at: string;
   claimed_at: string | null;
+  /**
+   * Set when the last question is answered. The questionnaire is one-time: a
+   * row with this set is closed to edits and its owner is routed to their
+   * matches rather than the form.
+   */
+  completed_at: string | null;
 }
 
 /**

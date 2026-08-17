@@ -6,6 +6,37 @@
 
 ---
 
+## Matching amendment (owner decision, 2026-08-17 — supersedes §2.5 and §2.7)
+
+**Subject is now the only hard filter.** Level and availability rank; they no
+longer exclude. The measured level × availability grid returned nothing in
+~83% of combinations, which made the no-match screen the majority path by
+construction — this removes that cause.
+
+Consequences as built:
+- **"No results" has exactly one meaning:** nobody on the platform teaches the
+  chosen subject. Outcome vocabulary is now `matched | subject_unsupported`
+  (migration 234 migrates the old `exact | fallback | none`).
+- The output is **a ranked set of teachers**, not a tiered result. Ranking:
+  a bookable free session (100) > right level (40) > fits chosen times (25).
+  Each card carries `reasons` for what fits and a `mismatchNote` for what does
+  not — a teacher at the wrong level still appears and says so.
+- A partially supported selection says so: matched subjects are shown,
+  unsupported ones are named and recorded as demand.
+- **The questionnaire is one-time.** `completed_at` closes the row; the
+  submission route refuses edits with 409 `already_completed`, and `/match`
+  redirects anyone finished to their teachers. Checked against BOTH the cookie
+  token and the account, so a cleared cookie or a second device cannot reopen
+  it. All "change your answers" affordances are gone.
+
+**UI rule:** Class Match Week reuses main-site patterns wherever an equivalent
+exists — the portal renders inside `StudentShell` (same sidebar, mobile bar,
+profile menu) via a `(portal)` route group, and account creation hands off to
+`/signup` with `?role=` so the only onboarding difference is *when* role is
+asked. The questionnaire is the deliberate exception.
+
+---
+
 ## Why this is second
 
 This is the path in. Without it there is no way for a parent to encounter a

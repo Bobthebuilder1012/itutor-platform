@@ -21,7 +21,6 @@
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { ArrowLeft } from 'lucide-react';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { getLiveCampaign } from '@/lib/classMatchWeek/portalData';
 import { claimSubmission } from '@/lib/classMatchWeek/claim';
@@ -117,15 +116,9 @@ export default async function ClassMatchWeekMyClassesPage() {
   const empty = reserved.length === 0;
 
   return (
-    <main className="min-h-screen bg-background px-4 pb-16 pt-6">
-      <div className="mx-auto w-full max-w-xl">
+    <main className="max-w-5xl mx-auto space-y-6">
+      <div className="w-full">
         <div className="flex items-center justify-between gap-3">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-1 text-xs font-semibold text-ink-muted transition-colors hover:text-ink"
-          >
-            <ArrowLeft className="size-3.5" /> iTutor
-          </Link>
           {campaign && (
             <CountdownPill startsAt={campaign.starts_at} endsAt={campaign.ends_at} size="sm" />
           )}
@@ -135,7 +128,7 @@ export default async function ClassMatchWeekMyClassesPage() {
           <CampaignBadge />
         </div>
         <div className="mt-3 flex items-end justify-between gap-3">
-          <h1 className="text-2xl font-bold tracking-tight text-ink">My classes</h1>
+          <h1 className="text-3xl font-bold text-ink tracking-tight">My classes</h1>
           <Link
             href="/class-match-week/dashboard"
             className="text-xs font-semibold text-brand-deep hover:underline"

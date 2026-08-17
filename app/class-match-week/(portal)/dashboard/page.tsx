@@ -21,7 +21,7 @@
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { ArrowLeft, CalendarDays, ChevronRight } from 'lucide-react';
+import { CalendarDays, ChevronRight } from 'lucide-react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { getLiveCampaign } from '@/lib/classMatchWeek/portalData';
@@ -208,8 +208,8 @@ export default async function ClassMatchWeekDashboardPage() {
   const savedTotal = coupons.reduce((sum, c) => sum + (c.savingsValue ?? 0), 0);
 
   return (
-    <main className="min-h-screen bg-background px-4 pb-16 pt-6">
-      <div className="mx-auto w-full max-w-xl">
+    <main className="max-w-6xl mx-auto space-y-6">
+      <div className="w-full">
         {/* First when anything is imminent — a state, not a reordering. The
             strip decides visibility itself with client time math. */}
         <ImminentStrip
@@ -223,12 +223,6 @@ export default async function ClassMatchWeekDashboardPage() {
         />
 
         <div className="mt-4 flex items-center justify-between gap-3">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-1 text-xs font-semibold text-ink-muted transition-colors hover:text-ink"
-          >
-            <ArrowLeft className="size-3.5" /> iTutor
-          </Link>
           {campaign && (
             <CountdownPill startsAt={campaign.starts_at} endsAt={campaign.ends_at} size="sm" />
           )}
@@ -238,7 +232,7 @@ export default async function ClassMatchWeekDashboardPage() {
           <CampaignBadge />
         </div>
         <div className="mt-3 flex items-end justify-between gap-3">
-          <h1 className="text-2xl font-bold tracking-tight text-ink">Your dashboard</h1>
+          <h1 className="text-2xl lg:text-3xl font-bold text-ink">Your dashboard</h1>
           <Link
             href="/class-match-week/my-classes"
             className="text-xs font-semibold text-brand-deep hover:underline"
@@ -318,7 +312,7 @@ export default async function ClassMatchWeekDashboardPage() {
             <CalendarDays className="size-5 text-brand-deep" />
           </span>
           <div>
-            <p className="text-2xl font-bold tracking-tight text-ink">{joinedCount}</p>
+            <p className="text-2xl lg:text-3xl font-bold text-ink">{joinedCount}</p>
             <p className="text-[11px] text-ink-muted">
               {joinedCount === 1 ? 'Session joined' : 'Sessions joined'} — each one unlocks a class
               discount

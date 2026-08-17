@@ -37,6 +37,15 @@ type NavItem = {
   tint: string;
 };
 
+/**
+ * The default student navigation. Exported as a type so a section of the site
+ * that is still "the student experience" — Class Match Week — can supply its
+ * own destinations without reimplementing the sidebar, the mobile bottom bar,
+ * the collapse behaviour or the profile menu. Passing nothing keeps every
+ * existing student page exactly as it was.
+ */
+export type { NavItem as StudentNavItem };
+
 const nav: NavItem[] = [
   { to: '/student/dashboard', label: 'Home', icon: LayoutDashboard, exact: true, tint: 'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-400/30' },
   { to: '/student/find-tutors', label: 'Explore', icon: Search, tint: 'bg-rose-500/20 text-rose-300 ring-1 ring-rose-400/30' },
@@ -115,7 +124,8 @@ function ProfileMenu({ collapsed, displayName, initials, roleLabel, avatarUrl }:
   );
 }
 
-function ShellInner({ children }: { children: ReactNode }) {
+function ShellInner({ children, navItems }: { children: ReactNode; navItems: NavItem[] }) {
+  const nav = navItems;
   const pathname = usePathname();
   const router = useRouter();
   const { profile } = useProfile();
@@ -264,10 +274,17 @@ function ShellInner({ children }: { children: ReactNode }) {
   );
 }
 
-export function StudentShell({ children }: { children: ReactNode }) {
+export function StudentShell({
+  children,
+  navItems,
+}: {
+  children: ReactNode;
+  /** Override the sidebar destinations. Omit for the standard student nav. */
+  navItems?: NavItem[];
+}) {
   return (
     <StudentStoreProvider>
-      <ShellInner>{children}</ShellInner>
+      <ShellInner navItems={navItems ?? nav}>{children}</ShellInner>
     </StudentStoreProvider>
   );
 }

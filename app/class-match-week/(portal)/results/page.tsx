@@ -26,7 +26,7 @@
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { ArrowLeft, Compass } from 'lucide-react';
+import { Compass } from 'lucide-react';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { getLiveCampaign, getSubmissionByToken } from '@/lib/classMatchWeek/portalData';
 import { claimSubmission } from '@/lib/classMatchWeek/claim';
@@ -120,9 +120,11 @@ export default async function ClassMatchWeekResultsPage({
     .filter((r) => r.status === 'reserved')
     .map((r) => r.session_id);
 
-  const exact = match.cards.filter((c) => c.tier === 'exact');
-  const close = match.cards.filter((c) => c.tier === 'fallback_schedule');
-  const classOnly = match.cards.filter((c) => c.tier === 'fallback_class');
+  // One ranked list of teachers. Subject is the only hard filter, so the split
+  // is no longer "how well did you match" — it is simply whether a teacher has
+  // a bookable free session this week. Suitability shows per card as reasons.
+  const withSessions = match.cards.filter((c) => c.sessions.length > 0);
+  const classOnly = match.cards.filter((c) => c.sessions.length === 0);
 
   // "Return to the card" (docs 03 §3.1): find which card carries the tapped
   // session so the page can anchor-scroll to it and emphasise the slot.
@@ -136,12 +138,6 @@ export default async function ClassMatchWeekResultsPage({
   const header = (
     <>
       <div className="flex items-center justify-between gap-3">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1 text-xs font-semibold text-ink-muted transition-colors hover:text-ink"
-        >
-          <ArrowLeft className="size-3.5" /> iTutor
-        </Link>
         <div className="flex items-center gap-3">
           <Link
             href="/class-match-week/explore"
@@ -160,14 +156,16 @@ export default async function ClassMatchWeekResultsPage({
     </>
   );
 
-  const changeAnswers = (
+  // No "change your answers" anywhere: the questionnaire is one-time. Browsing
+  // the full catalogue is the escape hatch instead of retaking it.
+  const browseAll = (
     <p className="mt-8 text-center text-xs text-ink-muted">
-      Not quite right?{' '}
+      Looking for something else?{' '}
       <Link
-        href={`/class-match-week/match?role=${role}`}
+        href="/class-match-week/explore"
         className="font-semibold text-brand-deep underline underline-offset-2"
       >
-        Change your answers
+        Browse every teacher this week
       </Link>
     </p>
   );
@@ -177,27 +175,22 @@ export default async function ClassMatchWeekResultsPage({
   // decides which teachers get recruited next.
   if (match.cards.length === 0) {
     return (
-      <main className="min-h-screen bg-background px-4 pb-16 pt-6">
-        <div className="mx-auto w-full max-w-xl">
+      <main className="max-w-6xl mx-auto space-y-6">
+      <div className="w-full">
           {header}
-          <h1 className="mt-3 text-2xl font-bold tracking-tight text-ink">Your request is in.</h1>
+          <h1 className="mt-3 text-2xl lg:text-3xl font-bold text-ink">
+            We don&rsquo;t teach {subjectList} yet.
+          </h1>
           <p className="mt-2 text-sm leading-relaxed text-ink-muted">
-            No {levelLabel(level)} classes in {subjectList} are running this week yet. Requests
-            like yours decide which teachers iTutor brings on next, and new sessions can appear
-            while the week runs — it&rsquo;s worth checking back.
+            That is the only reason this page is empty — nobody on iTutor teaches it so far.
+            Requests like yours decide which teachers we bring on next, and yours is recorded.
           </p>
           <div className="mt-6 grid gap-3">
             <Link
               href="/class-match-week/explore"
               className="inline-flex items-center justify-center rounded-2xl bg-brand px-5 py-3.5 text-sm font-bold text-white transition-colors hover:bg-brand-deep"
             >
-              See everything running this week
-            </Link>
-            <Link
-              href={`/class-match-week/match?role=${role}`}
-              className="inline-flex items-center justify-center rounded-2xl border border-border bg-white px-5 py-3.5 text-sm font-bold text-ink transition-colors hover:bg-mint"
-            >
-              Change my answers
+              See every subject running this week
             </Link>
           </div>
         </div>
@@ -205,22 +198,23 @@ export default async function ClassMatchWeekResultsPage({
     );
   }
 
-  // Copy leads with what exists. Exact matches get the direct headline; a
-  // fallback-only page headlines the sessions that ARE running, with the
-  // mismatch carried per card via mismatchNote — never an apology up top.
-  let headline: string;
-  let subline: string;
-  if (exact.length > 0) {
-    headline = 'Here are your matches.';
-    subline = `Each is a free 30-minute session with a teacher whose ongoing class fits ${whose} level, subjects and schedule.`;
-  } else if (close.length > 0) {
-    headline = 'These teachers are running free sessions this week';
-    subline = 'The times sit a little outside what you picked — each card says exactly how.';
-  } else {
-    headline = 'These teachers already teach your subject';
-    subline =
-      'No free session is scheduled for it this week, but their ongoing classes are open to join.';
-  }
+  // The page always leads with teachers, because subject is the only gate that
+  // can empty it. Best fit is ordered, not filtered — each card carries its own
+  // reasons, so a teacher at a different level or hour still appears and says so.
+  const headline =
+    withSessions.length > 0 ? 'Your teachers for Class Match Week' : 'Teachers for your subject';
+  const subline =
+    withSessions.length > 0
+      ? `Ranked for ${whose} subject, level and times. Free 30-minute sessions — reserve any that suit.`
+      : `Nobody has scheduled a free session in ${subjectList} this week, but these teachers run it as an ongoing class.`;
+
+  const unsupportedNote =
+    match.unsupportedSubjects.length > 0 && match.matchedSubjects.length > 0 ? (
+      <p className="mt-3 rounded-xl bg-peach px-3 py-2 text-[11px] leading-relaxed text-[oklch(0.38_0.08_65)]">
+        We don&rsquo;t teach {match.unsupportedSubjects.join(', ')} yet — that request is recorded.
+        Below is everything for {match.matchedSubjects.join(', ')}.
+      </p>
+    ) : null;
 
   const renderCard = (c: (typeof match.cards)[number]) => (
     <TeacherResultCard
@@ -233,37 +227,31 @@ export default async function ClassMatchWeekResultsPage({
   );
 
   return (
-    <main className="min-h-screen bg-background px-4 pb-16 pt-6">
-      <div className="mx-auto w-full max-w-xl">
+    <main className="max-w-6xl mx-auto space-y-6">
+      <div className="w-full">
         {highlightCard && <ScrollToAnchor anchorId={`cmw-card-${highlightCard.classId}`} />}
         {header}
-        <h1 className="mt-3 text-2xl font-bold tracking-tight text-ink">{headline}</h1>
+        <h1 className="mt-3 text-2xl lg:text-3xl font-bold text-ink">{headline}</h1>
         <p className="mt-2 text-sm leading-relaxed text-ink-muted">{subline}</p>
+        {unsupportedNote}
 
-        {exact.length > 0 && <div className="mt-6 grid gap-4">{exact.map(renderCard)}</div>}
-
-        {close.length > 0 && (
-          <section className="mt-8">
-            {exact.length > 0 && <h2 className="text-sm font-bold text-ink">Close matches</h2>}
-            <div className={`grid gap-4 ${exact.length > 0 ? 'mt-3' : 'mt-6'}`}>
-              {close.map(renderCard)}
-            </div>
-          </section>
+        {withSessions.length > 0 && (
+          <div className="mt-6 grid gap-4">{withSessions.map(renderCard)}</div>
         )}
 
         {classOnly.length > 0 && (
           <section className="mt-8">
             {/* Skip the section heading when the page headline already says it. */}
-            {exact.length + close.length > 0 && (
+            {withSessions.length > 0 && (
               <h2 className="text-sm font-bold text-ink">Also teaching your subject</h2>
             )}
-            <div className={`grid gap-4 ${exact.length + close.length > 0 ? 'mt-3' : 'mt-6'}`}>
+            <div className={`grid gap-4 ${withSessions.length > 0 ? 'mt-3' : 'mt-6'}`}>
               {classOnly.map(renderCard)}
             </div>
           </section>
         )}
 
-        {changeAnswers}
+        {browseAll}
       </div>
     </main>
   );

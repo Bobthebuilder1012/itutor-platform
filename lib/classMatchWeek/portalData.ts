@@ -83,6 +83,8 @@ export async function upsertSubmission(
     teacherPreferences?: string[];
     matchOutcome?: MatchOutcome | null;
     recommendedSessionIds?: string[];
+    /** Closes the row. The questionnaire is one-time; a set value is final. */
+    completedAt?: string;
   }
 ): Promise<ClassMatchSubmission> {
   const row: Record<string, unknown> = {
@@ -99,6 +101,7 @@ export async function upsertSubmission(
   if (args.recommendedSessionIds !== undefined) {
     row.recommended_session_ids = args.recommendedSessionIds;
   }
+  if (args.completedAt !== undefined) row.completed_at = args.completedAt;
 
   const { data, error } = await admin
     .from('class_match_submissions')
@@ -174,4 +177,25 @@ export async function getParticipation(
     .eq('tutor_id', tutorId)
     .maybeSingle();
   return { optedIn: Boolean(data) };
+}
+
+/**
+ * The submission belonging to a signed-in account, newest first.
+ *
+ * The one-time rule has to survive a cleared cookie and a second device, so
+ * completion is checked against the ACCOUNT once one exists — not only against
+ * the `cmw_token` cookie the anonymous questionnaire wrote.
+ */
+export async function getSubmissionForUser(
+  admin: SupabaseClient,
+  userId: string
+): Promise<ClassMatchSubmission | null> {
+  const { data } = await admin
+    .from('class_match_submissions')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (data as ClassMatchSubmission | null) ?? null;
 }

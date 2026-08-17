@@ -53,6 +53,12 @@ export type TeacherResultCardData = {
   sessions: TeacherResultSession[];
   tier: 'exact' | 'fallback_schedule' | 'fallback_class';
   mismatchNote?: string;
+  /**
+   * Why this teacher was surfaced. Subject is the only hard filter, so every
+   * card earns its place — these say how well it fits rather than whether it
+   * qualified. Optional so Explore can render the same card without ranking.
+   */
+  reasons?: string[];
 };
 
 type Clash = { sessionId: string; title: string; scheduledAt: string };
@@ -204,6 +210,19 @@ export default function TeacherResultCard({
             </span>
           )}
         </div>
+
+        {card.reasons && card.reasons.length > 0 && (
+          <ul className="mt-3 flex flex-wrap gap-1.5">
+            {card.reasons.map((reason) => (
+              <li
+                key={reason}
+                className="inline-flex items-center gap-1 rounded-full bg-mint px-2 py-0.5 text-[10px] font-semibold text-brand-deep"
+              >
+                <Check className="size-3" /> {reason}
+              </li>
+            ))}
+          </ul>
+        )}
 
         {card.mismatchNote && (
           <p className="mt-3 rounded-xl bg-peach px-3 py-2 text-[11px] leading-relaxed text-[oklch(0.38_0.08_65)]">

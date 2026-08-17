@@ -74,6 +74,14 @@ export default function SignupPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectParam = searchParams.get('redirect');
+  // A role chosen BEFORE account creation. Class Match Week asks it as its very
+  // first question, so arriving here it is already known and asking again would
+  // be a worse experience, not a safer one. The only supported difference in
+  // that onboarding is this ordering — the account-creation flow itself is the
+  // same one everyone else uses.
+  const roleParam = searchParams.get('role');
+  const presetRole: UserRole | null =
+    roleParam === 'student' || roleParam === 'tutor' || roleParam === 'parent' ? roleParam : null;
 
   const [step, setStep] = useState<Step>('details');
   const [userId, setUserId] = useState<string | null>(null);
@@ -90,7 +98,7 @@ export default function SignupPage() {
   const [usernameAvailable, setUsernameAvailable] = useState(false);
 
   // Step 2
-  const [role, setRole] = useState<UserRole | null>(null);
+  const [role, setRole] = useState<UserRole | null>(presetRole);
   // Default false so the parent card never flashes in before the flag lands —
   // showing then withdrawing an option reads as a bug.
   const [parentAccountsEnabled, setParentAccountsEnabled] = useState(false);
@@ -198,6 +206,10 @@ export default function SignupPage() {
       setError(isNetworkError(err) ? 'Connect to the Internet' : 'An error occurred.');
       return;
     } finally { setLoading(false); }
+    // With the role already chosen upstream, showing a role picker with one
+    // option pre-selected is a step that asks nothing. Skip straight to
+    // verification; handleStep2 is the same work, minus the prompt.
+    if (presetRole) { await handleStep2(); return; }
     goto('role');
   };
 

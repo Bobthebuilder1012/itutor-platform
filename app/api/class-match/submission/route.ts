@@ -90,6 +90,19 @@ export async function POST(req: NextRequest) {
     const token =
       cookies().get(COOKIE_NAME)?.value ?? randomBytes(32).toString('base64url');
 
+    // THE QUESTIONNAIRE IS ONE-TIME. A finished row is closed: no edits, no
+    // retakes, no second set of answers overwriting the first. Enforced here
+    // rather than only in the UI because this endpoint is public and the form
+    // is trivially re-POSTable. The existing submission comes back so the
+    // client can route to the matches instead of stranding the visitor.
+    const existing = await getSubmissionByToken(admin, token);
+    if (existing?.completed_at) {
+      return NextResponse.json(
+        { error: 'already_completed', submission: existing },
+        { status: 409 }
+      );
+    }
+
     let submission = await upsertSubmission(admin, {
       campaignId: campaign.id,
       token,
@@ -123,6 +136,10 @@ export async function POST(req: NextRequest) {
         role,
         matchOutcome: match.outcome,
         recommendedSessionIds: match.recommendedSessionIds,
+        // Closes the row. Everything above this point was a partial save; this
+        // is the visitor having finished, which is what the one-time rule
+        // turns on.
+        completedAt: new Date().toISOString(),
       });
     }
 
