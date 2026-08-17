@@ -365,6 +365,26 @@ export default function ClassMatchWeekTab({ profile }: { profile: Profile | null
             Run a free 30-minute taster from a class you already teach. Families who attend unlock a
             discount on that class if they enrol.
           </p>
+          {/*
+           * Published and monthly is enough to JOIN — that is the server's gate —
+           * but not enough to schedule anything: the class also needs a subject, a
+           * recognised level and a live weekly schedule. On production 15 of 35
+           * eligible classes have no schedule at all, so a teacher whose whole
+           * catalogue is in that state would otherwise join and only then find
+           * "Create a session" greyed out. Say it before they tap, not after.
+           */}
+          {sessionableCount === 0 && blocked.length > 0 && (
+            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+              <p className="text-sm font-semibold text-amber-900">
+                One thing to fix first
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-amber-800">
+                You can join now, but none of your classes can host a taster yet — they each need a
+                weekly schedule and a subject. You&rsquo;ll see exactly what&rsquo;s missing, and a
+                link to fix it, as soon as you join.
+              </p>
+            </div>
+          )}
           <button
             onClick={optIn}
             disabled={optingIn}
