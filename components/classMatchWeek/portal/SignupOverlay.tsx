@@ -58,7 +58,11 @@ export default function SignupOverlay({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/40 px-4 py-6 backdrop-blur-md sm:items-center"
+      // bg-black/40, not bg-ink/40: `ink` is a bare var() token with no
+      // <alpha-value>, so Tailwind silently drops the /40 utility and the scrim
+      // rendered with no tint at all — blur without dim. black is a literal and
+      // takes the modifier, and it is what every other scrim in the repo uses.
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 px-4 py-6 backdrop-blur-md sm:items-center"
       role="dialog"
       aria-modal="true"
       aria-label="Create your iTutor account"

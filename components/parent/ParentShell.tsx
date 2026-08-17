@@ -199,7 +199,12 @@ export default function ParentShell({ children }: { children: React.ReactNode })
       </aside>
 
       <div className={cn('flex-1 flex flex-col min-w-0 transition-all duration-200', collapsed ? 'lg:ml-16' : 'lg:ml-60')}>
-        <header className="sticky top-0 z-30 bg-background/90 backdrop-blur border-b border-border">
+        {/* Opaque, not frosted — `bg-background/90` emitted no background-color
+            at all (bare var() token, no <alpha-value>, so Tailwind drops the
+            modifier utility), leaving a transparent bar whose backdrop-filter put
+            it on its own composited layer and painted it bright over any overlay
+            scrim. See TutorShell for the full reasoning. */}
+        <header className="sticky top-0 z-30 bg-background border-b border-border">
           <div className="flex items-center gap-3 px-4 lg:px-8 h-14">
             <Link href="/" className="lg:hidden"><Image src="/assets/logo/itutor-logo-new.png" alt="iTutor" width={70} height={22} /></Link>
             <div className="flex-1" />
@@ -233,7 +238,8 @@ export default function ParentShell({ children }: { children: React.ReactNode })
           {children}
         </main>
 
-        <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-border bg-background/95 backdrop-blur">
+        {/* Opaque for the same reason as the header. */}
+        <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-border bg-background">
           {/* Six columns now that Explore has a permanent slot. Driven off the
               nav length rather than a literal, so the bar cannot silently
               squash the next time an item is added. */}

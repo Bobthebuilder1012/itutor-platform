@@ -97,6 +97,11 @@
     overflow-x: hidden;
     font-family: var(--font-sans, Inter, Arial, sans-serif);
     color: var(--ink);
+    /* `color` was set without a matching `background`, so every gap a shell did
+       not paint fell through to the browser's default white rather than to the
+       app's own token. Invisible while --background is #ffffff, and a bright
+       unstyled band the moment it is not. */
+    background: var(--background);
   }
 
   h1, h2, h3, h4, h5, h6 {

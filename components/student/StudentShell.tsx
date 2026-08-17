@@ -214,8 +214,12 @@ function ShellInner({ children, navItems }: { children: ReactNode; navItems: Nav
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto overflow-x-hidden">
-        {/* Top bar */}
-        <header className="sticky top-0 z-30 bg-background/90 backdrop-blur border-b border-border">
+        {/* Top bar. Opaque, not frosted — `bg-background/90` emitted no
+            background-color at all (the token is a bare var() with no
+            <alpha-value>, so Tailwind drops the modifier utility), leaving a
+            transparent bar whose backdrop-filter put it on its own composited
+            layer and painted it bright over any overlay scrim. See TutorShell. */}
+        <header className="sticky top-0 z-30 bg-background border-b border-border">
           <div className="flex items-center gap-3 px-4 lg:px-6 h-14">
             <Link href="/" className="lg:hidden">
               <Image src="/assets/logo/itutor-logo-light.png" alt="iTutor" width={90} height={24} className="h-7 w-auto object-contain" />
@@ -253,8 +257,8 @@ function ShellInner({ children, navItems }: { children: ReactNode; navItems: Nav
           {children}
         </main>
 
-        {/* Mobile bottom nav */}
-        <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-border bg-background/95 backdrop-blur">
+        {/* Mobile bottom nav. Opaque for the same reason as the header. */}
+        <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-border bg-background">
           <div className="grid grid-cols-5">
             {nav.slice(0, 5).map((item) => {
               const active = item.exact ? pathname === item.to : pathname.startsWith(item.to);
