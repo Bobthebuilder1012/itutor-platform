@@ -6,12 +6,20 @@
  * Nothing on this page queries Supabase from the browser.
  *
  * Role is asked ONCE, here, and never again — it flows into the submission via
- * the ?role= param and later into signup. The two tap targets are plain links
- * so the choice survives without any client state.
+ * the ?role= param and later into signup. The two learner tap targets are plain
+ * links so the choice survives without any client state.
+ *
+ * The teacher card is a THIRD tap target on a different axis. It is not a third
+ * answer to "who is the learner", so it sits below the pair rather than in the
+ * grid, and it goes to /class-match-week/teach — a decision-only route — rather
+ * than into the questionnaire, which has no question a teacher can answer. It
+ * appears in the pre-launch state too: supply is the campaign's constraint
+ * (docs 00 §1), and the weeks before a campaign opens are exactly when a
+ * teacher reading this page is worth the most.
  */
 
 import Link from 'next/link';
-import { ArrowLeft, GraduationCap, UserRound } from 'lucide-react';
+import { ArrowLeft, ArrowRight, GraduationCap, Presentation, UserRound } from 'lucide-react';
 import { getServiceClient } from '@/lib/supabase/server';
 import { getLiveCampaign } from '@/lib/classMatchWeek/portalData';
 import CountdownPill from '@/components/classMatchWeek/portal/CountdownPill';
@@ -39,7 +47,66 @@ function CampaignBadge() {
   );
 }
 
-export default async function ClassMatchWeekPage() {
+/**
+ * The supply side's way in.
+ *
+ * Styled as its own panel below a divider, not as a third card in the grid: the
+ * grid answers one question and a teacher is not one of its answers. Quieter
+ * than the learner cards — smaller icon, one line of copy — because a visitor
+ * who is here to find a class should not have to read past it, while a teacher
+ * scanning the page still finds it.
+ */
+function TeacherCallout() {
+  return (
+    <div className="mt-8 border-t border-border pt-6">
+      <Link
+        href="/class-match-week/teach"
+        className="group flex items-center gap-4 rounded-3xl border border-border bg-white/70 p-4 transition hover:border-brand hover:bg-white hover:shadow-card"
+      >
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-brand-deep">
+          <Presentation className="size-5" />
+        </span>
+        <span className="min-w-0 flex-1 text-left">
+          <span className="block text-sm font-bold text-ink">I&rsquo;m a teacher</span>
+          <span className="block text-xs text-ink-muted">
+            Offer a free taster and fill your class
+          </span>
+        </span>
+        <ArrowRight className="size-4 shrink-0 text-ink-muted transition-transform group-hover:translate-x-0.5 group-hover:text-brand-deep" />
+      </Link>
+    </div>
+  );
+}
+
+/**
+ * Shown when /teach bounces a signed-in learner back here.
+ *
+ * `profiles.role` is fixed once set, so there is no teacher page to send a
+ * student or parent account to. Saying so beats returning them to an unchanged
+ * page, which would read as a button that does nothing.
+ */
+function TeacherAccountNotice() {
+  return (
+    <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left">
+      <p className="text-sm font-semibold text-amber-900">That account can&rsquo;t offer classes</p>
+      <p className="mt-1 text-xs leading-relaxed text-amber-800">
+        You&rsquo;re signed in with a learner account, and an account&rsquo;s role is fixed once
+        it&rsquo;s created. Teaching a Class Match Week taster needs a teacher account — sign out and
+        create one, or carry on below as a learner.
+      </p>
+    </div>
+  );
+}
+
+export default async function ClassMatchWeekPage({
+  searchParams,
+}: {
+  searchParams?: { teach?: string | string[] };
+}) {
+  const rawTeach = searchParams?.teach;
+  const teachParam = Array.isArray(rawTeach) ? rawTeach[0] : rawTeach;
+  const wrongAccountForTeaching = teachParam === 'needs-teacher-account';
+
   const campaign = await getLiveCampaign(getServiceClient());
 
   if (!campaign) {
@@ -59,6 +126,9 @@ export default async function ClassMatchWeekPage() {
           >
             Explore iTutor
           </Link>
+          {wrongAccountForTeaching && <TeacherAccountNotice />}
+          {/* "Lining up the teachers now" is literal — this is where they sign up. */}
+          <TeacherCallout />
         </div>
       </main>
     );
@@ -86,6 +156,8 @@ export default async function ClassMatchWeekPage() {
             <CountdownPill startsAt={campaign.starts_at} endsAt={campaign.ends_at} />
           </div>
         </div>
+
+        {wrongAccountForTeaching && <TeacherAccountNotice />}
 
         <div className="mt-10">
           <h2 className="text-center text-sm font-semibold text-ink">
@@ -117,6 +189,8 @@ export default async function ClassMatchWeekPage() {
               </span>
             </Link>
           </div>
+
+          <TeacherCallout />
         </div>
       </div>
     </main>

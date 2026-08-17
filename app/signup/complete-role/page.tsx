@@ -167,7 +167,11 @@ export default function CompleteRolePage() {
         institution_id: showSchool && studentInstitution ? studentInstitution.id : null,
       });
       if (showSchool && studentInstitution) await ensureSchoolCommunityAndMembership(userId!);
-      setDestination('/student/dashboard');
+      // The role dashboard is the FALLBACK, not the destination. `returnTo` is
+      // the page the visitor was trying to reach before role selection cut in;
+      // overwriting it here dropped it at the last step, after the callback had
+      // carried it all this way.
+      setDestination(returnTo ?? '/student/dashboard');
       setStep('photo');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred.');
@@ -183,7 +187,12 @@ export default function CompleteRolePage() {
     try {
       await saveProfile({ role: 'tutor', teaching_levels: tLevels });
       if (tSubjects.length > 0) await setUserSubjects(userId!, tSubjects);
-      setDestination('/tutor/dashboard');
+      // Same as the student branch: honour `returnTo`. This is the path a
+      // teacher takes when they choose Google from the Class Match Week card,
+      // and landing them on the generic dashboard loses the campaign they came
+      // for — the Google button cannot preset role=tutor, so role selection is
+      // unavoidable here and dropping the destination is the only real break.
+      setDestination(returnTo ?? '/tutor/dashboard');
       setStep('photo');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred.');
