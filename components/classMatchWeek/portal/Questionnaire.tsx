@@ -145,27 +145,74 @@ export default function Questionnaire({
     teacher_preferences: over.teacher_preferences ?? prefs,
   });
 
-  const persist = useCallback(async (payload: Payload): Promise<boolean> => {
-    lastPayload.current = payload;
-    try {
-      const res = await fetch('/api/class-match/submission', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error(`submission save failed: ${res.status}`);
-      setSaveFailed(false);
-      return true;
-    } catch {
-      // Never lose a tap: the answer stays in state, the retry line appears.
-      setSaveFailed(true);
-      return false;
-    }
-  }, []);
+  const persist = useCallback(
+    async (payload: Payload): Promise<boolean> => {
+      lastPayload.current = payload;
+      try {
+        const res = await fetch('/api/class-match/submission', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        // The questionnaire is one-time, so a finished submission rejects every
+        // write — including the partial save after each step. The server-side
+        // gate on /match cannot catch someone who arrives by pressing BACK
+        // after finishing: that serves the page from the browser's cache
+        // without re-running the redirect. Without this branch they sit here
+        // answering questions while every save quietly fails and "See my
+        // matches" appears to do nothing. Send them to the matches they have.
+        if (res.status === 409) {
+          const body = (await res.json().catch(() => null)) as { error?: string } | null;
+          if (body?.error === 'already_completed') {
+            router.replace('/class-match-week/results');
+            return false;
+          }
+        }
+
+        if (!res.ok) throw new Error(`submission save failed: ${res.status}`);
+        setSaveFailed(false);
+        return true;
+      } catch {
+        // Never lose a tap: the answer stays in state, the retry line appears.
+        setSaveFailed(true);
+        return false;
+      }
+    },
+    [router]
+  );
 
   const retrySave = () => {
     if (lastPayload.current) void persist(lastPayload.current);
   };
+
+  // The one-time rule, checked on arrival as well as on write.
+  //
+  // /match redirects a finished visitor server-side, but that cannot fire when
+  // the browser restores this page from its back-forward cache — pressing BACK
+  // after finishing puts a fully interactive form on screen that is guaranteed
+  // to reject every answer. Asking the server once on mount closes that hole,
+  // so the bounce happens before a single question is answered rather than
+  // after five.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/class-match/submission');
+        if (!res.ok) return;
+        const body = (await res.json()) as { submission?: { completed_at?: string | null } | null };
+        if (!cancelled && body?.submission?.completed_at) {
+          router.replace('/class-match-week/results');
+        }
+      } catch {
+        // Offline or a flaky first request: let them answer. The 409 branch in
+        // persist() is the backstop, so nothing is lost by failing open here.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   // ── step handlers ────────────────────────────────────────────────────────
 
