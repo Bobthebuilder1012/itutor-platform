@@ -29,6 +29,7 @@ import {
   type SubmissionRole,
 } from '@/lib/classMatchWeek/types';
 import CountdownPill from './CountdownPill';
+import QuestionArt from './QuestionArt';
 
 const TOTAL_STEPS = 5;
 const NOT_SURE = 'Not sure yet';
@@ -67,6 +68,26 @@ function toggleMaxTwo(current: string[], option: string): string[] {
   return [...current, option];
 }
 
+/**
+ * The selection control on the right of every option row.
+ *
+ * A ring that fills when chosen — round for single-answer questions, rounded
+ * square for multi-select, so the shape itself says whether picking a second
+ * option is allowed before the visitor tries it.
+ */
+function Indicator({ selected, multi = false }: { selected: boolean; multi?: boolean }) {
+  return (
+    <span
+      aria-hidden
+      className={`grid size-5 shrink-0 place-items-center border-2 transition-colors ${
+        multi ? 'rounded-md' : 'rounded-full'
+      } ${selected ? 'border-brand bg-brand text-white' : 'border-border bg-white text-transparent'}`}
+    >
+      <Check className="size-3" strokeWidth={3} />
+    </span>
+  );
+}
+
 /** Greyed out: unselected, and either locked by "Not sure yet" or by two picks. */
 function isLockedMaxTwo(current: string[], option: string): boolean {
   if (current.includes(option)) return false;
@@ -101,14 +122,6 @@ export default function Questionnaire({
   const [fetchNonce, setFetchNonce] = useState(0);
   const [query, setQuery] = useState('');
   const optionsLevelRef = useRef<CanonicalLevel | null>(null);
-
-  const advanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
-      if (advanceTimer.current) clearTimeout(advanceTimer.current);
-    },
-    []
-  );
 
   // ── persistence ──────────────────────────────────────────────────────────
 
@@ -157,12 +170,10 @@ export default function Questionnaire({
   // ── step handlers ────────────────────────────────────────────────────────
 
   const pickLevel = (value: CanonicalLevel) => {
-    if (advanceTimer.current) clearTimeout(advanceTimer.current);
     const changed = value !== level;
     setLevel(value);
     // Subjects are conditional on level: a changed level invalidates the
     // selection and forces the option list to refetch on entry to Q2.
-    const nextSubjects = changed ? [] : subjects;
     if (changed) {
       setSubjects([]);
       setQuery('');
@@ -170,11 +181,9 @@ export default function Questionnaire({
       setSubjectOptions(null);
       setOptionsError(false);
     }
-    // Auto-advance after a short beat so the tap is visibly registered first.
-    advanceTimer.current = setTimeout(() => {
-      setStep(1);
-      void persist(buildPayload({ level: value, subjects: nextSubjects }));
-    }, 250);
+    // No auto-advance: the illustration reacts to this choice, and jumping to
+    // the next question would move the screen before that read. Continue is
+    // the same explicit control every other step uses.
   };
 
   const continueFrom = (index: number) => {
@@ -182,6 +191,18 @@ export default function Questionnaire({
     // Fire-and-forget: intermediate saves never block the next question.
     void persist(buildPayload());
   };
+
+  /** Has the current question been answered? Drives Continue and the artwork. */
+  const answered =
+    step === 0
+      ? level !== null
+      : step === 1
+        ? subjects.length > 0
+        : step === 2
+          ? availability.length > 0
+          : step === 3
+            ? support.length > 0
+            : prefs.length > 0;
 
   const finish = async () => {
     if (submitting) return;
@@ -302,21 +323,29 @@ export default function Questionnaire({
     'Choose up to two.',
   ];
 
+  // Q1 now requires Continue like every other step. Auto-advancing would skip
+  // straight past the illustration reacting to the choice, which is the whole
+  // point of the interaction model this flow is modelled on.
   const canContinue =
-    step === 1
-      ? subjects.length > 0
-      : step === 2
-        ? availability.length > 0
-        : step === 3
-          ? support.length > 0
-          : prefs.length > 0;
+    step === 0
+      ? level !== null
+      : step === 1
+        ? subjects.length > 0
+        : step === 2
+          ? availability.length > 0
+          : step === 3
+            ? support.length > 0
+            : prefs.length > 0;
 
   // ── shared option styling ────────────────────────────────────────────────
+  // Full-width rows with the state indicator on the RIGHT, so the eye tracks a
+  // single column of controls down the list rather than hunting a tick that
+  // moves with the label length.
 
   const rowBase =
-    'flex min-h-[52px] w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition-colors';
-  const rowIdle = 'border-border bg-white text-ink hover:border-brand';
-  const rowSelected = 'border-brand bg-brand-soft text-brand-deep';
+    'flex min-h-[60px] w-full items-center justify-between gap-3 rounded-2xl border-2 px-4 py-3.5 text-left text-[15px] font-semibold transition-all duration-150';
+  const rowIdle = 'border-border bg-white text-ink hover:border-brand/60 hover:shadow-sm';
+  const rowSelected = 'border-brand bg-brand-soft/50 text-ink shadow-sm';
   const rowLocked = 'cursor-not-allowed border-border bg-muted text-ink-muted opacity-60';
 
   const renderMaxTwo = (options: string[], current: string[], set: (next: string[]) => void) => (
@@ -333,7 +362,7 @@ export default function Questionnaire({
             className={`${rowBase} ${selected ? rowSelected : locked ? rowLocked : rowIdle}`}
           >
             {option}
-            {selected && <Check className="size-4 shrink-0" />}
+            <Indicator selected={selected} multi />
           </button>
         );
       })}
@@ -341,8 +370,16 @@ export default function Questionnaire({
   );
 
   return (
-    <main className="min-h-screen bg-background px-4 pb-16 pt-6">
-      <div className="mx-auto w-full max-w-md">
+    // Split screen: artwork on the left, one question on the right. The art
+    // panel is hidden below lg — on a phone the question must own the viewport,
+    // and a decorative half would push the options under the fold.
+    <main className="flex min-h-screen bg-white">
+      <aside className="sticky top-0 hidden h-screen w-[42%] shrink-0 lg:block">
+        <QuestionArt step={step} answered={answered} />
+      </aside>
+
+      <div className="flex w-full flex-1 justify-center px-4 pb-16 pt-6 lg:items-center lg:px-12">
+        <div className="w-full max-w-md">
         {/* header: back (mandatory — subjects depend on level), campaign clock */}
         <div className="flex items-center justify-between gap-3">
           {step === 0 ? (
@@ -395,12 +432,20 @@ export default function Questionnaire({
           </p>
         )}
 
-        <h1 className="mt-6 text-xl font-bold tracking-tight text-ink">{titles[step]}</h1>
-        {subtitles[step] && <p className="mt-1 text-xs text-ink-muted">{subtitles[step]}</p>}
+        {/* Mobile keeps a compact version of the artwork so the reaction to a
+            selection is still visible where the panel cannot be. */}
+        <div className="mt-6 h-32 overflow-hidden rounded-3xl lg:hidden">
+          <QuestionArt step={step} answered={answered} />
+        </div>
 
-        {/* Q1 — level, single select, auto-advances */}
+        <h1 className="mt-6 text-2xl font-bold tracking-tight text-ink sm:text-3xl">
+          {titles[step]}
+        </h1>
+        {subtitles[step] && <p className="mt-2 text-sm text-ink-muted">{subtitles[step]}</p>}
+
+        {/* Q1 — level, single select */}
         {step === 0 && (
-          <div className="mt-4 grid gap-2">
+          <div className="mt-6 grid gap-2.5">
             {QUESTIONNAIRE_LEVELS.map((l) => {
               const selected = level === l.value;
               return (
@@ -411,7 +456,7 @@ export default function Questionnaire({
                   className={`${rowBase} ${selected ? rowSelected : rowIdle}`}
                 >
                   {l.label}
-                  {selected && <Check className="size-4 shrink-0" />}
+                  <Indicator selected={selected} />
                 </button>
               );
             })}
@@ -522,7 +567,7 @@ export default function Questionnaire({
                   className={`${rowBase} ${selected ? rowSelected : rowIdle}`}
                 >
                   {block.label}
-                  {selected && <Check className="size-4 shrink-0" />}
+                  <Indicator selected={selected} multi />
                 </button>
               );
             })}
@@ -535,17 +580,21 @@ export default function Questionnaire({
         {/* Q5 — what matters in a teacher, same mechanics */}
         {step === 4 && renderMaxTwo(TEACHER_OPTIONS, prefs, setPrefs)}
 
-        {/* multi-select steps need an explicit Continue */}
-        {step >= 1 && (
-          <button
-            type="button"
-            disabled={!canContinue || (step === 4 && submitting)}
-            onClick={step === 4 ? finish : () => continueFrom(step)}
-            className="mt-6 w-full rounded-2xl bg-brand px-4 py-3.5 text-sm font-bold text-white transition-colors hover:bg-brand-deep disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {step === 4 ? (submitting ? 'Finding your matches…' : 'See my matches') : 'Continue'}
-          </button>
-        )}
+        {/* Every step ends in the same explicit control, disabled until the
+            question is answered — the flow never advances under the visitor. */}
+        <button
+          type="button"
+          disabled={!canContinue || (step === 4 && submitting)}
+          onClick={step === 4 ? finish : () => continueFrom(step)}
+          className={`mt-8 w-full rounded-2xl px-4 py-4 text-[15px] font-bold transition-colors ${
+            canContinue && !(step === 4 && submitting)
+              ? 'bg-brand text-white hover:bg-brand-deep'
+              : 'cursor-not-allowed bg-muted text-ink-muted'
+          }`}
+        >
+          {step === 4 ? (submitting ? 'Finding your matches…' : 'See my matches') : 'Continue'}
+        </button>
+        </div>
       </div>
     </main>
   );
