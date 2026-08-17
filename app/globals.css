@@ -123,6 +123,48 @@
 .shadow-pop  { box-shadow: 0 20px 50px -20px rgba(25, 147, 86, 0.4); }
 .shadow-card { box-shadow: 0 10px 30px -12px rgba(17, 24, 39, 0.18); }
 
+/**
+ * Range slider with a filled track, for the Class Match Week session builder.
+ *
+ * Lives here rather than in the component because the thumb and track are
+ * pseudo-elements (::-webkit-slider-thumb, ::-moz-range-thumb) that Tailwind
+ * cannot address. The fill position is passed in as --cmw-fill by the component,
+ * since only it knows the value.
+ */
+.cmw-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--brand) var(--cmw-fill, 50%),
+    var(--border) var(--cmw-fill, 50%)
+  );
+  outline: none;
+}
+.cmw-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: #fff;
+  border: 3px solid var(--brand);
+  box-shadow: 0 4px 10px -4px rgba(5, 46, 26, 0.6);
+  cursor: grab;
+}
+.cmw-range::-webkit-slider-thumb:active { cursor: grabbing; transform: scale(1.08); }
+.cmw-range::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #fff;
+  border: 3px solid var(--brand);
+  cursor: grab;
+}
+.cmw-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px var(--brand-light); }
+
 .marquee-mask {
   -webkit-mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
           mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);

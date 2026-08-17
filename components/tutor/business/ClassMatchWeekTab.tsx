@@ -35,7 +35,6 @@ import {
   Sparkles,
   CalendarDays,
   Wrench,
-  X,
   Check,
   ArrowRight,
   Video,
@@ -44,11 +43,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
-import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { useTutorCompletion } from '@/lib/hooks/useTutorCompletion';
-import SessionCreateModal, {
-  type SessionableClass,
-} from '@/components/classMatchWeek/teacher/SessionCreateModal';
 import TeacherSessionList, {
   type TeacherSession,
 } from '@/components/classMatchWeek/teacher/TeacherSessionList';
@@ -102,9 +97,6 @@ export default function ClassMatchWeekTab({ profile }: { profile: Profile | null
 
   const [optingIn, setOptingIn] = useState(false);
   const [optInError, setOptInError] = useState<string | null>(null);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [published, setPublished] = useState<{ title: string; isDraft: boolean } | null>(null);
 
   const [introSeen, setIntroSeen] = useState(true); // assume seen until localStorage says otherwise
   const [requirementsMet, setRequirementsMet] = useState(false);
@@ -178,20 +170,13 @@ export default function ClassMatchWeekTab({ profile }: { profile: Profile | null
 
   const groupsById = useMemo(() => new Map(groups.map((g) => [g.id, g])), [groups]);
 
-  // Sessionable = the tutor's eligible classes minus everything the API blocked.
-  const sessionableClasses: SessionableClass[] = useMemo(() => {
+  // How many of the tutor's eligible classes can actually host a taster. Only a
+  // count is needed here — the builder is its own page and loads the classes
+  // itself, since it is reachable by direct link.
+  const sessionableCount = useMemo(() => {
     const blockedIds = new Set(blocked.map((b) => b.groupId));
-    return groups
-      .filter((g) => !blockedIds.has(g.id))
-      .map((g) => ({ id: g.id, name: g.name, priceLabel: `${fmtTTD(g.price_monthly)}/mo` }));
+    return groups.filter((g) => !blockedIds.has(g.id)).length;
   }, [groups, blocked]);
-
-  // Anything published and monthly can carry the discount, including classes
-  // that cannot HOST a taster for want of a schedule.
-  const promotableClasses: SessionableClass[] = useMemo(
-    () => groups.map((g) => ({ id: g.id, name: g.name, priceLabel: `${fmtTTD(g.price_monthly)}/mo` })),
-    [groups]
-  );
 
   // ── the gate, mirrored for signposting ────────────────────────────────────
   const suspended = Boolean(profile?.is_suspended);
@@ -306,20 +291,6 @@ export default function ClassMatchWeekTab({ profile }: { profile: Profile | null
         </p>
       </header>
 
-      {/* A publish-time warning from the API (e.g. the Meet link caveat) */}
-      {notice && (
-        <div className="flex items-start justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
-          <p className="text-sm text-amber-800">{notice}</p>
-          <button
-            onClick={() => setNotice(null)}
-            className="shrink-0 text-amber-500 hover:text-amber-700"
-            aria-label="Dismiss"
-          >
-            <X className="size-4" />
-          </button>
-        </div>
-      )}
-
       {/* 1 — the intro, once */}
       {!introSeen && !optedIn && (
         <section className="rounded-3xl border border-brand/30 bg-brand/5 p-6 sm:p-8">
@@ -411,14 +382,19 @@ export default function ClassMatchWeekTab({ profile }: { profile: Profile | null
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <h3 className="text-lg font-bold text-ink">Your sessions</h3>
             <div className="flex flex-col items-start sm:items-end gap-1">
-              <button
-                onClick={() => setModalOpen(true)}
-                disabled={sessionableClasses.length === 0}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-deep disabled:opacity-50"
-              >
-                <Plus className="size-3.5" /> Create a session
-              </button>
-              {sessionableClasses.length === 0 && (
+              {sessionableCount > 0 ? (
+                <Link
+                  href="/tutor/class-match-week/new"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-deep"
+                >
+                  <Plus className="size-3.5" /> Create a session
+                </Link>
+              ) : (
+                <span className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white opacity-50">
+                  <Plus className="size-3.5" /> Create a session
+                </span>
+              )}
+              {sessionableCount === 0 && (
                 <p className="text-[11px] text-muted-foreground">
                   {blocked.length > 0
                     ? 'Fix a blocked class below to create a session.'
@@ -479,24 +455,6 @@ export default function ClassMatchWeekTab({ profile }: { profile: Profile | null
         </>
       )}
 
-      <SessionCreateModal
-        open={modalOpen}
-        classes={sessionableClasses}
-        promotable={promotableClasses}
-        onClose={() => setModalOpen(false)}
-        onCreated={(session, groupName, warning) => {
-          setSessions((prev) => [{ ...session, groupName, reservedCount: 0 }, ...prev]);
-          setModalOpen(false);
-          // The API returns warning slugs, not display copy — map the known one.
-          setNotice(
-            warning === 'over_60_minutes'
-              ? 'Google may end this call after 60 minutes on free accounts.'
-              : warning ?? null
-          );
-          setPublished({ title: session.title, isDraft: session.status !== 'published' });
-        }}
-      />
-
       {/* The requirements-met prompt, after a teacher comes back from fixing them */}
       {requirementsMet && (
         <Dialog onClose={() => setRequirementsMet(false)}>
@@ -515,47 +473,6 @@ export default function ClassMatchWeekTab({ profile }: { profile: Profile | null
         </Dialog>
       )}
 
-      {/* Publish confirmation */}
-      {published && (
-        <Dialog onClose={() => setPublished(null)}>
-          <div className="grid size-12 place-items-center rounded-2xl bg-brand/10">
-            <Check className="size-6 text-brand-deep" />
-          </div>
-          <h3 className="mt-3 text-xl font-bold text-ink">
-            {published.isDraft ? 'Draft saved' : 'Your session is live'}
-          </h3>
-          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-            {published.isDraft ? (
-              <>
-                &ldquo;{published.title}&rdquo; is saved but not published, so families can&apos;t
-                find it yet.
-              </>
-            ) : (
-              <>
-                &ldquo;{published.title}&rdquo; is running. Families browsing Class Match Week can
-                find it and reserve a spot from now on.
-              </>
-            )}
-          </p>
-          <div className="mt-5 flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => {
-                setPublished(null);
-                setModalOpen(true);
-              }}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-deep"
-            >
-              <Plus className="size-3.5" /> Host another session
-            </button>
-            <button
-              onClick={() => setPublished(null)}
-              className="rounded-lg px-4 py-2 text-sm font-semibold text-muted-foreground hover:bg-muted hover:text-ink"
-            >
-              Done
-            </button>
-          </div>
-        </Dialog>
-      )}
     </div>
   );
 }
@@ -605,7 +522,7 @@ function RequirementRow({
   );
 }
 
-/** Centred modal shell. Backdrop click closes, matching SessionCreateModal. */
+/** Centred modal shell for the one-off prompt. Backdrop click closes. */
 function Dialog({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
