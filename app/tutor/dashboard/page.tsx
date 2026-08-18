@@ -13,7 +13,7 @@ import { useTutorCompletion } from '@/lib/hooks/useTutorCompletion';
 import { supabase } from '@/lib/supabase/client';
 import TutorShell from '@/components/tutor/TutorShell';
 import ReliabilityPanel from '@/components/reliability/ReliabilityPanel';
-import ClassMatchWeekDashboardPrompt from '@/components/tutor/ClassMatchWeekDashboardPrompt';
+import CampaignDashboardBanner from '@/components/classMatchWeek/CampaignDashboardBanner';
 
 type DashboardStats = {
   activeStudents: number;
@@ -209,6 +209,9 @@ function DashboardContent() {
 
   return (
     <div className="space-y-8 max-w-7xl">
+      {/* Renders nothing when no campaign is live, or once they have opted in. */}
+      <CampaignDashboardBanner audience="teacher" />
+
       <header className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl lg:text-3xl font-bold text-ink">Welcome back, {firstName}.</h1>
@@ -216,9 +219,10 @@ function DashboardContent() {
             {listed ? "Here's what's happening with your students today." : 'Finish setting up your profile to unlock teaching tools.'}
           </p>
         </div>
+        {/* The campaign pill that used to sit here moved into TutorShell's topbar,
+            so it is on every tutor page rather than this one. Keeping both would
+            have shown it twice on the dashboard. */}
         <div className="flex items-center gap-2 shrink-0 flex-wrap">
-          {/* Renders nothing unless a campaign is live. */}
-          <ClassMatchWeekDashboardPrompt profileComplete={listed} />
           <Link href="/tutor/settings?section=teaching"
             className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-border bg-background text-sm font-semibold text-ink hover:bg-muted transition">
             <PenLine className="size-3.5" /> Edit profile

@@ -14,6 +14,7 @@ import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import LogoutConfirmModal from '@/components/LogoutConfirmModal';
 import { FEEDBACK_SEEN_EVENT } from '@/lib/parent/feedbackSeen';
+import CampaignCta from '@/components/classMatchWeek/CampaignCta';
 
 type NavItem = { to: string; label: string; icon: ComponentType<{ className?: string }>; exact?: boolean; tint: string };
 
@@ -208,6 +209,11 @@ export default function ParentShell({ children }: { children: React.ReactNode })
           <div className="flex items-center gap-3 px-4 lg:px-8 h-14">
             <Link href="/" className="lg:hidden"><Image src="/assets/logo/itutor-logo-new.png" alt="iTutor" width={70} height={22} /></Link>
             <div className="flex-1" />
+            {/* Class Match Week, on every parent page. Parents were never blocked
+                from the portal — the pages gate on being signed in, not on role —
+                they simply had no link to it anywhere, which made it unreachable
+                in practice. Renders nothing when no campaign is live. */}
+            <CampaignCta />
             <div className="flex items-center gap-1">
               {/* Find a class lives in the top bar, on every page.
                   Removing it from the sidebar for kit fidelity left the

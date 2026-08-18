@@ -136,7 +136,19 @@ function ShellInner({ children, navItems }: { children: ReactNode; navItems: Nav
   const displayName = profile?.display_name || profile?.full_name?.split(' ')[0] || 'Student';
   const fullName = profile?.full_name || profile?.display_name || 'Student';
   const initials = fullName.slice(0, 2).toUpperCase();
-  const roleLabel = 'Student';
+
+  /**
+   * Read from the profile, not hard-coded.
+   *
+   * This shell is no longer student-only: CampaignShell reuses it for the Class
+   * Match Week portal precisely so the sidebar, profile menu, notifications and
+   * logout are not reimplemented — and the campaign is open to parents. A parent
+   * signing in there was shown their own name above the word "Student", which
+   * reads as the platform having mistaken who they are, on the one screen where
+   * a new parent is deciding whether to trust it.
+   */
+  const roleLabel =
+    profile?.role === 'parent' ? 'Parent' : profile?.role === 'tutor' ? 'Tutor' : 'Student';
 
   useEffect(() => {
     try {

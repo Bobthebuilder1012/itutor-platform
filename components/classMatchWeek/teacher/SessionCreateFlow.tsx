@@ -17,9 +17,16 @@
  * detail on the session. Splitting them makes the reward a decision of its own,
  * and Review exists because publishing puts a price in front of strangers.
  *
- * THE PREVIEW IS THE POINT OF THE LEFT RAIL. Every field here is read by a
- * parent who has never met this teacher, and the teacher cannot otherwise see
- * what they are writing. It updates live, including its empty states.
+ * ONE CLASS LIST DOES BOTH JOBS (owner's decision). Everything ticked is covered
+ * by the discount, and the first tick that CAN host a taster is the taster's
+ * class — the database needs exactly one of those, since the session inherits
+ * that class's schedule, price and page. Order therefore carries meaning, which
+ * is why `picked` is an array and "Make taster" moves an id to the front rather
+ * than writing a second field that could disagree with the list.
+ *
+ * The dark step rail and its live family-facing preview were removed on the
+ * owner's instruction. Step position still shows in the header, so nothing about
+ * navigation was lost with it.
  *
  * Defaults still make publishing cheap (docs 01 §1.4): discount 10%, a 14-day
  * claim window, price held 3 months, unlimited attendees. A teacher who changes
@@ -84,6 +91,7 @@ const DURATIONS = [30, 45, 60, 90];
  */
 const PRICE_HOLDS = [
   { months: 1, label: 'Their first month' },
+  { months: 2, label: 'Their first 2 months' },
   { months: 3, label: 'Their first 3 months' },
   { months: 6, label: 'Their first 6 months' },
   { months: 12, label: 'Their first 12 months' },
@@ -271,65 +279,6 @@ function Section({
   );
 }
 
-/** What a parent sees on the card, rebuilt from the form as it is filled. */
-function PreviewCard({
-  name,
-  cls,
-  duration,
-  when,
-  discount,
-  seats,
-}: {
-  name: string;
-  cls: FlowClass | null;
-  duration: number;
-  when: string;
-  discount: string;
-  seats: number | null;
-}) {
-  const meta = 'inline-flex items-center gap-1 rounded-full border border-border bg-surface-soft px-1.5 py-1 text-[10.5px] font-semibold text-ink-muted';
-  return (
-    <div className="overflow-hidden rounded-2xl bg-white text-ink shadow-[0_18px_40px_-20px_rgba(0,0,0,0.6)]">
-      <div className="grid gap-2 bg-gradient-to-br from-mint to-brand-light p-4">
-        <div className="flex items-center gap-2">
-          <span className="rounded-full bg-white/75 px-1.5 py-0.5 text-[10px] font-bold text-brand-deep">
-            FREE TASTER
-          </span>
-        </div>
-        <div className="min-h-5 font-display text-[15px] font-bold leading-tight tracking-tight">
-          {name || <span className="text-forest/40">Your session name appears here</span>}
-        </div>
-      </div>
-      <div className="grid gap-2 px-4 pb-3.5 pt-3">
-        <div className="flex flex-wrap gap-1.5">
-          <span className={meta}>
-            <BookOpen className="size-3" />
-            {cls ? cls.name : 'Class TBC'}
-          </span>
-          <span className={meta}>
-            <Clock className="size-3" />
-            {duration} min
-          </span>
-          <span className={meta}>
-            <Calendar className="size-3" />
-            {when || 'Date TBC'}
-          </span>
-          <span className={meta}>
-            <Users className="size-3" />
-            {seats ? `${seats} seats` : 'Unlimited'}
-          </span>
-        </div>
-        <div className="flex items-center gap-2 rounded-lg border border-dashed border-brand/40 bg-mint px-2.5 py-2">
-          <span className="font-display text-base font-extrabold text-brand-deep">{discount}%</span>
-          <span className="text-[11px] leading-snug text-forest">
-            off if you enrol after turning up
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function SessionCreateFlow({
   campaign,
   sessionable,
@@ -347,7 +296,15 @@ export default function SessionCreateFlow({
 
   const [step, setStep] = useState(1);
   const [name, setName] = useState('');
-  const [classId, setClassId] = useState('');
+  /**
+   * One list of classes now does both jobs: everything picked is covered by the
+   * discount, and the FIRST pick that can host a taster is the taster's class.
+   *
+   * Order carries meaning, so this is an array rather than a Set. "Make taster"
+   * moves an id to the front instead of writing a separate tasterId, which keeps
+   * one source of truth — a second field could disagree with the list.
+   */
+  const [picked, setPicked] = useState<string[]>([]);
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [duration, setDuration] = useState(30);
@@ -355,10 +312,8 @@ export default function SessionCreateFlow({
   const [seats, setSeats] = useState(12);
 
   const [discount, setDiscount] = useState('10');
-  const [covered, setCovered] = useState<string[]>([]);
   const [priceMonths, setPriceMonths] = useState(3);
   const [windowDays, setWindowDays] = useState(14);
-  const [endsOn, setEndsOn] = useState('');
 
   const [submitting, setSubmitting] = useState<'publish' | 'draft' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -366,7 +321,16 @@ export default function SessionCreateFlow({
   const [reconnectUrl, setReconnectUrl] = useState<string | null>(null);
   const [published, setPublished] = useState<{ title: string; isDraft: boolean } | null>(null);
 
-  const selected = sessionable.find((c) => c.id === classId) ?? null;
+  /**
+   * Not every picked class can HOST the taster — a class with no weekly schedule
+   * can carry the discount but cannot back a session (the API blocks it). So the
+   * taster is the first pick that is also sessionable, and a class that cannot
+   * host one is simply never offered the role.
+   */
+  const sessionableIds = useMemo(() => new Set(sessionable.map((c) => c.id)), [sessionable]);
+  const canHost = (id: string) => sessionableIds.has(id);
+  const classId = picked.find(canHost) ?? '';
+  const selected = promotable.find((c) => c.id === classId) ?? null;
 
   const days = useMemo(
     () => campaignDays(campaign.starts_at, campaign.ends_at),
@@ -389,17 +353,17 @@ export default function SessionCreateFlow({
     discountNumber < DISCOUNT_MIN ||
     discountNumber > DISCOUNT_MAX;
 
-  // A deadline before the taster runs would hand every attendee a coupon that
-  // expired the moment they earned it.
-  const endsBeforeSession = !!endsOn && !!date && endsOn < date;
-
   const stepOneDone = !!name.trim() && !!classId && !!date && !!time;
-  const canPublish = stepOneDone && !discountInvalid && !endsBeforeSession && !submitting;
+  const canPublish = stepOneDone && !discountInvalid && !submitting;
 
-  const toggleCovered = (id: string) =>
-    setCovered((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  const togglePicked = (id: string) =>
+    setPicked((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
-  const coveredCount = (selected ? 1 : 0) + covered.filter((id) => id !== classId).length;
+  /** Promote a class to taster by moving it to the front of the order. */
+  const makeTaster = (id: string) =>
+    setPicked((prev) => [id, ...prev.filter((x) => x !== id)]);
+
+  const coveredCount = picked.length;
 
   const nudge = published
     ? 'Published. Host another, or head back to your sessions.'
@@ -414,17 +378,15 @@ export default function SessionCreateFlow({
   const reset = () => {
     setStep(1);
     setName('');
-    setClassId('');
+    setPicked([]);
     setDate('');
     setTime('');
     setDuration(30);
     setUnlimited(true);
     setSeats(12);
     setDiscount('10');
-    setCovered([]);
     setPriceMonths(3);
     setWindowDays(14);
-    setEndsOn('');
     setError(null);
     setDefects([]);
     setReconnectUrl(null);
@@ -442,9 +404,6 @@ export default function SessionCreateFlow({
     // offset rather than trusting the browser's timezone — a teacher on a
     // mistimed device still schedules correctly.
     const scheduledAt = `${date}T${time.length === 5 ? `${time}:00` : time}-04:00`;
-    // A deadline is a DAY, so it runs to the end of it; midnight would cut the
-    // last day off the offer the teacher described.
-    const discountExpiresAt = endsOn ? `${endsOn}T23:59:59-04:00` : null;
 
     try {
       const res = await fetch('/api/class-match/sessions', {
@@ -458,8 +417,7 @@ export default function SessionCreateFlow({
           discountPercent: discountNumber,
           redemptionWindowDays: windowDays,
           priceDurationMonths: priceMonths,
-          discountExpiresAt,
-          qualifyingGroupIds: covered.filter((id) => id !== classId),
+          qualifyingGroupIds: picked.filter((id) => id !== classId),
           maxAttendees: unlimited ? null : seats,
           publish: mode === 'published',
         }),
@@ -509,88 +467,12 @@ export default function SessionCreateFlow({
       Percent,
     ],
     ['Covers', coveredCount ? `${coveredCount} ${coveredCount === 1 ? 'class' : 'classes'}` : 'No classes yet', Layers],
-    [
-      'Claim window',
-      `${windowDays} days from attending${
-        endsOn
-          ? `, and never past ${new Date(`${endsOn}T00:00`).toLocaleDateString('en-GB', {
-              day: 'numeric',
-              month: 'short',
-              year: 'numeric',
-            })}`
-          : ''
-      }`,
-      Timer,
-    ],
+    ['Claim window', `${windowDays} days from attending`, Timer],
   ];
 
   return (
-    <div className="flex min-h-[720px] overflow-hidden rounded-3xl border border-border bg-white shadow-card">
-      {/* ── Left rail: steps and the live preview ──────────────────────── */}
-      <aside className="hidden w-80 shrink-0 flex-col gap-7 overflow-y-auto bg-ink p-7 text-white lg:flex">
-        <div className="grid gap-1.5">
-          <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-brand-accent">
-            <Sparkles className="size-3" /> Class Match Week
-          </span>
-          <h2 className="font-display text-xl font-bold leading-tight tracking-tight">
-            Create a session
-          </h2>
-        </div>
-
-        <ol className="grid list-none gap-0.5 p-0">
-          {STEPS.map((s) => {
-            const state = step === s.n ? 'now' : step > s.n ? 'done' : 'todo';
-            return (
-              <li key={s.n}>
-                <button
-                  type="button"
-                  onClick={() => !published && setStep(s.n)}
-                  className={cn(
-                    'flex w-full items-center gap-3 rounded-xl p-2.5 text-left transition-colors',
-                    state === 'now'
-                      ? 'bg-brand/20 text-white'
-                      : 'text-white/75 hover:bg-white/5'
-                  )}
-                >
-                  <span
-                    className={cn(
-                      'grid size-[26px] shrink-0 place-items-center rounded-full border-[1.5px] text-xs font-extrabold',
-                      state === 'now'
-                        ? 'border-brand bg-brand text-white'
-                        : state === 'done'
-                          ? 'border-brand-accent bg-brand/20 text-brand-accent'
-                          : 'border-white/25 text-white/70'
-                    )}
-                  >
-                    {state === 'done' ? <Check className="size-3.5" /> : s.n}
-                  </span>
-                  <span className="grid gap-px">
-                    <span className="text-sm font-semibold">{s.label}</span>
-                    <span className="text-[11px] text-white/55">{s.hint}</span>
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ol>
-
-        <div className="mt-auto grid shrink-0 gap-2.5">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-white/45">
-            What families see
-          </span>
-          <PreviewCard
-            name={name}
-            cls={selected}
-            duration={duration}
-            when={when}
-            discount={discountInvalid ? '—' : String(discountNumber)}
-            seats={unlimited ? null : seats}
-          />
-        </div>
-      </aside>
-
-      {/* ── Right: the form ────────────────────────────────────────────── */}
-      <div className="flex min-w-0 flex-1 flex-col bg-surface-soft">
+    <div className="overflow-hidden rounded-3xl border border-border bg-white shadow-card">
+      <div className="flex min-w-0 flex-col bg-surface-soft">
         <header className="flex items-center gap-4 border-b border-border bg-white px-5 py-4 sm:px-7">
           <div className="grid flex-1 gap-2">
             <div className="flex items-baseline gap-2">
@@ -645,50 +527,92 @@ export default function SessionCreateFlow({
 
               <Section
                 step="2"
-                label="Which class is this a taster for?"
-                hint="This class is always covered by the discount."
+                label="Which classes is this for?"
+                hint="Everything you pick is covered by the discount. The first one you pick is the class the taster itself runs from — swap it any time."
               >
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {sessionable.map((c, i) => {
+                <div className="grid gap-2">
+                  {promotable.map((c, i) => {
                     const Icon = iconForSubject(c.subject);
-                    const on = classId === c.id;
+                    const on = picked.includes(c.id);
+                    const isTaster = classId === c.id;
+                    const hostable = canHost(c.id);
                     return (
-                      <button
+                      <div
                         key={c.id}
-                        type="button"
-                        onClick={() => {
-                          setClassId(c.id);
-                          setCovered((prev) => prev.filter((x) => x !== c.id));
-                        }}
                         className={cn(
-                          'flex items-center gap-2.5 rounded-xl border bg-white p-3 text-left transition hover:-translate-y-px hover:shadow-card',
-                          on
+                          'flex items-center gap-2.5 rounded-xl border bg-white p-3 transition',
+                          isTaster
                             ? 'border-brand ring-2 ring-brand-light'
-                            : 'border-surface-border hover:border-brand/45'
+                            : on
+                              ? 'border-brand'
+                              : 'border-surface-border'
                         )}
                       >
-                        <span
-                          className={cn(
-                            'grid size-[34px] shrink-0 place-items-center rounded-lg text-forest',
-                            TINTS[i % TINTS.length]
-                          )}
+                        <button
+                          type="button"
+                          onClick={() => togglePicked(c.id)}
+                          className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
                         >
-                          <Icon className="size-4" />
-                        </span>
-                        <span className="grid min-w-0 gap-0.5">
-                          <span className="truncate text-sm font-semibold text-ink">{c.name}</span>
-                          <span className="text-xs text-ink-muted">
-                            {c.subject ? `${c.subject} · ` : ''}
-                            {c.priceLabel}
+                          <span
+                            className={cn(
+                              'grid size-[18px] shrink-0 place-items-center rounded-md border-[1.5px]',
+                              on
+                                ? 'border-brand bg-brand text-white'
+                                : 'border-surface-border bg-white'
+                            )}
+                          >
+                            {on && <Check className="size-3" />}
                           </span>
-                        </span>
-                        {on && (
-                          <CheckCircle2 className="ml-auto size-4 shrink-0 text-brand-deep" />
+                          <span
+                            className={cn(
+                              'grid size-[34px] shrink-0 place-items-center rounded-lg text-forest',
+                              TINTS[i % TINTS.length]
+                            )}
+                          >
+                            <Icon className="size-4" />
+                          </span>
+                          <span className="grid min-w-0 gap-0.5">
+                            <span className="truncate text-sm font-semibold text-ink">{c.name}</span>
+                            <span className="text-xs text-ink-muted">
+                              {c.subject ? `${c.subject} · ` : ''}
+                              {c.priceLabel}
+                              {!hostable && ' · discount only'}
+                            </span>
+                          </span>
+                        </button>
+
+                        {isTaster ? (
+                          <span className="shrink-0 rounded-full bg-brand-light px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand-deep">
+                            Taster class
+                          </span>
+                        ) : (
+                          on &&
+                          hostable && (
+                            <button
+                              type="button"
+                              onClick={() => makeTaster(c.id)}
+                              className="shrink-0 rounded-lg border border-border bg-white px-2.5 py-1 text-[11px] font-semibold text-ink-muted transition-colors hover:border-brand hover:text-brand-deep"
+                            >
+                              Make taster
+                            </button>
+                          )
                         )}
-                      </button>
+                      </div>
                     );
                   })}
                 </div>
+                {/* Picking only discount-only classes leaves nothing to host the
+                    session, which would otherwise fail at publish with a defect
+                    list rather than here, where it can be fixed in one tap. */}
+                {picked.length > 0 && !classId && (
+                  <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                    <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />
+                    <p className="text-xs leading-relaxed text-amber-800">
+                      None of these can host the session itself — they each need a weekly schedule
+                      first. Pick one that can, or add a schedule from the class page.
+                    </p>
+                  </div>
+                )}
               </Section>
 
               <Section
@@ -870,52 +794,6 @@ export default function SessionCreateFlow({
 
               <Section
                 step="2"
-                label="Which classes the discount covers"
-                hint="The taster's class is always covered. Add others if you want an attendee to be able to spend the discount on any of them."
-              >
-                <div className="grid gap-1.5">
-                  {promotable.map((c) => {
-                    const locked = c.id === classId;
-                    const on = locked || covered.includes(c.id);
-                    return (
-                      <button
-                        key={c.id}
-                        type="button"
-                        disabled={locked}
-                        onClick={() => toggleCovered(c.id)}
-                        className={cn(
-                          'flex items-center gap-2.5 rounded-xl border px-3.5 py-2.5 transition-colors',
-                          on
-                            ? 'border-brand bg-mint'
-                            : 'border-surface-border bg-white hover:border-brand/40',
-                          locked && 'cursor-default'
-                        )}
-                      >
-                        <span
-                          className={cn(
-                            'grid size-[18px] shrink-0 place-items-center rounded-md border-[1.5px]',
-                            on ? 'border-brand bg-brand text-white' : 'border-surface-border bg-white'
-                          )}
-                        >
-                          {on && <Check className="size-3" />}
-                        </span>
-                        <span className="truncate text-sm font-medium text-ink">{c.name}</span>
-                        {locked && (
-                          <span className="shrink-0 rounded-full bg-brand-light px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand-deep">
-                            Taster class
-                          </span>
-                        )}
-                        <span className="ml-auto shrink-0 text-xs text-ink-muted">
-                          {c.priceLabel}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </Section>
-
-              <Section
-                step="3"
                 label="Discounted price holds for"
                 hint="Counted from the day they enrol, not from the day the class starts."
               >
@@ -933,7 +811,7 @@ export default function SessionCreateFlow({
               </Section>
 
               <Section
-                step="4"
+                step="3"
                 label="Days to claim it"
                 hint="Counted from the day each family attends, so everyone gets the same window."
               >
@@ -959,24 +837,6 @@ export default function SessionCreateFlow({
                 </div>
               </Section>
 
-              <Section
-                step="5"
-                label="Offer ends (optional)"
-                hint="A hard deadline. Whichever comes first — this date or the days above — ends the offer. Leave blank to use the days alone."
-              >
-                <input
-                  type="date"
-                  value={endsOn}
-                  min={date || undefined}
-                  onChange={(e) => setEndsOn(e.target.value)}
-                  className={cn(INPUT, 'max-w-64')}
-                />
-                {endsBeforeSession && (
-                  <p className="text-xs text-coral">
-                    This is before the session runs, so nobody could ever claim the discount.
-                  </p>
-                )}
-              </Section>
             </>
           )}
 

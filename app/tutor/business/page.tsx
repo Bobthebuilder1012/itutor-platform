@@ -7,7 +7,7 @@ import {
   Briefcase, Tag, BarChart3, FileText, Plus, Check, X,
   Users, DollarSign, BookOpen, Clock, Lock, Copy, ExternalLink,
   GraduationCap, BadgeCheck, AlertCircle, UploadCloud, Loader2, ShieldCheck, CalendarClock,
-  Sparkles,
+  Users as CampaignMark,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -178,7 +178,7 @@ function MyBusinessContent() {
     { key: 'promotions', label: 'Promotions',       icon: Tag },
     // Sits beside Promotions because that is what it is — a promotion with a
     // deadline. The flag is what makes a teacher open it now rather than later.
-    { key: 'class-match-week', label: 'Class Match Week', icon: Sparkles, flag: 'Limited time' },
+    { key: 'class-match-week', label: 'Class Match Week', icon: CampaignMark, flag: 'Limited time' },
     { key: 'verification', label: 'Verification',   icon: ShieldCheck },
     { key: 'analytics',  label: 'Analytics',        icon: BarChart3 },
     { key: 'feedback',   label: 'Parent feedback',  icon: FileText,  comingSoon: true },
