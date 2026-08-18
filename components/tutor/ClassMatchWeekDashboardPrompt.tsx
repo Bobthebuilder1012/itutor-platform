@@ -22,7 +22,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Sparkles, ArrowRight, UserCircle, X } from 'lucide-react';
+import { Users as CampaignMark, ArrowRight, UserCircle, X } from 'lucide-react';
 import CountdownPill from '@/components/classMatchWeek/portal/CountdownPill';
 import type { ClassMatchCampaign } from '@/lib/classMatchWeek/types';
 
@@ -90,7 +90,7 @@ export default function ClassMatchWeekDashboardPrompt({
   return (
     <>
       <div className="inline-flex items-center gap-2 rounded-full border border-brand/30 bg-brand/5 py-1 pl-2.5 pr-1">
-        <Sparkles className="size-3.5 shrink-0 text-brand-deep" />
+        <CampaignMark className="size-3.5 shrink-0 text-brand-deep" />
         <CountdownPill startsAt={campaign.starts_at} endsAt={campaign.ends_at} size="sm" />
         <button
           onClick={go}

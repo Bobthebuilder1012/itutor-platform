@@ -15,7 +15,7 @@
  * item is the way back out to the rest of iTutor.
  */
 
-import { LayoutDashboard, Search, GraduationCap, Sparkles, House } from 'lucide-react';
+import { LayoutDashboard, Search, GraduationCap, Users as CampaignMark, House } from 'lucide-react';
 import { StudentShell, type StudentNavItem } from '@/components/student/StudentShell';
 
 const campaignNav: StudentNavItem[] = [
@@ -41,7 +41,7 @@ const campaignNav: StudentNavItem[] = [
   {
     to: '/class-match-week/results',
     label: 'My Matches',
-    icon: Sparkles,
+    icon: CampaignMark,
     tint: 'bg-violet-500/20 text-violet-300 ring-1 ring-violet-400/30',
   },
   {

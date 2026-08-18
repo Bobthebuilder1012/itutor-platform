@@ -25,7 +25,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ArrowRight, Clock, Info, Sparkles } from 'lucide-react';
+import { ArrowRight, Clock, Info, Users as CampaignMark } from 'lucide-react';
 import type { ClassMatchCampaign } from '@/lib/classMatchWeek/types';
 
 type BannerState = { joined: boolean; started: boolean };
@@ -183,7 +183,7 @@ export default function CampaignCta() {
         title={label}
         className="group inline-flex items-center gap-1.5 rounded-full bg-brand px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-brand-deep"
       >
-        <Sparkles className="size-3.5 shrink-0" />
+        <CampaignMark className="size-3.5 shrink-0" />
         {/* The label is the first thing to go when the bar gets tight — the
             icon and countdown still say what this is and that it is timed. */}
         <span className="hidden whitespace-nowrap xl:inline">{label}</span>

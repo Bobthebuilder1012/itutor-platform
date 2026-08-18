@@ -32,7 +32,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   Plus,
-  Sparkles,
+  Users as CampaignMark,
   CalendarDays,
   Wrench,
   Check,
@@ -268,7 +268,7 @@ export default function ClassMatchWeekTab({ profile }: { profile: Profile | null
   if (!campaign) {
     return (
       <div className="max-w-2xl mx-auto py-16 text-center">
-        <Sparkles className="size-10 mx-auto text-muted-foreground/40" />
+        <CampaignMark className="size-10 mx-auto text-muted-foreground/40" />
         <h2 className="mt-3 text-xl font-bold text-ink">Class Match Week isn&apos;t running yet</h2>
         <p className="mt-2 text-sm text-muted-foreground">
           When the next campaign opens, you&apos;ll be able to offer free taster sessions here.
@@ -282,7 +282,7 @@ export default function ClassMatchWeekTab({ profile }: { profile: Profile | null
       {/* Campaign header */}
       <header>
         <span className="inline-flex items-center gap-1.5 rounded-full bg-brand/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-brand-deep">
-          <Sparkles className="size-3" /> Class Match Week
+          <CampaignMark className="size-3" /> Class Match Week
         </span>
         <h2 className="mt-2 text-2xl font-bold text-ink">{campaign.name}</h2>
         <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
