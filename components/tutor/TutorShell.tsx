@@ -16,6 +16,7 @@ import { useSuspensionCheck } from '@/lib/hooks/useSuspensionCheck';
 import { supabase } from '@/lib/supabase/client';
 import { getUnreadNotificationCount, subscribeToNotifications } from '@/lib/services/notificationService';
 import LogoutConfirmModal from '@/components/LogoutConfirmModal';
+import CampaignCta from '@/components/classMatchWeek/CampaignCta';
 
 type NavItem = { to: string; label: string; icon: ComponentType<{ className?: string }>; exact?: boolean; gated?: boolean };
 
@@ -180,6 +181,10 @@ export default function TutorShell({ children }: { children: ReactNode }) {
               </div>
             </form>
             <div className="flex-1 sm:hidden" />
+            {/* The campaign, on every tutor page rather than only the dashboard.
+                Renders nothing when none is live, and nothing while a tutor is
+                already inside it. */}
+            <CampaignCta audience="teacher" />
             <div className="flex items-center gap-1">
               <Link href="/tutor/notifications" className="relative size-9 grid place-items-center rounded-lg hover:bg-muted text-muted-foreground" title="Notifications">
                 <Bell className="size-4" />

@@ -120,7 +120,23 @@ function InfoBubble() {
   );
 }
 
-export default function CampaignCta() {
+/**
+ * Which side of the campaign the viewer is on.
+ *
+ * `learner` (students and parents) joins and browses the portal. `teacher` never
+ * goes there — a tutor's campaign work is the My Business tab — so the label and
+ * destination differ, and the "what is this?" bubble is dropped because the
+ * teacher-facing explainer is a page of its own.
+ */
+export type CampaignCtaAudience = 'learner' | 'teacher';
+
+const TEACHER_HOME = '/tutor/business?tab=class-match-week';
+
+export default function CampaignCta({
+  audience = 'learner',
+}: {
+  audience?: CampaignCtaAudience;
+} = {}) {
   const pathname = usePathname();
   const [campaign, setCampaign] = useState<ClassMatchCampaign | null | undefined>(undefined);
   const [state, setState] = useState<BannerState | null | undefined>(undefined);
@@ -158,7 +174,10 @@ export default function CampaignCta() {
   }, []);
 
   // Inside the campaign already: a button pointing at where you are is noise.
+  // For a teacher that means the My Business tab, which is not under
+  // /class-match-week, so it is checked separately.
   if (pathname?.startsWith('/class-match-week')) return null;
+  if (audience === 'teacher' && pathname?.startsWith('/tutor/class-match-week')) return null;
 
   if (!campaign || state === undefined) return null;
 
@@ -168,8 +187,25 @@ export default function CampaignCta() {
   if (now - endsAt > AFTER_WINDOW_MS) return null;
 
   const joined = Boolean(state?.joined);
-  const href = joined ? '/class-match-week/dashboard' : '/class-match-week';
-  const label = joined ? 'Go to Class Match Week' : 'Join Class Match Week now';
+  const teacher = audience === 'teacher';
+  // A teacher always lands on the My Business tab: it is both the join screen and
+  // the management screen, so it is the right destination either way and the tab
+  // itself knows whether they have opted in.
+  const href = teacher ? TEACHER_HOME : joined ? '/class-match-week/dashboard' : '/class-match-week';
+  const label = teacher
+    ? joined
+      ? 'Manage Class Match Week'
+      : 'Offer a free taster session'
+    : joined
+      ? 'Go to Class Match Week'
+      : 'Join Class Match Week now';
+  const shortLabel = teacher
+    ? joined
+      ? 'Class Match Week'
+      : 'Offer a taster'
+    : joined
+      ? 'Class Match Week'
+      : 'Join Class Match';
 
   let timing: string;
   if (now < startsAt) timing = `Starts in ${countdown(startsAt - now)}`;
@@ -187,13 +223,13 @@ export default function CampaignCta() {
         {/* The label is the first thing to go when the bar gets tight — the
             icon and countdown still say what this is and that it is timed. */}
         <span className="hidden whitespace-nowrap xl:inline">{label}</span>
-        <span className="hidden whitespace-nowrap sm:inline xl:hidden">
-          {joined ? 'Class Match Week' : 'Join Class Match'}
-        </span>
+        <span className="hidden whitespace-nowrap sm:inline xl:hidden">{shortLabel}</span>
         <ArrowRight className="hidden size-3.5 shrink-0 transition-transform group-hover:translate-x-0.5 sm:inline" />
       </Link>
 
-      {!joined && (
+      {/* The bubble explains the campaign to a family. Teachers get
+          /class-match-week/for-teachers instead, which is a page, not a tooltip. */}
+      {!joined && !teacher && (
         <span className="hidden lg:inline-flex">
           <InfoBubble />
         </span>

@@ -17,6 +17,7 @@ import { Clock, Video, Flame, Trophy, ChevronRight, Calendar, CheckCircle2, Sett
 import { cn } from '@/lib/utils';
 import { ALL_TOOLS, useStudentStore, type ToolKey } from '@/lib/student-store';
 import ReliabilityPanel from '@/components/reliability/ReliabilityPanel';
+import CampaignDashboardBanner from '@/components/classMatchWeek/CampaignDashboardBanner';
 
 type RecentTutor = {
   tutorId: string;
@@ -235,6 +236,9 @@ export default function StudentDashboard() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
+      {/* Renders nothing when no campaign is live, or once they have joined. */}
+      <CampaignDashboardBanner />
+
       {/* Mobile profile card */}
       <button
         onClick={() => setEditProfileModalOpen(true)}
