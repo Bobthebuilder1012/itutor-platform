@@ -130,7 +130,7 @@ function InfoBubble() {
  */
 export type CampaignCtaAudience = 'learner' | 'teacher';
 
-const TEACHER_HOME = '/tutor/business?tab=class-match-week';
+const TEACHER_HOME = '/tutor/classes?tab=class-match-week';
 
 export default function CampaignCta({
   audience = 'learner',

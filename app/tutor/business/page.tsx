@@ -7,7 +7,6 @@ import {
   Briefcase, Tag, BarChart3, FileText, Plus, Check, X,
   Users, DollarSign, BookOpen, Clock, Lock, Copy, ExternalLink,
   GraduationCap, BadgeCheck, AlertCircle, UploadCloud, Loader2, ShieldCheck, CalendarClock,
-  Users as CampaignMark,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -22,14 +21,12 @@ import EditableProfilePanel from '@/components/tutor/business/EditableProfilePan
 import ProfileQrCard from '@/components/tutor/business/ProfileQrCard';
 import AvailabilityEditor from '@/components/tutor/AvailabilityEditor';
 import OneOnOneMarketplaceToggle from '@/components/tutor/OneOnOneMarketplaceToggle';
-import ClassMatchWeekTab from '@/components/tutor/business/ClassMatchWeekTab';
 import { getDisplayName } from '@/lib/utils/displayName';
 
 type Tab =
   | 'overview'
   | 'availability'
   | 'promotions'
-  | 'class-match-week'
   | 'verification'
   | 'analytics'
   | 'feedback';
@@ -38,7 +35,6 @@ const TAB_KEYS: ReadonlyArray<Tab> = [
   'overview',
   'availability',
   'promotions',
-  'class-match-week',
   'verification',
   'analytics',
   'feedback',
@@ -61,13 +57,23 @@ function MyBusinessContent() {
   const { profile, loading, refresh: refreshProfile } = useProfile();
   const completion = useTutorCompletion(profile);
 
-  // Tabs are addressable via ?tab=, so a link can land on one. Class Match Week
-  // needs this — the campaign is reached from the dashboard, from the old
-  // /tutor/class-match-week route and from emails, none of which can click a
-  // button. Unknown values fall back to overview rather than rendering nothing.
+  // Tabs are addressable via ?tab=, so a link can land on one. Unknown values
+  // fall back to overview rather than rendering nothing.
   const requestedTab = searchParams.get('tab');
   const initialTab: Tab = TAB_KEYS.includes(requestedTab as Tab) ? (requestedTab as Tab) : 'overview';
   const [tab, setTab] = useState<Tab>(initialTab);
+
+  // Class Match Week used to be a tab here and is now the second tab of My
+  // Classes, next to the classes the campaign depends on. This forwards the
+  // links that still point at the old home — the dashboard countdown, the
+  // /tutor/class-match-week redirect, /class-match-week/teach, and anything
+  // already sent to a teacher — rather than dropping them on Overview with no
+  // explanation of where the campaign went.
+  useEffect(() => {
+    if (requestedTab === 'class-match-week') {
+      router.replace('/tutor/classes?tab=class-match-week');
+    }
+  }, [requestedTab, router]);
 
   const [classes, setClasses] = useState<any[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
@@ -129,26 +135,16 @@ function MyBusinessContent() {
   }
 
   if (!completion.listed) {
-    // Someone who followed a Class Match Week link is here for the campaign, not
-    // for analytics. Telling them the generic reason leaves them guessing why
-    // the countdown they tapped led to a lock screen.
-    const forCampaign = initialTab === 'class-match-week';
     return (
       <div className="max-w-3xl mx-auto">
         <div className="rounded-2xl border border-border bg-card p-12 text-center">
           <Lock className="size-10 mx-auto text-muted-foreground/40" />
-          <h2 className="mt-3 text-xl font-bold text-ink">
-            {forCampaign ? 'Finish your profile to join' : 'My Business is locked'}
-          </h2>
+          <h2 className="mt-3 text-xl font-bold text-ink">My Business is locked</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            {forCampaign
-              ? 'Class Match Week puts you in front of families who have never met you, so your profile needs to be complete first. It takes a few minutes.'
-              : 'Complete your profile to unlock business analytics and promotions.'}
+            Complete your profile to unlock business analytics and promotions.
           </p>
           {/* No ?redirect= here: get-listed reads only the OAuth success/error
-              params and would drop it silently. The way back to the campaign is
-              the dashboard countdown, plus the requirements-met prompt that
-              fires on the next visit to the tab. */}
+              params and would drop it silently. */}
           <Link
             href="/tutor/get-listed"
             className="mt-5 inline-flex items-center gap-1.5 px-5 py-2.5 rounded-lg bg-brand text-white font-semibold hover:bg-brand/90"
@@ -176,9 +172,6 @@ function MyBusinessContent() {
     { key: 'overview',   label: 'Overview',        icon: Briefcase },
     { key: 'availability', label: 'Availability',   icon: CalendarClock },
     { key: 'promotions', label: 'Promotions',       icon: Tag },
-    // Sits beside Promotions because that is what it is — a promotion with a
-    // deadline. The flag is what makes a teacher open it now rather than later.
-    { key: 'class-match-week', label: 'Class Match Week', icon: CampaignMark, flag: 'Limited time' },
     { key: 'verification', label: 'Verification',   icon: ShieldCheck },
     { key: 'analytics',  label: 'Analytics',        icon: BarChart3 },
     { key: 'feedback',   label: 'Parent feedback',  icon: FileText,  comingSoon: true },
@@ -224,7 +217,6 @@ function MyBusinessContent() {
       {tab === 'overview'   && <OverviewTab activeClasses={activeClasses} totalRevenue={totalRevenue} totalStudents={totalStudents} profile={profile} onProfileUpdated={refreshProfile} />}
       {tab === 'availability' && <AvailabilityTab tutorId={profile?.id} />}
       {tab === 'promotions' && <PromotionsTab classes={activeClasses} />}
-      {tab === 'class-match-week' && <ClassMatchWeekTab profile={profile} />}
       {tab === 'verification' && <VerificationCredentialsTab />}
       {tab === 'analytics'  && <BusinessAnalyticsTab classes={activeClasses} totalRevenue={totalRevenue} />}
       {tab === 'feedback'   && <FeedbackComingSoon />}

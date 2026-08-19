@@ -114,7 +114,7 @@ export default function CampaignDashboardBanner({
   if (now - endsAt > AFTER_WINDOW_MS) return null;
 
   const teacher = audience === 'teacher';
-  const href = teacher ? '/tutor/business?tab=class-match-week' : '/class-match-week';
+  const href = teacher ? '/tutor/classes?tab=class-match-week' : '/class-match-week';
 
   const timing =
     now < startsAt
