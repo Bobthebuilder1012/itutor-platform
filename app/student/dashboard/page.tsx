@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 import { ALL_TOOLS, useStudentStore, type ToolKey } from '@/lib/student-store';
 import ReliabilityPanel from '@/components/reliability/ReliabilityPanel';
 import CampaignDashboardBanner from '@/components/classMatchWeek/CampaignDashboardBanner';
+import CampaignJoinCard from '@/components/classMatchWeek/CampaignJoinCard';
 
 type RecentTutor = {
   tutorId: string;
@@ -237,6 +238,11 @@ export default function StudentDashboard() {
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       {/* Renders nothing when no campaign is live, or once they have joined. */}
+      {/* A reserved taster comes first: the join click is the one tap the
+          campaign is judged on, and it must never sit below the banner that
+          invites people to reserve one they already have. Renders nothing
+          without a reservation. */}
+      <CampaignJoinCard />
       <CampaignDashboardBanner />
 
       {/* Mobile profile card */}
