@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { Calendar, Clock, Users, Tag, Copy, Check, Loader2 } from 'lucide-react';
+import { Calendar, Clock, Users, Tag, Copy, Check, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ClassMatchSession, SessionStatus } from '@/lib/classMatchWeek/types';
+import type { SessionReservation } from '@/app/api/class-match/sessions/[sessionId]/reservations/route';
 
 /** A session as the teacher endpoint returns it — row plus resolved extras. */
 export type TeacherSession = ClassMatchSession & {
@@ -73,6 +74,38 @@ function SessionCard({
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // The roster is fetched on first open, not with the list. Most teachers will
+  // have several sessions and open one; loading every roster up front would be
+  // a request per card for data nobody asked for. Once loaded it is kept, so
+  // collapsing and reopening costs nothing.
+  const [rosterOpen, setRosterOpen] = useState(false);
+  const [roster, setRoster] = useState<SessionReservation[] | null>(null);
+  const [rosterLoading, setRosterLoading] = useState(false);
+  const [rosterError, setRosterError] = useState<string | null>(null);
+
+  const toggleRoster = async () => {
+    if (rosterOpen) {
+      setRosterOpen(false);
+      return;
+    }
+    setRosterOpen(true);
+    if (roster || rosterLoading) return;
+
+    setRosterLoading(true);
+    setRosterError(null);
+    try {
+      const res = await fetch(`/api/class-match/sessions/${s.id}/reservations`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      setRoster((json.reservations ?? []) as SessionReservation[]);
+    } catch (err) {
+      console.error('[class-match-week] roster load failed:', err);
+      setRosterError('Could not load the list right now — please try again.');
+    } finally {
+      setRosterLoading(false);
+    }
+  };
 
   const cancelled = s.status === 'cancelled';
   const chip = STATUS_CHIP[s.status];
@@ -148,6 +181,70 @@ function SessionCard({
             {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
             {copied ? 'Copied' : 'Copy'}
           </button>
+        </div>
+      )}
+
+      {/* Who is coming. A teacher walking into a free half hour with strangers
+          needs to know how many to expect and what to call them. Hidden at zero:
+          the count above already says "0 reserved", and a button that opens an
+          empty list is a worse answer than no button. */}
+      {s.reservedCount > 0 && (
+        <div className="border-t border-border pt-3">
+          <button
+            onClick={toggleRoster}
+            aria-expanded={rosterOpen}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-deep hover:underline"
+          >
+            <Users className="size-3.5" />
+            {rosterOpen ? 'Hide who reserved' : `See who reserved (${s.reservedCount})`}
+            {rosterOpen ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+          </button>
+
+          {rosterOpen && (
+            <div className="mt-2.5">
+              {rosterLoading && (
+                <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Loader2 className="size-3 animate-spin" /> Loading…
+                </p>
+              )}
+              {rosterError && <p className="text-xs text-coral">{rosterError}</p>}
+              {roster && roster.length === 0 && !rosterLoading && (
+                /* The count came from the list endpoint and the roster from
+                   this one; a cancellation between the two makes them disagree
+                   for one render rather than never. */
+                <p className="text-xs text-muted-foreground">
+                  Nobody is holding a place any more.
+                </p>
+              )}
+              {roster && roster.length > 0 && (
+                <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border">
+                  {roster.map((r, i) => (
+                    <li
+                      key={`${r.name}-${r.reservedAt}-${i}`}
+                      className="flex items-center justify-between gap-3 bg-card px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <div className="truncate text-xs font-semibold text-ink">{r.name}</div>
+                        <div className="mt-0.5 text-[11px] text-muted-foreground">
+                          {r.role === 'parent' ? 'Parent' : r.role === 'student' ? 'Student' : 'Member'}
+                          {' · reserved '}
+                          {formatAst(r.reservedAt)}
+                        </div>
+                      </div>
+                      {/* "Opened the link" — never "attended". A click is not
+                          attendance, and the teacher is the person most likely
+                          to be misled by the difference. */}
+                      {r.joinClicked && (
+                        <span className="shrink-0 rounded-full bg-brand/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-brand-deep">
+                          Opened the link
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
         </div>
       )}
 
