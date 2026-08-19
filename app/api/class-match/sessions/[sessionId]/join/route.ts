@@ -10,7 +10,10 @@ export const dynamic = 'force-dynamic';
 //
 // This is the campaign's attendance metric AND its coupon trigger
 // (docs 03 §3.4). Responses:
-//   401 — not signed in
+//   302 → /login — not signed in. NOT a 401: this URL is the button in the
+//         reminder email, and an email that answers a tap with a page of JSON
+//         is a family who does not get to class. The login carries ?redirect=
+//         back here, so signing in lands them in the room.
 //   403 — no 'reserved' reservation for this user on this session
 //   404 — unknown session
 //   409 { error: 'no_meet_link' } — published without a room (should be
@@ -26,7 +29,15 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
     const supabase = await getServerClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (authError || !user) {
+      // Relative redirect target, and only ever this route's own path — never a
+      // value from the request — so it cannot become an open redirect.
+      const back = `/api/class-match/sessions/${encodeURIComponent(sessionId)}/join`;
+      return NextResponse.redirect(
+        new URL(`/login?redirect=${encodeURIComponent(back)}`, _req.url),
+        302
+      );
+    }
 
     const service = getServiceClient();
 
