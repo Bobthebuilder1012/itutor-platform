@@ -12,6 +12,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
+import { subscribeToNotifications } from '@/lib/services/notificationService';
 import LogoutConfirmModal from '@/components/LogoutConfirmModal';
 
 type NavItem = { to: string; label: string; icon: ComponentType<{ className?: string }>; exact?: boolean; tint: string };
@@ -69,12 +70,28 @@ export default function ParentShell({ children }: { children: React.ReactNode })
     if (!loading && (!profile || profile.role !== 'parent')) router.replace('/login');
   }, [loading, profile, router]);
 
+  // The badge is LIVE. It used to be fetched once on mount with no subscription
+  // and no refetch, so marking everything read left the count sitting there for
+  // the rest of the session — the notification looked impossible to get rid of
+  // because the number never moved until a hard reload. TutorShell has always
+  // subscribed; the parent shell simply never did.
+  //
+  // Refetching on pathname change as well as on the realtime event covers the
+  // case the subscription cannot: rows updated in bulk by "Mark all read" arrive
+  // as many events or none depending on the channel, and navigating away from
+  // the notifications page is the moment the count most obviously has to be right.
   useEffect(() => {
     if (!profile?.id) return;
-    supabase.from('notifications').select('id', { count: 'exact', head: true })
-      .eq('user_id', profile.id).eq('is_read', false)
-      .then(({ count }) => setUnread(count ?? 0));
-  }, [profile?.id]);
+    let alive = true;
+    const refresh = () => {
+      supabase.from('notifications').select('id', { count: 'exact', head: true })
+        .eq('user_id', profile.id).eq('is_read', false)
+        .then(({ count }) => { if (alive) setUnread(count ?? 0); });
+    };
+    refresh();
+    const sub = subscribeToNotifications(profile.id, refresh);
+    return () => { alive = false; sub.unsubscribe(); };
+  }, [profile?.id, pathname]);
 
   // Kit README: "count badges on Approvals and Feedback". Not decoration — §4.2
   // requests close two hours before the class and send NO email when they lapse,
