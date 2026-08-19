@@ -22,6 +22,7 @@ import {
 } from '@/lib/server/feedbackRequests';
 import { notifyInApp } from '@/lib/server/bookingRequestNotify';
 import { sendEmail, logEmailSend } from '@/lib/services/emailService';
+import { renderEmail } from '@/lib/email/design';
 
 export const dynamic = 'force-dynamic';
 
@@ -160,16 +161,32 @@ async function notifyTutor(
 
   if (!tutor?.email) return;
 
-  const subject = `Feedback requested for ${childName}`;
-  const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;margin:0 auto;color:#111827;line-height:1.6">
-    <p>Hi ${(tutor.display_name || tutor.full_name || 'there').split(' ')[0]},</p>
-    <p><strong>${childName}</strong>&rsquo;s family has asked for feedback on how they are doing.</p>
-    <p>There is no deadline. Write it when you have something worth saying.</p>
-    <p><a href="${(process.env.NEXT_PUBLIC_APP_URL ?? 'https://myitutor.com').replace(/\/$/, '')}/tutor/students"
-          style="display:inline-block;background:#199356;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600">Open your students</a></p>
-  </div>`;
+  const base = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://myitutor.com').replace(/\/$/, '');
+  const { subject, html, text } = renderEmail({
+    family: 'service-announcement',
+    subject: `Feedback requested for ${childName}`,
+    heading: `${childName}'s family has asked for feedback`,
+    intro: `Hi ${(tutor.display_name || tutor.full_name || 'there').split(' ')[0]},`,
+    eyebrow: 'Feedback requested',
+    tone: 'neutral',
+    badge: '★',
+    blocks: [
+      {
+        kind: 'paragraph',
+        text: 'They have asked for a general update on how they are doing.',
+      },
+      // No deadline, and saying so is the point: §8 deliberately puts no date
+      // pressure on a tutor, and an email that implied one would undo that.
+      {
+        kind: 'notice',
+        tone: 'neutral',
+        body: 'There is no deadline. Write it when you have something worth saying.',
+      },
+    ],
+    cta: { label: 'Open your students', href: `${base}/tutor/students` },
+  });
 
-  const result = await sendEmail({ to: tutor.email, subject, html });
+  const result = await sendEmail({ to: tutor.email, subject, html, text });
   await logEmailSend({
     userId: params.tutorId,
     emailType: 'feedback_requested',

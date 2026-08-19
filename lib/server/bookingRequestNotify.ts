@@ -20,6 +20,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { sendEmail, logEmailSend } from '@/lib/services/emailService';
+import { renderEmail, type RenderedEmail } from '@/lib/email/design';
 import { shouldNotifyForType } from '@/lib/server/notificationPreferences';
 
 /**
@@ -42,6 +43,8 @@ async function sendIfAllowed(
     to: string;
     subject: string;
     html: string;
+    /** The plain-text alternative, when the body came from the design system. */
+    text?: string;
     emailType: string;
   }
 ): Promise<void> {
@@ -64,7 +67,12 @@ async function sendIfAllowed(
     return;
   }
 
-  const result = await sendEmail({ to: params.to, subject: params.subject, html: params.html });
+  const result = await sendEmail({
+    to: params.to,
+    subject: params.subject,
+    html: params.html,
+    text: params.text,
+  });
   await logEmailSend({
     userId: params.userId,
     emailType: params.emailType,
@@ -80,7 +88,8 @@ export const TEMPLATE_STUDENT_REQUEST_DECLINED = 'student_request_declined';
 export const TEMPLATE_STUDENT_REQUEST_APPROVED = 'student_request_approved';
 export const TEMPLATE_SEAT_UNAVAILABLE_REFUNDED = 'seat_unavailable_refunded';
 
-function appUrl(path: string): string {
+/** Absolute URL for an email link. Exported — the other notifiers need it too. */
+export function appUrl(path: string): string {
   const base = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://myitutor.com').replace(/\/$/, '');
   return `${base}${path}`;
 }
@@ -99,9 +108,9 @@ function fill(body: string, vars: Record<string, string>): string {
 async function resolveTemplate(
   admin: SupabaseClient,
   name: string,
-  fallback: { subject: string; html: string },
+  fallback: RenderedEmail,
   vars: Record<string, string>
-): Promise<{ subject: string; html: string }> {
+): Promise<{ subject: string; html: string; text?: string }> {
   try {
     const { data } = await admin
       .from('email_templates')
@@ -110,21 +119,34 @@ async function resolveTemplate(
       .maybeSingle();
 
     if (data?.subject && data?.html_content) {
+      // An admin override has no text part of its own — the stored row is HTML
+      // only. Better none than the fallback's, which would describe a different
+      // email from the one being sent.
       return { subject: fill(data.subject, vars), html: fill(data.html_content, vars) };
     }
   } catch {
     // Table missing or unreadable — the fallback still sends.
   }
-  return { subject: fill(fallback.subject, vars), html: fill(fallback.html, vars) };
+  return {
+    subject: fill(fallback.subject, vars),
+    html: fill(fallback.html, vars),
+    text: fill(fallback.text, vars),
+  };
 }
 
-function shell(bodyHtml: string): string {
-  return `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;margin:0 auto;color:#111827;line-height:1.6">${bodyHtml}</div>`;
-}
-
-function button(label: string, href: string): string {
-  return `<a href="${href}" style="display:inline-block;background:#199356;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600">${label}</a>`;
-}
+/**
+ * The email bodies below are built with lib/email/design.
+ *
+ * They used to use a local `shell()` — one bare div with a max-width and no
+ * header, footer or branding of any kind — and a local `button()` with its own
+ * green and radius. These are the parent approval flow, which is the most
+ * consequential mail the platform sends to someone who may never have seen it
+ * before: a request to approve a payment for their child. Looking like it came
+ * from the same product as everything else is not cosmetic there.
+ *
+ * `{{placeholders}}` survive rendering — escapeHtml does not touch braces, and
+ * `fill()` matches `{{word}}`, which nothing in the generated chrome contains.
+ */
 
 // ---------------------------------------------------------------------------
 // In-app
@@ -214,44 +236,52 @@ export async function notifyParentOfRequest(
 
   // The seat warning is not decoration. A parent who assumes the place is held
   // and loses it reads that as a bug, so both halves — not reserved, and closes
-  // at a stated time — travel together on every surface, email included.
+  // at a stated time — travel together on every surface, email included. It is
+  // a warning-toned notice for the same reason.
   const seatWarning = params.closesAtLabel
-    ? `<p style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 14px;color:#78350f;margin:18px 0">
-         <strong>This spot is not reserved.</strong> Another student can take the last place while this sits here.
-         The request closes ${params.closesAtLabel}, two hours before the class starts.
-       </p>`
-    : `<p style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 14px;color:#78350f;margin:18px 0">
-         <strong>This spot is not reserved.</strong> Another student can take the last place while this sits here.
-       </p>`;
+    ? `Another student can take the last place while this sits here. The request closes ${params.closesAtLabel}, two hours before the class starts.`
+    : 'Another student can take the last place while this sits here.';
 
-  const fallback = {
+  // Family 05. An approval request is not itself a confirmation, but it is a
+  // booking notice about a specific class at a specific time, and it is the
+  // email that leads to the booking — so it carries the booking shape, in the
+  // warning tone, because nothing is held yet and the window closes.
+  const fallback = renderEmail({
+    family: 'booking-confirmation',
     subject: `{{childName}} needs your approval to join ${params.subjectLabel}`,
-    html: shell(`
-      <p>Hi {{firstName}},</p>
-      <p><strong>{{childName}}</strong> has asked to join <strong>{{subject}}</strong>
-         with {{tutorName}}, {{when}}.</p>
-      <table style="width:100%;border-collapse:collapse;background:#f9fafb;border-radius:10px;margin:16px 0">
-        <tr><td style="padding:10px 14px;color:#6b7280">Class</td><td style="padding:10px 14px;text-align:right"><strong>{{subject}}</strong></td></tr>
-        <tr><td style="padding:10px 14px;color:#6b7280">Tutor</td><td style="padding:10px 14px;text-align:right">{{tutorName}}</td></tr>
-        <tr><td style="padding:10px 14px;color:#6b7280">When</td><td style="padding:10px 14px;text-align:right">{{when}}</td></tr>
-        <tr><td style="padding:10px 14px;color:#6b7280">Price as listed when asked</td><td style="padding:10px 14px;text-align:right"><strong>{{price}}</strong></td></tr>
-      </table>
-      ${seatWarning}
-      <p>${button('Review this request', '{{approvalsUrl}}')}</p>
-      <p style="color:#6b7280;font-size:13px">
-        ${
-          isFree
-            ? 'This class is free, so no payment is involved — you are approving the enrolment itself.'
-            : 'You will finish on Stripe&rsquo;s secure payment page. iTutor never sees your card details.'
-        }
-      </p>
-      <p style="color:#9ca3af;font-size:12px">
-        For your security, approving happens on iTutor and never from this email.
-      </p>
-    `),
-  };
+    heading: '{{childName}} needs your approval',
+    intro: 'Hi {{firstName}}, a class is waiting on you.',
+    eyebrow: 'Approval needed',
+    tone: 'warning',
+    badge: '!',
+    blocks: [
+      {
+        kind: 'paragraph',
+        text: '{{childName}} has asked to join {{subject}} with {{tutorName}}, {{when}}.',
+      },
+      {
+        kind: 'details',
+        tone: 'neutral',
+        rows: [
+          { label: 'Class', value: '{{subject}}', strong: true },
+          { label: 'Tutor', value: '{{tutorName}}' },
+          { label: 'When', value: '{{when}}' },
+          { label: 'Price as listed when asked', value: '{{price}}', strong: true },
+        ],
+      },
+      { kind: 'notice', tone: 'warning', title: 'This spot is not reserved', body: seatWarning },
+      {
+        kind: 'paragraph',
+        text: isFree
+          ? 'This class is free, so no payment is involved — you are approving the enrolment itself.'
+          : 'You will finish on Stripe\u2019s secure payment page. iTutor never sees your card details.',
+      },
+    ],
+    cta: { label: 'Review this request', href: '{{approvalsUrl}}' },
+    closing: 'For your security, approving happens on iTutor and never from this email.',
+  });
 
-  const { subject, html } = await resolveTemplate(
+  const { subject, html, text } = await resolveTemplate(
     admin,
     TEMPLATE_PARENT_APPROVAL_REQUEST,
     fallback,
@@ -267,6 +297,7 @@ export async function notifyParentOfRequest(
     to: params.parentEmail,
     subject,
     html,
+    text,
     emailType: TEMPLATE_PARENT_APPROVAL_REQUEST,
   });
 }
@@ -310,21 +341,29 @@ export async function notifyStudentOfDecline(
     ? reason.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     : null;
 
-  const fallback = {
+  // Family 09. Nothing was paid, so there is no refund to report — but this is
+  // the email that says a thing you asked for is not happening, which is the
+  // shape it shares with a cancellation.
+  const fallback = renderEmail({
+    family: 'refund-cancellation',
     subject: `Your request for ${params.subjectLabel} was declined`,
-    html: shell(`
-      <p>Hi {{firstName}},</p>
-      <p>{{parentName}} declined your request to join <strong>{{subject}}</strong>.</p>
-      ${
-        escaped
-          ? `<p style="background:#f9fafb;border-left:3px solid #d1d5db;padding:12px 14px;margin:16px 0">${escaped}</p>`
-          : '<p style="color:#6b7280">No reason was given.</p>'
-      }
-      <p>${button('Find another class', appUrl('/student/explore'))}</p>
-    `),
-  };
+    heading: 'Your request was declined',
+    intro: 'Hi {{firstName}},',
+    eyebrow: 'Request declined',
+    blocks: [
+      { kind: 'paragraph', text: '{{parentName}} declined your request to join {{subject}}.' },
+      escaped
+        ? { kind: 'notice' as const, tone: 'neutral' as const, title: 'What they said', body: escaped }
+        : { kind: 'paragraph' as const, text: 'No reason was given.' },
+      {
+        kind: 'paragraph',
+        text: 'There are other classes in the same subject, and asking again after a conversation is completely normal.',
+      },
+    ],
+    cta: { label: 'Find another class', href: appUrl('/student/explore') },
+  });
 
-  const { subject, html } = await resolveTemplate(
+  const { subject, html, text } = await resolveTemplate(
     admin,
     TEMPLATE_STUDENT_REQUEST_DECLINED,
     fallback,
@@ -341,6 +380,7 @@ export async function notifyStudentOfDecline(
     to: params.studentEmail,
     subject,
     html,
+    text,
     emailType: TEMPLATE_STUDENT_REQUEST_DECLINED,
   });
 }
@@ -373,16 +413,29 @@ export async function notifyStudentOfApproval(
 
   if (!params.studentEmail) return;
 
-  const fallback = {
+  const fallback = renderEmail({
+    family: 'booking-confirmation',
     subject: `You are enrolled in ${params.subjectLabel}`,
-    html: shell(`
-      <p>Hi {{firstName}},</p>
-      <p>Your place in <strong>{{subject}}</strong> with {{tutorName}} is confirmed, {{when}}.</p>
-      <p>${button('View your classes', appUrl('/student/classes'))}</p>
-    `),
-  };
+    heading: "You're enrolled",
+    intro: 'Hi {{firstName}}, your place is confirmed.',
+    blocks: [
+      {
+        kind: 'details',
+        rows: [
+          { label: 'Class', value: '{{subject}}', strong: true },
+          { label: 'Tutor', value: '{{tutorName}}' },
+          { label: 'When', value: '{{when}}' },
+        ],
+      },
+      {
+        kind: 'paragraph',
+        text: 'We will remind you before it starts. Everything about the class lives on your classes page.',
+      },
+    ],
+    cta: { label: 'View your classes', href: appUrl('/student/classes') },
+  });
 
-  const { subject, html } = await resolveTemplate(
+  const { subject, html, text } = await resolveTemplate(
     admin,
     TEMPLATE_STUDENT_REQUEST_APPROVED,
     fallback,
@@ -400,6 +453,7 @@ export async function notifyStudentOfApproval(
     to: params.studentEmail,
     subject,
     html,
+    text,
     emailType: TEMPLATE_STUDENT_REQUEST_APPROVED,
   });
 }
@@ -445,19 +499,35 @@ export async function notifySeatUnavailableRefunded(
 
   if (!params.parentEmail) return;
 
-  const fallback = {
+  const fallback = renderEmail({
+    family: 'refund-cancellation',
     subject: `Refunded — ${params.subjectLabel} filled during checkout`,
-    html: shell(`
-      <p>Hi {{firstName}},</p>
-      <p><strong>{{subject}}</strong> filled before your payment finished, so {{childName}}
-         could not be enrolled.</p>
-      <p>The {{amount}} is being refunded automatically. It usually lands within five
-         working days. <strong>There is nothing for you to do.</strong></p>
-      <p>${button('Find another class', appUrl('/parent/dashboard'))}</p>
-    `),
-  };
+    heading: 'The class filled, and you have been refunded',
+    intro: 'Hi {{firstName}},',
+    eyebrow: 'Refund issued',
+    blocks: [
+      {
+        kind: 'paragraph',
+        text: '{{subject}} filled before your payment finished, so {{childName}} could not be enrolled.',
+      },
+      {
+        kind: 'details',
+        rows: [
+          { label: 'Class', value: '{{subject}}' },
+          { label: 'Refund', value: '{{amount}}', strong: true },
+          { label: 'Usually lands within', value: 'Five working days' },
+        ],
+      },
+      {
+        kind: 'notice',
+        title: 'There is nothing for you to do',
+        body: 'The refund is automatic and goes back to the card you paid with.',
+      },
+    ],
+    cta: { label: 'Find another class', href: appUrl('/parent/dashboard') },
+  });
 
-  const { subject, html } = await resolveTemplate(
+  const { subject, html, text } = await resolveTemplate(
     admin,
     TEMPLATE_SEAT_UNAVAILABLE_REFUNDED,
     fallback,
@@ -476,6 +546,7 @@ export async function notifySeatUnavailableRefunded(
     to: params.parentEmail,
     subject,
     html,
+    text,
     emailType: TEMPLATE_SEAT_UNAVAILABLE_REFUNDED,
   });
 }

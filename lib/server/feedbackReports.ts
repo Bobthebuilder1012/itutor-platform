@@ -23,7 +23,8 @@ import {
   type OccurrenceInput,
 } from '@/lib/server/attendance';
 import { sendEmail, logEmailSend } from '@/lib/services/emailService';
-import { notifyInApp } from '@/lib/server/bookingRequestNotify';
+import { appUrl, notifyInApp } from '@/lib/server/bookingRequestNotify';
+import { renderEmail, palette, fontStack } from '@/lib/email/design';
 import { shouldNotifyForType } from '@/lib/server/notificationPreferences';
 
 export type Participation = 'yes' | 'occasionally' | 'not_often' | 'never_recall';
@@ -189,9 +190,19 @@ export async function buildAttendanceSnapshot(
 // Delivery — §8.2, two bodies
 // ---------------------------------------------------------------------------
 
-function shell(body: string): string {
-  return `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;margin:0 auto;color:#111827;line-height:1.6">${body}</div>`;
-}
+/**
+ * These two fragments stay hand-built, and go into the email through the design
+ * system's `html` block.
+ *
+ * That block exists for exactly this: a tutor's written sections are arbitrary
+ * prose under arbitrary labels, and the attendance figure is a bespoke stat
+ * display with a rate, a caption and four counts. Neither is a detail row or a
+ * paragraph, and forcing them into one would lose the shape that makes the
+ * report readable. Both escape their inputs with esc() before interpolating.
+ *
+ * The colours below are the design system's tokens rather than the greys they
+ * were, so the fragments sit inside the card instead of looking pasted into it.
+ */
 
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -201,24 +212,26 @@ function sectionsHtml(sections: FeedbackSection[]): string {
   if (sections.length === 0) return '';
   return sections
     .map(
-      (s) => `<div style="padding:10px 0;border-top:1px solid #f3f4f6">
-        <p style="margin:0 0 3px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af">${esc(s.label)}</p>
-        <p style="margin:0;font-size:14px;color:#374151">${esc(s.body)}</p>
+      (s) => `<div style="padding:11px 0;border-top:1px solid ${palette.border}">
+        <p style="margin:0 0 3px;font-family:${fontStack};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:${palette.faint}">${esc(s.label)}</p>
+        <p style="margin:0;font-family:${fontStack};font-size:14px;line-height:1.6;color:${palette.body}">${esc(s.body)}</p>
       </div>`
     )
     .join('');
 }
 
 function attendanceHtml(snapshot: AttendanceSnapshot): string {
-  return `<div style="background:#f9fafb;border-radius:10px;padding:14px;margin:14px 0">
-    <p style="margin:0 0 6px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#6b7280">Attendance · recorded automatically</p>
-    <p style="margin:0;font-size:18px;font-weight:800;color:#111827">${esc(snapshot.rateLabel)}</p>
-    <p style="margin:4px 0 0;font-size:12px;color:#6b7280">
-      ${snapshot.attended} attended · ${snapshot.late} late · ${snapshot.absent} absent${
-        snapshot.cancelled ? ` · ${snapshot.cancelled} cancelled` : ''
-      }
-    </p>
-  </div>`;
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 16px;background:${palette.panel};border:1px solid ${palette.border};border-radius:10px">
+    <tr><td style="padding:14px 16px">
+      <p style="margin:0 0 6px;font-family:${fontStack};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:${palette.muted}">Attendance · recorded automatically</p>
+      <p style="margin:0;font-family:${fontStack};font-size:20px;font-weight:800;color:${palette.ink}">${esc(snapshot.rateLabel)}</p>
+      <p style="margin:4px 0 0;font-family:${fontStack};font-size:12px;color:${palette.muted}">
+        ${snapshot.attended} attended · ${snapshot.late} late · ${snapshot.absent} absent${
+          snapshot.cancelled ? ` · ${snapshot.cancelled} cancelled` : ''
+        }
+      </p>
+    </td></tr>
+  </table>`;
 }
 
 /**
@@ -269,9 +282,9 @@ export async function deliverFeedback(
   const child = rows.find((p) => p.id === params.childId);
   const parent = parentId ? rows.find((p) => p.id === parentId) : null;
 
-  const editedNote = params.isEdit
-    ? '<p style="margin:0 0 10px;font-size:12px;color:#b45309">This feedback was edited after it was first sent.</p>'
-    : '';
+  const edited = params.isEdit
+    ? 'This feedback was edited after it was first sent.'
+    : null;
 
   const common = `
     ${attendanceHtml(params.snapshot)}
@@ -316,15 +329,22 @@ export async function deliverFeedback(
     // good — the tutor's own words below do that, and a framing sentence that
     // pre-judges them is the one thing a student reads before deciding whether
     // to keep reading.
-    const html = shell(`
-      <p>Hi ${esc(childFirst)},</p>
-      ${editedNote}
-      <p>${esc(params.tutorName)} has shared an update on your classes.</p>
-      ${common}
-      <p style="margin:14px 0 0;font-size:12px;color:#9ca3af">
-        ${parentId ? 'A copy has gone to your parent as well.' : 'This was sent to you.'}
-      </p>
-    `);
+    const email = renderEmail({
+      family: 'service-announcement',
+      subject,
+      heading: `An update from ${params.tutorName}`,
+      intro: `Hi ${childFirst},`,
+      eyebrow: params.isEdit ? 'Feedback updated' : 'New feedback',
+      tone: 'neutral',
+      badge: '★',
+      blocks: [
+        ...(edited ? [{ kind: 'notice' as const, tone: 'warning' as const, body: edited }] : []),
+        { kind: 'paragraph', text: `${params.tutorName} has shared an update on your classes.` },
+        { kind: 'html', html: common },
+      ],
+      cta: { label: 'Open my feedback', href: appUrl('/student/feedback') },
+      closing: parentId ? 'A copy has gone to your parent as well.' : 'This was sent to you.',
+    });
     // §10.6 — the in-app row above is always written; only the email is muted.
     const allowed = await shouldNotifyForType(admin, {
       userId: params.childId,
@@ -332,7 +352,12 @@ export async function deliverFeedback(
       channel: 'email',
     });
     if (allowed) {
-      const result = await sendEmail({ to: child.email, subject, html });
+      const result = await sendEmail({
+        to: child.email,
+        subject,
+        html: email.html,
+        text: email.text,
+      });
       await logEmailSend({
         userId: params.childId,
         emailType: 'feedback_delivered_student',
@@ -350,18 +375,27 @@ export async function deliverFeedback(
     const subject = params.isEdit
       ? `${params.tutorName} updated feedback for ${childFirst}`
       : `${params.tutorName} filed feedback for ${childFirst}`;
-    const html = shell(`
-      <p>Hi ${esc(parentFirst)},</p>
-      ${editedNote}
-      <p>${esc(params.tutorName)} has ${params.isEdit ? 'updated their' : 'written'} feedback for
-         <strong>${esc(childFirst)}</strong>${
-           params.answeringRequest ? ', answering the request from your household' : ''
-         }.</p>
-      ${common}
-      <p style="margin:14px 0 0;font-size:12px;color:#9ca3af">
-        ${esc(childFirst)} received their own copy of this.
-      </p>
-    `);
+    const email = renderEmail({
+      family: 'service-announcement',
+      subject,
+      heading: `Feedback for ${childFirst}`,
+      intro: `Hi ${parentFirst},`,
+      eyebrow: params.isEdit ? 'Feedback updated' : 'New feedback',
+      tone: 'neutral',
+      badge: '★',
+      blocks: [
+        ...(edited ? [{ kind: 'notice' as const, tone: 'warning' as const, body: edited }] : []),
+        {
+          kind: 'paragraph',
+          text: `${params.tutorName} has ${params.isEdit ? 'updated their' : 'written'} feedback for ${childFirst}${
+            params.answeringRequest ? ', answering the request from your household' : ''
+          }.`,
+        },
+        { kind: 'html', html: common },
+      ],
+      cta: { label: 'Open the feedback', href: appUrl('/parent/feedback') },
+      closing: `${childFirst} received their own copy of this.`,
+    });
     // Per-child mute applies here: a parent with two children may want feedback
     // email for one and not the other.
     const allowed = await shouldNotifyForType(admin, {
@@ -371,7 +405,12 @@ export async function deliverFeedback(
       childId: params.childId,
     });
     if (allowed) {
-      const result = await sendEmail({ to: parent.email, subject, html });
+      const result = await sendEmail({
+        to: parent.email,
+        subject,
+        html: email.html,
+        text: email.text,
+      });
       await logEmailSend({
         userId: parentId!,
         emailType: 'feedback_delivered_parent',
