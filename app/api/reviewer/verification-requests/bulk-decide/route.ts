@@ -213,6 +213,7 @@ export async function POST(request: NextRequest) {
               to: tutorProfile.email,
               subject: template.subject,
               html: template.html,
+          text: template.text,
             });
             if (!emailResult.success) {
               console.error('Failed to send verification congratulations email:', emailResult.error);

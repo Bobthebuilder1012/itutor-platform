@@ -103,12 +103,27 @@ export async function sendEmail({
 }
 
 /**
- * Get email template content from database by user type and stage
+ * The onboarding email for a user type and stage.
+ *
+ * THE DATABASE WINS, AND THE CODE IS THE FLOOR. `email_templates` holds what an
+ * admin has edited in /admin/emails, so a row there is a deliberate override and
+ * must not be second-guessed. But a MISSING row used to mean this returned null
+ * and the caller sent nothing at all — a silently skipped onboarding email, with
+ * one `console.error` as the only trace. lib/email-templates has a written,
+ * designed version of every one of these, so falling back to it turns "no row"
+ * from a dropped send into a correct send.
+ *
+ * A consequence worth knowing: restyling lib/email-templates changes what is
+ * sent only where no database row exists. To push the code versions over stored
+ * rows, run `node scripts/sync-onboarding-email-templates.js` — which is a
+ * deliberate act, because it overwrites admin edits.
+ *
+ * Stages 0–4 are the sequence; anything else has no code fallback.
  */
 export async function getEmailTemplate(
   userType: 'student' | 'tutor' | 'parent',
   stage: number
-): Promise<{ subject: string; html: string } | null> {
+): Promise<{ subject: string; html: string; text?: string } | null> {
   try {
     const { createClient } = await import('@supabase/supabase-js');
     const supabase = createClient(
@@ -121,19 +136,43 @@ export async function getEmailTemplate(
       .select('subject, html_content')
       .eq('user_type', userType)
       .eq('stage', stage)
-      .single();
+      .maybeSingle();
 
-    if (error || !data) {
-      console.error('Error fetching template:', error);
-      return null;
+    if (!error && data) {
+      return { subject: data.subject, html: data.html_content };
     }
-
-    return {
-      subject: data.subject,
-      html: data.html_content,
-    };
+    if (error) {
+      // Not "no row" — maybeSingle() reports that as data: null. This is a real
+      // read failure, and it is worth seeing even though the fallback covers it.
+      console.error('[getEmailTemplate] read failed, using code template:', error.message);
+    }
   } catch (error) {
-    console.error('Error in getEmailTemplate:', error);
+    console.error('[getEmailTemplate] unexpected error, using code template:', error);
+  }
+
+  return codeTemplateFor(userType, stage);
+}
+
+/** The designed fallback from lib/email-templates. Null for a stage it has no email for. */
+async function codeTemplateFor(
+  userType: 'student' | 'tutor' | 'parent',
+  stage: number
+): Promise<{ subject: string; html: string; text?: string } | null> {
+  if (stage < 0 || stage > 4) return null;
+  try {
+    // Imported lazily: this module is pulled into routes that never send an
+    // onboarding email, and the templates are only needed on the fallback path.
+    const { getEmailForStage, getCtaUrl } = await import('@/lib/email-templates');
+    const ctaUrl = getCtaUrl(userType, stage as 0 | 1 | 2 | 3 | 4);
+    // {{firstName}} rather than a name: every caller runs personalizeEmail over
+    // the result, and this has to be substitutable the same way a stored row is.
+    const template = getEmailForStage(userType, stage as 0 | 1 | 2 | 3 | 4, {
+      firstName: '{{firstName}}',
+      ctaUrl,
+    });
+    return { subject: template.subject, html: template.html, text: template.text };
+  } catch (error) {
+    console.error('[getEmailTemplate] code template unavailable:', error);
     return null;
   }
 }

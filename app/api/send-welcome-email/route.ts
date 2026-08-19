@@ -73,7 +73,8 @@ export async function POST(request: NextRequest) {
     const result = await sendEmail({
       to: profile.email,
       subject: personalizedSubject,
-      html: personalizedHtml
+      html: personalizedHtml,
+      text: template.text
     });
 
     if (!result.success) {
