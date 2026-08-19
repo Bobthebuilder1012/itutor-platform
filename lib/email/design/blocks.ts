@@ -13,7 +13,7 @@
  * can find every one of them with a search.
  */
 
-import { escapeHtml } from '../plainTextEmailHtml';
+import { escapeHtml } from './escape';
 import { fontStack, monoStack, palette, tones, type Tone } from './theme';
 
 /** One label/value row of a detail panel. */

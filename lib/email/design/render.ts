@@ -13,7 +13,7 @@
  */
 
 import { renderBlock, type EmailBlock } from './blocks';
-import { escapeHtml } from '../plainTextEmailHtml';
+import { escapeHtml } from './escape';
 import {
   brandAssets,
   cardWidth,
