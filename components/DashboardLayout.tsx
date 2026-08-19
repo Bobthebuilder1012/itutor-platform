@@ -19,6 +19,7 @@ import { getAdminHomePath, isEmailManagementOnlyAdmin } from '@/lib/auth/adminAc
 import dynamic from 'next/dynamic';
 import UniversalSearchBar from '@/components/UniversalSearchBar';
 import LogoutConfirmModal from '@/components/LogoutConfirmModal';
+import ClassMatchBanner from '@/components/ClassMatchBanner';
 
 // Firebase-based push registrar disabled — it conflicts with the Web Push API
 // path in browserPushService.ts (both register a service worker at scope '/').
@@ -514,6 +515,8 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
 
       {/* ── MAIN ── */}
       <div className={`flex-1 ${collapsed ? 'lg:ml-[64px]' : 'lg:ml-[240px]'} flex flex-col min-h-screen transition-all duration-300`}>
+
+        <ClassMatchBanner role={role} />
 
         {/* Topbar */}
         <header className="h-16 sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-100 flex items-center gap-3 px-4 lg:px-7">

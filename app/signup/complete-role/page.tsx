@@ -94,9 +94,12 @@ export default function CompleteRolePage() {
       try {
         const res = await fetch('/api/auth/resolve-role', { method: 'POST' });
         const data = await res.json();
-        // Only redirect if it's a real destination — never redirect back to this page
+        // Only redirect if it's a real destination — never redirect back to this page.
+        // Prefer the visitor's original destination: a user complete enough for
+        // resolve-role to answer must land back where they were headed (a campaign
+        // page, a class from a QR code), not on a dashboard.
         if (data.redirect && !data.redirect.includes('complete-role')) {
-          router.replace(data.redirect);
+          router.replace(returnTo ?? data.redirect);
           return;
         }
         // Role already set but profile incomplete — skip role picker, go straight to profile form
@@ -105,8 +108,9 @@ export default function CompleteRolePage() {
           if (data.role !== 'parent') {
             setStep('profile');
           } else {
-            // Parents need no extra profile step — straight to their dashboard.
-            router.replace('/parent/dashboard');
+            // Parents need no extra profile step — back to where they were
+            // headed, or their dashboard when nothing was carried across.
+            router.replace(returnTo ?? '/parent/dashboard');
             return;
           }
         }
@@ -163,7 +167,11 @@ export default function CompleteRolePage() {
         institution_id: showSchool && studentInstitution ? studentInstitution.id : null,
       });
       if (showSchool && studentInstitution) await ensureSchoolCommunityAndMembership(userId!);
-      setDestination('/student/dashboard');
+      // The role dashboard is the FALLBACK, not the destination. `returnTo` is
+      // the page the visitor was trying to reach before role selection cut in;
+      // overwriting it here dropped it at the last step, after the callback had
+      // carried it all this way.
+      setDestination(returnTo ?? '/student/dashboard');
       setStep('photo');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred.');
@@ -179,7 +187,12 @@ export default function CompleteRolePage() {
     try {
       await saveProfile({ role: 'tutor', teaching_levels: tLevels });
       if (tSubjects.length > 0) await setUserSubjects(userId!, tSubjects);
-      setDestination('/tutor/dashboard');
+      // Same as the student branch: honour `returnTo`. This is the path a
+      // teacher takes when they choose Google from the Class Match Week card,
+      // and landing them on the generic dashboard loses the campaign they came
+      // for — the Google button cannot preset role=tutor, so role selection is
+      // unavoidable here and dropping the destination is the only real break.
+      setDestination(returnTo ?? '/tutor/dashboard');
       setStep('photo');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred.');

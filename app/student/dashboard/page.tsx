@@ -17,6 +17,8 @@ import { Clock, Video, Flame, Trophy, ChevronRight, Calendar, CheckCircle2, Sett
 import { cn } from '@/lib/utils';
 import { ALL_TOOLS, useStudentStore, type ToolKey } from '@/lib/student-store';
 import ReliabilityPanel from '@/components/reliability/ReliabilityPanel';
+import CampaignDashboardBanner from '@/components/classMatchWeek/CampaignDashboardBanner';
+import CampaignJoinCard from '@/components/classMatchWeek/CampaignJoinCard';
 
 type RecentTutor = {
   tutorId: string;
@@ -235,6 +237,14 @@ export default function StudentDashboard() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
+      {/* Renders nothing when no campaign is live, or once they have joined. */}
+      {/* A reserved taster comes first: the join click is the one tap the
+          campaign is judged on, and it must never sit below the banner that
+          invites people to reserve one they already have. Renders nothing
+          without a reservation. */}
+      <CampaignJoinCard />
+      <CampaignDashboardBanner />
+
       {/* Mobile profile card */}
       <button
         onClick={() => setEditProfileModalOpen(true)}
@@ -263,6 +273,8 @@ export default function StudentDashboard() {
               : "Welcome to iTutor! Find a tutor to get started."}
           </p>
         </div>
+        {/* The Class Match Week call-to-action used to sit here; it moved into
+            the shell's topbar so it is reachable from every student page. */}
         {completedSessionsCount > 0 && (
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-coral-soft text-coral text-sm font-semibold">
             <Flame className="size-4" /> {completedSessionsCount} sessions completed

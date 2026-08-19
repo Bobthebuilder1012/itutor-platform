@@ -8,6 +8,8 @@ import ParentShell from '@/components/parent/ParentShell';
 import AttentionCard from '@/components/parent/AttentionCard';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase/client';
+import CampaignDashboardBanner from '@/components/classMatchWeek/CampaignDashboardBanner';
+import CampaignJoinCard from '@/components/classMatchWeek/CampaignJoinCard';
 
 type ChildData = {
   id: string; name: string; initials: string; hue: number;
@@ -46,6 +48,15 @@ function DashboardContent() {
 
   return (
     <div className="space-y-6">
+      {/* Parents were never blocked from the campaign — they just had nothing
+          inviting them into it. Renders nothing when none is live or once joined. */}
+      {/* A reserved taster comes first: the join click is the one tap the
+          campaign is judged on, and it must never sit below the banner that
+          invites people to reserve one they already have. Renders nothing
+          without a reservation. */}
+      <CampaignJoinCard />
+      <CampaignDashboardBanner />
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="text-xs uppercase tracking-wider font-bold text-muted-foreground">Parent dashboard</div>

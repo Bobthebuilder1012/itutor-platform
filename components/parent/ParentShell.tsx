@@ -14,6 +14,8 @@ import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import { subscribeToNotifications } from '@/lib/services/notificationService';
 import LogoutConfirmModal from '@/components/LogoutConfirmModal';
+import { FEEDBACK_SEEN_EVENT } from '@/lib/parent/feedbackSeen';
+import CampaignCta from '@/components/classMatchWeek/CampaignCta';
 
 type NavItem = { to: string; label: string; icon: ComponentType<{ className?: string }>; exact?: boolean; tint: string };
 
@@ -107,20 +109,27 @@ export default function ParentShell({ children }: { children: React.ReactNode })
           fetch('/api/parent/feedback/reports', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)),
         ]);
         setPendingApprovals(approvals?.pending?.length ?? 0);
-        // Unread is not modelled on feedback, so this counts what arrived in the
-        // last week — enough to draw the eye once without nagging forever.
-        const week = Date.now() - 7 * 86_400_000;
-        setNewFeedback(
-          (feedback?.reports ?? []).filter((f: { date?: string }) => {
-            const t = f.date ? new Date(f.date).getTime() : NaN;
-            return Number.isFinite(t) && t >= week;
-          }).length
-        );
+        // Unseen, not merely recent. This used to filter the reports here by a
+        // seven-day window, which made the badge undismissable — opening the
+        // page changed nothing and the count sat there until the report aged
+        // out. The endpoint now decides it against `feedback_seen_at`
+        // (migration 236), where the unformatted timestamps are.
+        setNewFeedback(feedback?.unseenCount ?? 0);
       } catch {
         /* badges are additive; their absence must not break the shell */
       }
     })();
   }, [profile?.id]);
+
+  // The counts above are fetched once per profile, so without this the badge
+  // would keep its old number for the rest of the session after the parent read
+  // the page — the server would have recorded the visit and the sidebar would
+  // still disagree. The feedback page dispatches this once its stamp lands.
+  useEffect(() => {
+    const clear = () => setNewFeedback(0);
+    window.addEventListener(FEEDBACK_SEEN_EVENT, clear);
+    return () => window.removeEventListener(FEEDBACK_SEEN_EVENT, clear);
+  }, []);
 
   const handleLogout = async () => {
     localStorage.clear(); sessionStorage.clear();
@@ -208,10 +217,20 @@ export default function ParentShell({ children }: { children: React.ReactNode })
       </aside>
 
       <div className={cn('flex-1 flex flex-col min-w-0 transition-all duration-200', collapsed ? 'lg:ml-16' : 'lg:ml-60')}>
-        <header className="sticky top-0 z-30 bg-background/90 backdrop-blur border-b border-border">
+        {/* Opaque, not frosted — `bg-background/90` emitted no background-color
+            at all (bare var() token, no <alpha-value>, so Tailwind drops the
+            modifier utility), leaving a transparent bar whose backdrop-filter put
+            it on its own composited layer and painted it bright over any overlay
+            scrim. See TutorShell for the full reasoning. */}
+        <header className="sticky top-0 z-30 bg-background border-b border-border">
           <div className="flex items-center gap-3 px-4 lg:px-8 h-14">
             <Link href="/" className="lg:hidden"><Image src="/assets/logo/itutor-logo-new.png" alt="iTutor" width={70} height={22} /></Link>
             <div className="flex-1" />
+            {/* Class Match Week, on every parent page. Parents were never blocked
+                from the portal — the pages gate on being signed in, not on role —
+                they simply had no link to it anywhere, which made it unreachable
+                in practice. Renders nothing when no campaign is live. */}
+            <CampaignCta />
             <div className="flex items-center gap-1">
               {/* Find a class lives in the top bar, on every page.
                   Removing it from the sidebar for kit fidelity left the
@@ -242,7 +261,8 @@ export default function ParentShell({ children }: { children: React.ReactNode })
           {children}
         </main>
 
-        <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-border bg-background/95 backdrop-blur">
+        {/* Opaque for the same reason as the header. */}
+        <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-border bg-background">
           {/* Six columns now that Explore has a permanent slot. Driven off the
               nav length rather than a literal, so the bar cannot silently
               squash the next time an item is added. */}

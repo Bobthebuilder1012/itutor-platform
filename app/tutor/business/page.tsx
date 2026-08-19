@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Briefcase, Tag, BarChart3, FileText, Plus, Check, X,
   Users, DollarSign, BookOpen, Clock, Lock, Copy, ExternalLink,
@@ -23,21 +23,57 @@ import AvailabilityEditor from '@/components/tutor/AvailabilityEditor';
 import OneOnOneMarketplaceToggle from '@/components/tutor/OneOnOneMarketplaceToggle';
 import { getDisplayName } from '@/lib/utils/displayName';
 
-type Tab = 'overview' | 'availability' | 'promotions' | 'verification' | 'analytics' | 'feedback';
+type Tab =
+  | 'overview'
+  | 'availability'
+  | 'promotions'
+  | 'verification'
+  | 'analytics'
+  | 'feedback';
+
+const TAB_KEYS: ReadonlyArray<Tab> = [
+  'overview',
+  'availability',
+  'promotions',
+  'verification',
+  'analytics',
+  'feedback',
+];
 
 export default function TutorBusinessPage() {
   return (
     <TutorShell>
-      <MyBusinessContent />
+      {/* useSearchParams needs a Suspense boundary in the App Router. */}
+      <Suspense fallback={null}>
+        <MyBusinessContent />
+      </Suspense>
     </TutorShell>
   );
 }
 
 function MyBusinessContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { profile, loading, refresh: refreshProfile } = useProfile();
   const completion = useTutorCompletion(profile);
-  const [tab, setTab] = useState<Tab>('overview');
+
+  // Tabs are addressable via ?tab=, so a link can land on one. Unknown values
+  // fall back to overview rather than rendering nothing.
+  const requestedTab = searchParams.get('tab');
+  const initialTab: Tab = TAB_KEYS.includes(requestedTab as Tab) ? (requestedTab as Tab) : 'overview';
+  const [tab, setTab] = useState<Tab>(initialTab);
+
+  // Class Match Week used to be a tab here and is now the second tab of My
+  // Classes, next to the classes the campaign depends on. This forwards the
+  // links that still point at the old home — the dashboard countdown, the
+  // /tutor/class-match-week redirect, /class-match-week/teach, and anything
+  // already sent to a teacher — rather than dropping them on Overview with no
+  // explanation of where the campaign went.
+  useEffect(() => {
+    if (requestedTab === 'class-match-week') {
+      router.replace('/tutor/classes?tab=class-match-week');
+    }
+  }, [requestedTab, router]);
 
   const [classes, setClasses] = useState<any[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
@@ -104,8 +140,15 @@ function MyBusinessContent() {
         <div className="rounded-2xl border border-border bg-card p-12 text-center">
           <Lock className="size-10 mx-auto text-muted-foreground/40" />
           <h2 className="mt-3 text-xl font-bold text-ink">My Business is locked</h2>
-          <p className="mt-2 text-sm text-muted-foreground">Complete your profile to unlock business analytics and promotions.</p>
-          <Link href="/tutor/get-listed" className="mt-5 inline-flex items-center gap-1.5 px-5 py-2.5 rounded-lg bg-brand text-white font-semibold hover:bg-brand/90">
+          <p className="mt-2 text-sm text-muted-foreground">
+            Complete your profile to unlock business analytics and promotions.
+          </p>
+          {/* No ?redirect= here: get-listed reads only the OAuth success/error
+              params and would drop it silently. */}
+          <Link
+            href="/tutor/get-listed"
+            className="mt-5 inline-flex items-center gap-1.5 px-5 py-2.5 rounded-lg bg-brand text-white font-semibold hover:bg-brand/90"
+          >
             Complete profile
           </Link>
         </div>
@@ -117,7 +160,15 @@ function MyBusinessContent() {
   const totalRevenue = activeClasses.reduce((s: number, c: any) => s + (c.earnings_ttd ?? 0), 0);
   const totalStudents = new Set(activeClasses.flatMap((c: any) => [])).size || activeClasses.reduce((s: number, c: any) => s + (c.member_count ?? c.enrollmentCount ?? 0), 0);
 
-  const tabs: { key: Tab; label: string; icon: any; badge?: number; comingSoon?: boolean }[] = [
+  const tabs: {
+    key: Tab;
+    label: string;
+    icon: any;
+    badge?: number;
+    comingSoon?: boolean;
+    /** A campaign flag, e.g. "Limited time" — distinct from the "Soon" pill. */
+    flag?: string;
+  }[] = [
     { key: 'overview',   label: 'Overview',        icon: Briefcase },
     { key: 'availability', label: 'Availability',   icon: CalendarClock },
     { key: 'promotions', label: 'Promotions',       icon: Tag },
@@ -146,6 +197,11 @@ function MyBusinessContent() {
               <Icon className="size-4" /> {t.label}
               {t.comingSoon && (
                 <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">Soon</span>
+              )}
+              {t.flag && (
+                <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-brand/15 text-brand-deep whitespace-nowrap">
+                  {t.flag}
+                </span>
               )}
               {t.badge != null && t.badge > 0 && (
                 <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-brand/15 text-brand-deep text-[10px] font-bold">
