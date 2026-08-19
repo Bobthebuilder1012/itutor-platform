@@ -18,6 +18,16 @@ export interface SendEmailParams {
   to: string;
   subject: string;
   html: string;
+  /**
+   * The plain-text alternative, sent as multipart alongside the HTML.
+   *
+   * Worth passing whenever you have one. Some readers are configured for text
+   * only and see an empty message without it, and a missing text part counts
+   * against deliverability with every major filter. lib/email/design returns
+   * one from the same description as the HTML, so for anything built with
+   * renderEmail this is just `text` off the result.
+   */
+  text?: string;
   from?: string;
 }
 
@@ -62,6 +72,7 @@ export async function sendEmail({
   to,
   subject,
   html,
+  text,
   from = process.env.RESEND_FROM_EMAIL || 'iTutor <hello@myitutor.com>',
 }: SendEmailParams): Promise<EmailResult> {
   const resend = getResend();
@@ -78,7 +89,12 @@ export async function sendEmail({
     return { success: true, messageId: 'suppressed' };
   }
   try {
-    const { data, error } = await resend.emails.send({ from, to, subject, html });
+    // `text` is omitted rather than sent empty when the caller has none: Resend
+    // treats a present-but-empty text part as a text part, which is worse for
+    // the reader than having only HTML.
+    const { data, error } = await resend.emails.send(
+      text ? { from, to, subject, html, text } : { from, to, subject, html }
+    );
     if (error) return { success: false, error: (error as { message?: string }).message ?? 'Send failed' };
     return { success: true, messageId: data?.id };
   } catch (e) {
