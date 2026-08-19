@@ -21,11 +21,16 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { ArrowLeft, Loader2, MessageSquare, ShieldAlert, ShieldCheck, Star } from 'lucide-react';
 import ParentShell from '@/components/parent/ParentShell';
+import BlurredBannerBackdrop from '@/components/tutor/BlurredBannerBackdrop';
 
 type Tutor = {
   id: string;
   name: string;
   avatar: string | null;
+  /** The teacher's uploaded banner, blurred behind the header. */
+  banner: string | null;
+  /** `profiles.updated_at`, to cache-bust a re-uploaded banner. */
+  bannerVersion: string | null;
   verified: boolean;
   rating: number | null;
   bio: string | null;
@@ -105,7 +110,16 @@ function TutorProfileContent() {
     <div className="mx-auto w-full max-w-2xl space-y-4">
       <BackLink />
 
-      <section className="rounded-2xl border border-border bg-background p-5">
+      <section className="overflow-hidden rounded-2xl border border-border bg-background">
+        {/* The same blurred banner a student sees. A parent deciding whether to
+            approve a booking is looking at the same person, and the two profiles
+            reading as two different products does not help them. */}
+        <BlurredBannerBackdrop
+          bannerUrl={tutor.banner}
+          version={tutor.bannerVersion}
+          className="h-24 sm:h-28"
+        />
+        <div className="p-5">
         <div className="flex flex-wrap items-start gap-4">
           {tutor.avatar ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -174,6 +188,7 @@ function TutorProfileContent() {
               </>
             )}
           </p>
+        </div>
         </div>
       </section>
 

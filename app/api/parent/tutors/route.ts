@@ -108,7 +108,7 @@ export async function GET(_request: NextRequest) {
 
     const { data: profiles } = await admin
       .from('profiles')
-      .select('id, full_name, display_name, username, avatar_url, tutor_verification_status, rating_average, bio')
+      .select('id, full_name, display_name, username, avatar_url, profile_banner_url, updated_at, tutor_verification_status, rating_average, bio')
       .in('id', tutorIds);
 
     const tutors = ((profiles ?? []) as unknown as Array<{
@@ -117,6 +117,8 @@ export async function GET(_request: NextRequest) {
       display_name: string | null;
       username: string | null;
       avatar_url: string | null;
+      profile_banner_url: string | null;
+      updated_at: string | null;
       tutor_verification_status: string | null;
       rating_average: number | null;
       bio: string | null;
@@ -124,6 +126,8 @@ export async function GET(_request: NextRequest) {
       id: t.id,
       name: t.display_name || t.full_name || t.username || 'Tutor',
       avatar: t.avatar_url ?? null,
+      banner: t.profile_banner_url ?? null,
+      bannerVersion: t.updated_at ?? null,
       // Decision 31: verification is the only trust attribute the product holds.
       verified: t.tutor_verification_status === 'VERIFIED',
       rating: t.rating_average ?? null,
