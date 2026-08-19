@@ -24,6 +24,7 @@ import type {
   MatchOutcome,
   SubmissionRole,
 } from './types';
+import { isClassMatchWeekEnabled } from '@/lib/featureFlags/classMatchWeek';
 
 /**
  * The campaign currently running, or null outside the week.
@@ -33,6 +34,12 @@ import type {
  * the campaign's landing page.
  */
 export async function getLiveCampaign(admin: SupabaseClient): Promise<ClassMatchCampaign | null> {
+  // The kill switch, enforced here rather than in each of the twelve callers.
+  // "Disabled" is reported as "no live campaign" because that is the state every
+  // campaign surface already renders correctly — it is what they show for the
+  // rest of the year. See lib/featureFlags/classMatchWeek.ts.
+  if (!isClassMatchWeekEnabled()) return null;
+
   const { data } = await admin
     .from('class_match_campaigns')
     .select('*')
