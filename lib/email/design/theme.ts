@@ -101,7 +101,10 @@ export const brandAssets = {
   site: SITE,
   termsUrl: `${SITE}/terms`,
   privacyUrl: `${SITE}/privacy`,
-  supportEmail: 'hello@myitutor.com',
+  /** Security and account mail points here — it is what the auth templates have always said. */
+  supportEmail: 'support@myitutor.com',
+  /** General enquiries, used by welcome and marketing mail. */
+  contactEmail: 'hello@myitutor.com',
 } as const;
 
 /**

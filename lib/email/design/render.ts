@@ -29,6 +29,22 @@ import {
 
 export type EmailCta = { label: string; href: string };
 
+/**
+ * A URL, ready for an href.
+ *
+ * encodeURI on the way out, so a stray space or quote in a signed link cannot
+ * break out of the attribute — EXCEPT when the "URL" is a mail-template
+ * placeholder. The Supabase auth templates are rendered by this same code with
+ * `{{ .ConfirmationURL }}` in place of a link, and encoding it to
+ * %7B%7B%20.ConfirmationURL%20%7D%7D leaves Supabase nothing to substitute and
+ * every confirmation email pointing at a dead relative path. Placeholders pass
+ * through untouched; they come from our own template definitions, never from a
+ * request.
+ */
+function safeHref(href: string): string {
+  return href.includes('{{') ? href : encodeURI(href);
+}
+
 export type RenderEmailInput = {
   family: EmailFamily;
   /** The subject line. Returned with the body so the two are written together. */
@@ -118,7 +134,7 @@ function button(cta: EmailCta, accent: string): string {
   return (
     `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:4px 0 12px;"><tr>` +
     `<td align="center" style="background:${accent};border-radius:8px;">` +
-    `<a href="${encodeURI(cta.href)}" style="display:block;padding:14px 24px;font-family:${fontStack};font-size:15px;font-weight:700;color:${
+    `<a href="${safeHref(cta.href)}" style="display:block;padding:14px 24px;font-family:${fontStack};font-size:15px;font-weight:700;color:${
       palette.ink
     };text-decoration:none;">${escapeHtml(cta.label)}</a>` +
     `</td></tr></table>`
@@ -140,7 +156,7 @@ function footer(note: string, unsubscribeUrl?: string): string {
 
   const unsubscribe = unsubscribeUrl
     ? `<div style="margin-top:8px;font-family:${fontStack};font-size:11px;line-height:1.6;color:#7f8c83;">` +
-      `<a href="${encodeURI(unsubscribeUrl)}" style="color:#9aa8a0;text-decoration:underline;">Unsubscribe from iTutor updates</a></div>`
+      `<a href="${safeHref(unsubscribeUrl)}" style="color:#9aa8a0;text-decoration:underline;">Unsubscribe from iTutor updates</a></div>`
     : '';
 
   return (
@@ -231,14 +247,14 @@ export function renderEmail(input: RenderEmailInput): RenderedEmail {
     input.cta && input.showCtaUrl
       ? `<p style="margin:0 0 14px;font-family:${fontStack};font-size:12px;line-height:1.6;color:${palette.muted};">` +
         `If the button does not work, copy and paste this link into your browser:<br />` +
-        `<a href="${encodeURI(input.cta.href)}" style="color:${tones[tone].ink};text-decoration:underline;word-break:break-all;">${escapeHtml(
+        `<a href="${safeHref(input.cta.href)}" style="color:${tones[tone].ink};text-decoration:underline;word-break:break-all;">${escapeHtml(
           input.cta.href
         )}</a></p>`
       : '';
 
   const secondaryBlock = input.secondary
     ? `<p style="margin:0 0 14px;font-family:${fontStack};font-size:13px;text-align:center;">` +
-      `<a href="${encodeURI(input.secondary.href)}" style="color:${tones[tone].ink};text-decoration:underline;font-weight:600;">${escapeHtml(
+      `<a href="${safeHref(input.secondary.href)}" style="color:${tones[tone].ink};text-decoration:underline;font-weight:600;">${escapeHtml(
         input.secondary.label
       )}</a></p>`
     : '';
