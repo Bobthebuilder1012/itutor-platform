@@ -8,6 +8,7 @@ import {
   LayoutDashboard, Users, Receipt, Settings, Bell,
   PanelLeftClose, PanelLeftOpen, ChevronUp, LogOut,
   ShieldCheck, MessageSquareQuote, CalendarDays, Search, Compass,
+  Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -24,7 +25,8 @@ const nav: NavItem[] = [
   // Explore earns a permanent slot. It was kept out on kit-fidelity grounds and
   // reached only from a top-bar button, which made browsing feel like a detour —
   // for a parent with no classes yet it is the first thing they need.
-  { to: '/parent/classes',       label: 'Explore',       icon: Compass,                      tint: 'bg-rose-500/20 text-rose-300 ring-1 ring-rose-400/30' },
+  { to: '/find',                 label: 'Find your iTutor', icon: Sparkles,                  tint: 'bg-teal-500/20 text-teal-300 ring-1 ring-teal-400/30' },
+  { to: '/parent/classes',       label: 'Browse classes', icon: Compass,                    tint: 'bg-rose-500/20 text-rose-300 ring-1 ring-rose-400/30' },
   { to: '/parent/children',      label: 'Children',      icon: Users,                        tint: 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-400/30' },
   { to: '/parent/calendar',      label: 'Calendar',      icon: CalendarDays,                 tint: 'bg-sky-500/20 text-sky-300 ring-1 ring-sky-400/30' },
   { to: '/parent/feedback',      label: 'Feedback',      icon: MessageSquareQuote,           tint: 'bg-fuchsia-500/20 text-fuchsia-300 ring-1 ring-fuchsia-400/30' },

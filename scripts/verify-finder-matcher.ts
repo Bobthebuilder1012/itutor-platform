@@ -44,7 +44,7 @@ function candidate(overrides: Partial<FinderCandidate> = {}): FinderCandidate {
     groupId: 'g1',
     subject: 'CSEC Mathematics',
     formLevel: 'FORM_4',
-    pricePerCourse: 250,
+    monthlyPrice: 250,
     scheduleEntries: SAT_MORNING,
     seatsRemaining: 4,
     tutorVerified: true,
@@ -109,7 +109,7 @@ console.log('\nFinder matcher — behavioural checks\n');
 }
 
 {
-  const r = matchFinderRequest([candidate({ pricePerCourse: 900 })], criteria(), MAX);
+  const r = matchFinderRequest([candidate({ monthlyPrice: 900 })], criteria(), MAX);
   check('only the price misses -> near', r.matchClass === 'near', `got ${r.matchClass}`);
   check('near names the budget dimension', r.nearMissOn === 'budget', `got ${r.nearMissOn}`);
   check('button reads "Change my budget"', nearMissButtonLabel('budget') === 'Change my budget');
@@ -133,7 +133,7 @@ console.log('\nFinder matcher — behavioural checks\n');
   const r = matchFinderRequest(
     [
       candidate({ groupId: 'wrong_time', scheduleEntries: SUN_AFTERNOON }),
-      candidate({ groupId: 'wrong_price', pricePerCourse: 900 }),
+      candidate({ groupId: 'wrong_price', monthlyPrice: 900 }),
     ],
     criteria(),
     MAX
@@ -144,7 +144,7 @@ console.log('\nFinder matcher — behavioural checks\n');
 // ---------------------------------------------------------------- none
 {
   const r = matchFinderRequest(
-    [candidate({ scheduleEntries: SUN_AFTERNOON, pricePerCourse: 900 })],
+    [candidate({ scheduleEntries: SUN_AFTERNOON, monthlyPrice: 900 })],
     criteria(),
     MAX
   );
@@ -205,13 +205,13 @@ console.log('\nFinder matcher — behavioural checks\n');
 
 // A free class is inside every budget, including the lowest band.
 {
-  const r = matchFinderRequest([candidate({ pricePerCourse: null })], criteria({ budgetMax: 200 }), MAX);
+  const r = matchFinderRequest([candidate({ monthlyPrice: null })], criteria({ budgetMax: 200 }), MAX);
   check('a free class fits any budget', r.matchClass === 'exact', `got ${r.matchClass}`);
 }
 
 // The "$600+" band means no ceiling, not a $600 ceiling.
 {
-  const r = matchFinderRequest([candidate({ pricePerCourse: 5000 })], criteria({ budgetMax: null }), MAX);
+  const r = matchFinderRequest([candidate({ monthlyPrice: 5000 })], criteria({ budgetMax: null }), MAX);
   check('null budgetMax is no ceiling', r.matchClass === 'exact', `got ${r.matchClass}`);
 }
 

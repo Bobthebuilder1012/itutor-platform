@@ -327,9 +327,17 @@ export default function SignupCard({
     setTimeout(() => {
       if (role === 'student' || role === 'tutor') goto('profile');
       else {
-        // Parent: account is created with role='parent'; go straight to their
-        // dashboard (no extra profile step — children are added there).
-        router.push(safeRedirectOr(searchParams.get('redirect'), '/parent/dashboard'));
+        // Parent: account is created with role='parent'; there is no extra
+        // profile step (children are added later), so they go straight to the
+        // Finder. A `?redirect=` still wins — someone who arrived from a QR
+        // code or a campaign link keeps the destination they asked for.
+        //
+        // No feature-flag check here: /find's layout bounces to the dashboard
+        // when the Finder is off, and FINDER_GATE_MODE deliberately is not
+        // readable from the browser. The gate exists to protect the EXISTING
+        // base from the one-shot login backfill (build plan §10); a brand-new
+        // signup is already engaged and can use `Maybe later`.
+        router.push(safeRedirectOr(searchParams.get('redirect'), '/find?trigger=signup'));
       }
     }, 1400);
   };
@@ -353,7 +361,7 @@ export default function SignupCard({
       if (updateError) { setError(`Error saving profile: ${updateError.message}`); return; }
 
       if (showSchool && studentInstitution) await ensureSchoolCommunityAndMembership(userId!);
-      router.push(safeRedirectOr(searchParams.get('redirect'), '/student/dashboard'));
+      router.push(safeRedirectOr(searchParams.get('redirect'), '/find?trigger=signup'));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
     } finally { setLoading(false); }

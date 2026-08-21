@@ -77,8 +77,8 @@ export interface FinderCandidate {
   subject: string | null;
   /** Raw `groups.form_level` — unconstrained text, may carry either vocabulary. */
   formLevel: string | null;
-  /** `groups.price_per_course`, TTD. Null is treated as free. */
-  pricePerCourse: number | null;
+  /** Monthly price in TTD, from groups.price_monthly. Null is treated as free. */
+  monthlyPrice: number | null;
   scheduleEntries: ScheduleEntry[];
   /** Seats left. Null means unknown, which is NOT treated as full. */
   seatsRemaining: number | null;
@@ -142,7 +142,7 @@ export function passesHardFilters(
 /** Is the class inside the family's budget? A free class always is. */
 function withinBudget(candidate: FinderCandidate, criteria: FinderCriteria): boolean {
   if (criteria.budgetMax === null) return true; // "$600+" band: no ceiling
-  const price = candidate.pricePerCourse ?? 0;
+  const price = candidate.monthlyPrice ?? 0;
   return price <= criteria.budgetMax;
 }
 

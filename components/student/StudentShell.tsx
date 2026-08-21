@@ -20,6 +20,7 @@ import {
   ChevronUp,
   CreditCard,
   ReceiptText,
+  Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { StudentStoreProvider } from '@/lib/student-store';
@@ -49,6 +50,7 @@ export type { NavItem as StudentNavItem };
 
 const nav: NavItem[] = [
   { to: '/student/dashboard', label: 'Home', icon: LayoutDashboard, exact: true, tint: 'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-400/30' },
+  { to: '/find', label: 'Find your iTutor', icon: Sparkles, tint: 'bg-teal-500/20 text-teal-300 ring-1 ring-teal-400/30' },
   { to: '/student/find-tutors', label: 'Explore', icon: Search, tint: 'bg-rose-500/20 text-rose-300 ring-1 ring-rose-400/30' },
   { to: '/student/classes', label: 'My Classes', icon: GraduationCap, tint: 'bg-sky-500/20 text-sky-300 ring-1 ring-sky-400/30' },
   { to: '/student/bookings', label: 'My Bookings', icon: CalendarDays, tint: 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-400/30' },
