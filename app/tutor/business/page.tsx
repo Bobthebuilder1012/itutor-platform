@@ -22,6 +22,11 @@ import ProfileQrCard from '@/components/tutor/business/ProfileQrCard';
 import AvailabilityEditor from '@/components/tutor/AvailabilityEditor';
 import OneOnOneMarketplaceToggle from '@/components/tutor/OneOnOneMarketplaceToggle';
 import { getDisplayName } from '@/lib/utils/displayName';
+import {
+  VERIFICATION_MAX_LABEL,
+  checkVerificationFile,
+  describeStorageUploadFailure,
+} from '@/lib/utils/verificationUpload';
 
 type Tab =
   | 'overview'
@@ -187,7 +192,7 @@ function MyBusinessContent() {
         <p className="text-sm text-muted-foreground mt-1">All your classes, promotions, and analytics in one place.</p>
       </header>
 
-      <div className="border-b border-border flex items-center gap-6 overflow-x-auto">
+      <div className="border-b border-border flex items-center gap-6 overflow-x-auto scrollbar-hide">
         {tabs.map((t) => {
           const Icon = t.icon;
           return (
@@ -234,10 +239,15 @@ function OverviewTab({ activeClasses, profile, onProfileUpdated }: any) {
     <div className="space-y-6">
       {/* Share link + QR — compact */}
       <section className="grid md:grid-cols-2 gap-3">
-        <div className="rounded-2xl bg-card border border-border p-4 space-y-2">
+        {/* min-w-0 is load-bearing: a grid item's min-width:auto floors the
+            track at its content's min-content width, and the profile URL is one
+            85-character unbreakable token. Without it the card grew past the
+            viewport, truncate never engaged and the whole page panned
+            sideways on a phone. */}
+        <div className="min-w-0 rounded-2xl bg-card border border-border p-4 space-y-2">
           <div className="text-sm font-bold text-ink">Share your profile</div>
-          <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2">
-            <span className="text-xs text-muted-foreground truncate font-mono flex-1">{url}</span>
+          <div className="flex min-w-0 items-center gap-2 rounded-lg bg-muted/50 px-3 py-2">
+            <span className="min-w-0 flex-1 text-xs text-muted-foreground truncate font-mono">{url}</span>
             <button onClick={() => { navigator.clipboard?.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
               className="shrink-0 text-xs font-semibold text-brand-deep hover:underline inline-flex items-center gap-1">
               {copied ? <Check className="size-3" /> : <Copy className="size-3" />} {copied ? 'Copied' : 'Copy'}
@@ -245,7 +255,7 @@ function OverviewTab({ activeClasses, profile, onProfileUpdated }: any) {
           </div>
         </div>
 
-        <div className="rounded-2xl bg-card border border-border p-4 space-y-2">
+        <div className="min-w-0 rounded-2xl bg-card border border-border p-4 space-y-2">
           <div className="text-sm font-bold text-ink">QR code</div>
           {profile?.id && <ProfileQrCard tutorId={profile.id} />}
         </div>
@@ -710,10 +720,19 @@ function VerificationSection() {
 
   async function handleFileUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
+    // Clearing the input lets a tutor re-pick the same filename after they
+    // compress it — otherwise no change event fires and nothing happens.
+    event.target.value = '';
     if (!file) return;
+    setUploadSuccess(false);
+
+    // Checked before the request row is created, so an oversized file does not
+    // leave an empty verification request behind.
+    const rejection = checkVerificationFile(file);
+    if (rejection) { setUploadError(rejection); return; }
+
     setUploading(true);
     setUploadError(null);
-    setUploadSuccess(false);
     try {
       const fileExt = file.name.split('.').pop()?.toLowerCase();
       const fileType = fileExt === 'pdf' ? 'pdf' : 'image';
@@ -734,7 +753,7 @@ function VerificationSection() {
         body: file,
         headers: { 'Content-Type': file.type },
       });
-      if (!uploadRes.ok) throw new Error('Failed to upload file');
+      if (!uploadRes.ok) throw new Error(await describeStorageUploadFailure(uploadRes));
 
       const processRes = await fetch(`/api/verification/request/${requestId}/process`, { method: 'POST' });
       if (!processRes.ok) console.warn('[VerificationSection] processing may have failed, but file was uploaded');
@@ -837,7 +856,7 @@ function VerificationSection() {
                   ? 'Upload another document'
                   : 'Upload verification document'}
             </div>
-            <p className="text-xs text-muted-foreground mt-0.5">CSEC, CAPE, or other teaching qualification — PDF, JPG, PNG or WEBP (max 10MB).</p>
+            <p className="text-xs text-muted-foreground mt-0.5">CSEC, CAPE, or other teaching qualification — PDF, JPG, PNG or WEBP (max {VERIFICATION_MAX_LABEL}).</p>
             {hasQueue && (
               <p className="mt-1.5 text-xs text-muted-foreground">
                 {pendingCount === 1 ? '1 document is' : `${pendingCount} documents are`} waiting to be reviewed.
