@@ -480,49 +480,27 @@ function PromotionsTab({ classes }: { classes: any[] }) {
 }
 
 /* ----------- Business Analytics ----------- */
+// Every figure here must come from real data. The by-month revenue and
+// enrolment charts that used to live here were hardcoded sample series
+// ([1200, 2400, 3100, ...] with `|| 7800` / `|| 22` fallbacks), so a tutor
+// with no classes was shown someone else's imaginary business. They are gone
+// until there is a real per-month source to plot.
 function BusinessAnalyticsTab({ classes, totalRevenue }: { classes: any[]; totalRevenue: number }) {
-  const months = ['Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May'];
-  const revenue = [1200, 2400, 3100, 4800, 6200, totalRevenue || 7800];
-  const enrollment = [3, 6, 9, 14, 18, classes.reduce((s: number, c: any) => s + (c.member_count ?? 0), 0) || 22];
-  const maxR = Math.max(...revenue, 1);
-  const maxE = Math.max(...enrollment, 1);
+  const totalEnrolled = classes.reduce((s: number, c: any) => s + (c.member_count ?? 0), 0);
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-        <KpiCard icon={DollarSign} label="Revenue (all time)" value={`TTD ${totalRevenue.toLocaleString()}`} positive />
-        <KpiCard icon={Users} label="Total enrolled" value={String(enrollment[enrollment.length - 1])} positive />
-        <KpiCard icon={BookOpen} label="Classes running" value={String(classes.length)} positive />
+        <KpiCard icon={DollarSign} label="Revenue (all time)" value={fmtTTD(totalRevenue)} />
+        <KpiCard icon={Users} label="Total enrolled" value={String(totalEnrolled)} />
+        <KpiCard icon={BookOpen} label="Classes running" value={String(classes.length)} />
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-4">
-        <div className="rounded-2xl bg-card border border-border p-5">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="font-semibold text-ink">Revenue by month (TT$)</h3>
-            <span className="text-[11px] text-muted-foreground">Peak: {fmtTTD(maxR)}</span>
-          </div>
-          <div className="h-40 flex items-end gap-3">
-            {revenue.map((v, i) => (
-              <div key={i} className="flex-1 flex flex-col items-center gap-2">
-                <div className="w-full rounded-t-md bg-gradient-to-t from-brand to-emerald-300" style={{ height: `${(v / maxR) * 100}%` }} />
-                <div className="text-[10px] text-muted-foreground">{months[i]}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="rounded-2xl bg-card border border-border p-5">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="font-semibold text-ink">Enrollment by month</h3>
-            <span className="text-[11px] text-muted-foreground">Peak: {maxE} students</span>
-          </div>
-          <div className="h-40 flex items-end gap-3">
-            {enrollment.map((v, i) => (
-              <div key={i} className="flex-1 flex flex-col items-center gap-2">
-                <div className="w-full rounded-t-md bg-gradient-to-t from-amber-500 to-amber-300" style={{ height: `${(v / maxE) * 100}%` }} />
-                <div className="text-[10px] text-muted-foreground">{months[i]}</div>
-              </div>
-            ))}
-          </div>
+      <div className="rounded-2xl bg-card border border-border p-8 text-center">
+        <div className="font-semibold text-ink">Trends are coming</div>
+        <div className="mt-1 text-sm text-muted-foreground max-w-md mx-auto">
+          Month-by-month revenue and enrolment charts will appear here once there is
+          enough history to plot. The totals above are live.
         </div>
       </div>
     </div>
