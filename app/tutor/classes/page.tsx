@@ -260,7 +260,7 @@ function LessonsContent() {
       {/* Workspace tabs. Underlined rather than the pill group used below for
           the class-kind filter, so the two never read as the same control. */}
       {campaign.campaign && (
-        <div className="border-b border-border flex items-center gap-6 overflow-x-auto">
+        <div className="border-b border-border flex items-center gap-4 sm:gap-6 overflow-x-auto scrollbar-hide">
           {([
             { key: 'classes', label: 'My classes', icon: BookOpen },
             { key: 'class-match-week', label: 'Class Match Week', icon: Sparkles, flag: 'Limited time' },
@@ -269,12 +269,12 @@ function LessonsContent() {
             return (
               <button key={t.key} onClick={() => setTab(t.key)}
                 className={cn(
-                  'relative flex items-center gap-2 pb-3 pt-1 text-sm font-semibold whitespace-nowrap transition',
+                  'relative flex items-center gap-1.5 sm:gap-2 pb-3 pt-1 text-[13px] sm:text-sm font-semibold whitespace-nowrap transition',
                   tab === t.key ? 'text-brand-deep' : 'text-muted-foreground hover:text-ink'
                 )}>
                 <Icon className="size-4" /> {t.label}
                 {t.flag && (
-                  <span className="rounded-full bg-brand/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand-deep">
+                  <span className="rounded-full bg-brand/10 px-1 py-0.5 text-[9px] sm:px-1.5 sm:text-[10px] font-bold uppercase tracking-wide text-brand-deep">
                     {t.flag}
                   </span>
                 )}
@@ -295,10 +295,12 @@ function LessonsContent() {
         <PauseAllClasses />
 
         {/* Quick stats */}
-        <div className="grid grid-cols-3 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
           <StatTile icon={<BookOpen className="size-4" />} label="Active classes" value={totals.classes.toString()} tint="brand" />
           <StatTile icon={<Users className="size-4" />} label="Total members" value={totals.students.toString()} tint="ink" />
-          <StatTile icon={<TrendingUp className="size-4" />} label="Lifetime earnings" value={`TTD ${totals.earnings.toLocaleString()}`} tint="coral" />
+          {/* Earnings carries the longest label and the longest value, so on a
+              phone it takes the whole row instead of being elided to "LIF… T…". */}
+          <StatTile icon={<TrendingUp className="size-4" />} label="Lifetime earnings" value={`TTD ${totals.earnings.toLocaleString()}`} tint="coral" className="col-span-2 sm:col-span-1" />
         </div>
 
         {/* Toolbar */}
@@ -377,18 +379,20 @@ function LessonsContent() {
   );
 }
 
-function StatTile({ icon, label, value, tint }: { icon: React.ReactNode; label: string; value: string; tint: 'brand' | 'ink' | 'coral' }) {
+function StatTile({ icon, label, value, tint, className }: { icon: React.ReactNode; label: string; value: string; tint: 'brand' | 'ink' | 'coral'; className?: string }) {
   const tints = {
     brand: 'bg-brand/10 text-brand',
     ink: 'bg-ink/5 text-ink',
     coral: 'bg-rose-50 text-rose-600',
   } as const;
   return (
-    <div className="rounded-2xl border border-border bg-card p-4 flex items-center gap-3">
-      <div className={cn('size-9 rounded-xl grid place-items-center shrink-0', tints[tint])}>{icon}</div>
+    <div className={cn('rounded-2xl border border-border bg-card p-3 sm:p-4 flex items-center gap-2.5 sm:gap-3', className)}>
+      <div className={cn('size-8 sm:size-9 rounded-xl grid place-items-center shrink-0', tints[tint])}>{icon}</div>
+      {/* The label wraps rather than truncates — half a word is worse than two
+          lines — and the value never wraps, because it is a money figure. */}
       <div className="min-w-0">
-        <div className="text-[11px] uppercase tracking-wider font-bold text-muted-foreground truncate">{label}</div>
-        <div className="text-base sm:text-lg font-bold text-ink truncate tabular-nums">{value}</div>
+        <div className="text-[10px] sm:text-[11px] uppercase tracking-wider font-bold text-muted-foreground leading-tight">{label}</div>
+        <div className="mt-0.5 text-base sm:text-lg font-bold text-ink tabular-nums truncate">{value}</div>
       </div>
     </div>
   );
