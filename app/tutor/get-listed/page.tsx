@@ -578,7 +578,7 @@ function GetListedContent() {
       </SectionShell>
 
       {/* 4. Rate */}
-      <SectionShell done={completion.rate} title="Hourly rate" subtitle="Set your rate per subject (TTD). Each subject can have a different rate.">
+      <SectionShell allowOverflow done={completion.rate} title="Hourly rate" subtitle="Set your rate per subject (TTD). Each subject can have a different rate.">
         {hasPayoutAccount === false && (
           <div className="mb-4 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
@@ -655,7 +655,9 @@ function GetListedContent() {
         )}
 
         {/* Add subject search */}
-        <div className="relative">
+        {/* Raised only while the dropdown is open: a permanently stacked wrapper
+            would sit above unrelated UI for no reason. */}
+        <div className={cn('relative', showSubjectDropdown && 'z-50')}>
           <input
             type="text"
             value={subjectQuery}
@@ -666,7 +668,7 @@ function GetListedContent() {
             className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand disabled:opacity-50"
           />
           {showSubjectDropdown && subjectQuery.trim() && (
-            <div className="absolute z-10 w-full mt-1 bg-card border border-border rounded-xl shadow-lg max-h-60 overflow-y-auto">
+            <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-xl shadow-lg max-h-60 overflow-y-auto">
               {searchingSubjects ? (
                 <div className="p-4 text-center text-sm text-muted-foreground">Searching…</div>
               ) : subjectResults.length > 0 ? (
@@ -690,7 +692,9 @@ function GetListedContent() {
           )}
         </div>
         {showSubjectDropdown && (
-          <div className="fixed inset-0 z-0" onClick={() => setShowSubjectDropdown(false)} />
+          // Below the dropdown (z-50), above the sibling cards, so a click
+          // outside closes it while a click on a result still reaches the button.
+          <div className="fixed inset-0 z-40" onClick={() => setShowSubjectDropdown(false)} />
         )}
 
         {subjects.length > 1 && (
@@ -818,10 +822,14 @@ function GetListedContent() {
 }
 
 // ── Section wrapper ────────────────────────────────────────────────────────────
-function SectionShell({ done, title, subtitle, children, optional }: { done: boolean; title: string; subtitle: string; children: React.ReactNode; optional?: boolean }) {
+function SectionShell({ done, title, subtitle, children, optional, allowOverflow }: { done: boolean; title: string; subtitle: string; children: React.ReactNode; optional?: boolean; allowOverflow?: boolean }) {
   return (
-    <section className="rounded-2xl border border-border bg-card overflow-hidden">
-      <header className="px-5 py-4 border-b border-border flex items-start gap-3">
+    // overflow-hidden is the default because it is what rounds the header's
+    // bottom border against the card corners. A section containing a popover
+    // opts out with allowOverflow and rounds the header itself instead, so the
+    // corner still reads clean without clipping the popover at the card edge.
+    <section className={cn('rounded-2xl border border-border bg-card', allowOverflow ? 'overflow-visible' : 'overflow-hidden')}>
+      <header className={cn('px-5 py-4 border-b border-border flex items-start gap-3', allowOverflow && 'rounded-t-2xl')}>
         <span className={cn('size-7 rounded-full grid place-items-center shrink-0', done ? 'bg-brand text-white' : 'bg-muted text-muted-foreground')}>
           {done ? <Check className="size-4" /> : <Circle className="size-4" />}
         </span>
