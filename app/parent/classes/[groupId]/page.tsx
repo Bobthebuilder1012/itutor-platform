@@ -18,7 +18,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2, Users, X } from 'lucide-react';
+import { Check, Clock, Loader2, Users, X } from 'lucide-react';
 import ParentShell from '@/components/parent/ParentShell';
 import ChildPickerCheck from '@/components/parent/ChildPickerCheck';
 import { Detail, type GroupData } from '@/components/classes/ClassDetailView';
@@ -41,6 +41,12 @@ function ClassContent() {
   const [readyChildId, setReadyChildId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Set once the enrolment has actually happened — the modal then reports it. */
+  const [done, setDone] = useState<{
+    kind: 'enrolled' | 'requested' | 'waitlisted';
+    childName: string | null;
+    position: number | null;
+  } | null>(null);
 
   const load = useCallback(async () => {
     // Same loader the student page uses, so the two cannot disagree about what
@@ -98,15 +104,24 @@ function ClassContent() {
         return;
       }
       if (res.status === 202 && json.waitlisted) {
-        setError(`This class is full — your child is number ${json.position} on the waitlist.`);
-        setPickerOpen(false);
+        // A waitlist place is an outcome, not a failure — it used to be shown in
+        // the red error banner, which read as "that did not work" to a parent
+        // who had in fact just been given a position in the queue.
+        setDone({ kind: 'waitlisted', childName: json.childName ?? null, position: json.position ?? null });
         return;
       }
       if (isPaid && json.checkout_url) {
         window.location.href = json.checkout_url;
         return;
       }
-      setPickerOpen(false);
+      // The modal used to close on success and say nothing at all. A parent who
+      // has just enrolled somebody else needs to be told it happened, to whom,
+      // and — when the tutor gates joins — that it is not finished yet.
+      setDone({
+        kind: json.status === 'pending' ? 'requested' : 'enrolled',
+        childName: json.childName ?? null,
+        position: null,
+      });
       await load();
     } catch {
       setError('Could not continue.');
@@ -140,47 +155,139 @@ function ClassContent() {
       {pickerOpen && (
         <div
           className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:items-center"
-          onClick={() => setPickerOpen(false)}
+          // Clearing `done` matters: dismissing on the backdrop without it would
+          // leave the confirmation staged, and the next Join press would open on
+          // a message about the enrolment before it.
+          onClick={() => {
+            setPickerOpen(false);
+            setDone(null);
+          }}
         >
           <div
             onClick={(e) => e.stopPropagation()}
             className="my-auto w-full max-w-md space-y-3 rounded-2xl border border-border bg-background p-5 shadow-xl"
           >
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <h2 className="font-bold text-ink">Who is this for?</h2>
-                <p className="mt-0.5 text-xs text-muted-foreground">
+            {done ? (
+              <Confirmation
+                done={done}
+                className={group.name}
+                onClose={() => {
+                  setDone(null);
+                  setPickerOpen(false);
+                }}
+              />
+            ) : (
+              <>
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <h2 className="font-bold text-ink">Who is this for?</h2>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {isPaid
+                        ? 'You pay; they are the one enrolled.'
+                        : 'They are the one enrolled.'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setPickerOpen(false)}
+                    className="text-muted-foreground hover:text-ink"
+                  >
+                    <X className="size-4" />
+                  </button>
+                </div>
+
+                {/* The dialog's own h2 already asks it. */}
+                <ChildPickerCheck groupId={group.id} onReady={setReadyChildId} showHeading={false} />
+
+                <button
+                  onClick={() => readyChildId && enroll(readyChildId)}
+                  disabled={!readyChildId || busy}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-deep disabled:opacity-50"
+                >
+                  {busy ? <Loader2 className="size-4 animate-spin" /> : <Users className="size-4" />}
                   {isPaid
-                    ? 'You pay; they are the one enrolled.'
-                    : 'They are the one enrolled.'}
-                </p>
-              </div>
-              <button
-                onClick={() => setPickerOpen(false)}
-                className="text-muted-foreground hover:text-ink"
-              >
-                <X className="size-4" />
-              </button>
-            </div>
-
-            {/* The dialog's own h2 already asks it. */}
-            <ChildPickerCheck groupId={group.id} onReady={setReadyChildId} showHeading={false} />
-
-            <button
-              onClick={() => readyChildId && enroll(readyChildId)}
-              disabled={!readyChildId || busy}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-deep disabled:opacity-50"
-            >
-              {busy ? <Loader2 className="size-4 animate-spin" /> : <Users className="size-4" />}
-              {isPaid
-                ? 'Continue to payment'
-                : group.require_join_requests
-                  ? 'Send request'
-                  : 'Join class'}
-            </button>
-          </div>
+                    ? 'Continue to payment'
+                    : group.require_join_requests
+                      ? 'Send request'
+                      : 'Join class'}
+                </button>
+            </>
+          )}
         </div>
-      )}
+      </div>
+    )}
     </>
+  );
+}
+
+/**
+ * What happened, said plainly, before the modal closes.
+ *
+ * Three outcomes, and the difference between them matters to a parent: enrolled
+ * is finished, requested is not, and a waitlist place is neither a failure nor a
+ * seat. The old flow closed the modal silently on the first, and put the third
+ * in the red error banner.
+ */
+function Confirmation({
+  done,
+  className,
+  onClose,
+}: {
+  done: { kind: 'enrolled' | 'requested' | 'waitlisted'; childName: string | null; position: number | null };
+  className: string;
+  onClose: () => void;
+}) {
+  const who = done.childName ?? 'Your child';
+
+  const copy = {
+    enrolled: {
+      title: `${who} is in ${className}`,
+      body: 'They can see the class and its sessions on their own account now. You will get their attendance and any feedback the tutor writes.',
+    },
+    requested: {
+      title: `Request sent for ${who}`,
+      body: `The tutor approves who joins ${className}. Nothing else is needed from you — you will hear when they answer, and ${who} is not in the class until they do.`,
+    },
+    waitlisted: {
+      title: `${who} is on the waitlist`,
+      body: done.position
+        ? `The class is full. They are number ${done.position} in the queue, and we will tell you if a place opens.`
+        : 'The class is full. We will tell you if a place opens.',
+    },
+  }[done.kind];
+
+  return (
+    <div className="space-y-4 text-center">
+      <div
+        className={`mx-auto mt-1 grid size-12 place-items-center rounded-2xl ${
+          done.kind === 'waitlisted' ? 'bg-amber-500' : 'bg-brand'
+        }`}
+      >
+        {done.kind === 'waitlisted' ? (
+          <Clock className="size-6 text-white" />
+        ) : (
+          <Check className="size-6 text-white" />
+        )}
+      </div>
+
+      <div>
+        <h2 className="text-lg font-bold text-ink">{copy.title}</h2>
+        <p className="mt-1.5 text-sm text-muted-foreground">{copy.body}</p>
+      </div>
+
+      <div className="flex flex-wrap justify-center gap-2 pt-1">
+        <Link
+          href="/parent/children"
+          className="rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-deep"
+        >
+          See their classes
+        </Link>
+        <button
+          onClick={onClose}
+          className="rounded-xl border border-border px-4 py-2.5 text-sm font-semibold text-ink hover:bg-muted"
+        >
+          Done
+        </button>
+      </div>
+    </div>
   );
 }

@@ -22,6 +22,7 @@ export const TEMPLATE_STUDENT_CLASS_APPROVED = 'student_class_request_approved';
 export const TEMPLATE_STUDENT_CLASS_DECLINED = 'student_class_request_declined';
 export const TEMPLATE_TUTOR_JOIN_REQUEST = 'tutor_class_join_request';
 export const TEMPLATE_PARENT_CHILD_LEFT_CLASS = 'parent_child_left_class';
+export const TEMPLATE_STUDENT_ENROLLED_BY_PARENT = 'student_enrolled_by_parent';
 
 const escapeText = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -311,6 +312,124 @@ export async function notifyTutorOfJoinRequest(
     html: rendered.html,
     text: rendered.text,
     emailType: TEMPLATE_TUTOR_JOIN_REQUEST,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// A parent put their child in a class
+// ---------------------------------------------------------------------------
+
+/**
+ * The student's own notice when a PARENT enrolled them.
+ *
+ * They did not press anything, so nothing else would tell them: the tutor gets
+ * a notification, the parent gets a confirmation on screen, and the student —
+ * the person who has to turn up — learned about it by opening the app. This
+ * says what they are in, who teaches it, and when it next meets.
+ *
+ * Two shapes, because "you are in" and "your parent asked for you" are
+ * different facts and a student who confuses them misses a class or attends one
+ * they have no place in.
+ */
+export async function notifyStudentEnrolledByParent(
+  admin: SupabaseClient,
+  params: {
+    studentId: string;
+    className: string;
+    groupId: string;
+    tutorName: string;
+    parentName: string;
+    scheduleLabel: string | null;
+    /** True when the tutor gates joins and the seat is not theirs yet. */
+    awaitingTutor: boolean;
+  }
+): Promise<void> {
+  const { data } = await admin
+    .from('profiles')
+    .select('email, full_name, display_name')
+    .eq('id', params.studentId)
+    .maybeSingle();
+
+  const student = data as {
+    email: string | null;
+    full_name: string | null;
+    display_name: string | null;
+  } | null;
+
+  await notifyInApp(admin, {
+    userId: params.studentId,
+    type: 'child_joined_class',
+    title: params.awaitingTutor
+      ? `${params.parentName} asked to join you to ${params.className}`
+      : `You are in ${params.className}`,
+    message: params.awaitingTutor
+      ? 'The tutor has to accept before you can attend.'
+      : [params.tutorName, params.scheduleLabel].filter(Boolean).join(' · '),
+    link: '/student/classes',
+    metadata: { groupId: params.groupId },
+  });
+
+  if (!student?.email) return;
+
+  const rendered = params.awaitingTutor
+    ? renderEmail({
+        family: 'booking-confirmation',
+        subject: `${params.parentName} asked to join you to ${params.className}`,
+        heading: 'A class is waiting on the tutor',
+        intro: `Hi ${first(student.display_name || student.full_name)},`,
+        eyebrow: 'Request sent',
+        tone: 'warning',
+        blocks: [
+          {
+            kind: 'paragraph',
+            text: `${escapeText(params.parentName)} asked to join you to ${escapeText(
+              params.className
+            )} with ${escapeText(params.tutorName)}. The tutor accepts who joins this class, so you are not in it yet.`,
+          },
+          {
+            kind: 'paragraph',
+            text: 'You will hear as soon as they answer. Nothing is needed from you before then.',
+          },
+        ],
+        cta: { label: 'View the class', href: appUrl(`/student/explore/${params.groupId}`) },
+      })
+    : renderEmail({
+        family: 'booking-confirmation',
+        subject: `You have been enrolled in ${params.className}`,
+        heading: `You are in ${params.className}`,
+        intro: `Hi ${first(student.display_name || student.full_name)},`,
+        eyebrow: 'Enrolled',
+        blocks: [
+          {
+            kind: 'paragraph',
+            text: `${escapeText(params.parentName)} enrolled you in this class, so there is nothing for you to do — just turn up.`,
+          },
+          {
+            kind: 'details',
+            rows: [
+              { label: 'Class', value: escapeText(params.className), strong: true },
+              { label: 'Tutor', value: escapeText(params.tutorName) },
+              ...(params.scheduleLabel
+                ? [{ label: 'Next session', value: escapeText(params.scheduleLabel) }]
+                : []),
+            ],
+          },
+          {
+            kind: 'paragraph',
+            text: 'We will remind you before it starts. Everything about the class lives on your classes page.',
+          },
+        ],
+        cta: { label: 'Go to your classes', href: appUrl('/student/classes') },
+      });
+
+  await sendIfAllowed(admin, {
+    userId: params.studentId,
+    type: 'child_joined_class',
+    to: student.email,
+    subject: rendered.subject,
+    html: rendered.html,
+    text: rendered.text,
+    emailType: TEMPLATE_STUDENT_ENROLLED_BY_PARENT,
   });
 }
 
