@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { resolveGroupActor } from '@/lib/auth/groupAccess';
 import { findGroupEnrollmentConflict, conflictMessage } from '@/lib/services/scheduleConflict';
+import {
+  createClassJoinRequest,
+  performGroupJoin,
+  resolveClassJoinGate,
+} from '@/lib/server/classJoinRequests';
 
 type Params = { params: Promise<{ groupId: string }> };
 function isSchemaMismatch(error: any): boolean {
@@ -112,62 +117,52 @@ export async function POST(_req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: conflictMessage(conflict) }, { status: 409 });
     }
 
-    // Determine initial status based on group's join-request setting
-    const { data: groupSettings } = await service
-      .from('groups')
-      .select('require_join_requests')
-      .eq('id', groupId)
-      .single();
-
-    const initialStatus = groupSettings?.require_join_requests ? 'pending' : 'approved';
-
-    // Reuse existing row (update) if the student previously left/was removed
-    let member: any;
-    let error: any;
-    if (existing) {
-      ({ data: member, error } = await service
-        .from('group_members')
-        .update({ status: initialStatus, joined_at: new Date().toISOString(), action_reason: null, actioned_at: null, actioned_by: null })
-        .eq('id', existing.id)
-        .select()
-        .single());
-    } else {
-      ({ data: member, error } = await service
-        .from('group_members')
-        .insert({ group_id: groupId, user_id: user.id, status: initialStatus })
-        .select()
-        .single());
-    }
-
-    if (error) throw error;
-
-    // Notify tutor of new join request (non-critical)
-    try {
-      const groupName = (group as any)?.name ?? 'your class';
-      const { data: studentProfile } = await service.from('profiles').select('full_name, display_name').eq('id', user.id).single();
-      const studentName = (studentProfile as any)?.display_name || (studentProfile as any)?.full_name || 'A student';
-      const isRequest = initialStatus === 'pending';
-      // 'join_request' was not a permitted notifications.type until migration
-      // 203, so this insert threw and the empty catch discarded it — tutors
-      // were never told anyone had asked to join. Errors are logged now so the
-      // same class of failure can't hide again.
-      const { error: notifyError } = await service.from('notifications').insert({
-        user_id: group.tutor_id,
-        type: isRequest ? 'join_request' : 'new_class_member',
-        title: isRequest ? `${studentName} wants to join ${groupName}` : `${studentName} joined ${groupName}`,
-        message: isRequest
-          ? `${studentName} has requested to join your class "${groupName}". Go to the Roster to approve or decline.`
-          : `${studentName} has joined "${groupName}".`,
-        link: `/tutor/classes/${groupId}?tab=roster`,
-        group_id: groupId,
-        metadata: { groupId, studentId: user.id },
+    // THE PARENT'S GATE, BEFORE THE TUTOR'S.
+    // A child whose parent set "ask for approval first" does not join here —
+    // they raise a request their parent answers. This route had no such check,
+    // so the setting did nothing for group classes and the parent was never
+    // told. Free classes included: approval is consent, not payment.
+    const gate = await resolveClassJoinGate(service, user.id);
+    if (gate.needsParentApproval) {
+      const request = await createClassJoinRequest(service, {
+        groupId,
+        studentId: user.id,
+        parentId: gate.parentId,
       });
-      if (notifyError) {
-        console.error('[members POST] notification insert failed:', notifyError);
+      if (!request.ok) {
+        return NextResponse.json({ error: 'Could not send the request.' }, { status: 400 });
       }
-    } catch (err) {
-      console.error('[members POST] notification threw:', err);
+      // 202: accepted, not done. The UI must not show this as joined.
+      return NextResponse.json(
+        {
+          parent_approval_required: true,
+          request_id: request.requestId,
+          already_pending: request.alreadyPending,
+          message: request.alreadyPending
+            ? 'Your parent already has this request.'
+            : 'Sent to your parent for approval.',
+        },
+        { status: 202 }
+      );
     }
+
+    // Membership, the tutor's own gate, and the tutor's notification all live in
+    // performGroupJoin, so an approved request and a direct join cannot produce
+    // different roster rows or different notices.
+    const joined = await performGroupJoin(service, { groupId, studentId: user.id });
+    if (!joined.ok) {
+      return NextResponse.json({ error: 'Could not join this class.' }, { status: 400 });
+    }
+
+    const { data: member } = await service
+      .from('group_members')
+      .select('id, group_id, user_id, status')
+      .eq('group_id', groupId)
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    // The tutor's in-app notice AND the tutor's email are both raised inside
+    // performGroupJoin — see the note there about the two never diverging.
 
     return NextResponse.json({ member }, { status: 201 });
   } catch (err) {

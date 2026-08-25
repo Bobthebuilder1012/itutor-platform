@@ -51,6 +51,20 @@ type DecidedRequest = {
   note: string | null;
 };
 
+// A group class asked for, not a 1:1 session. It has a schedule instead of a
+// single time and no closing window — see /api/parent/class-requests for why.
+type PendingClassRequest = {
+  id: string;
+  groupId: string;
+  className: string;
+  tutorName: string;
+  childName: string;
+  priceTtd: number;
+  isFree: boolean;
+  scheduleLabel: string | null;
+  requiresTutorApproval: boolean;
+};
+
 export default function ParentApprovalsPage() {
   return (
     <ParentShell>
@@ -71,14 +85,27 @@ function ApprovalsContent() {
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [classPending, setClassPending] = useState<PendingClassRequest[]>([]);
+
   const load = useCallback(async () => {
     try {
-      const res = await fetch('/api/parent/approvals', { cache: 'no-store' });
+      // Two endpoints because they are two record types — 1:1 bookings and
+      // group-class join requests. Fetched together so the page never shows one
+      // queue while the other is still arriving.
+      const [res, classRes] = await Promise.all([
+        fetch('/api/parent/approvals', { cache: 'no-store' }),
+        fetch('/api/parent/class-requests', { cache: 'no-store' }),
+      ]);
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Could not load your requests');
       setPending(json.pending ?? []);
       setDecided(json.decided ?? []);
       setHasChildren(Boolean(json.hasChildren));
+
+      if (classRes.ok) {
+        const classJson = await classRes.json();
+        setClassPending(classJson.pending ?? []);
+      }
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load your requests');
@@ -164,6 +191,40 @@ function ApprovalsContent() {
     }
   };
 
+  const decideClass = async (id: string, approved: boolean) => {
+    setBusyId(id);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/parent/class-requests/${id}/${approved ? 'approve' : 'decline'}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: approved ? undefined : JSON.stringify({ reason: reason.trim() || null }),
+        }
+      );
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(json.error ?? 'That could not be answered.');
+      } else if (approved) {
+        flash(
+          json.awaitingTutor
+            ? 'Approved. The tutor accepts who joins this class, so it is with them now.'
+            : 'Approved. They are in the class.'
+        );
+      } else {
+        flash('Declined.');
+      }
+      setDecliningId(null);
+      setReason('');
+      await load();
+    } catch {
+      setError('Something went wrong.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24 text-muted-foreground">
@@ -211,7 +272,7 @@ function ApprovalsContent() {
         </div>
       )}
 
-      {hasChildren && pending.length === 0 && (
+      {hasChildren && pending.length === 0 && classPending.length === 0 && (
         <div className="rounded-2xl border border-border bg-background p-6">
           <ShieldCheck className="h-8 w-8 text-brand" />
           <p className="mt-3 text-sm text-ink">Nothing is waiting on you.</p>
@@ -220,6 +281,116 @@ function ApprovalsContent() {
           </p>
         </div>
       )}
+
+      {/* Group classes. Same queue, different record: a class has a schedule
+          rather than one session time, and no closing window — so the two
+          things a 1:1 card leads with are simply absent here rather than
+          faked. */}
+      {classPending.map((r) => (
+        <article key={r.id} className="rounded-2xl border border-border bg-background p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-sm font-semibold text-ink">{r.childName} wants to join</div>
+            <span className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-bold text-muted-foreground">
+              Group class
+            </span>
+          </div>
+
+          <h2 className="mt-2 text-lg font-bold text-ink">{r.className}</h2>
+          <p className="text-sm text-muted-foreground">
+            {r.tutorName}
+            {r.scheduleLabel ? ` · Next session ${r.scheduleLabel}` : ''}
+          </p>
+
+          <div className="mt-4 rounded-xl border border-border bg-muted/40 p-4">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Price as listed
+            </div>
+            <div className="text-2xl font-extrabold tabular-nums text-ink">
+              {r.isFree ? 'Free' : fmtTTD(r.priceTtd)}
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {r.isFree
+                ? 'No payment is involved. You are approving the enrolment itself.'
+                : 'Approving takes you to the payment step.'}
+            </p>
+          </div>
+
+          <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+            <p className="text-xs leading-relaxed text-amber-900">
+              <strong>This place is not being held.</strong> Another student can take the last place
+              while this sits here.
+              {r.requiresTutorApproval
+                ? ' The tutor also approves who joins, so your approval sends it on to them.'
+                : ''}
+            </p>
+          </div>
+
+          {decliningId === r.id ? (
+            <div className="mt-4 space-y-2">
+              <label
+                className="block text-xs font-medium text-muted-foreground"
+                htmlFor={`class-reason-${r.id}`}
+              >
+                Reason (optional — sent to your child word for word)
+              </label>
+              <input
+                id={`class-reason-${r.id}`}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="Let's talk about this one first."
+                className="w-full rounded-xl border border-border bg-muted/40 px-3 py-2.5 text-sm text-ink placeholder:text-muted-foreground focus:border-brand focus:outline-none"
+              />
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => decideClass(r.id, false)}
+                  disabled={busyId === r.id}
+                  className="rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                >
+                  {busyId === r.id ? 'Sending…' : 'Send decline'}
+                </button>
+                <button
+                  onClick={() => {
+                    setDecliningId(null);
+                    setReason('');
+                  }}
+                  className="rounded-xl border border-border px-4 py-2.5 text-sm font-semibold text-ink"
+                >
+                  Keep pending
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => decideClass(r.id, true)}
+                disabled={busyId === r.id}
+                className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {busyId === r.id ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Check className="h-4 w-4" />
+                )}
+                Approve enrolment
+              </button>
+              <button
+                onClick={() => setDecliningId(r.id)}
+                className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2.5 text-sm font-semibold text-ink"
+              >
+                <X className="h-4 w-4" />
+                Decline
+              </button>
+              <Link
+                href={`/parent/classes/${r.groupId}`}
+                className="text-xs font-semibold text-brand hover:underline"
+              >
+                See the class →
+              </Link>
+            </div>
+          )}
+        </article>
+      ))}
 
       {pending.map((r) => (
         <article key={r.id} className="rounded-2xl border border-border bg-background p-5">
@@ -298,7 +469,7 @@ function ApprovalsContent() {
                 <button
                   onClick={() => decline(r.id)}
                   disabled={busyId === r.id}
-                  className="rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-ink disabled:opacity-60"
+                  className="rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
                 >
                   {busyId === r.id ? 'Sending…' : 'Send decline'}
                 </button>
@@ -318,7 +489,7 @@ function ApprovalsContent() {
               <button
                 onClick={() => approve(r.id)}
                 disabled={busyId === r.id}
-                className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-ink disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
               >
                 {busyId === r.id ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
