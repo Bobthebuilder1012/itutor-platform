@@ -17,6 +17,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ParentAccessError, requireParentContext, requireParentChild } from '@/lib/server/parentAccess';
 import { conflictMessage, findChildScheduleConflict } from '@/lib/services/scheduleConflict';
+import { classifyMembership } from '@/lib/services/groupMembership';
 
 export const dynamic = 'force-dynamic';
 
@@ -114,6 +115,36 @@ export async function POST(request: NextRequest) {
       childLevel && classFormLevel && childLevel !== classFormLevel
     );
 
+    // ---- already in this class --------------------------------------------
+    // Checked BEFORE anything else, because it outranks every other answer: a
+    // child who is already enrolled will always "clash" with this class (their
+    // own sessions are the ones in the way), and telling the parent to pick a
+    // different slot — or asking them to confirm the level — is answering a
+    // question they did not ask. One sentence, the true one, and no CTA.
+    const childFirstName =
+      (child?.display_name || child?.full_name || 'This student').split(' ')[0] || 'This student';
+
+    if (body.groupId) {
+      const membership = await findMembership(admin, body.childId, body.groupId);
+      if (membership) {
+        return NextResponse.json({
+          childLevel,
+          classFormLevel,
+          levelMismatch: false,
+          levelMessage: null,
+          schedule: { checked: false, reason: 'already_in_class' },
+          alternatives: [],
+          alreadyIn: {
+            status: membership,
+            message:
+              membership === 'pending'
+                ? `${childFirstName} has already asked to join this class — the tutor has not answered yet.`
+                : `${childFirstName} is already in this class.`,
+          },
+        });
+      }
+    }
+
     // ---- schedule conflict -------------------------------------------------
     // No window resolved means nothing to compare against — a class with no
     // scheduled sessions yet. Reported as "unknown", not as "clear": telling a
@@ -131,7 +162,11 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const conflict = await findChildScheduleConflict(admin, body.childId, start, end);
+    // The class being considered is excluded from its own conflict check — see
+    // findChildScheduleConflict's excludeGroupId.
+    const conflict = await findChildScheduleConflict(admin, body.childId, start, end, {
+      excludeGroupId: body.groupId ?? null,
+    });
 
     if (!conflict) {
       return NextResponse.json({
@@ -181,6 +216,40 @@ export async function POST(request: NextRequest) {
     console.error('[POST /api/parent/booking/check]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
+}
+
+/**
+ * Is this child already in (or already waiting on) this class? Returns
+ * 'enrolled', 'pending', or null. Both membership tables are consulted because
+ * either one alone can carry a live place: group_members is the roster, and a
+ * paid class's seat lives in group_enrollments.
+ */
+async function findMembership(
+  admin: Awaited<ReturnType<typeof requireParentContext>>['admin'],
+  childId: string,
+  groupId: string
+): Promise<'enrolled' | 'pending' | null> {
+  const [{ data: member }, { data: enrollment }] = await Promise.all([
+    admin
+      .from('group_members')
+      .select('status')
+      .eq('group_id', groupId)
+      .eq('user_id', childId)
+      .maybeSingle(),
+    admin
+      .from('group_enrollments')
+      .select('status')
+      .eq('group_id', groupId)
+      .eq('student_id', childId)
+      .in('status', ['ACTIVE', 'GRACE'])
+      .maybeSingle(),
+  ]);
+
+  if (enrollment) return 'enrolled';
+
+  // classifyMembership, not a literal list: group_members.status carries two
+  // vocabularies depending on which route wrote the row.
+  return classifyMembership((member as { status: string | null } | null)?.status);
 }
 
 type Alternative = {

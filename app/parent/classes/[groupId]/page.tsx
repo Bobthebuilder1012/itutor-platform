@@ -23,6 +23,7 @@ import ParentShell from '@/components/parent/ParentShell';
 import ChildPickerCheck from '@/components/parent/ChildPickerCheck';
 import { Detail, type GroupData } from '@/components/classes/ClassDetailView';
 import { fetchClassDetail } from '@/lib/classes/fetchClassDetail';
+import { isPaidGroup } from '@/lib/payments/groupPricing';
 
 export default function ParentClassPage() {
   return (
@@ -72,7 +73,10 @@ function ClassContent() {
     );
   }
 
-  const isPaid = (group.price_monthly ?? 0) > 0;
+  // The same predicate the server uses, so the page cannot send a free class to
+  // checkout or a paid one to the free join route. price_monthly alone was close
+  // but not identical; isPaidGroup is the one definition.
+  const isPaid = isPaidGroup(group);
 
   const enroll = async (childId: string) => {
     setBusy(true);
@@ -113,15 +117,8 @@ function ClassContent() {
 
   return (
     <>
-      <div className="mb-3">
-        <Link
-          href="/parent/classes"
-          className="text-sm font-semibold text-muted-foreground hover:text-ink"
-        >
-          ← All classes
-        </Link>
-      </div>
-
+      {/* No back link here: <Detail> renders its own "← All classes", and two
+          of them stacked is what the parent page used to show. */}
       {error && (
         <p className="mb-3 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700">
           {error}
@@ -142,7 +139,7 @@ function ClassContent() {
 
       {pickerOpen && (
         <div
-          className="fixed inset-0 z-50 flex overflow-y-auto bg-black/40 p-4"
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:items-center"
           onClick={() => setPickerOpen(false)}
         >
           <div
@@ -166,7 +163,8 @@ function ClassContent() {
               </button>
             </div>
 
-            <ChildPickerCheck groupId={group.id} onReady={setReadyChildId} />
+            {/* The dialog's own h2 already asks it. */}
+            <ChildPickerCheck groupId={group.id} onReady={setReadyChildId} showHeading={false} />
 
             <button
               onClick={() => readyChildId && enroll(readyChildId)}

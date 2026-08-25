@@ -39,6 +39,8 @@ type CheckResult = {
     | { checked: true; clear: boolean; message: string; detail?: string };
   alternatives: Alternative[];
   alternativesMessage?: string | null;
+  /** Set when the child is already in — or already waiting on — this class. */
+  alreadyIn?: { status: 'enrolled' | 'pending'; message: string } | null;
 };
 
 export default function ChildPickerCheck({
@@ -46,12 +48,15 @@ export default function ChildPickerCheck({
   start,
   end,
   onReady,
+  showHeading = true,
 }: {
   groupId?: string | null;
   start?: string | null;
   end?: string | null;
   /** Called with the child to book for, or null while the parent cannot proceed. */
   onReady?: (childId: string | null) => void;
+  /** False where the surrounding dialog already asks "Who is this for?". */
+  showHeading?: boolean;
 }) {
   const [children, setChildren] = useState<Child[]>([]);
   const [childId, setChildId] = useState<string | null>(null);
@@ -109,9 +114,11 @@ export default function ChildPickerCheck({
   // A clash blocks; a level mismatch only needs acknowledging. That asymmetry is
   // §5's, not an accident: one is a fact about the child's diary, the other is a
   // judgement the parent is entitled to make.
+  const alreadyIn = result?.alreadyIn ?? null;
   const clashes = result?.schedule.checked === true && result.schedule.clear === false;
   const needsLevelAck = Boolean(result?.levelMismatch) && !levelAccepted;
-  const canProceed = Boolean(childId) && !checking && !clashes && !needsLevelAck;
+  const canProceed =
+    Boolean(childId) && !checking && !alreadyIn && !clashes && !needsLevelAck;
 
   useEffect(() => {
     onReady?.(canProceed ? childId : null);
@@ -135,7 +142,7 @@ export default function ChildPickerCheck({
         </p>
       ) : (
         <>
-          <p className="text-sm font-semibold text-ink">Who is this for?</p>
+          {showHeading && <p className="text-sm font-semibold text-ink">Who is this for?</p>}
           <div className="flex flex-wrap gap-2">
             {children.map((c) => (
               <button
@@ -169,7 +176,16 @@ export default function ChildPickerCheck({
         </div>
       )}
 
-      {result && !checking && (
+      {/* Already in the class: the one true reason, said alone. A level
+          confirmation or a list of alternatives underneath it would be
+          answering a question the parent has not reached. */}
+      {result && !checking && alreadyIn && (
+        <Row tone="neutral" icon={<Info className="size-4" />}>
+          {alreadyIn.message}
+        </Row>
+      )}
+
+      {result && !checking && !alreadyIn && (
         <div className="space-y-2">
           {result.schedule.checked === false ? (
             <Row tone="neutral" icon={<Info className="size-4" />}>
@@ -221,19 +237,22 @@ export default function ChildPickerCheck({
             </>
           )}
 
+          {/* Amber on a light card: the ink has to be dark. The earlier
+              amber-100 text was written for a dark surface and vanished into
+              the modal's white background. */}
           {result.levelMismatch && (
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-3">
-              <p className="text-xs leading-relaxed text-amber-100">{result.levelMessage}</p>
+            <div className="rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-3">
+              <p className="text-xs leading-relaxed text-amber-900">{result.levelMessage}</p>
               <button
                 onClick={() => setLevelAccepted((v) => !v)}
-                className="mt-2 inline-flex items-center gap-2 text-xs font-semibold text-amber-100"
+                className="mt-2 inline-flex items-center gap-2 text-xs font-semibold text-amber-900"
               >
                 <span
-                  className={`grid size-4 place-items-center rounded border-2 border-amber-300 ${
-                    levelAccepted ? 'bg-amber-300' : ''
+                  className={`grid size-4 place-items-center rounded border-2 border-amber-600 ${
+                    levelAccepted ? 'bg-amber-600' : ''
                   }`}
                 >
-                  {levelAccepted && <Check className="size-2.5 text-amber-900" strokeWidth={4} />}
+                  {levelAccepted && <Check className="size-2.5 text-white" strokeWidth={4} />}
                 </span>
                 Yes, this is the class I want
               </button>
@@ -247,6 +266,9 @@ export default function ChildPickerCheck({
       )}
       {clashes && (
         <p className="text-xs text-muted-foreground">Resolve the clash to continue.</p>
+      )}
+      {alreadyIn && children.length > 1 && (
+        <p className="text-xs text-muted-foreground">Pick another child to continue.</p>
       )}
       {canProceed && (
         /* §5: no approval step — the parent is the decision-maker. */
