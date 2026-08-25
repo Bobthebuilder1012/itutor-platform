@@ -17,6 +17,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { sendEmail, logEmailSend } from '@/lib/services/emailService';
+import { renderEmail, type EmailBlock } from '@/lib/email/design';
 import { notifyInApp } from '@/lib/server/bookingRequestNotify';
 import { shouldNotify } from '@/lib/server/notificationPreferences';
 import { LONG_PAUSE_WEEKS, isLongPause } from '@/lib/payments/tutorPause';
@@ -40,30 +41,22 @@ function fmtDate(iso: string | null): string {
   }
 }
 
-function shell(body: string): string {
-  return `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;margin:0 auto;color:#111827;line-height:1.6">${body}</div>`;
-}
-
-function button(label: string, href: string, primary = true): string {
-  const bg = primary ? '#199356' : '#fff';
-  const fg = primary ? '#fff' : '#111827';
-  const border = primary ? '#199356' : '#d1d5db';
-  return `<a href="${href}" style="display:inline-block;background:${bg};color:${fg};border:1px solid ${border};text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600">${label}</a>`;
-}
-
 /**
- * The cancel option. Given EQUAL visual weight for long pauses rather than
- * buried — with no platform cap on pause length, informed family choice is the
- * only thing standing in for one.
+ * The cancel option, as a block.
+ *
+ * Given EQUAL weight for long pauses rather than buried — with no platform cap
+ * on pause length, informed family choice is the only thing standing in for one.
+ * In the design system that is a plain notice plus the secondary link under the
+ * button, which is the most prominent place for a second action that does not
+ * compete with the first.
  */
-function cancelBlock(className: string): string {
-  return `<div style="margin:18px 0;padding:14px;border:1px solid #e5e7eb;border-radius:10px">
-    <p style="margin:0 0 10px;font-size:14px">
-      This is a long break. If you would rather not wait, you can cancel
-      <strong>${className}</strong> instead — your place is held either way until you decide.
-    </p>
-    ${button('Cancel this class', appUrl('/parent/subscriptions'), false)}
-  </div>`;
+function cancelNotice(className: string): EmailBlock {
+  return {
+    kind: 'notice',
+    tone: 'neutral',
+    title: 'This is a long break',
+    body: `If you would rather not wait, you can cancel ${className} instead — your place is held either way until you decide. The link is under the button.`,
+  };
 }
 
 type Recipient = { id: string; email: string | null; name: string | null; isParent: boolean };
@@ -153,7 +146,7 @@ export async function fanOutPauseNotice(
         : false;
 
     for (const r of recipients) {
-      const { subject, html, inAppTitle, inAppBody } = compose({
+      const { subject, html, text, inAppTitle, inAppBody } = compose({
         kind: params.kind,
         className,
         tutorFirst,
@@ -197,7 +190,7 @@ export async function fanOutPauseNotice(
         continue;
       }
 
-      const result = await sendEmail({ to: r.email, subject, html });
+      const result = await sendEmail({ to: r.email, subject, html, text });
       await logEmailSend({
         userId: r.id,
         emailType: `tutor_pause_${params.kind}`,
@@ -295,78 +288,128 @@ function compose(params: {
   long: boolean;
   forParent: boolean;
   firstName: string;
-}): { subject: string; html: string; inAppTitle: string; inAppBody: string } {
+}): { subject: string; html: string; text: string; inAppTitle: string; inAppBody: string } {
   const { className, tutorFirst, pauseStart, pauseEnd, renewal, long } = params;
   const from = fmtDate(pauseStart);
   const until = fmtDate(pauseEnd);
   const charge = fmtDate(renewal);
 
   // The charge sentence differs for a student, who is not the one being charged.
-  const chargeLine = params.forParent
-    ? `your next charge moves to <strong>${charge}</strong>`
-    : `the next payment moves to <strong>${charge}</strong>`;
+  const chargeLabel = params.forParent ? 'Your next charge' : 'Next payment';
 
-  const seatLine = '<strong>Your place is held</strong>';
+  // Family 10. A pause is a schedule change to something already agreed, which
+  // is exactly what that family is for, and the reader's question is always
+  // "when, and what happens to my money" — so both are a detail panel rather
+  // than bold words inside a sentence.
+  const classesCta = { label: 'View class', href: appUrl('/student/classes') };
+  const cancelCta = { label: 'Cancel this class instead', href: appUrl('/parent/subscriptions') };
+  const showCancel = long && params.forParent;
 
   if (params.kind === 'resuming_early') {
     // §9.4 — the whole purpose is preventing an unexpected charge.
     const subject = `${className} resumes on ${until}`;
+    const email = renderEmail({
+      family: 'schedule-change',
+      subject,
+      heading: `${className} is coming back early`,
+      intro: `Hi ${params.firstName}, this is earlier than previously advised.`,
+      eyebrow: 'Break shortened',
+      blocks: [
+        {
+          kind: 'details',
+          rows: [
+            { label: 'Resumes', value: until, strong: true },
+            { label: chargeLabel, value: charge },
+          ],
+        },
+        { kind: 'paragraph', text: 'Because the break is shorter, the payment date moves with it.' },
+      ],
+      cta: classesCta,
+    });
     return {
       subject,
       inAppTitle: `${className} resumes on ${until}`,
       inAppBody: `Earlier than previously advised. Billing restarts ${charge}.`,
-      html: shell(`
-        <p>Hi ${params.firstName},</p>
-        <p><strong>${className}</strong> is coming back <strong>earlier than previously advised</strong> —
-           it resumes on <strong>${until}</strong>.</p>
-        <p>Because the break is shorter, ${chargeLine}.</p>
-        <p>${button('View class', appUrl('/student/classes'))}</p>
-      `),
+      html: email.html,
+      text: email.text,
     };
   }
 
   if (params.kind === 'extended') {
     // §9.3
     const subject = `${className} break has been extended`;
+    const email = renderEmail({
+      family: 'schedule-change',
+      subject,
+      heading: `The break on ${className} is longer`,
+      intro: `Hi ${params.firstName}, ${tutorFirst} has extended it.`,
+      eyebrow: 'Break extended',
+      blocks: [
+        {
+          kind: 'compare',
+          beforeLabel: 'Was due to resume',
+          before: fmtDate(params.previousEnd),
+          afterLabel: 'Now resumes',
+          after: until,
+        },
+        {
+          kind: 'details',
+          rows: [
+            { label: 'Your place', value: 'Held', strong: true },
+            { label: 'During the break', value: 'No payment taken' },
+            { label: chargeLabel, value: charge },
+          ],
+        },
+        ...(showCancel ? [cancelNotice(className)] : []),
+      ],
+      cta: classesCta,
+      secondary: showCancel ? cancelCta : undefined,
+    });
     return {
       subject,
       inAppTitle: `${className} break extended to ${until}`,
       inAppBody: `Your place is held. Next charge ${charge}.`,
-      html: shell(`
-        <p>Hi ${params.firstName},</p>
-        <p>${tutorFirst} has <strong>extended the break</strong> on <strong>${className}</strong>.</p>
-        <p>It was due to resume on <strong>${fmtDate(params.previousEnd)}</strong>; it will now resume on
-           <strong>${until}</strong>.</p>
-        <p>${seatLine}, no payment is taken during the break, and ${chargeLine}.</p>
-        ${long && params.forParent ? cancelBlock(className) : ''}
-        <p>${button('View class', appUrl('/student/classes'))}</p>
-      `),
+      html: email.html,
+      text: email.text,
     };
   }
 
   // §9.1 / §9.2 — the four facts, cause named first.
   const subject = `${className} is on break`;
+  const email = renderEmail({
+    family: 'schedule-change',
+    subject,
+    heading: `${className} is on break`,
+    intro: `Hi ${params.firstName}, ${tutorFirst} has paused the class.`,
+    eyebrow: 'Class paused',
+    blocks: [
+      {
+        kind: 'details',
+        rows: [
+          { label: 'From', value: from },
+          { label: 'Until', value: until, strong: true },
+          { label: 'Your place', value: 'Held' },
+          { label: 'During the break', value: 'No payment taken' },
+          { label: chargeLabel, value: charge },
+        ],
+      },
+      {
+        kind: 'paragraph',
+        text:
+          'You are not losing the sessions — the dates move. Nothing is being refunded because nothing has been taken for teaching you have not had.',
+      },
+      ...(showCancel ? [cancelNotice(className)] : []),
+    ],
+    cta: classesCta,
+    secondary: showCancel ? cancelCta : undefined,
+    closing: long ? undefined : 'You can cancel at any time from your subscriptions page.',
+  });
   return {
     subject,
     inAppTitle: `${className} is on break until ${until}`,
     inAppBody: `Your place is held. Next charge ${charge}.`,
-    html: shell(`
-      <p>Hi ${params.firstName},</p>
-      <p><strong>${className}</strong> is on break from <strong>${from}</strong> until
-         <strong>${until}</strong>. ${tutorFirst} has paused the class.</p>
-      <p>${seatLine}, no payment will be taken during the break, and ${chargeLine}.</p>
-      <p style="color:#4b5563;font-size:14px">
-        You are not losing the sessions — the dates move. Nothing is being refunded because nothing
-        has been taken for teaching you have not had.
-      </p>
-      ${long && params.forParent ? cancelBlock(className) : ''}
-      <p>${button('View class', appUrl('/student/classes'))}</p>
-      ${
-        long
-          ? ''
-          : `<p style="color:#9ca3af;font-size:12px">You can cancel at any time from your subscriptions page.</p>`
-      }
-    `),
+    html: email.html,
+    text: email.text,
   };
 }
 

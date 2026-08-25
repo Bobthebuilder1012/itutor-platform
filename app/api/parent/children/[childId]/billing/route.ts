@@ -20,6 +20,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { ParentAccessError, requireParentContext, requireParentChild } from '@/lib/server/parentAccess';
 import { checkSpendLimit, getChildBilling, setSelfPay } from '@/lib/server/childBilling';
 import { sendEmail, logEmailSend } from '@/lib/services/emailService';
+import { renderEmail } from '@/lib/email/design';
 import { notifyInApp } from '@/lib/server/bookingRequestNotify';
 
 export const dynamic = 'force-dynamic';
@@ -196,27 +197,46 @@ async function sendSelfPayAlert(
   if (!params.parentEmail) return;
 
   const first = (params.parentName ?? 'there').split(' ')[0];
-  const subject = `Security alert: ${childName} can now pay for their own classes`;
-  const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;margin:0 auto;color:#111827;line-height:1.6">
-    <p>Hi ${first},</p>
-    <p><strong>Self-pay was just turned on for ${childName}.</strong> They can now pay for their own
-       classes with their own card, and their bookings no longer come to you for approval.</p>
-    <p>This took effect immediately.</p>
-    <p style="background:#f9fafb;border-left:3px solid #199356;padding:12px 14px">
-      <strong>If this was you, no action is required.</strong>
-    </p>
-    <p style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 14px;color:#991b1b">
-      <strong>If this was not you</strong>, someone has used your account. Change your password now —
-      completing a password change turns self-pay back off for every child on your account.
-    </p>
-    <p><a href="${appUrl('/forgot-password')}"
-          style="display:inline-block;background:#199356;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600">Secure my account</a></p>
-    <p style="color:#6b7280;font-size:13px">
-      You can also turn self-pay off yourself at any time under Settings → Children.
-    </p>
-  </div>`;
+  // Family 03. This is a security alert in the strict sense — a change to who
+  // can spend money on the account — so it takes that family's red accent
+  // rather than the platform green, and the two "if this was / was not you"
+  // halves are the tinted panels the family is built around.
+  const { subject, html, text } = renderEmail({
+    family: 'security-alert',
+    subject: `Security alert: ${childName} can now pay for their own classes`,
+    heading: `Self-pay was turned on for ${childName}`,
+    intro: `Hi ${first}, this took effect immediately.`,
+    blocks: [
+      {
+        kind: 'details',
+        rows: [
+          { label: 'Change', value: 'Self-pay turned on' },
+          { label: 'Child', value: childName, strong: true },
+          { label: 'Effect', value: 'Their bookings no longer need your approval' },
+        ],
+      },
+      {
+        kind: 'paragraph',
+        text: 'They can now pay for their own classes with their own card.',
+      },
+      {
+        kind: 'notice',
+        tone: 'success',
+        title: 'If this was you, no action is required',
+        body: 'You can turn self-pay off again at any time under Settings → Children.',
+      },
+      {
+        kind: 'notice',
+        tone: 'alert',
+        title: 'If this was not you, someone has used your account',
+        body:
+          'Change your password now — completing a password change turns self-pay back off for every child on your account.',
+      },
+    ],
+    cta: { label: 'Secure my account', href: appUrl('/forgot-password') },
+  });
 
-  const result = await sendEmail({ to: params.parentEmail, subject, html });
+  const result = await sendEmail({ to: params.parentEmail, subject, html, text });
   await logEmailSend({
     userId: params.parentId,
     emailType: 'self_pay_security_alert',

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { findClash, reservedCount } from '@/lib/classMatchWeek/reservations';
+import { reservationConfirmationEmail } from '@/lib/classMatchWeek/reminderEmails';
+import { sendEmail } from '@/lib/services/emailService';
 import type { ClassMatchSession } from '@/lib/classMatchWeek/types';
 
 export const dynamic = 'force-dynamic';
@@ -129,6 +131,60 @@ export async function POST(req: NextRequest) {
         ?.display_name ||
       (profile as { display_name: string | null; full_name: string | null } | null)?.full_name ||
       'iTutor teacher';
+
+    // The confirmation email, best-effort and after the seat is safely held.
+    //
+    // Email is the campaign's only contact channel — it collects an address and
+    // no phone number — so this is the only record the family has of what they
+    // booked until the reminders go out. It is awaited rather than fired and
+    // forgotten because a serverless function can be frozen the moment it
+    // responds, which would drop the send; and every failure is swallowed,
+    // because a reserved seat must never be reported as a failed reservation
+    // over a mail problem.
+    try {
+      const { data: group } = await service
+        .from('groups')
+        .select('name')
+        .eq('id', session.group_id)
+        .maybeSingle();
+
+      const { data: me } = await service
+        .from('profiles')
+        .select('email, display_name, full_name')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      const recipient = me as {
+        email: string | null;
+        display_name: string | null;
+        full_name: string | null;
+      } | null;
+
+      if (recipient?.email) {
+        const firstName = (recipient.display_name || recipient.full_name || '')
+          .trim()
+          .split(/\s+/)[0];
+
+        const email = reservationConfirmationEmail({
+          appUrl: process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin,
+          session,
+          className: (group as { name: string } | null)?.name ?? 'the class',
+          teacherName,
+          discountPercent: session.discount_percent,
+          recipientName: firstName || null,
+        });
+
+        await sendEmail({
+          to: recipient.email,
+          subject: email.subject,
+          html: email.html,
+          text: email.text,
+        });
+      }
+    } catch (mailError) {
+      // Loud but non-blocking. This log line is the only trace.
+      console.error('[POST class-match/reserve] confirmation email failed', mailError);
+    }
 
     return NextResponse.json(
       {

@@ -152,6 +152,44 @@ without one — which is most of them (see
 [01-foundations §1.3](./01-foundations.md)). And `EMAIL_ALLOWLIST` must be set on
 staging before any reminder is exercised there, or the test mails real people.
 
+### Built
+
+Three emails, all in the platform's email design system (`lib/email/design`):
+
+| Email | When | Family |
+| --- | --- | --- |
+| Reservation confirmation | On a successful `POST /api/class-match/reserve` | `booking-confirmation` |
+| 24-hour reminder | 23–24h before the taster | `session-reminder` |
+| 1-hour reminder | 30–90 min before the taster | `session-reminder` |
+
+Copy lives in `lib/classMatchWeek/reminderEmails.ts`; the reminders are sent by
+`/api/cron/class-match-reminders`, registered every five minutes.
+
+**The join link is the join route, not the Meet URL.** The concern above is real
+but does not apply to a taster: a `class_match_sessions` row carries its own
+`meet_link`, and `/api/class-match/sessions/[id]/join` records the join click,
+issues the coupon and only then redirects to the room. Emailing the raw Meet link
+would take the family to class and lose both the metric and the discount. That
+route now redirects a signed-out click to `/login?redirect=`… rather than
+answering 401 with JSON, because it is a button in an email.
+
+**Only the 1-hour reminder carries a live Join button.** The join window opens two
+hours ahead, so at 24 hours the button would answer "not yet"; that email links to
+the portal instead.
+
+**Sends are recorded, not queued** (migration 237, `class_match_reminder_sends`).
+Nothing needs scheduling — the taster times and the seat holders are both known,
+so the only fact the cron cannot derive is what it has already sent. The
+`UNIQUE (session_id, user_id, kind)` is the deduplication. The ledger row is
+written only after a successful send, so a failure retries on the next run: a
+reminder sent twice is an annoyance, one never sent is a family who does not turn
+up.
+
+**A cancellation email is written but not wired.** §1.3's floor is that a
+cancelled taster stops showing as upcoming and no automatic email is sent.
+`cancellationEmail()` exists so that when we choose to do better than the floor,
+the copy has already been reviewed.
+
 ---
 
 ## 4.5 Explore page

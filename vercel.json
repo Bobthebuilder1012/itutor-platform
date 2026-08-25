@@ -33,6 +33,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/cron/class-match-reminders",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/cron/backfill-retention",
       "schedule": "30 5 * * *"
     },

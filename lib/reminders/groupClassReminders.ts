@@ -16,6 +16,7 @@
 
 import { type SupabaseClient } from '@supabase/supabase-js';
 import { sendEmail } from '@/lib/services/emailService';
+import { renderEmail } from '@/lib/email/design';
 
 /** All class times are Trinidad times. */
 const TRINIDAD_TZ = 'America/Port_of_Spain';
@@ -159,29 +160,40 @@ export async function sendGroupOccurrenceReminder(args: {
     result.claimed += 1;
 
     try {
-      const subject =
-        reminderType === 'today'
+      // Families 06 — the same session-reminder shape as one-to-one reminders,
+      // so a parent who gets both does not see two different kinds of email
+      // about two classes on the same evening.
+      const startingToday = reminderType === 'today';
+      const { subject, html, text } = renderEmail({
+        family: 'session-reminder',
+        subject: startingToday
           ? `${groupName} starts today`
-          : `${groupName} starts in 10 minutes`;
+          : `${groupName} starts in 10 minutes`,
+        heading: startingToday ? 'Your class is today' : 'Your class starts in 10 minutes',
+        intro: r.name ? `Hi ${r.name}, here are the details.` : 'Here are the details.',
+        badge: startingToday ? 'Today' : '10m',
+        blocks: [
+          {
+            kind: 'card',
+            title: groupName,
+            lines: [`${fmtTime(startAt)} · ${fmtDate(startAt)}`],
+          },
+          {
+            kind: 'paragraph',
+            text: startingToday
+              ? r.type === 'tutor'
+                ? 'This is the first session of the schedule you set. Your students have been told too.'
+                : 'This is the first session of the class. See you there.'
+              : 'The room is open — join a couple of minutes early if you can.',
+          },
+        ],
+        cta: {
+          label: startingToday ? 'Open the class' : 'Join now',
+          href: link,
+        },
+      });
 
-      const html =
-        reminderType === 'today'
-          ? `
-            <p>Hi ${r.name ?? 'there'},</p>
-            <p><strong>${groupName}</strong> starts today at <strong>${fmtTime(startAt)}</strong>.</p>
-            ${r.type === 'tutor'
-              ? `<p>This is the first session of the schedule you set. Your students have been told too.</p>`
-              : `<p>This is the first session of the class. See you there.</p>`}
-            <p><a href="${link}">Open the class</a></p>
-          `
-          : `
-            <p>Hi ${r.name ?? 'there'},</p>
-            <p><strong>${groupName}</strong> starts in about 10 minutes
-               (${fmtTime(startAt)}, ${fmtDate(startAt)}).</p>
-            <p><a href="${link}">Join now</a></p>
-          `;
-
-      await sendEmail({ to: r.email, subject, html: html.trim() });
+      await sendEmail({ to: r.email, subject, html, text });
       result.sent += 1;
 
       await admin.from('notifications').insert({

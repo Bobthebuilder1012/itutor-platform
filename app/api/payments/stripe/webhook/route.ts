@@ -44,14 +44,13 @@ import { confirmSecuredSpot } from '@/lib/services/secureSpotService';
 import { sendEmail } from '@/lib/services/emailService';
 import {
   buildReceiptData,
-  renderReceiptHtml,
-  receiptSubject,
-  renderTutorBookingHtml,
-  tutorBookingSubject,
   buildSubscriptionReceiptData,
-  renderSubscriptionReceiptHtml,
-  subscriptionReceiptSubject,
-  renderTutorNewMemberHtml,
+  // The subject and the body come from one call now, so the subject cannot
+  // describe a different email than the one being sent.
+  receiptEmail,
+  tutorBookingEmail,
+  subscriptionReceiptEmail,
+  tutorNewMemberEmail,
 } from '@/lib/payments/receipt';
 
 export const dynamic = 'force-dynamic';
@@ -116,8 +115,7 @@ async function sendReceiptEmail(admin: AdminClient, paymentId: string) {
         run: () =>
           sendEmail({
             to: data.payerEmail!,
-            subject: receiptSubject(data),
-            html: renderReceiptHtml(data, { appUrl }),
+            ...receiptEmail(data, { appUrl }),
           }),
       });
     } else {
@@ -132,8 +130,7 @@ async function sendReceiptEmail(admin: AdminClient, paymentId: string) {
         run: () =>
           sendEmail({
             to: data.tutorEmail!,
-            subject: tutorBookingSubject(data),
-            html: renderTutorBookingHtml(data, { appUrl }),
+            ...tutorBookingEmail(data, { appUrl }),
           }),
       });
     } else {
@@ -1479,8 +1476,7 @@ async function sendSubscriptionEmails(admin: AdminClient, subscriptionPaymentId:
         run: () =>
           sendEmail({
             to: d.studentEmail!,
-            subject: subscriptionReceiptSubject(d),
-            html: renderSubscriptionReceiptHtml(d, { appUrl }),
+            ...subscriptionReceiptEmail(d, { appUrl }),
           }),
       });
     }
@@ -1498,8 +1494,7 @@ async function sendSubscriptionEmails(admin: AdminClient, subscriptionPaymentId:
         run: () =>
           sendEmail({
             to: d.tutorEmail!,
-            subject: `${d.studentName} joined ${d.className}`,
-            html: renderTutorNewMemberHtml(d, { appUrl }),
+            ...tutorNewMemberEmail(d, { appUrl }),
           }),
       });
     }
