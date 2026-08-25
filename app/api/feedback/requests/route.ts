@@ -183,7 +183,7 @@ async function notifyTutor(
         body: 'There is no deadline. Write it when you have something worth saying.',
       },
     ],
-    cta: { label: 'Open your students', href: `${base}/tutor/students` },
+    cta: { label: 'Open your clients', href: `${base}/tutor/clients` },
   });
 
   const result = await sendEmail({ to: tutor.email, subject, html, text });
