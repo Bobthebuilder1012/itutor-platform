@@ -131,27 +131,33 @@ UPDATE public.groups
 -- NOT VALID: these tables hold live rows and the backfill above already
 -- satisfies every predicate. Validate separately once phase A is proven, so a
 -- long ACCESS EXCLUSIVE scan is not part of the deploy.
+ALTER TABLE public.groups DROP CONSTRAINT IF EXISTS groups_class_format_check;
 ALTER TABLE public.groups
   ADD CONSTRAINT groups_class_format_check
   CHECK (class_format IN ('online','physical','hybrid')) NOT VALID;
 
+ALTER TABLE public.groups DROP CONSTRAINT IF EXISTS groups_venue_visibility_check;
 ALTER TABLE public.groups
   ADD CONSTRAINT groups_venue_visibility_check
   CHECK (venue_visibility IN ('public','after_enrolment')) NOT VALID;
 
+ALTER TABLE public.groups DROP CONSTRAINT IF EXISTS groups_venue_required_when_physical_check;
 ALTER TABLE public.groups
   ADD CONSTRAINT groups_venue_required_when_physical_check
   CHECK (class_format = 'online' OR venue_id IS NOT NULL) NOT VALID;
 
+ALTER TABLE public.groups DROP CONSTRAINT IF EXISTS groups_cash_requires_physical_check;
 ALTER TABLE public.groups
   ADD CONSTRAINT groups_cash_requires_physical_check
   CHECK (accepts_cash = false OR class_format <> 'online') NOT VALID;
 
+ALTER TABLE public.groups DROP CONSTRAINT IF EXISTS groups_seat_caps_nonneg_check;
 ALTER TABLE public.groups
   ADD CONSTRAINT groups_seat_caps_nonneg_check
   CHECK ((max_students_online   IS NULL OR max_students_online   >= 0)
      AND (max_students_physical IS NULL OR max_students_physical >= 0)) NOT VALID;
 
+ALTER TABLE public.groups DROP CONSTRAINT IF EXISTS groups_seat_prices_nonneg_check;
 ALTER TABLE public.groups
   ADD CONSTRAINT groups_seat_prices_nonneg_check
   CHECK ((price_online_ttd   IS NULL OR price_online_ttd   >= 0)
@@ -162,6 +168,7 @@ ALTER TABLE public.groups
 ALTER TABLE public.group_enrollments
   ADD COLUMN IF NOT EXISTS seat_type text NOT NULL DEFAULT 'online';
 
+ALTER TABLE public.group_enrollments DROP CONSTRAINT IF EXISTS group_enrollments_seat_type_check;
 ALTER TABLE public.group_enrollments
   ADD CONSTRAINT group_enrollments_seat_type_check
   CHECK (seat_type IN ('online','physical')) NOT VALID;
