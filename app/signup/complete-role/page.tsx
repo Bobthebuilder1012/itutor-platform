@@ -209,10 +209,13 @@ export default function CompleteRolePage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center p-4" style={{ background: 'linear-gradient(135deg, #071a0e 0%, #0d2318 50%, #0a1e14 100%)' }}>
-      <div className="w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl">
+      <div className="w-full max-w-md rounded-3xl bg-white shadow-2xl">
 
         {/* Dark header with logo */}
-        <div className="flex items-center justify-center px-8 py-6" style={{ background: 'linear-gradient(135deg, #071a0e 0%, #0d2318 100%)' }}>
+        {/* rounded-t-3xl here rather than overflow-hidden on the card: this
+            gradient is the only square-cornered thing in the card, and clipping
+            it at the card level also clipped the institution dropdown below. */}
+        <div className="flex items-center justify-center rounded-t-3xl px-8 py-6" style={{ background: 'linear-gradient(135deg, #071a0e 0%, #0d2318 100%)' }}>
           <img src="/assets/logo/itutor-logo-new.png" alt="iTutor" className="h-12 w-auto object-contain" />
         </div>
 
