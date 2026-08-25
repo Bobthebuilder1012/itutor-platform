@@ -107,6 +107,7 @@ export default function ExploreClassDetailPage() {
           )}
           {step === 'joined' && <JoinedScreen group={group} kind="enrolled" />}
           {step === 'awaiting-approval' && <JoinedScreen group={group} kind="awaiting-approval" />}
+          {step === 'awaiting-parent' && <JoinedScreen group={group} kind="awaiting-parent" />}
         </Modal>
       )}
     </>
