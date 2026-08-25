@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import { getDisplayName } from '@/lib/utils/displayName';
@@ -453,6 +454,24 @@ export default function StudentSettingsPage() {
                   <div className="p-4 rounded-xl border border-dashed border-border text-sm text-muted-foreground text-center">
                     Payment method management coming soon
                   </div>
+                </div>
+
+                {/* Transactions used to be its own sidebar item. It lives here
+                    now, next to the rest of the money. */}
+                <div>
+                  <div className="text-sm font-medium text-ink mb-3">Transactions</div>
+                  <Link
+                    href="/student/transactions"
+                    className="flex items-center justify-between gap-3 p-4 rounded-xl border border-border hover:bg-muted transition"
+                  >
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-ink">Payment history</span>
+                      <span className="block text-xs text-muted-foreground">
+                        Every charge and refund on your account.
+                      </span>
+                    </span>
+                    <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                  </Link>
                 </div>
               </>
             )}

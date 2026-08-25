@@ -53,7 +53,8 @@ const nav: NavItem[] = [
   { to: '/student/classes', label: 'My Classes', icon: GraduationCap, tint: 'bg-sky-500/20 text-sky-300 ring-1 ring-sky-400/30' },
   { to: '/student/bookings', label: 'My Bookings', icon: CalendarDays, tint: 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-400/30' },
   { to: '/student/subscriptions', label: 'Subscriptions', icon: CreditCard, tint: 'bg-purple-500/20 text-purple-300 ring-1 ring-purple-400/30' },
-  { to: '/student/transactions', label: 'Transactions', icon: ReceiptText, tint: 'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-400/30' },
+  // Transactions moved into Settings → Billing. A payment history is something a
+  // student looks up occasionally; the sidebar is for the places they go weekly.
   { to: '/student/tools', label: 'Tools', icon: Wrench, tint: 'bg-violet-500/20 text-violet-300 ring-1 ring-violet-400/30' },
 ];
 
