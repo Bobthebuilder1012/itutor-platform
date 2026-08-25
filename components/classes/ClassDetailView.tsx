@@ -42,7 +42,7 @@ import { preorderEligibility, computeReleaseDate, isShortClass } from '@/lib/pay
 import { classCapacityDisplay } from '@/lib/utils/classCapacity';
 import TutorCredentials from '@/components/TutorCredentials';
 
-export type Step = 'detail' | 'join' | 'joined' | 'awaiting-approval';
+export type Step = 'detail' | 'join' | 'joined' | 'awaiting-approval' | 'awaiting-parent';
 
 type Occurrence = {
   id: string;
@@ -75,6 +75,8 @@ export type GroupData = {
   tutor_id: string;
   price_monthly: number | null;
   price_per_session: number | null;
+  // Carried so callers ask isPaidGroup() the same question the server asks.
+  pricing_model?: string | null;
   max_students: number;
   require_join_requests: boolean;
   feedback_mode: string | null;
@@ -1115,6 +1117,10 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent }:
         const res = await fetch(`/api/groups/${group.id}/members`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to join');
+        // 202 with parent_approval_required: nothing was joined, a request went
+        // to the parent. Reporting this as "joined" would be a lie the student
+        // acts on.
+        if (data.parent_approval_required) { onSuccess('awaiting-parent'); return; }
         const status = data.member?.status;
         if (status === 'pending_approval' || status === 'pending' || isRequest) {
           onSuccess('awaiting-approval');
@@ -1226,7 +1232,7 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent }:
 
 /* ─── Success screens ────────────────────────────────── */
 
-export function JoinedScreen({ group, kind }: { group: GroupData; kind: 'enrolled' | 'awaiting-approval' }) {
+export function JoinedScreen({ group, kind }: { group: GroupData; kind: 'enrolled' | 'awaiting-approval' | 'awaiting-parent' }) {
   const copy = {
     enrolled: {
       icon: <Check className="size-6 text-white" />,
@@ -1241,6 +1247,16 @@ export function JoinedScreen({ group, kind }: { group: GroupData; kind: 'enrolle
       tone: 'bg-amber-500',
       title: 'Request sent!',
       body: `${group.tutor?.display_name || group.tutor?.full_name || 'The tutor'} typically responds within 48 hours. You'll get a notification when they approve.`,
+      next: 'Back to explore',
+      href: '/student/find-tutors',
+    },
+    // The parent's gate, not the tutor's. Said plainly, because a student who
+    // thinks they are enrolled will turn up to a class they have no place in.
+    'awaiting-parent': {
+      icon: <Loader2 className="size-6 text-white animate-spin" />,
+      tone: 'bg-amber-500',
+      title: 'Sent to your parent',
+      body: 'Your parent has to approve this before you can join. They have been emailed, and you will hear as soon as they answer. Your place is not being held in the meantime.',
       next: 'Back to explore',
       href: '/student/find-tutors',
     },

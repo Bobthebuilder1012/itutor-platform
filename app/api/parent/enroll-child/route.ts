@@ -7,6 +7,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ParentAccessError, requireParentContext, requireParentChild } from '@/lib/server/parentAccess';
 import { findGroupEnrollmentConflict, conflictMessage } from '@/lib/services/scheduleConflict';
+import { hasAnyPrice, isPaidGroup } from '@/lib/payments/groupPricing';
+import { holdsPlace } from '@/lib/services/groupMembership';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +24,9 @@ export async function POST(request: NextRequest) {
 
     const { data: group } = await admin
       .from('groups')
-      .select('id, tutor_id, require_join_requests, archived_at, pricing_model, price_monthly')
+      .select(
+        'id, tutor_id, require_join_requests, archived_at, pricing_model, price_monthly, price_per_session, price_per_course'
+      )
       .eq('id', groupId)
       .maybeSingle();
     if (!group) return NextResponse.json({ error: 'Class not found' }, { status: 404 });
@@ -38,11 +42,17 @@ export async function POST(request: NextRequest) {
     // charge raised. The guard stays even now that checkout exists, because the
     // defect was this route being able to grant a paid seat at all — a caller
     // pointing at the wrong endpoint should be refused, not quietly obeyed.
-    const priceMonthly = Number(group.price_monthly ?? 0);
-    if (priceMonthly > 0 || group.pricing_model === 'MONTHLY') {
+    //
+    // What it must NOT do is refuse a free class. The old test also fired on
+    // pricing_model === 'MONTHLY', which is set on every group and says nothing
+    // about price — so every free class was answered "this class is paid". See
+    // isPaidGroup: paid means the checkout could actually charge for it.
+    if (hasAnyPrice(group)) {
       return NextResponse.json(
         {
-          error: 'This class is paid. Use the subscribe flow so the class is paid for.',
+          error: isPaidGroup(group)
+            ? 'This class is paid. Use the subscribe flow so the class is paid for.'
+            : 'This class has a price, so it cannot be joined for free.',
           reason: 'payment_required',
         },
         { status: 402 }
@@ -56,7 +66,9 @@ export async function POST(request: NextRequest) {
       .eq('group_id', groupId)
       .eq('user_id', childId)
       .maybeSingle();
-    if (existing && ['approved', 'pending'].includes(existing.status)) {
+    // Both status vocabularies — a child who joined from their own account
+    // carries 'active'/'pending_approval', which this test used to miss.
+    if (existing && holdsPlace(existing.status)) {
       return NextResponse.json({ error: 'This child is already in this class.', status: existing.status }, { status: 409 });
     }
 

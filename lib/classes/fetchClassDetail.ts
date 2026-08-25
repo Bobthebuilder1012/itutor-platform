@@ -83,6 +83,7 @@ export async function fetchClassDetail(groupId: string): Promise<GroupData | nul
     tutor_id: g.tutor_id,
     price_monthly: g.price_monthly ?? null,
     price_per_session: g.price_per_session ?? null,
+    pricing_model: g.pricing_model ?? null,
     max_students: g.max_students ?? 20,
     require_join_requests: g.require_join_requests ?? false,
     feedback_mode: g.feedback_mode ?? g.parent_feedback_mode ?? null,
