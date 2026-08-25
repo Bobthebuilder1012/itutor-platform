@@ -15,7 +15,12 @@ export async function findChildScheduleConflict(
   admin: ServiceClient,
   studentId: string,
   startISO: string,
-  endISO: string
+  endISO: string,
+  // A class cannot clash with itself. When the proposed window came FROM a
+  // group the child is already in, that group's own occurrences must be left
+  // out — otherwise the check reports the class against itself and reads as
+  // "pick a different slot" when the truth is "you are already enrolled".
+  opts?: { excludeGroupId?: string | null }
 ): Promise<ScheduleConflict | null> {
   // 1) Existing 1:1 scheduled sessions (non-cancelled)
   const { data: sessions } = await admin
@@ -33,7 +38,10 @@ export async function findChildScheduleConflict(
 
   // 2) Group occurrences for the child's enrolled groups.
   //    Join: memberships → groups → group_sessions → group_session_occurrences.
-  const groupIds = await childGroupIds(admin, studentId);
+  const allGroupIds = await childGroupIds(admin, studentId);
+  const groupIds = opts?.excludeGroupId
+    ? allGroupIds.filter((id) => id !== opts.excludeGroupId)
+    : allGroupIds;
   if (groupIds.length === 0) return null;
 
   const { data: gs } = await admin.from('group_sessions').select('id, group_id').in('group_id', groupIds);
