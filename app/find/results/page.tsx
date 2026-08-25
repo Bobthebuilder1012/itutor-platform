@@ -133,8 +133,19 @@ export default async function FinderResultsPage({
                 ) : null}
               </>
             )}
+            {/* /student/find-tutors, NOT /student/explore — the latter exists
+                only as /student/explore/[groupId], so an index link 404s.
+                /student/find-tutors is what the nav labels "Explore".
+
+                Build spec §6.2 wants this to arrive with budget and time
+                relaxed and the filters pre-applied. Not done: that page reads
+                no query params at all (its filters are internal state), so
+                supporting it means adding URL-param handling to a 1782-line
+                @ts-nocheck client component. Tracked separately rather than
+                shipped half-done — an ignored ?subject= would look like the
+                filter was broken. */}
             <Link
-              href="/student/explore"
+              href="/student/find-tutors"
               className="block text-[14px] text-itutor-green underline decoration-itutor-green/40 hover:decoration-itutor-green"
             >
               See what&apos;s available now
