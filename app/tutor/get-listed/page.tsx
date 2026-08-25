@@ -819,8 +819,14 @@ function GetListedContent() {
 
 // ── Section wrapper ────────────────────────────────────────────────────────────
 function SectionShell({ done, title, subtitle, children, optional }: { done: boolean; title: string; subtitle: string; children: React.ReactNode; optional?: boolean }) {
+  // Deliberately no overflow-hidden. The subject search in the Hourly rate card
+  // opens an absolutely-positioned dropdown that has to escape the card, and
+  // clipping cut it down to a single visible row — z-index cannot help, because
+  // this is clipping rather than stacking. Nothing here needs the clip: every
+  // child sits inside the header or the p-5 body, so the rounded corners are
+  // never touched.
   return (
-    <section className="rounded-2xl border border-border bg-card overflow-hidden">
+    <section className="rounded-2xl border border-border bg-card">
       <header className="px-5 py-4 border-b border-border flex items-start gap-3">
         <span className={cn('size-7 rounded-full grid place-items-center shrink-0', done ? 'bg-brand text-white' : 'bg-muted text-muted-foreground')}>
           {done ? <Check className="size-4" /> : <Circle className="size-4" />}
