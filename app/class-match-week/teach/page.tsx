@@ -40,7 +40,7 @@ export const dynamic = 'force-dynamic';
  * The My Business tab, not the old /tutor/class-match-week route — that now only
  * redirects here, and sending someone through two hops costs a render.
  */
-const TEACHER_HOME = '/tutor/business?tab=class-match-week';
+const TEACHER_HOME = '/tutor/classes?tab=class-match-week';
 
 export default async function ClassMatchWeekTeachPage() {
   const authed = await getServerClient();

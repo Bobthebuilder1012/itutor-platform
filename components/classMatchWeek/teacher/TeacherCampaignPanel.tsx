@@ -1,13 +1,16 @@
 'use client';
 
 /**
- * Class Match Week, inside My Business.
+ * Class Match Week, inside My Classes.
  *
- * This is the teacher's whole campaign surface. It used to be a standalone page
- * at /tutor/class-match-week that nothing linked to; it lives here now because
- * My Business is where a teacher already goes to manage classes, pricing and
- * promotions, and a limited-time offer belongs beside them rather than in a
- * route only a direct link reaches. That old route redirects here.
+ * This is the teacher's whole campaign surface. It began as a standalone page at
+ * /tutor/class-match-week that nothing linked to, then moved into My Business
+ * beside promotions and pricing. It lives in My Classes now, as the second tab,
+ * because everything a teacher does here is about a class: the gate needs a
+ * published monthly class, the session builder picks one, and the blocked list
+ * sends them to /tutor/classes/[id] to add a schedule. Putting the campaign one
+ * tab from the classes it depends on removes a cross-page round trip from every
+ * one of those paths. Both older routes redirect here.
  *
  * THE SEQUENCE THIS RENDERS, in the order a teacher meets it:
  *
@@ -67,11 +70,11 @@ type TutorGroup = { id: string; name: string; price_monthly: number | null };
  *
  * `WAS_BLOCKED_KEY` is how the "you meet all the requirements" prompt fires. A
  * teacher sent away to publish a class has to come back to find out whether it
- * worked, and the way back is not necessarily the link we gave them — they may
- * finish in My Classes and navigate here themselves. So rather than threading a
- * return param through the class-creation flow, we record that they were blocked
- * and congratulate them the next time they arrive un-blocked. That works from
- * every direction, including a fresh tab.
+ * worked, and the way back is not necessarily the link we gave them — with the
+ * classes list one tab away it is now most likely the tab itself. So rather than
+ * threading a return param through the class-creation flow, we record that they
+ * were blocked and congratulate them the next time they arrive un-blocked. That
+ * works from every direction, including a fresh tab.
  */
 const INTRO_KEY = 'cmw-teacher-intro-seen';
 const WAS_BLOCKED_KEY = 'cmw-teacher-was-blocked';
@@ -85,7 +88,7 @@ function formatAstDate(iso: string): string {
   });
 }
 
-export default function ClassMatchWeekTab({ profile }: { profile: Profile | null }) {
+export default function TeacherCampaignPanel({ profile }: { profile: Profile | null }) {
   const completion = useTutorCompletion(profile);
 
   const [loading, setLoading] = useState(true);

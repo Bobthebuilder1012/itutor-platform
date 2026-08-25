@@ -9,7 +9,7 @@
  * trade for a teacher we are trying to recruit.
  *
  * Sits under /tutor/class-match-week deliberately, even though its parent route
- * only redirects to the My Business tab: the campaign owns this URL, and nesting
+ * only redirects to the My Classes tab: the campaign owns this URL, and nesting
  * it under /tutor/business would inherit that section's EndDateGate, which
  * blocks until every class the tutor owns has an end date. That is the right gate
  * for class management and the wrong one for scheduling a free taster.
@@ -30,7 +30,7 @@ import SessionCreateFlow, {
 } from '@/components/classMatchWeek/teacher/SessionCreateFlow';
 import type { ClassMatchCampaign } from '@/lib/classMatchWeek/types';
 
-const CAMPAIGN_TAB = '/tutor/business?tab=class-match-week';
+const CAMPAIGN_TAB = '/tutor/classes?tab=class-match-week';
 
 type TutorGroup = { id: string; name: string; price_monthly: number | null; subject: string | null };
 

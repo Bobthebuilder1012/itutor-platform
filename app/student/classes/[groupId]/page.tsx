@@ -238,12 +238,16 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
       {/* Banner */}
       <div className="rounded-3xl p-6 lg:p-8 relative overflow-hidden" style={bannerStyle}>
         <div className="flex flex-wrap items-start gap-4">
-          <div className="text-5xl select-none">{emoji}</div>
-          <div className="flex-1 min-w-0">
+          <div className="text-4xl sm:text-5xl leading-none select-none shrink-0">{emoji}</div>
+          {/* basis-56, not bare flex-1: with a zero basis this column shrank to
+              whatever the join button left over — about 68px on a 400px phone,
+              which broke the title to one word per line — instead of pushing
+              the button onto its own row. The basis makes the line wrap. */}
+          <div className="flex-1 min-w-0 basis-56">
             <div className="text-xs uppercase tracking-wider text-ink/70 font-bold">
               {group.subject || 'General'} · Group class
             </div>
-            <h1 className="text-2xl lg:text-3xl font-bold text-ink mt-1">{group.name}</h1>
+            <h1 className="text-2xl lg:text-3xl font-bold text-ink mt-1 leading-tight break-words">{group.name}</h1>
             <div className="text-sm text-ink/80 mt-1 inline-flex items-center gap-1.5">
               with {tutorName}
               {group.tutor_rating !== null && (
@@ -321,7 +325,7 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
       {/* Tabs + content */}
       {!blocked && (
         <>
-          <div className="border-b border-border flex items-center gap-6 overflow-x-auto">
+          <div className="border-b border-border flex items-center gap-6 overflow-x-auto scrollbar-hide">
             {([
               { key: 'stream'    as const, label: 'Stream',     icon: MessageCircle },
               { key: 'sessions'  as const, label: 'Sessions',   icon: CalendarIcon },
@@ -416,11 +420,11 @@ function JoinSessionButton({ groupId, staticLink }: { groupId: string; staticLin
 
   if (!link) {
     return (
-      <div className="shrink-0">
+      <div className="w-full sm:w-auto shrink-0">
         <button
           disabled
           title="Your tutor hasn't generated the class link yet. It'll appear here automatically."
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-muted text-muted-foreground font-semibold text-sm cursor-not-allowed opacity-60"
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-muted text-muted-foreground font-semibold text-sm cursor-not-allowed opacity-60"
         >
           <Video className="size-4" /> {checking ? 'Checking for link…' : 'Link not ready yet'}
         </button>
@@ -429,12 +433,12 @@ function JoinSessionButton({ groupId, staticLink }: { groupId: string; staticLin
   }
 
   return (
-    <div className="shrink-0">
+    <div className="w-full sm:w-auto shrink-0">
       <a
         href={link}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-brand text-white font-semibold text-sm hover:bg-brand/90 transition"
+        className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-brand text-white font-semibold text-sm hover:bg-brand/90 transition"
       >
         <Video className="size-4" /> Join Now
       </a>

@@ -33,8 +33,16 @@ export function getCtaUrl(userType: UserType, stage: EmailStage): string {
       case 0:
       case 1:
         return `${baseUrl}/student/find-tutors`;
+      // Stage 2 is day3Email, whose button reads "Explore iTutors". It pointed
+      // at /help, so the one email in the sequence that asks the user to browse
+      // sent them to the support page instead. Live bug, fixed independently of
+      // the Finder work (Find Your iTutor plan §12.5).
+      //
+      // Plan §3.7 wants this repointed to /find; deliberately not done yet —
+      // /find does not exist until Phase 1, and swapping a wrong-page link for
+      // a 404 in a live onboarding email is not a fix.
       case 2:
-        return `${baseUrl}/help`;
+        return `${baseUrl}/student/find-tutors`;
       case 3:
         return `${baseUrl}/tutors`;
       case 4:
