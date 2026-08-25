@@ -20,6 +20,8 @@ import {
   preorderReasonMessage,
 } from '@/lib/payments/secureSpot';
 import type { SessionPattern } from '@/lib/utils/scheduleFormat';
+import { trackForUser } from '@/lib/analytics/track';
+import { PRODUCT_EVENTS } from '@/lib/analytics/events';
 
 export interface ConfirmSecuredSpotParams {
   admin: SupabaseClient;
@@ -86,7 +88,9 @@ export async function confirmSecuredSpot(
 
   const { data: enrollment, error: enrErr } = await admin
     .from('group_enrollments')
-    .select('id, group_id, student_id, status')
+    // plan_price_ttd is read only so the `paid` event below can carry an
+    // amount. It is what secure_spot_claim wrote as the securing charge.
+    .select('id, group_id, student_id, status, plan_price_ttd')
     .eq('id', enrollmentId)
     .maybeSingle();
 
@@ -166,6 +170,24 @@ export async function confirmSecuredSpot(
       releaseDate,
       firstSession,
     });
+
+    // ── paid ──
+    // A secured spot IS a payment — the student's card is charged for the first
+    // month up front. Leaving it out of the revenue event would make the whole
+    // preorder cohort look like it converted for free, and preorders are
+    // currently the only path taking real money on production.
+    //
+    // Inside the transition guard for the same reason the email is: Stripe
+    // redelivers. The payment-intent id is also passed as the dedupe key, so the
+    // count survives a future refactor that moves this line outside the guard.
+    await trackForUser(
+      PRODUCT_EVENTS.PAID,
+      {
+        group_id: (enrollment as any).group_id,
+        amount: Number((enrollment as any).plan_price_ttd) || 0,
+      },
+      { userId: (enrollment as any).student_id, dedupeKey: `pi:${stripePaymentIntentId}` }
+    );
   }
 
   return {

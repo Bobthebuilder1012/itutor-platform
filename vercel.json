@@ -31,6 +31,14 @@
     {
       "path": "/api/cron/group-class-reminders",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/backfill-retention",
+      "schedule": "30 5 * * *"
+    },
+    {
+      "path": "/api/cron/resolve-demand",
+      "schedule": "0 14 * * *"
     }
   ]
 }

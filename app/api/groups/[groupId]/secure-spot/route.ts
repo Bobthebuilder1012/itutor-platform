@@ -28,6 +28,8 @@ import {
 } from '@/lib/payments/secureSpot';
 import type { SessionPattern } from '@/lib/utils/scheduleFormat';
 import { notifySpotSecured } from '@/lib/services/secureSpotService';
+import { track, trackForUser } from '@/lib/analytics/track';
+import { PRODUCT_EVENTS } from '@/lib/analytics/events';
 
 export const dynamic = 'force-dynamic';
 
@@ -155,6 +157,15 @@ export async function POST(_req: NextRequest, { params }: Params) {
     const enrollmentId: string = claim.enrollment_id;
     const subscriptionPaymentId: string | null = claim.subscription_payment_id ?? null;
 
+    // ── enrolment_started ──
+    // Emitted at the CLAIM, not at the button press. This is the first moment a
+    // seat is actually held on the student's behalf, so it is the first moment
+    // there is anything to abandon — which is what the enrolment_started → paid
+    // ratio is for. Emitting on the click would fold "the class was full" and
+    // "the class had no schedule" into the drop-off number and make checkout
+    // look broken when it was working correctly.
+    await track(PRODUCT_EVENTS.ENROLMENT_STARTED, { group_id: groupId }, { userId: user.id });
+
     // ---- Free class: no Stripe object at all -----------------------------
     // Stripe will not create zero-value payment objects, and there is no money
     // to hold, so there is no ledger row and no release date either.
@@ -187,6 +198,17 @@ export async function POST(_req: NextRequest, { params }: Params) {
           firstSession,
         });
       }
+
+      // ── paid, amount 0 ──
+      // A free reservation never reaches the webhook, so without this line every
+      // free class would show enrolment_started with no conversion and read as a
+      // total drop-off. `paid` counts conversions; `amount` carries the revenue,
+      // and zero is the honest value for both.
+      await trackForUser(
+        PRODUCT_EVENTS.PAID,
+        { group_id: groupId, amount: 0 },
+        { userId: user.id, dedupeKey: `free:${enrollmentId}` }
+      );
 
       return NextResponse.json({
         success: true,
