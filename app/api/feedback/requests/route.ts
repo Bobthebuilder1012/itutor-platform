@@ -165,8 +165,8 @@ async function notifyTutor(
     <p>Hi ${(tutor.display_name || tutor.full_name || 'there').split(' ')[0]},</p>
     <p><strong>${childName}</strong>&rsquo;s family has asked for feedback on how they are doing.</p>
     <p>There is no deadline. Write it when you have something worth saying.</p>
-    <p><a href="${(process.env.NEXT_PUBLIC_APP_URL ?? 'https://myitutor.com').replace(/\/$/, '')}/tutor/students"
-          style="display:inline-block;background:#199356;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600">Open your students</a></p>
+    <p><a href="${(process.env.NEXT_PUBLIC_APP_URL ?? 'https://myitutor.com').replace(/\/$/, '')}/tutor/clients"
+          style="display:inline-block;background:#199356;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600">Open your clients</a></p>
   </div>`;
 
   const result = await sendEmail({ to: tutor.email, subject, html });

@@ -91,7 +91,7 @@ export default function TutorShell({ children }: { children: ReactNode }) {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    router.push(`/tutor/students${query.trim() ? `?q=${encodeURIComponent(query.trim())}` : ''}`);
+    router.push(`/tutor/clients${query.trim() ? `?q=${encodeURIComponent(query.trim())}` : ''}`);
   };
 
   // Admin "Enter as Tutor": render the class page WITHOUT the tutor sidebar/nav

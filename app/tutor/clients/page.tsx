@@ -99,6 +99,10 @@ function ClientsContent() {
   const params = useSearchParams();
   const { profile } = useProfile();
   const classId = params?.get('classId') ?? null;
+  // The shell's search box lands here — it used to land on My Students, which
+  // no longer exists. A search that arrives and is ignored is worse than no
+  // search box, so the term filters the roll and the header says it is on.
+  const q = (params?.get('q') ?? '').trim().toLowerCase();
 
   const [clients, setClients] = useState<Client[]>([]);
   const [classes, setClasses] = useState<Array<{ id: string; name: string }>>([]);
@@ -126,10 +130,18 @@ function ClientsContent() {
   }, [load]);
 
   // Scoping to one class is what the breadcrumb means: the same page, narrowed.
-  const scoped = useMemo(
-    () => (classId ? clients.filter((c) => c.classes.some((k) => k.id === classId)) : clients),
-    [clients, classId]
-  );
+  const scoped = useMemo(() => {
+    let list = classId ? clients.filter((c) => c.classes.some((k) => k.id === classId)) : clients;
+    if (q) {
+      list = list.filter(
+        (c) =>
+          c.name.toLowerCase().includes(q) ||
+          (c.parent?.name ?? '').toLowerCase().includes(q) ||
+          c.classes.some((k) => k.name.toLowerCase().includes(q))
+      );
+    }
+    return list;
+  }, [clients, classId, q]);
 
   const counts = useMemo(
     () => ({
@@ -186,6 +198,17 @@ function ClientsContent() {
           Where a parent account is linked, they sit with the student — you can message either one.
           Feedback is one per student per month; {thisMonthName()}’s quota resets {nextQuotaDate()}.
         </p>
+        {q && (
+          <p className="mt-2 text-sm text-ink">
+            Showing matches for “{q}”.{' '}
+            <button
+              onClick={() => router.push(classId ? `/tutor/clients?classId=${classId}` : '/tutor/clients')}
+              className="font-semibold text-brand-deep hover:underline"
+            >
+              Clear
+            </button>
+          </p>
+        )}
       </header>
 
       {toast && (
