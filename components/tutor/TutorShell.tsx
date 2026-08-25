@@ -24,12 +24,11 @@ const nav: NavItem[] = [
   { to: '/tutor/dashboard', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { to: '/tutor/classes', label: 'My Classes', icon: BookOpen },
   { to: '/tutor/sessions', label: 'Sessions', icon: CalendarDays },
-  { to: '/tutor/students', label: 'My Students', icon: Users },
-  // /tutor/feedback existed and worked, but was only ever listed in
-  // DashboardLayout — a shell the tutor pages stopped using. So a parent could
-  // request feedback, the tutor got the email and the in-app notification, and
-  // then had nowhere to go: the page was reachable only by typing the URL.
-  { to: '/tutor/feedback', label: 'Feedback', icon: MessageSquareQuote },
+  // Clients is My Students and Feedback merged. They were two lists of the same
+  // people answering different halves of one question — who they are, and what
+  // to write about them — and a tutor deciding whether to write feedback needs
+  // the attendance, the parent and the request in the same row as the button.
+  { to: '/tutor/clients', label: 'Clients', icon: Users },
   { to: '/tutor/wallet', label: 'My Wallet', icon: Wallet },
   { to: '/tutor/reviews', label: 'Reviews', icon: Star },
   { to: '/tutor/business', label: 'My Business', icon: Rocket, gated: true },

@@ -228,8 +228,9 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/tutor/bookings', label: 'Booking Requests', icon: icons.calendar },
           // §8.1 gives a tutor exactly one notification per feedback request and
           // no reminders after it, so there has to be a standing place to find
-          // the ones still open.
-          { href: '/tutor/feedback', label: 'Feedback', icon: icons.chatFeedback },
+          // the ones still open. That place is Clients, which merged the old
+          // Feedback and My Students pages.
+          { href: '/tutor/clients', label: 'Clients', icon: icons.chatFeedback },
           ...(showGroups ? [{ href: '/lessons', label: 'Lessons', icon: icons.groups }] : []),
         ]},
         { label: 'Settings', items: [

@@ -87,7 +87,7 @@ export async function GET(_request: NextRequest) {
     // redirect is a deadline, a reminder and an escalation at once.
     //
     // Tutors are now prompted exactly once, when a family actually asks
-    // (§8.1), and find outstanding requests at /tutor/feedback.
+    // (§8.1), and find outstanding requests at /tutor/clients.
     //
     // The student branch above stays: it drives session RATINGS, which is a
     // different system feeding tutor rating_average and the marketplace
