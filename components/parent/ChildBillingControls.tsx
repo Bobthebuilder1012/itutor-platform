@@ -1,27 +1,30 @@
 'use client';
 
-// Per-child controls for Settings → Household — §7 and §10.5.
+// Per-child controls for Settings → Household — §7.
 //
-// Three settings, and the order matters: the approval gate, the spend limit, then
-// self-pay. Self-pay is last because it is the one with consequences, and a parent
-// scanning downwards should meet the reversible switches first.
+// TWO settings, in this order: the approval gate, then self-pay. Self-pay is
+// second because it is the one with consequences, and a parent scanning
+// downwards should meet the reversible switch first.
+//
+// THE SPEND LIMIT IS NOT SHOWN. §10.5's monthly cap still exists server-side —
+// checkSpendLimit runs on every booking and a stored cap would still force
+// approval — but no parent can set one from here, so in practice the cap is
+// null everywhere and the two switches below are the whole of the policy. It
+// was removed from the surface deliberately: three controls where two express
+// the intent is a setting people mis-set rather than a setting people use.
 //
 // WHY THE SELF-PAY COPY IS THIS BLUNT
 // §7 makes it a tripwire, not a gate: it takes effect immediately, with no
 // confirmation step, because the threat model is a child on a parent's unlocked
 // phone and a dialog stops that for zero seconds. What protects the parent is
-// being TOLD, and a password change reverting it. So the control states all three
-// facts before it is touched — immediate, emailed, undone by a password change —
-// rather than explaining them afterwards in a toast nobody reads.
-//
-// The spend limit is shown with its month-to-date spend, and says plainly that
-// reaching it forces approval even with self-pay on. Otherwise a parent whose
-// child hits the ceiling sees approval requests appear and concludes the self-pay
-// toggle is broken.
+// being TOLD, and a password change reverting it. So the control states all
+// three facts before it is touched — immediate, emailed, undone by a password
+// change — rather than explaining them afterwards in a toast nobody reads. The
+// words carry that; the card is styled like every other row, because a panel
+// that shouts at a parent every time they open the page stops being read.
 
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, Loader2 } from 'lucide-react';
-import { fmtTTD } from '@/lib/utils/formatCurrency';
+import { AlertTriangle } from 'lucide-react';
 
 type Billing = {
   selfPayEnabled: boolean;
@@ -38,10 +41,6 @@ export default function ChildBillingControls({
   childName: string;
 }) {
   const [state, setState] = useState<Billing | null>(null);
-  const [limitDraft, setLimitDraft] = useState('');
-  // Mirrors "is a cap stored", but held separately so a parent can switch limits
-  // ON and see the amount field before anything is saved.
-  const [limitsOn, setLimitsOn] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -52,10 +51,7 @@ export default function ChildBillingControls({
     try {
       const res = await fetch(`/api/parent/children/${childId}/billing`, { cache: 'no-store' });
       if (!res.ok) return;
-      const json = (await res.json()) as Billing;
-      setState(json);
-      setLimitDraft(json.monthlySpendLimit == null ? '' : String(json.monthlySpendLimit));
-      setLimitsOn(json.monthlySpendLimit != null);
+      setState((await res.json()) as Billing);
     } catch {
       /* section simply shows nothing */
     }
@@ -119,86 +115,8 @@ export default function ChildBillingControls({
         />
       </Row>
 
-      {/* 2. Limits — an on/off switch that gates its own configuration, so a
-             parent who does not want a cap never sees an amount field, and one
-             who does is not left wondering whether an empty box means "no limit"
-             or "not saved yet". */}
-      <Row
-        title="Spending limits"
-        detail={
-          limitsOn
-            ? `Capped each calendar month. At the cap every new request needs your approval, even with self-pay on.`
-            : `No cap. ${first}’s spending is governed only by the settings above.`
-        }
-      >
-        <Toggle
-          on={limitsOn}
-          busy={busy === 'limit'}
-          onToggle={() => {
-            const next = !limitsOn;
-            setLimitsOn(next);
-            // Turning it OFF clears the stored cap immediately; turning it ON
-            // waits for an amount, so a bare toggle never invents a number.
-            if (!next) void patch({ monthlySpendLimit: null }, 'limit');
-          }}
-          label={`Spending limits for ${first}`}
-        />
-      </Row>
-
-      {limitsOn && (
-        <div className="rounded-xl border border-border bg-muted/30 p-3">
-          <label
-            className="block text-xs font-medium text-muted-foreground"
-            htmlFor={`limit-${childId}`}
-          >
-            Monthly cap
-          </label>
-          {/* Full row on a phone: label + input + TTD + Save does not fit at
-              390px, and this is the one control here a parent must type into. */}
-          <div className="mt-1 flex w-full items-center gap-2">
-            <input
-              id={`limit-${childId}`}
-              value={limitDraft}
-              onChange={(e) => setLimitDraft(e.target.value.replace(/[^\d.]/g, ''))}
-              placeholder="e.g. 1500"
-              inputMode="decimal"
-              aria-label={`Monthly spend limit for ${first} in TTD`}
-              className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-ink sm:w-32 sm:flex-none"
-            />
-            <span className="text-xs text-muted-foreground">TTD</span>
-            <button
-              onClick={() =>
-                patch(
-                  { monthlySpendLimit: limitDraft.trim() === '' ? null : Number(limitDraft) },
-                  'limit'
-                )
-              }
-              disabled={busy === 'limit' || limitDraft.trim() === ''}
-              className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-ink disabled:opacity-60"
-            >
-              {busy === 'limit' ? <Loader2 className="size-3.5 animate-spin" /> : 'Save'}
-            </button>
-          </div>
-
-          <p className="mt-2 text-xs text-muted-foreground">
-            Spent this month: <strong className="text-ink">{fmtTTD(state.spend.spent)}</strong>
-            {state.spend.limit != null && (
-              <>
-                {' '}of {fmtTTD(state.spend.limit)}
-                {state.spend.limitReached ? (
-                  <span className="ml-1 font-semibold text-amber-700">— cap reached</span>
-                ) : (
-                  <> · {fmtTTD(state.spend.remaining ?? 0)} left</>
-                )}
-              </>
-            )}
-            {state.spend.limit == null && ' · no cap saved yet'}
-          </p>
-        </div>
-      )}
-
-      {/* 3. Self-pay — the one with consequences, so it is last and loudest. */}
-      <div className="rounded-xl border border-amber-300 bg-amber-50/60 p-3">
+      {/* 2. Self-pay — the one with consequences, so it is last. */}
+      <div className="rounded-xl border border-border p-3">
         <Row
           title={`Let ${first} pay for their own classes`}
           detail={
@@ -223,7 +141,7 @@ export default function ChildBillingControls({
           />
         </Row>
         {/* Stated BEFORE it is touched, not after. */}
-        <p className="mt-2 flex items-start gap-1.5 text-xs leading-relaxed text-amber-900">
+        <p className="mt-2 flex items-start gap-1.5 text-xs leading-relaxed text-muted-foreground">
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
           Turning this on takes effect immediately. A security email goes to you either way, and
           completing a password change turns it back off for every child on your account.
