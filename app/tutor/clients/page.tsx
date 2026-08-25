@@ -37,6 +37,8 @@ import {
   MessageSquare,
   MessageSquareQuote,
   Plus,
+  Search,
+  X,
 } from 'lucide-react';
 import TutorShell from '@/components/tutor/TutorShell';
 import FeedbackComposer from '@/components/tutor/FeedbackComposer';
@@ -68,7 +70,7 @@ type Client = {
   feedbackThisMonth: { id: string; at: string } | null;
 };
 
-type Filter = 'all' | 'requests' | 'given';
+type Filter = 'all' | 'requests' | 'given' | 'not-given';
 
 /** "1 Oct" — when this month's quota rolls over. */
 function nextQuotaDate(): string {
@@ -98,11 +100,14 @@ function ClientsContent() {
   const router = useRouter();
   const params = useSearchParams();
   const { profile } = useProfile();
-  const classId = params?.get('classId') ?? null;
-  // The shell's search box lands here — it used to land on My Students, which
-  // no longer exists. A search that arrives and is ignored is worse than no
-  // search box, so the term filters the roll and the header says it is on.
-  const q = (params?.get('q') ?? '').trim().toLowerCase();
+  // Both filters can arrive in the URL — ?classId from the class page's "Open in
+  // Clients", ?q from the shell's search box — and both are editable here. The
+  // URL seeds the control; the control owns it from then on, and writes back so
+  // the view stays linkable.
+  const [classFilter, setClassFilter] = useState<string>(params?.get('classId') ?? 'all');
+  const [query, setQuery] = useState(params?.get('q') ?? '');
+  const q = query.trim().toLowerCase();
+  const classId = classFilter === 'all' ? null : classFilter;
 
   const [clients, setClients] = useState<Client[]>([]);
   const [classes, setClasses] = useState<Array<{ id: string; name: string }>>([]);
@@ -143,11 +148,23 @@ function ClientsContent() {
     return list;
   }, [clients, classId, q]);
 
+  // The class and name filters narrow the roll; the pills below then split what
+  // is left by feedback state. Keeping the URL in step means a filtered view can
+  // be linked or reloaded — and the class page's deep link still lands right.
+  useEffect(() => {
+    const next = new URLSearchParams();
+    if (classId) next.set('classId', classId);
+    if (query.trim()) next.set('q', query.trim());
+    const qs = next.toString();
+    router.replace(qs ? `/tutor/clients?${qs}` : '/tutor/clients', { scroll: false });
+  }, [classId, query, router]);
+
   const counts = useMemo(
     () => ({
       all: scoped.length,
       requests: scoped.filter((c) => c.openRequest).length,
       given: scoped.filter((c) => c.feedbackThisMonth).length,
+      notGiven: scoped.filter((c) => !c.feedbackThisMonth).length,
     }),
     [scoped]
   );
@@ -155,6 +172,7 @@ function ClientsContent() {
   const shown = useMemo(() => {
     if (filter === 'requests') return scoped.filter((c) => c.openRequest);
     if (filter === 'given') return scoped.filter((c) => c.feedbackThisMonth);
+    if (filter === 'not-given') return scoped.filter((c) => !c.feedbackThisMonth);
     return scoped;
   }, [scoped, filter]);
 
@@ -198,18 +216,47 @@ function ClientsContent() {
           Where a parent account is linked, they sit with the student — you can message either one.
           Feedback is one per student per month; {thisMonthName()}’s quota resets {nextQuotaDate()}.
         </p>
-        {q && (
-          <p className="mt-2 text-sm text-ink">
-            Showing matches for “{q}”.{' '}
-            <button
-              onClick={() => router.push(classId ? `/tutor/clients?classId=${classId}` : '/tutor/clients')}
-              className="font-semibold text-brand-deep hover:underline"
-            >
-              Clear
-            </button>
-          </p>
-        )}
       </header>
+
+      {/* Name and class narrow WHO is listed; the pills below split what is left
+          by feedback state. Two controls rather than one combined filter,
+          because a tutor looking for one student and a tutor working through a
+          class are doing different things. */}
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by student or parent name"
+            aria-label="Search clients by name"
+            className="w-full rounded-xl border border-border bg-background py-2.5 pl-9 pr-9 text-sm text-ink placeholder:text-muted-foreground focus:border-brand focus:outline-none"
+          />
+          {query && (
+            <button
+              onClick={() => setQuery('')}
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-ink"
+            >
+              <X className="size-3.5" />
+            </button>
+          )}
+        </div>
+
+        <select
+          value={classFilter}
+          onChange={(e) => setClassFilter(e.target.value)}
+          aria-label="Filter by class"
+          className="rounded-xl border border-border bg-background px-3 py-2.5 text-sm font-medium text-ink focus:border-brand focus:outline-none sm:w-56"
+        >
+          <option value="all">All classes</option>
+          {classes.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </div>
 
       {toast && (
         <div className="rounded-xl border border-brand/30 bg-brand/10 px-4 py-3 text-sm text-ink">
@@ -233,9 +280,20 @@ function ClientsContent() {
           label="Feedback given"
           count={counts.given}
         />
+        {/* The other half of the same question, and the one a tutor working
+            through the month actually needs: who is still owed nothing. */}
+        <FilterPill
+          active={filter === 'not-given'}
+          onClick={() => setFilter('not-given')}
+          label="No feedback yet"
+          count={counts.notGiven}
+        />
       </div>
 
-      {scoped.length === 0 && (
+      {/* An empty roll and an empty RESULT are different facts. Before the
+          filters existed there was only the first, and reusing its wording
+          would tell a tutor with thirty students that they have none. */}
+      {clients.length === 0 && (
         <div className="rounded-2xl border border-border p-6">
           <p className="text-sm text-ink">No students yet.</p>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -244,17 +302,37 @@ function ClientsContent() {
         </div>
       )}
 
+      {clients.length > 0 && scoped.length === 0 && (
+        <div className="rounded-2xl border border-border p-6">
+          <p className="text-sm text-ink">Nobody matches those filters.</p>
+          <button
+            onClick={() => {
+              setQuery('');
+              setClassFilter('all');
+              setFilter('all');
+            }}
+            className="mt-1 text-sm font-semibold text-brand-deep hover:underline"
+          >
+            Clear filters
+          </button>
+        </div>
+      )}
+
       {scoped.length > 0 && shown.length === 0 && (
         <div className="rounded-2xl border border-border p-6">
           <p className="text-sm text-ink">
             {filter === 'requests'
               ? 'Nobody has asked for feedback.'
-              : 'No feedback written this month.'}
+              : filter === 'not-given'
+                ? 'Everyone here has had feedback this month.'
+                : 'No feedback written this month.'}
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
             {filter === 'requests'
               ? 'You can still write feedback unprompted — most feedback is.'
-              : 'Feedback is optional. Nothing chases you for it.'}
+              : filter === 'not-given'
+                ? `The next round opens ${nextQuotaDate()}.`
+                : 'Feedback is optional. Nothing chases you for it.'}
           </p>
         </div>
       )}
