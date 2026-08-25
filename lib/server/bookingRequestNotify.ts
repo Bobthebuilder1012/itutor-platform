@@ -33,7 +33,7 @@ import { shouldNotifyForType } from '@/lib/server/notificationPreferences';
  * Skips are logged as 'skipped' rather than not logged at all, so a parent
  * asking "why didn't I get that" has an answer in email_send_logs.
  */
-async function sendIfAllowed(
+export async function sendIfAllowed(
   admin: SupabaseClient,
   params: {
     userId: string;
