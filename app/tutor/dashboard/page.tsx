@@ -339,7 +339,7 @@ function DashboardContent() {
             <QuickAction to="/tutor/classes" icon={Plus} label="Create a lesson" gated={!listed} />
             <QuickAction to="/tutor/availability" icon={Clock} label="Manage availability" />
             <QuickAction to="/tutor/wallet" icon={Wallet} label="My Wallet" />
-            <QuickAction to="/tutor/students" icon={UserCircle} label="My Students" />
+            <QuickAction to="/tutor/clients" icon={UserCircle} label="Clients" />
           </div>
         </div>
       </section>
