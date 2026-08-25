@@ -26,6 +26,71 @@ import type { DeliveryPref } from '@/lib/matching/delivery';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * Is this error "that column is not in this database" rather than bad data?
+ *
+ * PGRST204 is PostgREST refusing a write naming a column absent from its schema
+ * cache; 42703 is Postgres' own undefined_column.
+ */
+function isUnknownColumn(error: unknown): boolean {
+  const err = error as { code?: unknown; message?: unknown } | null;
+  const code = String(err?.code ?? '');
+  const message = String(err?.message ?? '').toLowerCase();
+  return (
+    code === 'PGRST204' ||
+    code === '42703' ||
+    message.includes('could not find') ||
+    message.includes('does not exist')
+  );
+}
+
+/**
+ * Insert a row, dropping columns the database does not have yet.
+ *
+ * WHY WRITES NEED THIS AND NOT JUST READS. Every READ path for migration 243 was
+ * tiered, on the reasoning that a missing column must not blank a page. The
+ * INSERTs were not, and that was the whole bug: a missing column fails the
+ * ENTIRE insert, so on an environment one migration behind, `delivery_pref`
+ * turned every single Finder submission into a 500 and the family got "We could
+ * not save your answers" at the last question. That is strictly worse than the
+ * blank page the read tiers were protecting against — the wizard's answers are
+ * the one thing that cannot be reconstructed.
+ *
+ * Retries ONCE, without the optional keys, and says so in the log. The dropped
+ * answer is recorded nowhere, which is the correct trade: the run itself
+ * survives, and the column arrives with the migration.
+ */
+async function insertTolerant(
+  service: ReturnType<typeof getServiceClient>,
+  table: string,
+  row: Record<string, unknown>,
+  optionalColumns: string[]
+): Promise<{ id: string | null; error: string | null }> {
+  const attempt = async (payload: Record<string, unknown>) =>
+    service.from(table).insert(payload).select('id').single();
+
+  const first = await attempt(row);
+  if (!first.error) {
+    return { id: (first.data as { id: string } | null)?.id ?? null, error: null };
+  }
+
+  if (!isUnknownColumn(first.error) || optionalColumns.length === 0) {
+    return { id: null, error: first.error.message };
+  }
+
+  const trimmed = { ...row };
+  for (const column of optionalColumns) delete trimmed[column];
+
+  console.warn(
+    `[finder/submit] ${table}: dropping ${optionalColumns.join(', ')} — ` +
+      'not in this database yet (migration 243). Retrying without it.'
+  );
+
+  const second = await attempt(trimmed);
+  if (second.error) return { id: null, error: second.error.message };
+  return { id: (second.data as { id: string } | null)?.id ?? null, error: null };
+}
+
 interface SubmitBody {
   subject: string;
   availabilityBlocks: AvailabilityBlock[];
@@ -126,10 +191,13 @@ export async function POST(req: NextRequest) {
   const budgetMax = budgetMaxFor(body.budgetBand);
   const deliveryPref: DeliveryPref | null = body.deliveryPref ?? null;
 
-  // 1) Record the run first.
-  const { data: inserted, error: insertError } = await service
-    .from('finder_requests')
-    .insert({
+  // 1) Record the run first. Tolerant of delivery_pref being absent — see
+  //    insertTolerant: a missing column fails the whole insert, and losing the
+  //    family's answers at the last question is the worst outcome available.
+  const { id: requestId, error: insertError } = await insertTolerant(
+    service,
+    'finder_requests',
+    {
       user_id: userId,
       child_label: body.childLabel?.trim() || null,
       run_number: runNumber,
@@ -141,15 +209,14 @@ export async function POST(req: NextRequest) {
       budget_max: budgetMax,
       urgency: body.urgency,
       attribution,
-    })
-    .select('id')
-    .single();
+    },
+    ['delivery_pref']
+  );
 
-  if (insertError || !inserted) {
-    console.error('[finder/submit] insert failed:', insertError?.message);
+  if (insertError || !requestId) {
+    console.error('[finder/submit] insert failed:', insertError);
     return NextResponse.json({ error: 'could_not_save' }, { status: 500 });
   }
-  const requestId = (inserted as { id: string }).id;
 
   // 2) Match. v1 is group classes only; one_on_one and either still record
   // honestly and return no group results, which is a legitimate no-match and
@@ -225,9 +292,10 @@ export async function POST(req: NextRequest) {
   }
 
   // 4) Ledger the demand — every submission, exact matches included.
-  const { data: demandRow, error: demandError } = await service
-    .from('demand_signals')
-    .insert({
+  const { id: demandId, error: demandError } = await insertTolerant(
+    service,
+    'demand_signals',
+    {
       request_id: requestId,
       user_id: userId,
       subject_id: subjectId,
@@ -240,12 +308,12 @@ export async function POST(req: NextRequest) {
       // in-person halves of that cluster need different teachers.
       delivery_pref: deliveryPref,
       match_class: matchClass,
-    })
-    .select('id')
-    .single();
+    },
+    ['delivery_pref']
+  );
 
   if (demandError) {
-    console.error('[finder/submit] demand insert failed:', demandError.message);
+    console.error('[finder/submit] demand insert failed:', demandError);
   }
 
   // Events. track() swallows its own failures, so none of this can fail the run.
@@ -290,7 +358,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     request_id: requestId,
-    demand_id: (demandRow as { id: string } | null)?.id ?? null,
+    demand_id: demandId,
     match_class: matchClass,
     near_miss_on: nearMissOn,
     count: results.length,
