@@ -68,8 +68,11 @@ async function displayName(admin: SupabaseClient, userId: string): Promise<strin
   return p?.display_name || p?.full_name || 'Someone';
 }
 
-/** A one-line "when it meets", best effort — the email reads better with it. */
-async function scheduleLabel(admin: SupabaseClient, groupId: string): Promise<string | null> {
+/**
+ * A one-line "when it meets", best effort — the email reads better with it.
+ * Exported because the parent enrol route sends the student the same line.
+ */
+export async function nextSessionLabel(admin: SupabaseClient, groupId: string): Promise<string | null> {
   const { data: gs } = await admin.from('group_sessions').select('id').eq('group_id', groupId).limit(20);
   const ids = ((gs ?? []) as Array<{ id: string }>).map((g) => g.id);
   if (!ids.length) return null;
@@ -191,7 +194,7 @@ export async function createClassJoinRequest(
       childName: await displayName(admin, params.studentId),
       className: group.name ?? 'a class',
       tutorName: await displayName(admin, group.tutor_id),
-      scheduleLabel: await scheduleLabel(admin, params.groupId),
+      scheduleLabel: await nextSessionLabel(admin, params.groupId),
       priceTtd: Number(group.price_monthly ?? 0),
       requiresTutorApproval: Boolean(group.require_join_requests),
       requestId,
@@ -540,7 +543,7 @@ export async function listParentClassRequests(
         childName,
         priceTtd: price,
         isFree: price <= 0,
-        scheduleLabel: await scheduleLabel(admin, r.group_id),
+        scheduleLabel: await nextSessionLabel(admin, r.group_id),
         requestedAt: r.requested_at,
         requiresTutorApproval: Boolean(g?.require_join_requests),
       });

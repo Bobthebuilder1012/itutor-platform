@@ -9,6 +9,8 @@ import { ParentAccessError, requireParentContext, requireParentChild } from '@/l
 import { findGroupEnrollmentConflict, conflictMessage } from '@/lib/services/scheduleConflict';
 import { hasAnyPrice, isPaidGroup } from '@/lib/payments/groupPricing';
 import { holdsPlace } from '@/lib/services/groupMembership';
+import { nextSessionLabel } from '@/lib/server/classJoinRequests';
+import { notifyStudentEnrolledByParent } from '@/lib/server/classRequestNotify';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,7 +27,7 @@ export async function POST(request: NextRequest) {
     const { data: group } = await admin
       .from('groups')
       .select(
-        'id, tutor_id, require_join_requests, archived_at, pricing_model, price_monthly, price_per_session, price_per_course'
+        'id, name, tutor_id, require_join_requests, archived_at, pricing_model, price_monthly, price_per_session, price_per_course'
       )
       .eq('id', groupId)
       .maybeSingle();
@@ -106,7 +108,44 @@ export async function POST(request: NextRequest) {
       });
     } catch { /* non-critical */ }
 
-    return NextResponse.json({ success: true, status: memberStatus });
+    // And tell the STUDENT. They pressed nothing — a parent did this for them —
+    // so without this the person who has to turn up finds out by opening the
+    // app. Non-critical: a failed email must not undo an enrolment that worked.
+    try {
+      const [{ data: tutorRow }, { data: parentRow }] = await Promise.all([
+        admin.from('profiles').select('full_name, display_name').eq('id', group.tutor_id).maybeSingle(),
+        admin
+          .from('profiles')
+          .select('full_name, display_name')
+          .eq('id', parentProfile.id)
+          .maybeSingle(),
+      ]);
+      const nameOf = (r: { full_name: string | null; display_name: string | null } | null, fallback: string) =>
+        r?.display_name || r?.full_name || fallback;
+
+      await notifyStudentEnrolledByParent(admin, {
+        studentId: childId,
+        className: (group as { name?: string | null }).name ?? 'a class',
+        groupId,
+        tutorName: nameOf(tutorRow as never, 'your tutor'),
+        parentName: nameOf(parentRow as never, 'Your parent'),
+        scheduleLabel: await nextSessionLabel(admin, groupId),
+        awaitingTutor: memberStatus === 'pending',
+      });
+    } catch (e) {
+      console.error('[enroll-child] student notice failed:', e);
+    }
+
+    // The names travel back with the outcome so the confirmation can say who
+    // was enrolled in what. The page knows the class, but not which child the
+    // picker settled on — it holds an id — and "Your child is enrolled" is a
+    // weaker sentence than their name in a household with two.
+    return NextResponse.json({
+      success: true,
+      status: memberStatus,
+      childName,
+      className: (group as { name?: string | null }).name ?? null,
+    });
   } catch (error) {
     if (error instanceof ParentAccessError) return NextResponse.json({ error: error.message }, { status: error.status });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
