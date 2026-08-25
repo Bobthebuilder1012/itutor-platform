@@ -32,11 +32,21 @@ export async function GET() {
     } = await supabase.auth.getUser();
     if (!user) return deny;
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .select('role, email, form_level, finder_prompted_at')
       .eq('id', user.id)
       .maybeSingle();
+
+    if (error) {
+      // A missing column fails the whole select, so before migration 238 is
+      // applied this denies every request. That is the correct outcome — better
+      // no interstitial than one whose one-shot flag cannot be recorded — but it
+      // must be visible, or "the backfill never fires" looks like a logic bug
+      // rather than an unapplied migration.
+      console.error('[finder/gate] profile read failed:', error.message);
+      return deny;
+    }
 
     const profile = (data ?? null) as {
       role?: string | null;
