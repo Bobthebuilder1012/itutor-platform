@@ -39,10 +39,18 @@
  *    school hours and can never be served.
  *
  * 4. ONLY ACTIONABLE DIMENSIONS GATE THE CLASSIFICATION. `exact` / `near` /
- *    `none` is decided by availability and budget alone, because those are the
- *    two the near-match screen can offer a button for ("Change my days",
- *    "Change my budget"). A near miss the family cannot act on is a dead end
- *    with extra steps. Verification and quality rank the survivors.
+ *    `none` is decided by availability, budget and delivery, because those are
+ *    the three the near-match screen can offer a button for ("Change my days",
+ *    "Change my budget", "Show me online classes too"). A near miss the family
+ *    cannot act on is a dead end with extra steps. Verification and quality
+ *    rank the survivors.
+ *
+ * 5. DELIVERY GATES, IT DOES NOT HARD-FILTER. Migration 242 made classes
+ *    physical, hybrid or online. A wrong-format class is genuinely unusable —
+ *    but unlike a wrong LEVEL it is unusable for a reason the family can undo in
+ *    one tap, so it belongs with availability and budget rather than with
+ *    subject. It is weighted above budget: another $50 a month is findable,
+ *    another ferry is not.
  */
 
 import {
@@ -52,6 +60,7 @@ import {
 } from './availability';
 import { classServesLevel, type CanonicalLevel } from './levels';
 import { subjectMatches } from './subjects';
+import { classServesDelivery, type DeliveryPref } from './delivery';
 import type { ScheduleEntry } from '@/lib/utils/scheduleFormat';
 
 /** What the family asked for. */
@@ -62,6 +71,9 @@ export interface FinderCriteria {
   availabilityBlocks: AvailabilityBlock[];
   /** Upper bound of the chosen band, in TTD. `null` means "no ceiling". */
   budgetMax: number | null;
+  /** Online / in person / either. Null means the question was not asked — which
+   *  is true of every run recorded before migration 243. */
+  deliveryPref: DeliveryPref | null;
 }
 
 /**
@@ -80,6 +92,11 @@ export interface FinderCandidate {
   /** Monthly price in TTD, from groups.price_monthly. Null is treated as free. */
   monthlyPrice: number | null;
   scheduleEntries: ScheduleEntry[];
+  /** Raw `groups.class_format`. Null means the row predates migration 242, in
+   *  which case the class is online — that is what those classes are. */
+  classFormat: string | null;
+  /** Where a physical class meets, for the card. Null for online classes. */
+  regionName: string | null;
   /** Seats left. Null means unknown, which is NOT treated as full. */
   seatsRemaining: number | null;
   tutorVerified: boolean;
@@ -87,8 +104,16 @@ export interface FinderCandidate {
   rating: number | null;
 }
 
-/** The two dimensions a family can be sent back to change. */
-export type GatingDimension = 'availability' | 'budget';
+/**
+ * The dimensions a family can be sent back to change.
+ *
+ * The membership rule is not "everything we asked": it is "everything the
+ * near-match screen can offer a working button for". Subject and level are
+ * excluded because changing them does not widen the search, it starts a
+ * different one. `delivery` earns its place because "show me online classes
+ * too" is a real, one-tap widening that often turns nothing into something.
+ */
+export type GatingDimension = 'availability' | 'budget' | 'delivery';
 
 export interface ScoredMatch {
   groupId: string;
@@ -108,12 +133,17 @@ export interface MatchResult {
   matches: ScoredMatch[];
 }
 
-// Ranking weights. Availability and budget also gate the classification;
-// verification and quality only sort the survivors.
-const W_AVAILABILITY = 35;
-const W_BUDGET = 25;
-const W_VERIFIED = 20;
-const W_QUALITY = 20;
+// Ranking weights. Availability, budget and delivery also gate the
+// classification; verification and quality only sort the survivors.
+//
+// Delivery is weighted ABOVE budget because it is the harder constraint in
+// practice. A family can find another $50 a month; they cannot find another
+// ferry. A wrong-format match is unusable in a way an over-budget one is not.
+const W_AVAILABILITY = 30;
+const W_DELIVERY = 30;
+const W_BUDGET = 20;
+const W_VERIFIED = 10;
+const W_QUALITY = 10;
 
 /**
  * Hard filters. A candidate failing any of these is not a near match — it is
@@ -164,9 +194,16 @@ function scoreCandidate(
   const budgetOk = withinBudget(candidate, criteria);
   if (!budgetOk) missed.push('budget');
 
+  // A null deliveryPref (a run from before migration 243) is unconstrained, so
+  // classServesDelivery returns true and this never becomes a phantom miss on
+  // historical data.
+  const deliveryOk = classServesDelivery(candidate.classFormat, criteria.deliveryPref);
+  if (!deliveryOk) missed.push('delivery');
+
   let score = 0;
   if (availabilityOk) score += W_AVAILABILITY;
   if (budgetOk) score += W_BUDGET;
+  if (deliveryOk) score += W_DELIVERY;
   if (candidate.tutorVerified) score += W_VERIFIED;
 
   // Quality: rating carries it, with seats as a mild tiebreak so a class that
@@ -270,12 +307,18 @@ export function matchFinderRequest(
   return { matchClass: 'none', nearMissOn: null, matches: [] };
 }
 
-/** Copy for the near-match button. Must name a step the wizard can reopen. */
+/**
+ * Copy for the near-match button. Must name a step the wizard can reopen.
+ *
+ * The step NUMBER used to live here too, and was wrong: it returned 2 and 4
+ * where STEP.AVAILABILITY is 1 and STEP.BUDGET is 3, so "Change my days" opened
+ * the lesson-type question and "Change my budget" opened the urgency question.
+ * It now lives in lib/finder/wizard.ts beside the STEP map it has to agree with
+ * — this module is the pure matcher and has no business holding UI indices,
+ * which is precisely how the two drifted apart.
+ */
 export function nearMissButtonLabel(dimension: GatingDimension): string {
-  return dimension === 'availability' ? 'Change my days' : 'Change my budget';
-}
-
-/** Which wizard step a near miss sends the family back to. */
-export function nearMissStep(dimension: GatingDimension): number {
-  return dimension === 'availability' ? 2 : 4;
+  if (dimension === 'availability') return 'Change my days';
+  if (dimension === 'budget') return 'Change my budget';
+  return 'Show me online classes too';
 }

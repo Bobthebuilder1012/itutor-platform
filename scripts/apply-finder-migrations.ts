@@ -79,9 +79,13 @@ const MIGRATIONS = [
   '239_product_events_dedupe.sql',
   '240_finder.sql',
   '241_finder_fallback_match_class.sql',
+  '243_finder_delivery_pref.sql',
 ];
+// 242 is deliberately absent: it is the physical-classes migration and belongs
+// to that workstream's own runner. Listing it here would make this script the
+// de facto owner of a schema change it does not verify.
 
-/** The proof that all three migrations landed. Shared by both transports. */
+/** The proof that every migration landed. Shared by both transports. */
 const VERIFY_SQL = `
   SELECT
     (SELECT count(*) FROM information_schema.columns
@@ -97,7 +101,15 @@ const VERIFY_SQL = `
     (SELECT count(*) FROM pg_policies
       WHERE schemaname='public'
         AND tablename IN ('product_events','retention_marks','finder_requests','demand_signals')
-    ) AS rls_policies;
+    ) AS rls_policies,
+    (SELECT count(*) FROM information_schema.columns
+      WHERE table_schema='public' AND column_name='delivery_pref'
+        AND table_name IN ('finder_requests','demand_signals')
+    ) AS delivery_pref_columns_2,
+    (SELECT count(*) FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='demand_signals'
+        AND column_name='notify_count'
+    ) AS notify_count_column_1;
 `;
 
 /**

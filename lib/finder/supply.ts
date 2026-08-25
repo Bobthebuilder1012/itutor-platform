@@ -67,6 +67,8 @@ interface GroupRow {
   visibility: string | null;
   session_length_minutes: number | null;
   schedule_data?: string | null;
+  class_format?: string | null;
+  venue?: { region: { name: string | null } | null } | null;
   tutor: {
     id: string;
     full_name: string | null;
@@ -113,13 +115,36 @@ const BASE_COLUMNS = `id, name, tutor_id, subject, form_level, price_monthly, pr
        visibility, session_length_minutes`;
 
 /**
- * Tier 1 includes `schedule_data` (a tutor's hand-authored schedule, which wins
- * over the derived pattern in /api/groups). Tier 2 drops it, for environments
- * where the column was never added — the resolver then falls through to the
- * group_sessions recurrence, which is where almost every real schedule lives
- * anyway.
+ * Where the class meets, when it meets anywhere.
+ *
+ * Only the REGION is read, never `venues.address_line`. `venue_visibility`
+ * defaults to 'after_enrolment' (migration 242), and a recommendation is not an
+ * enrolment — putting a street address on a results card would leak it to
+ * anyone who can run the wizard. Region is public by design, on the reasoning
+ * that a location filter nobody can see does not work.
+ */
+const VENUE_JOIN = `venue:venues(region:regions(name))`;
+
+/**
+ * FOUR TIERS, WIDEST FIRST, BECAUSE THE ENVIRONMENTS DISAGREE.
+ *
+ * A missing column fails the WHOLE PostgREST select, and the Finder's failure
+ * mode for that is a blank results page — indistinguishable from "we have
+ * nothing for you". Two columns are environment-dependent:
+ *
+ *   schedule_data  — present in some environments, absent on staging
+ *   class_format / venue_id — migration 242, applied on staging, NOT on
+ *                   production, where every class is online anyway
+ *
+ * So the tiers drop them independently rather than together. Dropping
+ * class_format on an environment that has it would silently disable the
+ * delivery filter and start recommending physical classes to families who
+ * asked for online — the exact bug this join exists to prevent — so the widest
+ * tier that works is always the one used.
  */
 const SELECT_TIERS = [
+  `${BASE_COLUMNS}, schedule_data, class_format, ${VENUE_JOIN}, ${TUTOR_JOIN}, group_members(status)`,
+  `${BASE_COLUMNS}, class_format, ${VENUE_JOIN}, ${TUTOR_JOIN}, group_members(status)`,
   `${BASE_COLUMNS}, schedule_data, ${TUTOR_JOIN}, group_members(status)`,
   `${BASE_COLUMNS}, ${TUTOR_JOIN}, group_members(status)`,
 ];
@@ -130,6 +155,16 @@ const SELECT_TIERS = [
  * Null means unknown, and the matcher treats unknown as "not full" — excluding
  * it would hide every class whose tutor never set a limit, which is most of
  * them.
+ *
+ * KNOWN LIMITATION, STATED RATHER THAN HIDDEN. This is a class-level total, and
+ * migration 242 made capacity per seat type. `max_students` is kept as the sum
+ * of the two caps by a trigger, so on a hybrid class with a full room and free
+ * online seats this reports space that exists — correctly — but cannot say WHICH
+ * seat it is. Doing better needs per-seat enrolment counts, which means reading
+ * `group_enrollments.seat_type`; `group_members` (what this counts) has no such
+ * column. Left as-is because no physical or hybrid class exists in the
+ * catalogue yet, so the sum and the per-seat answer are currently identical.
+ * The moment one does, this and lib/utils/seatCapacity.ts need reconciling.
  */
 function seatsRemaining(row: GroupRow): number | null {
   if (row.max_students === null || row.max_students === undefined) return null;
@@ -236,6 +271,11 @@ export async function loadFinderSupply(service: SupabaseClient): Promise<SupplyR
       formLevel: row.form_level,
       monthlyPrice: toNumber(row.price_monthly) ?? toNumber(row.price_per_course),
       scheduleEntries: entries,
+      // undefined (the column was not selected) and null (selected, not set)
+      // both mean online. On an environment without migration 242 that is not a
+      // guess — there are no physical classes there to get wrong.
+      classFormat: row.class_format ?? null,
+      regionName: row.venue?.region?.name ?? null,
       seatsRemaining: seatsRemaining(row),
       // Verification ranks and badges; it is NOT a hard filter. Gating on it
       // cuts the catalogue to 2 classes.

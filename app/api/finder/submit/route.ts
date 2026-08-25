@@ -22,6 +22,7 @@ import { getRequestAttribution, track } from '@/lib/analytics/track';
 import { PRODUCT_EVENTS } from '@/lib/analytics/events';
 import type { AvailabilityBlock } from '@/lib/matching/availability';
 import { normaliseLearnerLevel, type CanonicalLevel } from '@/lib/matching/levels';
+import type { DeliveryPref } from '@/lib/matching/delivery';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,6 +30,9 @@ interface SubmitBody {
   subject: string;
   availabilityBlocks: AvailabilityBlock[];
   lessonType: 'group' | 'one_on_one' | 'either';
+  /** Optional on the wire: a client bundle cached from before migration 243
+   *  does not send it, and a stale tab should record null rather than 400. */
+  deliveryPref?: DeliveryPref | null;
   budgetBand: string;
   urgency: 'now' | 'this_month' | 'exploring';
   childLabel?: string | null;
@@ -120,6 +124,7 @@ export async function POST(req: NextRequest) {
   }
 
   const budgetMax = budgetMaxFor(body.budgetBand);
+  const deliveryPref: DeliveryPref | null = body.deliveryPref ?? null;
 
   // 1) Record the run first.
   const { data: inserted, error: insertError } = await service
@@ -132,6 +137,7 @@ export async function POST(req: NextRequest) {
       level: learnerLevel,
       availability_blocks: body.availabilityBlocks,
       lesson_type: body.lessonType,
+      delivery_pref: deliveryPref,
       budget_max: budgetMax,
       urgency: body.urgency,
       attribution,
@@ -165,6 +171,7 @@ export async function POST(req: NextRequest) {
           level: learnerLevel,
           availabilityBlocks: body.availabilityBlocks,
           budgetMax,
+          deliveryPref,
         },
         getFinderMaxMatches()
       );
@@ -188,6 +195,8 @@ export async function POST(req: NextRequest) {
           tutor_name: row?.tutorName ?? null,
           tutor_verified: row?.tutorVerified ?? false,
           monthly_price: row?.monthlyPrice ?? null,
+          class_format: row?.classFormat ?? null,
+          region_name: row?.regionName ?? null,
           seats_remaining: row?.seatsRemaining ?? null,
           session_length_minutes: row?.sessionLengthMinutes ?? null,
           schedule_entries: row?.scheduleEntries ?? [],
@@ -225,6 +234,11 @@ export async function POST(req: NextRequest) {
       level: learnerLevel,
       availability_blocks: body.availabilityBlocks,
       budget_max: budgetMax,
+      // Copied onto the ledger, not just the request: "fourteen families in
+      // Arima want in-person CSEC Maths" is a recruitment instruction, and
+      // "fourteen families want CSEC Maths" is not, because the online and
+      // in-person halves of that cluster need different teachers.
+      delivery_pref: deliveryPref,
       match_class: matchClass,
     })
     .select('id')
@@ -243,6 +257,7 @@ export async function POST(req: NextRequest) {
         subject: body.subject,
         availability_blocks: body.availabilityBlocks,
         lesson_type: body.lessonType,
+        delivery_pref: deliveryPref,
         budget_band: body.budgetBand,
         urgency: body.urgency,
       },

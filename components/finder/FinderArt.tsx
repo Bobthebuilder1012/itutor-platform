@@ -29,6 +29,8 @@ import {
   Clock,
   Compass,
   Heart,
+  Laptop,
+  MapPin,
   Rocket,
   Sparkles,
   Star,
@@ -56,6 +58,10 @@ const ART: Record<number, { idle: Art; answered: Art }> = {
   [STEP.LESSON_TYPE]: {
     idle: { icon: Users, accents: [Heart, Star], caption: 'How do you like to learn?' },
     answered: { icon: Heart, accents: [Check, Users], caption: 'Noted — that shapes the match' },
+  },
+  [STEP.DELIVERY]: {
+    idle: { icon: Laptop, accents: [MapPin, Star], caption: 'Online, or somewhere to go?' },
+    answered: { icon: MapPin, accents: [Check, Laptop], caption: 'We’ll only show classes you can reach' },
   },
   [STEP.BUDGET]: {
     idle: { icon: Wallet, accents: [Star, Sparkles], caption: 'What feels comfortable?' },

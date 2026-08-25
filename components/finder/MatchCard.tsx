@@ -19,9 +19,10 @@
  */
 
 import Link from 'next/link';
-import { BadgeCheck, CalendarDays, Users, Wallet } from 'lucide-react';
+import { BadgeCheck, CalendarDays, Laptop, MapPin, Users, Wallet } from 'lucide-react';
 import { availabilityLabel } from '@/lib/finder/wizard';
 import type { AvailabilityBlock } from '@/lib/matching/availability';
+import { deliveryLabel, normaliseClassFormat } from '@/lib/matching/delivery';
 import type { GatingDimension } from '@/lib/matching/finder';
 import { trackClient } from '@/lib/analytics/client';
 import { PRODUCT_EVENTS } from '@/lib/analytics/events';
@@ -35,6 +36,11 @@ export interface MatchCardData {
   tutor_name: string | null;
   tutor_verified: boolean;
   monthly_price: number | null;
+  /** Snapshot of groups.class_format at the time of the run. */
+  class_format: string | null;
+  /** Region of the venue, for a physical or hybrid class. Never the street
+   *  address — venue_visibility gates that until enrolment. */
+  region_name: string | null;
   seats_remaining: number | null;
   session_length_minutes: number | null;
 }
@@ -62,6 +68,14 @@ export default function MatchCard({
 }) {
   const missedAvailability = nearMissOn === 'availability';
   const missedBudget = nearMissOn === 'budget';
+  const missedDelivery = nearMissOn === 'delivery';
+
+  // Shown on EVERY card, not only physical ones. "Online" is the answer to a
+  // question every family now has, and a card that mentions the format only
+  // when it is physical teaches families that silence means online — which
+  // stops being true the moment a hybrid class appears.
+  const format = normaliseClassFormat(data.class_format);
+  const FormatIcon = format === 'online' ? Laptop : MapPin;
 
   return (
     <div className="rounded-2xl border border-border bg-white p-4 shadow-sm transition hover:shadow-card sm:p-5">
@@ -110,6 +124,24 @@ export default function MatchCard({
             {missedBudget ? (
               <span className="mt-0.5 block text-[13px] text-ink-muted">
                 Above the budget you picked
+              </span>
+            ) : null}
+          </dd>
+        </div>
+
+        <div className="flex items-start gap-2">
+          <FormatIcon className="mt-0.5 size-4 shrink-0 text-ink-muted" strokeWidth={1.75} />
+          <dd className="text-ink">
+            {deliveryLabel(data.class_format)}
+            {/* The region, when there is one to travel to. This is the fact that
+                decides whether an otherwise-perfect match is usable at all, so
+                it sits on the card rather than one click away. */}
+            {data.region_name ? (
+              <span className="text-ink-muted"> · {data.region_name}</span>
+            ) : null}
+            {missedDelivery ? (
+              <span className="mt-0.5 block text-[13px] text-ink-muted">
+                Not the way you asked to learn
               </span>
             ) : null}
           </dd>

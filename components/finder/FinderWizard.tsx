@@ -33,12 +33,14 @@ import { ArrowLeft, Check } from 'lucide-react';
 import { AVAILABILITY_BLOCKS, type AvailabilityBlock } from '@/lib/matching/availability';
 import {
   BUDGET_BANDS,
+  DELIVERY_PREFS,
   LESSON_TYPES,
   STEP,
   TOTAL_STEPS,
   URGENCIES,
   emptyAnswers,
   isStepAnswered,
+  type DeliveryPref,
   type FinderAnswers,
   type LessonType,
   type Urgency,
@@ -249,6 +251,7 @@ export default function FinderWizard({
           subject: answers.subject,
           availabilityBlocks: answers.availabilityBlocks,
           lessonType: answers.lessonType,
+          deliveryPref: answers.deliveryPref,
           budgetBand: answers.budgetBand,
           urgency: answers.urgency,
           childLabel: answers.childLabel,
@@ -384,6 +387,24 @@ export default function FinderWizard({
             detail={type.detail}
             selected={answers.lessonType === type.value}
             onSelect={() => setAnswers(a => ({ ...a, lessonType: type.value as LessonType }))}
+          />
+        ))}
+      </div>
+    );
+  } else if (step === STEP.DELIVERY) {
+    title = 'Online or in person?';
+    subtitle = 'Most classes are online. Some meet at a venue.';
+    body = (
+      <div className="mt-6 space-y-2">
+        {DELIVERY_PREFS.map(pref => (
+          <OptionRow
+            key={pref.value}
+            label={pref.label}
+            detail={pref.detail}
+            selected={answers.deliveryPref === pref.value}
+            onSelect={() =>
+              setAnswers(a => ({ ...a, deliveryPref: pref.value as DeliveryPref }))
+            }
           />
         ))}
       </div>

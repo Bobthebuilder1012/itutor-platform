@@ -1,7 +1,14 @@
 /**
  * Behavioural checks for lib/matching/finder.ts.
  *
- * Run: npx ts-node scripts/verify-finder-matcher.ts
+ * Run: npx ts-node --compiler-options '{"module":"commonjs","moduleResolution":"node"}' \
+ *        scripts/verify-finder-matcher.ts
+ *
+ * The compiler options are not optional. Under Node 20+ ts-node reparses this
+ * file as an ES module (it detects `import` syntax), and ESM resolution then
+ * refuses the extensionless `./_alias` import that the @/ path mapping depends
+ * on. The plain `npx ts-node scripts/...` in the other scripts' headers fails
+ * the same way on a current Node.
  *
  * The repo has no test runner, and adding one is out of scope for this feature,
  * so this follows the existing scripts/ convention. The matcher is pure, so it
@@ -16,10 +23,14 @@ import './_alias';
 import {
   matchFinderRequest,
   nearMissButtonLabel,
-  nearMissStep,
   type FinderCandidate,
   type FinderCriteria,
 } from '../lib/matching/finder';
+// nearMissStep moved to the wizard module, where the STEP map it has to agree
+// with actually lives. It used to be in the matcher and was off by one in both
+// directions, which these checks did not catch because they asserted the wrong
+// numbers too.
+import { nearMissStep, STEP } from '../lib/finder/wizard';
 
 let passed = 0;
 let failed = 0;
@@ -46,6 +57,8 @@ function candidate(overrides: Partial<FinderCandidate> = {}): FinderCandidate {
     formLevel: 'FORM_4',
     monthlyPrice: 250,
     scheduleEntries: SAT_MORNING,
+    classFormat: 'online',
+    regionName: null,
     seatsRemaining: 4,
     tutorVerified: true,
     rating: 4.5,
@@ -59,6 +72,7 @@ function criteria(overrides: Partial<FinderCriteria> = {}): FinderCriteria {
     level: 'FORM_4',
     availabilityBlocks: ['saturday_morning'],
     budgetMax: 400,
+    deliveryPref: 'online',
     ...overrides,
   };
 }
@@ -105,7 +119,11 @@ console.log('\nFinder matcher — behavioural checks\n');
   check('only the schedule misses -> near', r.matchClass === 'near', `got ${r.matchClass}`);
   check('near names the availability dimension', r.nearMissOn === 'availability', `got ${r.nearMissOn}`);
   check('button reads "Change my days"', nearMissButtonLabel('availability') === 'Change my days');
-  check('availability near miss reopens step 2', nearMissStep('availability') === 2);
+  check(
+    'availability near miss reopens the availability step',
+    nearMissStep('availability') === STEP.AVAILABILITY,
+    `got ${nearMissStep('availability')}, STEP.AVAILABILITY is ${STEP.AVAILABILITY}`
+  );
 }
 
 {
@@ -113,7 +131,11 @@ console.log('\nFinder matcher — behavioural checks\n');
   check('only the price misses -> near', r.matchClass === 'near', `got ${r.matchClass}`);
   check('near names the budget dimension', r.nearMissOn === 'budget', `got ${r.nearMissOn}`);
   check('button reads "Change my budget"', nearMissButtonLabel('budget') === 'Change my budget');
-  check('budget near miss reopens step 4', nearMissStep('budget') === 4);
+  check(
+    'budget near miss reopens the budget step',
+    nearMissStep('budget') === STEP.BUDGET,
+    `got ${nearMissStep('budget')}, STEP.BUDGET is ${STEP.BUDGET}`
+  );
 }
 
 // An exact match must win over a near one rather than both being returned.
@@ -330,6 +352,111 @@ console.log('\nFinder matcher — behavioural checks\n');
   check('a weekday morning class matches a weekday morning request', r.matchClass === 'exact', `got ${r.matchClass}`);
   check('and reports the weekday_morning block', r.matches[0]?.blocks.join(',') === 'weekday_morning',
     r.matches[0]?.blocks.join(','));
+}
+
+// ----------------------------------------------------- delivery: online vs venue
+// Migration 242 made classes physical, hybrid or online. Before it, this
+// dimension could not be wrong because there was only one answer.
+{
+  const r = matchFinderRequest(
+    [candidate({ classFormat: 'physical', regionName: 'San Fernando' })],
+    criteria({ deliveryPref: 'online' }),
+    MAX
+  );
+  check('a physical class is not an exact match for an online request',
+    r.matchClass === 'near', `got ${r.matchClass}`);
+  check('and the miss is named as delivery', r.nearMissOn === 'delivery', String(r.nearMissOn));
+  check('delivery near miss reopens the delivery step',
+    nearMissStep('delivery') === STEP.DELIVERY,
+    `got ${nearMissStep('delivery')}, STEP.DELIVERY is ${STEP.DELIVERY}`);
+  check('and offers a button that widens rather than narrows',
+    nearMissButtonLabel('delivery') === 'Show me online classes too');
+}
+
+{
+  const r = matchFinderRequest(
+    [candidate({ classFormat: 'online' })],
+    criteria({ deliveryPref: 'in_person' }),
+    MAX
+  );
+  check('an online class is not an exact match for an in-person request',
+    r.matchClass === 'near' && r.nearMissOn === 'delivery', `got ${r.matchClass}/${r.nearMissOn}`);
+}
+
+{
+  // The whole point of hybrid: it satisfies both, so neither request is a miss.
+  const online = matchFinderRequest(
+    [candidate({ classFormat: 'hybrid' })],
+    criteria({ deliveryPref: 'online' }),
+    MAX
+  );
+  const inPerson = matchFinderRequest(
+    [candidate({ classFormat: 'hybrid', regionName: 'Arima' })],
+    criteria({ deliveryPref: 'in_person' }),
+    MAX
+  );
+  check('a hybrid class satisfies an online request', online.matchClass === 'exact', online.matchClass);
+  check('a hybrid class satisfies an in-person request', inPerson.matchClass === 'exact', inPerson.matchClass);
+}
+
+{
+  const r = matchFinderRequest(
+    [candidate({ classFormat: 'physical' })],
+    criteria({ deliveryPref: 'either' }),
+    MAX
+  );
+  check("'either' does not gate on delivery", r.matchClass === 'exact', r.matchClass);
+}
+
+{
+  // Historical runs (before migration 243) have no preference recorded. They
+  // must not acquire a phantom near miss retrospectively.
+  const r = matchFinderRequest(
+    [candidate({ classFormat: 'physical' })],
+    criteria({ deliveryPref: null }),
+    MAX
+  );
+  check('a null deliveryPref is unconstrained', r.matchClass === 'exact', r.matchClass);
+}
+
+{
+  // Every class on production predates migration 242 and has a null format.
+  // Treating that as unknown-and-exclude would empty the catalogue.
+  const r = matchFinderRequest(
+    [candidate({ classFormat: null })],
+    criteria({ deliveryPref: 'online' }),
+    MAX
+  );
+  check('a null class_format counts as online', r.matchClass === 'exact', r.matchClass);
+}
+
+{
+  // Two misses on different dimensions has no honest single sentence, so it
+  // must fall through to the subject-only pass rather than picking one.
+  const r = matchFinderRequest(
+    [
+      candidate({ groupId: 'wrong_format', classFormat: 'physical' }),
+      candidate({ groupId: 'wrong_price', monthlyPrice: 900 }),
+    ],
+    criteria({ deliveryPref: 'online' }),
+    MAX
+  );
+  check('disagreeing near misses do not name a dimension', r.matchClass !== 'near', r.matchClass);
+  check('and subject still trumps, so something is shown', r.matches.length > 0);
+}
+
+{
+  // Delivery outranks budget: another $50 a month is findable, another ferry is
+  // not. Both candidates miss exactly one dimension, so both are near misses —
+  // this checks the ORDER, using two separate runs.
+  const overBudget = matchFinderRequest(
+    [candidate({ monthlyPrice: 900 })], criteria(), MAX
+  ).matches[0].score;
+  const wrongFormat = matchFinderRequest(
+    [candidate({ classFormat: 'physical' })], criteria(), MAX
+  ).matches[0].score;
+  check('an over-budget class outranks a wrong-format one',
+    overBudget > wrongFormat, `${overBudget} vs ${wrongFormat}`);
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`);

@@ -18,8 +18,15 @@
 
 import Link from 'next/link';
 import { Pencil } from 'lucide-react';
-import { availabilityLabel, BUDGET_BANDS, LESSON_TYPES, STEP } from '@/lib/finder/wizard';
-import { nearMissButtonLabel, nearMissStep, type GatingDimension } from '@/lib/matching/finder';
+import {
+  availabilityLabel,
+  deliveryPrefLabel,
+  nearMissStep,
+  BUDGET_BANDS,
+  LESSON_TYPES,
+  STEP,
+} from '@/lib/finder/wizard';
+import { nearMissButtonLabel, type GatingDimension } from '@/lib/matching/finder';
 import { levelLabel, type CanonicalLevel } from '@/lib/matching/levels';
 import type { AvailabilityBlock } from '@/lib/matching/availability';
 import MatchCard, { type MatchCardData } from './MatchCard';
@@ -29,6 +36,7 @@ export interface FinderRequestRow {
   level: string | null;
   availability_blocks: string[] | null;
   lesson_type: string | null;
+  delivery_pref: string | null;
   budget_max: number | string | null;
   match_class: 'exact' | 'near' | 'fallback' | 'none' | null;
   near_miss_on: string | null;
@@ -93,7 +101,9 @@ export default function MatchResults({
       : row.match_class === 'near'
         ? row.near_miss_on === 'budget'
           ? 'Everything fits except the price.'
-          : 'Everything fits except the time.'
+          : row.near_miss_on === 'delivery'
+            ? 'Everything fits except how it is taught.'
+            : 'Everything fits except the time.'
         : row.match_class === 'fallback'
           ? // Honest framing. These matched the SUBJECT only, so they may be the
             // wrong year, day and price at once — calling them "close" would be a
@@ -128,6 +138,15 @@ export default function MatchResults({
           <FilterChip label={blocksPhrase(blocks)} step={STEP.AVAILABILITY} />
           {lessonTypeText ? (
             <FilterChip label={lessonTypeText} step={STEP.LESSON_TYPE} />
+          ) : null}
+          {/* Only rendered when the run actually answered it. A run from before
+              migration 243 has no preference, and showing a default here would
+              claim the family said something they were never asked. */}
+          {row.delivery_pref ? (
+            <FilterChip
+              label={deliveryPrefLabel(row.delivery_pref)}
+              step={STEP.DELIVERY}
+            />
           ) : null}
           <FilterChip label={budgetLabelFor(row.budget_max)} step={STEP.BUDGET} />
         </div>
@@ -195,7 +214,8 @@ export default function MatchResults({
           {row.match_class === 'fallback' ? (
             <p className="mt-7 rounded-xl border border-border bg-muted/40 px-4 py-3 text-[13px] leading-snug text-ink-muted">
               These are in the subject you picked but may not match your times,
-              year or budget. Widening one of the filters above usually helps.
+              year, budget or how you wanted to learn. Widening one of the
+              filters above usually helps.
             </p>
           ) : null}
 

@@ -24,6 +24,12 @@ import {
   type AvailabilityBlock,
 } from '@/lib/matching/availability';
 import { QUESTIONNAIRE_LEVELS, type CanonicalLevel } from '@/lib/matching/levels';
+import {
+  DELIVERY_PREFS,
+  DELIVERY_PREF_VALUES,
+  type DeliveryPref,
+} from '@/lib/matching/delivery';
+import type { GatingDimension } from '@/lib/matching/finder';
 
 export const LEVEL_VALUES: ReadonlySet<string> = new Set(
   QUESTIONNAIRE_LEVELS.map(l => l.value)
@@ -90,6 +96,9 @@ export interface FinderAnswers {
   subject: string | null;
   availabilityBlocks: AvailabilityBlock[];
   lessonType: LessonType | null;
+  /** Online / in person / either. Asked because migration 242 made it a real
+   *  question — before that every class was online and there was one answer. */
+  deliveryPref: DeliveryPref | null;
   budgetBand: string | null;
   urgency: Urgency | null;
 }
@@ -100,22 +109,48 @@ export function emptyAnswers(): FinderAnswers {
     subject: null,
     availabilityBlocks: [],
     lessonType: null,
+    deliveryPref: null,
     budgetBand: null,
     urgency: null,
   };
 }
 
-/** Step indices, so nothing has to hardcode a magic number. */
+/**
+ * Step indices, so nothing has to hardcode a magic number.
+ *
+ * These ARE the `?step=` values in the URL — the wizard reads the param
+ * straight into this space rather than offsetting it. Anything that links to a
+ * step must use this map; the one thing that hardcoded the numbers instead
+ * (nearMissStep, formerly in lib/matching/finder.ts) was off by one in both
+ * directions and sent the family to the wrong question.
+ *
+ * DELIVERY sits next to LESSON_TYPE because they are the two "what shape is
+ * this lesson" questions, and answering them together reads as one thought
+ * rather than two interruptions.
+ */
 export const STEP = {
   CHILD: -1, // parents only, rendered before the rest
   SUBJECT: 0,
   AVAILABILITY: 1,
   LESSON_TYPE: 2,
-  BUDGET: 3,
-  URGENCY: 4,
+  DELIVERY: 3,
+  BUDGET: 4,
+  URGENCY: 5,
 } as const;
 
-export const TOTAL_STEPS = 5;
+export const TOTAL_STEPS = 6;
+
+/**
+ * Which wizard step a near miss sends the family back to.
+ *
+ * Lives here, not in the matcher, because it has to agree with STEP above and
+ * cannot be checked by anything if it lives a directory away.
+ */
+export function nearMissStep(dimension: GatingDimension): number {
+  if (dimension === 'availability') return STEP.AVAILABILITY;
+  if (dimension === 'budget') return STEP.BUDGET;
+  return STEP.DELIVERY;
+}
 
 /**
  * Is this step answered? Drives the Continue button, which stays visible but
@@ -136,6 +171,8 @@ export function isStepAnswered(
       return answers.availabilityBlocks.length > 0;
     case STEP.LESSON_TYPE:
       return answers.lessonType !== null;
+    case STEP.DELIVERY:
+      return answers.deliveryPref !== null;
     case STEP.BUDGET:
       return answers.budgetBand !== null;
     case STEP.URGENCY:
@@ -153,6 +190,14 @@ export function budgetMaxFor(band: string | null): number | null {
 export function availabilityLabel(block: AvailabilityBlock): string {
   return AVAILABILITY_BLOCKS.find(b => b.value === block)?.label ?? block;
 }
+
+/** Chip copy for a recorded delivery preference. */
+export function deliveryPrefLabel(pref: string | null): string {
+  return DELIVERY_PREFS.find(p => p.value === pref)?.label ?? 'Online or in person';
+}
+
+export { DELIVERY_PREFS };
+export type { DeliveryPref };
 
 /**
  * Server-side validation of a submitted answer set.
@@ -181,6 +226,16 @@ export function validateAnswers(input: unknown): string | null {
 
   if (typeof a.lessonType !== 'string' || !LESSON_TYPES.some(t => t.value === a.lessonType)) {
     return 'lessonType';
+  }
+
+  // Accepted as absent as well as valid. A client built before migration 243
+  // (a cached bundle, a queued request) posts no deliveryPref, and rejecting
+  // that would 400 a family whose only fault is a stale tab. Absent records as
+  // null, which the matcher reads as unconstrained.
+  if (a.deliveryPref !== null && a.deliveryPref !== undefined) {
+    if (typeof a.deliveryPref !== 'string' || !DELIVERY_PREF_VALUES.has(a.deliveryPref)) {
+      return 'deliveryPref';
+    }
   }
   if (typeof a.budgetBand !== 'string' || !BUDGET_BANDS.some(b => b.value === a.budgetBand)) {
     return 'budgetBand';
