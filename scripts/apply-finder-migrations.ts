@@ -50,6 +50,9 @@ const PROJECT_REF = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '')
 /** The production ref. Never a valid target for this script. */
 const PRODUCTION_REF = 'nfkrfciozjxrodkusrhh';
 
+/** Pooler region. Staging is a branch of the prod project, which is us-east-1. */
+const POOLER_REGION = process.env.SUPABASE_POOLER_REGION ?? 'us-east-1';
+
 const candidatePasswords = [
   process.env.STAGING_DB_PW,
   process.env.STAGING_DB_PASSWORD,
@@ -77,28 +80,159 @@ const MIGRATIONS = [
   '240_finder.sql',
 ];
 
+/** The proof that all three migrations landed. Shared by both transports. */
+const VERIFY_SQL = `
+  SELECT
+    (SELECT count(*) FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='profiles'
+        AND column_name IN ('first_touch','last_touch','signup_ref','finder_prompted_at','finder_completed_at')
+    ) AS profile_columns_5,
+    (SELECT to_regclass('public.product_events')  IS NOT NULL) AS product_events,
+    (SELECT to_regclass('public.retention_marks') IS NOT NULL) AS retention_marks,
+    (SELECT to_regclass('public.finder_requests') IS NOT NULL) AS finder_requests,
+    (SELECT to_regclass('public.demand_signals')  IS NOT NULL) AS demand_signals,
+    (SELECT EXISTS (SELECT 1 FROM pg_indexes
+      WHERE schemaname='public' AND indexname='uq_events_once')) AS dedupe_index,
+    (SELECT count(*) FROM pg_policies
+      WHERE schemaname='public'
+        AND tablename IN ('product_events','retention_marks','finder_requests','demand_signals')
+    ) AS rls_policies;
+`;
+
+/**
+ * Candidate connection strings, tried in order.
+ *
+ * The direct host `db.<ref>.supabase.co` now resolves to an IPv6 address ONLY.
+ * On any machine or CI runner without IPv6 egress that surfaces as ENOTFOUND —
+ * which reads like a wrong hostname rather than a routing problem, and is why
+ * the sibling script apply-staging-migrations.ts no longer connects either.
+ *
+ * The Supavisor pooler is dual-stack, so it is tried FIRST. Note its username
+ * carries the project ref (`postgres.<ref>`) — that is how the pooler decides
+ * which project to route to, and omitting it fails authentication with a
+ * password error that sends you hunting for the wrong bug.
+ *
+ * Session mode (5432) rather than transaction mode (6543): these migrations use
+ * multi-statement transactions and session-scoped DDL, which transaction pooling
+ * does not support.
+ */
+function connectionUrls(password: string): { label: string; url: string }[] {
+  const pw = encodeURIComponent(password);
+  return [
+    {
+      label: `pooler ${POOLER_REGION} (session)`,
+      url: `postgresql://postgres.${PROJECT_REF}:${pw}@aws-0-${POOLER_REGION}.pooler.supabase.com:5432/postgres`,
+    },
+    {
+      label: 'direct (IPv6 only)',
+      url: `postgresql://postgres:${pw}@db.${PROJECT_REF}.supabase.co:5432/postgres`,
+    },
+  ];
+}
+
 async function tryConnect(password: string): Promise<Client | null> {
-  const url = `postgresql://postgres:${encodeURIComponent(password)}@db.${PROJECT_REF}.supabase.co:5432/postgres`;
-  const client = new Client({
-    connectionString: url,
-    ssl: { rejectUnauthorized: false },
-  });
-  try {
-    await client.connect();
-    return client;
-  } catch (err: any) {
-    console.warn(`  password ending in …${password.slice(-3)} failed: ${err?.code ?? err?.message}`);
+  for (const { label, url } of connectionUrls(password)) {
+    const client = new Client({
+      connectionString: url,
+      ssl: { rejectUnauthorized: false },
+    });
     try {
-      await client.end();
-    } catch {
-      /* no-op */
+      await client.connect();
+      console.log(`  connected via ${label}`);
+      return client;
+    } catch (err: any) {
+      console.warn(`  ${label} failed: ${err?.code ?? ""} ${err?.message ?? ""}`.trim());
+      try {
+        await client.end();
+      } catch {
+        /* no-op */
+      }
     }
-    return null;
   }
+  return null;
+}
+
+/**
+ * Fallback transport: the Supabase Management API.
+ *
+ * WHY THIS EXISTS. Neither Postgres route reaches a *branch* database from a
+ * normal workstation:
+ *   - `db.<ref>.supabase.co` resolves to IPv6 only, so no-IPv6 egress gives
+ *     ENOTFOUND (which misleadingly looks like a typo'd hostname);
+ *   - the Supavisor pooler answers `tenant/user postgres.<ref> not found`,
+ *     because a persistent branch is not registered as its own pooler tenant.
+ *
+ * The Management API does accept the branch ref, so it is the only transport
+ * that works here. Needs SUPABASE_ACCESS_TOKEN (an sbp_… personal token) in the
+ * environment — deliberately read from the environment and never written to a
+ * file, so it cannot end up committed.
+ */
+async function applyViaManagementApi(): Promise<boolean> {
+  const token = process.env.SUPABASE_ACCESS_TOKEN;
+  if (!token) {
+    console.error(
+      'No SUPABASE_ACCESS_TOKEN set, and no Postgres route reached the branch.\n' +
+        'Re-run as:  SUPABASE_ACCESS_TOKEN=sbp_... npm run finder:migrate'
+    );
+    return false;
+  }
+
+  const endpoint = `https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query`;
+
+  const runSql = async (label: string, sql: string): Promise<boolean> => {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query: sql }),
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      console.error(`FAILED ${label}: HTTP ${res.status} ${detail.slice(0, 600)}`);
+      return false;
+    }
+    console.log(`OK  ${label} applied.`);
+    return true;
+  };
+
+  console.log(`Applying via Management API to ${PROJECT_REF}.`);
+
+  for (const file of MIGRATIONS) {
+    const sql = readFileSync(resolve(process.cwd(), 'supabase/migrations', file), 'utf8');
+    console.log(`\n=== Applying ${file} (${sql.length} bytes) ===`);
+    if (!(await runSql(file, sql))) return false;
+  }
+
+  // Same verification as the Postgres path — the point of the script is to prove
+  // the objects exist, not merely that the statements were accepted.
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: VERIFY_SQL }),
+  });
+  if (!res.ok) {
+    console.error(`Verification query failed: HTTP ${res.status}`);
+    return false;
+  }
+  const rows = (await res.json()) as Record<string, unknown>[];
+  console.log('\n=== Verification ===');
+  console.table(rows);
+
+  const row = rows?.[0] ?? {};
+  return (
+    Number(row.profile_columns_5) === 5 &&
+    Boolean(row.product_events) &&
+    Boolean(row.retention_marks) &&
+    Boolean(row.finder_requests) &&
+    Boolean(row.demand_signals) &&
+    Boolean(row.dedupe_index)
+  );
 }
 
 async function main() {
-  console.log(`Connecting to db.${PROJECT_REF}.supabase.co (trying ${candidatePasswords.length} password(s))...`);
+  console.log(`Target ref ${PROJECT_REF} — trying ${candidatePasswords.length} password(s)...`);
 
   let client: Client | null = null;
   for (const pw of candidatePasswords) {
@@ -106,8 +240,10 @@ async function main() {
     if (client) break;
   }
   if (!client) {
-    console.error('All candidate passwords failed authentication.');
-    process.exit(1);
+    // No Postgres route reached the branch. Fall back to the Management API,
+    // which is the only transport that accepts a branch ref from here.
+    const ok = await applyViaManagementApi();
+    process.exit(ok ? 0 : 1);
   }
   console.log('Connected.');
 
@@ -126,23 +262,7 @@ async function main() {
   }
 
   // Verification: every object the three migrations are supposed to create.
-  const probe = await client.query(`
-    SELECT
-      (SELECT count(*) FROM information_schema.columns
-        WHERE table_schema='public' AND table_name='profiles'
-          AND column_name IN ('first_touch','last_touch','signup_ref','finder_prompted_at','finder_completed_at')
-      ) AS profile_columns_5,
-      (SELECT to_regclass('public.product_events')  IS NOT NULL) AS product_events,
-      (SELECT to_regclass('public.retention_marks') IS NOT NULL) AS retention_marks,
-      (SELECT to_regclass('public.finder_requests') IS NOT NULL) AS finder_requests,
-      (SELECT to_regclass('public.demand_signals')  IS NOT NULL) AS demand_signals,
-      (SELECT EXISTS (SELECT 1 FROM pg_indexes
-        WHERE schemaname='public' AND indexname='uq_events_once')) AS dedupe_index,
-      (SELECT count(*) FROM pg_policies
-        WHERE schemaname='public'
-          AND tablename IN ('product_events','retention_marks','finder_requests','demand_signals')
-      ) AS rls_policies;
-  `);
+  const probe = await client.query(VERIFY_SQL);
 
   console.log('\n=== Verification ===');
   console.table(probe.rows);
