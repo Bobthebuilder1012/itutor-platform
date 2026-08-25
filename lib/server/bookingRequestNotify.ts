@@ -42,6 +42,8 @@ export async function sendIfAllowed(
     to: string;
     subject: string;
     html: string;
+    /** The plain-text alternative, when the body came from the design system. */
+    text?: string;
     emailType: string;
   }
 ): Promise<void> {
@@ -64,7 +66,7 @@ export async function sendIfAllowed(
     return;
   }
 
-  const result = await sendEmail({ to: params.to, subject: params.subject, html: params.html });
+  const result = await sendEmail({ to: params.to, subject: params.subject, html: params.html, text: params.text });
   await logEmailSend({
     userId: params.userId,
     emailType: params.emailType,
@@ -80,7 +82,7 @@ export const TEMPLATE_STUDENT_REQUEST_DECLINED = 'student_request_declined';
 export const TEMPLATE_STUDENT_REQUEST_APPROVED = 'student_request_approved';
 export const TEMPLATE_SEAT_UNAVAILABLE_REFUNDED = 'seat_unavailable_refunded';
 
-function appUrl(path: string): string {
+export function appUrl(path: string): string {
   const base = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://myitutor.com').replace(/\/$/, '');
   return `${base}${path}`;
 }
