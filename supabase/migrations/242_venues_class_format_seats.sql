@@ -1,14 +1,16 @@
 -- ============================================================
--- MIGRATION 241: Venues, class format, seat types and per-seat pricing
+-- MIGRATION 242: Venues, class format, seat types and per-seat pricing
 -- Physical Classes & Cash Payments — release phase A
 -- ============================================================
 --
--- NUMBERED 241, NOT 217. The spec was written when the tree was at 216 and
+-- NUMBERED 242, NOT 217. The spec was written when the tree was at 216 and
 -- claimed 217-220. Those are long gone: 217 is profiles_privileged_column_guard,
 -- 218 attendance_read_only, 219 parent_approval_booking_requests, 220
--- attendance_derivation. 238-240 belong to the Finder (attribution, product-event
--- dedupe, finder schema). A migration written to a taken number is never applied
--- and never errors, which is the quietest way to lose a release.
+-- attendance_derivation. 238-241 belong to the Finder (attribution, product-event
+-- dedupe, finder schema, fallback match class), and 241 is ALREADY APPLIED to
+-- the staging database — so this moved 241 -> 242. A migration written to a
+-- taken number is never applied and never errors, which is the quietest way to
+-- lose a release.
 --
 -- TWO SPEC CLAIMS CORRECTED AGAINST THE LIVE SCHEMA (staging, read 2026-08-21):
 --
