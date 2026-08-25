@@ -17,6 +17,7 @@
 
 import { redirect } from 'next/navigation';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { levelLabel, normaliseLearnerLevel } from '@/lib/matching/levels';
 import FinderWizard from '@/components/finder/FinderWizard';
 import type { FinderEntryRoute, FinderTrigger } from '@/lib/analytics/events';
 
@@ -75,6 +76,34 @@ export default async function FindPage({
 
   const isParent = row?.role === 'parent';
 
+  // The level, resolved through the normalisation layer so an unrecognised
+  // `form_level` reads as "unknown" rather than being shown to the family raw.
+  const canonicalLevel = normaliseLearnerLevel(row?.form_level ?? null);
+  const levelLabelText = canonicalLevel ? levelLabel(canonicalLevel) : null;
+
+  // Subjects already on the account, so the first question can show what we
+  // already know instead of starting cold. Best-effort: a failure here costs the
+  // "You study this" badge, not the wizard.
+  //
+  // NOTE: student signup does NOT currently collect subjects — SignupCard's
+  // profile step saves school, institution and form_level only. These come from
+  // the dashboard's "Add subjects" action, so a brand-new account has none and
+  // the badge simply does not appear. Collecting subjects at signup is what would
+  // make this land for everyone.
+  let savedSubjects: string[] = [];
+  {
+    const { data: subjectRows, error: subjectErr } = await supabase
+      .from('user_subjects')
+      .select('subjects(name)')
+      .eq('user_id', user.id);
+    if (subjectErr) {
+      console.error('[find] saved subjects read failed:', subjectErr.message);
+    }
+    savedSubjects = ((subjectRows ?? []) as Array<{ subjects?: { name?: string | null } | null }>)
+      .map(r => r.subjects?.name ?? '')
+      .filter(Boolean);
+  }
+
   // NOTE: there is deliberately NO form_level gate here. The wizard's first
   // question is the level, so it needs nothing on the profile — and
   // /signup/complete-role only collects one while `role` is unset, so sending
@@ -128,7 +157,8 @@ export default async function FindPage({
     <FinderWizard
       isParent={isParent}
       firstName={(row?.full_name ?? '').split(' ')[0] || null}
-      learnerLevel={row?.form_level ?? null}
+      levelLabelText={levelLabelText}
+      savedSubjects={savedSubjects}
       prefillSubject={searchParams?.subject ?? null}
       entryRoute={entryRouteFor(trigger)}
       trigger={

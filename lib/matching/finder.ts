@@ -99,7 +99,7 @@ export interface ScoredMatch {
   missed: GatingDimension[];
 }
 
-export type MatchClass = 'exact' | 'near' | 'none';
+export type MatchClass = 'exact' | 'near' | 'fallback' | 'none';
 
 export interface MatchResult {
   matchClass: MatchClass;
@@ -202,36 +202,71 @@ export function matchFinderRequest(
   criteria: FinderCriteria,
   maxMatches: number
 ): MatchResult {
+  // ── Strict pass ────────────────────────────────────────────────────────────
+  // Subject, level and capacity are hard; availability and budget gate the
+  // classification.
   const eligible = candidates.filter(c => passesHardFilters(c, criteria));
-  if (eligible.length === 0) {
-    return { matchClass: 'none', nearMissOn: null, matches: [] };
-  }
 
-  const scored = eligible
-    .map(c => scoreCandidate(c, criteria))
-    .sort((a, b) => b.score - a.score);
+  if (eligible.length > 0) {
+    const scored = eligible
+      .map(c => scoreCandidate(c, criteria))
+      .sort((a, b) => b.score - a.score);
 
-  const exact = scored.filter(s => s.missed.length === 0);
-  if (exact.length > 0) {
-    return {
-      matchClass: 'exact',
-      nearMissOn: null,
-      matches: exact.slice(0, maxMatches),
-    };
-  }
+    const exact = scored.filter(s => s.missed.length === 0);
+    if (exact.length > 0) {
+      return { matchClass: 'exact', nearMissOn: null, matches: exact.slice(0, maxMatches) };
+    }
 
-  const nearMisses = scored.filter(s => s.missed.length === 1);
-  if (nearMisses.length > 0) {
-    const dimensions = new Set(nearMisses.map(s => s.missed[0]));
-    if (dimensions.size === 1) {
-      return {
-        matchClass: 'near',
-        nearMissOn: nearMisses[0].missed[0],
-        matches: nearMisses.slice(0, maxMatches),
-      };
+    // `near` only when every near miss agrees on WHICH dimension is wrong —
+    // otherwise there is no honest single sentence and no single button, and
+    // naming one dimension would silently drop the class that failed the other.
+    const nearMisses = scored.filter(s => s.missed.length === 1);
+    if (nearMisses.length > 0) {
+      const dimensions = new Set(nearMisses.map(s => s.missed[0]));
+      if (dimensions.size === 1) {
+        return {
+          matchClass: 'near',
+          nearMissOn: nearMisses[0].missed[0],
+          matches: nearMisses.slice(0, maxMatches),
+        };
+      }
     }
   }
 
+  // ── Fallback pass: SUBJECT TRUMPS EVERYTHING ───────────────────────────────
+  // Nothing survived the strict pass. Rather than show an empty page, fall back
+  // to "any class in the subject they asked for", dropping level, availability
+  // and budget from the gate and keeping only subject and real capacity.
+  //
+  // WHY THIS IS A SEPARATE CLASS AND NOT SILENTLY FOLDED INTO `near`. These
+  // classes may be the wrong year, the wrong day and over budget all at once, so
+  // presenting them as "nearly right" would be a lie the family discovers one
+  // click later. They are labelled as other classes in the subject, and the
+  // ledger records `fallback` so the demand map still knows the specific request
+  // went unserved — which is the whole point of the ledger.
+  //
+  // Capacity stays a hard filter here: a full class is not an option at any
+  // level of desperation.
+  const subjectOnly = candidates.filter(
+    c =>
+      subjectMatches(c.subject, criteria.subjectNames) &&
+      !(c.seatsRemaining !== null && c.seatsRemaining <= 0) &&
+      c.scheduleEntries.length > 0
+  );
+
+  if (subjectOnly.length > 0) {
+    const scored = subjectOnly
+      .map(c => scoreCandidate(c, criteria))
+      .sort((a, b) => b.score - a.score);
+    return {
+      matchClass: 'fallback',
+      nearMissOn: null,
+      matches: scored.slice(0, maxMatches),
+    };
+  }
+
+  // Genuinely nothing in this subject. This is the only true no-match, and it is
+  // the row teacher acquisition should act on.
   return { matchClass: 'none', nearMissOn: null, matches: [] };
 }
 

@@ -11,16 +11,14 @@
  * band and displayed in another, which reads as a broken filter and is a trust
  * failure at a family's first contact with the platform.
  *
- * So `timeBandOf` is the single band function. The rule it used to encode —
- * that a weekday morning is not something a family can pick, because that is
- * school hours — is expressed HERE, in the block map, where it belongs: there
- * simply is no `weekday_morning` block. That is a deliberate gap in the
- * vocabulary, not a hole in the band maths.
+ * So `timeBandOf` is the single band function, and which day/band pairs a family
+ * may pick is expressed in the block map below rather than smuggled into the
+ * band maths.
  *
- * WHY SIX BLOCKS AND NOT NINE. Measured against the live catalogue, the three
- * missing combinations (weekday morning, Saturday evening, Sunday evening)
- * contain zero classes. The six below cover 100% of current supply, so a family
- * can express every schedule the platform can actually offer.
+ * WHY SEVEN BLOCKS AND NOT NINE. Saturday and Sunday evenings are absent: the
+ * live catalogue contains none, and nobody has asked for them. Weekday mornings
+ * ARE present — see the note on the type below for why that exclusion was
+ * reversed.
  *
  * ONE BEHAVIOURAL DIFFERENCE, ACCEPTED KNOWINGLY. `slotBlocks` treated
  * anything before 05:00 as no band at all, so a 03:00 Saturday class matched
@@ -37,10 +35,22 @@
 import { timeBandOf, type ScheduleEntry } from '@/lib/utils/scheduleFormat';
 
 /**
- * The six availability blocks a family chooses from. Measured against the paid
- * class schedule, these cover 100% of current supply.
+ * The seven availability blocks a family chooses from.
+ *
+ * WEEKDAY MORNINGS ARE LISTED, and that is a deliberate reversal. This module
+ * originally omitted the block on the grounds that a weekday morning is school
+ * hours — true for most learners, but not all: home-schoolers, the private and
+ * denominational schools that run a shifted timetable, students on a
+ * half-day/shift system, CAPE students with free periods, and anyone resitting.
+ * Excluding the block did not just hide the option, it made those families
+ * unmatchable and their demand unrecordable, which is the more expensive error.
+ *
+ * The other two combinations with no current supply — Saturday and Sunday
+ * evenings — stay out. They were measured as empty AND nobody has asked for
+ * them; weekday mornings were asked for.
  */
 export type AvailabilityBlock =
+  | 'weekday_morning'
   | 'weekday_afternoon'
   | 'weekday_evening'
   | 'saturday_morning'
@@ -49,6 +59,7 @@ export type AvailabilityBlock =
   | 'sunday_afternoon';
 
 export const AVAILABILITY_BLOCKS: ReadonlyArray<{ value: AvailabilityBlock; label: string }> = [
+  { value: 'weekday_morning', label: 'Weekday mornings' },
   { value: 'weekday_afternoon', label: 'Weekday afternoons' },
   { value: 'weekday_evening', label: 'Weekday evenings' },
   { value: 'saturday_morning', label: 'Saturday mornings' },
@@ -82,7 +93,8 @@ export function availabilityBlocksOf(entry: ScheduleEntry): AvailabilityBlock[] 
   if (day >= 1 && day <= 5) {
     if (band === 'afternoon') return ['weekday_afternoon'];
     if (band === 'evening') return ['weekday_evening'];
-    return []; // weekday morning is school hours, and is not offered
+    if (band === 'morning') return ['weekday_morning'];
+    return [];
   }
   if (day === 6) {
     if (band === 'morning') return ['saturday_morning'];

@@ -7,14 +7,15 @@
  * behind auth, and `finder_requests` has CHECK constraints that would 500 rather
  * than reject politely if junk reached them.
  *
- * WHY SIX STEPS AND NOT THE SPEC'S FIVE. The spec makes step 1 a single subject
- * picker, on the reasoning that `subjects` already reconciles subject and level
- * into one row. It does not: `subjects.level` is corrupt (131 of 134 rows say
- * 'CSEC', including all 77 CAPE rows), so the only trustworthy columns are
- * `name` and `curriculum`. Level therefore has to be asked, and it has to be
- * asked FIRST, because `subjectsForLevel()` needs a level to produce the subject
- * options at all. This is also the order Class Match Week's questionnaire
- * already uses, so families who have seen one recognise the other.
+ * THE LEVEL IS NOT ASKED. It is already collected during account creation
+ * (`profiles.form_level`, set by SignupCard's student profile step) and asking a
+ * second time reads as though the first answer was thrown away. The submit route
+ * reads it off the profile instead — which also means the wizard cannot disagree
+ * with the account about what year the learner is in.
+ *
+ * The consequence for step order: subject options come from
+ * `subjectsForLevel(level)`, so the profile's level is what seeds the very first
+ * question rather than an answer given a moment earlier.
  */
 
 import {
@@ -54,25 +55,26 @@ export const LESSON_TYPES: ReadonlyArray<{
 ];
 
 /**
- * Monthly budget bands in TTD. `max` is the upper bound the matcher compares
- * against; null on the top band means "no ceiling", not "$600".
+ * Monthly budget ceilings in TTD.
  *
- * FLAGGED: these are the spec's placeholders (§14.1, "confirm against real
- * pricing"). Every class currently on staging is priced between $0 and $120/mo,
- * so in practice all four bands admit everything and this question does not
- * currently discriminate. It is still asked, because the ANSWER is what the
- * demand ledger needs in order to tell teacher acquisition what families will
- * actually pay.
+ * THE LABELS SAY "UP TO", BECAUSE THAT IS WHAT THE MATCHER DOES. `max` is a
+ * ceiling and nothing reads a floor, so picking "$400 – $600" always admitted
+ * everything under $600 too. The old banded labels implied a floor the logic
+ * never had, which quietly narrowed what families believed they were asking for
+ * and made "no results" look like a supply problem rather than a wording one.
+ *
+ * `null` on the top option means no ceiling at all.
  */
 export const BUDGET_BANDS: ReadonlyArray<{
   value: string;
   label: string;
+  detail?: string;
   max: number | null;
 }> = [
-  { value: 'under_200', label: 'Under $200', max: 200 },
-  { value: '200_400', label: '$200 – $400', max: 400 },
-  { value: '400_600', label: '$400 – $600', max: 600 },
-  { value: '600_plus', label: '$600+', max: null },
+  { value: 'under_200', label: 'Up to $200 a month', max: 200 },
+  { value: '200_400', label: 'Up to $400 a month', max: 400 },
+  { value: '400_600', label: 'Up to $600 a month', max: 600 },
+  { value: '600_plus', label: 'No limit', detail: 'Show me everything', max: null },
 ];
 
 export const URGENCIES: ReadonlyArray<{ value: Urgency; label: string }> = [
@@ -85,7 +87,6 @@ export const URGENCIES: ReadonlyArray<{ value: Urgency; label: string }> = [
 export interface FinderAnswers {
   /** Parent flow only: the child's first name, typed, no account needed. */
   childLabel: string | null;
-  level: CanonicalLevel | null;
   subject: string | null;
   availabilityBlocks: AvailabilityBlock[];
   lessonType: LessonType | null;
@@ -96,7 +97,6 @@ export interface FinderAnswers {
 export function emptyAnswers(): FinderAnswers {
   return {
     childLabel: null,
-    level: null,
     subject: null,
     availabilityBlocks: [],
     lessonType: null,
@@ -105,18 +105,17 @@ export function emptyAnswers(): FinderAnswers {
   };
 }
 
-/** The step indices, so nothing has to hardcode a magic number. */
+/** Step indices, so nothing has to hardcode a magic number. */
 export const STEP = {
   CHILD: -1, // parents only, rendered before the rest
-  LEVEL: 0,
-  SUBJECT: 1,
-  AVAILABILITY: 2,
-  LESSON_TYPE: 3,
-  BUDGET: 4,
-  URGENCY: 5,
+  SUBJECT: 0,
+  AVAILABILITY: 1,
+  LESSON_TYPE: 2,
+  BUDGET: 3,
+  URGENCY: 4,
 } as const;
 
-export const TOTAL_STEPS = 6;
+export const TOTAL_STEPS = 5;
 
 /**
  * Is this step answered? Drives the Continue button, which stays visible but
@@ -131,8 +130,6 @@ export function isStepAnswered(
   switch (step) {
     case STEP.CHILD:
       return !isParent || (answers.childLabel ?? '').trim().length > 0;
-    case STEP.LEVEL:
-      return answers.level !== null;
     case STEP.SUBJECT:
       return answers.subject !== null;
     case STEP.AVAILABILITY:
@@ -161,14 +158,16 @@ export function availabilityLabel(block: AvailabilityBlock): string {
  * Server-side validation of a submitted answer set.
  *
  * Returns the field name that failed, or null when everything is acceptable.
- * Deliberately strict about closed vocabularies: an unrecognised level is junk,
- * not a new level we should quietly record.
+ * Deliberately strict about closed vocabularies: an unrecognised block is junk,
+ * not a new block we should quietly record.
+ *
+ * `level` is NOT validated here — it is not part of the submission. The route
+ * reads it from the profile.
  */
 export function validateAnswers(input: unknown): string | null {
   if (typeof input !== 'object' || input === null) return 'body';
   const a = input as Record<string, unknown>;
 
-  if (typeof a.level !== 'string' || !LEVEL_VALUES.has(a.level)) return 'level';
   if (typeof a.subject !== 'string' || a.subject.trim().length === 0) return 'subject';
 
   if (!Array.isArray(a.availabilityBlocks) || a.availabilityBlocks.length === 0) {
@@ -197,3 +196,5 @@ export function validateAnswers(input: unknown): string | null {
 
   return null;
 }
+
+export type { CanonicalLevel };

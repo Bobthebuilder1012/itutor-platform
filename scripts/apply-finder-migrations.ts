@@ -78,6 +78,7 @@ const MIGRATIONS = [
   '238_attribution_and_events.sql',
   '239_product_events_dedupe.sql',
   '240_finder.sql',
+  '241_finder_fallback_match_class.sql',
 ];
 
 /** The proof that all three migrations landed. Shared by both transports. */

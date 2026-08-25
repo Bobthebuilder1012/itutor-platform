@@ -138,7 +138,7 @@ console.log('\nFinder matcher — behavioural checks\n');
     criteria(),
     MAX
   );
-  check('near misses on different dimensions -> none', r.matchClass === 'none', `got ${r.matchClass}`);
+  check('near misses on different dimensions are not "near"', r.matchClass !== 'near', `got ${r.matchClass}`);
 }
 
 // ---------------------------------------------------------------- none
@@ -148,8 +148,8 @@ console.log('\nFinder matcher — behavioural checks\n');
     criteria(),
     MAX
   );
-  check('two dimensions miss -> none', r.matchClass === 'none', `got ${r.matchClass}`);
-  check('none returns no cards', r.matches.length === 0);
+  check('two dimensions miss -> not exact, not near', r.matchClass !== 'exact' && r.matchClass !== 'near', `got ${r.matchClass}`);
+  check('the subject fallback still offers something', r.matches.length > 0);
 }
 
 {
@@ -177,7 +177,7 @@ console.log('\nFinder matcher — behavioural checks\n');
 // A wrong-level class is not a near match, it is the wrong class.
 {
   const r = matchFinderRequest([candidate({ formLevel: 'CAPE' })], criteria({ level: 'FORM_1' }), MAX);
-  check('wrong level is excluded, not near', r.matchClass === 'none', `got ${r.matchClass}`);
+  check('wrong level never presents as near', r.matchClass !== 'near' && r.matchClass !== 'exact', `got ${r.matchClass}`);
 }
 
 // One class legitimately serves two levels — CSEC (14-16) spans Form 4 and 5.
@@ -240,6 +240,96 @@ console.log('\nFinder matcher — behavioural checks\n');
   const r = matchFinderRequest([candidate()], criteria(), MAX);
   check('reports the blocks the class covers', r.matches[0].blocks.join(',') === 'saturday_morning',
     r.matches[0].blocks.join(','));
+}
+
+
+// ------------------------------------------- subject trumps all (fallback)
+// The user-facing rule: minimise empty screens. If nothing survives the strict
+// pass, show classes in the subject anyway rather than nothing.
+{
+  // Wrong day AND over budget — two misses, so pre-fallback this was `none`.
+  const r = matchFinderRequest(
+    [candidate({ scheduleEntries: SUN_AFTERNOON, monthlyPrice: 900 })],
+    criteria(),
+    MAX
+  );
+  check('two misses now fall back rather than none', r.matchClass === 'fallback', `got ${r.matchClass}`);
+  check('fallback still returns the class', r.matches.length === 1);
+}
+
+{
+  // Wrong LEVEL is a hard filter in the strict pass, but the subject still
+  // matches — so the fallback should surface it rather than showing nothing.
+  const r = matchFinderRequest([candidate({ formLevel: 'CAPE' })], criteria({ level: 'FORM_1' }), MAX);
+  check('wrong level falls back on subject', r.matchClass === 'fallback', `got ${r.matchClass}`);
+}
+
+{
+  // Disagreeing near misses used to be `none`; they are now a fallback, because
+  // both classes are in the subject the family asked for.
+  const r = matchFinderRequest(
+    [
+      candidate({ groupId: 'wrong_time', scheduleEntries: SUN_AFTERNOON }),
+      candidate({ groupId: 'wrong_price', monthlyPrice: 900 }),
+    ],
+    criteria(),
+    MAX
+  );
+  check('disagreeing near misses fall back', r.matchClass === 'fallback', `got ${r.matchClass}`);
+}
+
+{
+  // The ONLY true no-match: nothing in the subject at all.
+  const r = matchFinderRequest([candidate({ subject: 'Geography' })], criteria(), MAX);
+  check('a different subject is still none', r.matchClass === 'none', `got ${r.matchClass}`);
+}
+
+{
+  // Capacity stays hard even in the fallback — a full class is not an option at
+  // any level of desperation.
+  const r = matchFinderRequest(
+    [candidate({ formLevel: 'CAPE', seatsRemaining: 0 })],
+    criteria({ level: 'FORM_1' }),
+    MAX
+  );
+  check('a full class is excluded from the fallback too', r.matchClass === 'none', `got ${r.matchClass}`);
+}
+
+{
+  // A class with no schedule cannot be attended, so it is not a fallback either.
+  const r = matchFinderRequest(
+    [candidate({ formLevel: 'CAPE', scheduleEntries: [] })],
+    criteria({ level: 'FORM_1' }),
+    MAX
+  );
+  check('an unschedulable class is not a fallback', r.matchClass === 'none', `got ${r.matchClass}`);
+}
+
+{
+  // An exact match must still win outright — the fallback is a last resort, not
+  // an additive tier.
+  const r = matchFinderRequest(
+    [candidate({ groupId: 'exact' }), candidate({ groupId: 'wrong_level', formLevel: 'CAPE' })],
+    criteria(),
+    MAX
+  );
+  check('exact wins over anything the fallback would add', r.matchClass === 'exact');
+  check('fallback candidates are not mixed in', r.matches.length === 1 && r.matches[0].groupId === 'exact');
+}
+
+// ------------------------------------------- weekday mornings are matchable
+// Not every learner is in the standard school timetable — home-schoolers, shift
+// systems, CAPE free periods, resits.
+{
+  const WEEKDAY_MORNING = [{ day: 3, time: '09:00', durationMin: 90 }];
+  const r = matchFinderRequest(
+    [candidate({ scheduleEntries: WEEKDAY_MORNING })],
+    criteria({ availabilityBlocks: ['weekday_morning'] }),
+    MAX
+  );
+  check('a weekday morning class matches a weekday morning request', r.matchClass === 'exact', `got ${r.matchClass}`);
+  check('and reports the weekday_morning block', r.matches[0]?.blocks.join(',') === 'weekday_morning',
+    r.matches[0]?.blocks.join(','));
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`);

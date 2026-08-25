@@ -21,12 +21,11 @@ import { getFinderMaxMatches, isFinderEnabled } from '@/lib/featureFlags/finder'
 import { getRequestAttribution, track } from '@/lib/analytics/track';
 import { PRODUCT_EVENTS } from '@/lib/analytics/events';
 import type { AvailabilityBlock } from '@/lib/matching/availability';
-import type { CanonicalLevel } from '@/lib/matching/levels';
+import { normaliseLearnerLevel, type CanonicalLevel } from '@/lib/matching/levels';
 
 export const dynamic = 'force-dynamic';
 
 interface SubmitBody {
-  level: CanonicalLevel;
   subject: string;
   availabilityBlocks: AvailabilityBlock[];
   lessonType: 'group' | 'one_on_one' | 'either';
@@ -70,6 +69,32 @@ export async function POST(req: NextRequest) {
   const service = getServiceClient();
   const { attribution } = await getRequestAttribution();
 
+  // THE LEVEL COMES FROM THE PROFILE, NOT THE BODY.
+  //
+  // It was collected at signup, so asking again reads as though the first answer
+  // was discarded — and taking it from the account means the wizard cannot
+  // disagree with the profile about what year the learner is in.
+  //
+  // `profiles.form_level` is unconstrained text carrying two vocabularies, so it
+  // goes through normaliseLearnerLevel. An unrecognised value resolves to null,
+  // which the matcher treats as "no level constraint" rather than "matches
+  // nothing" — the right failure direction here, since a family with an odd
+  // form_level should still be shown their subject.
+  let learnerLevel: CanonicalLevel | null = null;
+  {
+    const { data: profileRow, error: profileErr } = await service
+      .from('profiles')
+      .select('form_level')
+      .eq('id', userId)
+      .maybeSingle();
+    if (profileErr) {
+      console.error('[finder/submit] level read failed:', profileErr.message);
+    }
+    learnerLevel = normaliseLearnerLevel(
+      (profileRow as { form_level?: string | null } | null)?.form_level ?? null
+    );
+  }
+
   // run_number: a re-run inserts a new row rather than overwriting, so
   // preference drift over time stays queryable.
   const { count: priorRuns } = await service
@@ -104,7 +129,7 @@ export async function POST(req: NextRequest) {
       child_label: body.childLabel?.trim() || null,
       run_number: runNumber,
       subject_id: subjectId,
-      level: body.level,
+      level: learnerLevel,
       availability_blocks: body.availabilityBlocks,
       lesson_type: body.lessonType,
       budget_max: budgetMax,
@@ -123,7 +148,7 @@ export async function POST(req: NextRequest) {
   // 2) Match. v1 is group classes only; one_on_one and either still record
   // honestly and return no group results, which is a legitimate no-match and
   // exactly how we find out how much one-to-one demand exists.
-  let matchClass: 'exact' | 'near' | 'none' = 'none';
+  let matchClass: 'exact' | 'near' | 'fallback' | 'none' = 'none';
   let nearMissOn: string | null = null;
   let resultRows: SupplyRow[] = [];
   let results: Array<Record<string, unknown>> = [];
@@ -137,7 +162,7 @@ export async function POST(req: NextRequest) {
         supply as FinderCandidate[],
         {
           subjectNames: [body.subject],
-          level: body.level,
+          level: learnerLevel,
           availabilityBlocks: body.availabilityBlocks,
           budgetMax,
         },
@@ -197,7 +222,7 @@ export async function POST(req: NextRequest) {
       request_id: requestId,
       user_id: userId,
       subject_id: subjectId,
-      level: body.level,
+      level: learnerLevel,
       availability_blocks: body.availabilityBlocks,
       budget_max: budgetMax,
       match_class: matchClass,
@@ -214,7 +239,7 @@ export async function POST(req: NextRequest) {
     PRODUCT_EVENTS.FINDER_COMPLETED,
     {
       answers: {
-        level: body.level,
+        level: learnerLevel,
         subject: body.subject,
         availability_blocks: body.availabilityBlocks,
         lesson_type: body.lessonType,
@@ -234,7 +259,7 @@ export async function POST(req: NextRequest) {
 
   await track(
     PRODUCT_EVENTS.DEMAND_RECORDED,
-    { subject: body.subject, level: body.level },
+    { subject: body.subject, level: learnerLevel ?? 'unknown' },
     { userId, attribution }
   );
 

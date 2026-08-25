@@ -46,11 +46,9 @@ export default async function FindLayout({ children }: { children: ReactNode }) 
   if (role === 'tutor') redirect('/tutor/dashboard');
   if (role === 'admin') redirect('/admin/dashboard');
 
-  return (
-    <main className="min-h-screen bg-itutor-black text-itutor-white">
-      <div className="mx-auto flex min-h-screen w-full max-w-2xl flex-col px-5 py-6 sm:px-6 sm:py-10">
-        {children}
-      </div>
-    </main>
-  );
+  // No wrapper chrome. The wizard and the results screen each render their own
+  // full-bleed <main>, because the split-screen layout needs the whole viewport
+  // — a centred max-w-2xl container here would have squeezed the illustration
+  // panel into a column. This layout exists purely for the auth and role gates.
+  return <>{children}</>;
 }

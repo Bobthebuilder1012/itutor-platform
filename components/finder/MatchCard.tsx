@@ -9,16 +9,17 @@
  *
  * ON THE CTA. The build spec says to reuse `Secure your spot`. That label is not
  * a constant — ClassDetailView computes it from class state (`Secure your spot`
- * only for a preorder, otherwise `Join class`, `Request to join`, `Join waitlist`,
- * `Complete payment`…). A results card cannot know which applies without loading
- * enrolment, payment and request state for every class, so hardcoding the
- * preorder wording would promise a flow most classes do not have. `View class`
- * is used instead — the same label Class Match Week's result card uses — and the
- * class page then shows the correct verb. Same rule as the spec intends: the
- * action keeps one name across the product.
+ * only for a preorder, otherwise `Join class`, `Request to join`, `Join
+ * waitlist`, `Complete payment`…). A results card cannot know which applies
+ * without loading enrolment, payment and request state for every class, so
+ * hardcoding the preorder wording would promise a flow most classes do not have.
+ * `View class` is used instead — the same label Class Match Week's result card
+ * uses — and the class page then shows the correct verb. Same rule the spec
+ * intends: one action, one name, product-wide.
  */
 
 import Link from 'next/link';
+import { BadgeCheck, CalendarDays, Users, Wallet } from 'lucide-react';
 import { availabilityLabel } from '@/lib/finder/wizard';
 import type { AvailabilityBlock } from '@/lib/matching/availability';
 import type { GatingDimension } from '@/lib/matching/finder';
@@ -40,9 +41,7 @@ export interface MatchCardData {
 
 function priceText(monthly: number | null): string {
   if (monthly === null || monthly === 0) return 'Free';
-  // Whole dollars unless the class is priced in cents.
-  const isWhole = Number.isInteger(monthly);
-  return `$${isWhole ? monthly : monthly.toFixed(2)}/month`;
+  return `$${Number.isInteger(monthly) ? monthly : monthly.toFixed(2)}/month`;
 }
 
 function blocksText(blocks: string[]): string {
@@ -65,16 +64,17 @@ export default function MatchCard({
   const missedBudget = nearMissOn === 'budget';
 
   return (
-    <div className="rounded-2xl border border-itutor-border bg-itutor-card p-4 sm:p-5">
+    <div className="rounded-2xl border border-border bg-white p-4 shadow-sm transition hover:shadow-card sm:p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="truncate text-[16px] font-semibold text-itutor-white">
+          <h3 className="truncate text-[16px] font-semibold text-ink">
             {data.name ?? 'Class'}
-          </h2>
-          <p className="mt-0.5 flex items-center gap-1.5 text-[13px] text-itutor-muted">
+          </h3>
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-ink-muted">
             <span className="truncate">with {data.tutor_name ?? 'an iTutor'}</span>
             {data.tutor_verified ? (
-              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-itutor-green/15 px-2 py-0.5 text-[11px] font-medium text-itutor-green">
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-mint px-2 py-0.5 text-[11px] font-semibold text-brand-deep">
+                <BadgeCheck className="size-3" strokeWidth={2.5} />
                 Verified
               </span>
             ) : null}
@@ -82,36 +82,48 @@ export default function MatchCard({
         </div>
       </div>
 
-      {/* The match reason */}
-      <div className="mt-3.5 space-y-1 text-[14px]">
-        <p className={missedAvailability ? 'text-itutor-white' : 'text-itutor-white'}>
-          {blocksText(data.blocks)}
-          {data.session_length_minutes ? (
-            <span className="text-itutor-muted"> · {data.session_length_minutes} min</span>
-          ) : null}
-        </p>
+      {/* The match reason, as facts */}
+      <dl className="mt-3.5 space-y-1.5 text-[14px]">
+        <div className="flex items-start gap-2">
+          <CalendarDays className="mt-0.5 size-4 shrink-0 text-ink-muted" strokeWidth={1.75} />
+          <dd className="text-ink">
+            {blocksText(data.blocks)}
+            {data.session_length_minutes ? (
+              <span className="text-ink-muted"> · {data.session_length_minutes} min</span>
+            ) : null}
+            {/* Name the miss rather than saying "close". */}
+            {missedAvailability && requestedBlocks.length > 0 ? (
+              <span className="mt-0.5 block text-[13px] text-ink-muted">
+                You asked for{' '}
+                {requestedBlocks
+                  .map(b => availabilityLabel(b as AvailabilityBlock).toLowerCase())
+                  .join(' or ')}
+              </span>
+            ) : null}
+          </dd>
+        </div>
 
-        {/* Name the miss, rather than saying "close". */}
-        {missedAvailability && requestedBlocks.length > 0 ? (
-          <p className="text-[13px] text-itutor-muted">
-            You asked for {requestedBlocks.map(b => availabilityLabel(b as AvailabilityBlock).toLowerCase()).join(' or ')}
-          </p>
+        <div className="flex items-start gap-2">
+          <Wallet className="mt-0.5 size-4 shrink-0 text-ink-muted" strokeWidth={1.75} />
+          <dd className="text-ink">
+            {priceText(data.monthly_price)}
+            {missedBudget ? (
+              <span className="mt-0.5 block text-[13px] text-ink-muted">
+                Above the budget you picked
+              </span>
+            ) : null}
+          </dd>
+        </div>
+
+        {data.seats_remaining !== null ? (
+          <div className="flex items-start gap-2">
+            <Users className="mt-0.5 size-4 shrink-0 text-ink-muted" strokeWidth={1.75} />
+            <dd className="text-ink">
+              {data.seats_remaining} {data.seats_remaining === 1 ? 'seat' : 'seats'} left
+            </dd>
+          </div>
         ) : null}
-
-        <p className={missedBudget ? 'text-itutor-muted' : 'text-itutor-white'}>
-          {priceText(data.monthly_price)}
-          {data.seats_remaining !== null ? (
-            <span className="text-itutor-muted">
-              {' '}
-              · {data.seats_remaining} {data.seats_remaining === 1 ? 'seat' : 'seats'} left
-            </span>
-          ) : null}
-        </p>
-
-        {missedBudget ? (
-          <p className="text-[13px] text-itutor-muted">Above the budget you picked</p>
-        ) : null}
-      </div>
+      </dl>
 
       <div className="mt-4 flex items-center justify-end">
         <Link
@@ -119,7 +131,7 @@ export default function MatchCard({
           onClick={() =>
             trackClient(PRODUCT_EVENTS.MATCH_VIEWED, { group_id: data.group_id, rank })
           }
-          className="rounded-full bg-itutor-green px-5 py-2.5 text-[14px] font-semibold text-black hover:brightness-110"
+          className="rounded-full bg-brand px-5 py-2.5 text-[14px] font-semibold text-white transition hover:brightness-110"
         >
           View class
         </Link>
