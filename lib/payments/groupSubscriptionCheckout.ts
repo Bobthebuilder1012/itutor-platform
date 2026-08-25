@@ -38,6 +38,7 @@ import {
 } from '@/lib/services/subscriptionPayments';
 import { findGroupEnrollmentConflict, conflictMessage } from '@/lib/services/scheduleConflict';
 import { track } from '@/lib/analytics/track';
+import { isPaidGroup } from '@/lib/payments/groupPricing';
 import { PRODUCT_EVENTS } from '@/lib/analytics/events';
 
 const SEAT_RESERVATION_MS = 30 * 60 * 1000; // 30 minutes
@@ -79,7 +80,7 @@ export async function createGroupSubscriptionCheckout(params: {
   }
 
   // Step 3: Must be a MONTHLY group with a price
-  if (group.pricing_model !== 'MONTHLY' || !group.price_monthly || group.price_monthly <= 0) {
+  if (!isPaidGroup(group)) {
     return { ok: false as const, status: 400, body: { error: 'This group does not have a monthly subscription' } };
   }
 
