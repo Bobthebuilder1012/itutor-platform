@@ -18,7 +18,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { AlertTriangle, Check, Clock, Loader2, ShieldCheck, X } from 'lucide-react';
 import ParentShell from '@/components/parent/ParentShell';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
@@ -75,6 +75,7 @@ export default function ParentApprovalsPage() {
 
 function ApprovalsContent() {
   const params = useSearchParams();
+  const router = useRouter();
   const [pending, setPending] = useState<PendingRequest[]>([]);
   const [decided, setDecided] = useState<DecidedRequest[]>([]);
   const [hasChildren, setHasChildren] = useState(true);
@@ -205,6 +206,13 @@ function ApprovalsContent() {
       );
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
+        // The class has a price, so approving cannot be the whole act — the
+        // seat is granted by paying for it. Send them to the page that does
+        // both rather than leaving a refusal on screen.
+        if (json.reason === 'payment_required' && json.groupId) {
+          router.push(`/parent/classes/${json.groupId}`);
+          return;
+        }
         setError(json.error ?? 'That could not be answered.');
       } else if (approved) {
         flash(
@@ -362,18 +370,32 @@ function ApprovalsContent() {
             </div>
           ) : (
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <button
-                onClick={() => decideClass(r.id, true)}
-                disabled={busyId === r.id}
-                className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
-              >
-                {busyId === r.id ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
+              {/* A priced class is approved by enrolling and paying in one act,
+                  on the class page. There is no "approve" that grants a paid
+                  seat — the server refuses it — so the button says where it
+                  actually goes rather than pretending to be a yes/no. */}
+              {r.isFree ? (
+                <button
+                  onClick={() => decideClass(r.id, true)}
+                  disabled={busyId === r.id}
+                  className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                >
+                  {busyId === r.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Check className="h-4 w-4" />
+                  )}
+                  Approve enrolment
+                </button>
+              ) : (
+                <Link
+                  href={`/parent/classes/${r.groupId}`}
+                  className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white"
+                >
                   <Check className="h-4 w-4" />
-                )}
-                Approve enrolment
-              </button>
+                  Review &amp; pay
+                </Link>
+              )}
               <button
                 onClick={() => setDecliningId(r.id)}
                 className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2.5 text-sm font-semibold text-ink"
@@ -381,12 +403,14 @@ function ApprovalsContent() {
                 <X className="h-4 w-4" />
                 Decline
               </button>
-              <Link
-                href={`/parent/classes/${r.groupId}`}
-                className="text-xs font-semibold text-brand hover:underline"
-              >
-                See the class →
-              </Link>
+              {r.isFree && (
+                <Link
+                  href={`/parent/classes/${r.groupId}`}
+                  className="text-xs font-semibold text-brand hover:underline"
+                >
+                  See the class →
+                </Link>
+              )}
             </div>
           )}
         </article>

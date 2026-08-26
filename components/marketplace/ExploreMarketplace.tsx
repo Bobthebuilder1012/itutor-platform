@@ -936,6 +936,17 @@ export default function ExploreMarketplace({ variant = 'student' }: { variant?: 
           headers: { 'Content-Type': 'application/json' },
         });
         const data = await res.json();
+        // 202: the student's parent has to approve first. The request was raised
+        // server-side; nothing was joined and nothing was charged.
+        if (data.parent_approval_required) {
+          setJoinLesson(null);
+          alert(
+            data.already_pending
+              ? 'Your parent already has this request — it is still waiting on them.'
+              : 'Sent to your parent for approval. You are not in the class yet, and no place is being held.'
+          );
+          return;
+        }
         if (data.waitlisted) {
           setJoinLesson(null);
           alert(`You've been added to the waitlist (position #${data.position ?? '?'}). We'll notify you when a spot opens.`);
