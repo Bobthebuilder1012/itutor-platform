@@ -124,7 +124,9 @@ export type GroupData = {
  * Same helper the server uses, so the button a student sees and the route that
  * charges them can't disagree about whether the class has started.
  */
-function preorderFor(group: GroupData) {
+/** Exported: the parent's class page must buy the same product the student
+ *  does, and "is this a preorder" is the fork. */
+export function preorderFor(group: GroupData) {
   if (!group.secure_spot_enabled) return null;
   const eligibility = preorderEligibility(group.sessions);
   if (!eligibility.eligible) return null;

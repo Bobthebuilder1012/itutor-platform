@@ -21,7 +21,7 @@ import Link from 'next/link';
 import { Check, Clock, Loader2, Users, X } from 'lucide-react';
 import ParentShell from '@/components/parent/ParentShell';
 import ChildPickerCheck from '@/components/parent/ChildPickerCheck';
-import { Detail, type GroupData } from '@/components/classes/ClassDetailView';
+import { Detail, preorderFor, type GroupData } from '@/components/classes/ClassDetailView';
 import { fetchClassDetail } from '@/lib/classes/fetchClassDetail';
 import { isPaidGroup } from '@/lib/payments/groupPricing';
 
@@ -84,14 +84,30 @@ function ClassContent() {
   // but not identical; isPaidGroup is the one definition.
   const isPaid = isPaidGroup(group);
 
+  // A class that has not started yet is sold as a one-time held charge, not a
+  // subscription — and the parent has to be buying the same product as the
+  // student, or the two of them end up on different billing terms for the same
+  // seat. This page used to send every priced class to /subscribe, which meant
+  // a preorder class became a recurring subscription in a parent's hands, and
+  // failed outright once the child had a secure-spot hold of their own.
+  const isPreorder = Boolean(preorderFor(group));
+
   const enroll = async (childId: string) => {
     setBusy(true);
     setError(null);
     try {
-      // Paid goes through checkout; free joins directly. The direct route still
-      // refuses anything priced, so a mistake here cannot hand out a paid seat.
+      // Preorder before price: a free preorder class is still a reservation, and
+      // routing it to the plain join would give the child a roster row where the
+      // student path gives them a held place. The direct route still refuses
+      // anything priced, so a mistake here cannot hand out a paid seat.
+      const endpoint = isPreorder
+        ? '/api/parent/enroll-child/secure-spot'
+        : isPaid
+          ? '/api/parent/enroll-child/subscribe'
+          : '/api/parent/enroll-child';
+
       const res = await fetch(
-        isPaid ? '/api/parent/enroll-child/subscribe' : '/api/parent/enroll-child',
+        endpoint,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -100,7 +116,10 @@ function ClassContent() {
       );
       const json = await res.json();
       if (!res.ok) {
-        setError(json.error || 'Could not continue.');
+        // detail carries the database's own words when a write fails. Without it
+        // the banner said only "Failed to create enrollment", which named
+        // neither the cause nor anything a parent could do about it.
+        setError([json.error, json.detail].filter(Boolean).join(' — ') || 'Could not continue.');
         return;
       }
       if (res.status === 202 && json.waitlisted) {
@@ -110,8 +129,15 @@ function ClassContent() {
         setDone({ kind: 'waitlisted', childName: json.childName ?? null, position: json.position ?? null });
         return;
       }
-      if (isPaid && json.checkout_url) {
+      if (json.checkout_url) {
         window.location.href = json.checkout_url;
+        return;
+      }
+      // A free reservation completes without Stripe — there is no checkout to
+      // send them to, and the place is already held.
+      if (json.free) {
+        setDone({ kind: 'enrolled', childName: json.childName ?? null, position: null });
+        await load();
         return;
       }
       // The modal used to close on success and say nothing at all. A parent who
