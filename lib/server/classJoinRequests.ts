@@ -28,6 +28,7 @@ import {
 } from '@/lib/server/classRequestNotify';
 import { notifyInApp } from '@/lib/server/bookingRequestNotify';
 import { classifyMembership } from '@/lib/services/groupMembership';
+import { hasAnyPrice } from '@/lib/payments/groupPricing';
 
 export type ClassRequestRow = {
   id: string;
@@ -45,14 +46,31 @@ type GroupRow = {
   name: string | null;
   tutor_id: string;
   require_join_requests: boolean | null;
+  pricing_model: string | null;
   price_monthly: number | string | null;
+  price_per_session: number | string | null;
+  price_per_course: number | string | null;
   archived_at: string | null;
 };
+
+/**
+ * Does joining this class cost money?
+ *
+ * hasAnyPrice, not isPaidGroup: the question here is whether a seat can be
+ * granted without a payment, and ANY price means no. isPaidGroup answers the
+ * narrower "could Stripe charge for this", which is the right test for a
+ * checkout and the wrong one for a gate.
+ */
+function costsMoney(group: GroupRow | null): boolean {
+  return hasAnyPrice(group as Parameters<typeof hasAnyPrice>[0]);
+}
 
 async function loadGroup(admin: SupabaseClient, groupId: string): Promise<GroupRow | null> {
   const { data } = await admin
     .from('groups')
-    .select('id, name, tutor_id, require_join_requests, price_monthly, archived_at')
+    .select(
+      'id, name, tutor_id, require_join_requests, pricing_model, price_monthly, price_per_session, price_per_course, archived_at'
+    )
     .eq('id', groupId)
     .maybeSingle();
   return (data as GroupRow | null) ?? null;
@@ -315,10 +333,26 @@ async function loadRequestForParent(
 export async function approveClassJoinRequest(
   admin: SupabaseClient,
   params: { requestId: string; parentId: string }
-): Promise<{ ok: boolean; reason?: string; awaitingTutor?: boolean }> {
+): Promise<{ ok: boolean; reason?: string; awaitingTutor?: boolean; groupId?: string }> {
   const req = await loadRequestForParent(admin, params.requestId, params.parentId);
   if (!req) return { ok: false, reason: 'not_found' };
   if (req.status !== 'PENDING') return { ok: false, reason: 'already_decided' };
+
+  // A PAID CLASS IS NOT APPROVED INTO A SEAT.
+  //
+  // performGroupJoin writes a roster row and takes no payment, so approving a
+  // priced class here would hand out a paid place for nothing — the same defect
+  // that /api/parent/enroll-child had before hasAnyPrice was added to it.
+  //
+  // Consent and payment are one act for the parent: they enrol the child from
+  // the class page, which charges in the same step. The request is left PENDING
+  // and settles itself once the seat exists (see settleIfEnrolled), so an
+  // abandoned checkout leaves the request in the queue rather than showing a
+  // child as approved into a class nobody paid for.
+  const priced = await loadGroup(admin, req.group_id);
+  if (costsMoney(priced)) {
+    return { ok: false, reason: 'payment_required', groupId: req.group_id };
+  }
 
   const joined = await performGroupJoin(admin, {
     groupId: req.group_id,
@@ -533,6 +567,11 @@ export async function listParentClassRequests(
     const childName = nameById.get(r.student_id) ?? 'Your child';
 
     if (r.status === 'PENDING') {
+      // The parent may already have enrolled (and paid for) this child from the
+      // class page. Showing it as still waiting would ask them to approve
+      // something they have already done.
+      if (await settleIfEnrolled(admin, r)) continue;
+
       const price = Number(g?.price_monthly ?? 0);
       pending.push({
         id: r.id,
@@ -563,6 +602,45 @@ export async function listParentClassRequests(
   return { pending, decided };
 }
 
+/**
+ * Has this request already been satisfied by an enrolment?
+ *
+ * A paid request is never approved into a seat (see approveClassJoinRequest) —
+ * the parent pays on the class page instead, and that path writes the roster
+ * row without knowing a request existed. Rather than teach every payment route,
+ * webhook and admin tool to close requests, the request settles itself the next
+ * time anyone looks at it. Idempotent, and correct no matter which route
+ * created the seat.
+ *
+ * Returns true when the row was settled and should no longer be shown.
+ */
+async function settleIfEnrolled(
+  admin: SupabaseClient,
+  row: { id: string; group_id: string; student_id: string }
+): Promise<boolean> {
+  const { data } = await admin
+    .from('group_members')
+    .select('status')
+    .eq('group_id', row.group_id)
+    .eq('user_id', row.student_id)
+    .maybeSingle();
+
+  const status = (data as { status: string } | null)?.status ?? null;
+  if (!status || !classifyMembership(status)) return false;
+
+  await admin
+    .from('class_join_requests')
+    .update({
+      status: 'APPROVED',
+      decided_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', row.id)
+    .eq('status', 'PENDING');
+
+  return true;
+}
+
 /** The student's view: which of their pending requests is waiting on a parent. */
 export async function pendingRequestForStudent(
   admin: SupabaseClient,
@@ -575,5 +653,13 @@ export async function pendingRequestForStudent(
     .eq('student_id', params.studentId)
     .eq('status', 'PENDING')
     .maybeSingle();
-  return (data as ClassRequestRow | null) ?? null;
+
+  const row = (data as ClassRequestRow | null) ?? null;
+  if (!row) return null;
+
+  // Same self-settling rule as the parent's queue: once the seat exists the
+  // request is spent, and the student should see the class, not "waiting on
+  // your parent".
+  if (await settleIfEnrolled(admin, row)) return null;
+  return row;
 }

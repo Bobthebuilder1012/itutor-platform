@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { createGroupSubscriptionCheckout } from '@/lib/payments/groupSubscriptionCheckout';
+import { createClassJoinRequest, resolveClassJoinGate } from '@/lib/server/classJoinRequests';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -30,8 +31,31 @@ export async function POST(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // The parent's gate, before any Stripe object exists — the same check and
+    // the same reason as the secure-spot route. A dependent child cannot start
+    // a subscription for themselves; they ask, and the parent enrols them from
+    // the class page, which charges the parent's card rather than the child's.
+    const admin = getServiceClient();
+    const gate = await resolveClassJoinGate(admin, user.id);
+    if (gate.needsParentApproval) {
+      const request = await createClassJoinRequest(admin, {
+        groupId,
+        studentId: user.id,
+        parentId: gate.parentId,
+      });
+      return NextResponse.json(
+        {
+          parent_approval_required: true,
+          request_id: request.ok ? request.requestId : null,
+          already_pending: request.ok ? request.alreadyPending : false,
+          error: 'Your parent needs to approve this before you can join.',
+        },
+        { status: 202 }
+      );
+    }
+
     const result = await createGroupSubscriptionCheckout({
-      admin: getServiceClient(),
+      admin,
       groupId,
       studentId: user.id,
       // The student is the payer. Written explicitly rather than defaulted, so
