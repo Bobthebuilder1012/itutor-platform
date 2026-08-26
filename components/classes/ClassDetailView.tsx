@@ -44,6 +44,22 @@ import TutorCredentials from '@/components/TutorCredentials';
 
 export type Step = 'detail' | 'join' | 'joined' | 'awaiting-approval' | 'awaiting-parent';
 
+/**
+ * Whether this viewer needs a parent's permission to enrol, resolved server-side
+ * by /api/student/class-requests.
+ *
+ * It cannot be worked out on the client: the setting lives on parent_child_links
+ * (migration 224), not on the profile, and a spend ceiling can force approval on
+ * even when the self-pay toggle is off. The client asks and renders the answer —
+ * and the join routes re-check it, so a wrong answer here is a cosmetic bug
+ * rather than a way to reach a card form.
+ */
+export type ParentGate = {
+  needsParentApproval: boolean;
+  parentName: string | null;
+  pending: { id: string; requestedAt: string } | null;
+};
+
 type Occurrence = {
   id: string;
   scheduled_start_at: string;
@@ -213,12 +229,16 @@ export function Detail({
   group,
   onJoin,
   variant = 'student',
+  parentGate = null,
 }: {
   group: GroupData;
   onJoin: () => void;
   /** Whose app this is rendering in. Only the destinations differ — a parent
    *  following a /student/* link is bounced straight back out by AuthProvider. */
   variant?: 'student' | 'parent';
+  /** Null while it is still being fetched, and for the parent's own view — a
+   *  parent is never gated by themselves. */
+  parentGate?: ParentGate | null;
 }) {
   const isParent = variant === 'parent';
   const browseHref = isParent ? '/parent/classes' : '/student/find-tutors';
@@ -343,10 +363,24 @@ export function Detail({
   const preorder = useMemo(() => preorderFor(group), [group]);
   const [showExplainer, setShowExplainer] = useState(false);
 
+  // The parent's gate outranks everything below it except facts about this
+  // student that are already settled — being enrolled, already in the tutor's
+  // queue, or mid-payment. It sits ABOVE the price-shaped labels because those
+  // are the ones it replaces: a dependent child is never shown a price as
+  // something to act on.
+  //
+  // A full class is the exception. The waitlist enrols nobody and charges
+  // nothing, so there is nothing for a parent to approve yet.
+  const gated = Boolean(parentGate?.needsParentApproval);
+  const awaitingParent = gated && Boolean(parentGate?.pending);
+  const parentLabel = parentGate?.parentName ?? 'your parent';
+
   const ctaLabel = group.enrolled ? 'Open class'
     : isPending ? 'Request pending'
     : group.paymentPending ? 'Complete payment'
     : isFull ? 'Join waitlist'
+    : awaitingParent ? 'Waiting on your parent'
+    : gated ? 'Ask parent to enrol'
     : preorder ? 'Secure your spot'
     : group.require_join_requests ? 'Request to join'
     : 'Join class';
@@ -354,14 +388,21 @@ export function Detail({
     : isPending ? 'Awaiting tutor approval'
     : group.paymentPending ? 'Your seat is held until payment completes'
     : isFull ? 'Class full · join the waitlist'
+    : awaitingParent ? `${parentLabel} has been asked · no place is being held`
+    : gated ? `${parentLabel} approves this · you will not be asked to pay`
     : preorder
       ? `${price > 0 ? `${fmtTTD(price)} today, covering your first month` : 'Free to reserve'} · Classes start ${preorder.firstSession.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}`
     : group.require_join_requests ? 'Tutor approval required'
     : 'Join instantly · cancel anytime';
 
+  // Asking twice is harmless — the server returns the first request rather than
+  // raising a second — but a button that does nothing visible reads as broken,
+  // so it is disabled once the ask is in.
+  const ctaDisabled = isPending || awaitingParent;
+
   const handleCta = () => {
     if (group.enrolled) { router.push(openClassHref); return; }
-    if (!isPending) onJoin();
+    if (!ctaDisabled) onJoin();
   };
 
   return (
@@ -520,7 +561,7 @@ export function Detail({
             </div>
             <button
               onClick={handleCta}
-              disabled={isPending}
+              disabled={ctaDisabled}
               className={cn(
                 'mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold transition disabled:opacity-60 disabled:cursor-not-allowed',
                 group.enrolled ? 'bg-brand text-white hover:bg-brand-deep'
@@ -528,9 +569,9 @@ export function Detail({
                   : 'bg-brand text-white shadow-[0_8px_20px_-8px_rgba(16,120,70,0.8)] hover:bg-brand-deep'
               )}
             >
-              {group.enrolled ? <CheckCircle2 className="size-4" /> : isFull && !isPending ? <Lock className="size-4" /> : null}
+              {group.enrolled ? <CheckCircle2 className="size-4" /> : isFull && !isPending ? <Lock className="size-4" /> : gated ? <ShieldCheck className="size-4" /> : null}
               {ctaLabel}
-              {!group.enrolled && !isPending && !isFull && <ChevronRight className="size-4" />}
+              {!group.enrolled && !ctaDisabled && !isFull && <ChevronRight className="size-4" />}
             </button>
             <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground">
               <span className={capacity.kind === 'spots_left' ? 'font-semibold text-coral' : undefined}>
@@ -742,11 +783,13 @@ export function Detail({
                     Open class
                   </Link>
                 ) : (
-                  <button onClick={handleCta} disabled={isPending}
+                  <button onClick={handleCta} disabled={ctaDisabled}
                     className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-2xl bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-deep disabled:opacity-60">
                     {isPending ? 'Request pending'
                       : group.paymentPending ? 'Complete payment'
                       : isFull ? 'Join the waitlist'
+                      : awaitingParent ? 'Waiting on your parent'
+                      : gated ? 'Ask parent to enrol'
                       : group.require_join_requests ? 'Request to attend'
                       : 'Enrol to attend'}
                   </button>
@@ -812,7 +855,7 @@ export function Detail({
           </div>
           <button
             onClick={handleCta}
-            disabled={isPending}
+            disabled={ctaDisabled}
             className={cn(
               'inline-flex items-center justify-center gap-1.5 rounded-2xl px-5 py-2.5 text-sm font-bold transition disabled:opacity-60 disabled:cursor-not-allowed',
               group.enrolled ? 'bg-brand text-white hover:bg-brand-deep'
@@ -921,6 +964,12 @@ function SecuredStatusBanner({ group }: { group: GroupData }) {
       });
       const data = await res.json();
       if (data.checkout_url) { window.location.href = data.checkout_url; return; }
+      // Continuing costs money, so it is the parent's to decide too. Their
+      // request has been raised; this is not a failure to report as one.
+      if (data.parent_approval_required) {
+        setErr('Sent to your parent — continuing this class is theirs to approve.');
+        return;
+      }
       throw new Error(data.error || 'Could not continue this class. Please try again.');
     } catch (e: any) {
       setErr(e?.message ?? 'Could not continue. Please try again.');
@@ -1055,12 +1104,13 @@ function SecureSpotExplainer({
   );
 }
 
-export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent }: {
+export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, parentGate = null }: {
   group: GroupData;
   onBack: () => void;
   onSuccess: (step: Step) => void;
   profile: any;
   hasLinkedParent: boolean;
+  parentGate?: ParentGate | null;
 }) {
   const isFull = group.max_students - group.member_count <= 0;
   const isRequest = group.require_join_requests;
@@ -1077,12 +1127,21 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent }:
 
   const preorder = preorderFor(group);
 
+  // A dependent child does not get a checkout. The whole middle of this modal —
+  // the amount, the renewal terms, the refund promise — describes a transaction
+  // they are not party to, and showing it to them only to refuse at the end is
+  // how someone concludes the site is broken. They see who has to say yes.
+  const gated = Boolean(parentGate?.needsParentApproval) && !isFull;
+  const parentLabel = parentGate?.parentName ?? 'your parent';
+
   const heading = isFull ? 'Join the waitlist'
+    : gated ? `Ask ${parentLabel}`
     : preorder ? 'Secure your spot'
     : isRequest ? 'Request to join'
     : 'Confirm your enrolment';
 
   const confirmLabel = isFull ? 'Add me to the waitlist'
+    : gated ? 'Ask parent to enrol'
     : preorder
       ? (price > 0 ? `Pay ${fmtTTD(price)} & reserve my place` : 'Reserve my place')
     : isRequest ? 'Send request to tutor'
@@ -1092,6 +1151,22 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent }:
     if (!profile?.id) return;
     setSubmitting(true); setErr('');
     try {
+      // The ask, and nothing else. This endpoint cannot enrol or charge, which
+      // is why it is safe on a paid class where the join routes are not.
+      if (gated) {
+        const res = await fetch('/api/student/class-requests', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ groupId: group.id }),
+        });
+        const data = await res.json();
+        if (!res.ok && res.status !== 202) {
+          throw new Error(data.error || 'Could not send the request. Please try again.');
+        }
+        onSuccess('awaiting-parent');
+        return;
+      }
+
       // Preorder: a one-time charge for the first month, not a subscription.
       // Free preorders come back confirmed with no Stripe round trip at all.
       if (preorder && !isFull) {
@@ -1100,6 +1175,11 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent }:
           headers: { 'Content-Type': 'application/json' },
         });
         const data = await res.json();
+        // 202 from a route that normally returns a checkout: the server found a
+        // parent gate this client did not know about (the setting changed under
+        // an open tab). It raised the request; say so rather than reporting a
+        // payment failure.
+        if (data.parent_approval_required) { onSuccess('awaiting-parent'); return; }
         if (!res.ok) throw new Error(data.error || 'Could not reserve your place. Please try again.');
         if (data.checkout_url) { window.location.href = data.checkout_url; return; }
         if (data.free) { onSuccess('joined'); return; }
@@ -1109,6 +1189,7 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent }:
       if (price > 0 && !isFull) {
         const res = await fetch(`/api/groups/${group.id}/subscribe`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
         const data = await res.json();
+        if (data.parent_approval_required) { onSuccess('awaiting-parent'); return; }
         if (data.checkout_url) { window.location.href = data.checkout_url; return; }
         if (data.waitlisted) { onSuccess('awaiting-approval'); return; }
         if (res.status === 503) throw new Error('Online payments are not available right now. Please contact the tutor directly.');
@@ -1151,6 +1232,16 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent }:
 
       <ClassSummaryCard group={group} />
 
+      {gated ? (
+        <ParentAskPanel
+          parentLabel={parentLabel}
+          price={price}
+          preorder={Boolean(preorder)}
+          requiresTutorApproval={isRequest}
+          alreadyPending={Boolean(parentGate?.pending)}
+        />
+      ) : (
+      <>
       {/* Billing. A preorder is a one-time charge for a class that hasn't
           started — describing it as a monthly subscription that renews would
           be false on every line, so the whole block switches. */}
@@ -1213,6 +1304,8 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent }:
           <li className="flex items-start gap-2"><Check className="size-3.5 text-brand-deep mt-0.5 shrink-0" /> By joining you agree to iTutor's Terms of Service.</li>
         </ul>
       </section>
+      </>
+      )}
 
       {feedbackDecisionRequired && (
         <p className="text-xs text-amber-700 text-center font-medium">Please choose whether to add parent feedback above before continuing.</p>
@@ -1227,6 +1320,86 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent }:
         {submitting ? <span className="inline-flex items-center gap-2 justify-center"><Loader2 className="size-4 animate-spin" /> Processing…</span> : confirmLabel}
       </button>
     </div>
+  );
+}
+
+/**
+ * What a dependent child sees instead of a checkout.
+ *
+ * Three facts, in the order they matter: who has to say yes, that no place is
+ * being held while they decide, and — only if there is a price — that paying is
+ * not this student's job. The price itself is deliberately not restated as a
+ * figure to act on; it belongs in the parent's email, where someone can act on
+ * it.
+ */
+function ParentAskPanel({
+  parentLabel,
+  price,
+  preorder,
+  requiresTutorApproval,
+  alreadyPending,
+}: {
+  parentLabel: string;
+  price: number;
+  preorder: boolean;
+  requiresTutorApproval: boolean;
+  alreadyPending: boolean;
+}) {
+  const Line = ({ children }: { children: React.ReactNode }) => (
+    <li className="flex items-start gap-2">
+      <Check className="size-3.5 text-brand-deep mt-0.5 shrink-0" />
+      <span>{children}</span>
+    </li>
+  );
+
+  return (
+    <>
+      <section className="rounded-2xl border border-border bg-background p-5 space-y-3">
+        <div className="flex items-start gap-3">
+          <div className="size-9 rounded-xl bg-brand-soft grid place-items-center shrink-0">
+            <ShieldCheck className="size-4 text-brand-deep" />
+          </div>
+          <div>
+            <h2 className="font-bold text-ink text-sm">
+              {alreadyPending ? `${parentLabel} already has this` : `${parentLabel} enrols you`}
+            </h2>
+            <p className="text-xs text-muted-foreground leading-relaxed mt-1">
+              {alreadyPending
+                ? `You have already asked to join this class. Asking again will not send a second request — it is still with ${parentLabel}.`
+                : `Your account is set so that ${parentLabel} approves the classes you join. We will send them this class and let you know what they say.`}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-border bg-background p-5 space-y-2">
+        <h2 className="font-bold text-ink text-sm">What happens next</h2>
+        <ul className="text-xs text-muted-foreground space-y-2">
+          <Line>{parentLabel} gets an email with the class, the tutor and the price.</Line>
+          {price > 0 && (
+            <Line>
+              You will not be asked to pay.{' '}
+              {preorder
+                ? 'They pay when they enrol you, and iTutor holds it until the first month has been taught.'
+                : 'Paying is part of enrolling you, and that is theirs to do.'}
+            </Line>
+          )}
+          {requiresTutorApproval && <Line>The tutor also accepts who joins, so their yes goes on to the tutor.</Line>}
+          <Line>We will email you either way, as soon as they answer.</Line>
+        </ul>
+      </section>
+
+      {/* The one thing a student reliably gets wrong. Stated as a warning rather
+          than a bullet because "I asked" and "I have a place" feel identical
+          until the class fills. */}
+      <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 flex items-start gap-3">
+        <Clock className="size-4 text-amber-700 mt-0.5 shrink-0" />
+        <p className="text-xs leading-relaxed text-amber-900">
+          <strong>No place is being held.</strong> You are not in this class yet, and someone else can
+          take the last seat while {parentLabel} decides.
+        </p>
+      </div>
+    </>
   );
 }
 

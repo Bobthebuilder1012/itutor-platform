@@ -19,6 +19,7 @@ import {
   JoinFlow,
   JoinedScreen,
   type GroupData,
+  type ParentGate,
   type Step,
 } from '@/components/classes/ClassDetailView';
 
@@ -30,6 +31,10 @@ export default function ExploreClassDetailPage() {
   const [loading, setLoading] = useState(true);
   const [step, setStep] = useState<Step>('detail');
   const [hasLinkedParent, setHasLinkedParent] = useState(false);
+  // Null until answered. The CTA renders its normal label meanwhile rather than
+  // guessing — a button that flickers from "Secure your spot" to "Ask parent"
+  // is worse than one that arrives a beat late.
+  const [parentGate, setParentGate] = useState<ParentGate | null>(null);
 
   // Wait for the profile before fetching: the linked-parent lookup below needs
   // profile.id, and firing while it is still null used to silently skip it.
@@ -54,10 +59,26 @@ export default function ExploreClassDetailPage() {
           .maybeSingle();
         setHasLinkedParent(!!parentLink);
       }
+
+      // Whether this student may enrol themselves is a server question — the
+      // setting lives on the parent/child link, not the profile, and a spend
+      // ceiling can force approval on even with self-pay enabled.
+      await loadParentGate();
     } catch (err) {
       console.error('[ExploreClassDetail]', err);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadParentGate() {
+    try {
+      const res = await fetch(`/api/student/class-requests?groupId=${groupId}`, { cache: 'no-store' });
+      if (!res.ok) return;
+      setParentGate((await res.json()) as ParentGate);
+    } catch {
+      // Non-fatal. The join routes re-check the gate, so the worst case is a
+      // student who presses the old button and is told to ask their parent.
     }
   }
 
@@ -78,6 +99,7 @@ export default function ExploreClassDetailPage() {
     <>
       <Detail
         group={group}
+        parentGate={parentGate}
         onJoin={() => {
           // The page itself is public so a QR code or shared link opens for
           // anyone. Joining is where an account becomes necessary — send them
@@ -103,6 +125,7 @@ export default function ExploreClassDetailPage() {
               onSuccess={(s) => { setStep(s); void fetchGroup(); }}
               profile={profile}
               hasLinkedParent={hasLinkedParent}
+              parentGate={parentGate}
             />
           )}
           {step === 'joined' && <JoinedScreen group={group} kind="enrolled" />}
