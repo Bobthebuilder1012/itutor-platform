@@ -23,6 +23,7 @@ export const TEMPLATE_STUDENT_CLASS_DECLINED = 'student_class_request_declined';
 export const TEMPLATE_TUTOR_JOIN_REQUEST = 'tutor_class_join_request';
 export const TEMPLATE_PARENT_CHILD_LEFT_CLASS = 'parent_child_left_class';
 export const TEMPLATE_STUDENT_ENROLLED_BY_PARENT = 'student_enrolled_by_parent';
+export const TEMPLATE_STUDENT_ASKED_PARENT = 'student_asked_parent_to_enrol';
 
 const escapeText = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -312,6 +313,116 @@ export async function notifyTutorOfJoinRequest(
     html: rendered.html,
     text: rendered.text,
     emailType: TEMPLATE_TUTOR_JOIN_REQUEST,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// A child asked their parent to enrol them
+// ---------------------------------------------------------------------------
+
+/**
+ * The student's receipt for asking.
+ *
+ * Deliberately email-only, with no in-app notification: the student is looking
+ * at the screen that just told them the same thing, and a bell for your own
+ * button press is noise. The email is what they still have tomorrow when they
+ * are wondering whether it went anywhere.
+ *
+ * The two facts it has to carry are the ones a student gets wrong on their own:
+ * they are NOT in the class, and no place is being held for them. A cheerful
+ * "request sent!" that omits both is how someone turns up to a class they were
+ * never enrolled in.
+ */
+export async function notifyStudentAskedParent(
+  admin: SupabaseClient,
+  params: {
+    studentId: string;
+    parentName: string;
+    className: string;
+    tutorName: string;
+    scheduleLabel: string | null;
+    priceTtd: number;
+    alreadyPending: boolean;
+  }
+): Promise<void> {
+  const { data } = await admin
+    .from('profiles')
+    .select('email, full_name, display_name')
+    .eq('id', params.studentId)
+    .maybeSingle();
+  const student = data as {
+    email: string | null;
+    full_name: string | null;
+    display_name: string | null;
+  } | null;
+  if (!student?.email) return;
+
+  const isFree = params.priceTtd <= 0;
+
+  const rendered = renderEmail({
+    family: 'booking-confirmation',
+    subject: params.alreadyPending
+      ? `${params.parentName} still has your request for ${params.className}`
+      : `We asked ${params.parentName} about ${params.className}`,
+    heading: params.alreadyPending
+      ? 'That request is already with them'
+      : `We asked ${escapeText(params.parentName)} for you`,
+    intro: `Hi ${first(student.display_name || student.full_name)},`,
+    eyebrow: 'Waiting on your parent',
+    tone: 'neutral',
+    badge: '⏳',
+    blocks: [
+      {
+        kind: 'paragraph',
+        text: params.alreadyPending
+          ? `You had already asked to join ${escapeText(
+              params.className
+            )}, so nothing new was sent — the first request is still with ${escapeText(
+              params.parentName
+            )}.`
+          : `${escapeText(params.parentName)} has been asked to approve you joining ${escapeText(
+              params.className
+            )}.`,
+      },
+      {
+        kind: 'details',
+        tone: 'neutral',
+        rows: [
+          { label: 'Class', value: escapeText(params.className), strong: true },
+          { label: 'Tutor', value: escapeText(params.tutorName) },
+          ...(params.scheduleLabel
+            ? [{ label: 'Meets', value: escapeText(params.scheduleLabel) }]
+            : []),
+        ],
+      },
+      {
+        kind: 'notice',
+        tone: 'warning',
+        title: 'You are not in the class yet',
+        body: 'No place is being held while they decide, so do not plan around this one until it is approved.',
+      },
+      {
+        kind: 'paragraph',
+        text: isFree
+          ? 'There is nothing to pay for this class.'
+          : 'You will not be asked to pay for this — that part is theirs.',
+      },
+      {
+        kind: 'paragraph',
+        text: 'We will email you the moment they answer, either way.',
+      },
+    ],
+    cta: { label: 'See your classes', href: appUrl('/student/classes') },
+  });
+
+  await sendIfAllowed(admin, {
+    userId: params.studentId,
+    type: 'class_request_sent',
+    to: student.email,
+    subject: rendered.subject,
+    html: rendered.html,
+    text: rendered.text,
+    emailType: TEMPLATE_STUDENT_ASKED_PARENT,
   });
 }
 
