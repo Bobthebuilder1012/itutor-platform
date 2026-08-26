@@ -195,6 +195,43 @@ export async function createGroupSubscriptionCheckout(params: {
     isReusingEnrollment = true;
   }
 
+  // Step 7b: An OPEN SECURE-SPOT HOLD blocks the insert below, invisibly.
+  //
+  // secure_spot_claim writes enrollment_type 'SUBSCRIPTION' with status
+  // SECURED_PENDING_PAYMENT. That status is in neither list above — step 6 looks
+  // for SECURED/ACTIVE/GRACE/SUSPENDED and step 7 for PENDING_PAYMENT — but it
+  // IS covered by the unique index over (student_id, group_id), which excludes
+  // only CANCELLED/COMPLETED/ACTIVATION_FAILED. So the row is invisible here and
+  // fatal at the insert, and the caller was told "Failed to create enrollment",
+  // which names neither the cause nor anything they can do.
+  //
+  // Not reused: an unpaid preorder hold and a monthly subscription are different
+  // products on different terms, and quietly converting one into the other is
+  // how someone is charged for something they did not choose. The reservation is
+  // theirs to finish or abandon first. A preorder class does not reach here at
+  // all — both the student and the parent are routed to the secure-spot
+  // checkout, whose claim RPC resumes the student's own hold (migration 214).
+  if (!isReusingEnrollment) {
+    const { data: heldSpot } = await admin
+      .from('group_enrollments')
+      .select('id, pending_payment_expires_at')
+      .eq('group_id', groupId)
+      .eq('student_id', studentId)
+      .eq('enrollment_type', 'SUBSCRIPTION')
+      .eq('status', 'SECURED_PENDING_PAYMENT')
+      .maybeSingle();
+
+    if (heldSpot) {
+      return { ok: false as const, status: 409, body: {
+        error:
+          'There is already a reservation in progress for this class. Finish that payment, or let it expire, before subscribing.',
+        reason: 'secure_spot_hold_open',
+        enrollment_id: (heldSpot as { id: string }).id,
+        expires_at: (heldSpot as { pending_payment_expires_at: string | null }).pending_payment_expires_at,
+      } };
+    }
+  }
+
   // Step 8: Capacity check (only for new enrollments)
   if (!isReusingEnrollment) {
     if (group.max_students) {
