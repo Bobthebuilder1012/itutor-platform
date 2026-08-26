@@ -5,9 +5,14 @@
 // of the request is proven inside approveClassJoinRequest by matching parent_id,
 // not by trusting the caller.
 //
-// A paid class does not reach here — a dependent child cannot start a paid
-// subscription for themselves, so there is no request to approve; the parent
-// enrols them from /parent/classes, which takes payment in the same step.
+// A PAID class reaches here but is never approved into a seat. approveClass-
+// JoinRequest writes a roster row and takes no payment, so a priced class comes
+// back as payment_required with its groupId, and the parent finishes on
+// /parent/classes — which enrols and charges in the same step. The request
+// settles itself once that seat exists.
+//
+// Children CAN now raise requests for paid classes: the marketplace offers them
+// "Ask parent to enrol" in place of the checkout they are not allowed to reach.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { ParentAccessError, requireParentContext } from '@/lib/server/parentAccess';
@@ -29,7 +34,13 @@ export async function POST(_request: NextRequest, { params }: Params) {
 
     if (!result.ok) {
       const status = result.reason === 'not_found' ? 404 : 409;
-      return NextResponse.json({ error: messageFor(result.reason) }, { status });
+      // reason and groupId travel with the refusal so the page can act on the
+      // one case that is not really a failure: a priced class, where approving
+      // and paying are the same step and both happen on the class page.
+      return NextResponse.json(
+        { error: messageFor(result.reason), reason: result.reason, groupId: result.groupId ?? null },
+        { status }
+      );
     }
 
     return NextResponse.json({ success: true, awaitingTutor: result.awaitingTutor ?? false });

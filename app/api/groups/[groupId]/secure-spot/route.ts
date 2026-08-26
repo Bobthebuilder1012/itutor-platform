@@ -30,6 +30,7 @@ import type { SessionPattern } from '@/lib/utils/scheduleFormat';
 import { notifySpotSecured } from '@/lib/services/secureSpotService';
 import { track, trackForUser } from '@/lib/analytics/track';
 import { PRODUCT_EVENTS } from '@/lib/analytics/events';
+import { createClassJoinRequest, resolveClassJoinGate } from '@/lib/server/classJoinRequests';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,6 +80,34 @@ export async function POST(_req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Could not load the class' }, { status: 500 });
     }
     if (!group) return NextResponse.json({ error: 'Class not found' }, { status: 404 });
+
+    // THE PARENT'S GATE, BEFORE ANY MONEY MOVES.
+    //
+    // A child whose parent set "ask for approval first" must not reach a card
+    // form. The UI already offers them "Ask parent to enrol" instead of this
+    // flow, but the button is not the control — a direct POST would otherwise
+    // walk a dependent child all the way to a Stripe checkout, and a seat claim
+    // would be held against a payment they were never allowed to make.
+    //
+    // Placed above the eligibility and claim work so nothing is reserved: the
+    // request holds no place, and neither should the refusal.
+    const gate = await resolveClassJoinGate(admin, user.id);
+    if (gate.needsParentApproval) {
+      const request = await createClassJoinRequest(admin, {
+        groupId,
+        studentId: user.id,
+        parentId: gate.parentId,
+      });
+      return NextResponse.json(
+        {
+          parent_approval_required: true,
+          request_id: request.ok ? request.requestId : null,
+          already_pending: request.ok ? request.alreadyPending : false,
+          error: 'Your parent needs to approve this before you can join.',
+        },
+        { status: 202 }
+      );
+    }
 
     // The claim RPC re-checks all of this under a lock. Checking here too just
     // buys a readable error instead of a bare reason code.
