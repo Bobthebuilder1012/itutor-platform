@@ -17,6 +17,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ParentAccessError, requireParentContext } from '@/lib/server/parentAccess';
 import { listParentRequests } from '@/lib/server/bookingRequests';
+import { listParentClassRequests } from '@/lib/server/classJoinRequests';
 import { formatWhen } from '@/lib/server/bookingRequestContext';
 
 export const dynamic = 'force-dynamic';
@@ -78,6 +79,33 @@ export async function GET(_request: NextRequest) {
         closesAt: r.expiresAt ? formatWhen(r.expiresAt) : null,
         isFree: r.isFree,
         amount: r.frozenPrice,
+      });
+    }
+
+    // 1b. GROUP CLASS approvals. Same kind, different record — and they were
+    //     missing entirely, so a parent with a child waiting on them was told
+    //     "Nothing needs you" while /parent/approvals showed the request. The
+    //     approvals page had always fetched both queues; this card fetched one.
+    //
+    //     No closesAt: a class request has no closing window (there is no single
+    //     session to close two hours before). The card says the place is not
+    //     held without naming a deadline, rather than inventing one.
+    const { pending: classPending } = await listParentClassRequests(admin, parentProfile.id);
+    for (const r of classPending) {
+      items.push({
+        kind: 'approval',
+        id: r.id,
+        childId: r.childId,
+        childName: r.childName,
+        title: `${r.childName.split(' ')[0]} wants to join ${r.className}`,
+        detail: r.isFree ? 'Free class' : `$${Number(r.priceTtd).toLocaleString()} TTD`,
+        href: '/parent/approvals',
+        // A priced class is not approved into a seat — the parent enrols and
+        // pays in one step. The label says which of the two this is.
+        actionLabel: r.isFree ? 'Approve' : 'Review & pay',
+        closesAt: null,
+        isFree: r.isFree,
+        amount: r.priceTtd,
       });
     }
 

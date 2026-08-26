@@ -111,12 +111,18 @@ export default function AttentionCard({ nextClassLine }: { nextClassLine?: strin
                     <div className="text-sm font-semibold text-ink">{item.title}</div>
                     <div className="mt-0.5 text-xs text-ink/70">{item.detail}</div>
 
-                    {/* Per item, not per card. Which of these shuts tonight? */}
-                    {item.kind === 'approval' && item.closesAt && (
+                    {/* Per item, not per card. Which of these shuts tonight?
+                        A group-class request has no closing window, but "no
+                        place is held" is true of both and is the half a parent
+                        acts on — so it is said either way, and only the
+                        deadline is conditional. */}
+                    {item.kind === 'approval' && (
                       <div className="mt-1 flex items-start gap-1.5 text-xs font-medium text-amber-900">
                         <AlertTriangle className="mt-0.5 size-3 shrink-0" />
                         <span>
-                          No place is held. Closes {item.closesAt}, two hours before the class.
+                          {item.closesAt
+                            ? `No place is held. Closes ${item.closesAt}, two hours before the class.`
+                            : 'No place is held while you decide.'}
                         </span>
                       </div>
                     )}
