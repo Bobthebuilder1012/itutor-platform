@@ -31,6 +31,11 @@ import {
 // directions, which these checks did not catch because they asserted the wrong
 // numbers too.
 import {
+  matchesLocation,
+  isLocationFilterActive,
+  DEFAULT_LOCATION_FILTER,
+} from '../lib/classes/locationFilter';
+import {
   nearMissStep,
   questionPosition,
   questionSequence,
@@ -549,6 +554,58 @@ console.log('\nFinder matcher — behavioural checks\n');
   // that reaches the database from an unauthenticated caller.
   const long = { ...valid, subject: 'x'.repeat(200) };
   check('an overlong subject is rejected', validateAnswers(long) === 'subject');
+}
+
+// ----------------------------------------- the location filter's one real rule
+// "What can I attend from here", not "what has a venue here". The intuitive
+// implementation makes every online class vanish from a town search, and the
+// results still look plausible — so this is checked rather than eyeballed.
+{
+  const CHAG = 'region-chaguanas';
+  const ARIMA = 'region-arima';
+  const online = { classFormat: 'online' as const, venueRegionId: null };
+  const roomHere = { classFormat: 'physical' as const, venueRegionId: CHAG };
+  const roomAway = { classFormat: 'physical' as const, venueRegionId: ARIMA };
+  const hybridHere = { classFormat: 'hybrid' as const, venueRegionId: CHAG };
+  const legacy = { venueRegionId: null }; // pre-242: no class_format at all
+
+  const anywhere = DEFAULT_LOCATION_FILTER;
+  const inChag = { format: 'any' as const, regionId: CHAG, alsoShowOnline: true };
+  const inChagRoomsOnly = { format: 'any' as const, regionId: CHAG, alsoShowOnline: false };
+
+  check('Anywhere shows everything', [online, roomHere, roomAway, legacy]
+    .every(c => matchesLocation(c, anywhere)));
+
+  // THE TRAP.
+  check('picking a town KEEPS online classes', matchesLocation(online, inChag));
+  check('and keeps a room in that town', matchesLocation(roomHere, inChag));
+  check('and drops a room in another town', !matchesLocation(roomAway, inChag));
+  check('a hybrid class in the town is kept', matchesLocation(hybridHere, inChag));
+
+  check('turning the toggle off drops online', !matchesLocation(online, inChagRoomsOnly));
+  check('and keeps the room', matchesLocation(roomHere, inChagRoomsOnly));
+
+  const inPerson = { format: 'in_person' as const, regionId: null, alsoShowOnline: true };
+  check('"in person" drops online-only', !matchesLocation(online, inPerson));
+  check('"in person" keeps hybrid — it has a room', matchesLocation(hybridHere, inPerson));
+
+  // in-person + a region must not re-admit online, whatever the toggle says:
+  // that would contradict the format the visitor just chose.
+  const inPersonHere = { format: 'in_person' as const, regionId: CHAG, alsoShowOnline: true };
+  check('"in person" + a town never re-admits online', !matchesLocation(online, inPersonHere));
+  check('"in person" + a town keeps the room there', matchesLocation(roomHere, inPersonHere));
+
+  const onlineOnly = { format: 'online' as const, regionId: null, alsoShowOnline: true };
+  check('"online" drops a physical class', !matchesLocation(roomHere, onlineOnly));
+  check('"online" keeps hybrid — it can be attended online', matchesLocation(hybridHere, onlineOnly));
+
+  // Every class on production predates 242 and has no class_format.
+  check('a class with no format counts as online', matchesLocation(legacy, onlineOnly));
+  check('and survives a town search', matchesLocation(legacy, inChag));
+
+  check('Anywhere is not an active filter', !isLocationFilterActive(anywhere));
+  check('a region is', isLocationFilterActive(inChag));
+  check('a format is', isLocationFilterActive(onlineOnly));
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`);

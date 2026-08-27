@@ -25,6 +25,13 @@ import VerifiedBadge from '@/components/VerifiedBadge';
 import UserAvatar from '@/components/UserAvatar';
 import { cn } from '@/lib/utils';
 import { Search, Star, Heart, Calendar, Clock, Users, GraduationCap, Flame, X, Check, Video, Sparkles, ChevronDown, MapPin } from 'lucide-react';
+import {
+  matchesLocation,
+  isLocationFilterActive,
+  DEFAULT_LOCATION_FILTER,
+  type LocationFilterState,
+} from '@/lib/classes/locationFilter';
+import LocationFilter from '@/components/marketplace/LocationFilter';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 import {
   parseScheduleData,
@@ -117,6 +124,7 @@ type GroupLesson = {
   classFormat?: 'online' | 'physical' | 'hybrid';
   /** The venue's AREA, never its street address. */
   venueArea?: string | null;
+  venueRegionId?: string | null;
   feedbackMode?: string | null;
   parentFeedbackPrice?: number | null;
   activePromotion?: { id: string; kind: string; discount: number; student_cap: number | null; duration_days: number | null } | null;
@@ -295,6 +303,19 @@ export default function ExploreMarketplace({ variant = 'student' }: { variant?: 
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
+  // Where a class meets. See lib/classes/locationFilter.ts — the rule is
+  // "what can I attend from here", not "what has a venue here", and the
+  // difference is a silent bug rather than a visible one.
+  const [locationFilter, setLocationFilter] = useState<LocationFilterState>(DEFAULT_LOCATION_FILTER);
+  const [regions, setRegions] = useState<Array<{ id: string; name: string }>>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/regions', { cache: 'force-cache' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (!cancelled) setRegions(j?.regions ?? []); })
+      .catch(() => { /* filter renders with Anywhere only */ });
+    return () => { cancelled = true; };
+  }, []);
   const [selectedRating, setSelectedRating] = useState<number | null>(null);
   const [priceBand, setPriceBand] = useState<string>(ANY_PRICE);
   const [selectedSchool, setSelectedSchool] = useState<string>('');
@@ -803,6 +824,10 @@ export default function ExploreMarketplace({ variant = 'student' }: { variant?: 
           // per-viewer entitlement check to gate one with.
           classFormat: (g.class_format ?? 'online') as 'online' | 'physical' | 'hybrid',
           venueArea: g.venue?.region?.name ?? null,
+          // The filter matches on the ID, the card shows the name. Matching on
+          // the name would work until two regions share one, and would break
+          // silently the day a second country is seeded.
+          venueRegionId: g.venue?.region?.id ?? null,
           requireJoinRequests: g.require_join_requests ?? false,
           feedbackMode: g.feedback_mode ?? g.parent_feedback_mode ?? null,
           parentFeedbackPrice: g.parent_feedback_price ?? null,
@@ -1109,6 +1134,9 @@ export default function ExploreMarketplace({ variant = 'student' }: { variant?: 
     setDraftPriceBand(ANY_PRICE);
     setDraftRating(null); setDraftSchool('');
     setDraftDays([]); setDraftBands([]);
+    // Or a region quietly keeps narrowing the list after "Clear all" — the
+    // hardest kind of filter bug to spot, because the count looks deliberate.
+    setLocationFilter(DEFAULT_LOCATION_FILTER);
   };
 
   // What each pill reads when a filter is applied. null keeps the plain label.
@@ -1137,7 +1165,8 @@ export default function ExploreMarketplace({ variant = 'student' }: { variant?: 
     : null;
 
   const anyFilterApplied =
-    !!priceSummary || !!ratingSummary || !!schoolSummary || !!daysSummary || !!bandsSummary;
+    !!priceSummary || !!ratingSummary || !!schoolSummary || !!daysSummary || !!bandsSummary ||
+    isLocationFilterActive(locationFilter);
 
   const toggleDraftDay = (d: number) =>
     setDraftDays((prev) => (prev.includes(d) ? prev.filter((v) => v !== d) : [...prev, d]));
@@ -1163,6 +1192,7 @@ export default function ExploreMarketplace({ variant = 'student' }: { variant?: 
     // price" and are correctly absent from every band starting at 100+.
     .filter((l) => priceInBand(l.monthlyPrice, classPriceBand))
     .filter((l) => selectedRating === null || (l.tutorRating !== null && l.tutorRating >= selectedRating))
+    .filter((l) => matchesLocation({ classFormat: l.classFormat, venueRegionId: l.venueRegionId }, locationFilter))
     .filter((l) => !searchQuery || l.title.toLowerCase().includes(searchQuery.toLowerCase()) || l.tutor.toLowerCase().includes(searchQuery.toLowerCase()) || l.subject.toLowerCase().includes(searchQuery.toLowerCase()));
 
   // Still used by the empty state. The day/time toggles now edit the DRAFT
@@ -1381,6 +1411,13 @@ export default function ExploreMarketplace({ variant = 'student' }: { variant?: 
                 ))}
               </select>
             </FilterMenu>
+          )}
+
+          {/* Where a class meets. Lessons only — a 1:1 tutor has no venue, so
+              on the tutors tab this would narrow nothing while looking as if it
+              should. */}
+          {tab === 'lessons' && (
+            <LocationFilter value={locationFilter} onChange={setLocationFilter} regions={regions} />
           )}
 
           {anyFilterApplied && (
