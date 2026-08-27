@@ -22,6 +22,16 @@
  * THIS FUNCTION NEVER THROWS. A failed claim degrades to an unclaimed row: the
  * visitor still sees their results, and only attribution is lost. Every failure
  * path returns `{ claimed: false }` and warns.
+ *
+ * `unclaimPrior` (default true) controls the collision step, and getting it
+ * wrong is silent data loss rather than an error. See the comment at that step:
+ * it is correct only for one-row-per-person tables. The second caller,
+ * `finder_requests`, is many-rows-per-person and passes false.
+ *
+ * WHAT THIS FUNCTION DOES NOT DO. It touches the token row and profiles.role,
+ * and nothing else. Any table that hangs off the claimed row — for the Finder,
+ * `demand_signals.user_id` — is the caller's responsibility, because only the
+ * caller knows what those are. lib/finder/claim.ts documents its three.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -40,7 +50,12 @@ export type ClaimableTokenRow = {
 
 export async function claimTokenRow<T extends ClaimableTokenRow>(
   admin: SupabaseClient,
-  { table, token, userId }: { table: string; token: string; userId: string }
+  {
+    table,
+    token,
+    userId,
+    unclaimPrior = true,
+  }: { table: string; token: string; userId: string; unclaimPrior?: boolean }
 ): Promise<{ claimed: boolean; row: T | null }> {
   try {
     if (!table || !token || !userId) return { claimed: false, row: null };
@@ -68,17 +83,29 @@ export async function claimTokenRow<T extends ClaimableTokenRow>(
     // this user_id. Un-claim it so the fresh token row is the account's single
     // row. (The old row survives, unclaimed, and is still counted in reporting
     // as an orphan rather than vanishing.)
-    const { error: clearError } = await admin
-      .from(table)
-      .update({ user_id: null })
-      .eq('user_id', userId)
-      .neq('token', token);
-    if (clearError) {
-      console.warn(
-        `[matching] claimTokenRow(${table}): un-claim of prior row failed`,
-        clearError.message
-      );
-      return { claimed: false, row: existing };
+    //
+    // ONLY FOR TABLES THAT ARE ONE-ROW-PER-PERSON. This step exists solely to
+    // dodge a UNIQUE(user_id), which would THROW when a token row is adopted
+    // onto an account that already carries one. A table that is deliberately
+    // MANY-rows-per-person has no such constraint, and running this against one
+    // is pure data loss: it strips user_id from every prior row the account
+    // owns. `finder_requests` is exactly that table — its `run_number` exists to
+    // record preference drift across runs — so lib/finder/claim.ts passes
+    // `unclaimPrior: false`. The default is true so the original caller
+    // (class_match_submissions, which does have UNIQUE(user_id)) is unchanged.
+    if (unclaimPrior) {
+      const { error: clearError } = await admin
+        .from(table)
+        .update({ user_id: null })
+        .eq('user_id', userId)
+        .neq('token', token);
+      if (clearError) {
+        console.warn(
+          `[matching] claimTokenRow(${table}): un-claim of prior row failed`,
+          clearError.message
+        );
+        return { claimed: false, row: existing };
+      }
     }
 
     const { data: updated, error: updateError } = await admin
