@@ -16,6 +16,16 @@
  * `View class` is used instead — the same label Class Match Week's result card
  * uses — and the class page then shows the correct verb. Same rule the spec
  * intends: one action, one name, product-wide.
+ *
+ * IT STAYS `View class` FOR AN ANONYMOUS VIEWER TOO, and the href still points at
+ * the class page rather than at signup. That looks like it contradicts "clicking
+ * a card takes them to sign up", and the reason it does not is that
+ * `/api/groups/[groupId]` deliberately serves anonymous reads — its own comment
+ * says "you cannot ask someone to sign up for a class they have not been allowed
+ * to look at" — and the class page's Join button already redirects to
+ * `/login?redirect=…`. So the account is asked for at the moment it is genuinely
+ * needed, one screen later, which is more of what this change is for rather than
+ * less. `ctaHref` exists so a caller can still override it.
  */
 
 import Link from 'next/link';
@@ -60,11 +70,20 @@ export default function MatchCard({
   rank,
   nearMissOn,
   requestedBlocks,
+  ctaHref,
+  ctaLabel = 'View class',
 }: {
   data: MatchCardData;
   rank: number;
   nearMissOn: GatingDimension | null;
   requestedBlocks: string[];
+  /**
+   * Where the card goes. Passed in rather than computed here, so this component
+   * stays a renderer and the caller — which is the thing that knows whether the
+   * viewer has an account — owns the routing decision.
+   */
+  ctaHref?: string;
+  ctaLabel?: string;
 }) {
   const missedAvailability = nearMissOn === 'availability';
   const missedBudget = nearMissOn === 'budget';
@@ -159,13 +178,13 @@ export default function MatchCard({
 
       <div className="mt-4 flex items-center justify-end">
         <Link
-          href={`/student/explore/${data.group_id}`}
+          href={ctaHref ?? `/student/explore/${data.group_id}`}
           onClick={() =>
             trackClient(PRODUCT_EVENTS.MATCH_VIEWED, { group_id: data.group_id, rank })
           }
           className="rounded-full bg-brand px-5 py-2.5 text-[14px] font-semibold text-white transition hover:brightness-110"
         >
-          View class
+          {ctaLabel}
         </Link>
       </div>
     </div>

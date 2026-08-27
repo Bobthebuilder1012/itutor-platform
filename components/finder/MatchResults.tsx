@@ -67,10 +67,24 @@ function budgetLabelFor(max: number | string | null): string {
  * and making someone re-answer five questions to widen a budget is how a person
  * decides not to bother.
  */
-function FilterChip({ label, step }: { label: string; step: number }) {
+function FilterChip({
+  label,
+  step,
+  base,
+}: {
+  label: string;
+  step: number;
+  /**
+   * `/find?` for an account, `/find?role=…&` without one. A bare `/find?step=N`
+   * anonymously has no role, and the wizard cannot label its questions without
+   * one — so it would drop the visitor on the role picker instead of the
+   * question the chip named.
+   */
+  base: string;
+}) {
   return (
     <Link
-      href={`/find?step=${step}`}
+      href={`${base}step=${step}`}
       className="inline-flex items-center gap-1.5 rounded-full border border-border bg-white px-3 py-1.5 text-[13px] text-ink transition hover:border-brand/60 hover:bg-mint"
     >
       {label}
@@ -82,10 +96,22 @@ function FilterChip({ label, step }: { label: string; step: number }) {
 export default function MatchResults({
   row,
   notify,
+  mode = 'account',
+  role = 'student',
 }: {
   row: FinderRequestRow;
   notify?: string;
+  /**
+   * 'anonymous' renders outside any app shell, for a visitor with no account.
+   * It cannot be inferred from `row.user_id`: a claimed run viewed by a
+   * logged-out browser would still read as owned.
+   */
+  mode?: 'account' | 'anonymous';
+  role?: 'student' | 'parent';
 }) {
+  const isAnonymous = mode === 'anonymous';
+  // Chips must carry the role forward when there is no account to infer it from.
+  const findBase = isAnonymous ? `/find?role=${role}&` : '/find?';
   const matches = Array.isArray(row.results) ? row.results : [];
   const blocks = row.availability_blocks ?? [];
   const learner = row.child_label?.trim() || null;
@@ -113,6 +139,25 @@ export default function MatchResults({
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6">
+      {/* Anonymous renders have no app shell around them, so the flow would
+          otherwise lose its frame at the exact moment it pays off. The log-in
+          link carries ?redirect=/find/claim — unlike mid-wizard, where it is
+          bare: someone who has just SEEN their matches and then remembers they
+          have an account should have these answers adopted onto it. */}
+      {isAnonymous ? (
+        <div className="mb-6 flex items-center justify-between gap-3">
+          <Link href="/" aria-label="iTutor home" className="text-[15px] font-semibold tracking-tight text-ink">
+            iTutor
+          </Link>
+          <Link
+            href="/login?redirect=%2Ffind%2Fclaim"
+            className="rounded-full border border-border bg-white px-4 py-2 text-[14px] font-semibold text-ink transition hover:bg-mint"
+          >
+            Log in
+          </Link>
+        </div>
+      ) : null}
+
       <header>
         <h1 className="text-[24px] font-semibold leading-tight tracking-tight text-ink sm:text-[28px]">
           {learner ? `${learner}'s best matches` : 'My best matches'}
@@ -127,17 +172,16 @@ export default function MatchResults({
       {/* The answers, each editable in place */}
       <section className="mt-5" aria-label="Your search">
         <div className="flex flex-wrap gap-2">
-          {levelText ? (
-            // The level is NOT editable here — it comes from the account, not the
-            // wizard, so it is changed in profile settings. Rendering it as a
-            // static pill keeps that distinction visible.
-            <span className="inline-flex items-center rounded-full bg-mint px-3 py-1.5 text-[13px] font-medium text-brand-deep">
-              {levelText}
-            </span>
-          ) : null}
-          <FilterChip label={blocksPhrase(blocks)} step={STEP.AVAILABILITY} />
+          {/* THE LEVEL IS EDITABLE NOW. It used to be a static pill with a
+              comment saying it "comes from the account, not the wizard, so it is
+              changed in profile settings" — which stopped being true the moment
+              the wizard started asking for it. Left as a pill it would be the
+              one answer on the screen a family could see and not change, and the
+              one most likely to be a mis-tap. */}
+          {levelText ? <FilterChip label={levelText} step={STEP.LEVEL} base={findBase} /> : null}
+          <FilterChip label={blocksPhrase(blocks)} step={STEP.AVAILABILITY} base={findBase} />
           {lessonTypeText ? (
-            <FilterChip label={lessonTypeText} step={STEP.LESSON_TYPE} />
+            <FilterChip label={lessonTypeText} step={STEP.LESSON_TYPE} base={findBase} />
           ) : null}
           {/* Only rendered when the run actually answered it. A run from before
               migration 243 has no preference, and showing a default here would
@@ -146,14 +190,18 @@ export default function MatchResults({
             <FilterChip
               label={deliveryPrefLabel(row.delivery_pref)}
               step={STEP.DELIVERY}
+              base={findBase}
             />
           ) : null}
-          <FilterChip label={budgetLabelFor(row.budget_max)} step={STEP.BUDGET} />
+          <FilterChip label={budgetLabelFor(row.budget_max)} step={STEP.BUDGET} base={findBase} />
         </div>
         <p className="mt-2.5 text-[13px] text-ink-muted">
           Tap anything above to change it, or{' '}
           <Link
-            href="/find"
+            // A new search anonymously starts at the picker: the role is the one
+            // answer that is not a chip, and a fresh search should be free to
+            // change it. With an account the role is the account's.
+            href={isAnonymous ? '/start' : '/find'}
             className="font-semibold text-brand-deep underline underline-offset-2"
           >
             start a new search
@@ -182,8 +230,23 @@ export default function MatchResults({
               <p className="rounded-xl border border-brand/30 bg-brand-soft/40 px-4 py-3 text-[14px] text-ink">
                 We will email you as soon as a class opens that fits.
               </p>
+            ) : isAnonymous ? (
+              // NO ANONYMOUS OPT-IN BUTTON, on purpose. resolve-demand emails
+              // from profiles.email, so recording an opt-in with no account
+              // behind it is a promise the system cannot keep — ranked in the
+              // demand map and never honoured. Asking for the account here is
+              // the one place in this flow where it genuinely buys the visitor
+              // something, so the copy says what it buys.
+              <Link
+                href={`/signup?role=${role}&redirect=${encodeURIComponent('/find/claim?to=/find/results')}&intent=notify`}
+                className="inline-flex rounded-full bg-brand px-6 py-3 text-[15px] font-semibold text-white transition hover:brightness-110"
+              >
+                Create a free account and we&rsquo;ll email you
+              </Link>
             ) : (
               <form action="/api/finder/notify-me" method="post">
+                {/* Kept for the no-JS post, but no longer an authorisation input:
+                    the route picks the row from the session and ignores this. */}
                 <input type="hidden" name="request_id" value={row.id} />
                 <button
                   type="submit"
@@ -199,10 +262,12 @@ export default function MatchResults({
               </p>
             ) : null}
 
-            {/* /student/find-tutors, not /student/explore — the latter exists only
-                as /student/explore/[groupId] and an index link 404s. */}
+            {/* /student/find-tutors is authed-only, and there is no working public
+                browse page — /classes and /search both read `groups` through the
+                browser client, which RLS empties for an anonymous visitor. So
+                anonymously this goes to the Finder's own unfiltered view. */}
             <Link
-              href="/student/find-tutors"
+              href={isAnonymous ? `/find/browse?role=${role}` : '/student/find-tutors'}
               className="block text-[14px] font-semibold text-brand-deep underline underline-offset-2"
             >
               Browse everything available now
@@ -216,6 +281,16 @@ export default function MatchResults({
               These are in the subject you picked but may not match your times,
               year, budget or how you wanted to learn. Widening one of the
               filters above usually helps.
+            </p>
+          ) : null}
+
+          {/* Said once, quietly, above the list rather than on every card. Three
+              cards each shouting "create an account to join" would make signup
+              the loudest thing on the screen, which is the failure this whole
+              change exists to fix. */}
+          {isAnonymous ? (
+            <p className="mt-5 text-[13px] text-ink-muted">
+              These are yours. A free account saves them and lets you join a class.
             </p>
           ) : null}
 
@@ -238,7 +313,7 @@ export default function MatchResults({
           {row.match_class === 'near' && row.near_miss_on ? (
             <div className="mt-6">
               <Link
-                href={`/find?step=${nearMissStep(row.near_miss_on as GatingDimension)}`}
+                href={`${findBase}step=${nearMissStep(row.near_miss_on as GatingDimension)}`}
                 className="inline-flex rounded-full border border-border bg-white px-6 py-3 text-[15px] font-semibold text-ink transition hover:border-brand/60 hover:bg-mint"
               >
                 {nearMissButtonLabel(row.near_miss_on as GatingDimension)}

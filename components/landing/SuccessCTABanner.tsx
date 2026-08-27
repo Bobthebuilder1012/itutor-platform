@@ -23,7 +23,7 @@ export default function SuccessCTABanner() {
           <div className="flex flex-wrap items-center gap-4 2xl:gap-5">
             <span className="text-[28px]" aria-hidden>📖</span>
             <span className="text-[17px] font-bold text-[#0a0f0d] 2xl:text-lg">Your Success Starts Here!</span>
-            <Link href="/signup" className={pillButton} style={pillButtonStyle}>
+            <Link href="/start" className={pillButton} style={pillButtonStyle}>
               Join now
             </Link>
           </div>
@@ -34,7 +34,7 @@ export default function SuccessCTABanner() {
             <span className="text-[15px] font-medium text-[#1f2937] 2xl:text-base">
               Love teaching? Become a verified iTutor.
             </span>
-            <Link href="/signup" className={pillButton} style={pillButtonStyle}>
+            <Link href="/signup?role=tutor" className={pillButton} style={pillButtonStyle}>
               Become a tutor
             </Link>
           </div>
