@@ -44,14 +44,14 @@ export default function AiCreditMeter({ remaining, monthly, className }: AiCredi
       className={cn(
         'hidden sm:inline-flex items-center gap-[7px] px-[11px] py-1.5 mr-1',
         'rounded-full border bg-background whitespace-nowrap shrink-0',
-        empty ? 'border-red-300' : low ? 'border-amber-300' : 'border-surface-border',
+        empty ? 'border-danger-fg/40' : low ? 'border-warning-fg/40' : 'border-surface-border',
         className
       )}
     >
       <Zap
         className={cn(
           'size-[13px]',
-          empty ? 'text-red-600' : low ? 'text-amber-600' : 'text-brand-dark'
+          empty ? 'text-danger-fg' : low ? 'text-warning-fg' : 'text-brand-dark'
         )}
       />
       <span className="text-xs font-semibold text-ink tabular-nums">
@@ -63,7 +63,7 @@ export default function AiCreditMeter({ remaining, monthly, className }: AiCredi
         <span
           className={cn(
             'block h-full transition-[width] duration-300',
-            empty ? 'bg-red-500' : low ? 'bg-amber-500' : 'bg-brand'
+            empty ? 'bg-danger-fg' : low ? 'bg-warning-fg' : 'bg-brand'
           )}
           style={{ width: `${pct}%` }}
         />

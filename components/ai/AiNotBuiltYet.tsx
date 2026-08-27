@@ -48,7 +48,7 @@ export default function AiNotBuiltYet({ title, description, blockedOn }: AiNotBu
         </p>
 
         {blockedOn && (
-          <p className="mt-4 inline-block px-3 py-1.5 rounded-full bg-amber-50 text-amber-800 text-[12px] font-semibold">
+          <p className="mt-4 inline-block px-3 py-1.5 rounded-full bg-warning-bg text-warning-fg text-[12px] font-semibold">
             Waiting on {blockedOn}
           </p>
         )}
