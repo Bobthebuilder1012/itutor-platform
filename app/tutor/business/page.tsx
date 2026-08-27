@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Briefcase, Tag, BarChart3, FileText, Plus, Check, X,
   Users, DollarSign, BookOpen, Clock, Lock, Copy, ExternalLink,
-  GraduationCap, BadgeCheck, AlertCircle, UploadCloud, Loader2, ShieldCheck, CalendarClock,
+  GraduationCap, BadgeCheck, AlertCircle, UploadCloud, Loader2, ShieldCheck, CalendarClock, MapPin,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -18,6 +18,7 @@ import SupportFormModal from '@/components/SupportFormModal';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import ClassesSection from '@/components/tutor/public/ClassesSection';
 import EditableProfilePanel from '@/components/tutor/business/EditableProfilePanel';
+import VenuesTab from '@/components/tutor/VenuesTab';
 import ProfileQrCard from '@/components/tutor/business/ProfileQrCard';
 import AvailabilityEditor from '@/components/tutor/AvailabilityEditor';
 import OneOnOneMarketplaceToggle from '@/components/tutor/OneOnOneMarketplaceToggle';
@@ -31,6 +32,7 @@ import {
 type Tab =
   | 'overview'
   | 'availability'
+  | 'venues'
   | 'promotions'
   | 'verification'
   | 'analytics'
@@ -176,6 +178,7 @@ function MyBusinessContent() {
   }[] = [
     { key: 'overview',   label: 'Overview',        icon: Briefcase },
     { key: 'availability', label: 'Availability',   icon: CalendarClock },
+    { key: 'venues',     label: 'Venues',          icon: MapPin },
     { key: 'promotions', label: 'Promotions',       icon: Tag },
     { key: 'verification', label: 'Verification',   icon: ShieldCheck },
     { key: 'analytics',  label: 'Analytics',        icon: BarChart3 },
@@ -221,6 +224,7 @@ function MyBusinessContent() {
 
       {tab === 'overview'   && <OverviewTab activeClasses={activeClasses} totalRevenue={totalRevenue} totalStudents={totalStudents} profile={profile} onProfileUpdated={refreshProfile} />}
       {tab === 'availability' && <AvailabilityTab tutorId={profile?.id} />}
+      {tab === 'venues'     && <VenuesTab />}
       {tab === 'promotions' && <PromotionsTab classes={activeClasses} />}
       {tab === 'verification' && <VerificationCredentialsTab />}
       {tab === 'analytics'  && <BusinessAnalyticsTab classes={activeClasses} totalRevenue={totalRevenue} />}
