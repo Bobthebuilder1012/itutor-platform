@@ -38,6 +38,8 @@ import {
 } from '@/lib/services/subscriptionPayments';
 import { findGroupEnrollmentConflict, conflictMessage } from '@/lib/services/scheduleConflict';
 import { isPaidGroup } from '@/lib/payments/groupPricing';
+import { track } from '@/lib/analytics/track';
+import { PRODUCT_EVENTS } from '@/lib/analytics/events';
 
 const SEAT_RESERVATION_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -622,6 +624,24 @@ export async function createGroupSubscriptionCheckout(params: {
       billing_provider: 'stripe',
     })
     .eq('id', enrollmentId!);
+
+  // ── enrolment_started ──
+  // Instrumented in this shared helper rather than in the two routes that call
+  // it, so the student path and the parent-enrols-a-child path are counted by
+  // the same line. Two call sites would drift, and a funnel that silently omits
+  // parent enrolments would be worse than one that omits them visibly.
+  //
+  // Emitted here, at the end, because everything above can still refuse the
+  // enrolment — full class, schedule clash, waitlist, Stripe failure. Those are
+  // not abandoned checkouts and must not be counted as ones.
+  //
+  // Attributed to the STUDENT, matching `paid` (which uses sp.student_id): the
+  // funnel follows the learner through, even when a parent holds the card.
+  await track(
+    PRODUCT_EVENTS.ENROLMENT_STARTED,
+    { group_id: groupId },
+    { userId: studentId }
+  );
 
   // Step 14: Return the client secret. The enrollment stays PENDING_PAYMENT
   // until the webhook confirms — the client never activates it from

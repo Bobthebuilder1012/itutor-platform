@@ -41,6 +41,31 @@ interface PaidEnrolment {
   enrolled_at: string;
 }
 
+interface AttendanceLogRow {
+  student_id: string;
+  group_id: string | null;
+  joined_at: string;
+}
+
+/**
+ * Is this error "the table is not in this database" rather than a real fault?
+ *
+ * Distinguished so a genuinely broken query still fails loudly. 42P01 is an
+ * undefined relation; PGRST205 is PostgREST refusing to route to a table it
+ * cannot find in its schema cache.
+ */
+function isMissingRelation(error: unknown): boolean {
+  const err = error as { code?: unknown; message?: unknown } | null;
+  const code = String(err?.code ?? '');
+  const message = String(err?.message ?? '').toLowerCase();
+  return (
+    code === '42P01' ||
+    code === 'PGRST205' ||
+    message.includes('does not exist') ||
+    message.includes('could not find the table')
+  );
+}
+
 interface AttendanceJoin {
   student_id: string;
   status: string;
@@ -151,6 +176,59 @@ export async function GET(request: NextRequest) {
 
   const pendingStudentIds = Array.from(new Set(pending.map(p => p.studentId)));
 
+  // student:group -> attended timestamps, so each pair is judged against its
+  // own window rather than the span shared by the whole batch.
+  const attendedByPair = new Map<string, number[]>();
+  const addAttendance = (studentId: string, groupId: string, at: number) => {
+    const key = `${studentId}:${groupId}`;
+    const list = attendedByPair.get(key);
+    if (list) list.push(at);
+    else attendedByPair.set(key, [at]);
+  };
+
+  // TWO SOURCES, BECAUSE THE ENVIRONMENTS DISAGREE ABOUT WHICH TABLE EXISTS.
+  //
+  // The build plan names `group_attendance_records`. That table is absent from
+  // staging entirely; what staging has is `session_attendance_log` (migration
+  // 196), the row the student's own "Join" click writes. Querying only the
+  // former made this job return 500 on every run on the environment it was
+  // meant to be proven on, which is why it was never registered as a cron.
+  //
+  // Both are read and their timestamps unioned. They measure slightly different
+  // things — the log is self-reported presence, the records table is the
+  // tutor's register — and for a binary "did this student show up at all in
+  // days 23-30" either is sufficient evidence. Taking the union means a class
+  // whose tutor never marks a register still counts its students as retained.
+  let sourcesRead = 0;
+
+  // Source 1: session_attendance_log. group_id is on the row, so no join, and
+  // joined_at is already the moment of attendance.
+  const { data: logRows, error: logError } = await service
+    .from('session_attendance_log')
+    .select('student_id, group_id, joined_at')
+    .in('student_id', pendingStudentIds)
+    .gte('joined_at', spanStart)
+    .lte('joined_at', spanEnd);
+
+  if (logError) {
+    if (isMissingRelation(logError)) {
+      console.warn('[backfill-retention] session_attendance_log absent — skipping source.');
+    } else {
+      console.error('[backfill-retention] attendance log query failed:', logError.message);
+      return NextResponse.json({ error: logError.message }, { status: 500 });
+    }
+  } else {
+    sourcesRead += 1;
+    for (const row of (logRows ?? []) as AttendanceLogRow[]) {
+      if (!row.group_id) continue;
+      const at = Date.parse(row.joined_at);
+      if (!Number.isFinite(at)) continue;
+      addAttendance(row.student_id, row.group_id, at);
+    }
+  }
+
+  // Source 2: group_attendance_records, resolved to a group via
+  // occurrence -> session -> group.
   const { data: attendanceRows, error: attendanceError } = await service
     .from('group_attendance_records')
     .select(
@@ -162,23 +240,37 @@ export async function GET(request: NextRequest) {
     .lte('group_session_occurrences.scheduled_start_at', spanEnd);
 
   if (attendanceError) {
-    console.error('[backfill-retention] attendance query failed:', attendanceError.message);
-    return NextResponse.json({ error: attendanceError.message }, { status: 500 });
+    if (isMissingRelation(attendanceError)) {
+      console.warn('[backfill-retention] group_attendance_records absent — skipping source.');
+    } else {
+      console.error('[backfill-retention] attendance query failed:', attendanceError.message);
+      return NextResponse.json({ error: attendanceError.message }, { status: 500 });
+    }
+  } else {
+    sourcesRead += 1;
+    for (const row of (attendanceRows ?? []) as unknown as AttendanceJoin[]) {
+      const occurrence = row.group_session_occurrences;
+      const groupId = occurrence?.group_sessions?.group_id;
+      if (!occurrence || !groupId) continue;
+      const at = Date.parse(occurrence.scheduled_start_at);
+      if (!Number.isFinite(at)) continue;
+      addAttendance(row.student_id, groupId, at);
+    }
   }
 
-  // student:group -> attended timestamps, so each pair is judged against its
-  // own window rather than the span shared by the whole batch.
-  const attendedByPair = new Map<string, number[]>();
-  for (const row of (attendanceRows ?? []) as unknown as AttendanceJoin[]) {
-    const occurrence = row.group_session_occurrences;
-    const groupId = occurrence?.group_sessions?.group_id;
-    if (!occurrence || !groupId) continue;
-    const at = Date.parse(occurrence.scheduled_start_at);
-    if (!Number.isFinite(at)) continue;
-    const key = `${row.student_id}:${groupId}`;
-    const list = attendedByPair.get(key);
-    if (list) list.push(at);
-    else attendedByPair.set(key, [at]);
+  // NEITHER SOURCE READABLE: STOP, DO NOT MARK.
+  //
+  // This is the one failure that must not degrade gracefully. Every verdict is
+  // written to retention_marks and never re-judged, so proceeding with no
+  // attendance data would permanently record the entire cohort as churned — a
+  // wrong north-star number that no later run can correct, because the pairs
+  // are marked. A 500 here is recoverable; a silent false is not.
+  if (sourcesRead === 0) {
+    console.error('[backfill-retention] no attendance source readable — refusing to mark.');
+    return NextResponse.json(
+      { error: 'no_attendance_source', evaluated: 0 },
+      { status: 500 }
+    );
   }
 
   const marks: Array<{

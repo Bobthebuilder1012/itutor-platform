@@ -42,6 +42,8 @@ import {
 } from '@/lib/payments/secureSpot';
 import type { SessionPattern } from '@/lib/utils/scheduleFormat';
 import { notifySpotSecured } from '@/lib/services/secureSpotService';
+import { track, trackForUser } from '@/lib/analytics/track';
+import { PRODUCT_EVENTS } from '@/lib/analytics/events';
 
 const SESSION_COLUMNS =
   'recurrence_type, recurrence_days, start_time, duration_minutes, starts_on, ends_on';
@@ -171,6 +173,22 @@ export async function createSecureSpotCheckout(params: {
   const enrollmentId: string = claim.enrollment_id;
   const subscriptionPaymentId: string | null = claim.subscription_payment_id ?? null;
 
+  // ── enrolment_started ──
+  // Emitted at the CLAIM, not at the button press. This is the first moment a
+  // seat is actually held on the student's behalf, so it is the first moment
+  // there is anything to abandon — which is what the enrolment_started → paid
+  // ratio measures. Emitting on the click would fold "the class was full" and
+  // "the class had no schedule" into the drop-off number and make checkout look
+  // broken when it was working correctly.
+  //
+  // Attributed to the STUDENT, not the payer, matching `paid` — the funnel
+  // follows the learner through even when a parent holds the card.
+  await track(
+    PRODUCT_EVENTS.ENROLMENT_STARTED,
+    { group_id: groupId },
+    { userId: studentId }
+  );
+
   // Who paid, on the row (migration 230). secure_spot_claim predates parents
   // being able to buy a preorder and takes no payer, so without this the
   // parent's reservation would be indistinguishable from the child paying for
@@ -222,6 +240,17 @@ export async function createSecureSpotCheckout(params: {
         firstSession,
       });
     }
+
+    // ── paid, amount 0 ──
+    // A free reservation never reaches the webhook, so without this line every
+    // free class would show enrolment_started with no conversion and read as a
+    // total drop-off. `paid` counts conversions; `amount` carries the revenue,
+    // and zero is the honest value for both.
+    await trackForUser(
+      PRODUCT_EVENTS.PAID,
+      { group_id: groupId, amount: 0 },
+      { userId: studentId, dedupeKey: `free:${enrollmentId}` }
+    );
 
     return {
       ok: true,

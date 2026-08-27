@@ -44,7 +44,7 @@ export type FinderEntryRoute = 'forced' | 'nav' | 'dashboard' | 'email';
 /** Why the interstitial fired. */
 export type FinderTrigger = 'signup' | 'login_backfill';
 
-export type MatchClass = 'exact' | 'near' | 'none';
+export type MatchClass = 'exact' | 'near' | 'fallback' | 'none';
 
 /** Outcome of resolving a /r/[code] link. */
 export type RefResolution = 'resolved' | 'unresolved' | 'unvalidated' | 'invalid';

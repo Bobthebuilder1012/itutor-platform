@@ -281,6 +281,9 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/admin/tutors', label: 'Tutor Promotion', icon: icons.star },
           { href: '/admin/marketplace/classes', label: 'Class Promotion', icon: icons.sparkles },
           { href: '/admin/signups', label: 'Signups & Onboarding', icon: icons.userPlus },
+          // The recruitment worklist. In Operations rather than System because
+          // it is something someone acts on weekly, not a setting.
+          { href: '/admin/demand', label: 'Demand Map', icon: icons.search },
         ]},
         { label: 'Finance', items: [
           { href: '/admin/payments', label: 'Payments Overview', icon: icons.creditCard },

@@ -202,3 +202,6 @@ migration-list.txt
 .env*
 itutor-planner/
 .claude/settings.json
+
+# Git worktrees created for parallel branch work. Embedded repos, never content.
+.claude/worktrees/
