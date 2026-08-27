@@ -298,8 +298,12 @@ export async function createGroupSubscriptionCheckout(params: {
     // Non-fatal on a read failure: it falls through to the class-level check,
     // which is still correct for an online-only class — every class on
     // production today.
+    // Set once the per-seat gate has actually run and approved. See the
+    // class-level check below for why that then supersedes it.
+    let perSeatApproved = false;
     try {
       const allowed = await canTakeSeat(admin, groupId, group as any, requestedSeat);
+      perSeatApproved = allowed;
       if (!allowed) {
         return {
           ok: false as const,
@@ -318,7 +322,23 @@ export async function createGroupSubscriptionCheckout(params: {
       console.warn('[checkout] per-seat capacity unavailable:', seatErr?.message);
     }
 
-    if (group.max_students) {
+    // ── The class-level total, which is DERIVED and lossy ─────────────────
+    //
+    // Skipped once the per-seat gate has approved a non-online class, and that
+    // is a correctness fix rather than an optimisation.
+    //
+    // A trigger keeps `max_students` as the SUM of the two seat caps, and
+    // COALESCEs a NULL cap to 0 — so a hybrid class with ten online seats and
+    // UNLIMITED physical ones stores max_students = 10. Once those ten online
+    // seats sell, `used >= max_students` is true and this block would refuse an
+    // in-person enrolment that the per-seat gate had just correctly allowed,
+    // offering a waitlist for a room with space in it.
+    //
+    // The caps are the fact; the total is a convenience for everything written
+    // before migration 242. Where the two disagree, the caps win.
+    const skipClassTotal = perSeatApproved && seatConfig.class_format !== 'online';
+
+    if (group.max_students && !skipClassTotal) {
       const nowIso = now.toISOString();
 
       const { count: occupiedCount } = await admin
