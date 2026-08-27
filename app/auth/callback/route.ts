@@ -8,6 +8,7 @@ import {
   isEmailManagementOnlyAdmin,
 } from '@/lib/auth/adminAccess';
 import { isSameOriginPath } from '@/lib/utils/safeRedirect';
+import { adoptFinderRunFromCookie } from '@/lib/finder/adoptFromCookie';
 
 export const dynamic = 'force-dynamic';
 
@@ -91,6 +92,19 @@ export async function GET(request: NextRequest) {
   }
 
   const userId = session.user.id;
+
+  // ── Adopt an anonymous Finder run, BEFORE any role dispatch below ─────────
+  //
+  // Position matters for more than the data. The claim backfills profiles.role
+  // from the run, which is what makes /api/auth/resolve-role able to answer,
+  // which is what makes /signup/complete-role skip its role picker instead of
+  // asking "what brings you here?" — a question this visitor already answered at
+  // /start, before they had an account. Claiming after the dispatch would be
+  // correct for the database and wrong for the person.
+  //
+  // Idempotent and silent: a missing cookie is the normal case, and a failed
+  // claim leaves an unclaimed row rather than breaking sign-in.
+  await adoptFinderRunFromCookie(userId);
   const userEmail = session.user.email;
   const oauthProvider = session.user.app_metadata?.provider as string | undefined;
   console.log('✅ Session established for user:', userId, 'email:', userEmail);

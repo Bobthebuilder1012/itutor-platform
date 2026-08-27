@@ -1,23 +1,50 @@
 /**
- * /find/results — kept only as a redirect.
+ * /find/results — the matches, for a visitor who may have no account.
  *
- * The wizard used to end here. It now ends on "My best matches"
- * (/student/matches or /parent/matches), which lives inside the normal app
- * chrome and is where the answers are edited from then on — the Finder itself is
- * a one-time interstitial, so its output should not live at a URL that reads
- * like part of the interstitial.
+ * This route used to be a bare redirect into /student/matches or /parent/matches.
+ * It is now the anonymous half of the results experience, and still redirects for
+ * anyone signed in — so the two audiences see the same component in the place
+ * that suits each: inside the app chrome with an account, standalone without one.
  *
- * This route survives because it is already in the wild: browser history, a
- * back button pressed after signup, and the notify-me form's redirect target all
- * point at it. Redirecting is cheaper than a broken link.
+ * WHY NOT REUSE /student/matches FOR BOTH. StudentShell renders the full student
+ * sidebar and falls back to the literal name "Student" when useProfile() has no
+ * user, so a logged-out visitor would be shown an account menu for an account
+ * that does not exist. The results themselves are safe to render — they are a
+ * SNAPSHOT stored on the run, not a live read through RLS — but the furniture
+ * around them is not.
+ *
+ * It is also still the notify-me redirect target, so `?notify=` has to keep
+ * working through both branches.
  */
 
 import { redirect } from 'next/navigation';
-import { getServerClient } from '@/lib/supabase/server';
+import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { readFinderToken } from '@/lib/finder/token';
+import { adoptFinderRunFromCookie } from '@/lib/finder/adoptFromCookie';
+import MatchResults, { type FinderRequestRow } from '@/components/finder/MatchResults';
+import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
-export default async function FinderResultsRedirect({
+const BASE_COLUMNS =
+  'id, level, availability_blocks, lesson_type, budget_max, match_class, near_miss_on, results, child_label, created_at, role, skipped';
+
+/** delivery_pref lands in 243, which may not be applied. */
+const SELECT_TIERS = [`${BASE_COLUMNS}, delivery_pref`, BASE_COLUMNS];
+
+function isSchemaMismatch(error: unknown): boolean {
+  const err = error as { code?: unknown; message?: unknown } | null;
+  const code = String(err?.code ?? '');
+  const message = String(err?.message ?? '').toLowerCase();
+  return (
+    code === '42703' ||
+    code === 'PGRST204' ||
+    message.includes('does not exist') ||
+    message.includes('could not find')
+  );
+}
+
+export default async function FinderResultsPage({
   searchParams,
 }: {
   searchParams: { notify?: string };
@@ -26,18 +53,84 @@ export default async function FinderResultsRedirect({
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect('/signup?redirect=/find');
 
-  const { data } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .maybeSingle();
-
-  const role = (data as { role?: string | null } | null)?.role ?? null;
-  const base = role === 'parent' ? '/parent/matches' : '/student/matches';
-
-  // Carry ?notify= through so the confirmation still lands after the POST.
   const notify = searchParams?.notify;
-  redirect(notify ? `${base}?notify=${encodeURIComponent(notify)}` : base);
+
+  // ── Signed in: adopt, then hand over to the permanent home ────────────────
+  // The adoption happens HERE as well as on the matches pages because this is
+  // the page an anonymous visitor is standing on when they sign in — claiming
+  // before the redirect means the run is already theirs by the time they arrive.
+  if (user) {
+    await adoptFinderRunFromCookie(user.id);
+
+    const { data } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    const role = (data as { role?: string | null } | null)?.role ?? null;
+    const base = role === 'parent' ? '/parent/matches' : '/student/matches';
+    redirect(notify ? `${base}?notify=${encodeURIComponent(notify)}` : base);
+  }
+
+  // ── Anonymous: read the run this browser's token names ────────────────────
+  const token = await readFinderToken();
+  if (!token) return <NoRun />;
+
+  // Service client: an anonymous caller has no RLS identity, and the
+  // authenticated policy is scoped to user_id — the column that is null here.
+  // The token is the capability, and it is httpOnly so a page cannot forge one.
+  const service = getServiceClient();
+
+  let row: FinderRequestRow | null = null;
+  for (const columns of SELECT_TIERS) {
+    const { data, error } = await service
+      .from('finder_requests')
+      .select(columns)
+      .eq('token', token)
+      .maybeSingle();
+
+    if (!error) {
+      row = (data ?? null) as unknown as FinderRequestRow | null;
+      break;
+    }
+    if (!isSchemaMismatch(error)) {
+      console.error('[find/results] run read failed:', error.message);
+      return <NoRun />;
+    }
+  }
+
+  if (!row) return <NoRun />;
+
+  const role = ((row as unknown as { role?: string }).role === 'parent'
+    ? 'parent'
+    : 'student') as 'student' | 'parent';
+
+  return <MatchResults row={row} notify={notify} mode="anonymous" role={role} />;
+}
+
+/**
+ * No token, or a token with nothing behind it — an expired cookie, a cleared
+ * browser, or someone who opened the URL directly. An invitation rather than an
+ * error: there is nothing wrong, they simply have not answered anything yet.
+ */
+function NoRun() {
+  return (
+    <div className="mx-auto w-full max-w-lg px-4 py-16 text-center sm:px-6">
+      <h1 className="text-[24px] font-semibold tracking-tight text-ink">
+        Let&rsquo;s find your iTutor
+      </h1>
+      <p className="mt-2 text-[15px] leading-relaxed text-ink-muted">
+        Answer a few quick questions and we&rsquo;ll show you the classes that fit
+        — no account needed.
+      </p>
+      <Link
+        href="/start"
+        className="mt-6 inline-flex rounded-full bg-brand px-6 py-3 text-[15px] font-semibold text-white transition hover:brightness-110"
+      >
+        Start
+      </Link>
+    </div>
+  );
 }

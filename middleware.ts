@@ -31,6 +31,28 @@ function isFeedbackExemptPath(pathname: string) {
   );
 }
 
+/**
+ * Routes whose primary audience has no account.
+ *
+ * These skip the pending-feedback gate — which fires a server-side fetch on
+ * every non-API page request and can only ever redirect an AUTHENTICATED user
+ * who owes a rating, so on these routes it is a guaranteed-useless round trip in
+ * front of the product's new front door.
+ *
+ * NOT added to isFeedbackExemptPath, even though the name fits: that predicate
+ * feeds the early return at the top of middleware(), which returns WITHOUT
+ * applying cookies. Exempting /find there would mean itutor_anon is never minted
+ * on the wizard — and that cookie is both the attribution key and the abuse
+ * guard on /api/finder/submit, which refuses a request without it. So the skip
+ * happens further down, next to the /r/[code] one, where cookies are applied
+ * first.
+ *
+ * Prefix-matched on `/find/` so it covers /find/results and /find/browse.
+ */
+function isAnonymousFirstPath(pathname: string) {
+  return pathname === '/start' || pathname === '/find' || pathname.startsWith('/find/');
+}
+
 function isApiPath(pathname: string) {
   return pathname.startsWith('/api/');
 }
@@ -151,7 +173,7 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  if (isAttributionRedirectPath(pathname)) {
+  if (isAttributionRedirectPath(pathname) || isAnonymousFirstPath(pathname)) {
     return applyCookies(NextResponse.next(), attributionCookies);
   }
 

@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getServerClient } from '@/lib/supabase/server';
 import { getLatestFinderRequest } from '@/lib/finder/latestRequest';
+import { adoptFinderRunFromCookie } from '@/lib/finder/adoptFromCookie';
 import MatchResults from '@/components/finder/MatchResults';
 import { isFinderEnabled } from '@/lib/featureFlags/finder';
 
@@ -27,6 +28,14 @@ export default async function StudentMatchesPage({
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect('/login?redirect=/student/matches');
+
+  // Belt and braces. /find/claim and the auth callback both claim already, but
+  // this is where someone lands who reached an account by a path neither covers
+  // — logging in from the nav, an email link, a second device. Idempotent, one
+  // indexed read, and Class Match Week does the same on three pages for the same
+  // reason: guessing the single correct moment to claim is how you end up wrong
+  // on whichever path nobody tested.
+  await adoptFinderRunFromCookie(user.id);
 
   const row = await getLatestFinderRequest(supabase, user.id);
 
