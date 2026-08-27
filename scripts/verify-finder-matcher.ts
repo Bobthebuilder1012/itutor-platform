@@ -30,7 +30,16 @@ import {
 // with actually lives. It used to be in the matcher and was off by one in both
 // directions, which these checks did not catch because they asserted the wrong
 // numbers too.
-import { nearMissStep, STEP } from '../lib/finder/wizard';
+import {
+  nearMissStep,
+  questionPosition,
+  questionSequence,
+  formLevelLabelFor,
+  validateAnswers,
+  FINDER_LEVEL_LABELS,
+  QUESTIONNAIRE_LEVELS,
+  STEP,
+} from '../lib/finder/wizard';
 
 let passed = 0;
 let failed = 0;
@@ -457,6 +466,89 @@ console.log('\nFinder matcher — behavioural checks\n');
   ).matches[0].score;
   check('an over-budget class outranks a wrong-format one',
     overBudget > wrongFormat, `${overBudget} vs ${wrongFormat}`);
+}
+
+// ------------------------------------------- the pre-auth step sequence
+// The wizard's question order is now derived rather than counted, because a
+// TOTAL_STEPS constant could not express "parents get one more question" and the
+// old clamp showed a parent "Question 1 of 6" on two consecutive screens.
+{
+  const student = questionSequence(false);
+  const parent = questionSequence(true);
+
+  check('a student answers 7 questions', student.length === 7, String(student.length));
+  check('a parent answers 8', parent.length === 8, String(parent.length));
+  check(
+    'the parent sequence starts with the child question',
+    parent[0] === STEP.CHILD,
+    String(parent[0])
+  );
+  check(
+    'LEVEL comes before SUBJECT — the subject list is a function of it',
+    student.indexOf(STEP.LEVEL) < student.indexOf(STEP.SUBJECT)
+  );
+  check(
+    'the picker is NOT a question',
+    !student.includes(STEP.ROLE) && !parent.includes(STEP.ROLE)
+  );
+
+  // The reason the new steps took negative indices: these values ARE the ?step=
+  // values in the URL, and renumbering would silently change what every
+  // existing /find?step=N link means.
+  check('SUBJECT is still 0', STEP.SUBJECT === 0);
+  check('URGENCY is still 5', STEP.URGENCY === 5);
+  check('the new steps are negative', STEP.ROLE < 0 && STEP.LEVEL < 0);
+
+  const { index, total } = questionPosition(STEP.CHILD, true);
+  check('a parent on the child question is 1 of 8', index === 0 && total === 8);
+  const studentFirst = questionPosition(STEP.LEVEL, false);
+  check('a student on the level question is 1 of 7',
+    studentFirst.index === 0 && studentFirst.total === 7);
+  check('the picker reports no position', questionPosition(STEP.ROLE, false).index === -1);
+}
+
+// --------------------------------------- the level -> profile vocabulary map
+// Two vocabularies with a one-way lossy map. Guessing the sixth-form year would
+// record a fact about a person that they never gave.
+{
+  check("SEA maps to signup's 'SEA'", formLevelLabelFor('SEA') === 'SEA');
+  check('FORM_4 maps to "Form 4"', formLevelLabelFor('FORM_4') === 'Form 4');
+  check('FORM_1 maps to "Form 1"', formLevelLabelFor('FORM_1') === 'Form 1');
+  check(
+    'CAPE maps to NOTHING, because Lower 6 and Upper 6 both normalise to it',
+    formLevelLabelFor('CAPE') === null
+  );
+  check('a null level maps to null', formLevelLabelFor(null) === null);
+
+  // Every value the wizard can offer must have a label, or the question renders
+  // a blank row.
+  const missing = QUESTIONNAIRE_LEVELS.filter(l => !FINDER_LEVEL_LABELS[l.value]);
+  check('every offered level has a label', missing.length === 0,
+    missing.map(m => m.value).join(','));
+}
+
+// ------------------------------------- what the anonymous validator accepts
+{
+  const valid = {
+    subject: 'Mathematics',
+    availabilityBlocks: ['saturday_morning'],
+    lessonType: 'group',
+    budgetBand: 'under_200',
+    urgency: 'now',
+  };
+
+  check('a minimal answer set passes', validateAnswers(valid) === null,
+    String(validateAnswers(valid)));
+  check('level is optional', validateAnswers({ ...valid, level: null }) === null);
+  check('a valid level passes', validateAnswers({ ...valid, level: 'FORM_4' }) === null);
+  check('a junk level is rejected', validateAnswers({ ...valid, level: 'Form 4' }) === 'level');
+  check('a junk role is rejected', validateAnswers({ ...valid, role: 'admin' }) === 'role');
+  check('parent is a valid role', validateAnswers({ ...valid, role: 'parent' }) === null);
+
+  // The endpoint is public now, so `subject` is the only unbounded free text
+  // that reaches the database from an unauthenticated caller.
+  const long = { ...valid, subject: 'x'.repeat(200) };
+  check('an overlong subject is rejected', validateAnswers(long) === 'subject');
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`);

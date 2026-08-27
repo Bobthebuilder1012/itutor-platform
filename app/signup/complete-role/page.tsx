@@ -79,6 +79,35 @@ export default function CompleteRolePage() {
   const [studentInstitution, setStudentInstitution] = useState<Institution | null>(null);
   const [year, setYear] = useState('');
 
+  /**
+   * Pick up the year level from a Finder run answered before this account
+   * existed — the Google path lands here rather than on SignupCard, so without
+   * this the question is asked twice for OAuth signups only.
+   *
+   * Fills an empty field only, and only with a value that is actually an option.
+   * Null for CAPE by construction (both sixth-form years normalise to it, so
+   * there is no inverse), in which case they pick.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/finder/prefill', { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = (await res.json()) as { form_level_label?: string | null };
+        const label = data?.form_level_label ?? null;
+        if (cancelled || !label) return;
+        if (!YEAR_LEVELS.some((y) => y.value === label)) return;
+        setYear((current) => current || label);
+      } catch {
+        /* no run to read; the form behaves as it always did */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Tutor profile
   const [tLevels, setTLevels] = useState<string[]>([]);
   const [tSubjects, setTSubjects] = useState<string[]>([]);
