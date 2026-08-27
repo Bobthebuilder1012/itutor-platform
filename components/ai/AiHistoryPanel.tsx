@@ -33,7 +33,7 @@ export interface AiConversationSummary {
   meta?: string;
   /** Optional status pill: Synced, Live, Draft. */
   tag?: string;
-  tone?: 'info' | 'success' | 'neutral';
+  tone?: 'info' | 'success' | 'warning' | 'neutral';
 }
 
 interface AiHistoryPanelProps {
@@ -59,10 +59,16 @@ const GROUP_ORDER: { type: AiTaskType; label: string }[] = [
   { type: 'GENERAL', label: 'Other' },
 ];
 
+/**
+ * The design system's status vocabulary, not hand-picked greens and greys.
+ * The prototype renders these badges straight off var(--success-bg) and
+ * friends, so the tones are the kit's four, warning included.
+ */
 const TAG_TONE: Record<string, string> = {
-  info: 'bg-brand-light text-brand-deep',
-  success: 'bg-green-100 text-green-800',
-  neutral: 'bg-muted text-ink-muted',
+  info: 'bg-info-bg text-info-fg',
+  success: 'bg-success-bg text-success-fg',
+  warning: 'bg-warning-bg text-warning-fg',
+  neutral: 'bg-neutral-bg text-neutral-fg',
 };
 
 function useGroups(conversations: AiConversationSummary[], query: string) {

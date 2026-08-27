@@ -48,6 +48,27 @@
 
     --bg: #f3f4f6;
 
+    /* ── Status colours ────────────────────────────────────────────────
+       Lifted verbatim from the design system's tokens/colors.css. The kit
+       tokenises the status palette the app has been writing inline as raw
+       Tailwind classes (orange-50, red-50, blue-50, purple-50, amber-400),
+       and the AI prototype renders its badges straight off these names —
+       a "Live" quiz pill is var(--success-bg), not bg-green-100.
+       Additive: nothing referenced these before, so no existing colour moves. */
+    --success-bg: #dcfce7;
+    --success-fg: #15803d;
+    --warning-bg: #fff7ed;
+    --warning-fg: #ea580c;
+    --danger-bg: #fef2f2;
+    --danger-fg: #dc2626;
+    --info-bg: #eff6ff;
+    --info-fg: #2563eb;
+    --progress-bg: #faf5ff;
+    --progress-fg: #9333ea;
+    --neutral-bg: #f3f4f6;
+    --neutral-fg: #6b7280;
+    --star: #fbbf24;
+
     /* ── Landing page design tokens ────────────────────────────────── */
     --brand-soft: oklch(0.95 0.07 150);
     --brand-deep: oklch(0.55 0.16 150);
