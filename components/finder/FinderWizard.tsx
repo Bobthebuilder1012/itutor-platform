@@ -17,29 +17,41 @@
  *   button shows what is expected next; a missing one reads as a broken page.
  * - NO PER-STEP SKIPPING. A skipped answer poisons the demand ledger, which is
  *   the half of this feature that outlives any single search. The WHOLE wizard is
- *   skippable, from the first step only, via `Maybe later`.
+ *   skippable — and now from EVERY step, not just the first, because a visitor
+ *   with no account has no dashboard to be sent back to and needs a way out that
+ *   still shows them something.
  * - NO ARTIFICIAL DELAY before results. Padding a fast response to imply effort
  *   is a trick, and parents notice.
  *
- * THE LEVEL IS NOT ASKED — it was collected at signup and is read off the
- * profile. THE ACCOUNT'S SAVED SUBJECTS ARE SHOWN FIRST and badged, so the very
- * first question demonstrates that we already know the student rather than
- * starting cold.
+ * THE LEVEL IS ASKED, because there may be no account to read it from. It used to
+ * come off `profiles.form_level` and only be displayed. Where a session exists
+ * that is still true and the question is skipped; pre-auth it is question one,
+ * and it has to be, because the subject list is a function of it.
+ *
+ * THE ACCOUNT'S SAVED SUBJECTS are still shown first and badged when there are
+ * any. Pre-auth there are none and the list renders as one flat block, which is
+ * the correct degradation rather than something to special-case.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { ArrowLeft, Check } from 'lucide-react';
 import { AVAILABILITY_BLOCKS, type AvailabilityBlock } from '@/lib/matching/availability';
 import {
   BUDGET_BANDS,
   DELIVERY_PREFS,
+  FINDER_LEVEL_LABELS,
   LESSON_TYPES,
+  QUESTIONNAIRE_LEVELS,
   STEP,
-  TOTAL_STEPS,
   URGENCIES,
   emptyAnswers,
+  formLevelLabelFor,
   isStepAnswered,
+  questionPosition,
+  questionSequence,
+  type CanonicalLevel,
   type DeliveryPref,
   type FinderAnswers,
   type LessonType,
@@ -48,22 +60,53 @@ import {
 import { trackClient } from '@/lib/analytics/client';
 import { PRODUCT_EVENTS, type FinderEntryRoute, type FinderTrigger } from '@/lib/analytics/events';
 import FinderArt from './FinderArt';
+import FinderExitControls from './FinderExitControls';
+import RolePicker from './RolePicker';
 
 interface Props {
+  /** From `?role=` pre-auth, from the profile when there is a session. */
   isParent: boolean;
+  /** Null when no role has been chosen yet — the wizard opens on the picker. */
+  role: 'student' | 'parent' | null;
+  /** Whether a session exists. Decides skip/login destinations and whether the
+   *  level is asked or read from the account. */
+  isAuthenticated: boolean;
   firstName: string | null;
-  /** Human label for the level held on the profile, e.g. "Form 4". */
-  levelLabelText: string | null;
-  /** Subjects already on the account, from signup or the dashboard. */
+  /** The account's canonical level, when there is an account. Pre-selects the
+   *  level question so an authed re-run never contradicts the profile. */
+  profileLevel: CanonicalLevel | null;
+  /** Subjects already on the account, from signup or the dashboard. Empty
+   *  pre-auth, which simply removes the badge. */
   savedSubjects: string[];
   prefillSubject: string | null;
   entryRoute: FinderEntryRoute;
   trigger: FinderTrigger | null;
-  alreadyCompleted: boolean;
 }
 
 const ROW_IDLE = 'border-border bg-white text-ink hover:border-brand/60 hover:shadow-sm';
 const ROW_SELECTED = 'border-brand bg-brand-soft/50 text-ink shadow-sm';
+
+/**
+ * The answers the visitor has actually given in THIS render, so a late-arriving
+ * hydration cannot overwrite something they just typed.
+ *
+ * The stored copy is authoritative for questions not yet touched and wrong for
+ * the one they are standing on: the fetch is in flight while the screen is
+ * interactive, so without this a slow connection can clobber a fresh answer a
+ * second after it was chosen — the worst kind of bug to reproduce.
+ */
+function pickAnswered(a: FinderAnswers): Partial<FinderAnswers> {
+  const out: Partial<FinderAnswers> = {};
+  if (a.childLabel) out.childLabel = a.childLabel;
+  if (a.level) out.level = a.level;
+  if (a.subject) out.subject = a.subject;
+  if (a.availabilityBlocks.length > 0) out.availabilityBlocks = a.availabilityBlocks;
+  if (a.lessonType) out.lessonType = a.lessonType;
+  if (a.deliveryPref) out.deliveryPref = a.deliveryPref;
+  if (a.budgetBand) out.budgetBand = a.budgetBand;
+  if (a.urgency) out.urgency = a.urgency;
+  return out;
+}
 
 function Indicator({ selected, multi = false }: { selected: boolean; multi?: boolean }) {
   return (
@@ -124,25 +167,36 @@ function OptionRow({
 
 export default function FinderWizard({
   isParent,
+  role,
+  isAuthenticated,
   firstName,
-  levelLabelText,
+  profileLevel,
   savedSubjects,
   prefillSubject,
   entryRoute,
   trigger,
-  alreadyCompleted,
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const firstStep = isParent ? STEP.CHILD : STEP.SUBJECT;
+  const seq = questionSequence(isParent);
+  // No role yet means the picker is the screen. Everything below still runs, so
+  // the step content switch simply lands on STEP.ROLE.
+  const firstStep = role === null ? STEP.ROLE : seq[0];
 
   const stepParam = Number.parseInt(searchParams.get('step') ?? '', 10);
-  const step = Number.isFinite(stepParam) ? stepParam : firstStep;
+  const stepFromUrl = Number.isFinite(stepParam) ? stepParam : null;
+  // A `?step=` on a URL with no role would drop the visitor into a question we
+  // cannot label ("What year is your child in?" vs "What year are you in?"), so
+  // the picker wins until a role exists.
+  const step = role === null ? STEP.ROLE : (stepFromUrl ?? firstStep);
 
   const [answers, setAnswers] = useState<FinderAnswers>(() => ({
     ...emptyAnswers(),
     subject: prefillSubject,
+    // An authed run does not ask the level; pre-selecting it from the profile
+    // keeps the wizard from ever disagreeing with the account.
+    level: profileLevel,
   }));
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -154,6 +208,12 @@ export default function FinderWizard({
 
   // finder_prompted_at is stamped server-side; these events pair with it to give
   // the interstitial funnel, so they fire once on mount.
+  // See the <h1> below: focus moves here on every step change.
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, [step]);
+
   const announced = useRef(false);
   useEffect(() => {
     if (announced.current) return;
@@ -171,9 +231,54 @@ export default function FinderWizard({
     [router, searchParams]
   );
 
-  // Subject options for the profile's level. Fetched when the subject step is
+  // ── Restore answers when arriving mid-wizard ──────────────────────────────
+  //
+  // FIXES A LIVE BUG, not just a pre-auth one. `answers` starts from
+  // emptyAnswers(), so a FilterChip on the results screen that links to
+  // `/find?step=4` let the visitor change their budget and then submitted
+  // `subject: null` — validateAnswers returned 'subject', the route 400'd, and
+  // the screen said "We could not save your answers". That is broken today for
+  // logged-in users, and editing a filter is the primary way a family widens a
+  // search, so it would have been the main failure mode of the new flow.
+  //
+  // Only hydrates when `?step=` is present, i.e. an explicit deep link into a
+  // question. A bare `/find?role=…` is a new search and must start clean — that
+  // is the owner's rule about return visits, and it is why this cannot simply
+  // always restore.
+  const hydrated = useRef(false);
+  useEffect(() => {
+    if (hydrated.current || stepFromUrl === null) return;
+    hydrated.current = true;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch('/api/finder/answers', { cache: 'no-store' });
+        if (!res.ok) return;
+        const json = (await res.json()) as { answers?: Partial<FinderAnswers> | null };
+        if (cancelled || !json.answers) return;
+        // Merged rather than replaced: whatever the visitor has already changed
+        // on this screen wins over the stored copy.
+        setAnswers(prev => ({ ...prev, ...json.answers, ...pickAnswered(prev) }));
+      } catch {
+        // Nothing stored, or the endpoint is unavailable. The chip still opens
+        // the right question; the visitor just re-answers the others.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [stepFromUrl]);
+
+  // Subject options for the chosen level. Fetched when the subject step is
   // reached rather than on mount, so a parent typing a child's name is not
   // waiting on a request they may not need yet.
+  //
+  // The level now travels as a query param. It used to be read from the profile
+  // server-side, which cannot work for a visitor who has no profile — and
+  // sending it explicitly is also what makes the question honest: the options
+  // reflect the answer just given, not an account fact that may differ.
   useEffect(() => {
     if (step !== STEP.SUBJECT) return;
     let cancelled = false;
@@ -182,7 +287,10 @@ export default function FinderWizard({
 
     (async () => {
       try {
-        const res = await fetch('/api/finder/subjects');
+        const url = answers.level
+          ? `/api/finder/subjects?level=${encodeURIComponent(answers.level)}`
+          : '/api/finder/subjects';
+        const res = await fetch(url);
         if (!res.ok) throw new Error(String(res.status));
         const json = (await res.json()) as { subjects?: string[] };
         if (!cancelled) setSubjectOptions(json.subjects ?? []);
@@ -194,7 +302,7 @@ export default function FinderWizard({
     return () => {
       cancelled = true;
     };
-  }, [step, retry]);
+  }, [step, retry, answers.level]);
 
   /**
    * Saved subjects float to the top and are badged.
@@ -228,16 +336,42 @@ export default function FinderWizard({
 
   const answered = isStepAnswered(step, answers, isParent);
 
-  const advance = useCallback(() => {
-    if (!answered) return;
-    trackClient(PRODUCT_EVENTS.FINDER_STEP, { step, value: null });
-    goToStep(step + 1);
-  }, [answered, step, goToStep]);
+  // Position in the sequence. `index === -1` means this is not a question — the
+  // ROLE picker, or a hand-edited `?step=` — and the progress indicator is
+  // hidden rather than showing a made-up position.
+  const { index, total } = questionPosition(step, isParent);
+  const isLastStep = index >= 0 && index === total - 1;
+  const canGoBack = index > 0;
 
+  // Sequence-driven, not `step + 1`. The steps are no longer contiguous
+  // integers: LEVEL is -1 and SUBJECT is 0, so arithmetic would work by accident
+  // here and break the next time a question is inserted.
+  const advance = useCallback(() => {
+    if (!answered || index < 0) return;
+    trackClient(PRODUCT_EVENTS.FINDER_STEP, { step, value: null });
+    goToStep(seq[index + 1]);
+  }, [answered, index, seq, step, goToStep]);
+
+  const goBack = useCallback(() => {
+    if (index > 0) goToStep(seq[index - 1]);
+  }, [index, seq, goToStep]);
+
+  /**
+   * Skip the whole questionnaire.
+   *
+   * Anonymous visitors go to /find/browse — the unfiltered catalogue. They used
+   * to be sent to a dashboard, which for someone with no account is a bounce
+   * straight to a login screen: the exact dead end this whole change exists to
+   * remove. Someone who IS signed in has a dashboard worth returning to.
+   */
   const skip = useCallback(() => {
     trackClient(PRODUCT_EVENTS.FINDER_SKIPPED, { step_reached: step });
+    if (!isAuthenticated) {
+      router.push(role ? `/find/browse?role=${role}` : '/find/browse');
+      return;
+    }
     router.push(isParent ? '/parent/dashboard' : '/student/dashboard');
-  }, [step, router, isParent]);
+  }, [step, router, isParent, isAuthenticated, role]);
 
   const submit = useCallback(async () => {
     if (submitting) return;
@@ -248,6 +382,16 @@ export default function FinderWizard({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          // role and level are new on the wire. Pre-auth they are the only
+          // identity and the only syllabus signal there is; the route falls back
+          // to the profile for an authed run that omits them.
+          role: role ?? (isParent ? 'parent' : 'student'),
+          level: answers.level,
+          // The profile's vocabulary, captured now because the map from
+          // canonical -> profile is lossy for CAPE and this is the only moment
+          // both are known. Null for CAPE, on purpose: signup asks which
+          // sixth-form year rather than us guessing one.
+          formLevelLabel: formLevelLabelFor(answers.level),
           subject: answers.subject,
           availabilityBlocks: answers.availabilityBlocks,
           lessonType: answers.lessonType,
@@ -258,19 +402,49 @@ export default function FinderWizard({
         }),
       });
       if (!res.ok) throw new Error(String(res.status));
+      // Anonymous runs land on the public results page; the token cookie the
+      // route just set is what identifies them there. Authed runs go to their
+      // permanent "my best matches" home inside the app chrome.
+      if (!isAuthenticated) {
+        router.push('/find/results');
+        return;
+      }
       router.push(isParent ? '/parent/matches' : '/student/matches');
     } catch {
       setSubmitError('We could not save your answers. Please try again.');
       setSubmitting(false);
     }
-  }, [answers, submitting, router, isParent]);
+  }, [answers, submitting, router, isParent, isAuthenticated, role]);
 
   // ── step content ─────────────────────────────────────────────────────────
   let title = '';
   let subtitle: string | null = null;
   let body: React.ReactNode = null;
 
-  if (step === STEP.CHILD) {
+  if (step === STEP.ROLE) {
+    // The picker, inline. Rendered here rather than redirecting to /start so a
+    // campaign link carrying ?subject= keeps it — a redirect would drop every
+    // param the visitor arrived with, and those params are the attribution this
+    // feature exists to measure.
+    title = 'What brings you to iTutor?';
+    subtitle = 'Pick the one that sounds like you.';
+    body = <RolePicker variant="inline" searchParams={searchParams} />;
+  } else if (step === STEP.LEVEL) {
+    title = isParent ? `Which year is ${who} in?` : 'Which year are you in?';
+    subtitle = "We'll only show classes that teach your syllabus.";
+    body = (
+      <div className="mt-6 space-y-2">
+        {QUESTIONNAIRE_LEVELS.map(level => (
+          <OptionRow
+            key={level.value}
+            label={FINDER_LEVEL_LABELS[level.value]}
+            selected={answers.level === level.value}
+            onSelect={() => setAnswers(a => ({ ...a, level: level.value }))}
+          />
+        ))}
+      </div>
+    );
+  } else if (step === STEP.CHILD) {
     title = 'Who are these lessons for?';
     subtitle = 'Just a first name — they do not need their own account yet.';
     body = (
@@ -290,13 +464,30 @@ export default function FinderWizard({
     );
   } else if (step === STEP.SUBJECT) {
     title = isParent ? `What does ${who} need help with?` : 'What do you need help with?';
-    subtitle = levelLabelText
-      ? `Showing ${levelLabelText} subjects, from your account.`
+    // No longer "from your account" — the level is the visitor's own answer from
+    // the previous screen. Saying otherwise was true when the level came off the
+    // profile and is a plain lie now.
+    subtitle = answers.level
+      ? `${FINDER_LEVEL_LABELS[answers.level]} subjects. Search if you don't see it.`
       : 'Pick the subject you want a class in.';
     const savedShown = filtered(saved);
     const restShown = filtered(rest);
     body = (
       <div className="mt-6 space-y-3">
+        {/* The level is one tap behind this list and decides what is in it, so a
+            mis-tap on the previous screen otherwise looks like "we teach nothing
+            for my child". Only offered when the wizard asked — for an authed run
+            the level comes from the account and is changed in settings. */}
+        {answers.level && !isAuthenticated ? (
+          <button
+            type="button"
+            onClick={() => goToStep(STEP.LEVEL)}
+            className="text-[13px] font-semibold text-brand-deep underline underline-offset-2"
+          >
+            Not {FINDER_LEVEL_LABELS[answers.level]}? Change year
+          </button>
+        ) : null}
+
         <input
           type="search"
           value={query}
@@ -454,58 +645,100 @@ export default function FinderWizard({
     );
   }
 
-  const isLastStep = step === STEP.URGENCY;
-  const stepIndex = Math.max(0, step);
-  const showBack = step > firstStep;
+  const showProgress = index >= 0;
 
   return (
     <main className="flex min-h-screen bg-white">
-      <aside className="sticky top-0 hidden h-screen w-[42%] shrink-0 lg:block">
-        <FinderArt step={step} answered={answered} />
+      {/*
+        THREE ROWS, NOT ONE. The aside used to be nothing but FinderArt. It now
+        owns the panel and FinderArt is one row of it, because the skip and
+        log-in controls have to live "under the icons" and cannot live INSIDE
+        FinderArt: that component's root is aria-hidden, and it is rendered a
+        second time as the clipped h-32 mobile strip below — so a control placed
+        inside would be invisible to assistive tech and also produce a phantom,
+        off-screen tab stop on every phone.
+
+        The gradient moved here from FinderArt's root. Leaving it there as well
+        would paint a gradient inside a gradient with a visible seam where two
+        `from-mint` edges meet at the flex boundary.
+      */}
+      <aside className="sticky top-0 hidden h-screen w-[42%] shrink-0 flex-col bg-gradient-to-br from-mint via-brand-soft to-mint lg:flex">
+        {/*
+          min-h-0 is load-bearing. Without it a flex child containing an h-full
+          element refuses to shrink below its content height, and the controls
+          row is pushed off the bottom of a short viewport — a 1366x667 laptop,
+          which is exactly the machine this gets demoed on.
+        */}
+        <div className="min-h-0 flex-1">
+          <FinderArt step={step} answered={answered} />
+        </div>
+        <div className="shrink-0 px-8 pb-10">
+          <FinderExitControls variant="rail" onSkip={skip} isAuthenticated={isAuthenticated} />
+        </div>
       </aside>
 
       <div className="flex w-full flex-1 justify-center px-4 pb-16 pt-6 lg:items-center lg:px-12">
         <div className="w-full max-w-md">
           <div className="flex items-center justify-between gap-3">
-            {showBack ? (
+            {canGoBack ? (
               <button
                 type="button"
-                onClick={() => goToStep(step - 1)}
-                aria-label="Back"
+                onClick={goBack}
+                aria-label="Back to the previous question"
                 className="inline-flex size-9 items-center justify-center rounded-full border border-border bg-white text-ink transition-colors hover:bg-mint"
               >
                 <ArrowLeft className="size-4" />
               </button>
             ) : (
-              <span className="text-[15px] font-semibold tracking-tight text-ink">iTutor</span>
+              // invisible, not hidden, on desktop: the slot has to stay so the
+              // right-hand cluster keeps its position.
+              <Link
+                href="/"
+                aria-label="iTutor home"
+                className="text-[15px] font-semibold tracking-tight text-ink lg:invisible"
+              >
+                iTutor
+              </Link>
             )}
 
-            {step === firstStep && !alreadyCompleted ? (
-              <button
-                type="button"
-                onClick={skip}
-                className="text-[13px] text-ink-muted underline underline-offset-2 hover:text-ink"
-              >
-                Maybe later
-              </button>
-            ) : null}
+            {/* Desktop's copy of these lives in the rail. Mobile has no aside, so
+                they sit here — top-right, on every step, which is the only place
+                that survives the soft keyboard on the two text-input steps. */}
+            <div className="lg:hidden">
+              <FinderExitControls variant="header" onSkip={skip} isAuthenticated={isAuthenticated} />
+            </div>
           </div>
 
-          <div className="mt-5 flex gap-1.5" aria-hidden>
-            {Array.from({ length: TOTAL_STEPS }, (_, i) => (
-              <span
-                key={i}
-                className={`h-1.5 flex-1 rounded-full transition-colors ${
-                  i <= stepIndex ? 'bg-brand' : 'bg-muted'
-                }`}
-              />
-            ))}
-          </div>
-          <p className="mt-1.5 text-[11px] text-ink-muted">
-            Question {Math.min(stepIndex + 1, TOTAL_STEPS)} of {TOTAL_STEPS}
-          </p>
+          {showProgress ? (
+            <>
+              <div className="mt-5 flex gap-1.5" aria-hidden>
+                {Array.from({ length: total }, (_, i) => (
+                  <span
+                    key={i}
+                    className={`h-1.5 flex-1 rounded-full transition-colors ${
+                      i <= index ? 'bg-brand' : 'bg-muted'
+                    }`}
+                  />
+                ))}
+              </div>
+              <p className="mt-1.5 text-[11px] text-ink-muted">
+                Question {index + 1} of {total}
+                {index === 0 ? ' · about a minute' : ''}
+              </p>
+            </>
+          ) : null}
 
-          <h1 className="mt-6 text-[26px] font-semibold leading-tight tracking-tight text-ink sm:text-[28px]">
+          {/*
+            tabIndex + focus on step change. Pressing Continue re-renders the
+            button and destroys focus, so a keyboard or screen-reader user was
+            silently returned to the top of the document on every question. Moving
+            focus to the heading announces the new question instead.
+          */}
+          <h1
+            ref={headingRef}
+            tabIndex={-1}
+            className="mt-6 text-[26px] font-semibold leading-tight tracking-tight text-ink outline-none sm:text-[28px]"
+          >
             {title}
           </h1>
           {subtitle ? (
@@ -514,9 +747,13 @@ export default function FinderWizard({
 
           {body}
 
-          {/* Art on mobile, where the aside is hidden. */}
-          <div className="mt-6 h-32 overflow-hidden rounded-3xl lg:hidden">
-            <FinderArt step={step} answered={answered} />
+          {/* Art on mobile, where the aside is hidden. `compact` because this box
+              is h-32 and FinderArt's full layout (p-8 + a size-32 tile + an mt-8
+              caption) overflows it — the caption has been clipped and invisible
+              on every phone since this strip was added. The gradient lives on
+              the wrapper now, matching the aside. */}
+          <div className="mt-6 h-32 overflow-hidden rounded-3xl bg-gradient-to-br from-mint via-brand-soft to-mint lg:hidden">
+            <FinderArt step={step} answered={answered} compact />
           </div>
 
           {submitError ? (
@@ -525,20 +762,23 @@ export default function FinderWizard({
             </p>
           ) : null}
 
-          <button
-            type="button"
-            disabled={!answered || submitting}
-            onClick={isLastStep ? submit : advance}
-            className={`mt-6 w-full rounded-full px-7 py-3.5 text-[15px] font-semibold transition ${
-              answered && !submitting
-                ? 'bg-brand text-white hover:brightness-110'
-                : 'cursor-not-allowed bg-muted text-ink-muted'
-            }`}
-          >
-            {submitting ? 'Finding classes…' : isLastStep ? 'Show my matches' : 'Continue'}
-          </button>
+          {/* The picker has no Continue — each choice is its own link. */}
+          {step === STEP.ROLE ? null : (
+            <button
+              type="button"
+              disabled={!answered || submitting}
+              onClick={isLastStep ? submit : advance}
+              className={`mt-6 w-full rounded-full px-7 py-3.5 text-[15px] font-semibold transition ${
+                answered && !submitting
+                  ? 'bg-brand text-white hover:brightness-110'
+                  : 'cursor-not-allowed bg-muted text-ink-muted'
+              }`}
+            >
+              {submitting ? 'Finding classes…' : isLastStep ? 'Show my matches' : 'Continue'}
+            </button>
+          )}
 
-          {firstName && step === firstStep ? (
+          {firstName && index === 0 ? (
             <p className="mt-3 text-center text-[13px] text-ink-muted">
               Welcome, {firstName}. This takes about a minute.
             </p>
