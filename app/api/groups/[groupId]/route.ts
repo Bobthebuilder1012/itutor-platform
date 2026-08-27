@@ -42,8 +42,19 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const isAnonymous = !user;
 
     const service = getServiceClient();
-    const groupSelects = [
-      `
+    // NOTE ON ORDERING. These are tried widest-first and a single missing column
+    // 42703s the WHOLE select, so the in-person columns (migration 242) get their
+    // own tier at the top rather than being added to the existing widest one.
+    // Production does not have 242; if they were merged into tier 1, tier 1 would
+    // fail there and every class would fall back to a narrower select — which is
+    // exactly how "Secure your spot" once went missing on staging, as the comment
+    // on the last tier records.
+    const IN_PERSON_COLUMNS =
+      'class_format, venue_id, venue_visibility, max_students_online, max_students_physical, ' +
+      'price_online_ttd, price_physical_ttd, accepts_cash, ' +
+      'venue:venues(id, name, region_id, address_line, access_instructions, arrival_notes, region:regions(id, name))';
+
+    const WIDEST_BASE = `
         id, name, description, tutor_id, subject, pricing, created_at, archived_at,
         difficulty, goals, price_per_session, price_monthly, pricing_model, recurrence_type, recurrence_rule,
         form_level, topic, session_length_minutes, session_frequency, price_per_course, pricing_mode, availability_window, media_gallery,
@@ -53,7 +64,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
         visibility, parent_feedback_mode, parent_feedback_price, member_service_fee,
         tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, response_time_minutes),
         group_members(id, user_id, status, profile:profiles!group_members_user_id_fkey(id, full_name, avatar_url))
-      `,
+      `;
+
+    const groupSelects = [
+      `${WIDEST_BASE}, ${IN_PERSON_COLUMNS}`,
+      WIDEST_BASE,
       `
         id, name, description, tutor_id, subject, pricing, created_at, archived_at,
         form_level, topic, session_length_minutes, session_frequency, price_per_course, pricing_mode, availability_window,
@@ -383,11 +398,49 @@ export async function GET(_req: NextRequest, { params }: Params) {
       availability_window: group.availability_window ?? null,
     };
 
+    // ── The venue's street address is gated; its AREA is not ─────────────────
+    //
+    // `venue_visibility` defaults to 'after_enrolment' (migration 242), and this
+    // endpoint is deliberately readable by anonymous visitors — so without this
+    // the tier above would hand a tutor's street address, and often their home
+    // address, to anyone who opens a class page or scrapes the API.
+    //
+    // The REGION always survives, because a location filter nobody can see does
+    // not work: a family has to be able to tell that a class is in Arima before
+    // deciding whether to enrol in it. What is stripped is the line that gets
+    // someone to the door — address_line, access_instructions, arrival_notes.
+    //
+    // "Enrolled" is read from viewerMembership rather than recomputed, so this
+    // cannot drift from what the page uses to decide whether to show a Join
+    // button. A secured place counts: they have paid.
+    const venueRaw = (group as any).venue ?? null;
+    const venue = Array.isArray(venueRaw) ? (venueRaw[0] ?? null) : venueRaw;
+    const maySeeAddress =
+      (group as any).venue_visibility === 'public' ||
+      viewerMembership.enrolled ||
+      viewerMembership.secured ||
+      // The tutor's own class. They wrote the address.
+      (!!user && user.id === (group as any).tutor_id);
+
+    const venueForViewer = venue
+      ? {
+          id: venue.id,
+          name: venue.name,
+          region: Array.isArray(venue.region) ? (venue.region[0] ?? null) : (venue.region ?? null),
+          address_line: maySeeAddress ? (venue.address_line ?? null) : null,
+          access_instructions: maySeeAddress ? (venue.access_instructions ?? null) : null,
+          arrival_notes: maySeeAddress ? (venue.arrival_notes ?? null) : null,
+          /** So the UI can say "address after you join" rather than nothing. */
+          address_hidden: !maySeeAddress && Boolean(venue.address_line),
+        }
+      : null;
+
     return NextResponse.json({
       success: true,
       group: {
         ...group,
         group_members: undefined,
+        venue: venueForViewer,
         // Counts are public; who the students are is not. An anonymous viewer
         // gets neither the roster nor the preview avatars.
         members: isAnonymous ? [] : group.group_members,
@@ -413,6 +466,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
           group_members: undefined,
           // Mirrors the block above — this legacy `data` shape is still read by
           // some callers, so it has to be stripped for anonymous viewers too.
+          // That includes the venue: `...group` spreads the RAW joined row, so
+          // omitting this line would hand the street address out through the
+          // legacy shape while the modern one gated it.
+          venue: venueForViewer,
           members: isAnonymous ? [] : group.group_members,
           member_count: approvedMembers.length,
           member_previews: isAnonymous
@@ -458,11 +515,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     }
 
     const body: UpdateGroupInput = await request.json();
-    // `secure_spot_enabled` is needed to tell "opening preorders" apart from
-    // "resending the flag unchanged"; see the guard further down.
+    // `secure_spot_enabled` tells "opening preorders" apart from "resending the
+    // flag unchanged". tutor_id, class_format and venue_id are read in the same
+    // round trip for the in-person block below — it needs to know what the row
+    // WILL be after a partial PATCH, and who owns the venue it may be given.
     const { data: currentGroup } = await service
       .from('groups')
-      .select('secure_spot_enabled')
+      .select('secure_spot_enabled, tutor_id, class_format, venue_id')
       .eq('id', groupId)
       .maybeSingle();
     const updates: Record<string, any> = {};
@@ -523,6 +582,132 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       }
       updates.max_students = body.max_students;
     }
+    // ── In-person delivery (migration 242) ────────────────────────────────
+    //
+    // Validated here rather than left to the CHECK constraints, because those
+    // were added NOT VALID and surface as a raw Postgres error the tutor cannot
+    // act on. The rules, and why each one exists:
+    //
+    //   class_format ∈ online|physical|hybrid       — the enum
+    //   a non-online class needs a venue             — groups_venue_required_check;
+    //                                                  "somewhere in Arima" is not
+    //                                                  an address a parent can use
+    //   the venue must be THIS TUTOR'S               — not a DB constraint, and the
+    //                                                  only thing stopping a tutor
+    //                                                  pointing a class at someone
+    //                                                  else's street address
+    //   cash only when there is a room to hand it in — groups_cash_requires_venue
+    //   caps and prices are non-negative             — the remaining CHECKs
+    //
+    // max_students is NOT set here: a trigger keeps it as the sum of the two
+    // seat caps (sync_group_max_students), so writing both would let them
+    // disagree.
+    {
+      const FORMATS = ['online', 'physical', 'hybrid'] as const;
+      type Fmt = (typeof FORMATS)[number];
+
+      const rawFormat = (body as any).class_format;
+      const wantsFormat = rawFormat !== undefined;
+      if (wantsFormat && !FORMATS.includes(rawFormat)) {
+        return NextResponse.json({ error: 'Unknown class format.' }, { status: 400 });
+      }
+
+      const rawVenue = (body as any).venue_id;
+      const wantsVenue = rawVenue !== undefined;
+
+      // The effective format AFTER this PATCH, so the venue rule is checked
+      // against what the row will be rather than what it was. A PATCH that only
+      // sets a venue must still satisfy the rule for the format already stored.
+      const effectiveFormat: Fmt = wantsFormat
+        ? (rawFormat as Fmt)
+        : (((currentGroup as any)?.class_format ?? 'online') as Fmt);
+
+      const effectiveVenue = wantsVenue ? (rawVenue as string | null) : undefined;
+
+      if (effectiveFormat !== 'online') {
+        // Either the PATCH supplies a venue, or the row already has one.
+        const venueId =
+          effectiveVenue !== undefined
+            ? effectiveVenue
+            : ((currentGroup as any)?.venue_id ?? null);
+        if (!venueId) {
+          return NextResponse.json(
+            { error: 'Choose a venue before setting this class to meet in person.' },
+            { status: 400 }
+          );
+        }
+      }
+
+      // Ownership. RLS does not help here — this route writes with the service
+      // client — so without this check a tutor could attach another tutor's
+      // venue, and its street address, to their own class.
+      if (effectiveVenue) {
+        const { data: venue, error: venueErr } = await service
+          .from('venues')
+          .select('id, tutor_id, archived_at')
+          .eq('id', effectiveVenue)
+          .maybeSingle();
+        if (venueErr) {
+          console.error('[PATCH /api/groups] venue lookup failed:', venueErr.message);
+          return NextResponse.json({ error: 'Could not check that venue.' }, { status: 503 });
+        }
+        const v = venue as { tutor_id?: string; archived_at?: string | null } | null;
+        // Same answer for "not yours" and "does not exist", so this cannot be
+        // used to probe for other tutors' venue ids.
+        if (!v || v.tutor_id !== (currentGroup as any)?.tutor_id || v.archived_at) {
+          return NextResponse.json({ error: 'That venue is not available.' }, { status: 400 });
+        }
+      }
+
+      if (wantsFormat) updates.class_format = rawFormat;
+      if (wantsVenue) updates.venue_id = rawVenue;
+
+      if ((body as any).venue_visibility !== undefined) {
+        const vis = (body as any).venue_visibility;
+        if (vis !== 'public' && vis !== 'after_enrolment') {
+          return NextResponse.json({ error: 'Unknown venue visibility.' }, { status: 400 });
+        }
+        updates.venue_visibility = vis;
+      }
+
+      // Nullable numerics: null means "no limit" for a cap and "same as the
+      // class price" for a price, which is why an explicit null is passed
+      // through rather than coerced to 0. Zero is a different answer — no seats
+      // of that kind — and seatCapacity.ts depends on the distinction.
+      for (const field of [
+        'max_students_online',
+        'max_students_physical',
+        'price_online_ttd',
+        'price_physical_ttd',
+      ] as const) {
+        if ((body as any)[field] === undefined) continue;
+        const raw = (body as any)[field];
+        if (raw === null || raw === '') {
+          updates[field] = null;
+          continue;
+        }
+        const n = Number(raw);
+        if (!Number.isFinite(n) || n < 0) {
+          return NextResponse.json(
+            { error: 'Seat limits and prices cannot be negative.' },
+            { status: 400 }
+          );
+        }
+        updates[field] = field.startsWith('max_') ? Math.trunc(n) : n;
+      }
+
+      if ((body as any).accepts_cash !== undefined) {
+        const cash = Boolean((body as any).accepts_cash);
+        if (cash && effectiveFormat === 'online') {
+          return NextResponse.json(
+            { error: 'Cash can only be accepted for a class that meets in person.' },
+            { status: 400 }
+          );
+        }
+        updates.accepts_cash = cash;
+      }
+    }
+
     if (body.cover_image !== undefined) updates.cover_image = body.cover_image;
     if ((body as any).schedule_display !== undefined) updates.schedule_display = (body as any).schedule_display;
     if ((body as any).schedule_data !== undefined) updates.schedule_data = (body as any).schedule_data;
