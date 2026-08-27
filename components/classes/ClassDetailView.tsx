@@ -1230,7 +1230,28 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
   hasLinkedParent: boolean;
   parentGate?: ParentGate | null;
 }) {
-  const isFull = group.max_students - group.member_count <= 0;
+  // ── Which seats this class has, and which one is being bought ─────────────
+  //
+  // Server-computed (lib/utils/seatCapacity via the class GET), so the choice
+  // offered here and the capacity gate that will judge it read the same numbers.
+  const openSeats = (group.seat_availability ?? []).filter(s => !s.unavailable && !s.full);
+  const seatChoiceNeeded = openSeats.length > 1;
+  const [chosenSeat, setChosenSeat] = useState<'online' | 'physical'>(
+    // Defaults to the only open seat when there is one, and to online otherwise
+    // — which is what every class without migration 242 offers.
+    openSeats.length === 1 ? openSeats[0].seat : 'online'
+  );
+
+  // Per-seat fullness. The class-level subtraction is arithmetically right
+  // (max_students is kept as the sum of the caps by a trigger) and answers the
+  // wrong question on a hybrid class: a full room with online space left is not
+  // a full class. Falls back to the class total when the server did not report
+  // seats, which is correct for an online-only class.
+  const offeredSeats = (group.seat_availability ?? []).filter(s => !s.unavailable);
+  const isFull =
+    offeredSeats.length > 0
+      ? offeredSeats.every(s => s.full)
+      : group.max_students - group.member_count <= 0;
   const isRequest = group.require_join_requests;
   const price = group.price_monthly ?? group.price_per_session ?? 0;
   const promo = group.active_promotion;
@@ -1305,7 +1326,16 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
       }
 
       if (price > 0 && !isFull) {
-        const res = await fetch(`/api/groups/${group.id}/subscribe`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+        const res = await fetch(`/api/groups/${group.id}/subscribe`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          // The seat they picked. Only meaningful on a hybrid class; the server
+          // validates it against what the class actually offers and refuses a
+          // seat that does not exist rather than downgrading it, because someone
+          // who chose "in person" and got an online seat would find out by
+          // turning up at a venue not expecting them.
+          body: JSON.stringify({ seatType: chosenSeat }),
+        });
         const data = await res.json();
         if (data.parent_approval_required) { onSuccess('awaiting-parent'); return; }
         if (data.checkout_url) { window.location.href = data.checkout_url; return; }
@@ -1363,6 +1393,72 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
       {/* Billing. A preorder is a one-time charge for a class that hasn't
           started — describing it as a monthly subscription that renews would
           be false on every line, so the whole block switches. */}
+      {/* ── Seat choice ──────────────────────────────────────────────────────
+          Only when the class genuinely offers more than one OPEN seat. A picker
+          with a single option is a decision the visitor cannot make, and asking
+          them to confirm the obvious is how a join flow gains a step for
+          nothing. When one kind is full the other is preselected and this does
+          not render at all. */}
+      {seatChoiceNeeded && (
+        <section className="rounded-2xl border border-border bg-background p-5 space-y-3">
+          <h2 className="text-sm font-bold text-ink">How will you attend?</h2>
+          <div className="space-y-2">
+            {openSeats.map((s) => {
+              const selected = chosenSeat === s.seat;
+              // Per-seat price when the tutor set one, otherwise the class price
+              // — which is what the server will charge in that case.
+              const seatPrice = s.priceTtd ?? effectivePrice;
+              return (
+                <button
+                  key={s.seat}
+                  type="button"
+                  onClick={() => setChosenSeat(s.seat)}
+                  className={cn(
+                    'flex w-full items-start gap-3 rounded-xl border px-4 py-3 text-left transition',
+                    selected ? 'border-brand bg-brand/5' : 'border-border hover:border-brand/50'
+                  )}
+                >
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'mt-0.5 grid size-4 shrink-0 place-items-center rounded-full border-2',
+                      selected ? 'border-brand' : 'border-border'
+                    )}
+                  >
+                    {selected && <span className="size-2 rounded-full bg-brand" />}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold text-ink">
+                      {s.seat === 'physical' ? 'In person' : 'Online'}
+                    </span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      {s.seat === 'physical'
+                        ? group.venue?.region
+                          ? `At ${group.venue.name} · ${group.venue.region.name}`
+                          : 'At the venue'
+                        : 'Join from home'}
+                      {s.remaining !== null ? ` · ${s.remaining} left` : ''}
+                    </span>
+                  </span>
+                  {seatPrice > 0 && (
+                    <span className="shrink-0 text-xs font-semibold text-ink">
+                      {fmtTTD(seatPrice)}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          {/* The address, and when they get it. Said here because this is the
+              moment the choice is being made, not after the money. */}
+          {chosenSeat === 'physical' && group.venue?.address_hidden && (
+            <p className="text-xs text-muted-foreground">
+              You&apos;ll get the full address as soon as you join.
+            </p>
+          )}
+        </section>
+      )}
+
       <section className="rounded-2xl border border-border bg-background p-5 space-y-3">
         <h2 className="font-bold text-ink text-sm">Billing</h2>
         <InfoRow icon={<CreditCard className="size-4 text-brand-deep" />} label="Model">
