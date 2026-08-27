@@ -58,6 +58,8 @@ COMMENT ON TABLE public.product_events IS
 COMMENT ON COLUMN public.product_events.anon_id IS
   'Retained only for pre-signup landing-page events. With the Finder behind auth a '
   'user_id is present from finder_started onward, so no stitching job is required.';
+-- SUPERSEDED by migration 247: the Finder now runs BEFORE the account, so most
+-- of the funnel is anon-keyed. 247 re-COMMENTs this column with the correction.
 
 CREATE INDEX IF NOT EXISTS idx_events_event_time ON public.product_events(event, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_events_user       ON public.product_events(user_id);
