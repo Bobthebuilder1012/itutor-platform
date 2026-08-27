@@ -29,10 +29,10 @@ function ToolsContent() {
     {
       id: 'marking',
       title: 'AI Marking',
-      desc: 'Upload student work and an answer key, get suggested grades and feedback in minutes.',
+      desc: 'Retired. Marking returns as the Mark Papers flow in the new iTutor AI hub.',
       icon: FileText,
-      href: '/tools/ai',
-      available: true,
+      href: '#',
+      available: false,
     },
     {
       id: 'lesson-planning',
