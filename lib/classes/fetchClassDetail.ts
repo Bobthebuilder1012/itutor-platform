@@ -112,6 +112,14 @@ export async function fetchClassDetail(groupId: string): Promise<GroupData | nul
     secure_spot_enabled: g.secure_spot_enabled === true,
     end_date: g.end_date ?? null,
     secured: securedState,
+    // In person (migration 242). The venue arrives ALREADY FILTERED for this
+    // viewer — the API nulls the street address and the notes unless they are
+    // enrolled, secured, the tutor, or the class is public-address — so this
+    // mapping deliberately passes it straight through rather than re-deciding.
+    // Two places deciding who may see an address is one place too many.
+    class_format: g.class_format ?? null,
+    venue: g.venue ?? null,
+    seat_availability: g.seat_availability ?? null,
   };
   } catch (err) {
     console.error('[fetchClassDetail]', err);

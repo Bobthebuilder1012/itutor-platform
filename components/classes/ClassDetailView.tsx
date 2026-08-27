@@ -18,7 +18,7 @@ import {
   ArrowLeft, Star, Calendar, Clock, Users, Check, Lock,
   CreditCard, X, Loader2, Sparkles, BadgeCheck,
   MessageSquare, Globe, Flame, BookOpen, ShieldCheck, ChevronRight, CheckCircle2,
-  HeartHandshake, Lightbulb,
+  HeartHandshake, Lightbulb, MapPin,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { StarRow } from '@/components/ratings/StarInput';
@@ -116,6 +116,36 @@ export type GroupData = {
   end_date: string | null;
   /** Set when THIS student holds a secured spot in the class. */
   secured: { releaseDate: string | null } | null;
+  // ── In person (migration 242) ──
+  // All optional: absent on any environment without 242, and on every class
+  // created before it. Absent means online, which is what those classes are.
+  class_format?: 'online' | 'physical' | 'hybrid' | null;
+  /**
+   * The venue, already filtered by the API for this viewer. `address_line` and
+   * the notes are null unless the class is public-address, the viewer is
+   * enrolled or secured, or they are the tutor — so this component never has to
+   * decide who may see a street address, and cannot get it wrong.
+   */
+  venue?: {
+    id: string;
+    name: string;
+    region: { id: string; name: string } | null;
+    address_line: string | null;
+    access_instructions: string | null;
+    arrival_notes: string | null;
+    /** True when there IS an address and this viewer is not allowed it yet. */
+    address_hidden: boolean;
+  } | null;
+  /** Per seat type, from the server. Null when 242 is not applied. */
+  seat_availability?: Array<{
+    seat: 'online' | 'physical';
+    unavailable: boolean;
+    capacity: number | null;
+    enrolled: number;
+    remaining: number | null;
+    full: boolean;
+    priceTtd: number | null;
+  }> | null;
 };
 
 /**
@@ -253,7 +283,22 @@ export function Detail({
   const router = useRouter();
   const isPending = group.memberStatus === 'pending';
   const spotsLeft = Math.max(0, group.max_students - group.member_count);
-  const isFull = spotsLeft <= 0;
+  // ── Fullness, per seat type where the class has them ──────────────────────
+  //
+  // `group.max_students` is kept by a trigger as the SUM of the two seat caps,
+  // so the class-level subtraction above is arithmetically right and still
+  // answers the wrong question on a hybrid class: a full room with online space
+  // left is not a full class, and a class whose total has room may have no seat
+  // of the kind this student wants.
+  //
+  // `seats_full` comes from the server, which computed it with
+  // lib/utils/seatCapacity — the one place the rule lives. When it is null (242
+  // unapplied, or an older API) the class-level answer is used, which is correct
+  // for an online-only class and that is every class on production today.
+  const seatRows = group.seat_availability ?? null;
+  const offeredSeats = (seatRows ?? []).filter(s => !s.unavailable);
+  const isFull =
+    offeredSeats.length > 0 ? offeredSeats.every(s => s.full) : spotsLeft <= 0;
   const isLow = spotsLeft > 0 && spotsLeft <= 3;
   // What a student is told about capacity. isFull still drives the CTA and
   // the waitlist — those are behaviour, not display, and must keep reading
@@ -808,6 +853,77 @@ export function Detail({
               )}
             </div>
           )}
+
+          {/* ── Where it meets ──────────────────────────────────────────────
+              Only rendered for a class that meets somewhere. An online class
+              already says so everywhere else, and a card reading "Online" on
+              every class in the catalogue is noise. */}
+          {group.venue && group.class_format && group.class_format !== 'online' ? (
+            <div className="rounded-3xl border border-border bg-background p-4">
+              <div className="flex items-center gap-2">
+                <MapPin aria-hidden className="h-4 w-4 shrink-0 text-brand-deep" />
+                <h3 className="text-sm font-bold text-ink">
+                  {group.class_format === 'hybrid' ? 'Meets in person or online' : 'Where it meets'}
+                </h3>
+              </div>
+
+              <p className="mt-2 text-xs font-semibold text-ink">
+                {group.venue.name}
+                {group.venue.region ? (
+                  <span className="font-normal text-muted-foreground">
+                    {' · '}
+                    {group.venue.region.name}
+                  </span>
+                ) : null}
+              </p>
+
+              {group.venue.address_line ? (
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  {group.venue.address_line}
+                </p>
+              ) : group.venue.address_hidden ? (
+                // Says WHY rather than showing a gap. The area is above, so the
+                // family can already tell whether it is reachable; what is
+                // withheld is only the doorstep.
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  The full address is shared once you join.
+                </p>
+              ) : null}
+
+              {group.venue.access_instructions ? (
+                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                  {group.venue.access_instructions}
+                </p>
+              ) : null}
+              {group.venue.arrival_notes ? (
+                <p className="mt-1.5 whitespace-pre-line text-xs leading-relaxed text-muted-foreground">
+                  {group.venue.arrival_notes}
+                </p>
+              ) : null}
+
+              {/* Per-seat availability, only when the class genuinely offers a
+                  choice. On a physical-only class the single row says nothing the
+                  capacity line above has not already said. */}
+              {group.class_format === 'hybrid' && offeredSeats.length > 1 ? (
+                <ul className="mt-3 space-y-1 border-t border-border pt-3">
+                  {offeredSeats.map(s => (
+                    <li key={s.seat} className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">
+                        {s.seat === 'physical' ? 'In person' : 'Online'}
+                      </span>
+                      <span className={s.full ? 'font-semibold text-coral' : 'text-ink'}>
+                        {s.full
+                          ? 'Full'
+                          : s.remaining === null
+                            ? 'Open'
+                            : `${s.remaining} left`}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
 
           {/* Upcoming schedule agenda */}
           {agenda.length > 0 && (
