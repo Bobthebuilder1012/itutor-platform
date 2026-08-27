@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
-  ArrowLeft, Users, UserPlus, Copy, Check, Star,
+  ArrowLeft, Users, UserPlus, Copy, Check, Star, MapPin,
   Bell, X, Plus, ExternalLink, Trash2, Globe, Eye,
   Video, MoreVertical, Pin, Sparkles, Link as LinkIcon, Paperclip, UploadCloud, AlertTriangle, ShieldAlert,
   Mail, MessageSquare, DollarSign, BarChart3, ArrowUp, ArrowDown, Lock,
@@ -108,6 +108,12 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
 // URL as its own line in message_body, so detect a line that IS a bare URL.
 const URL_LINE_RE = /^https?:\/\/\S+$/;
 
+// The seat-type rules live in one place. seatCapacity.ts holds the one that
+// matters — a class is not full until every seat type it offers is full — and
+// this page is one of the two callers it was written for.
+import type { ClassFormat } from '@/lib/utils/seatCapacity';
+import InPersonSection, { type InPersonDraft } from '@/components/tutor/classes/InPersonSection';
+
 type GroupDetail = {
   id: string;
   title: string;
@@ -116,6 +122,18 @@ type GroupDetail = {
   description: string;
   capacity: number;
   enrolled: number;
+  // ── In person (migration 242) ──
+  // `capacity` above stays the class TOTAL — a trigger keeps groups.max_students
+  // as the sum of the two seat caps, so it is derived, not a third number to
+  // reconcile. These are the per-seat caps that actually gate enrolment.
+  classFormat: ClassFormat;
+  venueId: string | null;
+  venueVisibility: 'public' | 'after_enrolment';
+  maxStudentsOnline: number | null;
+  maxStudentsPhysical: number | null;
+  priceOnlineTtd: number | null;
+  pricePhysicalTtd: number | null;
+  acceptsCash: boolean;
   pricePerSession: number | null;
   memberServiceFee: number;
   billingModel: 'per-session' | 'per-month' | 'prepaid';
@@ -269,6 +287,16 @@ function ClassHubContent() {
           scheduleData: (() => { try { return g.schedule_data ? JSON.parse(g.schedule_data) : []; } catch { return []; } })(),
           capacity: g.max_students ?? 20,
           enrolled: 0,
+          // Absent on any environment without migration 242, which is why every
+          // one of these falls back rather than being read straight through.
+          classFormat: (g.class_format ?? 'online') as ClassFormat,
+          venueId: g.venue_id ?? null,
+          venueVisibility: (g.venue_visibility ?? 'after_enrolment') as GroupDetail['venueVisibility'],
+          maxStudentsOnline: g.max_students_online ?? null,
+          maxStudentsPhysical: g.max_students_physical ?? null,
+          priceOnlineTtd: g.price_online_ttd ?? null,
+          pricePhysicalTtd: g.price_physical_ttd ?? null,
+          acceptsCash: g.accepts_cash === true,
           pricePerSession: billingModel === 'per-month'
             ? (g.price_monthly ?? g.price_per_session ?? null)
             : (g.price_per_session ?? null),
@@ -2153,6 +2181,7 @@ function PaymentsTab({ members, group }: { members: GroupMember[]; group: GroupD
 const SETTINGS_SECTIONS = [
   { id: 'basics',    label: 'Display',           icon: Info },
   { id: 'capacity',  label: 'Capacity',          icon: Users },
+  { id: 'inperson',  label: 'In person',         icon: MapPin },
   { id: 'billing',   label: 'Billing',           icon: DollarSign },
   { id: 'access',    label: 'Access & policies', icon: Lock },
   { id: 'channels',  label: 'Communication',     icon: MessageSquare },
@@ -2292,6 +2321,23 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
           form_level: draft.level && draft.level !== '—' ? draft.level : null,
           max_students: draft.capacity > 0 ? draft.capacity : 20,
           status: draft.visibility === 'private' ? 'DRAFT' : 'PUBLISHED',
+          // In person (migration 242). Sent to the groups PATCH rather than the
+          // settings endpoint because that is where the venue-ownership and
+          // format rules are enforced.
+          //
+          // max_students above is still sent, and a trigger will immediately
+          // overwrite it with the sum of the two seat caps once either is set.
+          // That is the intended precedence — the caps are the fact, the total is
+          // derived — and it is why the In person tab shows the derived total
+          // read-only rather than offering a third number to edit.
+          class_format: draft.classFormat,
+          venue_id: draft.classFormat === 'online' ? null : draft.venueId,
+          venue_visibility: draft.venueVisibility,
+          max_students_online: draft.maxStudentsOnline,
+          max_students_physical: draft.maxStudentsPhysical,
+          price_online_ttd: draft.priceOnlineTtd,
+          price_physical_ttd: draft.pricePhysicalTtd,
+          accepts_cash: draft.classFormat === 'online' ? false : draft.acceptsCash,
         }),
       });
       const basicJson = await basicRes.json().catch(() => ({}));
@@ -2516,6 +2562,44 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
                     </p>
                   )}
                 </SetField>
+              )}
+            </>
+          )}
+
+          {section === 'inperson' && (
+            <>
+              <SettingsHead
+                title="In person"
+                desc="Run this class at a venue, online, or both."
+              />
+              {isOneOnOne ? (
+                <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                  1-on-1 sessions are arranged directly with the student, so this
+                  is set per session rather than on the class.
+                </div>
+              ) : (
+                <InPersonSection
+                  draft={{
+                    classFormat: draft.classFormat,
+                    venueId: draft.venueId,
+                    venueVisibility: draft.venueVisibility,
+                    maxStudentsOnline: draft.maxStudentsOnline,
+                    maxStudentsPhysical: draft.maxStudentsPhysical,
+                    priceOnlineTtd: draft.priceOnlineTtd,
+                    pricePhysicalTtd: draft.pricePhysicalTtd,
+                    acceptsCash: draft.acceptsCash,
+                  }}
+                  onChange={(patch: Partial<InPersonDraft>) =>
+                    setDraft((prev) => ({ ...prev, ...patch }))
+                  }
+                  // Per-seat counts need group_enrollments.seat_type, which this
+                  // page does not load. Passing the class total as the ONLINE
+                  // floor is the safe direction while every existing enrolment
+                  // is online: it can only ever refuse a cap that is too low,
+                  // never allow one. Revisit when the roster carries seat_type.
+                  enrolledOnline={enrolledCount}
+                  enrolledPhysical={0}
+                />
               )}
             </>
           )}

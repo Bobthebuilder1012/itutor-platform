@@ -34,8 +34,12 @@ export async function POST(request: NextRequest) {
     const body = (await request.json().catch(() => ({}))) as {
       childId?: string;
       groupId?: string;
+      seatType?: string;
     };
     const { childId, groupId } = body;
+    // Only 'physical' is meaningful here; anything else is online, which is what
+    // an online-only class can offer and what every seat was before 242.
+    const seatTypeFromBody = body.seatType === 'physical' ? 'physical' : 'online';
     if (!childId || !groupId) {
       return NextResponse.json({ error: 'Missing childId or groupId' }, { status: 400 });
     }
@@ -67,6 +71,7 @@ export async function POST(request: NextRequest) {
       studentId: childId,
       payerId: parentProfile.id,
       payerEmail,
+      seatType: seatTypeFromBody,
     });
 
     return NextResponse.json(result.body, { status: result.status });

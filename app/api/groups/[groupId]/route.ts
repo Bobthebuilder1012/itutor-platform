@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { seatState } from '@/lib/services/seatOccupancy';
 import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 import type { UpdateGroupInput } from '@/lib/types/groups';
 import { generateUpcomingSessions } from '@/lib/recurrence';
@@ -413,6 +414,25 @@ export async function GET(_req: NextRequest, { params }: Params) {
     // "Enrolled" is read from viewerMembership rather than recomputed, so this
     // cannot drift from what the page uses to decide whether to show a Join
     // button. A secured place counts: they have paid.
+    // ── Per-seat availability ────────────────────────────────────────────────
+    //
+    // Computed server-side so every surface reads the same answer. The rule
+    // (lib/utils/seatCapacity.ts) is that a class is NOT full until every seat
+    // type it offers is full — so a hybrid class with a full room and free online
+    // seats reports open online seats and a closed physical one, where the
+    // class-level `member_count >= max_students` test that predates 242 would get
+    // both directions wrong.
+    //
+    // Non-fatal: a failure here costs the seat breakdown, not the class page. The
+    // existing member_count/max_students fields are untouched and still correct
+    // for an online-only class, which is every class on production.
+    let seats: Awaited<ReturnType<typeof seatState>> | null = null;
+    try {
+      seats = await seatState(service as any, groupId, group as any);
+    } catch (seatErr: any) {
+      console.warn('[GET /api/groups] seat state unavailable:', seatErr?.message);
+    }
+
     const venueRaw = (group as any).venue ?? null;
     const venue = Array.isArray(venueRaw) ? (venueRaw[0] ?? null) : venueRaw;
     const maySeeAddress =
@@ -441,6 +461,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
         ...group,
         group_members: undefined,
         venue: venueForViewer,
+        /** Per seat type: capacity, enrolled, remaining, full, price. */
+        seat_availability: seats?.availability ?? null,
+        /** True only when every seat type the class offers is full. */
+        seats_full: seats?.full ?? null,
         // Counts are public; who the students are is not. An anonymous viewer
         // gets neither the roster nor the preview avatars.
         members: isAnonymous ? [] : group.group_members,
@@ -470,6 +494,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
           // omitting this line would hand the street address out through the
           // legacy shape while the modern one gated it.
           venue: venueForViewer,
+          seat_availability: seats?.availability ?? null,
+          seats_full: seats?.full ?? null,
           members: isAnonymous ? [] : group.group_members,
           member_count: approvedMembers.length,
           member_previews: isAnonymous

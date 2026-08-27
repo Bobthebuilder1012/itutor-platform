@@ -24,6 +24,12 @@ export async function POST(req: NextRequest, { params }: Params) {
   try {
     const { groupId } = await params;
 
+    // Only 'physical' is meaningful; anything else is online, which is what an
+    // online-only class can offer and what every seat was before migration 242.
+    // A body is optional, so a client that sends none still enrols online.
+    const body = (await req.json().catch(() => ({}))) as { seatType?: string };
+    const seatTypeFromBody = body.seatType === 'physical' ? 'physical' : 'online';
+
     // Step 1: Auth — student only
     const supabase = await getServerClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -62,6 +68,10 @@ export async function POST(req: NextRequest, { params }: Params) {
       // the one place the two can differ is visible at both call sites.
       payerId: user.id,
       payerEmail: user.email,
+      // Which kind of seat, for a hybrid class. Read from the body and validated
+      // downstream against what the class actually offers, so an unknown or
+      // absent value becomes 'online' rather than a rejection.
+      seatType: seatTypeFromBody,
     });
 
     return NextResponse.json(result.body, { status: result.status });
