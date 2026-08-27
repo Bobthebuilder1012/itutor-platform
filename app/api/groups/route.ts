@@ -127,9 +127,16 @@ export async function GET(request: NextRequest) {
       devTutorIds = (devProfiles ?? []).map((p: { id: string }) => p.id);
     }
 
-    const SELECT_TIERS = [
-      // Tier 1: full column set (requires migrations 128-132)
-      `id, name, description, tutor_id, subject, pricing, pricing_model, price_per_session, price_monthly, created_at,
+    // The in-person columns (migration 242) get their OWN tier at the top rather
+    // than joining tier 1. Production does not have 242, and a single missing
+    // column 42703s the whole select — so merging them would make tier 1 fail
+    // there and drop every class to tier 2, silently losing parent_feedback_mode,
+    // whatsapp_url and archived_reason from the marketplace. Only the AREA is
+    // read here, never the street address: this is a list endpoint with no
+    // per-viewer entitlement check, so it must not be able to leak one.
+    const IN_PERSON = 'class_format, venue:venues(id, name, region:regions(id, name))';
+
+    const TIER_1 = `id, name, description, tutor_id, subject, pricing, pricing_model, price_per_session, price_monthly, created_at,
        visibility, primary_channel, whatsapp_url, whatsapp_link, google_classroom_link,
        max_students, parent_feedback_mode, parent_feedback_price,
        price_per_session, price_monthly, price_per_course, member_service_fee,
@@ -137,7 +144,11 @@ export async function GET(request: NextRequest) {
        archived_at, archived_reason, cover_image, form_level, session_length_minutes, schedule_display, schedule_data,
        estimated_earnings,
        tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, rating_average, rating_count, profile_banner_url),
-       group_members(id, user_id, status)`,
+       group_members(id, user_id, status)`;
+
+    const SELECT_TIERS = [
+      `${TIER_1}, ${IN_PERSON}`,
+      TIER_1,
       // Tier 2: drop columns likely missing (parent_feedback_mode → feedback_mode, no archived_reason/whatsapp_url)
       `id, name, description, tutor_id, subject, pricing, pricing_model, price_per_session, price_monthly, created_at,
        visibility, primary_channel, google_classroom_link,

@@ -24,7 +24,7 @@ import { getDisplayName } from '@/lib/utils/displayName';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import UserAvatar from '@/components/UserAvatar';
 import { cn } from '@/lib/utils';
-import { Search, Star, Heart, Calendar, Clock, Users, GraduationCap, Flame, X, Check, Video, Sparkles, ChevronDown } from 'lucide-react';
+import { Search, Star, Heart, Calendar, Clock, Users, GraduationCap, Flame, X, Check, Video, Sparkles, ChevronDown, MapPin } from 'lucide-react';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 import {
   parseScheduleData,
@@ -113,6 +113,10 @@ type GroupLesson = {
   description?: string | null;
   coverImage?: string | null;
   requireJoinRequests?: boolean;
+  /** 'online' for every class before migration 242, and for most after it. */
+  classFormat?: 'online' | 'physical' | 'hybrid';
+  /** The venue's AREA, never its street address. */
+  venueArea?: string | null;
   feedbackMode?: string | null;
   parentFeedbackPrice?: number | null;
   activePromotion?: { id: string; kind: string; discount: number; student_cap: number | null; duration_days: number | null } | null;
@@ -794,6 +798,11 @@ export default function ExploreMarketplace({ variant = 'student' }: { variant?: 
           color,
           description: g.description ?? null,
           coverImage: g.cover_image ?? null,
+          // In person (migration 242). `venueArea` is the AREA only — the list
+          // API deliberately never selects the street address, because it has no
+          // per-viewer entitlement check to gate one with.
+          classFormat: (g.class_format ?? 'online') as 'online' | 'physical' | 'hybrid',
+          venueArea: g.venue?.region?.name ?? null,
           requireJoinRequests: g.require_join_requests ?? false,
           feedbackMode: g.feedback_mode ?? g.parent_feedback_mode ?? null,
           parentFeedbackPrice: g.parent_feedback_price ?? null,
@@ -1544,6 +1553,19 @@ export default function ExploreMarketplace({ variant = 'student' }: { variant?: 
                         {!l.hasCompactSchedule && !l.time && l.sessionLength && (
                           <div className="flex items-center gap-1.5 text-muted-foreground">
                             <Clock className="size-3.5" /> {formatDuration(l.sessionLength)} per session
+                          </div>
+                        )}
+                        {/* Only shown when the class meets somewhere. A line
+                            reading "Online" on every card in the catalogue is
+                            noise; a line naming an area is the fact that decides
+                            whether the class is reachable at all. */}
+                        {l.classFormat && l.classFormat !== 'online' && (
+                          <div className="flex items-center gap-1.5 text-muted-foreground">
+                            <MapPin className="size-3.5" />
+                            {l.classFormat === 'hybrid' ? 'In person or online' : 'In person'}
+                            {l.venueArea ? (
+                              <span className="text-muted-foreground/70">· {l.venueArea}</span>
+                            ) : null}
                           </div>
                         )}
                         {capacity.kind !== 'hidden' && (
