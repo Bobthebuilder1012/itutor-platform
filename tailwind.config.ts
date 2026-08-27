@@ -113,9 +113,6 @@ const config: Config = {
       },
       boxShadow: {
         'brand-glow': '0 0 0 6px rgba(22,163,74,0.12)',
-        // The design system's floating-card shadow, lifted from the bundle's
-        // tokens/effects.css so the AI surfaces match the prototype exactly.
-        card: '0 10px 30px -12px rgba(17,24,39,0.18)',
       },
     },
   },

@@ -184,7 +184,7 @@ export default function AiHistoryPanel({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Filter by student, subject or name…"
-            className="w-full pl-8 pr-3 py-2 rounded-lg bg-muted border border-transparent focus:bg-background focus:border-brand focus:outline-none text-[13px]"
+            className="w-full pl-8 pr-3 py-2 rounded-lg bg-muted border border-transparent focus:bg-background focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand-light text-[13px]"
           />
         </div>
       </div>
@@ -257,7 +257,7 @@ export default function AiHistoryPanel({
                         {item.tag && (
                           <span
                             className={cn(
-                              'px-1.5 py-0.5 rounded-full text-[10px] font-bold shrink-0',
+                              'px-1.5 py-px rounded-full text-[9.5px] font-bold uppercase tracking-[0.05em] shrink-0',
                               TAG_TONE[item.tone ?? 'neutral']
                             )}
                           >
@@ -300,7 +300,7 @@ export default function AiHistoryPanel({
           gesture people reach for on a sheet is a downward swipe. */}
       <div className="lg:hidden fixed inset-0 z-[70]">
         <div className="absolute inset-0 bg-black/35" onClick={onClose} />
-        <div className="absolute inset-x-0 bottom-0 h-[620px] flex flex-col bg-background rounded-t-[22px] shadow-[0_-8px_30px_-12px_rgba(17,24,39,0.3)]">
+        <div className="absolute inset-x-0 bottom-0 h-[620px] flex flex-col bg-background rounded-t-[22px] shadow-sheet">
           <div className="shrink-0 pt-2.5 pb-1 grid place-items-center">
             <div className="w-10 h-1 rounded-full bg-surface-border" />
           </div>

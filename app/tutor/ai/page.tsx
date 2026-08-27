@@ -220,7 +220,7 @@ export default function TutorAiPage() {
             <button
               data-ai-history-trigger
               onClick={() => setHistoryOpen((v) => !v)}
-              className="inline-flex items-center gap-[7px] px-[15px] py-2 rounded-full border-[1.5px] border-surface-border bg-background text-[13px] font-semibold hover:border-brand hover:bg-brand-light hover:text-brand-dark transition-colors"
+              className="inline-flex items-center gap-[7px] px-[15px] py-2 rounded-full border-[1.5px] border-surface-border bg-background text-[13px] font-semibold hover:border-brand hover:bg-brand-light hover:text-brand-dark transition-all duration-200 active:scale-95"
             >
               <History className="size-[15px]" /> Chat history
             </button>
@@ -240,7 +240,7 @@ export default function TutorAiPage() {
                 <button
                   key={card.key}
                   onClick={() => onCardClick(card.key)}
-                  className="flex items-center gap-4 px-5 py-[18px] bg-background border-2 border-surface-border rounded-2xl text-left transition-all duration-200 hover:shadow-card hover:border-brand-accent hover:-translate-y-0.5"
+                  className="flex items-center gap-4 px-5 py-[18px] bg-background border-2 border-surface-border rounded-2xl text-left transition-all duration-200 hover:shadow-card hover:border-brand-accent hover:-translate-y-0.5 active:scale-[0.99] active:translate-y-0"
                 >
                   <div className="size-11 shrink-0 rounded-xl bg-brand-light text-brand-dark grid place-items-center">
                     <Icon className="size-5" strokeWidth={1.8} />
@@ -263,7 +263,7 @@ export default function TutorAiPage() {
               routes to a flow rather than answering, which is what the hint
               says out loud so nobody types a question expecting a reply. */}
           <div className="mt-8 sticky bottom-0 pt-7 pb-2 bg-gradient-to-b from-transparent via-surface-soft/70 to-surface-soft">
-            <div className="flex items-center gap-2 px-4 py-3 bg-background border-2 border-surface-border rounded-2xl focus-within:border-brand transition-colors">
+            <div className="flex items-center gap-2 px-4 py-3 bg-background border-2 border-surface-border rounded-2xl focus-within:border-brand focus-within:ring-2 focus-within:ring-brand-light transition-all duration-200">
               <Sparkles className="size-4 text-ink-muted shrink-0" />
               <input
                 value={composer}
