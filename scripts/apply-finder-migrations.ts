@@ -80,6 +80,7 @@ const MIGRATIONS = [
   '240_finder.sql',
   '241_finder_fallback_match_class.sql',
   '243_finder_delivery_pref.sql',
+  '247_finder_pre_auth.sql',
 ];
 // 242 is deliberately absent: it is the physical-classes migration and belongs
 // to that workstream's own runner. Listing it here would make this script the
@@ -109,7 +110,19 @@ const VERIFY_SQL = `
     (SELECT count(*) FROM information_schema.columns
       WHERE table_schema='public' AND table_name='demand_signals'
         AND column_name='notify_count'
-    ) AS notify_count_column_1;
+    ) AS notify_count_column_1,
+    -- 247: the pre-auth shape. user_id must be NULLABLE and the four new
+    -- columns present, or a run cannot exist before an account does.
+    (SELECT is_nullable FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='finder_requests'
+        AND column_name='user_id'
+    ) AS finder_user_id_nullable,
+    (SELECT count(*) FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='finder_requests'
+        AND column_name IN ('token','claimed_at','role','form_level_label','skipped','anon_id')
+    ) AS finder_preauth_columns_6,
+    (SELECT EXISTS (SELECT 1 FROM pg_constraint
+      WHERE conname='finder_requests_token_key')) AS token_unique;
 `;
 
 /**
