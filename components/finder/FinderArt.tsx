@@ -28,6 +28,7 @@ import {
   Check,
   Clock,
   Compass,
+  GraduationCap,
   Heart,
   Laptop,
   MapPin,
@@ -43,6 +44,14 @@ import { STEP } from '@/lib/finder/wizard';
 type Art = { icon: LucideIcon; accents: LucideIcon[]; caption: string };
 
 const ART: Record<number, { idle: Art; answered: Art }> = {
+  [STEP.ROLE]: {
+    idle: { icon: Compass, accents: [Star, Sparkles], caption: 'Let’s find the right teacher' },
+    answered: { icon: Compass, accents: [Star, Sparkles], caption: 'Let’s find the right teacher' },
+  },
+  [STEP.LEVEL]: {
+    idle: { icon: GraduationCap, accents: [BookOpen, Star], caption: 'Which year are we shopping for?' },
+    answered: { icon: BookOpen, accents: [Check, GraduationCap], caption: 'We’ll match the syllabus' },
+  },
   [STEP.CHILD]: {
     idle: { icon: Heart, accents: [Star, Users], caption: 'Who are we finding a class for?' },
     answered: { icon: Users, accents: [Check, Heart], caption: 'Lovely — let’s get started' },
@@ -73,7 +82,21 @@ const ART: Record<number, { idle: Art; answered: Art }> = {
   },
 };
 
-export default function FinderArt({ step, answered }: { step: number; answered: boolean }) {
+export default function FinderArt({
+  step,
+  answered,
+  compact = false,
+}: {
+  step: number;
+  answered: boolean;
+  /**
+   * The mobile strip. Its wrapper is `h-32`, and the full layout (p-8 + a
+   * size-32 tile + an mt-8 caption) does not fit — the caption has been clipped
+   * and invisible on every phone since that strip was added. Compact shrinks the
+   * tile and drops the caption rather than pretending it renders.
+   */
+  compact?: boolean;
+}) {
   const art = (ART[step] ?? ART[STEP.SUBJECT])[answered ? 'answered' : 'idle'];
   const Icon = art.icon;
   const [A1, A2] = art.accents;
@@ -91,7 +114,12 @@ export default function FinderArt({ step, answered }: { step: number; answered: 
   return (
     <div
       aria-hidden
-      className="relative flex h-full w-full items-center justify-center overflow-hidden bg-gradient-to-br from-mint via-brand-soft to-mint p-8"
+      // The gradient lives on the two CALL SITES now, not here. The desktop
+      // aside is a flex column with this as one row, so a gradient on both would
+      // paint a visible seam where two `from-mint` edges meet at the boundary.
+      className={`relative flex h-full w-full items-center justify-center overflow-hidden ${
+        compact ? 'p-3' : 'p-8'
+      }`}
     >
       <div
         key={key}
@@ -100,11 +128,15 @@ export default function FinderArt({ step, answered }: { step: number; answered: 
         }`}
       >
         <div className="relative">
-          <span className="grid size-32 place-items-center rounded-[2rem] bg-white shadow-card sm:size-40">
+          <span
+            className={`grid place-items-center rounded-[2rem] bg-white shadow-card ${
+              compact ? 'size-20' : 'size-32 sm:size-40'
+            }`}
+          >
             <Icon
-              className={`size-16 text-brand-deep transition-transform duration-500 sm:size-20 ${
-                shown ? 'scale-100' : 'scale-90'
-              }`}
+              className={`text-brand-deep transition-transform duration-500 ${
+                compact ? 'size-10' : 'size-16 sm:size-20'
+              } ${shown ? 'scale-100' : 'scale-90'}`}
               strokeWidth={1.5}
             />
           </span>
@@ -119,9 +151,11 @@ export default function FinderArt({ step, answered }: { step: number; answered: 
             </span>
           )}
         </div>
-        <p className="mt-8 max-w-[16rem] text-center text-sm font-semibold text-brand-deep">
-          {art.caption}
-        </p>
+        {compact ? null : (
+          <p className="mt-8 max-w-[16rem] text-center text-sm font-semibold text-brand-deep">
+            {art.caption}
+          </p>
+        )}
       </div>
     </div>
   );
