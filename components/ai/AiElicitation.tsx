@@ -143,7 +143,7 @@ export default function AiElicitation({
               <button
                 key={chip}
                 onClick={() => answer(chip)}
-                className="px-3.5 py-2 rounded-full border-[1.5px] border-surface-border bg-background text-[13px] font-semibold hover:border-brand hover:bg-brand-light hover:text-brand-dark transition-colors"
+                className="px-3.5 py-2 rounded-full border-[1.5px] border-surface-border bg-background text-[13px] font-semibold hover:border-brand hover:bg-brand-light hover:text-brand-dark transition-all duration-200 active:scale-95"
               >
                 {chip}
               </button>
@@ -159,12 +159,12 @@ export default function AiElicitation({
                 if (e.key === 'Enter') answer(freeText);
               }}
               placeholder={current.freeform}
-              className="flex-1 px-3.5 py-2.5 rounded-xl bg-muted border border-transparent focus:bg-background focus:border-brand focus:outline-none text-[13.5px]"
+              className="flex-1 px-3.5 py-2.5 rounded-xl bg-muted border border-transparent focus:bg-background focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand-light text-[13.5px]"
             />
             <button
               onClick={() => answer(freeText)}
               disabled={!freeText.trim()}
-              className="px-4 py-2.5 rounded-xl bg-ink text-white text-[13px] font-semibold disabled:opacity-35 disabled:cursor-not-allowed hover:bg-ink/90 transition-colors"
+              className="px-5 py-2.5 rounded-lg bg-ink text-white text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-ink/90 transition-all duration-200 active:scale-95 disabled:active:scale-100"
             >
               Next
             </button>
@@ -228,7 +228,7 @@ export default function AiElicitation({
                                     setEditingField(null);
                                   }}
                                   className={cn(
-                                    'px-3 py-1.5 rounded-full text-[12.5px] font-semibold border-[1.5px] transition-colors',
+                                    'px-3 py-1.5 rounded-full text-[12.5px] font-semibold border-[1.5px] transition-all duration-200 active:scale-95',
                                     on
                                       ? 'border-brand bg-brand-light text-brand-dark'
                                       : 'border-surface-border bg-background hover:border-brand'
@@ -251,7 +251,7 @@ export default function AiElicitation({
                               if (e.key === 'Enter') commitField(field.id);
                               if (e.key === 'Escape') setEditingField(null);
                             }}
-                            className="w-full px-2.5 py-1.5 rounded-lg border-2 border-brand outline-none text-[13.5px] font-semibold"
+                            className="w-full px-2.5 py-1.5 rounded-lg border-2 border-brand outline-none ring-2 ring-brand-light text-[13.5px] font-semibold"
                           />
                         )}
                       </div>
@@ -277,14 +277,14 @@ export default function AiElicitation({
           <div className="mt-4 flex items-center gap-2">
             <button
               onClick={restart}
-              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border-[1.5px] border-surface-border text-[13px] font-semibold text-ink-muted hover:text-ink hover:border-ink/30 transition-colors"
+              className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl border border-surface-border bg-background text-sm font-medium text-ink-muted hover:text-ink hover:border-ink/30 transition-all duration-200 active:scale-95"
             >
               <RotateCcw className="size-3.5" /> Start over
             </button>
             <div className="flex-1" />
             <button
               onClick={() => onGenerate(answers)}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand text-white text-[13.5px] font-semibold hover:bg-brand-dark transition-colors"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand text-white text-sm font-bold hover:bg-brand-dark transition-all duration-200 active:scale-95"
             >
               <Sparkles className="size-4" /> {flow.generateLabel}
             </button>

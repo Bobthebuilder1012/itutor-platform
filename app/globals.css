@@ -69,6 +69,15 @@
     --neutral-fg: #6b7280;
     --star: #fbbf24;
 
+    /* ── Shadows ───────────────────────────────────────────────────────
+       --shadow-card is the design system's floating-card shadow, verbatim.
+       --shadow-sheet is the mobile bottom sheet's upward cast, which the AI
+       prototype specifies and the kit has no equivalent for — a sheet lifts
+       off the bottom edge, so its shadow points the other way. */
+    --shadow-pop: 0 20px 50px -20px rgba(25, 147, 86, 0.4);
+    --shadow-card: 0 10px 30px -12px rgba(17, 24, 39, 0.18);
+    --shadow-sheet: 0 -8px 30px -12px rgba(17, 24, 39, 0.3);
+
     /* ── Landing page design tokens ────────────────────────────────── */
     --brand-soft: oklch(0.95 0.07 150);
     --brand-deep: oklch(0.55 0.16 150);
@@ -141,8 +150,9 @@
   color: transparent;
 }
 
-.shadow-pop  { box-shadow: 0 20px 50px -20px rgba(25, 147, 86, 0.4); }
-.shadow-card { box-shadow: 0 10px 30px -12px rgba(17, 24, 39, 0.18); }
+.shadow-pop   { box-shadow: var(--shadow-pop); }
+.shadow-card  { box-shadow: var(--shadow-card); }
+.shadow-sheet { box-shadow: var(--shadow-sheet); }
 
 /**
  * Range slider with a filled track, for the Class Match Week session builder.
