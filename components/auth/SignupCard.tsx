@@ -92,6 +92,19 @@ export type SignupCardProps = {
   redirectTo?: string | null;
   /** A role already chosen upstream, which skips the role step. */
   role?: UserRole | null;
+  /**
+   * A year level already given, from a Finder run answered before signup.
+   *
+   * Pre-selects the year dropdown rather than hiding it: a prefilled value the
+   * person can see and change is a courtesy, a hidden one is a claim about them.
+   * Asking "which year are you in?" twice in the same sitting is the single most
+   * visible way this reordering can fail, so it is worth the prop.
+   *
+   * Null for CAPE, deliberately. The Finder stores a canonical level, and both
+   * `Lower 6` and `Upper 6` normalise to `CAPE` — so there is no inverse and a
+   * guess would record a fact about a person that they never gave. They pick.
+   */
+  prefillFormLevel?: string | null;
 };
 
 export default function SignupCard({
@@ -99,6 +112,7 @@ export default function SignupCard({
   onClose,
   redirectTo,
   role: roleOverride,
+  prefillFormLevel,
 }: SignupCardProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -141,6 +155,41 @@ export default function SignupCard({
       .catch(() => setParentAccountsEnabled(false));
   }, []);
 
+  /**
+   * Pick up a year level the visitor already gave the Finder, before they had an
+   * account.
+   *
+   * Fetched rather than passed down as a prop because the `finder_token` cookie
+   * is httpOnly and both render sites are client components — app/signup/page.tsx
+   * is `'use client'`, so it cannot read the cookie server-side and hand it over.
+   * Doing it here also means the Class Match Week modal gets the same behaviour
+   * for free.
+   *
+   * Only ever fills an EMPTY field, and only from a real stored run. A visitor
+   * who has already touched the dropdown keeps what they chose.
+   */
+  useEffect(() => {
+    if (prefillFormLevel) return; // an explicit prop wins
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/finder/prefill', { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = (await res.json()) as { form_level_label?: string | null };
+        const label = data?.form_level_label ?? null;
+        if (cancelled || !label) return;
+        if (!YEAR_LEVELS.some((l) => l.value === label)) return;
+        setYear((current) => current || label);
+      } catch {
+        // No run, no cookie, or the route is unavailable. The visitor answers
+        // the question as they would have anyway.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [prefillFormLevel]);
+
   // Step 3
   const [code, setCode] = useState<string[]>(['', '', '', '', '', '']);
   const [resendIn, setResendIn] = useState(0);
@@ -151,7 +200,14 @@ export default function SignupCard({
   // Step 5 — student
   const [affiliation, setAffiliation] = useState<SchoolAffiliation | null>(null);
   const [studentInstitution, setStudentInstitution] = useState<Institution | null>(null);
-  const [year, setYear] = useState('');
+  // Seeded from the Finder run when there is one, and validated against the
+  // list — a value that is not an option would render as a blank select that
+  // silently fails the "year required" check on submit.
+  const [year, setYear] = useState(
+    prefillFormLevel && YEAR_LEVELS.some(l => l.value === prefillFormLevel)
+      ? prefillFormLevel
+      : ''
+  );
 
   // Step 5 — tutor
   const [tLevels, setTLevels] = useState<string[]>([]);
@@ -337,7 +393,7 @@ export default function SignupCard({
         // readable from the browser. The gate exists to protect the EXISTING
         // base from the one-shot login backfill (build plan §10); a brand-new
         // signup is already engaged and can use `Maybe later`.
-        router.push(safeRedirectOr(searchParams.get('redirect'), '/find?trigger=signup'));
+        router.push(safeRedirectOr(redirectParam, '/find?trigger=signup'));
       }
     }, 1400);
   };
@@ -361,7 +417,7 @@ export default function SignupCard({
       if (updateError) { setError(`Error saving profile: ${updateError.message}`); return; }
 
       if (showSchool && studentInstitution) await ensureSchoolCommunityAndMembership(userId!);
-      router.push(safeRedirectOr(searchParams.get('redirect'), '/find?trigger=signup'));
+      router.push(safeRedirectOr(redirectParam, '/find?trigger=signup'));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
     } finally { setLoading(false); }
@@ -377,7 +433,7 @@ export default function SignupCard({
     try {
       await supabase.from('profiles').update({ teaching_levels: tLevels }).eq('id', userId);
       if (tSubjects.length > 0) await setUserSubjects(userId!, tSubjects);
-      router.push(safeRedirectOr(searchParams.get('redirect'), '/tutor/dashboard'));
+      router.push(safeRedirectOr(redirectParam, '/tutor/dashboard'));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unexpected error occurred.');
     } finally { setLoading(false); }
