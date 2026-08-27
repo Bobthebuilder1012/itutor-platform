@@ -11,12 +11,41 @@
 // leaves a trace of what the family asked for. Losing the answers is worse than
 // losing the recommendation: the answers are the thing teacher acquisition
 // cannot reconstruct.
+//
+// ── THIS ENDPOINT IS NOW ANONYMOUS AND PUBLIC ───────────────────────────────
+// It used to 401 without a session. The Finder runs in front of the account now,
+// so a run is keyed on a freshly minted httpOnly `finder_token` cookie and
+// adopted onto whatever account is created later (lib/finder/claim.ts).
+//
+// Three consequences that are easy to miss:
+//
+// 1. IT SEES WHATEVER ARRIVES, not what the form intended to send. Everything
+//    goes through validateAnswers, `subject` has a length cap, and `role` and
+//    `level` are checked against closed vocabularies — `role` in particular,
+//    because the claim copies it into profiles.role.
+//
+// 2. THE LEVEL COMES FROM THE BODY. It used to be read off profiles.form_level
+//    with a comment saying client-supplied levels could not be trusted. Pre-auth
+//    there is no profile; the wizard asks the question and sends the answer. An
+//    authed run may omit it, and then the profile is still the source.
+//
+// 3. A FRESH TOKEN PER SUBMISSION. finder_requests is many-rows-per-person
+//    (run_number records preference drift) while token is UNIQUE, so reusing one
+//    would force re-runs to overwrite the row and throw that drift away.
+//
+// Abuse guard: `itutor_anon` must be present. Middleware mints it on the first
+// PAGE view and skips /api/* entirely (middleware.ts:114-119), so an API route
+// can never mint it — which makes its presence proof that a real browser
+// rendered a page, and makes a per-anon_id row count a rate limit that needs no
+// new table.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceClient, getServerClient } from '@/lib/supabase/server';
 import { matchFinderRequest, type FinderCandidate } from '@/lib/matching/finder';
 import { loadFinderSupply, type SupplyRow } from '@/lib/finder/supply';
 import { budgetMaxFor, validateAnswers } from '@/lib/finder/wizard';
+import { mintFinderToken, setFinderToken } from '@/lib/finder/token';
+import { ANON_COOKIE } from '@/lib/analytics/attribution';
 import { getFinderMaxMatches, isFinderEnabled } from '@/lib/featureFlags/finder';
 import { getRequestAttribution, track } from '@/lib/analytics/track';
 import { PRODUCT_EVENTS } from '@/lib/analytics/events';
@@ -85,6 +114,10 @@ async function insertTolerant(
     `[finder/submit] ${table}: dropping ${optionalColumns.join(', ')} — ` +
       'not in this database yet (migration 243). Retrying without it.'
   );
+  // NOTE the droppable set is deliberately small. Key material — token, role,
+  // claimed_at — must never be listed: dropping a NOT NULL column turns a
+  // "column missing" error into a constraint violation, and dropping `token`
+  // would produce a run nothing can ever find.
 
   const second = await attempt(trimmed);
   if (second.error) return { id: null, error: second.error.message };
@@ -101,15 +134,27 @@ interface SubmitBody {
   budgetBand: string;
   urgency: 'now' | 'this_month' | 'exploring';
   childLabel?: string | null;
+  /** The picker's answer. Optional so an authed run can omit it and take the
+   *  role from the profile instead. */
+  role?: 'student' | 'parent' | null;
+  /** Asked by the wizard pre-auth. Optional; the profile is the fallback. */
+  level?: CanonicalLevel | null;
+  /** The profiles.form_level twin of `level`. Null for CAPE — see
+   *  formLevelLabelFor: there is no inverse, and guessing invents a fact. */
+  formLevelLabel?: string | null;
 }
+
+/** Runs one anon_id may record in an hour before we stop believing it. */
+const MAX_RUNS_PER_ANON_PER_HOUR = 10;
 
 export async function POST(req: NextRequest) {
   if (!isFinderEnabled()) {
     return NextResponse.json({ error: 'not_enabled' }, { status: 404 });
   }
 
-  // /find is auth-gated, so a request always has an account behind it. Identity
-  // comes from the session, never the body.
+  // Identity, in order of authority: the session if there is one, otherwise a
+  // freshly minted token. Never the body — a caller-supplied user id would let
+  // anyone write a run onto someone else's account.
   let userId: string | null = null;
   try {
     const supabase = await getServerClient();
@@ -118,8 +163,18 @@ export async function POST(req: NextRequest) {
   } catch {
     userId = null;
   }
-  if (!userId) {
-    return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
+
+  // THE ABUSE GUARD, AND WHY IT IS THIS AND NOT A RATE-LIMIT TABLE.
+  //
+  // itutor_anon is httpOnly and minted by middleware on the first page view.
+  // Middleware returns early for every /api/* path WITHOUT applying cookies, so
+  // this route cannot mint it — which means its presence proves a real browser
+  // rendered a page before posting here. That kills a naive curl loop for free,
+  // and cannot lock out a real visitor, because the wizard is only ever reached
+  // through a page render.
+  const anonId = req.cookies.get(ANON_COOKIE)?.value ?? null;
+  if (!userId && !anonId) {
+    return NextResponse.json({ error: 'missing_session' }, { status: 400 });
   }
 
   let raw: unknown;
@@ -138,19 +193,41 @@ export async function POST(req: NextRequest) {
   const service = getServiceClient();
   const { attribution } = await getRequestAttribution();
 
-  // THE LEVEL COMES FROM THE PROFILE, NOT THE BODY.
+  // Per-anon_id ceiling. One indexed read on idx_finder_anon, and it only runs
+  // for anonymous callers — a signed-in account is already accountable.
+  if (!userId && anonId) {
+    const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { count, error: countError } = await service
+      .from('finder_requests')
+      .select('id', { count: 'exact', head: true })
+      .eq('anon_id', anonId)
+      .gte('created_at', since);
+    if (countError) {
+      // A missing anon_id column means 247 is not applied. Not a reason to
+      // refuse the run — the guard degrades, the feature does not.
+      console.warn('[finder/submit] abuse count unavailable:', countError.message);
+    } else if ((count ?? 0) >= MAX_RUNS_PER_ANON_PER_HOUR) {
+      return NextResponse.json({ error: 'too_many_runs' }, { status: 429 });
+    }
+  }
+
+  // THE LEVEL COMES FROM THE BODY, WITH THE PROFILE AS FALLBACK.
   //
-  // It was collected at signup, so asking again reads as though the first answer
-  // was discarded — and taking it from the account means the wizard cannot
-  // disagree with the profile about what year the learner is in.
+  // This block used to read the profile and ignore the body entirely, arguing
+  // that a client-supplied level could disagree with the account. Pre-auth there
+  // is no account to disagree with: the wizard asked the question one screen ago
+  // and this is the answer. `app/find/page.tsx` pre-selects the profile's level
+  // for an authed run, so the value arriving here is still the account's own.
   //
-  // `profiles.form_level` is unconstrained text carrying two vocabularies, so it
-  // goes through normaliseLearnerLevel. An unrecognised value resolves to null,
-  // which the matcher treats as "no level constraint" rather than "matches
-  // nothing" — the right failure direction here, since a family with an odd
-  // form_level should still be shown their subject.
-  let learnerLevel: CanonicalLevel | null = null;
-  {
+  // The body value is already validated against LEVEL_VALUES by
+  // validateAnswers, so it is a CanonicalLevel and must NOT be run through
+  // normaliseLearnerLevel — normalising an already-canonical value is how a bad
+  // round trip hides. The normaliser stays where raw `profiles.form_level` is
+  // the source: unconstrained text carrying two vocabularies, where an
+  // unrecognised value resolves to null and the matcher treats that as "no level
+  // constraint" rather than "matches nothing".
+  let learnerLevel: CanonicalLevel | null = body.level ?? null;
+  if (!learnerLevel && userId) {
     const { data: profileRow, error: profileErr } = await service
       .from('profiles')
       .select('form_level')
@@ -164,13 +241,35 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // run_number: a re-run inserts a new row rather than overwriting, so
-  // preference drift over time stays queryable.
-  const { count: priorRuns } = await service
-    .from('finder_requests')
-    .select('id', { count: 'exact', head: true })
-    .eq('user_id', userId);
-  const runNumber = (priorRuns ?? 0) + 1;
+  // The run's role. The body carries the picker's answer; an authed run without
+  // one falls back to the profile. Defaulting to 'student' at the very end is
+  // safe because the column is CHECK-constrained to the same two values.
+  let runRole: 'student' | 'parent' = body.role === 'parent' ? 'parent' : 'student';
+  if (!body.role && userId) {
+    const { data: roleRow } = await service
+      .from('profiles')
+      .select('role')
+      .eq('id', userId)
+      .maybeSingle();
+    if ((roleRow as { role?: string | null } | null)?.role === 'parent') runRole = 'parent';
+  }
+
+  // A fresh token per run, so one token names exactly one submission. See
+  // lib/finder/token.ts on why it is minted here and not in middleware.
+  const token = mintFinderToken();
+
+  // run_number: an authed re-run inserts a new row rather than overwriting, so
+  // preference drift over time stays queryable. Priors can only be counted when
+  // a user is known, so an anonymous run is always 1 — which is why the migration
+  // records that run_number is advisory and created_at is authoritative.
+  let runNumber = 1;
+  if (userId) {
+    const { count: priorRuns } = await service
+      .from('finder_requests')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId);
+    runNumber = (priorRuns ?? 0) + 1;
+  }
 
   // Resolve the picked subject name to its canonical row, for the demand map's
   // GROUP BY. A miss is tolerable — the name is what matching uses — so this
@@ -199,10 +298,23 @@ export async function POST(req: NextRequest) {
     'finder_requests',
     {
       user_id: userId,
+      // Key material and the claim's contract. NOT in insertTolerant's optional
+      // list below: that helper silently DROPS unknown columns, and dropping
+      // `token` would attempt a NULL insert against a NOT NULL constraint — a
+      // stranger failure than the one it exists to prevent. If 247 is missing we
+      // want to hear about it.
+      token,
+      role: runRole,
+      anon_id: anonId,
+      // An authed run is born already claimed. claimTokenRow's idempotent fast
+      // path needs BOTH user_id and claimed_at; writing only user_id would send
+      // every authed re-run down the slow path.
+      claimed_at: userId ? new Date().toISOString() : null,
       child_label: body.childLabel?.trim() || null,
       run_number: runNumber,
       subject_id: subjectId,
       level: learnerLevel,
+      form_level_label: body.formLevelLabel ?? null,
       availability_blocks: body.availabilityBlocks,
       lesson_type: body.lessonType,
       delivery_pref: deliveryPref,
@@ -214,7 +326,19 @@ export async function POST(req: NextRequest) {
   );
 
   if (insertError || !requestId) {
-    console.error('[finder/submit] insert failed:', insertError);
+    // Name the likely cause. `token`, `role` and `claimed_at` arrive in 247 and
+    // are deliberately NOT in insertTolerant's droppable list, so an
+    // unapplied 247 fails here rather than silently recording an unreachable
+    // run — but only if the log says so, or the next person debugs the wizard
+    // instead of the database.
+    const looksLikeMissingMigration =
+      typeof insertError === 'string' &&
+      /token|role|claimed_at|form_level_label|anon_id/i.test(insertError);
+    console.error(
+      '[finder/submit] insert failed:',
+      insertError,
+      looksLikeMissingMigration ? '— is migration 247 applied?' : ''
+    );
     return NextResponse.json({ error: 'could_not_save' }, { status: 500 });
   }
 
@@ -331,30 +455,43 @@ export async function POST(req: NextRequest) {
       },
       run_number: runNumber,
     },
-    { userId, attribution }
+    { userId, anonId, attribution }
   );
 
   await track(
     PRODUCT_EVENTS.MATCH_RETURNED,
     { match_class: matchClass, count: results.length },
-    { userId, attribution }
+    { userId, anonId, attribution }
   );
 
   await track(
     PRODUCT_EVENTS.DEMAND_RECORDED,
     { subject: body.subject, level: learnerLevel ?? 'unknown' },
-    { userId, attribution }
+    { userId, anonId, attribution }
   );
 
   // Mark the wizard finished. Written here rather than client-side so a family
   // that closes the tab on the results page still counts as completed.
-  const { error: profileError } = await service
-    .from('profiles')
-    .update({ finder_completed_at: new Date().toISOString() })
-    .eq('id', userId);
-  if (profileError) {
-    console.error('[finder/submit] finder_completed_at update failed:', profileError.message);
+  //
+  // Guarded on userId: an anonymous run has no profile to stamp, and without the
+  // guard this ran `.eq('id', null)` — a silent no-op that matched nothing. The
+  // stamps for an anonymous run are written by lib/finder/claim.ts at adoption,
+  // from the run's created_at, which is also what stops the login backfill
+  // re-asking questions the visitor already answered.
+  if (userId) {
+    const { error: profileError } = await service
+      .from('profiles')
+      .update({ finder_completed_at: new Date().toISOString() })
+      .eq('id', userId);
+    if (profileError) {
+      console.error('[finder/submit] finder_completed_at update failed:', profileError.message);
+    }
   }
+
+  // The cookie goes on LAST, after the row it names exists. Set even for an
+  // authed run: the visitor may sign out, and the token is then the only way
+  // back to the run they just did.
+  await setFinderToken(token);
 
   return NextResponse.json({
     request_id: requestId,
