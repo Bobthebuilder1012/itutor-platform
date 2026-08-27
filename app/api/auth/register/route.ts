@@ -4,6 +4,7 @@ import { createHash } from 'crypto';
 import { isParentAccountsEnabled, PARENT_ACCOUNTS_DISABLED_MESSAGE } from '@/lib/featureFlags/parentAccounts';
 import { getRequestAttribution, track } from '@/lib/analytics/track';
 import { PRODUCT_EVENTS } from '@/lib/analytics/events';
+import { syncProfileNow } from '@/lib/customerio/sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -144,6 +145,14 @@ export async function POST(req: Request) {
 
     // Clean up verification code
     await supabase.from('verification_codes').delete().eq('id', codeRow.id);
+
+    // Ship the profile to Customer.io BEFORE the signup event fires.
+    // Customer.io auto-creates a profile when it receives an event for an
+    // unknown id, and a profile born that way has no email address — so a
+    // welcome campaign triggered on signup_completed would have nobody to mail.
+    // Identifying first guarantees the attributes are there when it triggers.
+    // No-op unless the integration is switched on; never throws.
+    await syncProfileNow(authData.user.id);
 
     // First event in the funnel that carries a user_id. track() swallows its
     // own failures, so this cannot fail a registration.

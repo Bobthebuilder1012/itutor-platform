@@ -17,6 +17,7 @@ import {
   type Attribution,
 } from './attribution';
 import type { EventProps, ProductEvent } from './events';
+import { forwardEvent } from '@/lib/customerio/events';
 
 interface TrackOptions {
   userId?: string | null;
@@ -83,6 +84,13 @@ export async function track<E extends ProductEvent>(
     if (error) {
       console.error(`[analytics] failed to write ${event}:`, error.message);
     }
+
+    // Mirror to Customer.io so campaigns can trigger on product behaviour.
+    // Ordered after the product_events insert on purpose: this table is the
+    // durable record, and a Customer.io outage must never cost us the row.
+    // forwardEvent is a no-op unless the integration is switched on, filters to
+    // a campaign-relevant subset, and swallows its own failures.
+    await forwardEvent(event, (props ?? {}) as Record<string, unknown>, options.userId);
   } catch (err) {
     console.error(`[analytics] threw while writing ${event}:`, err);
   }
