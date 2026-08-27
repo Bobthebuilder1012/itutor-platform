@@ -76,12 +76,6 @@ const config: Config = {
         lavender: 'var(--lavender)',
         peach: 'var(--peach)',
         sky: 'var(--sky)',
-        sidebar: {
-          DEFAULT: 'var(--sidebar)',
-          fg: 'var(--sidebar-fg)',
-          muted: 'var(--sidebar-muted)',
-          active: 'var(--sidebar-active)',
-        },
         surface: {
           DEFAULT: 'var(--surface)',
           soft: 'var(--surface-soft)',

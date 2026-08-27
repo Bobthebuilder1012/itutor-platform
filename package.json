@@ -15,7 +15,6 @@
     "seed:groups": "npx ts-node prisma/seeds/groupSessions.seed.ts"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.24.1",
     "@heroicons/react": "^2.2.0",
     "@react-email/components": "^1.0.12",
     "@stripe/react-stripe-js": "^6.8.0",
