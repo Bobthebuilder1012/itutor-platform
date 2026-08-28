@@ -12,6 +12,7 @@ import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import TutorShell from '@/components/tutor/TutorShell';
 import { LEVEL_LABELS } from '@/lib/utils/formatLevel';
+import InPersonSection, { type InPersonDraft } from '@/components/tutor/classes/InPersonSection';
 
 type DbSubject = { id: string; name: string; label: string; curriculum: string };
 
@@ -57,6 +58,22 @@ function CreateClassContent() {
   const [graceDays, setGraceDays] = useState(7);
   const [whatsapp, setWhatsapp] = useState('');
   const [classroom, setClassroom] = useState('');
+  // In person (migration 242). Only offered for a group class — a recurring
+  // 1:1 has exactly one student, and the seat-capacity split this section
+  // manages ("N online seats, N physical seats") has no meaning for a class
+  // of one. This page never asked for a venue at all before, which is the gap
+  // this closes: CreateGroupModal (the older /groups creation flow) got it,
+  // this one — the one "Create a Class" actually links to — did not.
+  const [inPerson, setInPerson] = useState<InPersonDraft>({
+    classFormat: 'online',
+    venueId: null,
+    venueVisibility: 'after_enrolment',
+    maxStudentsOnline: null,
+    maxStudentsPhysical: null,
+    priceOnlineTtd: null,
+    pricePhysicalTtd: null,
+    acceptsCash: false,
+  });
 
   useEffect(() => {
     supabase
@@ -108,6 +125,14 @@ function CreateClassContent() {
    */
   const handleSubmit = async (status: 'PUBLISHED' | 'DRAFT') => {
     if (!profile?.id || !title.trim() || !endDate) return;
+    // A room is required once the format says the class meets in one. Checked
+    // here rather than left to the API's 400, because the venue picker is
+    // several fields above the submit button and a generic server error would
+    // leave the tutor hunting for what's missing.
+    if (type === 'group' && inPerson.classFormat !== 'online' && !inPerson.venueId) {
+      setSaveError('Choose a venue before setting this class to meet in person.');
+      return;
+    }
     setSubmitting(status);
     setSaveError(null);
     try {
@@ -133,6 +158,18 @@ function CreateClassContent() {
           grace_period_days: graceDays,
           whatsapp_url: whatsapp,
           google_classroom_link: classroom,
+          // In person (migration 242) — group classes only, see the state
+          // comment above for why a recurring 1:1 stays plain 'online'.
+          class_format: type === 'group' ? inPerson.classFormat : 'online',
+          venue_id:
+            type === 'group' && inPerson.classFormat !== 'online' ? inPerson.venueId : null,
+          venue_visibility: inPerson.venueVisibility,
+          max_students_online: type === 'group' ? inPerson.maxStudentsOnline : null,
+          max_students_physical: type === 'group' ? inPerson.maxStudentsPhysical : null,
+          price_online_ttd: type === 'group' ? inPerson.priceOnlineTtd : null,
+          price_physical_ttd: type === 'group' ? inPerson.pricePhysicalTtd : null,
+          accepts_cash:
+            type === 'group' && inPerson.classFormat !== 'online' ? inPerson.acceptsCash : false,
         }),
       });
       if (res.ok) {
@@ -299,6 +336,25 @@ function CreateClassContent() {
               />
             </Field>
           </Card>
+
+          {type === 'group' && (
+            <Card title="Where does this meet?">
+              <p className="-mt-2 text-xs text-muted-foreground">
+                You can change this later. Everyone gets a meeting link either way —
+                an in-person student can still join online when they need to.
+              </p>
+              <InPersonSection
+                draft={inPerson}
+                onChange={(patch: Partial<InPersonDraft>) =>
+                  setInPerson((prev) => ({ ...prev, ...patch }))
+                }
+                // A class being created has nobody in it yet, so there is no
+                // seat floor to respect.
+                enrolledOnline={0}
+                enrolledPhysical={0}
+              />
+            </Card>
+          )}
 
           <Card title="Access & policies">
             <Field label="Visibility" hint="Public classes appear in the marketplace. Private classes are invite-only.">
