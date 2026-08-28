@@ -6,7 +6,7 @@ import Link from 'next/link';
 import {
   ArrowLeft, Video, MessageCircle, Paperclip, Bell, Link as LinkIcon, MessageSquare, Globe, Check as CheckIcon,
   Calendar as CalendarIcon, Users, Pin, ExternalLink, Star, Download,
-  Clock, Check, X, ShieldAlert, Ban, CreditCard,
+  Clock, Check, X, ShieldAlert, Ban, CreditCard, MapPin,
 } from 'lucide-react';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
@@ -27,6 +27,21 @@ type Group = {
   tutor_rating: number | null;
   whatsapp_link: string | null;
   google_classroom_link: string | null;
+  // Migration 242. The class GET already gates the street address by
+  // venue_visibility, so whatever arrives here is what this viewer may see.
+  class_format: 'online' | 'physical' | 'hybrid';
+  venue: {
+    id: string;
+    name: string;
+    region: { id: string; name: string } | null;
+    address_line: string | null;
+    access_instructions: string | null;
+    arrival_notes: string | null;
+    /** True when there IS an address and this viewer may not see it yet. */
+    address_hidden?: boolean;
+  } | null;
+  /** Which seat this student holds, when the API could tell us. */
+  my_seat_type: 'online' | 'physical' | null;
 };
 
 type Tab = 'stream' | 'sessions' | 'members' | 'whatsapp' | 'classroom';
@@ -50,7 +65,9 @@ type Session = {
   date: string;
   durationMin: number;
   topic: string;
-  attendance: 'attended' | 'missed' | 'pending';
+  // 'late' is its own answer, not a shade of attended. A student looking at
+  // their own record needs to see what the tutor actually wrote down.
+  attendance: 'attended' | 'late' | 'missed' | 'pending';
   meetingLink?: string | null;
 };
 
@@ -193,6 +210,9 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
         tutor_rating: avgRating,
         whatsapp_link: grp.whatsapp_link ?? grp.whatsapp_url ?? null,
         google_classroom_link: grp.google_classroom_link ?? null,
+        class_format: grp.class_format === 'physical' || grp.class_format === 'hybrid' ? grp.class_format : 'online',
+        venue: grp.venue ?? null,
+        my_seat_type: grp.viewer_membership?.seat_type ?? null,
       });
     } catch (err) {
       console.error('[EnrolledClassPage]', err);
@@ -346,7 +366,7 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
           </div>
 
           {tab === 'stream'    && <StreamTab   groupId={groupId} group={group} tutorName={tutorName} />}
-          {tab === 'sessions'  && <SessionsTab groupId={groupId} userId={profile!.id} />}
+          {tab === 'sessions'  && <SessionsTab groupId={groupId} userId={profile!.id} group={group} />}
           {tab === 'members'   && <MembersTab  groupId={groupId} userId={profile!.id} />}
           {tab === 'whatsapp'  && <ExternalChannelTab groupId={groupId} platform="whatsapp"  url={group.whatsapp_link!} tutorName={tutorName} />}
           {tab === 'classroom' && <ExternalChannelTab groupId={groupId} platform="classroom" url={group.google_classroom_link!} tutorName={tutorName} />}
@@ -762,7 +782,15 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 
 /* ─── Sessions ───────────────────────────────────────── */
 
-function SessionsTab({ groupId, userId }: { groupId: string; userId: string }) {
+function SessionsTab({ groupId, userId, group }: { groupId: string; userId: string; group: Group }) {
+  // What this student actually holds. A room seat gets directions; an online
+  // seat gets a link. On a hybrid class both exist and only one is theirs,
+  // so guessing from the class format alone would send half the roster to
+  // the wrong place.
+  const inPerson =
+    group.my_seat_type === 'physical' ||
+    (group.my_seat_type === null && group.class_format === 'physical');
+  const venue = group.venue;
   const [sessions, setSessions] = useState<Session[]>([]);
   const [meetingLink, setMeetingLink] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -797,18 +825,26 @@ function SessionsTab({ groupId, userId }: { groupId: string; userId: string }) {
         if (!sorted.length) { setSessions([]); return; }
 
         const occIds = sorted.map(o => o.id);
-        const attMap: Record<string, 'attended' | 'missed'> = {};
+        const attMap: Record<string, 'attended' | 'late' | 'missed'> = {};
         try {
+          // `session_attendance` does not exist and never did — this read
+          // threw on every load and the catch swallowed it, so every past
+          // session showed as unmarked no matter what the tutor recorded.
+          // The register writes `session_attendance_log`, keyed on
+          // student_id, and RLS lets a student read their own rows.
           const { data: att } = await supabase
-            .from('session_attendance')
+            .from('session_attendance_log')
             .select('occurrence_id, status')
-            .eq('user_id', userId)
+            .eq('student_id', userId)
             .in('occurrence_id', occIds);
           (att ?? []).forEach((a: any) => {
-            if (a.status === 'attended' || a.status === 'present') attMap[a.occurrence_id] = 'attended';
-            else if (a.status === 'absent' || a.status === 'missed')  attMap[a.occurrence_id] = 'missed';
+            if (a.status === 'attended') attMap[a.occurrence_id] = 'attended';
+            else if (a.status === 'late') attMap[a.occurrence_id] = 'late';
+            else if (a.status === 'absent') attMap[a.occurrence_id] = 'missed';
           });
-        } catch { /* attendance table may not exist yet */ }
+        } catch (attErr) {
+          console.error('[SessionsTab] attendance read failed:', attErr);
+        }
 
         setSessions(sorted.map(o => ({
           ...o,
@@ -837,10 +873,58 @@ function SessionsTab({ groupId, userId }: { groupId: string; userId: string }) {
 
   return (
     <div className="space-y-3">
-      <div className="rounded-xl border border-dashed border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground flex items-start gap-2">
-        <Video className="size-3.5 mt-0.5 shrink-0 text-brand-deep" />
-        <span>Your tutor's Zoom / Google Meet link for this class. The same link is reused for every session — join any time it's available.</span>
-      </div>
+      {/* The banner has to match the seat. Telling someone who is walking to
+          a classroom that "the same link is reused for every session" is not
+          merely unhelpful — it is the wrong instruction. */}
+      {inPerson ? (
+        <div className="rounded-xl border border-dashed border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground flex items-start gap-2">
+          <MapPin className="size-3.5 mt-0.5 shrink-0 text-brand-deep" />
+          <span>
+            {venue
+              ? <>You attend this class in person at <span className="font-semibold text-ink">{venue.name}</span>{venue.region ? `, ${venue.region.name}` : ''}.</>
+              : <>You attend this class in person.</>}
+          </span>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-dashed border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground flex items-start gap-2">
+          <Video className="size-3.5 mt-0.5 shrink-0 text-brand-deep" />
+          <span>Your tutor's Zoom / Google Meet link for this class. The same link is reused for every session — join any time it's available.</span>
+        </div>
+      )}
+
+      {/* Directions, once. Repeating them on twenty session rows is how the
+          one row that DID move stops standing out. */}
+      {inPerson && venue && (
+        <div className="rounded-2xl border border-border bg-background p-4">
+          <div className="flex items-start gap-3">
+            <div className="size-9 rounded-xl bg-brand-soft grid place-items-center shrink-0">
+              <MapPin className="size-4 text-brand-deep" />
+            </div>
+            <div className="min-w-0">
+              <div className="font-semibold text-ink text-sm">{venue.name}</div>
+              {venue.region && <div className="text-xs text-muted-foreground">{venue.region.name}</div>}
+              {venue.address_line && <div className="text-sm text-ink mt-1.5">{venue.address_line}</div>}
+              {venue.access_instructions && <div className="text-xs text-muted-foreground mt-1">{venue.access_instructions}</div>}
+              {venue.arrival_notes && <div className="text-xs text-muted-foreground mt-1">{venue.arrival_notes}</div>}
+              {/* The address is withheld until enrolment by default. Saying so
+                  beats an empty space that reads as 'the tutor forgot'. */}
+              {venue.address_hidden && (
+                <div className="text-xs text-muted-foreground mt-1.5 italic">The exact address is shared once you have joined.</div>
+              )}
+              {venue.address_line && (
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${venue.name}, ${venue.address_line}`)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-brand-deep hover:underline mt-2"
+                >
+                  Open in Maps <ExternalLink className="size-3" />
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {sessions.map((s, i) => {
         const d = new Date(s.date);
@@ -874,12 +958,19 @@ function SessionsTab({ groupId, userId }: { groupId: string; userId: string }) {
                 <Pill tone="amber"   icon={Clock} label="Upcoming" />
               ) : att === 'attended' ? (
                 <Pill tone="emerald" icon={Check} label="Attended" />
+              ) : att === 'late' ? (
+                <Pill tone="amber"   icon={Clock} label="Late" />
               ) : att === 'missed' ? (
                 <Pill tone="rose"    icon={X}     label="Missed" />
               ) : null}
             </div>
 
             <div className="flex items-center gap-1.5">
+              {inPerson ? (
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted-foreground">
+                  <MapPin className="size-3.5" /> {venue?.name ?? 'In person'}
+                </span>
+              ) : (<>
               {meetingLink && (
                 <a
                   href={meetingLink}
@@ -892,6 +983,7 @@ function SessionsTab({ groupId, userId }: { groupId: string; userId: string }) {
               {!meetingLink && (
                 <span className="text-[11px] text-muted-foreground italic">No link set</span>
               )}
+              </>)}
             </div>
           </div>
         );

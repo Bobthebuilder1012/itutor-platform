@@ -220,15 +220,27 @@ export async function GET(_req: NextRequest, { params }: Params) {
     // that renders a join CTA from having to remember both.
     let viewerEnrollmentStatus: string | null = null;
     let viewerReleaseDate: string | null = null;
+    /** Which seat this viewer holds. Null before 242, or when not enrolled. */
+    let viewerSeatType: string | null = null;
     // Guarded: this page is now browsable by signed-out visitors, who have no
     // membership to resolve. Unguarded, the merge of anonymous access with this
     // block would have dereferenced a null user on every public class view.
     if (user) {
-      const { data: enrolRows, error: enrolErr } = await service
-        .from('group_enrollments')
-        .select('status, release_date')
-        .eq('group_id', groupId)
-        .eq('student_id', user.id);
+      // Tiered: `seat_type` arrives in migration 242, and a missing column
+      // fails the WHOLE select — which here would make an enrolled student
+      // look like a stranger to their own class page.
+      let enrolRows: any[] | null = null;
+      let enrolErr: any = null;
+      for (const cols of ['status, release_date, seat_type', 'status, release_date']) {
+        const res = await service
+          .from('group_enrollments')
+          .select(cols)
+          .eq('group_id', groupId)
+          .eq('student_id', user.id);
+        if (!res.error) { enrolRows = (res.data ?? []) as any[]; enrolErr = null; break; }
+        enrolErr = res.error;
+        if (!isSchemaMismatch(res.error)) break;
+      }
 
       if (enrolErr && !isSchemaMismatch(enrolErr)) {
         console.warn('[GET /api/groups/[groupId]] viewer enrollment load failed (non-fatal):', enrolErr?.message ?? enrolErr);
@@ -243,6 +255,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
         null;
       viewerReleaseDate =
         (enrolRows ?? []).find((r: any) => String(r.status) === 'SECURED')?.release_date ?? null;
+      // The seat that goes with the enrolment we actually settled on, not
+      // whichever row happens to come back first — a student who cancelled a
+      // room seat and rejoined online has two rows and only one live seat.
+      viewerSeatType =
+        (enrolRows ?? []).find((r: any) => String(r.status) === viewerEnrollmentStatus)?.seat_type ?? null;
     }
 
     const viewerMemberStatus = currentUserMembership?.status ? String(currentUserMembership.status) : null;
@@ -258,6 +275,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
       /** Place held by an up-front first-month payment (Secure your spot). */
       secured: viewerEnrollmentStatus === 'SECURED',
       release_date: viewerReleaseDate,
+      /** 'online' | 'physical', or null before 242 / when not enrolled. */
+      seat_type: viewerSeatType,
     };
 
     // Fetch sessions with upcoming occurrences (service client bypasses RLS so all users get schedule preview)
