@@ -202,6 +202,26 @@ export async function createSecureSpotCheckout(params: {
     // Not worth abandoning a claimed seat over: the payment still completes and
     // the child still gets their place. Logged so the gap is findable.
     if (payerErr) console.error('[secure-spot] could not record payer:', payerErr.message);
+
+    // The PAYMENT needs the payer too, not just the enrolment. Writing only the
+    // enrolment is what made a parent's successful checkout hang on "still
+    // being confirmed": the status route reads subscription_payments with the
+    // caller's own client, and with payer_id NULL there the parent matched no
+    // SELECT policy, so it polled a row it could never see until it timed out
+    // (migration 250 adds the policy; this fills in the column it reads).
+    //
+    // It is also the column refunds and receipts are aimed by — see 230 — so a
+    // NULL here sends a parent's refund at the child, whose card was never
+    // charged.
+    if (subscriptionPaymentId) {
+      const { error: payPayerErr } = await admin
+        .from('subscription_payments')
+        .update({ payer_id: payerId })
+        .eq('id', subscriptionPaymentId);
+      if (payPayerErr) {
+        console.error('[secure-spot] could not record payer on payment:', payPayerErr.message);
+      }
+    }
   }
 
   // ---- Free class: no Stripe object at all -------------------------------
