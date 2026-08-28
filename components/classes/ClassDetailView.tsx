@@ -42,7 +42,16 @@ import { preorderEligibility, computeReleaseDate, isShortClass } from '@/lib/pay
 import { classCapacityDisplay } from '@/lib/utils/classCapacity';
 import TutorCredentials from '@/components/TutorCredentials';
 
-export type Step = 'detail' | 'join' | 'joined' | 'awaiting-approval' | 'awaiting-parent';
+// 'cash-held' is its own outcome rather than 'joined': the seat is held but
+// nothing is paid, and telling someone they have joined when the tutor can
+// still release the place would be a claim they act on.
+export type Step =
+  | 'detail'
+  | 'join'
+  | 'joined'
+  | 'awaiting-approval'
+  | 'awaiting-parent'
+  | 'cash-held';
 
 /**
  * Whether this viewer needs a parent's permission to enrol, resolved server-side
@@ -136,6 +145,8 @@ export type GroupData = {
     /** True when there IS an address and this viewer is not allowed it yet. */
     address_hidden: boolean;
   } | null;
+  /** The tutor takes cash at the venue. Never true for an online-only class. */
+  accepts_cash?: boolean | null;
   /** Per seat type, from the server. Null when 242 is not applied. */
   seat_availability?: Array<{
     seat: 'online' | 'physical';
@@ -1234,6 +1245,13 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
   //
   // Server-computed (lib/utils/seatCapacity via the class GET), so the choice
   // offered here and the capacity gate that will judge it read the same numbers.
+  // Cash is offered only when the tutor switched it on AND the class actually
+  // meets somewhere — there is no one to hand money to on an online class, and
+  // the server enforces the same pair.
+  const cashAvailable =
+    group.accepts_cash === true && group.class_format && group.class_format !== 'online';
+  const [payMethod, setPayMethod] = useState<'card' | 'cash'>('card');
+
   const openSeats = (group.seat_availability ?? []).filter(s => !s.unavailable && !s.full);
   const seatChoiceNeeded = openSeats.length > 1;
   const [chosenSeat, setChosenSeat] = useState<'online' | 'physical'>(
@@ -1284,6 +1302,11 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
     : preorder
       ? (price > 0 ? `Pay ${fmtTTD(price)} & reserve my place` : 'Reserve my place')
     : isRequest ? 'Send request to tutor'
+    // The button must not say "pay" when nothing is being paid here. A cash
+    // student is holding a place and settling with the tutor afterwards, and a
+    // label promising payment is the kind of small lie that produces a support
+    // ticket about a card that was never charged.
+    : (payMethod === 'cash' && price > 0) ? 'Hold my place'
     : 'Confirm & join class';
 
   const handleConfirm = async () => {
@@ -1323,6 +1346,23 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
         if (data.checkout_url) { window.location.href = data.checkout_url; return; }
         if (data.free) { onSuccess('joined'); return; }
         throw new Error('Could not start the payment. Please try again.');
+      }
+
+      // ── Cash: hold the seat, hand the money over in person ──────────────
+      // Deliberately BEFORE the card branch, and a separate endpoint: no Stripe
+      // object is created, nothing is charged, and the hold has no expiry
+      // because the tutor releases it rather than a timer.
+      if (payMethod === 'cash' && price > 0 && !isFull) {
+        const res = await fetch(`/api/groups/${group.id}/cash-hold`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ seatType: chosenSeat }),
+        });
+        const data = await res.json();
+        if (data.parent_approval_required) { onSuccess('awaiting-parent'); return; }
+        if (!res.ok) throw new Error(data.error || 'Could not hold your place. Please try again.');
+        onSuccess('cash-held');
+        return;
       }
 
       if (price > 0 && !isFull) {
@@ -1454,6 +1494,64 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
           {chosenSeat === 'physical' && group.venue?.address_hidden && (
             <p className="text-xs text-muted-foreground">
               You&apos;ll get the full address as soon as you join.
+            </p>
+          )}
+        </section>
+      )}
+
+      {/* ── How they pay ────────────────────────────────────────────────────
+          Only when the tutor takes cash. ONE EXTRA CHOICE, NO EXTRA STEP — it
+          sits in the modal the visitor is already in, per §4. */}
+      {cashAvailable && price > 0 && !isFull && (
+        <section className="rounded-2xl border border-border bg-background p-5 space-y-3">
+          <h2 className="text-sm font-bold text-ink">How would you like to pay?</h2>
+          <div className="space-y-2">
+            {[
+              {
+                v: 'card' as const,
+                title: 'Pay online now',
+                detail: 'Card payment. Your place is confirmed straight away.',
+              },
+              {
+                v: 'cash' as const,
+                title: 'Pay your tutor directly',
+                // No date, deliberately — the tutor releases the hold, so any
+                // deadline shown here would be one nothing enforces.
+                detail: 'We hold your place. Pay your tutor in person to confirm it.',
+              },
+            ].map((opt) => {
+              const selected = payMethod === opt.v;
+              return (
+                <button
+                  key={opt.v}
+                  type="button"
+                  onClick={() => setPayMethod(opt.v)}
+                  className={cn(
+                    'flex w-full items-start gap-3 rounded-xl border px-4 py-3 text-left transition',
+                    selected ? 'border-brand bg-brand/5' : 'border-border hover:border-brand/50'
+                  )}
+                >
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'mt-0.5 grid size-4 shrink-0 place-items-center rounded-full border-2',
+                      selected ? 'border-brand' : 'border-border'
+                    )}
+                  >
+                    {selected && <span className="size-2 rounded-full bg-brand" />}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-ink">{opt.title}</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">{opt.detail}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {payMethod === 'cash' && (
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              iTutor does not handle this payment — you pay {group.tutor?.display_name || group.tutor?.full_name || 'your tutor'} directly,
+              and they record it.
             </p>
           )}
         </section>
@@ -1619,7 +1717,7 @@ function ParentAskPanel({
 
 /* ─── Success screens ────────────────────────────────── */
 
-export function JoinedScreen({ group, kind }: { group: GroupData; kind: 'enrolled' | 'awaiting-approval' | 'awaiting-parent' }) {
+export function JoinedScreen({ group, kind }: { group: GroupData; kind: 'enrolled' | 'awaiting-approval' | 'awaiting-parent' | 'cash-held' }) {
   const copy = {
     enrolled: {
       icon: <Check className="size-6 text-white" />,
@@ -1636,6 +1734,18 @@ export function JoinedScreen({ group, kind }: { group: GroupData; kind: 'enrolle
       body: `${group.tutor?.display_name || group.tutor?.full_name || 'The tutor'} typically responds within 48 hours. You'll get a notification when they approve.`,
       next: 'Back to explore',
       href: '/student/find-tutors',
+    },
+    // Held, not paid, and NO DATE. The spec is explicit: the tutor releases a
+    // cash hold manually, so there is no deadline the system will enforce and
+    // showing one would be a promise nothing keeps. "Pay your tutor to confirm"
+    // is the whole instruction.
+    'cash-held': {
+      icon: <Check className="size-6 text-white" />,
+      tone: 'bg-amber-500',
+      title: 'Your place is held',
+      body: `Pay ${group.tutor?.display_name || group.tutor?.full_name || 'your tutor'} to confirm it. They will mark it as paid and your place becomes permanent.`,
+      next: 'Go to my class',
+      href: `/student/classes/${group.id}`,
     },
     // The parent's gate, not the tutor's. Said plainly, because a student who
     // thinks they are enrolled will turn up to a class they have no place in.

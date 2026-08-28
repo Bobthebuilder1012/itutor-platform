@@ -118,6 +118,7 @@ export async function fetchClassDetail(groupId: string): Promise<GroupData | nul
     // mapping deliberately passes it straight through rather than re-deciding.
     // Two places deciding who may see an address is one place too many.
     class_format: g.class_format ?? null,
+    accepts_cash: g.accepts_cash ?? false,
     venue: g.venue ?? null,
     seat_availability: g.seat_availability ?? null,
   };
