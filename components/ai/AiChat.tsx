@@ -7,8 +7,11 @@
  * so there was no way to ask a question, refine a result in words, or say
  * "make it harder". The composer here accepts free text and is always present.
  *
- * Replies stream. The first words appear in about a second, which is the whole
- * reason chat does not go through the job queue like generation does.
+ * Replies stream. Measured first token is ~4.9s — well short of the 21-30s a
+ * queued generation takes, but not instant, because the model thinks before it
+ * writes and that cannot be turned off. Hence the typing indicator: it has to
+ * carry roughly five seconds of silence, so it renders the moment the turn is
+ * created rather than once text arrives.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
