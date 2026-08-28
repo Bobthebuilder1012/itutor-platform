@@ -82,13 +82,18 @@ function FilterChip({
    */
   base: string;
 }) {
+  // Same pill the marketplace's own FilterMenu renders once a filter is
+  // APPLIED — border-brand, bg-brand-soft, text-forest — because every answer
+  // here already has a value; there is no "not filtering" state to distinguish
+  // it from. The pencil takes the place of FilterMenu's chevron: this pill
+  // opens the wizard step directly rather than a dropdown.
   return (
     <Link
       href={`${base}step=${step}`}
-      className="inline-flex items-center gap-1.5 rounded-full border border-border bg-white px-3 py-1.5 text-[13px] text-ink transition hover:border-brand/60 hover:bg-mint"
+      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl border border-brand bg-brand-soft px-3 py-2 text-sm font-medium text-forest transition hover:bg-brand-soft/70"
     >
       {label}
-      <Pencil className="size-3 text-ink-muted" strokeWidth={2} />
+      <Pencil className="size-3.5" strokeWidth={2} />
     </Link>
   );
 }
@@ -138,14 +143,14 @@ export default function MatchResults({
           : null;
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6">
+    <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 sm:px-6">
       {/* Anonymous renders have no app shell around them, so the flow would
           otherwise lose its frame at the exact moment it pays off. The log-in
           link carries ?redirect=/find/claim — unlike mid-wizard, where it is
           bare: someone who has just SEEN their matches and then remembers they
           have an account should have these answers adopted onto it. */}
       {isAnonymous ? (
-        <div className="mb-6 flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-3">
           <Link href="/" aria-label="iTutor home" className="text-[15px] font-semibold tracking-tight text-ink">
             iTutor
           </Link>
@@ -158,20 +163,24 @@ export default function MatchResults({
         </div>
       ) : null}
 
+      {/* Same header scale as Explore's own h1/subtitle — this is the same
+          product handing off to that one, not a smaller-type prelude to it. */}
       <header>
-        <h1 className="text-[24px] font-semibold leading-tight tracking-tight text-ink sm:text-[28px]">
+        <h1 className="text-2xl font-bold text-ink lg:text-3xl">
           {learner ? `${learner}'s best matches` : 'My best matches'}
         </h1>
-        <p className="mt-1.5 text-[14px] text-ink-muted">
+        <p className="mt-1 text-sm text-muted-foreground">
           {row.match_class === 'none'
             ? 'We have recorded what you are looking for.'
             : heading}
         </p>
       </header>
 
-      {/* The answers, each editable in place */}
-      <section className="mt-5" aria-label="Your search">
-        <div className="flex flex-wrap gap-2">
+      {/* The answers, each editable in place. Same row shape as the
+          marketplace's own filter row — see FilterChip for why every pill
+          renders in its "applied" colour. */}
+      <section aria-label="Your search">
+        <div className="flex flex-wrap items-center gap-2">
           {/* THE LEVEL IS EDITABLE NOW. It used to be a static pill with a
               comment saying it "comes from the account, not the wizard, so it is
               changed in profile settings" — which stopped being true the moment
@@ -294,7 +303,10 @@ export default function MatchResults({
             </p>
           ) : null}
 
-          <section className="mt-5 space-y-3" aria-label="Recommended classes">
+          {/* Grid, not a stacked list — the same layout Explore uses for its
+              own class cards, and the reason MatchCard was redrawn to that
+              card's shape rather than a bordered list row. */}
+          <section className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="Recommended classes">
             {matches.map((match, index) => (
               <MatchCard
                 key={match.group_id}

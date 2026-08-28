@@ -91,8 +91,11 @@ export default async function FinderBrowsePage({
   }));
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6">
-      <div className="mb-6 flex items-center justify-between gap-3">
+    // Same width and vertical rhythm as Explore and /find/results — see
+    // MatchCard's header comment for why this page's cards were redrawn to
+    // match the marketplace in the first place.
+    <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 sm:px-6">
+      <div className="flex items-center justify-between gap-3">
         <Link
           href="/"
           aria-label="iTutor home"
@@ -112,10 +115,10 @@ export default async function FinderBrowsePage({
         {/* NEVER "no matches" or "nothing found". Nothing was asked for, so
             nothing failed to match — describing this as an empty result would
             invent a disappointment. */}
-        <h1 className="text-[24px] font-semibold leading-tight tracking-tight text-ink sm:text-[28px]">
+        <h1 className="text-2xl font-bold text-ink lg:text-3xl">
           Every class on iTutor right now
         </h1>
-        <p className="mt-1.5 text-[14px] text-ink-muted">
+        <p className="mt-1 text-sm text-muted-foreground">
           You skipped the questions, so nothing is filtered out.{' '}
           {shown.length === 1 ? '1 class is' : `${shown.length} classes are`} open.
         </p>
@@ -124,7 +127,7 @@ export default async function FinderBrowsePage({
       {/* ABOVE the list, not below it. Someone who skipped is browsing, and the
           offer to narrow is the most useful thing on the screen — at the bottom
           of twenty-four cards it does not exist. */}
-      <section className="mt-6 rounded-2xl border border-brand/30 bg-brand-soft/40 p-5">
+      <section className="rounded-2xl border border-brand/30 bg-brand-soft/40 p-5">
         <h2 className="text-[16px] font-semibold text-ink">Want a shortlist instead?</h2>
         <p className="mt-1.5 text-[14px] leading-relaxed text-ink-muted">
           A few quick questions and we&rsquo;ll narrow this to the classes that fit
@@ -161,12 +164,13 @@ export default async function FinderBrowsePage({
       </section>
 
       {shown.length === 0 ? (
-        <p className="mt-7 rounded-2xl border border-border bg-white px-4 py-5 text-[14px] text-ink-muted">
+        <p className="rounded-2xl border border-border bg-white px-4 py-5 text-[14px] text-ink-muted">
           No classes are open at the moment. Answer the questions above and
           we&rsquo;ll tell you the moment one opens that fits.
         </p>
       ) : (
-        <section className="mt-6 space-y-3" aria-label="All classes">
+        // Grid, not a stacked list — matching Explore's own lesson grid.
+        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="All classes">
           {shown.map((match, index) => (
             <MatchCard
               key={match.group_id}
@@ -175,6 +179,9 @@ export default async function FinderBrowsePage({
               // Nothing was asked, so there is no near miss to name.
               nearMissOn={null}
               requestedBlocks={[]}
+              // This page explicitly does not rank (see the header comment) —
+              // `rank` here is a list position, not a match quality signal.
+              ranked={false}
             />
           ))}
         </section>
