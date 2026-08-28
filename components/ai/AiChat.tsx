@@ -92,6 +92,20 @@ export default function AiChat({
 
       if (!res.ok || !res.body) {
         const json = await res.json().catch(() => ({}));
+
+        // A ceiling reached is not the same as something broken, and the two
+        // should not read alike. 429 carries a wait; say it.
+        if (res.status === 429) {
+          const wait = Number(json.retryAfterSeconds ?? 0);
+          const when =
+            wait > 90
+              ? `about ${Math.ceil(wait / 60)} minutes`
+              : wait > 0
+                ? `about ${wait} seconds`
+                : 'a moment';
+          throw new Error(`${json.error ?? 'Too many messages.'} Try again in ${when}.`);
+        }
+
         throw new Error(json.error ?? 'Could not get a reply.');
       }
 

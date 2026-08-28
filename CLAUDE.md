@@ -149,6 +149,43 @@ extended.
    exposing `generateStructured()` and `extractFromImage()`. Grepping for the
    SDK import must return exactly one file.
 
+### Provider behaviour (measured, not assumed)
+
+These cost real debugging time. Re-deriving them is waste.
+
+- **Per-field `description` in a response schema is load-bearing, not
+  documentation.** Field names and enums are NOT enough. The composer classifier
+  put `"June 2026"` into a `topics` field on its first test sentence, because
+  nothing told the model that dates belong in `exam`. It would have produced a
+  summary card reading "Topics: June 2026".
+
+  Where this bites hardest is curriculum extraction: a mis-typed field there
+  means a mark allocation attached to the wrong thing, which is not visibly
+  silly the way a bad summary card is — it is wrong and plausible. **Give every
+  field in every extraction schema a description that says what it is and what
+  it is not.**
+
+- **Thinking cannot be disabled.** `generationConfig.thinkingConfig.thinkingBudget: 0`
+  returns `400 INVALID_ARGUMENT` on `gemini-3.6-flash`. Latency is inherent:
+  streamed chat reaches first token at ~4.9s (643 thought tokens against 238
+  visible), and structured classification runs 2.4–17s. Design the UI around
+  that rather than trying to tune it away — render progress from the moment the
+  request leaves, not when the first token lands.
+
+- **Listing a model is not evidence you can call it.** `models.list` still
+  returns `gemini-2.5-flash`, which 404s with "no longer available to new
+  users". So does `gemini-2.0-flash`. Verify with an actual call.
+
+- **Thinking tokens are billed as output but reported separately**
+  (`thoughtsTokenCount`). Counting only `candidatesTokenCount` under-reports
+  cost by roughly 5x. See `countTokens` in `lib/ai/provider.ts`.
+
+- **Rate limits apply on every tier.** The free tier returns
+  `429 "exceeded your current quota"` under light testing. A paid tier raises
+  the ceiling, it does not remove it. Every model call path needs 429 handling —
+  and it matters most in chat, where a mid-stream failure after five seconds of
+  typing indicator is far uglier than a queued job retrying invisibly.
+
 ### Conventions
 
 - **Migrations** for this feature start at **248**. The numbers the handoff
