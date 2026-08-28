@@ -60,6 +60,15 @@ interface AiElicitationProps {
   footerSummary?: (answers: Record<string, string>) => string;
   onGenerate: (answers: Record<string, string>) => void;
   onBack: () => void;
+  /**
+   * Answers already extracted from what the tutor typed in the composer.
+   *
+   * When present the questions are skipped entirely and the summary card opens
+   * straight away — asking someone to re-answer in chips what they just wrote
+   * in a sentence is the whole thing this is meant to avoid. Seeded values are
+   * marked as "you said" because the tutor did say them, just in prose.
+   */
+  seed?: Record<string, string>;
   /** Optional extra control rendered inside the card, e.g. the sheet balance. */
   children?: (answers: Record<string, string>, set: (k: string, v: string) => void) => React.ReactNode;
 }
@@ -70,9 +79,16 @@ export default function AiElicitation({
   onGenerate,
   onBack,
   children,
+  seed,
 }: AiElicitationProps) {
-  const [answers, setAnswers] = useState<Record<string, string>>({ ...flow.defaults });
-  const [questionIndex, setQuestionIndex] = useState(0);
+  const seeded = Boolean(seed && Object.keys(seed).length > 0);
+
+  const [answers, setAnswers] = useState<Record<string, string>>({
+    ...flow.defaults,
+    ...(seed ?? {}),
+  });
+  // Seeded runs open on the summary card rather than at question one.
+  const [questionIndex, setQuestionIndex] = useState(seeded ? flow.questions.length : 0);
   const [freeText, setFreeText] = useState('');
   const [editingField, setEditingField] = useState<string | null>(null);
   const [fieldDraft, setFieldDraft] = useState('');
@@ -198,7 +214,10 @@ export default function AiElicitation({
                         <div className="text-[12.5px] font-semibold text-ink">{field.label}</div>
                         {/* The label the whole card turns on. */}
                         <div className="text-[10.5px] text-ink-muted">
-                          {field.said ? 'you said' : 'AI-suggested'}
+                          {/* A seeded field was supplied by the tutor in prose,
+                              so it is something they said even though they never
+                              tapped a chip for it. */}
+                          {field.said || seed?.[field.id] ? 'you said' : 'AI-suggested'}
                         </div>
                       </div>
 
