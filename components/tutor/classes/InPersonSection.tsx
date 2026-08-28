@@ -83,6 +83,15 @@ export default function InPersonSection({
   const [loading, setLoading] = useState(true);
   const [unavailable, setUnavailable] = useState(false);
 
+  // Inline venue creation. A tutor's FIRST physical class has no venue to pick,
+  // so without this the format choice dead-ends into "go to another screen,
+  // come back, start again" — at the exact moment they are trying to do the
+  // thing. Every later class is two taps because the venue is then in the list.
+  const [addingVenue, setAddingVenue] = useState(false);
+  const [savingVenue, setSavingVenue] = useState(false);
+  const [venueError, setVenueError] = useState<string | null>(null);
+  const [newVenue, setNewVenue] = useState({ name: '', region_id: '', address_line: '' });
+
   const load = useCallback(async () => {
     try {
       const res = await fetch('/api/tutor/venues', { cache: 'no-store' });
@@ -100,6 +109,41 @@ export default function InPersonSection({
   useEffect(() => {
     void load();
   }, [load]);
+
+  const saveVenue = async () => {
+    if (savingVenue) return;
+    setVenueError(null);
+    if (!newVenue.name.trim()) return setVenueError('Give the venue a name.');
+    if (!newVenue.region_id) return setVenueError('Choose the area it is in.');
+    if (!newVenue.address_line.trim()) return setVenueError('Add the street address.');
+
+    setSavingVenue(true);
+    try {
+      const res = await fetch('/api/tutor/venues', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newVenue),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        setVenueError(
+          json?.field ? `Check the ${json.field.replace(/_/g, ' ')} field.` : 'That did not save.'
+        );
+        return;
+      }
+      const created = json.venue as Venue;
+      setVenues((prev) => [...prev, created]);
+      // Select it immediately — the tutor created it in order to use it, and
+      // making them then pick it from a list is a step that exists for no one.
+      onChange({ venueId: created.id });
+      setAddingVenue(false);
+      setNewVenue({ name: '', region_id: '', address_line: '' });
+    } catch {
+      setVenueError('That did not save.');
+    } finally {
+      setSavingVenue(false);
+    }
+  };
 
   const seats = seatTypesFor(draft.classFormat);
   const offersOnline = seats.includes('online');
@@ -149,17 +193,17 @@ export default function InPersonSection({
       <div className="space-y-2">
         {FORMATS.map(f => {
           const selected = draft.classFormat === f.value;
-          // Choosing a physical format with no venue is refused by the API
-          // (groups_venue_required_check), so the option is disabled with the
-          // reason rather than letting the save fail.
-          const blocked = f.value !== 'online' && venues.length === 0;
+          // NOT disabled when the tutor has no venue yet — that dead-ended the
+          // first physical class, which is the one that matters most. Picking
+          // the format now opens the inline venue form below instead.
           return (
             <button
               key={f.value}
               type="button"
-              disabled={blocked}
               onClick={() => {
-                if (blocked) return;
+                // No venue yet and they want a room: open the form rather than
+                // refuse. The API still enforces the rule at save time.
+                if (f.value !== 'online' && venues.length === 0) setAddingVenue(true);
                 onChange({
                   classFormat: f.value,
                   // Online classes cannot take cash — there is no room to hand
@@ -172,7 +216,7 @@ export default function InPersonSection({
                 selected
                   ? 'border-brand bg-brand/5'
                   : 'border-border hover:border-brand/50 hover:bg-muted/40'
-              } ${blocked ? 'cursor-not-allowed opacity-50' : ''}`}
+              }`}
             >
               <span
                 aria-hidden
@@ -184,9 +228,7 @@ export default function InPersonSection({
               </span>
               <span className="min-w-0">
                 <span className="block text-sm font-semibold">{f.label}</span>
-                <span className="mt-0.5 block text-xs text-muted-foreground">
-                  {blocked ? 'Add a venue in My Business → Venues first.' : f.detail}
-                </span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">{f.detail}</span>
               </span>
             </button>
           );
@@ -203,7 +245,10 @@ export default function InPersonSection({
             <select
               className={FIELD}
               value={draft.venueId ?? ''}
-              onChange={e => onChange({ venueId: e.target.value || null })}
+              onChange={e => {
+                if (e.target.value === '__new') { setAddingVenue(true); return; }
+                onChange({ venueId: e.target.value || null });
+              }}
             >
               <option value="">Choose a venue…</option>
               {venues.map(v => (
@@ -212,8 +257,66 @@ export default function InPersonSection({
                   {regionOf(v) ? ` — ${regionOf(v)}` : ''}
                 </option>
               ))}
+              <option value="__new">+ Add a new venue…</option>
             </select>
           </label>
+
+          {/* Inline venue creation. The first physical class always comes
+              through here, so it asks for the three things the API requires and
+              nothing else — the rest is editable later in My Business → Venues. */}
+          {addingVenue ? (
+            <div className="space-y-2 rounded-lg border border-brand/40 bg-brand/5 p-3">
+              <p className="text-xs font-semibold text-ink">New venue</p>
+              <input
+                className={FIELD}
+                placeholder="Name — e.g. Chaguanas Learning Centre"
+                value={newVenue.name}
+                maxLength={120}
+                onChange={e => setNewVenue(v => ({ ...v, name: e.target.value }))}
+              />
+              <select
+                className={FIELD}
+                value={newVenue.region_id}
+                onChange={e => setNewVenue(v => ({ ...v, region_id: e.target.value }))}
+              >
+                <option value="">Choose an area…</option>
+                {regions.map(r => (
+                  <option key={r.id} value={r.id}>{r.name}</option>
+                ))}
+              </select>
+              <input
+                className={FIELD}
+                placeholder="Street address"
+                value={newVenue.address_line}
+                maxLength={300}
+                onChange={e => setNewVenue(v => ({ ...v, address_line: e.target.value }))}
+              />
+              {/* Said before they type it, not after. */}
+              <p className="text-xs text-muted-foreground">
+                The area is always shown to students. The street address follows
+                the setting below.
+              </p>
+              {venueError ? <p className="text-xs text-coral">{venueError}</p> : null}
+              <div className="flex items-center gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={saveVenue}
+                  disabled={savingVenue}
+                  className="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-xs font-semibold text-white disabled:opacity-60"
+                >
+                  {savingVenue ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                  Save venue
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setAddingVenue(false); setVenueError(null); }}
+                  className="text-xs font-medium text-muted-foreground hover:text-ink"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           <label className="block">
             <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -301,10 +404,10 @@ export default function InPersonSection({
         </p>
       </div>
 
-      {venues.length === 0 ? (
+      {venues.length === 0 && draft.classFormat === 'online' ? (
         <p className="flex items-start gap-2 text-xs text-muted-foreground">
           <MapPin aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          To run this class in person, add a venue in My Business → Venues.
+          Pick “In person only” or “Both” and you can add a venue right here.
         </p>
       ) : null}
     </div>

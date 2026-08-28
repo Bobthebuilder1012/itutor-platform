@@ -635,6 +635,66 @@ export async function POST(request: NextRequest) {
      */
     const resolvedStatus = rawBody.status === 'DRAFT' ? 'DRAFT' : 'PUBLISHED';
 
+    // ── In person (migration 242) ────────────────────────────────────────
+    // Validated before the insert rather than left to the NOT VALID CHECKs,
+    // which surface as a raw Postgres error a tutor cannot act on.
+    const FORMATS = ['online', 'physical', 'hybrid'] as const;
+    const rawFormat = (rawBody as any).class_format;
+    const classFormat: (typeof FORMATS)[number] =
+      FORMATS.includes(rawFormat) ? rawFormat : 'online';
+    const wantedVenueId: string | null =
+      classFormat === 'online' ? null : ((rawBody as any).venue_id ?? null);
+
+    if (classFormat !== 'online' && !wantedVenueId) {
+      return NextResponse.json(
+        { error: 'Choose a venue before setting this class to meet in person.' },
+        { status: 400 }
+      );
+    }
+
+    // OWNERSHIP. Not a database constraint, and the only thing stopping a tutor
+    // attaching someone else's venue — and street address — to their class.
+    // "Not yours" and "does not exist" answer the same, so this cannot be used
+    // to probe for venue ids.
+    if (wantedVenueId) {
+      const { data: venueRow, error: venueErr } = await service
+        .from('venues')
+        .select('id, tutor_id, archived_at')
+        .eq('id', wantedVenueId)
+        .maybeSingle();
+      if (venueErr) {
+        console.error('[POST /api/groups] venue lookup failed:', venueErr.message);
+        return NextResponse.json({ error: 'Could not check that venue.' }, { status: 503 });
+      }
+      const v = venueRow as { tutor_id?: string; archived_at?: string | null } | null;
+      if (!v || v.tutor_id !== user.id || v.archived_at) {
+        return NextResponse.json({ error: 'That venue is not available.' }, { status: 400 });
+      }
+    }
+
+    const numOrNull = (raw: unknown): number | null => {
+      if (raw === null || raw === undefined || raw === '') return null;
+      const n = Number(raw);
+      return Number.isFinite(n) && n >= 0 ? n : null;
+    };
+
+    // NOT added to the schema-mismatch fallback insert below, deliberately: on a
+    // database without 242 the primary insert fails on these columns and the
+    // fallback — which omits them — succeeds. That is the degradation we want,
+    // and duplicating them into the fallback would break class creation there
+    // entirely.
+    const inPersonColumns = {
+      class_format: classFormat,
+      venue_id: wantedVenueId,
+      venue_visibility:
+        (rawBody as any).venue_visibility === 'public' ? 'public' : 'after_enrolment',
+      max_students_online: numOrNull((rawBody as any).max_students_online),
+      max_students_physical: numOrNull((rawBody as any).max_students_physical),
+      price_online_ttd: numOrNull((rawBody as any).price_online_ttd),
+      price_physical_ttd: numOrNull((rawBody as any).price_physical_ttd),
+      accepts_cash: classFormat !== 'online' && Boolean((rawBody as any).accepts_cash),
+    };
+
     let { data: group, error } = await service
       .from('groups')
       .insert({
@@ -662,6 +722,7 @@ export async function POST(request: NextRequest) {
         availability_window: body.availability_window ?? null,
         cover_image: body.cover_image ?? null,
         header_image: body.header_image ?? null,
+        ...inPersonColumns,
         ...(resolvedVisibility ? { visibility: resolvedVisibility } : {}),
       })
       .select()

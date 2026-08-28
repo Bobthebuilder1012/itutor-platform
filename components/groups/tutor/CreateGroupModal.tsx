@@ -6,13 +6,18 @@ import type { CreateGroupInput, DayOfWeek, RecurrenceType } from '@/lib/types/gr
 import { supabase } from '@/lib/supabase/client';
 import { getCroppedImg, type Area } from '@/lib/utils/imageCrop';
 import { randomDefaultThumbnailValue, isDefaultThumbnail } from '@/lib/defaultThumbnails';
+import InPersonSection, { type InPersonDraft } from '@/components/tutor/classes/InPersonSection';
 
 interface CreateGroupModalProps {
   onCreated: (groupId: string) => void;
   onClose: () => void;
 }
 
-const STEPS = ['Details', 'Schedule', 'Review'] as const;
+// Format is step 2 because it silently decides what the rest of the form means:
+// whether a venue is needed, whether there are two seat blocks to fill in, and
+// whether cash is even offered. Asking it after the schedule would mean
+// re-opening decisions the tutor had already made.
+const STEPS = ['Details', 'Format', 'Schedule', 'Review'] as const;
 const DAY_SHORT: Record<number, string> = { 0: 'Sun', 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat' };
 
 function formatTime12(t: string) {
@@ -41,6 +46,20 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
     form_level: 'FORM_4',
   });
   const [goals, setGoals] = useState('');
+
+  // Defaults to online, which is what every class was before migration 242 and
+  // what most still are — so a tutor who does not care about this step can pass
+  // straight through it.
+  const [inPerson, setInPerson] = useState<InPersonDraft>({
+    classFormat: 'online',
+    venueId: null,
+    venueVisibility: 'after_enrolment',
+    maxStudentsOnline: null,
+    maxStudentsPhysical: null,
+    priceOnlineTtd: null,
+    pricePhysicalTtd: null,
+    acceptsCash: false,
+  });
 
   // Schedule state
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('weekly');
@@ -140,7 +159,11 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
 
   const canProceed = () => {
     if (step === 1) return !!form.name.trim();
-    if (step === 2) {
+    // Format. A non-online class needs a venue — the same rule the API enforces
+    // (groups_venue_required_check), checked here so the tutor is not told at
+    // the end of the wizard that step 2 was wrong.
+    if (step === 2) return inPerson.classFormat === 'online' || !!inPerson.venueId;
+    if (step === 3) {
       if (recurrenceType === 'weekly' && recurrenceDays.length === 0) return false;
       if (!endDate) return false;
       return !!startTime;
@@ -154,8 +177,25 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
     setSubmitting(true);
     setError('');
     try {
-      const payload = { ...form, end_date: endDate };
-      if (!payload.cover_image || isDefaultThumbnail(payload.cover_image)) {
+      const payload: Record<string, unknown> = {
+        ...form,
+        end_date: endDate,
+        // In person (migration 242). Sent at creation so a tutor does not have
+        // to create the class and then go and edit it — which is what they had
+        // to do before this step existed.
+        class_format: inPerson.classFormat,
+        venue_id: inPerson.classFormat === 'online' ? null : inPerson.venueId,
+        venue_visibility: inPerson.venueVisibility,
+        max_students_online: inPerson.maxStudentsOnline,
+        max_students_physical: inPerson.maxStudentsPhysical,
+        price_online_ttd: inPerson.priceOnlineTtd,
+        price_physical_ttd: inPerson.pricePhysicalTtd,
+        accepts_cash: inPerson.classFormat === 'online' ? false : inPerson.acceptsCash,
+      };
+      // Widening payload to Record<string, unknown> for the in-person fields
+      // costs the narrow type here, so the cover image is read back explicitly.
+      const cover = typeof payload.cover_image === 'string' ? payload.cover_image : '';
+      if (!cover || isDefaultThumbnail(cover)) {
         payload.cover_image = randomDefaultThumbnailValue();
       }
 
@@ -286,6 +326,29 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
             {step === 2 && (
               <div className="space-y-4">
                 <div>
+                  <h3 className="text-base font-semibold text-gray-900">How does this class meet?</h3>
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    You can change this later. Everyone gets a meeting link either
+                    way — an in-person student can still join online when they
+                    need to.
+                  </p>
+                </div>
+                <InPersonSection
+                  draft={inPerson}
+                  onChange={(patch: Partial<InPersonDraft>) =>
+                    setInPerson((prev) => ({ ...prev, ...patch }))
+                  }
+                  // A class being created has nobody in it, so there is no seat
+                  // floor to respect yet.
+                  enrolledOnline={0}
+                  enrolledPhysical={0}
+                />
+              </div>
+            )}
+
+            {step === 3 && (
+              <div className="space-y-4">
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Recurrence</label>
                   <div className="flex gap-2">
                     {(['none', 'weekly', 'daily'] as RecurrenceType[]).map((rt) => (
@@ -395,7 +458,7 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
             )}
 
             {/* STEP 3: REVIEW */}
-            {step === 3 && (
+            {step === 4 && (
               <div className="space-y-3">
                 <p className="text-sm font-bold text-gray-900 mb-3">Review your class</p>
 
@@ -420,7 +483,7 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
                     </p>
                     <p className="text-sm text-gray-600">{formatTime12(startTime)} – {computeEndTime(startTime, effectiveDuration)} · {effectiveDuration} min</p>
                   </div>
-                  <button type="button" onClick={() => setStep(2)} className="text-sm font-semibold flex-shrink-0" style={{ color: '#199356', background: 'none', border: 'none', cursor: 'pointer' }}>Edit</button>
+                  <button type="button" onClick={() => setStep(3)} className="text-sm font-semibold flex-shrink-0" style={{ color: '#199356', background: 'none', border: 'none', cursor: 'pointer' }}>Edit</button>
                 </div>
 
                 <div className="flex items-start gap-2 p-3 bg-emerald-50 rounded-lg text-[11px] text-emerald-800 leading-relaxed mt-1">
@@ -436,11 +499,11 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
             {step === 1 ? (
               <button type="button" onClick={onClose} className="flex-1 border border-gray-200 text-gray-700 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors">Cancel</button>
             ) : (
-              <button type="button" onClick={() => { setStep((p) => Math.max(1, p - 1) as 1 | 2 | 3); setError(''); }}
+              <button type="button" onClick={() => { setStep((p) => Math.max(1, p - 1) as 1 | 2 | 3 | 4); setError(''); }}
                 className="flex-1 border border-gray-200 text-gray-700 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors">Back</button>
             )}
             {step < 3 ? (
-              <button type="button" onClick={() => { setError(''); setStep((p) => Math.min(3, p + 1) as 1 | 2 | 3); }} disabled={!canProceed()}
+              <button type="button" onClick={() => { setError(''); setStep((p) => Math.min(4, p + 1) as 1 | 2 | 3 | 4); }} disabled={!canProceed()}
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white py-2.5 rounded-xl text-sm font-semibold transition-colors">Next</button>
             ) : (
               <button type="button" onClick={handleSubmit} disabled={submitting}
