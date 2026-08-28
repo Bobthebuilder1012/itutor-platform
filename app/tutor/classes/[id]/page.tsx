@@ -2907,7 +2907,8 @@ function SchedulePicker({ entries, onChange }: { entries: ScheduleEntry[]; onCha
       <div className="text-sm font-semibold text-ink">Schedule</div>
       <p className="text-xs text-muted-foreground -mt-1">
         Add your recurring sessions. Students see this on the marketplace, and a class without a
-        schedule isn&rsquo;t listed at all.
+        schedule isn&rsquo;t listed at all. Saving also puts these on your Sessions tab, so join
+        links, reminders and attendance start working.
       </p>
 
       {/* The requirement, stated where it is acted on. A listing that cannot say
