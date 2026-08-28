@@ -6,7 +6,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft, Users, UserPlus, Copy, Check, Star, MapPin,
   Bell, X, Plus, ExternalLink, Trash2, Globe, Eye,
-  Video, MoreVertical, Pin, Sparkles, Link as LinkIcon, Paperclip, UploadCloud, AlertTriangle, ShieldAlert,
+  ListChecks, Video, MoreVertical, Pin, Sparkles, Link as LinkIcon, Paperclip, UploadCloud, AlertTriangle, ShieldAlert,
   Mail, MessageSquare, DollarSign, BarChart3, ArrowUp, ArrowDown, Lock,
   Calendar as CalendarIcon, BookOpen, Ban, Repeat, Clock, Info, ArrowUpRight, ChevronRight,
   RefreshCw,
@@ -113,6 +113,7 @@ const URL_LINE_RE = /^https?:\/\/\S+$/;
 // this page is one of the two callers it was written for.
 import type { ClassFormat } from '@/lib/utils/seatCapacity';
 import InPersonSection, { type InPersonDraft } from '@/components/tutor/classes/InPersonSection';
+import PaymentsGrid from '@/components/tutor/classes/PaymentsGrid';
 
 type GroupDetail = {
   id: string;
@@ -565,7 +566,7 @@ function ClassHubContent() {
           {tab === 'stream'    && <StreamTab group={group} posts={posts} setPosts={setPosts} />}
           {tab === 'sessions'  && <SessionsTab sessions={sessions} groupId={group.id} setSessions={setSessions} meetingLink={group.meetingLink ?? ''} reconnected={reconnectedFromOAuth} />}
           {tab === 'roster'    && <RosterTab members={members} setMembers={setMembers} group={group} isOneOnOne={isOneOnOne} atCapacity={atCapacity} onRefresh={() => fetchAll(group.id)} />}
-          {tab === 'payments'  && <PaymentsTab members={members} group={group} />}
+          {tab === 'payments'  && <PaymentsGrid groupId={group.id} />}
           {tab === 'settings'  && <SettingsTab group={group} setGroup={setGroup} isOneOnOne={isOneOnOne} onDirtyChange={setSettingsDirty} enrolledCount={enrolledCount} />}
           {tab === 'analytics' && !isOneOnOne && <AnalyticsTab group={group} members={members} />}
         </div>
@@ -937,6 +938,10 @@ function SessionRow({ s, groupId, meetingLink, selected, onSelect, onCancel, rec
   const valid = !isNaN(d.getTime());
   const durationMin = s.durationMin ?? 60;
   const durLabel = durationMin < 60 ? `${durationMin}m` : durationMin % 60 === 0 ? `${durationMin / 60}hr` : `${Math.floor(durationMin / 60)}h ${durationMin % 60}m`;
+  // The register is only offered once the session has begun. A "Take
+  // attendance" button on a class three weeks away is noise, and worse, it
+  // invites a sheet to be filled in before anybody is in the room.
+  const hasStarted = valid && d.getTime() <= Date.now();
   const [cancelling, setCancelling] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [joiningLink, setJoiningLink] = useState(false);
@@ -999,6 +1004,13 @@ function SessionRow({ s, groupId, meetingLink, selected, onSelect, onCancel, rec
         <div className="flex flex-1 items-center gap-2 flex-wrap" />
 
         <div className="flex items-center gap-2 shrink-0">
+          {hasStarted && (
+            <Link
+              href={`/tutor/classes/${groupId}/sessions/${s.id}/attendance`}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border text-ink text-xs font-semibold hover:bg-muted transition">
+              <ListChecks className="size-3.5" /> Attendance
+            </Link>
+          )}
           <button
             onClick={handleJoin}
             disabled={joiningLink}
@@ -2098,82 +2110,6 @@ function RosterRow({ m, groupId, onUpdate, onRemoved, externalChannels }: { m: G
         billing={billing}
       />
     </>
-  );
-}
-
-/* ----------- Payments ----------- */
-const PAYMENT_PERIODS = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'] as const;
-
-function PaymentsTab({ members, group }: { members: GroupMember[]; group: GroupDetail }) {
-  const visible = members.filter((m) => m.status !== 'removed');
-  const outstanding = members.reduce((s, m) => s + (m.paymentStatus === 'overdue' ? (m.outstandingTtd ?? 0) : 0), 0);
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h2 className="text-lg font-bold text-ink">Payments</h2>
-          <p className="text-xs text-muted-foreground">Track every member × period in one grid.</p>
-        </div>
-        <div className="rounded-xl border border-border bg-card px-4 py-2 text-sm">
-          <span className="text-emerald-700 font-bold">Collected {fmtTTD(group.earningsTtd ?? 0)}</span>
-          <span className="text-muted-foreground mx-2">vs</span>
-          <span className={cn('font-bold', outstanding > 0 ? 'text-rose-700' : 'text-muted-foreground')}>
-            Outstanding {fmtTTD(outstanding)}
-          </span>
-        </div>
-      </div>
-
-      {visible.length === 0 ? (
-        <EmptyState icon={DollarSign} title="No members to bill" body="Once members join, you'll see a status chip per period here." />
-      ) : (
-        <div className="rounded-2xl border border-border bg-card overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="text-left font-bold px-4 py-2 sticky left-0 bg-muted/40">Member</th>
-                {PAYMENT_PERIODS.map((c) => <th key={c} className="text-center font-bold px-3 py-2">{c}</th>)}
-                <th className="text-right font-bold px-4 py-2">Outstanding</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {visible.map((m) => (
-                <tr key={m.studentId}>
-                  <td className="px-4 py-3 sticky left-0 bg-card">
-                    <div className="flex items-center gap-2">
-                      <div className="size-7 rounded-full bg-gradient-to-br from-brand to-emerald-400 grid place-items-center text-[10px] font-bold text-white">
-                        {m.name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
-                      </div>
-                      <span className="font-semibold text-ink">{m.name}</span>
-                    </div>
-                  </td>
-                  {PAYMENT_PERIODS.map((_, pi) => {
-                    const seed = (members.indexOf(m) * 7 + pi * 3) % 11;
-                    const status = m.paymentStatus === 'overdue' && pi >= PAYMENT_PERIODS.length - 2 ? 'overdue'
-                      : m.paymentStatus === 'pending' && pi === PAYMENT_PERIODS.length - 1 ? 'due'
-                      : seed === 0 ? 'waived' : 'paid';
-                    const chip = status === 'paid' ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
-                      : status === 'due' ? 'bg-amber-100 text-amber-800 border-amber-200'
-                      : status === 'overdue' ? 'bg-rose-100 text-rose-700 border-rose-200'
-                      : 'bg-slate-100 text-slate-600 border-slate-200';
-                    return (
-                      <td key={pi} className="px-2 py-2 text-center">
-                        <span className={cn('inline-block px-2 py-1 rounded-md border text-[10px] font-bold uppercase tracking-wider', chip)}>
-                          {status === 'paid' ? 'Paid' : status === 'due' ? 'Due' : status === 'overdue' ? 'Overdue' : 'Waived'}
-                        </span>
-                      </td>
-                    );
-                  })}
-                  <td className="px-4 py-3 text-right font-semibold tabular-nums">
-                    {m.paymentStatus === 'overdue' ? <span className="text-rose-600">TTD {(m.outstandingTtd ?? 0).toLocaleString()}</span> : <span className="text-muted-foreground">—</span>}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
   );
 }
 
