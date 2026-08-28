@@ -17,25 +17,56 @@ export async function GET(_req: NextRequest) {
 
     const admin = getServiceClient();
 
-    const { data, error } = await admin
-      .from('group_enrollments')
-      .select(`
-        id, group_id, status, payment_status,
-        plan_price_ttd, original_price_ttd, discount_percent,
+    // Two tiers. The seat and format columns arrive in migration 242, and a
+    // missing column fails the WHOLE select — which here would show a
+    // student no subscriptions at all rather than subscriptions without a
+    // seat control.
+    const SUB_TAIL = `
         current_period_start, current_period_end,
         next_payment_due_at, grace_period_ends_at,
         cancel_at_period_end, cancelled_at,
         last_paid_at, reminder_count,
         pending_payment_expires_at,
         enrolled_at, updated_at,
+      `;
+    const GROUP_BASE = `
         group:groups!group_id (
           id, name, cover_image, subject, tutor_id,
           tutor:profiles!tutor_id ( id, full_name, avatar_url )
         )
-      `)
-      .eq('student_id', user.id)
-      .eq('enrollment_type', 'SUBSCRIPTION')
-      .order('enrolled_at', { ascending: false });
+      `;
+    const GROUP_FULL = `
+        group:groups!group_id (
+          id, name, cover_image, subject, tutor_id,
+          class_format, price_online_ttd, price_physical_ttd,
+          venue:venues(id, name, region:regions(id, name)),
+          tutor:profiles!tutor_id ( id, full_name, avatar_url )
+        )
+      `;
+    const HEAD_FULL = `
+        id, group_id, status, payment_status, seat_type, billing_provider,
+        plan_price_ttd, original_price_ttd, discount_percent,`;
+    const HEAD_BASE = `
+        id, group_id, status, payment_status,
+        plan_price_ttd, original_price_ttd, discount_percent,`;
+
+    let data: any[] | null = null;
+    let error: any = null;
+    for (const cols of [
+      HEAD_FULL + SUB_TAIL + GROUP_FULL,
+      HEAD_BASE + SUB_TAIL + GROUP_BASE,
+    ]) {
+      const res = await admin
+        .from('group_enrollments')
+        .select(cols)
+        .eq('student_id', user.id)
+        .eq('enrollment_type', 'SUBSCRIPTION')
+        .order('enrolled_at', { ascending: false });
+      if (!res.error) { data = (res.data ?? []) as any[]; error = null; break; }
+      error = res.error;
+      const missing = String(res.error.code) === '42703' || String(res.error.code) === 'PGRST204';
+      if (!missing) break;
+    }
 
     if (error) throw error;
 
