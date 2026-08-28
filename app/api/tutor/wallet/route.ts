@@ -403,6 +403,33 @@ export async function GET() {
     );
   }
 
+  // What the tutor owes iTutor. This was a hardcoded `[]` while the page
+  // that renders it was already built — so a tutor carrying a real debt saw
+  // nothing, right up until a payout batch quietly took it. Cash makes that
+  // routine rather than rare: the platform never receives a cash payment and
+  // so cannot withhold its share of one (migration 249).
+  let pendingDeductions: any[] = [];
+  try {
+    const { data: deductions, error: deductionsError } = await admin
+      .from('tutor_deductions')
+      .select('id, amount_ttd, reason, status, created_at, source_enrollment_id, source_subscription_payment_id')
+      .eq('tutor_id', user.id)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+    if (deductionsError) {
+      console.error('[wallet] deductions read failed:', deductionsError.message);
+    } else {
+      pendingDeductions = deductions ?? [];
+    }
+  } catch (err) {
+    // Never fail the wallet over the debt block. A tutor who cannot see their
+    // earnings at all is worse off than one who cannot see what they owe.
+    console.error('[wallet] deductions threw:', err);
+  }
+
+  const pendingDeductionsTtd =
+    Math.round(pendingDeductions.reduce((sum, d) => sum + (Number(d.amount_ttd) || 0), 0) * 100) / 100;
+
   return NextResponse.json({
     balances: {
       pending_ttd:       Math.round((pending + unprocessedPending) * 100) / 100,
@@ -410,12 +437,16 @@ export async function GET() {
       lifetime_paid_ttd: Math.round(lifetimePaid * 100) / 100,
       held_ttd:          Math.round(heldTtd * 100) / 100,
       last_updated:      balanceRow?.last_updated ?? null,
+      // A separate figure, never netted off the others here. The payout
+      // batch is what actually recovers it, and showing an already-net
+      // balance would make the debt invisible at the moment it matters.
+      pending_deductions_ttd: pendingDeductionsTtd,
     },
     // A slice OF pending_ttd, not an addition to it. The admin payments
     // overview has already double-counted once by adding a term to a total
     // that contained it; this is explicitly labelled to stop that repeating.
     secured_held: securedHeld,
-    pending_deductions: [],
+    pending_deductions: pendingDeductions,
     history,
   });
 }

@@ -378,7 +378,7 @@ function WalletContent() {
                   <div key={d.id} className="flex items-center justify-between text-sm bg-white rounded-xl px-4 py-2.5 border border-red-100">
                     <div>
                       <div className="font-medium text-red-800">
-                        {d.reason === 'student_removal_refund' ? 'Student removal refund' : d.reason === 'chargeback' ? 'Chargeback' : 'Admin deduction'}
+                        {d.reason === 'student_removal_refund' ? 'Student removal refund' : d.reason === 'chargeback' ? 'Chargeback' : d.reason === 'cash_commission' ? 'iTutor share of a cash payment' : 'Admin deduction'}
                       </div>
                       <div className="text-xs text-red-500 mt-0.5">{new Date(d.created_at).toLocaleDateString('en-TT', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
                     </div>
