@@ -31,8 +31,11 @@ import {
   streamChat,
   isAiProviderConfigured,
   estimateCostCents,
+  ProviderTransientError,
   type ChatTurn,
+  type StreamResult,
 } from '@/lib/ai/provider';
+import { checkHourlyLimit } from '@/lib/services/aiRateLimit';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -43,11 +46,35 @@ const HISTORY_TURNS = 20;
 /** How many recent artifacts to summarise into the grounding block. */
 const ARTIFACT_LIMIT = 8;
 
-function jsonError(message: string, status: number) {
-  return new Response(JSON.stringify({ error: message }), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  });
+function jsonError(
+  message: string,
+  status: number,
+  extra?: { code?: string; retryAfterSeconds?: number }
+) {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (extra?.retryAfterSeconds) headers['Retry-After'] = String(extra.retryAfterSeconds);
+  return new Response(JSON.stringify({ error: message, ...extra }), { status, headers });
+}
+
+/**
+ * Open the stream, retrying once on a transient failure.
+ *
+ * Rate limits apply on every tier, not only the free one, so a burst of tutors
+ * on a Sunday evening hits 429 regardless of billing. One short retry absorbs
+ * the common case — a brief per-minute ceiling — without making a genuinely
+ * exhausted quota take even longer to report.
+ *
+ * Only before the first token. Once text is on screen a retry would restart the
+ * reply over the top of what the tutor is already reading.
+ */
+async function openStreamWithRetry(history: ChatTurn[], system: string): Promise<StreamResult> {
+  try {
+    return await streamChat(history, { system, temperature: 0.6 });
+  } catch (error) {
+    if (!(error instanceof ProviderTransientError)) throw error;
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    return streamChat(history, { system, temperature: 0.6 });
+  }
 }
 
 /**
@@ -143,6 +170,17 @@ export async function POST(request: NextRequest) {
     return jsonError('Not found', 404);
   }
 
+  // The bound on an unbilled surface. Chat costs money but spends no credit,
+  // so without this nothing stops a runaway client.
+  const rate = await checkHourlyLimit(user.id, 'CHAT');
+  if (!rate.allowed) {
+    return jsonError(
+      `That is ${rate.limit} messages in an hour. Give it a few minutes and carry on.`,
+      429,
+      { code: 'RATE_LIMITED', retryAfterSeconds: rate.retryAfterSeconds }
+    );
+  }
+
   const { data: priorRows } = await service
     .from('ai_messages')
     .select('role, content')
@@ -183,10 +221,18 @@ something about this tutor's students, say so.
 
 ${grounding}`;
 
-  let result;
+  let result: StreamResult;
   try {
-    result = await streamChat(history, { system, temperature: 0.6 });
+    result = await openStreamWithRetry(history, system);
   } catch (error) {
+    // A provider rate limit is not a fault the tutor caused and should not read
+    // like one. Say what it is, and when to come back.
+    if (error instanceof ProviderTransientError) {
+      return jsonError('iTutor AI is busy right now. Try that again in a moment.', 429, {
+        code: 'PROVIDER_BUSY',
+        retryAfterSeconds: 30,
+      });
+    }
     const detail = error instanceof Error ? error.message : 'Chat failed';
     return jsonError(detail, 502);
   }
@@ -203,8 +249,16 @@ ${grounding}`;
         }
       } catch (error) {
         // Surface the break in-band; the client is already rendering text and
-        // a silent truncation would read as a complete answer.
-        controller.enqueue(encoder.encode('\n\n[The reply was cut short.]'));
+        // a silent truncation would read as a complete answer. Too late to
+        // retry — that would restart the reply over what is already on screen.
+        const busy = error instanceof ProviderTransientError;
+        controller.enqueue(
+          encoder.encode(
+            busy
+              ? '\n\n[Cut short — iTutor AI is busy. Ask again in a moment.]'
+              : '\n\n[The reply was cut short.]'
+          )
+        );
         console.error('[ai/chat] stream broke:', error);
       } finally {
         controller.close();
