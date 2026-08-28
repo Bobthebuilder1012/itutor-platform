@@ -7,6 +7,7 @@ import {
   getAdminHomePath,
   isEmailManagementOnlyAdmin,
 } from '@/lib/auth/adminAccess';
+import { isSameOriginPath } from '@/lib/utils/safeRedirect';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,11 +27,7 @@ export async function GET(request: NextRequest) {
   // sends a freshly-authenticated visitor off-site.
   const requestedRedirect = requestUrl.searchParams.get('redirect') ?? next;
   const safeRedirect =
-    requestedRedirect &&
-    requestedRedirect.startsWith('/') &&
-    !requestedRedirect.startsWith('//')
-      ? requestedRedirect
-      : null;
+    requestedRedirect && isSameOriginPath(requestedRedirect) ? requestedRedirect : null;
 
   /** Terminal destination: the visitor's target if we have one, else the default. */
   const finalDest = (fallback: string) => safeRedirect ?? fallback;

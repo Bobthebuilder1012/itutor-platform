@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getServiceClient } from '@/lib/supabase/server';
 import { createHash } from 'crypto';
 import { isParentAccountsEnabled, PARENT_ACCOUNTS_DISABLED_MESSAGE } from '@/lib/featureFlags/parentAccounts';
+import { getRequestAttribution, track } from '@/lib/analytics/track';
+import { PRODUCT_EVENTS } from '@/lib/analytics/events';
 
 export const dynamic = 'force-dynamic';
 
@@ -110,6 +112,12 @@ export async function POST(req: Request) {
       );
     }
 
+    // Stamp the campaign that produced this account (Find Your iTutor plan
+    // §2.1). Read from the httpOnly cookies middleware wrote on the landing
+    // page, never from the request body — attribution the client can name is
+    // attribution the payment reports in §7.2 cannot be trusted on.
+    const { attribution, anonId } = await getRequestAttribution();
+
     // Upsert profile
     const { error: profileError } = await supabase.from('profiles').upsert(
       {
@@ -122,6 +130,9 @@ export async function POST(req: Request) {
         country,
         terms_accepted: true,
         terms_accepted_at: new Date().toISOString(),
+        first_touch: attribution,
+        last_touch: attribution,
+        signup_ref: attribution?.ref ?? null,
       },
       { onConflict: 'id' },
     );
@@ -133,6 +144,14 @@ export async function POST(req: Request) {
 
     // Clean up verification code
     await supabase.from('verification_codes').delete().eq('id', codeRow.id);
+
+    // First event in the funnel that carries a user_id. track() swallows its
+    // own failures, so this cannot fail a registration.
+    await track(
+      PRODUCT_EVENTS.SIGNUP_COMPLETED,
+      { role: role as string },
+      { userId: authData.user.id, anonId, attribution },
+    );
 
     return NextResponse.json({
       success: true,

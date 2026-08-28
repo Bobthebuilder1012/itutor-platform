@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { StudentStoreProvider } from '@/lib/student-store';
+import CampaignCta from '@/components/classMatchWeek/CampaignCta';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import dynamic from 'next/dynamic';
@@ -36,6 +37,15 @@ type NavItem = {
   exact?: boolean;
   tint: string;
 };
+
+/**
+ * The default student navigation. Exported as a type so a section of the site
+ * that is still "the student experience" — Class Match Week — can supply its
+ * own destinations without reimplementing the sidebar, the mobile bottom bar,
+ * the collapse behaviour or the profile menu. Passing nothing keeps every
+ * existing student page exactly as it was.
+ */
+export type { NavItem as StudentNavItem };
 
 const nav: NavItem[] = [
   { to: '/student/dashboard', label: 'Home', icon: LayoutDashboard, exact: true, tint: 'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-400/30' },
@@ -115,7 +125,8 @@ function ProfileMenu({ collapsed, displayName, initials, roleLabel, avatarUrl }:
   );
 }
 
-function ShellInner({ children }: { children: ReactNode }) {
+function ShellInner({ children, navItems }: { children: ReactNode; navItems: NavItem[] }) {
+  const nav = navItems;
   const pathname = usePathname();
   const router = useRouter();
   const { profile } = useProfile();
@@ -125,7 +136,19 @@ function ShellInner({ children }: { children: ReactNode }) {
   const displayName = profile?.display_name || profile?.full_name?.split(' ')[0] || 'Student';
   const fullName = profile?.full_name || profile?.display_name || 'Student';
   const initials = fullName.slice(0, 2).toUpperCase();
-  const roleLabel = 'Student';
+
+  /**
+   * Read from the profile, not hard-coded.
+   *
+   * This shell is no longer student-only: CampaignShell reuses it for the Class
+   * Match Week portal precisely so the sidebar, profile menu, notifications and
+   * logout are not reimplemented — and the campaign is open to parents. A parent
+   * signing in there was shown their own name above the word "Student", which
+   * reads as the platform having mistaken who they are, on the one screen where
+   * a new parent is deciding whether to trust it.
+   */
+  const roleLabel =
+    profile?.role === 'parent' ? 'Parent' : profile?.role === 'tutor' ? 'Tutor' : 'Student';
 
   useEffect(() => {
     try {
@@ -203,8 +226,12 @@ function ShellInner({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto overflow-x-hidden">
-        {/* Top bar */}
-        <header className="sticky top-0 z-30 bg-background/90 backdrop-blur border-b border-border">
+        {/* Top bar. Opaque, not frosted — `bg-background/90` emitted no
+            background-color at all (the token is a bare var() with no
+            <alpha-value>, so Tailwind drops the modifier utility), leaving a
+            transparent bar whose backdrop-filter put it on its own composited
+            layer and painted it bright over any overlay scrim. See TutorShell. */}
+        <header className="sticky top-0 z-30 bg-background border-b border-border">
           <div className="flex items-center gap-3 px-4 lg:px-6 h-14">
             <Link href="/" className="lg:hidden">
               <Image src="/assets/logo/itutor-logo-light.png" alt="iTutor" width={90} height={24} className="h-7 w-auto object-contain" />
@@ -222,6 +249,11 @@ function ShellInner({ children }: { children: ReactNode }) {
               </div>
             </form>
 
+            {/* Campaign entry point. In the shell rather than on the dashboard
+                so it is reachable from every student page; it renders nothing
+                when no campaign is live, or once inside the campaign itself. */}
+            <CampaignCta />
+
             <div className="flex items-center gap-1">
               <Link href="/student/notifications" className="relative size-9 grid place-items-center rounded-full hover:bg-muted text-muted-foreground" title="Notifications">
                 <Bell className="size-4" />
@@ -237,8 +269,8 @@ function ShellInner({ children }: { children: ReactNode }) {
           {children}
         </main>
 
-        {/* Mobile bottom nav */}
-        <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-border bg-background/95 backdrop-blur">
+        {/* Mobile bottom nav. Opaque for the same reason as the header. */}
+        <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-border bg-background">
           <div className="grid grid-cols-5">
             {nav.slice(0, 5).map((item) => {
               const active = item.exact ? pathname === item.to : pathname.startsWith(item.to);
@@ -264,10 +296,17 @@ function ShellInner({ children }: { children: ReactNode }) {
   );
 }
 
-export function StudentShell({ children }: { children: ReactNode }) {
+export function StudentShell({
+  children,
+  navItems,
+}: {
+  children: ReactNode;
+  /** Override the sidebar destinations. Omit for the standard student nav. */
+  navItems?: NavItem[];
+}) {
   return (
     <StudentStoreProvider>
-      <ShellInner>{children}</ShellInner>
+      <ShellInner navItems={navItems ?? nav}>{children}</ShellInner>
     </StudentStoreProvider>
   );
 }

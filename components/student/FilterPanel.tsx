@@ -1,12 +1,28 @@
 'use client';
 
+import { DAY_FILTER_OPTIONS, TIME_BANDS, type TimeBand } from '@/lib/utils/scheduleFormat';
+
 export type GroupFiltersState = {
   subject: string;
   difficulty: '' | 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED';
   recurrenceType: '' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'NONE';
   minPrice: string;
   maxPrice: string;
+  /** Day-of-week indices, 0 = Sunday. Empty means no day filter. */
+  days: number[];
+  timeOfDay: TimeBand[];
 };
+
+function toggle<T>(list: T[], value: T): T[] {
+  return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
+}
+
+const chipClass = (active: boolean) =>
+  `rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+    active
+      ? 'border-emerald-500 bg-emerald-500 text-white'
+      : 'border-gray-300 bg-white text-gray-700 hover:border-emerald-400'
+  }`;
 
 export default function FilterPanel({
   filters,
@@ -75,6 +91,51 @@ export default function FilterPanel({
             className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
           />
         </div>
+      </div>
+
+      {/* Meets on — the filter that actually matters when fitting classes
+          around school and work. Only classes with a recurring schedule can
+          match, so one-off classes drop out while this is active. */}
+      <div className="mt-4 border-t border-gray-100 pt-4">
+        <p className="text-xs font-semibold text-gray-700">Meets on</p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {DAY_FILTER_OPTIONS.map((d) => {
+            const active = filters.days.includes(d.value);
+            return (
+              <button
+                key={d.value}
+                type="button"
+                aria-pressed={active}
+                aria-label={d.label}
+                onClick={() => onChange({ ...filters, days: toggle(filters.days, d.value) })}
+                className={chipClass(active)}
+              >
+                {d.short}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="mt-3">
+        <p className="text-xs font-semibold text-gray-700">Time of day</p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {TIME_BANDS.map((b) => {
+            const active = filters.timeOfDay.includes(b.value);
+            return (
+              <button
+                key={b.value}
+                type="button"
+                aria-pressed={active}
+                onClick={() => onChange({ ...filters, timeOfDay: toggle(filters.timeOfDay, b.value) })}
+                className={chipClass(active)}
+              >
+                {b.label}
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-2 text-[11px] text-gray-500">Class times are shown in AST (Trinidad &amp; Tobago).</p>
       </div>
     </div>
   );

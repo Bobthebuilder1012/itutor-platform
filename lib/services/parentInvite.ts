@@ -1,6 +1,6 @@
 import { getServiceClient } from '@/lib/supabase/server';
 import { sendEmail } from '@/lib/services/emailService';
-import { parentInviteEmailHtml } from '@/lib/services/parentInviteEmail';
+import { parentInviteEmail } from '@/lib/services/parentInviteEmail';
 
 type ServiceClient = ReturnType<typeof getServiceClient>;
 
@@ -15,10 +15,14 @@ export async function deliverInvite(
 
   const { data: childProfile } = await admin.from('profiles').select('email').eq('id', opts.childId).maybeSingle();
   if (childProfile?.email) {
+    // Subject, HTML and text all come from the one description, so the subject
+    // cannot drift from what the body says.
+    const email = parentInviteEmail({ parentName: opts.parentName, acceptUrl });
     await sendEmail({
       to: childProfile.email,
-      subject: `${opts.parentName} wants to connect as your parent/guardian on iTutor`,
-      html: parentInviteEmailHtml({ parentName: opts.parentName, acceptUrl }),
+      subject: email.subject,
+      html: email.html,
+      text: email.text,
     }).catch(() => {});
   }
 

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, Users, User as UserIcon, ChevronRight, Check, X,
-  Globe, Lock, DollarSign, Info,
+  Globe, Lock, DollarSign, Info, AlertTriangle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -33,7 +33,8 @@ function CreateClassContent() {
   const { profile } = useProfile();
   const [step, setStep] = useState<1 | 2>(1);
   const [type, setType] = useState<ClassType | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [submitting, setSubmitting] = useState<'PUBLISHED' | 'DRAFT' | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const [allSubjects, setAllSubjects] = useState<DbSubject[]>([]);
   const [subjectSearch, setSubjectSearch] = useState('');
@@ -92,14 +93,29 @@ function CreateClassContent() {
     setSubjectDropdownOpen(false);
   };
 
-  const handlePublish = async () => {
+  /**
+   * `status` decides whether this publishes or saves a draft.
+   *
+   * "Save as draft" used to call router.push and nothing else, so it discarded
+   * everything typed — the endpoint had no draft path to call (groups.status is
+   * NOT NULL DEFAULT 'PUBLISHED' and no insert set it). Both buttons now go
+   * through the same request; only the status differs.
+   *
+   * A draft still needs a name and an end date, because the endpoint requires
+   * both of every new class. Relaxing that for drafts would create rows that
+   * EndDateGate then blocks, which is the trap the duplicate-end-date bug came
+   * from.
+   */
+  const handleSubmit = async (status: 'PUBLISHED' | 'DRAFT') => {
     if (!profile?.id || !title.trim() || !endDate) return;
-    setSubmitting(true);
+    setSubmitting(status);
+    setSaveError(null);
     try {
       const res = await fetch('/api/groups', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          status,
           tutorId: profile.id,
           name: title,
           subject,
@@ -122,13 +138,18 @@ function CreateClassContent() {
       if (res.ok) {
         const data = await res.json();
         router.push(`/tutor/classes/${data.group?.id ?? data.id ?? ''}`);
-      } else {
-        router.push('/tutor/classes');
+        return;
       }
+      // Previously this navigated to /tutor/classes on failure, so a rejected
+      // save looked exactly like a successful one that had vanished — the tutor
+      // lost the form and was told nothing. The endpoint's messages are written
+      // for a person ("An end date is required..."), so show them.
+      const json = await res.json().catch(() => ({}));
+      setSaveError(json.error ?? 'We could not save this class — please try again.');
     } catch {
-      router.push('/tutor/classes');
+      setSaveError('We could not save this class — please check your connection and try again.');
     } finally {
-      setSubmitting(false);
+      setSubmitting(null);
     }
   };
 
@@ -330,18 +351,44 @@ function CreateClassContent() {
             <p className="text-xs text-muted-foreground">AI-drafted monthly reports reviewed and approved by you before being sent to parents. Available soon.</p>
           </Card>
 
+          {/*
+            * Stated here because this form never asks for a schedule — it is set
+            * afterwards, on the class page. Publishing therefore does NOT put the
+            * class on the marketplace on its own, and a tutor who is not told that
+            * reasonably assumes it did. On production 18 of 38 published classes
+            * have no schedule, which is what this gap produces.
+            */}
+          <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />
+            <p className="text-xs leading-relaxed text-amber-800">
+              <span className="font-semibold">One more step after this.</span> A class only appears
+              on the marketplace once it has a weekly schedule, and you add that on the class page
+              next. Until then students and parents can&rsquo;t find or enrol in it.
+            </p>
+          </div>
+
+          {saveError && (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 p-3">
+              <p className="text-sm text-rose-800">{saveError}</p>
+            </div>
+          )}
+
           <div className="flex justify-between items-center">
             <button onClick={() => setStep(1)} className="text-sm font-semibold text-muted-foreground hover:text-ink">← Back</button>
             <div className="flex items-center gap-2">
-              <button onClick={() => router.push('/tutor/classes')} className="px-4 py-2 rounded-lg border border-border text-sm font-semibold hover:bg-muted">
-                Save as draft
+              <button onClick={() => handleSubmit('DRAFT')} disabled={!!submitting || !title.trim() || !endDate}
+                className="px-4 py-2 rounded-lg border border-border text-sm font-semibold hover:bg-muted disabled:opacity-60">
+                {submitting === 'DRAFT' ? 'Saving…' : 'Save as draft'}
               </button>
-              <button onClick={handlePublish} disabled={submitting || !title.trim() || !endDate}
+              <button onClick={() => handleSubmit('PUBLISHED')} disabled={!!submitting || !title.trim() || !endDate}
                 className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand/90 disabled:opacity-60">
-                <Check className="size-4" /> {submitting ? 'Publishing…' : 'Publish Class'}
+                <Check className="size-4" /> {submitting === 'PUBLISHED' ? 'Publishing…' : 'Publish Class'}
               </button>
             </div>
           </div>
+          <p className="text-xs text-muted-foreground text-right -mt-3">
+            A draft is saved but not listed. You can publish it from the class page.
+          </p>
         </div>
       )}
     </div>

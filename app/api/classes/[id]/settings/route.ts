@@ -27,7 +27,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       groupId: classId,
       userId: user.id,
       email: user.email,
-      columns: 'whatsapp_link, google_classroom_link, feedback_mode, parent_feedback_price, primary_channel, meeting_link, visibility',
+      columns: 'whatsapp_link, google_classroom_link, feedback_mode, parent_feedback_price, primary_channel, meeting_link, visibility, secure_spot_enabled',
     });
     if (actor.notFound) return NextResponse.json({ ok: false, error: 'not_found' }, { status: 404 });
     if (!actor.authorized) return NextResponse.json({ ok: false, error: 'forbidden' }, { status: 403 });
@@ -77,8 +77,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     // Opening preorders lets the class take money before it has taught
     // anything, so eligibility is re-checked here rather than trusted from the
     // form. Turning it OFF is always allowed.
+    // Only re-check when preorders are actually being OPENED. This form resends
+    // every field on every save, so re-validating an unchanged `true` made the
+    // whole request 400 with a bare "already_started" the moment the class
+    // began — which is what stopped tutors editing capacity on a live class.
     if (input.secure_spot_enabled !== undefined) {
-      if (input.secure_spot_enabled === true) {
+      const alreadyOpen = (existing as any).secure_spot_enabled === true;
+      if (input.secure_spot_enabled === true && !alreadyOpen) {
         const allowed = await canOpenPreorders(service as any, classId);
         if (!allowed.ok) {
           return NextResponse.json(
@@ -109,28 +114,17 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
     if (updateError) throw updateError;
 
-    // Side effects: parent feedback mode transitions
-    const prevMode = existing.feedback_mode ?? 'off';
-    const newMode = resolvedFeedbackMode;
-
-    if (prevMode === 'off' && newMode !== 'off') {
-      // Enabling feedback: upsert feedback settings row
-      await service
-        .from('group_feedback_settings')
-        .upsert({ group_id: classId, enabled: true }, { onConflict: 'group_id' })
-        .select();
-    } else if (prevMode !== 'off' && newMode === 'off') {
-      // Disabling feedback: close active periods + disable settings
-      await service
-        .from('group_feedback_periods')
-        .update({ period_end: new Date().toISOString() })
-        .eq('group_id', classId)
-        .is('period_end', null);
-      await service
-        .from('group_feedback_settings')
-        .update({ enabled: false })
-        .eq('group_id', classId);
-    }
+    // The group_feedback_settings / group_feedback_periods side effects that used
+    // to run here are gone with those tables. The period-and-deadline model they
+    // served is replaced by the request-driven one in migrations 221/222, which
+    // has no per-class enable flag and no periods to open or close — a family
+    // asks, and the tutor answers or does not.
+    //
+    // groups.feedback_mode and groups.parent_feedback_price are still written
+    // above. They no longer drive any feedback behaviour and are inert pending a
+    // decision on the paid-feedback add-on they price (see §12.3); they are left
+    // alone here rather than silently dropped, because they are also read by the
+    // student and parent class pages to display pricing.
 
     await auditAdminOverride(actor, 'settings.update', { fields: Object.keys(updates) });
 

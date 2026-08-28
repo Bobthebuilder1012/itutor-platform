@@ -198,9 +198,18 @@ export async function GET(request: NextRequest) {
 
     const latestRequest = requests && requests.length > 0 ? requests[0] : null;
 
+    // Documents queue rather than replace each other, so "Latest request" alone
+    // under-reports what a tutor has waiting. Counted so the UI can say how many.
+    const { count: pendingCount } = await supabase
+      .from('tutor_verification_requests')
+      .select('id', { count: 'exact', head: true })
+      .eq('tutor_id', user.id)
+      .in('status', ['SUBMITTED', 'PROCESSING', 'READY_FOR_REVIEW']);
+
     return NextResponse.json({
       verificationStatus: profile.tutor_verification_status,
       verifiedAt: profile.tutor_verified_at,
+      pendingCount: pendingCount ?? 0,
       latestRequest: latestRequest
         ? {
             id: latestRequest.id,

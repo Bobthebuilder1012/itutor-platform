@@ -1,0 +1,20 @@
+{
+  "//": "ts-node config for the scripts/verify-*.ts checks. The root tsconfig excludes scripts/** and, being a Next.js config, omits baseUrl — which tsconfig-paths requires in order to resolve the @/* alias. Kept separate so nothing here can affect the Next build.",
+  "compilerOptions": {
+    "target": "ES2019",
+    "lib": ["esnext"],
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "downlevelIteration": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "baseUrl": "..",
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": ["./**/*.ts", "../lib/**/*.ts"]
+}

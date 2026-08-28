@@ -13,6 +13,7 @@
 import { type SupabaseClient } from '@supabase/supabase-js';
 import { getStripeClient } from '@/lib/payments/stripeClient';
 import { sendEmail } from '@/lib/services/emailService';
+import { renderEmail } from '@/lib/email/design';
 import {
   computeReleaseDate,
   firstUpcomingSession,
@@ -20,6 +21,8 @@ import {
   preorderReasonMessage,
 } from '@/lib/payments/secureSpot';
 import type { SessionPattern } from '@/lib/utils/scheduleFormat';
+import { trackForUser } from '@/lib/analytics/track';
+import { PRODUCT_EVENTS } from '@/lib/analytics/events';
 
 export interface ConfirmSecuredSpotParams {
   admin: SupabaseClient;
@@ -86,7 +89,9 @@ export async function confirmSecuredSpot(
 
   const { data: enrollment, error: enrErr } = await admin
     .from('group_enrollments')
-    .select('id, group_id, student_id, status')
+    // plan_price_ttd is read only so the `paid` event below can carry an
+    // amount. It is what secure_spot_claim wrote as the securing charge.
+    .select('id, group_id, student_id, status, plan_price_ttd')
     .eq('id', enrollmentId)
     .maybeSingle();
 
@@ -166,6 +171,24 @@ export async function confirmSecuredSpot(
       releaseDate,
       firstSession,
     });
+
+    // ── paid ──
+    // A secured spot IS a payment — the student's card is charged for the first
+    // month up front. Leaving it out of the revenue event would make the whole
+    // preorder cohort look like it converted for free, and preorders are
+    // currently the only path taking real money on production.
+    //
+    // Inside the transition guard for the same reason the email is: Stripe
+    // redelivers. The payment-intent id is also passed as the dedupe key, so the
+    // count survives a future refactor that moves this line outside the guard.
+    await trackForUser(
+      PRODUCT_EVENTS.PAID,
+      {
+        group_id: (enrollment as any).group_id,
+        amount: Number((enrollment as any).plan_price_ttd) || 0,
+      },
+      { userId: (enrollment as any).student_id, dedupeKey: `pi:${stripePaymentIntentId}` }
+    );
   }
 
   return {
@@ -228,22 +251,57 @@ export async function notifySpotSecured(args: {
 
     // ---- Tutor ----
     if ((tutor as any)?.email) {
+      // Family 05 — "tutor booking notice", which is what this is. The payout
+      // terms are a detail panel rather than a paragraph: a teacher's question
+      // is always how much and when, and both were previously bold words in the
+      // middle of a sentence.
+      const email = renderEmail({
+        family: 'booking-confirmation',
+        subject: `${studentName} secured a spot in ${className}`,
+        heading: 'A spot has been secured',
+        intro: `Hi ${(tutor as any).full_name ?? 'there'}, you have a new student.`,
+        eyebrow: 'Spot secured',
+        blocks: [
+          {
+            kind: 'details',
+            rows: [
+              { label: 'Student', value: studentName, strong: true },
+              { label: 'Class', value: className },
+              { label: 'Starts', value: fmt(firstSession) },
+            ],
+          },
+          ...(isFree
+            ? [
+                {
+                  kind: 'paragraph' as const,
+                  text: "This is a free class, so there's no payment involved — the place is simply reserved.",
+                },
+              ]
+            : [
+                {
+                  kind: 'details' as const,
+                  title: "When you'll be paid",
+                  tone: 'neutral' as const,
+                  rows: [
+                    { label: 'Held by iTutor', value: `TT$${heldTtd.toFixed(2)}`, strong: true },
+                    ...(releaseLabel
+                      ? [{ label: 'Released after', value: releaseLabel }]
+                      : [{ label: 'Released after', value: 'the first month is taught' }]),
+                  ],
+                },
+                {
+                  kind: 'paragraph' as const,
+                  text: `${studentName} paid for their first month up front. It is released with your next payout after that date, as long as the class runs as scheduled.`,
+                },
+              ]),
+        ],
+        cta: { label: 'View your class roster', href: `${appUrl}/tutor/classes/${group.id}` },
+      });
       await sendEmail({
         to: (tutor as any).email,
-        subject: `${studentName} secured a spot in ${className}`,
-        html: `
-          <p>Hi ${(tutor as any).full_name ?? 'there'},</p>
-          <p><strong>${studentName}</strong> has secured a spot in
-             <strong>${className}</strong>, which starts ${fmt(firstSession)}.</p>
-          ${isFree
-            ? `<p>This is a free class, so there's no payment involved — the place is simply reserved.</p>`
-            : `<p><strong>When you'll be paid.</strong> ${studentName} paid for their first
-                 month up front. iTutor holds <strong>TT$${heldTtd.toFixed(2)}</strong> until
-                 you've taught that first month${releaseLabel ? ` — for this class, that's <strong>${releaseLabel}</strong>` : ''}.
-                 It's released with your next payout after that date, as long as the class
-                 runs as scheduled.</p>`}
-          <p><a href="${appUrl}/tutor/classes/${group.id}">View your class roster</a></p>
-        `.trim(),
+        subject: email.subject,
+        html: email.html,
+        text: email.text,
       });
     }
 
@@ -262,23 +320,53 @@ export async function notifySpotSecured(args: {
 
     // ---- Student ----
     if ((student as any)?.email) {
+      const email = renderEmail({
+        family: 'booking-confirmation',
+        subject: `Your spot in ${className} is secured`,
+        heading: 'Your spot is secured',
+        intro: `Hi ${(student as any).full_name ?? 'there'}, your place is reserved.`,
+        eyebrow: 'Spot secured',
+        blocks: [
+          {
+            kind: 'details',
+            rows: [
+              { label: 'Class', value: className, strong: true },
+              { label: 'Classes start', value: fmt(firstSession) },
+              ...(isFree
+                ? [{ label: 'Cost', value: 'Free' }]
+                : [{ label: 'Paid for the first month', value: `TT$${paidTtd.toFixed(2)}` }]),
+            ],
+          },
+          ...(isFree
+            ? [{ kind: 'paragraph' as const, text: "This class is free — there's nothing to pay." }]
+            : [
+                {
+                  kind: 'notice' as const,
+                  title: 'Your payment is held until the class has been taught',
+                  body: "If the tutor cancels the class before it starts, you'll be refunded automatically.",
+                },
+                // The strongest sentence in this email. A family who thinks a
+                // second month is coming out automatically will not preorder
+                // again, so it gets its own panel rather than a clause.
+                ...(releaseLabel
+                  ? [
+                      {
+                        kind: 'notice' as const,
+                        tone: 'neutral' as const,
+                        title: `Your first month runs until ${releaseLabel}`,
+                        body: "We'll ask before then whether you'd like to continue. Nothing is charged automatically.",
+                      },
+                    ]
+                  : []),
+              ]),
+        ],
+        cta: { label: 'View your class', href: `${appUrl}/student/explore/${group.id}` },
+      });
       await sendEmail({
         to: (student as any).email,
-        subject: `Your spot in ${className} is secured`,
-        html: `
-          <p>Hi ${(student as any).full_name ?? 'there'},</p>
-          <p>Your place in <strong>${className}</strong> is reserved. Classes start
-             <strong>${fmt(firstSession)}</strong>.</p>
-          ${isFree
-            ? `<p>This class is free — there's nothing to pay.</p>`
-            : `<p>You paid <strong>TT$${paidTtd.toFixed(2)}</strong> for your first month.
-                 iTutor holds that payment until your first month has been taught. If the
-                 tutor cancels the class before it starts, you'll be refunded automatically.</p>
-               ${releaseLabel ? `<p>Your first month runs until <strong>${releaseLabel}</strong>.
-                 We'll ask before then whether you'd like to continue —
-                 <strong>nothing is charged automatically</strong>.</p>` : ''}`}
-          <p><a href="${appUrl}/student/explore/${group.id}">View your class</a></p>
-        `.trim(),
+        subject: email.subject,
+        html: email.html,
+        text: email.text,
       });
     }
 

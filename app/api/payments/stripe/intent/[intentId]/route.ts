@@ -112,7 +112,7 @@ export async function GET(
 
       const { data: sp } = await admin
         .from('subscription_payments')
-        .select('id, enrollment_id, group_id, student_id, amount_ttd, charged_processing_fee_ttd')
+        .select('id, enrollment_id, group_id, student_id, payer_id, amount_ttd, charged_processing_fee_ttd')
         .eq('stripe_payment_intent_id', intentId)
         .maybeSingle();
 
@@ -121,9 +121,16 @@ export async function GET(
       }
 
       // Authorize against our own row, since there's no metadata to trust.
-      // The payer may be a parent, so allow the enrolment's student or a
-      // caller who is that student.
-      if (sp.student_id !== user.id) {
+      //
+      // EITHER PARTY may open this checkout: the student it enrols, or the payer
+      // when that is someone else. The comment here already said "the payer may
+      // be a parent" but the check only ever compared student_id — so a parent
+      // paying for a child was sent to their own checkout page and shown
+      // "Forbidden". There was no payer column to compare against until
+      // migration 230; now there is.
+      //
+      // The 1:1 branch below has always allowed both. This is the same rule.
+      if (sp.student_id !== user.id && sp.payer_id !== user.id) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
 
@@ -133,7 +140,13 @@ export async function GET(
 
       const { data: group } = await admin
         .from('groups')
-        .select('id, name, tutor_id, session_length_minutes, end_date')
+        // cover_image / subject / form_level / description feed the class
+        // profile block on the checkout. schedule_data and session_schedule are
+        // deliberately NOT selected: they exist on production and not on
+        // staging, and PostgREST rejects the whole select for one unknown
+        // column — which would blank the checkout summary on staging. The
+        // schedule line comes from /api/groups/schedules instead.
+        .select('id, name, tutor_id, session_length_minutes, end_date, cover_image, subject, form_level, description, max_students')
         .eq('id', sp.group_id)
         .maybeSingle();
 
@@ -144,6 +157,19 @@ export async function GET(
             .eq('id', group.tutor_id)
             .maybeSingle()
         : { data: null };
+
+      // Only when the payer is someone else — a student paying for themself
+      // does not need to be told whose class it is.
+      let studentName: string | null = null;
+      if (sp.payer_id && sp.payer_id !== sp.student_id) {
+        const { data: st } = await admin
+          .from('profiles')
+          .select('full_name, display_name')
+          .eq('id', sp.student_id)
+          .maybeSingle();
+        const s = st as { full_name: string | null; display_name: string | null } | null;
+        studentName = s?.display_name || s?.full_name || null;
+      }
 
       const base = Number(sp.amount_ttd ?? 0);
       const fee = Number(sp.charged_processing_fee_ttd ?? 0);
@@ -169,6 +195,20 @@ export async function GET(
         subject: group?.name || 'Group class',
         groupId: sp.group_id,
         enrollmentId: sp.enrollment_id,
+        // The class as an object, so checkout can show WHAT is being bought
+        // rather than only what it costs.
+        classProfile: {
+          name: group?.name ?? 'Group class',
+          coverImage: (group as any)?.cover_image ?? null,
+          subject: (group as any)?.subject ?? null,
+          formLevel: (group as any)?.form_level ?? null,
+          description: (group as any)?.description ?? null,
+          maxStudents: (group as any)?.max_students ?? null,
+        },
+        // Who the seat is for, when that is not the person paying. A parent
+        // buying for two children needs the checkout to name which one — the
+        // page otherwise says "your class" about someone else's.
+        forStudent: studentName,
       });
     }
 

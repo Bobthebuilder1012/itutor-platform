@@ -1,5 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
+import {
+  ATTR_COOKIE,
+  LAST_COOKIE,
+  ANON_COOKIE,
+  ATTR_MAX_AGE,
+  ANON_MAX_AGE,
+  readAttributionFromUrl,
+  serializeAttribution,
+} from '@/lib/analytics/attribution';
 
 const PROTECTED_ADMIN_PATHS = ['/admin'];
 const PROTECTED_REVIEWER_PATHS = ['/reviewer'];
@@ -33,6 +42,75 @@ function isProtectedPath(pathname: string) {
   );
 }
 
+/**
+ * /r/[code] is a pure attribution redirect. The pending-feedback gate is
+ * skipped here so the campaign hop stays a single fast redirect; the gate
+ * still fires on the destination page, so nothing is bypassed.
+ */
+function isAttributionRedirectPath(pathname: string) {
+  return pathname === '/r' || pathname.startsWith('/r/');
+}
+
+// ---------------------------------------------------------------------------
+// Attribution (Find Your iTutor Build Plan §2.2)
+//
+// Cookies must be set before render so a server component on /find can read
+// them. This is deliberately not done client-side: a client-side write loses
+// the first hit on slow connections, which is exactly the traffic paid
+// campaigns buy.
+// ---------------------------------------------------------------------------
+
+interface PendingCookie {
+  name: string;
+  value: string;
+  maxAge: number;
+}
+
+function collectAttributionCookies(request: NextRequest): PendingCookie[] {
+  const pending: PendingCookie[] = [];
+  const attribution = readAttributionFromUrl(request.nextUrl);
+
+  if (attribution) {
+    const serialized = serializeAttribution(attribution);
+
+    // First touch only — never overwrite an existing itutor_attr.
+    if (!request.cookies.get(ATTR_COOKIE)) {
+      pending.push({ name: ATTR_COOKIE, value: serialized, maxAge: ATTR_MAX_AGE });
+    }
+
+    // Last touch is rewritten on every attributed visit.
+    pending.push({ name: LAST_COOKIE, value: serialized, maxAge: ATTR_MAX_AGE });
+  }
+
+  // Always ensure an anon id exists, attributed visit or not — it is what ties
+  // pre-signup landing events to the account that eventually registers.
+  if (!request.cookies.get(ANON_COOKIE)) {
+    pending.push({ name: ANON_COOKIE, value: crypto.randomUUID(), maxAge: ANON_MAX_AGE });
+  }
+
+  return pending;
+}
+
+/**
+ * Applied to every response this middleware can return, including redirects.
+ * A cookie set only on the NextResponse.next() path would be dropped on
+ * exactly the redirect flows campaign traffic goes through.
+ */
+function applyCookies(response: NextResponse, pending: PendingCookie[]) {
+  for (const cookie of pending) {
+    response.cookies.set({
+      name: cookie.name,
+      value: cookie.value,
+      maxAge: cookie.maxAge,
+      path: '/',
+      sameSite: 'lax',
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+    });
+  }
+  return response;
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -40,9 +118,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  const attributionCookies = collectAttributionCookies(request);
+
   // Block unauthenticated access to admin/reviewer routes at the server level
   if (isProtectedPath(pathname)) {
-    const response = NextResponse.next();
+    const response = applyCookies(NextResponse.next(), attributionCookies);
 
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -67,8 +147,12 @@ export async function middleware(request: NextRequest) {
     if (!user) {
       const loginUrl = new URL('/login', request.url);
       loginUrl.searchParams.set('next', pathname);
-      return NextResponse.redirect(loginUrl);
+      return applyCookies(NextResponse.redirect(loginUrl), attributionCookies);
     }
+  }
+
+  if (isAttributionRedirectPath(pathname)) {
+    return applyCookies(NextResponse.next(), attributionCookies);
   }
 
   // Feedback redirect check for authenticated pages
@@ -82,23 +166,25 @@ export async function middleware(request: NextRequest) {
     });
 
     if (!res.ok) {
-      return NextResponse.next();
+      return applyCookies(NextResponse.next(), attributionCookies);
     }
 
     const data = (await res.json().catch(() => ({}))) as { redirectTo?: string | null };
     const redirectTo = data?.redirectTo;
 
     if (redirectTo && pathname !== redirectTo) {
-      return NextResponse.redirect(new URL(redirectTo, request.url));
+      return applyCookies(
+        NextResponse.redirect(new URL(redirectTo, request.url)),
+        attributionCookies
+      );
     }
   } catch {
     // If the check fails, do not block navigation.
   }
 
-  return NextResponse.next();
+  return applyCookies(NextResponse.next(), attributionCookies);
 }
 
 export const config = {
   matcher: ['/((?!_next/static|_next/image).*)'],
 };
-

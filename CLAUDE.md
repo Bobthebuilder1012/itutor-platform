@@ -62,10 +62,16 @@ Key interfaces: `Profile` (with `role`, `tutor_verification_status`, `billing_mo
 
 ### Feature flags (`lib/featureFlags/`)
 
-Three flags read from env vars:
+Flags read from env vars:
 - `isPaidClassesEnabled()` — `PAID_CLASSES_ENABLED` (currently `false`)
 - `isCommunitiesArchived()`
 - `isGroupsFeatureEnabled()`
+- `isClassMatchWeekEnabled()` — `CLASS_MATCH_WEEK_ENABLED`. The campaign kill
+  switch. Enforced inside `getLiveCampaign()`, so `false` makes every Class
+  Match Week surface — top-bar countdown, dashboard banners, the teacher tab in
+  My Classes, the portal pages, all `/api/class-match` routes — behave as if no
+  campaign were running. Nothing is deleted; turning it back on restores the
+  same campaign, opt-ins, sessions, reservations and coupons.
 
 Check these before adding functionality tied to premium/gated features.
 
@@ -95,6 +101,7 @@ CRON_SECRET
 NEXT_PUBLIC_VAPID_PUBLIC_KEY   # Web push notifications
 TOKEN_ENCRYPTION_KEY           # For encrypting OAuth tokens
 PAID_CLASSES_ENABLED           # Feature flag (true/false)
+CLASS_MATCH_WEEK_ENABLED       # Class Match Week on/off (default true)
 ```
 
 Google OAuth and Zoom OAuth credentials are also required for those integrations.

@@ -18,7 +18,6 @@ import AddSessionModal from './AddSessionModal';
 import AddRecurringSessionModal from './AddRecurringSessionModal';
 import WhatsAppSetupTab from './WhatsAppSetupTab';
 import TutorStreamView from '../stream/TutorStreamView';
-import TutorFeedbackTab from './TutorFeedbackTab';
 import GroupAnalyticsTab from './GroupAnalyticsTab';
 import RemoveMemberModal from '@/components/RemoveMemberModal';
 import { occurrenceTitle } from '@/lib/utils/scheduleFormat';
@@ -385,7 +384,10 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
   const TABS: { id: Tab; label: string }[] = [
     { id: 'stream', label: 'Stream' },
     { id: 'sessions', label: 'Sessions' },
-    { id: 'feedback', label: 'Feedback' },
+    // The per-class Feedback tab is gone with the period-based system it drove.
+    // Feedback is no longer a property of a class: a family asks a TUTOR about a
+    // CHILD, across whatever they teach them (§8), so it lives on /tutor/feedback
+    // where 1:1 and group students appear in one roster.
     { id: 'whatsapp', label: 'WhatsApp' },
     { id: 'analytics', label: 'Analytics' },
   ];
@@ -1280,10 +1282,6 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
             </div>
           )}
 
-
-          {tab === 'feedback' && (
-            <TutorFeedbackTab groupId={group.id} memberCount={approvedMembers.filter((m) => m.profile?.role !== 'tutor' && m.user_id !== group.tutor_id).length} />
-          )}
 
           {tab === 'whatsapp' && (
             <WhatsAppSetupTab

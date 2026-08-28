@@ -143,6 +143,8 @@ export async function POST(
       throw updateError;
     }
 
+    // Earlier pending requests from this tutor are deliberately left alone:
+    // documents queue up and a reviewer decides each one on its own.
     console.log('✅ Verification processing complete:', {
       requestId,
       recommendation: recommendation.recommendation,

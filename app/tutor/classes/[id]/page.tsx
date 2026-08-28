@@ -100,6 +100,7 @@ type GroupSession = {
 
 import { type ScheduleEntry, formatScheduleEntry, scheduleToDisplay } from '@/lib/utils/scheduleFormat';
 import { preorderReasonMessage, type PreorderIneligibility } from '@/lib/payments/secureSpot';
+import ClassPausePanel from '@/components/tutor/ClassPausePanel';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -243,7 +244,11 @@ function ClassHubContent() {
         adminMode
           ? Promise.resolve({ data: adminGroupRow })
           : supabase.from('groups').select('*').eq('id', groupId).single(),
-        supabase.from('group_promotions').select('*').eq('group_id', groupId).eq('active', true).limit(1),
+        // `.is('user_id', null)` keeps this to class-level promotions. Personal
+        // coupons (migration 231) belong to one attendee; with `.limit(1)` here
+        // an unfiltered read could return a coupon instead of the real class
+        // promotion and misreport the class's own discount to its tutor.
+        supabase.from('group_promotions').select('*').eq('group_id', groupId).eq('active', true).is('user_id', null).limit(1),
       ]);
       const g = (groupRes as { data: any }).data;
       if (g) {
@@ -2163,6 +2168,11 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
   onDirtyChange: (dirty: boolean) => void;
   enrolledCount: number;
 }) {
+  // Capacity can be raised or lowered at any time, including on a class that
+  // has already started — but never below the seats already taken, since there
+  // is no rule for who would be dropped.
+  const capacityFloor = Math.max(2, enrolledCount);
+
   const gradients = [
     'from-orange-500 to-amber-400', 'from-fuchsia-500 to-purple-500', 'from-sky-500 to-cyan-400',
     'from-emerald-500 to-teal-400', 'from-rose-500 to-pink-400', 'from-indigo-500 to-blue-500',
@@ -2310,7 +2320,12 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
       });
       const settingsJson = await settingsRes.json().catch(() => ({}));
       if (!settingsRes.ok) {
-        const detail = settingsJson?.details?.[0]?.message ?? settingsJson?.error ?? `Save failed (${settingsRes.status})`;
+        // `error` is a machine code ("already_started", "validation_failed") —
+        // it surfaced raw in the red banner. Prefer the human `message`.
+        const detail = settingsJson?.details?.[0]?.message
+          ?? settingsJson?.message
+          ?? settingsJson?.error
+          ?? `Save failed (${settingsRes.status})`;
         throw new Error(detail);
       }
 
@@ -2475,18 +2490,31 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
                   This is a 1-on-1 class — capacity is fixed at 1.
                 </div>
               ) : (
-                <SetField label="Student limit" hint="Min 2 · Max 500.">
+                <SetField
+                  label="Student limit"
+                  // The floor is the seats already taken — the server enforces
+                  // the same rule, so saying it here saves a rejected save.
+                  hint={capacityFloor > 2
+                    ? `Min ${capacityFloor} (students already enrolled) · Max 500.`
+                    : 'Min 2 · Max 500.'}
+                >
                   <div className="inline-flex items-center gap-2">
-                    <button onClick={() => d('capacity', Math.max(2, draft.capacity - 1))}
-                      className="size-9 grid place-items-center rounded-lg border border-border hover:bg-muted text-lg font-semibold">−</button>
+                    <button onClick={() => d('capacity', Math.max(capacityFloor, draft.capacity - 1))}
+                      disabled={draft.capacity <= capacityFloor}
+                      className="size-9 grid place-items-center rounded-lg border border-border hover:bg-muted text-lg font-semibold disabled:opacity-40 disabled:hover:bg-transparent">−</button>
                     <input
-                      type="number" value={draft.capacity} min={2} max={500}
-                      onChange={(e) => d('capacity', Math.max(2, Math.min(500, Number(e.target.value))))}
+                      type="number" value={draft.capacity} min={capacityFloor} max={500}
+                      onChange={(e) => d('capacity', Math.max(capacityFloor, Math.min(500, Number(e.target.value))))}
                       className="w-20 text-center px-3 py-2 rounded-lg border border-border bg-background text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-brand"
                     />
                     <button onClick={() => d('capacity', Math.min(500, draft.capacity + 1))}
                       className="size-9 grid place-items-center rounded-lg border border-border hover:bg-muted text-lg font-semibold">+</button>
                   </div>
+                  {capacityFloor > 2 && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      To go below {capacityFloor}, remove a student from the Students tab first.
+                    </p>
+                  )}
                 </SetField>
               )}
             </>
@@ -2615,6 +2643,12 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
             <>
               <SettingsHead title="Danger zone" desc="Irreversible actions. Double-check before confirming." tone="danger" />
               <div className="space-y-3">
+                {/* Pausing is reversible, unlike everything else in this section,
+                    and the panel says so. It lives here because of who it
+                    affects: it stops billing and moves the renewal date for every
+                    enrolled family at once. */}
+                <ClassPausePanel classId={group.id} />
+
                 <button onClick={() => { setDeleteOpen(true); setDeleteConfirmText(''); setDeleteReason(''); setDeleteError(''); }}
                   className="w-full flex items-start gap-3 rounded-xl border border-rose-200 bg-background px-4 py-3 text-left hover:bg-rose-50 transition-colors">
                   <Trash2 className="size-4 mt-0.5 text-rose-600" />
@@ -2708,7 +2742,24 @@ function SchedulePicker({ entries, onChange }: { entries: ScheduleEntry[]; onCha
   return (
     <div className="space-y-3">
       <div className="text-sm font-semibold text-ink">Schedule</div>
-      <p className="text-xs text-muted-foreground -mt-1">Add your recurring sessions. Students see this on the marketplace.</p>
+      <p className="text-xs text-muted-foreground -mt-1">
+        Add your recurring sessions. Students see this on the marketplace, and a class without a
+        schedule isn&rsquo;t listed at all.
+      </p>
+
+      {/* The requirement, stated where it is acted on. A listing that cannot say
+          when the class meets is an invitation to enrol in an unstated time, so
+          the marketplace filters these out rather than showing them half-formed. */}
+      {entries.length === 0 && (
+        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />
+          <p className="text-xs leading-relaxed text-amber-800">
+            <span className="font-semibold">This class isn&rsquo;t on the marketplace yet.</span>{' '}
+            Students and parents can&rsquo;t find or enrol in it until it has a weekly schedule. Add
+            one below and it&rsquo;s listed straight away.
+          </p>
+        </div>
+      )}
 
       {entries.length > 0 && (
         <div className="space-y-2">
@@ -3147,6 +3198,8 @@ function MomCard({ label, value, positive }: { label: string; value: string; pos
   );
 }
 
+// For absolute figures. Deliberately has no arrow — a count is not a trend,
+// and MomCard's arrow made "3 members" read as "up".
 function StatCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="rounded-2xl bg-card border border-border p-4">

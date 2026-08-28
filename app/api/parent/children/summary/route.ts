@@ -14,7 +14,9 @@ export async function GET(_request: NextRequest) {
     if (childIds.length === 0) return NextResponse.json({ children: [] });
 
     const [{ data: profiles }, { data: mems }] = await Promise.all([
-      admin.from('profiles').select('id, full_name, display_name').in('id', childIds),
+      // form_level added for §5's child picker: showing the level on the chip
+      // lets a parent spot a mismatch before the confirmation warns them.
+      admin.from('profiles').select('id, full_name, display_name, form_level').in('id', childIds),
       admin.from('group_members').select('user_id, status').in('user_id', childIds),
     ]);
 
@@ -30,6 +32,7 @@ export async function GET(_request: NextRequest) {
       return {
         id: p.id,
         name: p.display_name || p.full_name || 'Child',
+        form_level: p.form_level ?? null,
         activeClasses: statuses.filter((s) => s === 'approved' || s === 'active').length,
         pendingCount: statuses.filter((s) => s === 'pending').length,
       };

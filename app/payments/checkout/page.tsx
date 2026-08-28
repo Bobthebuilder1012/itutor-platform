@@ -51,6 +51,18 @@ type Summary = {
   releaseDate?: string | null;
   /** Class finishes inside the first month: one-time purchase, nothing after. */
   shortClass?: boolean;
+  /** The class being bought — so checkout says WHAT, not only how much. */
+  classProfile?: {
+    name: string;
+    coverImage: string | null;
+    subject: string | null;
+    formLevel: string | null;
+    description: string | null;
+    maxStudents: number | null;
+  } | null;
+  /** Named when the payer is not the student (a parent buying for a child). */
+  forStudent?: string | null;
+  groupId?: string | null;
 };
 
 export default function PaymentCheckout() {
@@ -66,9 +78,35 @@ export default function PaymentCheckout() {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // The payer is not always a student. Every "get me out of here" link on this
+  // page pointed at /student/*, which for a parent is a route AuthProvider
+  // bounces them straight back out of — so a failed checkout dead-ended.
+  const [role, setRole] = useState<string | null>(null);
+  // Checkout waits for this. The role arrives asynchronously, and an
+  // already-paid intent redirects on the very first pass — without the gate a
+  // parent would be sent to /student/bookings before their role was known.
+  const [roleLoaded, setRoleLoaded] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      // A signed-out visitor still has to stop waiting, or the page spins.
+      if (!user) { setRoleLoaded(true); return; }
+      const { data } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle();
+      setRole((data as { role: string | null } | null)?.role ?? null);
+      setRoleLoaded(true);
+    })();
+  }, []);
+
+  const isParent = role === 'parent';
+  const browseHref = isParent ? '/parent/classes' : '/student/explore';
+  const browseLabel = isParent ? 'Back to classes' : 'Back to Explore';
 
   // ---- Load whichever flow we're in -------------------------------
   const load = useCallback(async () => {
+    // Hold until the role is known — an already-paid intent redirects on the
+    // first pass, and redirecting a parent into /student/* is a bounce.
+    if (!roleLoaded) return;
     try {
       if (intentId) {
         const res = await fetch(`/api/payments/stripe/intent/${intentId}`, {
@@ -76,7 +114,7 @@ export default function PaymentCheckout() {
         });
         const d = await res.json();
         if (d?.alreadyPaid) {
-          router.replace('/student/bookings');
+          router.replace(isParent ? '/parent/dashboard' : '/student/bookings');
           return;
         }
         if (!res.ok) throw new Error(d?.error || 'Could not load checkout');
@@ -96,6 +134,9 @@ export default function PaymentCheckout() {
           isSecureSpot: d.kind === 'secure_spot',
           releaseDate: d.releaseDate ?? null,
           shortClass: d.shortClass ?? false,
+          classProfile: d.classProfile ?? null,
+          forStudent: d.forStudent ?? null,
+          groupId: d.groupId ?? null,
           // Land on the confirmation page, which polls the status route and
           // then shows the receipt + download. Keyed on the intent id because
           // the payments row doesn't exist until the webhook creates it.
@@ -166,7 +207,7 @@ export default function PaymentCheckout() {
     } finally {
       setLoading(false);
     }
-  }, [bookingId, intentId, router]);
+  }, [bookingId, intentId, router, roleLoaded, isParent]);
 
   useEffect(() => {
     load();
@@ -207,7 +248,7 @@ export default function PaymentCheckout() {
           </h1>
           <p className="text-gray-600 mb-6">{error || 'Something went wrong.'}</p>
           <Link
-            href="/student/explore"
+            href={browseHref}
             className="inline-block rounded-lg bg-itutor-green px-6 py-3 font-semibold text-white transition hover:opacity-90"
           >
             Back to Explore
@@ -244,16 +285,83 @@ export default function PaymentCheckout() {
     <div className="min-h-screen bg-white">
       {/* Hero */}
       <div className="bg-brand-soft/60 px-4 py-10 text-center">
+        {/* "lesson" is wrong for a monthly class and wrong again for a held
+            seat, and "your" is wrong whenever a parent is paying for a child.
+            The heading now says what is actually being bought, and for whom. */}
         <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-gray-900">
-          Confirm and pay for your{' '}
-          <span className="text-itutor-green">{summary.subject}</span> lesson
+          {summary.isSecureSpot ? (
+            <>
+              Reserve {summary.forStudent ? `${summary.forStudent.split(' ')[0]}’s` : 'your'} place in{' '}
+              <span className="text-itutor-green">{summary.subject}</span>
+            </>
+          ) : summary.isSubscription ? (
+            <>
+              {summary.forStudent
+                ? `Subscribe ${summary.forStudent.split(' ')[0]} to `
+                : 'Subscribe to '}
+              <span className="text-itutor-green">{summary.subject}</span>
+            </>
+          ) : (
+            <>
+              Confirm and pay for {summary.forStudent ? `${summary.forStudent.split(' ')[0]}’s` : 'your'}{' '}
+              <span className="text-itutor-green">{summary.subject}</span> lesson
+            </>
+          )}
         </h1>
+        {summary.forStudent && (
+          <p className="mx-auto mt-2 max-w-xl text-sm text-gray-600">
+            You are paying. {summary.forStudent} is the one enrolled — the class, the schedule and
+            the attendance record are theirs.
+          </p>
+        )}
       </div>
 
       <div className="mx-auto max-w-5xl px-4 pb-16 -mt-6">
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] items-start">
           {/* ---------------- LEFT: summary ---------------- */}
           <div className="space-y-4">
+            {/* THE CLASS ITSELF, first. A checkout that shows a tutor, a price
+                and a plan but never the class is asking someone to confirm a
+                purchase they cannot see — and for a parent, who did not browse
+                to it, the class name alone is not enough to recognise it. */}
+            {summary.classProfile && (
+              <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                {summary.classProfile.coverImage ? (
+                  <div
+                    className="h-28 w-full"
+                    style={{
+                      backgroundImage: `url(${summary.classProfile.coverImage})`,
+                      backgroundSize: 'cover',
+                      backgroundPosition: 'center',
+                    }}
+                  />
+                ) : (
+                  <div className="h-28 w-full bg-gradient-to-br from-emerald-400 to-teal-500" />
+                )}
+                <div className="p-6">
+                  <h2 className="text-lg font-bold text-gray-900">{summary.classProfile.name}</h2>
+                  <p className="mt-0.5 text-sm text-gray-500">
+                    {[summary.classProfile.subject, summary.classProfile.formLevel]
+                      .filter(Boolean)
+                      .join(' · ') || 'Group class'}
+                  </p>
+                  {summary.classProfile.description && (
+                    <p className="mt-3 line-clamp-4 text-sm leading-relaxed text-gray-600">
+                      {summary.classProfile.description}
+                    </p>
+                  )}
+                  {summary.groupId && (
+                    <Link
+                      href={`/parent/classes`}
+                      className="mt-3 inline-block text-sm font-semibold text-itutor-green hover:underline"
+                    >
+                      Back to classes
+                    </Link>
+                  )}
+                </div>
+              </section>
+            )}
+
             <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
               <h2 className="text-sm font-semibold text-gray-500 mb-4">
                 Your tutor

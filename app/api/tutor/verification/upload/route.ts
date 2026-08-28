@@ -33,47 +33,12 @@ export async function POST(request: NextRequest) {
   const tutorId = auth.profile!.id;
 
   try {
-    // Check for pending submissions (only truly pending ones, not old rejected ones)
-    const { data: pendingSubmissions, error: checkError } = await supabase
-      .from('tutor_verification_requests')
-      .select('id, status, created_at')
-      .eq('tutor_id', tutorId)
-      .in('status', ['SUBMITTED', 'PROCESSING', 'READY_FOR_REVIEW'])
-      .order('created_at', { ascending: false })
-      .limit(1);
-
-    if (checkError) {
-      console.error('Error checking pending submissions:', checkError);
-      return NextResponse.json({ error: 'Failed to check submission status' }, { status: 500 });
-    }
-
-    // Only block if there's a recent pending submission (within last 7 days)
-    if (pendingSubmissions && pendingSubmissions.length > 0) {
-      const submissionDate = new Date(pendingSubmissions[0].created_at);
-      const daysSinceSubmission = (Date.now() - submissionDate.getTime()) / (1000 * 60 * 60 * 24);
-      
-      if (daysSinceSubmission < 7) {
-        return NextResponse.json(
-          { 
-            error: 'You have a pending verification request. Please wait for it to be reviewed.',
-            request_id: pendingSubmissions[0].id,
-            submitted_at: pendingSubmissions[0].created_at
-          },
-          { status: 429 }
-        );
-      }
-      
-      // Old pending request (>7 days) - auto-reject it and allow new submission
-      console.log('Auto-rejecting old pending request:', pendingSubmissions[0].id);
-      await supabase
-        .from('tutor_verification_requests')
-        .update({
-          status: 'REJECTED',
-          reviewer_reason: 'Request expired - no action taken after 7 days',
-          reviewed_at: new Date().toISOString()
-        })
-        .eq('id', pendingSubmissions[0].id);
-    }
+    // A pending review does not block a new upload. Documents queue: a tutor
+    // can submit several and a reviewer decides each one on its own.
+    //
+    // This used to 429 for 7 days, which stranded anyone who uploaded the wrong
+    // file, a blurry scan, or the wrong side of a results slip — their only
+    // options were to wait out the week or ask support.
 
     // Parse form data
     const formData = await request.formData();

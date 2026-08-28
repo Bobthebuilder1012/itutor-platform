@@ -19,6 +19,7 @@ import { getAdminHomePath, isEmailManagementOnlyAdmin } from '@/lib/auth/adminAc
 import dynamic from 'next/dynamic';
 import UniversalSearchBar from '@/components/UniversalSearchBar';
 import LogoutConfirmModal from '@/components/LogoutConfirmModal';
+import ClassMatchBanner from '@/components/ClassMatchBanner';
 
 // Firebase-based push registrar disabled — it conflicts with the Web Push API
 // path in browserPushService.ts (both register a service worker at scope '/').
@@ -225,6 +226,10 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/tutor/dashboard', label: 'Dashboard', icon: icons.dashboard },
           { href: '/tutor/find-students', label: 'Find Students', icon: icons.search },
           { href: '/tutor/bookings', label: 'Booking Requests', icon: icons.calendar },
+          // §8.1 gives a tutor exactly one notification per feedback request and
+          // no reminders after it, so there has to be a standing place to find
+          // the ones still open.
+          { href: '/tutor/feedback', label: 'Feedback', icon: icons.chatFeedback },
           ...(showGroups ? [{ href: '/lessons', label: 'Lessons', icon: icons.groups }] : []),
         ]},
         { label: 'Settings', items: [
@@ -243,7 +248,11 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
       case 'parent': return [
         { label: 'Menu', items: [
           { href: '/parent/dashboard',     label: 'Home',          icon: icons.dashboard },
+          // Second, not buried: a request that is never seen expires two hours
+          // before the class and sends no email when it does (§4.2).
+          { href: '/parent/approvals',     label: 'Approvals',     icon: icons.shield },
           { href: '/parent/children',      label: 'Children',      icon: icons.userPlus },
+          { href: '/parent/feedback',      label: 'Feedback',      icon: icons.chatFeedback },
           { href: '/parent/classes',       label: 'Find Classes',  icon: icons.groups },
           { href: '/parent/subscriptions', label: 'Subscriptions', icon: icons.calendar },
           { href: '/parent/transactions',  label: 'Transactions',  icon: icons.calendar },
@@ -271,6 +280,9 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/admin/tutors', label: 'Tutor Promotion', icon: icons.star },
           { href: '/admin/marketplace/classes', label: 'Class Promotion', icon: icons.sparkles },
           { href: '/admin/signups', label: 'Signups & Onboarding', icon: icons.userPlus },
+          // The recruitment worklist. In Operations rather than System because
+          // it is something someone acts on weekly, not a setting.
+          { href: '/admin/demand', label: 'Demand Map', icon: icons.search },
         ]},
         { label: 'Finance', items: [
           { href: '/admin/payments', label: 'Payments Overview', icon: icons.creditCard },
@@ -506,6 +518,8 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
 
       {/* ── MAIN ── */}
       <div className={`flex-1 ${collapsed ? 'lg:ml-[64px]' : 'lg:ml-[240px]'} flex flex-col min-h-screen transition-all duration-300`}>
+
+        <ClassMatchBanner role={role} />
 
         {/* Topbar */}
         <header className="h-16 sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-100 flex items-center gap-3 px-4 lg:px-7">

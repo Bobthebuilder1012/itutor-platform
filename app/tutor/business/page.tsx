@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Briefcase, Tag, BarChart3, FileText, Plus, Check, X,
   Users, DollarSign, BookOpen, Clock, Lock, Copy, ExternalLink,
@@ -22,22 +22,63 @@ import ProfileQrCard from '@/components/tutor/business/ProfileQrCard';
 import AvailabilityEditor from '@/components/tutor/AvailabilityEditor';
 import OneOnOneMarketplaceToggle from '@/components/tutor/OneOnOneMarketplaceToggle';
 import { getDisplayName } from '@/lib/utils/displayName';
+import {
+  VERIFICATION_MAX_LABEL,
+  checkVerificationFile,
+  describeStorageUploadFailure,
+} from '@/lib/utils/verificationUpload';
 
-type Tab = 'overview' | 'availability' | 'promotions' | 'verification' | 'analytics' | 'feedback';
+type Tab =
+  | 'overview'
+  | 'availability'
+  | 'promotions'
+  | 'verification'
+  | 'analytics'
+  | 'feedback';
+
+const TAB_KEYS: ReadonlyArray<Tab> = [
+  'overview',
+  'availability',
+  'promotions',
+  'verification',
+  'analytics',
+  'feedback',
+];
 
 export default function TutorBusinessPage() {
   return (
     <TutorShell>
-      <MyBusinessContent />
+      {/* useSearchParams needs a Suspense boundary in the App Router. */}
+      <Suspense fallback={null}>
+        <MyBusinessContent />
+      </Suspense>
     </TutorShell>
   );
 }
 
 function MyBusinessContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { profile, loading, refresh: refreshProfile } = useProfile();
   const completion = useTutorCompletion(profile);
-  const [tab, setTab] = useState<Tab>('overview');
+
+  // Tabs are addressable via ?tab=, so a link can land on one. Unknown values
+  // fall back to overview rather than rendering nothing.
+  const requestedTab = searchParams.get('tab');
+  const initialTab: Tab = TAB_KEYS.includes(requestedTab as Tab) ? (requestedTab as Tab) : 'overview';
+  const [tab, setTab] = useState<Tab>(initialTab);
+
+  // Class Match Week used to be a tab here and is now the second tab of My
+  // Classes, next to the classes the campaign depends on. This forwards the
+  // links that still point at the old home — the dashboard countdown, the
+  // /tutor/class-match-week redirect, /class-match-week/teach, and anything
+  // already sent to a teacher — rather than dropping them on Overview with no
+  // explanation of where the campaign went.
+  useEffect(() => {
+    if (requestedTab === 'class-match-week') {
+      router.replace('/tutor/classes?tab=class-match-week');
+    }
+  }, [requestedTab, router]);
 
   const [classes, setClasses] = useState<any[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
@@ -72,11 +113,14 @@ function MyBusinessContent() {
       let promotionsByGroup: Record<string, any> = {};
 
       if (classIds.length > 0) {
+        // Class-level promotions only — personal coupons (migration 231) are
+        // per-attendee and are not this tutor's class-promotion state.
         const { data: promoData } = await supabase
           .from('group_promotions')
           .select('*')
           .in('group_id', classIds)
-          .eq('active', true);
+          .eq('active', true)
+          .is('user_id', null);
         (promoData ?? []).forEach((p: any) => {
           if (!promotionsByGroup[p.group_id]) promotionsByGroup[p.group_id] = p;
         });
@@ -101,8 +145,15 @@ function MyBusinessContent() {
         <div className="rounded-2xl border border-border bg-card p-12 text-center">
           <Lock className="size-10 mx-auto text-muted-foreground/40" />
           <h2 className="mt-3 text-xl font-bold text-ink">My Business is locked</h2>
-          <p className="mt-2 text-sm text-muted-foreground">Complete your profile to unlock business analytics and promotions.</p>
-          <Link href="/tutor/get-listed" className="mt-5 inline-flex items-center gap-1.5 px-5 py-2.5 rounded-lg bg-brand text-white font-semibold hover:bg-brand/90">
+          <p className="mt-2 text-sm text-muted-foreground">
+            Complete your profile to unlock business analytics and promotions.
+          </p>
+          {/* No ?redirect= here: get-listed reads only the OAuth success/error
+              params and would drop it silently. */}
+          <Link
+            href="/tutor/get-listed"
+            className="mt-5 inline-flex items-center gap-1.5 px-5 py-2.5 rounded-lg bg-brand text-white font-semibold hover:bg-brand/90"
+          >
             Complete profile
           </Link>
         </div>
@@ -114,7 +165,15 @@ function MyBusinessContent() {
   const totalRevenue = activeClasses.reduce((s: number, c: any) => s + (c.earnings_ttd ?? 0), 0);
   const totalStudents = new Set(activeClasses.flatMap((c: any) => [])).size || activeClasses.reduce((s: number, c: any) => s + (c.member_count ?? c.enrollmentCount ?? 0), 0);
 
-  const tabs: { key: Tab; label: string; icon: any; badge?: number; comingSoon?: boolean }[] = [
+  const tabs: {
+    key: Tab;
+    label: string;
+    icon: any;
+    badge?: number;
+    comingSoon?: boolean;
+    /** A campaign flag, e.g. "Limited time" — distinct from the "Soon" pill. */
+    flag?: string;
+  }[] = [
     { key: 'overview',   label: 'Overview',        icon: Briefcase },
     { key: 'availability', label: 'Availability',   icon: CalendarClock },
     { key: 'promotions', label: 'Promotions',       icon: Tag },
@@ -133,7 +192,7 @@ function MyBusinessContent() {
         <p className="text-sm text-muted-foreground mt-1">All your classes, promotions, and analytics in one place.</p>
       </header>
 
-      <div className="border-b border-border flex items-center gap-6 overflow-x-auto">
+      <div className="border-b border-border flex items-center gap-6 overflow-x-auto scrollbar-hide">
         {tabs.map((t) => {
           const Icon = t.icon;
           return (
@@ -143,6 +202,11 @@ function MyBusinessContent() {
               <Icon className="size-4" /> {t.label}
               {t.comingSoon && (
                 <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">Soon</span>
+              )}
+              {t.flag && (
+                <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-brand/15 text-brand-deep whitespace-nowrap">
+                  {t.flag}
+                </span>
               )}
               {t.badge != null && t.badge > 0 && (
                 <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-brand/15 text-brand-deep text-[10px] font-bold">
@@ -175,10 +239,15 @@ function OverviewTab({ activeClasses, profile, onProfileUpdated }: any) {
     <div className="space-y-6">
       {/* Share link + QR — compact */}
       <section className="grid md:grid-cols-2 gap-3">
-        <div className="rounded-2xl bg-card border border-border p-4 space-y-2">
+        {/* min-w-0 is load-bearing: a grid item's min-width:auto floors the
+            track at its content's min-content width, and the profile URL is one
+            85-character unbreakable token. Without it the card grew past the
+            viewport, truncate never engaged and the whole page panned
+            sideways on a phone. */}
+        <div className="min-w-0 rounded-2xl bg-card border border-border p-4 space-y-2">
           <div className="text-sm font-bold text-ink">Share your profile</div>
-          <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2">
-            <span className="text-xs text-muted-foreground truncate font-mono flex-1">{url}</span>
+          <div className="flex min-w-0 items-center gap-2 rounded-lg bg-muted/50 px-3 py-2">
+            <span className="min-w-0 flex-1 text-xs text-muted-foreground truncate font-mono">{url}</span>
             <button onClick={() => { navigator.clipboard?.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
               className="shrink-0 text-xs font-semibold text-brand-deep hover:underline inline-flex items-center gap-1">
               {copied ? <Check className="size-3" /> : <Copy className="size-3" />} {copied ? 'Copied' : 'Copy'}
@@ -186,7 +255,7 @@ function OverviewTab({ activeClasses, profile, onProfileUpdated }: any) {
           </div>
         </div>
 
-        <div className="rounded-2xl bg-card border border-border p-4 space-y-2">
+        <div className="min-w-0 rounded-2xl bg-card border border-border p-4 space-y-2">
           <div className="text-sm font-bold text-ink">QR code</div>
           {profile?.id && <ProfileQrCard tutorId={profile.id} />}
         </div>
@@ -629,6 +698,7 @@ function VerificationSection() {
   const [showSupport, setShowSupport] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [latestRequest, setLatestRequest] = useState<VerificationRequest | null>(null);
+  const [pendingCount, setPendingCount] = useState(0);
 
   async function load() {
     try {
@@ -637,6 +707,7 @@ function VerificationSection() {
       if (res.ok) {
         setStatus(data.verificationStatus ?? null);
         setLatestRequest(data.latestRequest ?? null);
+        setPendingCount(data.pendingCount ?? 0);
       }
     } catch (e) {
       console.error('[VerificationSection] failed to load status:', e);
@@ -649,10 +720,19 @@ function VerificationSection() {
 
   async function handleFileUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
+    // Clearing the input lets a tutor re-pick the same filename after they
+    // compress it — otherwise no change event fires and nothing happens.
+    event.target.value = '';
     if (!file) return;
+    setUploadSuccess(false);
+
+    // Checked before the request row is created, so an oversized file does not
+    // leave an empty verification request behind.
+    const rejection = checkVerificationFile(file);
+    if (rejection) { setUploadError(rejection); return; }
+
     setUploading(true);
     setUploadError(null);
-    setUploadSuccess(false);
     try {
       const fileExt = file.name.split('.').pop()?.toLowerCase();
       const fileType = fileExt === 'pdf' ? 'pdf' : 'image';
@@ -673,7 +753,7 @@ function VerificationSection() {
         body: file,
         headers: { 'Content-Type': file.type },
       });
-      if (!uploadRes.ok) throw new Error('Failed to upload file');
+      if (!uploadRes.ok) throw new Error(await describeStorageUploadFailure(uploadRes));
 
       const processRes = await fetch(`/api/verification/request/${requestId}/process`, { method: 'POST' });
       if (!processRes.ok) console.warn('[VerificationSection] processing may have failed, but file was uploaded');
@@ -691,7 +771,17 @@ function VerificationSection() {
     return <div className="flex items-center gap-2 text-sm text-muted-foreground py-10"><Loader2 className="size-4 animate-spin" /> Loading verification…</div>;
   }
 
-  const canUpload = status !== 'VERIFIED' && status !== 'PENDING';
+  // A pending review no longer hides the upload card. Blocking on 'PENDING'
+  // stranded any tutor who submitted the wrong file, a blurry scan or the wrong
+  // side of a results slip: the card vanished the moment they submitted, so
+  // their only route to fixing it was to wait for a rejection or ask support.
+  // Documents now queue — submit as many as you like, each reviewed separately.
+  //
+  // Still hidden once VERIFIED: a fresh request against an already-verified
+  // tutor is a live hazard, because rejecting it strips the badge they already
+  // hold and unpublishes every verified subject.
+  const canUpload = status !== 'VERIFIED';
+  const hasQueue = pendingCount > 0;
   // Only what a REVIEWER wrote. Falling back to system_reason published the
   // automated note, which on every real upload was the "Sample Tutor" name
   // mismatch — so a tutor rejected for any reason was told it was because
@@ -759,8 +849,20 @@ function VerificationSection() {
       {canUpload && (
         <div className="rounded-2xl bg-card border border-border p-5 space-y-3">
           <div>
-            <div className="font-bold text-ink">{status === 'REJECTED' ? 'Resubmit your document' : 'Upload verification document'}</div>
-            <p className="text-xs text-muted-foreground mt-0.5">CSEC, CAPE, or other teaching qualification — PDF, JPG, PNG or WEBP (max 10MB).</p>
+            <div className="font-bold text-ink">
+              {status === 'REJECTED'
+                ? 'Resubmit your document'
+                : hasQueue
+                  ? 'Upload another document'
+                  : 'Upload verification document'}
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">CSEC, CAPE, or other teaching qualification — PDF, JPG, PNG or WEBP (max {VERIFICATION_MAX_LABEL}).</p>
+            {hasQueue && (
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                {pendingCount === 1 ? '1 document is' : `${pendingCount} documents are`} waiting to be reviewed.
+                You can add more — each one is reviewed on its own.
+              </p>
+            )}
           </div>
           <label className={cn(
             'flex items-center gap-3 rounded-xl border-2 border-dashed border-border p-4',

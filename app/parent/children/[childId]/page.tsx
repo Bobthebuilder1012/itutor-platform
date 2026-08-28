@@ -1,19 +1,73 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, GraduationCap, FileText, Calendar, Clock, Check, AlertCircle, X, BookOpen, ChevronRight, Trash2, ClipboardCheck } from 'lucide-react';
+import { ArrowLeft, GraduationCap, FileText, Calendar, Clock, Check, AlertCircle, X, BookOpen, ChevronRight, Trash2, ClipboardCheck, MessageSquare, CreditCard, Ban } from 'lucide-react';
+import ChildMessageHistory from '@/components/parent/ChildMessageHistory';
+import ChildBillingControls from '@/components/parent/ChildBillingControls';
+import ParentClassCard from '@/components/parent/ParentClassCard';
+import { parseScheduleData, scheduleToDisplay } from '@/lib/utils/scheduleFormat';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
 import ParentShell from '@/components/parent/ParentShell';
 
-type Enrollment = { groupId: string; name: string; subject: string | null; status: string; joinedAt: string | null };
+type Enrollment = {
+  groupId: string; name: string; subject: string | null; status: string; joinedAt: string | null;
+  // Carried so the Classes tab can render the marketplace card rather than a
+  // parent-only variant of it.
+  formLevel?: string | null; coverImage?: string | null; priceMonthly?: number | null;
+  rating?: number | null; tutorName?: string | null; scheduleData?: string | null; sessionSchedule?: string | null;
+};
 type Booking = { id: string; tutorName: string; subject: string | null; status: string; start: string | null; priceTtd: number | null; durationMinutes: number | null; createdAt: string };
 type FeedbackReport = { id: string; month: string; tutorName: string; classTitle: string; body: string; deliveredAt: string; attendance: string };
-type AttRow = { key: string; type: '1:1' | 'group'; label: string; start: string; present: boolean };
-type AttSummary = { present: number; absent: number; total: number };
+// present is kept for anything still reading it; status is the §6 model —
+// attended | late | absent | cancelled | excluded. `excluded` means the tutor
+// never started the class, so the session counts for nobody.
+type AttStatus = 'attended' | 'late' | 'absent' | 'cancelled' | 'excluded';
+type AttRow = {
+  key: string;
+  type: '1:1' | 'group';
+  label: string;
+  start: string;
+  present: boolean;
+  status?: AttStatus | null;
+  lateMinutes?: number | null;
+};
+
+/** One place for the vocabulary. §6 keeps it character-identical across the
+ *  parent, student and tutor surfaces, so it is not re-worded per screen. */
+const ATT_STATUS: Record<AttStatus, { label: string; icon: typeof Check; chip: string; text: string }> = {
+  attended:  { label: 'Attended',  icon: Check,          chip: 'bg-brand-soft text-brand-deep',      text: 'text-brand-deep' },
+  late:      { label: 'Late',      icon: Clock,          chip: 'bg-amber-100 text-amber-700',        text: 'text-amber-700' },
+  absent:    { label: 'Absent',    icon: X,              chip: 'bg-rose-100 text-rose-600',          text: 'text-rose-600' },
+  cancelled: { label: 'Cancelled', icon: Ban,            chip: 'bg-muted text-muted-foreground',     text: 'text-muted-foreground' },
+  excluded:  { label: 'Didn’t run', icon: Ban,           chip: 'bg-muted text-muted-foreground',     text: 'text-muted-foreground' },
+};
+
+function Tally({ n, label, tone }: { n: number; label: string; tone: string }) {
+  return (
+    <span className="inline-flex items-baseline gap-1">
+      <strong className={cn('tabular-nums', tone)}>{n}</strong> {label}
+    </span>
+  );
+}
+// The first three are the original shape, kept so nothing else breaks. The rest
+// is what the §6 helper actually produces — rateLabel included, so the rate is
+// never recomputed on a surface and never printed without its denominator.
+type AttSummary = {
+  present: number;
+  absent: number;
+  total: number;
+  attended?: number;
+  late?: number;
+  cancelled?: number;
+  excluded?: number;
+  rate?: number | null;
+  counted?: number;
+  rateLabel?: string;
+};
 
 export default function ChildDetailPage() {
   return <ParentShell><ChildContent /></ParentShell>;
@@ -23,7 +77,12 @@ function ChildContent() {
   const { childId } = useParams<{ childId: string }>();
   const router = useRouter();
   const { profile } = useProfile();
-  const [tab, setTab] = useState<'classes' | 'bookings' | 'attendance' | 'feedback'>('classes');
+  // Progress is gone from child configuration: feedback visibility now lives on
+  // the Feedback page, which carries a child selector so a parent switches
+  // students without leaving the page. Keeping a per-child copy would have meant
+  // two places to request feedback and two places for the monthly quota to be
+  // shown, which is how the two drift apart.
+  const [tab, setTab] = useState<'overview' | 'classes' | 'attendance' | 'messages' | 'billing'>('overview');
   const [childName, setChildName] = useState('');
   const [initials, setInitials] = useState('');
   const [hue, setHue] = useState(145);
@@ -38,9 +97,6 @@ function ChildContent() {
   const [openReport, setOpenReport] = useState<FeedbackReport | null>(null);
   const [removeOpen, setRemoveOpen] = useState(false);
   const [removing, setRemoving] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [confirmName, setConfirmName] = useState('');
 
   useEffect(() => {
     if (!childId) return;
@@ -66,7 +122,9 @@ function ChildContent() {
 
   // Attendance is lazy-loaded the first time the tab is opened.
   useEffect(() => {
-    if (tab !== 'attendance' || attLoaded || attLoading || !childId) return;
+    // Overview shows the rate too, so it loads there as well — otherwise the
+    // default tab reads "Open to load" where a figure belongs.
+    if ((tab !== 'attendance' && tab !== 'overview') || attLoaded || attLoading || !childId) return;
     setAttLoading(true);
     (async () => {
       try {
@@ -95,19 +153,6 @@ function ChildContent() {
     finally { setRemoving(false); }
   };
 
-  const handleDelete = async () => {
-    setDeleting(true);
-    try {
-      const res = await fetch('/api/parent/delete-child-account', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ childId }),
-      });
-      if (res.ok) router.push('/parent/dashboard');
-    } catch { /* silent */ }
-    finally { setDeleting(false); }
-  };
-
   return (
     <div className="space-y-6">
       <Link href="/parent/dashboard" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-ink">
@@ -124,17 +169,27 @@ function ChildContent() {
       </header>
 
 
-      <div className="inline-flex p-1 rounded-2xl bg-muted">
+      {/* Scrolls rather than wraps on a phone: six tabs will not fit at 390px,
+          and a wrapped tab strip pushes the content below the fold. */}
+      <div className="-mx-1 flex gap-1 overflow-x-auto p-1 rounded-2xl bg-muted sm:inline-flex sm:mx-0">
+        {/* The kit's tab set, in its order: Overview / Progress / Schedule /
+            Classes / Billing / Messages. This previously kept four pre-existing
+            tabs and bolted two on, which is where it drifted. Progress and
+            Schedule are the kit's names for what was called Feedback and
+            Attendance; Bookings folded into Overview, since pending requests are
+            something a parent acts on at account level (Approvals) and only
+            needs to SEE here. */}
         {([
+          { id: 'overview' as const, label: 'Overview', icon: BookOpen },
+          { id: 'attendance' as const, label: 'Schedule', icon: ClipboardCheck },
           { id: 'classes' as const, label: 'Classes', icon: GraduationCap },
-          { id: 'bookings' as const, label: 'Bookings', icon: Calendar },
-          { id: 'attendance' as const, label: 'Attendance', icon: ClipboardCheck },
-          { id: 'feedback' as const, label: 'Feedback', icon: FileText },
+          { id: 'messages' as const, label: 'Messages', icon: MessageSquare },
+          { id: 'billing' as const, label: 'Billing', icon: CreditCard },
         ]).map((t) => {
           const Icon = t.icon;
           return (
             <button key={t.id} onClick={() => setTab(t.id)}
-              className={cn('inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition',
+              className={cn('inline-flex shrink-0 items-center gap-1.5 px-3 sm:px-4 py-2 rounded-xl text-sm font-semibold transition',
                 tab === t.id ? 'bg-background text-ink shadow-sm' : 'text-muted-foreground hover:text-ink')}>
               <Icon className="size-4" /> {t.label}
             </button>
@@ -144,14 +199,33 @@ function ChildContent() {
 
       {loading ? (
         <div className="space-y-3">{[1,2].map(i=><div key={i} className="h-32 rounded-2xl bg-muted animate-pulse"/>)}</div>
+      ) : tab === 'overview' ? (
+        /* The kit's Overview: next class, then what a parent glances at — the
+           attendance figure and the most recent feedback — with the pending
+           requests that used to have their own tab folded in. */
+        <div className="space-y-4">
+          <OverviewTab
+            childName={childName}
+            enrollments={enrollments}
+            bookings={bookings}
+            summary={attSummary}
+            feedback={feedback}
+            onOpenReport={setOpenReport}
+            onGoTo={setTab}
+          />
+        </div>
       ) : tab === 'classes' ? (
         <ClassesTab enrollments={enrollments} childId={childId} />
-      ) : tab === 'bookings' ? (
-        <BookingsTab bookings={bookings} />
       ) : tab === 'attendance' ? (
         <AttendanceTab rows={attendance} summary={attSummary} loading={attLoading} />
+      ) : tab === 'messages' ? (
+        /* §9.4: read-only, no composer, two-way disclosure. */
+        <ChildMessageHistory childId={childId} childName={childName} />
       ) : (
-        <FeedbackTab feedback={feedback} onOpen={setOpenReport} />
+        /* The per-child money controls, beside that child's classes rather than
+           only in Settings — a parent looking at one child's spend is already
+           here. */
+        <ChildBillingControls childId={childId} childName={childName} />
       )}
 
       {openReport && (
@@ -178,25 +252,16 @@ function ChildContent() {
           <h2 className="font-bold text-rose-900 text-sm">Danger zone</h2>
           <p className="text-xs text-rose-700 mt-0.5">These actions cannot be undone. Please be certain before proceeding.</p>
         </div>
-        <div className="grid sm:grid-cols-2 gap-3">
-          {/* Remove link */}
-          <div className="rounded-xl border border-rose-200 bg-white p-4 space-y-2">
-            <div className="font-semibold text-ink text-sm">Remove from my account</div>
-            <p className="text-xs text-muted-foreground">Unlinks {childName} from your parent account. Their student account and all class history stays intact — they can still log in independently.</p>
-            <button onClick={() => setRemoveOpen(true)}
-              className="mt-1 px-3 py-1.5 rounded-lg border border-rose-300 text-rose-700 text-xs font-semibold hover:bg-rose-50 transition">
-              Remove child
-            </button>
-          </div>
-          {/* Delete account */}
-          <div className="rounded-xl border border-rose-300 bg-white p-4 space-y-2">
-            <div className="font-semibold text-rose-800 text-sm">Delete student account</div>
-            <p className="text-xs text-muted-foreground">Permanently deletes {childName}'s iTutor account and all associated data. This cannot be undone.</p>
-            <button onClick={() => { setDeleteOpen(true); setConfirmName(''); }}
-              className="mt-1 px-3 py-1.5 rounded-lg bg-rose-600 text-white text-xs font-semibold hover:bg-rose-700 transition">
-              Delete account
-            </button>
-          </div>
+        {/* Unlinking is the only destructive act a parent has here. Deleting the
+            child's whole account is not theirs to do: the account, its class
+            history and the tutors' records of it outlive the link. */}
+        <div className="rounded-xl border border-rose-200 bg-white p-4 space-y-2">
+          <div className="font-semibold text-ink text-sm">Remove from my account</div>
+          <p className="text-xs text-muted-foreground">Unlinks {childName} from your parent account. Their student account and all class history stays intact — they can still log in independently.</p>
+          <button onClick={() => setRemoveOpen(true)}
+            className="mt-1 px-3 py-1.5 rounded-lg border border-rose-300 text-rose-700 text-xs font-semibold hover:bg-rose-50 transition">
+            Remove child
+          </button>
         </div>
       </section>
 
@@ -219,37 +284,6 @@ function ChildContent() {
         </div>
       )}
 
-      {/* Delete account confirm — requires typing the child's name */}
-      {deleteOpen && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setDeleteOpen(false)}>
-          <div onClick={e => e.stopPropagation()} className="w-full max-w-sm rounded-2xl bg-background border border-border shadow-xl p-6 space-y-4">
-            <div className="font-bold text-ink text-lg">Permanently delete account?</div>
-            <p className="text-sm text-muted-foreground">
-              This will permanently delete <strong>{childName}</strong>'s student account, all class memberships, and their login. <strong>This cannot be undone.</strong>
-            </p>
-            <div>
-              <label className="text-xs font-semibold text-ink block mb-1.5">
-                Type <span className="text-rose-700 font-bold">{childName}</span> to confirm
-              </label>
-              <input
-                value={confirmName}
-                onChange={e => setConfirmName(e.target.value)}
-                placeholder={childName}
-                className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
-              />
-            </div>
-            <div className="flex gap-2 pt-1">
-              <button onClick={() => setDeleteOpen(false)} className="flex-1 px-4 py-2.5 rounded-xl border border-border text-sm font-semibold hover:bg-muted">Cancel</button>
-              <button
-                onClick={handleDelete}
-                disabled={deleting || confirmName !== childName}
-                className="flex-1 px-4 py-2.5 rounded-xl bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed">
-                {deleting ? 'Deleting…' : 'Delete account'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -272,77 +306,288 @@ function ClassesTab({ enrollments, childId }: { enrollments: Enrollment[]; child
     suspended:{ label: 'Suspended',         cls: 'bg-amber-100 text-amber-800' },
     removed:  { label: 'Removed',           cls: 'bg-muted text-muted-foreground' },
   };
+  // Same card as the marketplace, same grid. What differs is only what a class
+  // the child is already in has to say: its enrolment status instead of its
+  // scarcity, and View instead of Join.
   return (
-    <div className="space-y-3">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
       {enrollments.map((e) => {
         const sm = statusMeta[e.status] ?? { label: e.status, cls: 'bg-muted text-muted-foreground' };
+        const scheduleLine = (() => {
+          const entries = parseScheduleData(e.scheduleData);
+          if (entries.length) return scheduleToDisplay(entries).split('\n')[0];
+          return e.sessionSchedule?.split('\n')[0] || null;
+        })();
         return (
-          <article key={e.groupId} className="rounded-2xl bg-background border border-border p-5">
-            <div className="flex items-start gap-4">
-              <div className="size-12 rounded-2xl bg-muted grid place-items-center text-2xl shrink-0">📚</div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2">
-                  <h3 className="font-bold text-ink truncate">{e.name}</h3>
-                  <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full whitespace-nowrap', sm.cls)}>{sm.label}</span>
-                </div>
-                {e.subject && <div className="text-xs text-muted-foreground mt-0.5">{e.subject}</div>}
-              </div>
-            </div>
-            <div className="mt-4 pt-3 border-t border-border flex items-center justify-between">
-              {e.joinedAt && (
-                <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <Check className="size-3.5"/> Enrolled {new Date(e.joinedAt).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})}
-                </div>
-              )}
-              <Link href={`/parent/children/${childId}/classes/${e.groupId}`} className="text-xs font-semibold text-brand-deep hover:underline ml-auto">View as student →</Link>
-            </div>
-          </article>
+          <ParentClassCard
+            key={e.groupId}
+            c={{
+              id: e.groupId,
+              name: e.name,
+              subject: e.subject,
+              formLevel: e.formLevel,
+              tutorName: e.tutorName || 'Tutor',
+              coverImage: e.coverImage,
+              rating: e.rating,
+              scheduleLine,
+              priceMonthly: e.priceMonthly,
+            }}
+            chips={
+              <>
+                <span className={cn('text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full', sm.cls)}>{sm.label}</span>
+                {e.joinedAt && (
+                  <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full border border-border bg-muted text-muted-foreground">
+                    <Check className="size-2.5" /> Enrolled {new Date(e.joinedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </span>
+                )}
+              </>
+            }
+            action={
+              <Link
+                href={`/parent/children/${childId}/classes/${e.groupId}`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-brand text-white hover:bg-brand-deep"
+              >
+                View as student
+              </Link>
+            }
+          />
         );
       })}
     </div>
   );
 }
 
-function BookingsTab({ bookings }: { bookings: Booking[] }) {
-  if (bookings.length === 0) {
-    return (
-      <div className="rounded-2xl border-2 border-dashed border-border bg-card/50 p-10 text-center">
-        <div className="mx-auto size-12 rounded-2xl bg-brand-soft text-brand-deep grid place-items-center mb-4"><Calendar className="size-5" /></div>
-        <h2 className="font-bold text-ink">No 1:1 bookings yet</h2>
-        <p className="text-sm text-muted-foreground mt-1">One-on-one sessions your child books will appear here.</p>
-      </div>
-    );
-  }
-  const statusMeta: Record<string, { label: string; cls: string }> = {
-    confirmed:  { label: 'Confirmed',  cls: 'bg-brand-soft text-brand-deep' },
-    completed:  { label: 'Completed',  cls: 'bg-emerald-100 text-emerald-800' },
-    pending:    { label: 'Pending',    cls: 'bg-sky-100 text-sky-800' },
-    counter_offer: { label: 'Counter-offer', cls: 'bg-amber-100 text-amber-800' },
-    cancelled:  { label: 'Cancelled',  cls: 'bg-muted text-muted-foreground' },
-    declined:   { label: 'Declined',   cls: 'bg-rose-100 text-rose-700' },
-  };
+function OverviewTab({
+  childName,
+  enrollments,
+  bookings,
+  summary,
+  feedback,
+  onOpenReport,
+  onGoTo,
+}: {
+  childName: string;
+  enrollments: Enrollment[];
+  bookings: Booking[];
+  summary: AttSummary | null;
+  feedback: FeedbackReport[];
+  onOpenReport: (r: FeedbackReport) => void;
+  onGoTo: (t: 'attendance' | 'classes') => void;
+}) {
+  const first = (childName || 'Your child').split(' ')[0];
+  const active = enrollments.filter((e) => ['approved', 'active'].includes(e.status));
+  // Soonest future booking. The kit leads with "Next class" because it is the
+  // one thing a parent opens a child's page to check.
+  const next = bookings
+    .filter((b) => b.start && new Date(b.start).getTime() > Date.now())
+    .sort((a, b) => new Date(a.start!).getTime() - new Date(b.start!).getTime())[0];
+  const pending = bookings.filter((b) => b.status === 'PENDING_PARENT_APPROVAL');
+  const latest = feedback[0];
+
   return (
-    <div className="space-y-3">
-      {bookings.map((b) => {
-        const sm = statusMeta[b.status] ?? { label: b.status, cls: 'bg-muted text-muted-foreground' };
-        return (
-          <article key={b.id} className="rounded-2xl bg-background border border-border p-5">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <h3 className="font-bold text-ink truncate">{b.subject ?? '1:1 session'}</h3>
-                <div className="text-xs text-muted-foreground mt-0.5">with {b.tutorName}</div>
+    <>
+      <div className="rounded-2xl border border-border bg-background p-4">
+        <div className="text-[10px] font-bold uppercase tracking-wider text-brand-deep">
+          Next class
+        </div>
+        {next ? (
+          <>
+            <div className="mt-0.5 text-lg font-bold text-ink">
+              {next.subject || 'Tutoring session'}
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {new Date(next.start!).toLocaleString('en-TT', {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true,
+                timeZone: 'America/Port_of_Spain',
+              })}{' '}
+              · {next.tutorName}
+            </div>
+          </>
+        ) : (
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Nothing scheduled. {first} is in {active.length}{' '}
+            {active.length === 1 ? 'class' : 'classes'}.
+          </p>
+        )}
+      </div>
+
+      {/* Folded in from the old Bookings tab: visible here, actioned in
+          Approvals, since that is where the decision lives. */}
+      {pending.length > 0 && (
+        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4">
+          <div className="text-sm font-semibold text-ink">
+            {pending.length} request{pending.length === 1 ? '' : 's'} waiting on you
+          </div>
+          <p className="mt-0.5 text-xs text-amber-900">
+            No place is held while a request waits, and each one closes two hours before its class.
+          </p>
+          <Link
+            href="/parent/approvals"
+            className="mt-2 inline-block rounded-lg bg-ink px-3 py-1.5 text-xs font-semibold text-white"
+          >
+            Review requests
+          </Link>
+        </div>
+      )}
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <button
+          onClick={() => onGoTo('attendance')}
+          className="rounded-2xl border border-border bg-background p-4 text-left hover:bg-muted/40"
+        >
+          <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            Attendance
+          </div>
+          {/* §6: the figure arrives with its denominator and is not recomputed. */}
+          <div className="mt-0.5 text-xl font-extrabold tabular-nums text-ink">
+            {summary?.rateLabel ?? 'Open to load'}
+          </div>
+          <div className="mt-0.5 text-xs text-muted-foreground">See every session →</div>
+        </button>
+
+        {/* Feedback lives on its own page now, with the child selector and the
+            request action. Linking out rather than duplicating keeps the monthly
+            quota shown in exactly one place. */}
+        <Link
+          href="/parent/feedback"
+          className="rounded-2xl border border-border bg-background p-4 text-left hover:bg-muted/40"
+        >
+          <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            Latest feedback
+          </div>
+          <div className="mt-0.5 line-clamp-2 text-sm text-ink">
+            {latest ? latest.body : 'None yet — most classes produce none.'}
+          </div>
+          <div className="mt-0.5 text-xs text-muted-foreground">
+            {latest ? `${latest.tutorName} · read it →` : 'You can request it once a month →'}
+          </div>
+        </Link>
+      </div>
+
+      {latest && (
+        <button
+          onClick={() => onOpenReport(latest)}
+          className="w-full rounded-2xl border border-border bg-background p-4 text-left hover:bg-muted/40"
+        >
+          <div className="text-sm font-semibold text-ink">
+            {latest.classTitle} · {latest.month}
+          </div>
+          <p className="mt-1 line-clamp-3 text-sm text-muted-foreground">{latest.body}</p>
+        </button>
+      )}
+    </>
+  );
+}
+
+/**
+ * Attendance split as a bar — Late, Absent and Missed against their own bases.
+ *
+ * Missed (cancelled, or the tutor never started the class) sits outside the
+ * counted denominator and is reported against sessions SCHEDULED. Folding it in
+ * with absent would blame a child for a class that never ran, and that is the one
+ * figure a parent is most likely to act on.
+ */
+function RateBar({ attended, late, absent, missed }: { attended: number; late: number; absent: number; missed: number }) {
+  const counted = attended + late + absent;
+  if (counted === 0 && missed === 0) return null;
+  const pct = (n: number) => (counted ? Math.round((n / counted) * 100) : 0);
+  const scheduled = counted + missed;
+  return (
+    <>
+      <div className="mt-3 flex h-2.5 w-full overflow-hidden rounded-full bg-muted">
+        {attended > 0 && <div className="bg-emerald-500" style={{ width: `${pct(attended)}%` }} />}
+        {late > 0 && <div className="bg-amber-500" style={{ width: `${pct(late)}%` }} />}
+        {absent > 0 && <div className="bg-rose-500" style={{ width: `${pct(absent)}%` }} />}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-2 rounded-full bg-amber-500" />
+          <span className="font-semibold text-ink">Late</span>
+          <span className="tabular-nums">{pct(late)}% · {late} of {counted}</span>
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-2 rounded-full bg-rose-500" />
+          <span className="font-semibold text-ink">Absent</span>
+          <span className="tabular-nums">{pct(absent)}% · {absent} of {counted}</span>
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-2 rounded-full bg-muted-foreground/40" />
+          <span className="font-semibold text-ink">Missed</span>
+          <span className="tabular-nums">
+            {scheduled ? Math.round((missed / scheduled) * 100) : 0}% · {missed} of {scheduled} scheduled
+          </span>
+        </span>
+      </div>
+    </>
+  );
+}
+
+/**
+ * The child's sessions as a strip that pans sideways — newest last, so it opens
+ * scrolled to the most recent, which is what a parent came to look at.
+ *
+ * Built from the rows already on the page rather than a second fetch, so the
+ * strip and the list below it can never disagree.
+ */
+function SessionStrip({ rows }: { rows: AttRow[] }) {
+  const days = useMemo(() => {
+    const byDay = new Map<string, AttRow[]>();
+    for (const r of rows) {
+      const k = new Date(r.start).toDateString();
+      (byDay.get(k) ?? byDay.set(k, []).get(k)!).push(r);
+    }
+    return [...byDay.entries()]
+      .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
+      .map(([day, list]) => ({ day, list }));
+  }, [rows]);
+
+  const stripRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = stripRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [days.length]);
+
+  if (days.length === 0) return null;
+
+  return (
+    <div className="rounded-2xl border border-border bg-background p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Session history</h3>
+        <span className="text-[10px] text-muted-foreground">Swipe or scroll sideways</span>
+      </div>
+      <div ref={stripRef} className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:thin]">
+        {days.map(({ day, list }) => {
+          const d = new Date(day);
+          return (
+            <div key={day} className="w-[104px] shrink-0 rounded-xl border border-border bg-muted/20 p-2">
+              <div className="text-[10px] font-semibold text-muted-foreground">
+                {d.toLocaleDateString('en-TT', { weekday: 'short', day: 'numeric', month: 'short' })}
               </div>
-              <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full whitespace-nowrap', sm.cls)}>{sm.label}</span>
+              <div className="mt-1.5 space-y-1">
+                {list.map((r) => {
+                  const st = (r.status ?? (r.present ? 'attended' : 'absent')) as string;
+                  const tone =
+                    st === 'attended' ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                    : st === 'late' ? 'bg-amber-50 text-amber-700 border-amber-300'
+                    : st === 'absent' ? 'bg-rose-50 text-rose-700 border-rose-300'
+                    : 'bg-muted text-muted-foreground border-border';
+                  return (
+                    <div key={r.key} className={cn('rounded-lg border px-1.5 py-1', tone)} title={r.label}>
+                      <div className="truncate text-[10px] font-semibold">{r.label}</div>
+                      <div className="text-[9px] capitalize opacity-80">{st}</div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            <div className="mt-4 pt-3 border-t border-border flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              {b.start && <span className="inline-flex items-center gap-1"><Calendar className="size-3.5" /> {new Date(b.start).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>}
-              {b.start && <span className="inline-flex items-center gap-1"><Clock className="size-3.5" /> {new Date(b.start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>}
-              {b.durationMinutes ? <span>{b.durationMinutes} min</span> : null}
-              {b.priceTtd != null && b.priceTtd > 0 ? <span className="ml-auto font-semibold text-ink">TT${b.priceTtd}</span> : null}
-            </div>
-          </article>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -360,37 +605,98 @@ function AttendanceTab({ rows, summary, loading }: { rows: AttRow[]; summary: At
       </div>
     );
   }
-  const rate = summary && summary.total > 0 ? Math.round((summary.present / summary.total) * 100) : 0;
   return (
     <div className="space-y-4">
       {summary && (
-        <div className="grid grid-cols-3 gap-3">
-          {[['Attendance', `${rate}%`], ['Present', summary.present], ['Absent', summary.absent]].map(([l, v]) => (
-            <div key={l as string} className="rounded-2xl bg-background border border-border p-4">
-              <div className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">{l}</div>
-              <div className="text-2xl font-bold text-ink mt-1 tabular-nums">{v}</div>
+        <div className="rounded-2xl border border-border bg-background p-4">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <div className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
+              Attendance
             </div>
-          ))}
+            {/* §6: never a bare percentage. rateLabel comes from the shared
+                helper — this used to recompute present/total locally, which is
+                exactly how two surfaces start quoting different numbers for the
+                same child. */}
+            <div className="text-2xl font-bold text-ink tabular-nums">
+              {summary.rateLabel ?? 'No sessions yet'}
+            </div>
+          </div>
+
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <Tally n={summary.attended ?? 0} label="attended" tone="text-brand-deep" />
+            <Tally n={summary.late ?? 0} label="late" tone="text-amber-700" />
+            <Tally n={summary.absent ?? 0} label="absent" tone="text-rose-600" />
+            {(summary.cancelled ?? 0) > 0 && (
+              <Tally n={summary.cancelled ?? 0} label="cancelled" tone="text-muted-foreground" />
+            )}
+          </div>
+
+          {/* The same bar the family calendar draws, over the same denominator
+              the rate above quotes. One child's number should not depend on
+              which page a parent read it from. */}
+          <RateBar
+            attended={summary.attended ?? 0}
+            late={summary.late ?? 0}
+            absent={summary.absent ?? 0}
+            missed={(summary.cancelled ?? 0) + (summary.excluded ?? 0)}
+          />
+
+          {/* The §6 tutor-absent guard, explained where it changes the number.
+              A denominator that silently shrinks looks like a bug. */}
+          {(summary.excluded ?? 0) > 0 && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              {summary.excluded} session{summary.excluded === 1 ? '' : 's'} not counted — the tutor
+              never started the class, so nobody was marked absent for it.
+            </p>
+          )}
+
+          {/* Decisions 16/17: automatic, and editable by nobody. Saying so stops
+              a parent asking the tutor to change a record the tutor cannot
+              change either. */}
+          <p className="mt-2 border-t border-border pt-2 text-xs text-muted-foreground">
+            Recorded automatically from when your child joins each class. Cancelled classes don&rsquo;t
+            count against the rate, and nobody can edit these records — not the tutor, not iTutor
+            support.
+          </p>
         </div>
       )}
+
+      <SessionStrip rows={rows} />
+
       <div className="space-y-2">
-        {rows.map((r) => (
-          <div key={r.key} className="flex items-center gap-3 rounded-2xl bg-background border border-border p-4">
-            <span className={cn('size-9 rounded-xl grid place-items-center shrink-0', r.present ? 'bg-brand-soft text-brand-deep' : 'bg-rose-100 text-rose-600')}>
-              {r.present ? <Check className="size-4" /> : <X className="size-4" />}
-            </span>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-semibold text-ink truncate">{r.label}</div>
-              <div className="text-xs text-muted-foreground">
-                {new Date(r.start).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · {new Date(r.start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                <span className="ml-2 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{r.type}</span>
+        {rows.map((r) => {
+          const s = ATT_STATUS[r.status ?? (r.present ? 'attended' : 'absent')] ?? ATT_STATUS.absent;
+          const Icon = s.icon;
+          return (
+            <div key={r.key} className="flex items-center gap-3 rounded-2xl bg-background border border-border p-4">
+              <span className={cn('size-9 rounded-xl grid place-items-center shrink-0', s.chip)}>
+                <Icon className="size-4" />
+              </span>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold text-ink truncate">{r.label}</div>
+                <div className="text-xs text-muted-foreground">
+                  {new Date(r.start).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · {new Date(r.start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                  <span className="ml-2 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{r.type}</span>
+                </div>
+                {r.status === 'excluded' && (
+                  <div className="mt-0.5 text-[11px] text-muted-foreground">
+                    The class didn&rsquo;t run — not counted either way.
+                  </div>
+                )}
               </div>
+              <span className={cn('shrink-0 text-xs font-bold uppercase tracking-wider text-right', s.text)}>
+                {s.label}
+                {/* The lateness, not just the label: "12 min late" is a
+                    conversation, "Late" is a verdict. */}
+                {r.status === 'late' && r.lateMinutes ? (
+                  <span className="block text-[10px] font-semibold normal-case tracking-normal text-muted-foreground">
+                    {r.lateMinutes} min late
+                  </span>
+                ) : null}
+              </span>
             </div>
-            <span className={cn('text-xs font-bold uppercase tracking-wider', r.present ? 'text-brand-deep' : 'text-rose-600')}>
-              {r.present ? 'Present' : 'Absent'}
-            </span>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

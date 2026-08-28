@@ -233,7 +233,72 @@ export async function GET(request: NextRequest) {
 
   try {
     const result = await processDueReminders(request);
-    return NextResponse.json({ success: true, ...result });
+
+    // §4.2 booking-request expiry rides on this cron deliberately: "Runs on the
+    // existing /api/cron/send-reminders. Do not add a second cron."
+    //
+    // It is run in its own try/catch and after the reminders, so a failure in
+    // the sweep cannot stop reminder emails going out — and the reverse, since
+    // the sweep is idempotent and simply catches up on the next tick.
+    //
+    // Nothing is emailed here. §4.2: no email on expiry, the state is
+    // discoverable only on platform.
+    let expiredRequests = 0;
+    try {
+      const { getServiceClient } = await import('@/lib/supabase/server');
+      const { expireDueRequests } = await import('@/lib/server/bookingRequests');
+      const swept = await expireDueRequests(getServiceClient());
+      expiredRequests = swept.expired;
+    } catch (sweepError) {
+      console.error('Booking-request expiry sweep failed', sweepError);
+    }
+
+    // Tutor-pause activation and auto-resume ride this cron too — the pause
+    // spec's build notes say "Do not add a second cron", same as §4.2.
+    //
+    // Auto-resume is what makes an open-ended tutor pause unnecessary and a
+    // maximum length unneeded: billing restarts on the stated date whether or not
+    // anyone acts. Both sweeps are idempotent, so a retried run cannot
+    // double-adjust a renewal date.
+    let pauseSweep = { activated: 0, resumed: 0, failed: 0, notified: 0 };
+    try {
+      const { getServiceClient } = await import('@/lib/supabase/server');
+      const { activateDuePauses, resumeDuePauses } = await import('@/lib/payments/tutorPause');
+      const admin = getServiceClient();
+
+      const activated = await activateDuePauses(admin);
+      const resumed = await resumeDuePauses(admin);
+
+      // Catch-up fan-out: any family still unnotified about a live break, e.g.
+      // because the announcing request died partway through the class.
+      const { fanOutPauseNotice } = await import('@/lib/server/tutorPauseNotify');
+      const { data: pending } = await admin
+        .from('group_enrollments')
+        .select('group_id')
+        .eq('pause_reason', 'tutor_break')
+        .is('pause_notified_at', null)
+        .limit(200);
+
+      const groupIds = Array.from(
+        new Set(((pending ?? []) as Array<{ group_id: string }>).map((r) => r.group_id))
+      );
+      let notified = 0;
+      for (const groupId of groupIds) {
+        const out = await fanOutPauseNotice(admin, { groupId, kind: 'paused' });
+        notified += out.notified;
+      }
+
+      pauseSweep = {
+        activated: activated.activated,
+        resumed: resumed.resumed,
+        failed: activated.failed + resumed.failed,
+        notified,
+      };
+    } catch (pauseError) {
+      console.error('Tutor-pause sweep failed', pauseError);
+    }
+
+    return NextResponse.json({ success: true, ...result, expiredRequests, pauseSweep });
   } catch (error) {
     console.error('Session reminder cron failed', error);
     return NextResponse.json({ error: 'Failed to process reminders' }, { status: 500 });

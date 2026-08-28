@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import type { CreateGroupInput } from '@/lib/types/groups';
+import {
+  resolveScheduleEntries,
+  scheduleMatchesDayTime,
+  type ScheduleEntry,
+  type TimeBand,
+} from '@/lib/utils/scheduleFormat';
 import { z } from 'zod';
 
 function isSchemaMismatch(error: any) {
@@ -49,6 +55,26 @@ export async function GET(request: NextRequest) {
       tutor_name: z.string().optional(),
       tutor_id: z.string().uuid().optional(),
       archived: z.enum(['true', 'false']).optional(),
+      // Recurring day-of-week filter: comma-separated indices, 0=Sunday.
+      days: z
+        .string()
+        .optional()
+        .transform((v) =>
+          (v ?? '')
+            .split(',')
+            .map((s) => Number(s.trim()))
+            .filter((n) => Number.isInteger(n) && n >= 0 && n <= 6)
+        ),
+      // Time-of-day bands: comma-separated morning|afternoon|evening.
+      timeOfDay: z
+        .string()
+        .optional()
+        .transform((v) =>
+          (v ?? '')
+            .split(',')
+            .map((s) => s.trim().toLowerCase())
+            .filter((s): s is TimeBand => s === 'morning' || s === 'afternoon' || s === 'evening')
+        ),
     });
     const parsed = querySchema.safeParse(
       Object.fromEntries([...searchParams.entries()].filter(([, v]) => v !== ''))
@@ -74,6 +100,8 @@ export async function GET(request: NextRequest) {
       tutor_name: tutorName,
       tutor_id: filterTutorId,
       archived: archivedParam,
+      days: filterDays,
+      timeOfDay: filterBands,
     } = parsed.data;
 
     const fetchArchived = archivedParam === 'true';
@@ -180,6 +208,50 @@ export async function GET(request: NextRequest) {
     const groupRows = groups ?? [];
     const groupIds = groupRows.map((g: any) => g.id);
 
+    // Preload the recurring schedule per group: powers the card's "Recurring
+    // every Monday and Wednesday · 5:00–7:00 PM AST" line and the day/time
+    // filters below. Manual schedule_data (authored by the tutor) wins over the
+    // pattern derived from group_sessions.
+    const scheduleEntriesByGroupId = new Map<string, ScheduleEntry[]>();
+    if (groupIds.length > 0) {
+      // No recurrence_type filter: classes scheduled as individual dates (no
+      // recurrence rule) still have a real weekly pattern in their occurrences,
+      // and resolveScheduleEntries falls back to those.
+      const { data: recurrenceRows, error: recurrenceError } = await service
+        .from('group_sessions')
+        .select(
+          'group_id, start_time, recurrence_type, recurrence_days, duration_minutes, ' +
+            'group_session_occurrences(scheduled_start_at, scheduled_end_at, cancelled_at, status)'
+        )
+        .in('group_id', groupIds)
+        .order('created_at', { ascending: true });
+
+      if (recurrenceError && !isSchemaMismatch(recurrenceError)) {
+        console.warn('[GET /api/groups] recurring schedule load failed (non-fatal):', recurrenceError.message);
+      }
+
+      const rulesByGroup = new Map<string, any[]>();
+      const occurrencesByGroup = new Map<string, any[]>();
+      for (const row of recurrenceRows ?? []) {
+        const key = String((row as any).group_id);
+        rulesByGroup.set(key, [...(rulesByGroup.get(key) ?? []), row]);
+        occurrencesByGroup.set(key, [
+          ...(occurrencesByGroup.get(key) ?? []),
+          ...(((row as any).group_session_occurrences as any[]) ?? []),
+        ]);
+      }
+
+      for (const g of groupRows) {
+        const key = String(g.id);
+        const entries = resolveScheduleEntries({
+          scheduleData: (g as any).schedule_data ?? null,
+          sessionRows: rulesByGroup.get(key) ?? [],
+          occurrences: occurrencesByGroup.get(key) ?? [],
+        });
+        if (entries.length > 0) scheduleEntriesByGroupId.set(key, entries);
+      }
+    }
+
     // Preload session occurrences to compute next session per group card
     let nextOccurrenceByGroupId = new Map<string, any>();
     if (groupIds.length > 0) {
@@ -225,12 +297,53 @@ export async function GET(request: NextRequest) {
         member_previews: [],
         current_user_membership: currentUserMembership,
         next_occurrence: nextOccurrenceByGroupId.get(g.id) ?? null,
+        schedule_entries: scheduleEntriesByGroupId.get(String(g.id)) ?? [],
       };
     });
 
-    // No profile-completeness gate for group classes — visibility (public/private) and
-    // archived_at are the sole gating mechanisms. Tutor profile quality checks apply to
-    // the 1:1 tutor search (/api/tutors/listed-ids), not here.
+    // Day-of-week / time-of-day filter. Lives here rather than in the `groups`
+    // where-clause because the data is on group_sessions, not groups.
+    if (filterDays.length > 0 || filterBands.length > 0) {
+      enriched = enriched.filter((g: any) => scheduleMatchesDayTime(g.schedule_entries, filterDays, filterBands));
+    }
+
+    // No profile-completeness gate for group classes — visibility (public/private),
+    // archived_at and the schedule requirement below are the gating mechanisms. Tutor
+    // profile quality checks apply to the 1:1 tutor search (/api/tutors/listed-ids).
+
+    /**
+     * A CLASS WITH NO SCHEDULE IS NOT LISTED.
+     *
+     * `schedule_entries` is the same resolved pattern every card and class page
+     * renders (`resolveScheduleEntries`: manual `schedule_data`, then a
+     * `group_sessions` recurrence rule, then two or more dated occurrences). If it
+     * resolves to nothing, the marketplace cannot tell a customer when the class
+     * meets — so the listing is an invitation to enrol in something with no
+     * stated time, which is the one thing a recurring class has to state.
+     *
+     * Gating on the RESOLVED pattern rather than on `group_sessions.recurrence_days`
+     * is deliberate: a tutor who typed their days into `schedule_data` has
+     * answered the question, even with no recurrence row behind it.
+     *
+     * THE OWNING TUTOR ALWAYS SEES THEIR OWN, and the exemption is PER ROW, not
+     * per request. It cannot be keyed on `tutor_id=<self>` being passed, because
+     * the tutor's own lessons home (components/groups/tutor/TutorLessonsHome)
+     * fetches this endpoint with no tutor_id at all and filters by owner on the
+     * client — a request-level exemption would strip their unscheduled classes
+     * before that filter ran, hiding from a tutor the very classes they need to
+     * open in order to fix. Per row also keeps the gate correct for the public
+     * profile card (components/tutor/public/ClassesSection), which passes someone
+     * else's tutor_id: a student browsing it still gets the gate.
+     *
+     * This removes real supply — 18 of 38 published classes on production at the
+     * time of writing. That is the point: those 18 are already broken for paying
+     * customers, and most of them are why Class Match Week's ineligible list exists.
+     */
+    if (!fetchArchived) {
+      enriched = enriched.filter(
+        (g: any) => (g.schedule_entries ?? []).length > 0 || g.tutor_id === user.id
+      );
+    }
 
     if (availability) {
       const now = new Date();
@@ -347,11 +460,15 @@ export async function GET(request: NextRequest) {
     const promotionsByGroupId = new Map<string, any>();
     if (paginatedGroupIds.length > 0) {
       try {
+        // Class-level promotions only — a personal coupon (migration 231)
+        // belongs to one attendee and must not badge the class in a listing.
+        // Service client, so RLS does not scope this.
         const { data: promos } = await service
           .from('group_promotions')
           .select('id, group_id, kind, discount, student_cap, duration_days, created_at')
           .in('group_id', paginatedGroupIds)
           .eq('active', true)
+          .is('user_id', null)
           .order('created_at', { ascending: false });
         const now = new Date();
         for (const promo of promos ?? []) {
@@ -490,6 +607,23 @@ export async function POST(request: NextRequest) {
     const resolvedVisibility: string | null =
       rawBody.visibility ?? (rawBody.isPublic === true ? 'public' : rawBody.isPublic === false ? 'unlisted' : null);
 
+    /**
+     * DRAFT or PUBLISHED. `groups.status` is NOT NULL DEFAULT 'PUBLISHED', and no
+     * insert here used to set it — so this endpoint could only ever publish, and
+     * the creation form's "Save as draft" button had nothing to call. It navigated
+     * away instead, discarding everything typed.
+     *
+     * Anything other than an explicit 'DRAFT' stays PUBLISHED, so every existing
+     * caller keeps its behaviour.
+     *
+     * SET ON EVERY FALLBACK TIER BELOW, not just the primary. The comment on
+     * end_date in those tiers is the cautionary tale: it lived on the primary
+     * insert alone, the primary always failed on production because of a column
+     * that does not exist there, and classes were created without it. A draft
+     * that silently published would be the same bug with worse consequences.
+     */
+    const resolvedStatus = rawBody.status === 'DRAFT' ? 'DRAFT' : 'PUBLISHED';
+
     let { data: group, error } = await service
       .from('groups')
       .insert({
@@ -501,6 +635,8 @@ export async function POST(request: NextRequest) {
         session_length_minutes: body.session_length_minutes ?? null,
         session_frequency: body.session_frequency ?? null,
         tutor_id: user.id,
+        // On every tier — see resolvedStatus above.
+        status: resolvedStatus,
         pricing: 'free',
         pricing_mode: body.pricing_mode ?? body.pricing_model ?? 'FREE',
         pricing_model: body.pricing_model ?? (
@@ -532,6 +668,15 @@ export async function POST(request: NextRequest) {
           session_length_minutes: body.session_length_minutes ?? null,
           session_frequency: body.session_frequency ?? null,
           tutor_id: user.id,
+          // On every tier — see resolvedStatus above.
+          status: resolvedStatus,
+          // end_date is VALIDATED AS REQUIRED above, so it has to survive every
+          // rung of this fallback chain. It was on the primary insert only, and
+          // header_image — which the primary also carries — does not exist on
+          // production, so the primary always failed there and the class was
+          // created with end_date NULL. EndDateGate then demanded it on the next
+          // screen, which is why tutors were asked for the same date twice.
+          end_date: endDateValue,
           pricing: 'free',
           pricing_mode: body.pricing_mode ?? body.pricing_model ?? 'FREE',
           pricing_model: body.pricing_model ?? (
@@ -556,6 +701,15 @@ export async function POST(request: NextRequest) {
           description: body.description?.trim() ?? null,
           subject: subjectString,
           tutor_id: user.id,
+          // On every tier — see resolvedStatus above.
+          status: resolvedStatus,
+          // end_date is VALIDATED AS REQUIRED above, so it has to survive every
+          // rung of this fallback chain. It was on the primary insert only, and
+          // header_image — which the primary also carries — does not exist on
+          // production, so the primary always failed there and the class was
+          // created with end_date NULL. EndDateGate then demanded it on the next
+          // screen, which is why tutors were asked for the same date twice.
+          end_date: endDateValue,
           pricing: 'free',
         })
         .select()
@@ -570,6 +724,15 @@ export async function POST(request: NextRequest) {
           description: body.description?.trim() ?? null,
           subject: subjectString,
           tutor_id: user.id,
+          // On every tier — see resolvedStatus above.
+          status: resolvedStatus,
+          // end_date is VALIDATED AS REQUIRED above, so it has to survive every
+          // rung of this fallback chain. It was on the primary insert only, and
+          // header_image — which the primary also carries — does not exist on
+          // production, so the primary always failed there and the class was
+          // created with end_date NULL. EndDateGate then demanded it on the next
+          // screen, which is why tutors were asked for the same date twice.
+          end_date: endDateValue,
         })
         .select()
         .single());

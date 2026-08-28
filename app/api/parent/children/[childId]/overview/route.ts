@@ -23,13 +23,39 @@ export async function GET(_request: NextRequest, { params }: Params) {
       .select('group_id, status, joined_at')
       .eq('user_id', childId);
     const groupIds = [...new Set((mems ?? []).map((m) => m.group_id).filter(Boolean))];
+    // The extra columns exist so the Classes tab can render the SAME card the
+    // marketplace does. A class that loses its banner, price and tutor the moment
+    // a child joins reads as a different object to the parent who joined it.
     const { data: groups } = groupIds.length
-      ? await admin.from('groups').select('id, name, subject').in('id', groupIds)
+      ? await admin
+          .from('groups')
+          .select('id, name, subject, form_level, cover_image, price_monthly, tutor_id, schedule_data, session_schedule, average_rating')
+          .in('id', groupIds)
       : { data: [] as any[] };
+    const groupTutorIds = [...new Set((groups ?? []).map((g: any) => g.tutor_id).filter(Boolean))];
+    const { data: groupTutors } = groupTutorIds.length
+      ? await admin.from('profiles').select('id, full_name, display_name').in('id', groupTutorIds)
+      : { data: [] as any[] };
+    const groupTutorName = new Map(
+      (groupTutors ?? []).map((t: any) => [t.id, t.display_name || t.full_name || 'Tutor'])
+    );
     const groupById = new Map((groups ?? []).map((g: any) => [g.id, g]));
     const enrollments = (mems ?? []).map((m: any) => {
       const g = groupById.get(m.group_id);
-      return { groupId: m.group_id, name: g?.name ?? 'Class', subject: g?.subject ?? null, status: m.status, joinedAt: m.joined_at };
+      return {
+        groupId: m.group_id,
+        name: g?.name ?? 'Class',
+        subject: g?.subject ?? null,
+        formLevel: g?.form_level ?? null,
+        coverImage: g?.cover_image ?? null,
+        priceMonthly: g?.price_monthly ?? null,
+        rating: g?.average_rating ?? null,
+        tutorName: g?.tutor_id ? (groupTutorName.get(g.tutor_id) ?? 'Tutor') : 'Tutor',
+        scheduleData: g?.schedule_data ?? null,
+        sessionSchedule: g?.session_schedule ?? null,
+        status: m.status,
+        joinedAt: m.joined_at,
+      };
     });
 
     // 1:1 booking history

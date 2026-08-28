@@ -4,6 +4,7 @@ import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 import type { UpdateGroupInput } from '@/lib/types/groups';
 import { generateUpcomingSessions } from '@/lib/recurrence';
 import { canOpenPreorders } from '@/lib/services/secureSpotService';
+import { classOccupancy } from '@/lib/services/classOccupancy';
 
 type Params = { params: Promise<{ groupId: string }> };
 function isSchemaMismatch(error: any): boolean {
@@ -75,10 +76,22 @@ export async function GET(_req: NextRequest, { params }: Params) {
       // strips them: on staging, content_blocks/whatsapp_url/parent_feedback_mode
       // are absent, every earlier select 42703s, and this one wins — which is
       // why "Secure your spot" never appeared there despite the flag being on.
+      //
+      // cover_image and friends were missing from THIS select while appearing in
+      // every earlier one — so on staging, where this select is the one that
+      // wins, the class banner never rendered and neither did the level, topic,
+      // session length or frequency. It read as a styling bug on the parent's
+      // class page; it was a column list.
+      //
+      // Every column added here was checked to exist on BOTH staging and prod
+      // before being added, because one absent column 42703s this select too —
+      // and this is the last resort, so there is nothing left to fall back to.
       `
-        id, name, description, tutor_id, subject, pricing, created_at,
-        max_students, price_per_session, price_monthly, require_join_requests, visibility,
-        secure_spot_enabled, end_date,
+        id, name, description, tutor_id, subject, pricing, created_at, archived_at, status,
+        max_students, price_per_session, price_monthly, pricing_model, require_join_requests, visibility,
+        secure_spot_enabled, end_date, cover_image, form_level, topic,
+        session_length_minutes, session_frequency, recurrence_type,
+        grace_period_days, auto_suspend_missed_payment, google_classroom_link,
         tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url),
         group_members(id, user_id, status, profile:profiles!group_members_user_id_fkey(id, full_name, avatar_url))
       `,
@@ -184,6 +197,53 @@ export async function GET(_req: NextRequest, { params }: Params) {
       ? ((group.group_members ?? []).find((m: any) => m.user_id === user.id) ?? null)
       : null;
 
+    // Viewer membership must consider BOTH tables. Free / approval-gated classes
+    // create a `group_members` row, but a paid class enrols through
+    // /subscribe which only writes `group_enrollments` — a student who paid has
+    // no group_members row at all. Resolving this server-side keeps every page
+    // that renders a join CTA from having to remember both.
+    let viewerEnrollmentStatus: string | null = null;
+    let viewerReleaseDate: string | null = null;
+    // Guarded: this page is now browsable by signed-out visitors, who have no
+    // membership to resolve. Unguarded, the merge of anonymous access with this
+    // block would have dereferenced a null user on every public class view.
+    if (user) {
+      const { data: enrolRows, error: enrolErr } = await service
+        .from('group_enrollments')
+        .select('status, release_date')
+        .eq('group_id', groupId)
+        .eq('student_id', user.id);
+
+      if (enrolErr && !isSchemaMismatch(enrolErr)) {
+        console.warn('[GET /api/groups/[groupId]] viewer enrollment load failed (non-fatal):', enrolErr?.message ?? enrolErr);
+      }
+      // SECURED belongs in this list. A student who paid their first month up
+      // front holds a place, so omitting it offered them "Secure your spot" on
+      // a class they had already paid for.
+      const statuses = (enrolRows ?? []).map((r: any) => String(r.status));
+      viewerEnrollmentStatus =
+        statuses.find((s) => ['SECURED', 'ACTIVE', 'GRACE', 'SUSPENDED'].includes(s)) ??
+        statuses.find((s) => s === 'PENDING_PAYMENT') ??
+        null;
+      viewerReleaseDate =
+        (enrolRows ?? []).find((r: any) => String(r.status) === 'SECURED')?.release_date ?? null;
+    }
+
+    const viewerMemberStatus = currentUserMembership?.status ? String(currentUserMembership.status) : null;
+    const viewerEnrolled =
+      (!!viewerMemberStatus && ['approved', 'active', 'invited'].includes(viewerMemberStatus)) ||
+      (!!viewerEnrollmentStatus && ['SECURED', 'ACTIVE', 'GRACE', 'SUSPENDED'].includes(viewerEnrollmentStatus));
+    const viewerMembership = {
+      member_status: viewerMemberStatus,
+      enrollment_status: viewerEnrollmentStatus,
+      enrolled: viewerEnrolled,
+      pending_approval: viewerMemberStatus === 'pending',
+      payment_pending: !viewerEnrolled && viewerEnrollmentStatus === 'PENDING_PAYMENT',
+      /** Place held by an up-front first-month payment (Secure your spot). */
+      secured: viewerEnrollmentStatus === 'SECURED',
+      release_date: viewerReleaseDate,
+    };
+
     // Fetch sessions with upcoming occurrences (service client bypasses RLS so all users get schedule preview)
     let sessionsRaw: any[] | null = null;
     let sessionsError: any = null;
@@ -266,11 +326,16 @@ export async function GET(_req: NextRequest, { params }: Params) {
     // Fetch active promotion for this group
     let activePromotion: any = null;
     try {
+      // Class-level promotions only. Personal coupons (migration 231) carry a
+      // user_id and belong to one attendee — surfacing one here would badge
+      // the class with a discount every other viewer cannot actually get.
+      // This runs on the service client, so RLS does not scope it.
       const { data: promos } = await service
         .from('group_promotions')
         .select('id, kind, discount, student_cap, duration_days, created_at')
         .eq('group_id', groupId)
         .eq('active', true)
+        .is('user_id', null)
         .order('created_at', { ascending: false });
 
       const now = new Date();
@@ -331,6 +396,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
           ? []
           : approvedMembers.slice(0, 3).map((m: any) => m.profile).filter(Boolean),
         current_user_membership: currentUserMembership,
+        viewer_membership: viewerMembership,
         sessions,
         next_occurrence: nextOccurrence,
         upcoming_sessions: upcomingSessions,
@@ -353,6 +419,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
             ? []
             : approvedMembers.slice(0, 3).map((m: any) => m.profile).filter(Boolean),
           current_user_membership: currentUserMembership,
+          viewer_membership: viewerMembership,
           sessions,
           next_occurrence: nextOccurrence,
           upcoming_sessions: upcomingSessions,
@@ -391,6 +458,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     }
 
     const body: UpdateGroupInput = await request.json();
+    // `secure_spot_enabled` is needed to tell "opening preorders" apart from
+    // "resending the flag unchanged"; see the guard further down.
+    const { data: currentGroup } = await service
+      .from('groups')
+      .select('secure_spot_enabled')
+      .eq('id', groupId)
+      .maybeSingle();
     const updates: Record<string, any> = {};
     if (body.name !== undefined) updates.name = body.name.trim();
     if (body.description !== undefined) updates.description = body.description;
@@ -423,7 +497,32 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (body.recurrence_type !== undefined) updates.recurrence_type = body.recurrence_type;
     if (body.recurrence_rule !== undefined) updates.recurrence_rule = body.recurrence_rule;
     if (body.timezone !== undefined) updates.timezone = body.timezone;
-    if (body.max_students !== undefined) updates.max_students = body.max_students;
+    // Capacity is editable at any point in a class's life, including after it
+    // has started — a tutor who wants to take more students should not have to
+    // wait for a new term. The only floor is the seats already taken: dropping
+    // the limit below that would leave enrolled students over the line, with no
+    // rule for who gets removed.
+    if (body.max_students !== undefined) {
+      const wantedCapacity = Number(body.max_students);
+      let taken: number;
+      try {
+        taken = await classOccupancy(service as any, groupId);
+      } catch (occErr: any) {
+        console.error('[PATCH /api/groups] occupancy lookup failed:', occErr?.message);
+        return NextResponse.json({ error: 'Could not check how many students are enrolled. Please try again.' }, { status: 503 });
+      }
+      if (Number.isFinite(wantedCapacity) && wantedCapacity < taken) {
+        return NextResponse.json(
+          {
+            error: `This class already has ${taken} student${taken === 1 ? '' : 's'}. Set the limit to ${taken} or more, or remove a student first.`,
+            reason: 'below_current_enrolment',
+            enrolled: taken,
+          },
+          { status: 400 }
+        );
+      }
+      updates.max_students = body.max_students;
+    }
     if (body.cover_image !== undefined) updates.cover_image = body.cover_image;
     if ((body as any).schedule_display !== undefined) updates.schedule_display = (body as any).schedule_display;
     if ((body as any).schedule_data !== undefined) updates.schedule_data = (body as any).schedule_data;
@@ -433,7 +532,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     // before it has taught anything.
     if ((body as any).secure_spot_enabled !== undefined) {
       const wanted = (body as any).secure_spot_enabled === true;
-      if (wanted) {
+      // Only re-check when preorders are actually being OPENED. The class
+      // settings form resends every field on every save, so re-validating an
+      // unchanged `true` made the whole request 400 with "already_started" once
+      // the class began — blocking edits to capacity, price and everything else
+      // on this endpoint for any class that had preorders left switched on.
+      const alreadyOpen = currentGroup?.secure_spot_enabled === true;
+      if (wanted && !alreadyOpen) {
         const allowed = await canOpenPreorders(service as any, groupId);
         if (!allowed.ok) {
           return NextResponse.json({ error: allowed.message, reason: allowed.reason }, { status: 400 });

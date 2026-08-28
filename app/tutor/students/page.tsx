@@ -102,14 +102,55 @@ function StudentsContent() {
         }
       });
 
+      // GROUP-CLASS STUDENTS. Everything above is built from `bookings`, which
+      // only ever holds 1:1 work — so a tutor whose entire roll is group classes
+      // saw "0 of 0 students" while teaching a full class every week.
+      //
+      // The roster route is the union that already exists (sessions +
+      // group_enrollments + group_members) and it runs service-side, which this
+      // page cannot: group_members is not readable from the browser, its RLS
+      // policy recurses. Reused rather than reimplemented so the two rolls
+      // cannot disagree about who a tutor teaches.
+      try {
+        const res = await fetch('/api/tutor/feedback/roster', { cache: 'no-store' });
+        if (res.ok) {
+          const json = await res.json();
+          for (const s of (json.students ?? []) as Array<{
+            id: string; name: string; avatar: string | null; formLevel: string | null; via: string | null;
+          }>) {
+            if (map.has(s.id)) continue;
+            map.set(s.id, {
+              id: s.id,
+              name: s.name,
+              initials: s.name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase(),
+              avatarUrl: s.avatar,
+              level: s.formLevel || '—',
+              // The class they came through, where a 1:1 student shows subjects.
+              primarySubjects: s.via && s.via !== '1:1 sessions' ? [s.via] : [],
+              totalSessions: 0,
+              lastSessionAt: null,
+              active: true,
+            });
+          }
+        }
+      } catch {
+        /* 1:1 students still render */
+      }
+
       const list: StudentRow[] = [];
       map.forEach((row, id) => {
-        row.primarySubjects = Array.from(subjectsByStudent.get(id) ?? []);
+        const bookingSubjects = Array.from(subjectsByStudent.get(id) ?? []);
+        // Only overwrite when there ARE booking subjects: a group student's
+        // class name lives in this field and has nothing to replace it.
+        if (bookingSubjects.length > 0) row.primarySubjects = bookingSubjects;
         row.totalSessions = countByStudent.get(id) ?? 0;
         row.lastSessionAt = lastByStudent.get(id) ?? null;
         const last = row.lastSessionAt ? new Date(row.lastSessionAt).getTime() : 0;
         const sixtyDaysAgo = Date.now() - 60 * 24 * 3600 * 1000;
-        row.active = last >= sixtyDaysAgo;
+        // "Active" means recently taught. A group student has no 1:1 session
+        // rows at all, so measuring them by that clock marks every one of them
+        // inactive — they are current by virtue of being enrolled.
+        row.active = row.lastSessionAt === null ? true : last >= sixtyDaysAgo;
         list.push(row);
       });
       setStudents(list);

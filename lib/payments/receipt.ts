@@ -256,9 +256,9 @@ export function subscriptionReceiptSubject(d: SubscriptionReceiptData) {
 
 export function renderSubscriptionReceiptHtml(
   d: SubscriptionReceiptData,
-  opts: { appUrl?: string } = {}
+  opts: { appUrl?: string; forEmail?: boolean } = {}
 ): string {
-  const { appUrl } = opts;
+  const { appUrl, forEmail = false } = opts;
 
   const rows: Array<[string, string]> = [
     ['Receipt / Transaction ID', d.transactionId],
@@ -320,7 +320,7 @@ export function renderSubscriptionReceiptHtml(
     </div>
 
     ${
-      appUrl
+      appUrl && !forEmail
         ? `<div style="margin-top:24px;">
              <a href="${esc(appUrl)}/student/subscriptions"
                 style="display:inline-block;background:${BRAND_GREEN};color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:700;font-size:14px;">
@@ -332,8 +332,7 @@ export function renderSubscriptionReceiptHtml(
 
     <p style="font-size:12px;color:#9ca3af;line-height:1.6;margin:28px 0 0;border-top:1px solid #e5e7eb;padding-top:16px;">
       Keep this receipt for your records. Quote the transaction ID above in any
-      billing query. Payments are processed securely by Stripe.<br />
-      iTutor · Trinidad &amp; Tobago
+      billing query. Payments are processed securely by Stripe.${forEmail ? '' : '<br />iTutor · Trinidad &amp; Tobago'}
     </p>
   </div>`;
 }
@@ -341,9 +340,9 @@ export function renderSubscriptionReceiptHtml(
 /** "Someone joined your class" for the tutor. No amounts, same as bookings. */
 export function renderTutorNewMemberHtml(
   d: SubscriptionReceiptData,
-  opts: { appUrl?: string } = {}
+  opts: { appUrl?: string; forEmail?: boolean } = {}
 ): string {
-  const { appUrl } = opts;
+  const { appUrl, forEmail = false } = opts;
   return `
   <div style="font-family:system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#ffffff;color:#111827;max-width:560px;margin:0 auto;padding:24px;">
     <div style="border-bottom:3px solid ${BRAND_GREEN};padding-bottom:16px;margin-bottom:24px;">
@@ -355,7 +354,7 @@ export function renderTutorNewMemberHtml(
       <strong>${esc(d.className)}</strong> and their first payment has cleared.
     </p>
     ${
-      appUrl
+      appUrl && !forEmail
         ? `<div style="margin-top:8px;">
              <a href="${esc(appUrl)}/tutor/classes/${esc(d.groupId)}?tab=roster"
                 style="display:inline-block;background:${BRAND_GREEN};color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:700;font-size:14px;">
@@ -365,8 +364,7 @@ export function renderTutorNewMemberHtml(
         : ''
     }
     <p style="font-size:12px;color:#9ca3af;line-height:1.6;margin:28px 0 0;border-top:1px solid #e5e7eb;padding-top:16px;">
-      Your earnings for this class are shown in your tutor dashboard.<br />
-      iTutor · Trinidad &amp; Tobago
+      Your earnings for this class are shown in your tutor dashboard.${forEmail ? '' : '<br />iTutor · Trinidad &amp; Tobago'}
     </p>
   </div>`;
 }
@@ -384,9 +382,9 @@ export function renderTutorNewMemberHtml(
  */
 export function renderTutorBookingHtml(
   d: ReceiptData,
-  opts: { appUrl?: string } = {}
+  opts: { appUrl?: string; forEmail?: boolean } = {}
 ): string {
-  const { appUrl } = opts;
+  const { appUrl, forEmail = false } = opts;
 
   const rows: Array<[string, string]> = [
     ['Student', d.studentName],
@@ -422,7 +420,7 @@ export function renderTutorBookingHtml(
     </table>
 
     ${
-      appUrl
+      appUrl && !forEmail
         ? `<div style="margin-top:28px;">
              <a href="${esc(appUrl)}/tutor/sessions"
                 style="display:inline-block;background:${BRAND_GREEN};color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:700;font-size:14px;">
@@ -433,8 +431,7 @@ export function renderTutorBookingHtml(
     }
 
     <p style="font-size:12px;color:#9ca3af;line-height:1.6;margin:28px 0 0;border-top:1px solid #e5e7eb;padding-top:16px;">
-      Your earnings for this session are shown in your tutor dashboard.<br />
-      iTutor · Trinidad &amp; Tobago
+      Your earnings for this session are shown in your tutor dashboard.${forEmail ? '' : '<br />iTutor · Trinidad &amp; Tobago'}
     </p>
   </div>`;
 }
@@ -450,9 +447,9 @@ export function renderTutorBookingHtml(
  */
 export function renderReceiptHtml(
   d: ReceiptData,
-  opts: { forPrint?: boolean; appUrl?: string } = {}
+  opts: { forPrint?: boolean; appUrl?: string; forEmail?: boolean } = {}
 ): string {
-  const { forPrint = false, appUrl } = opts;
+  const { forPrint = false, appUrl, forEmail = false } = opts;
 
   const rows: Array<[string, string]> = [
     ['Receipt / Transaction ID', d.transactionId],
@@ -508,7 +505,7 @@ export function renderReceiptHtml(
     </table>
 
     ${
-      appUrl
+      appUrl && !forEmail
         ? `<div style="margin-top:28px;">
              <a href="${esc(appUrl)}/student/bookings"
                 style="display:inline-block;background:${BRAND_GREEN};color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:700;font-size:14px;">
@@ -520,8 +517,7 @@ export function renderReceiptHtml(
 
     <p style="font-size:12px;color:#9ca3af;line-height:1.6;margin:28px 0 0;border-top:1px solid #e5e7eb;padding-top:16px;">
       Keep this receipt for your records. Quote the transaction ID above in any
-      billing query. Payments are processed securely by Stripe.<br />
-      iTutor · Trinidad &amp; Tobago
+      billing query. Payments are processed securely by Stripe.${forEmail ? '' : '<br />iTutor · Trinidad &amp; Tobago'}
     </p>
   </div>`;
 
@@ -555,4 +551,86 @@ export function renderReceiptHtml(
     }
   </script>
 </body></html>`;
+}
+
+// =====================================================
+// EMAIL WRAPPERS
+// =====================================================
+// The four functions above return HTML FRAGMENTS (and, for renderReceiptHtml
+// with forPrint, a standalone print document). These put a fragment inside the
+// platform's email chrome — see lib/email/design.
+//
+// WHY THE FRAGMENT IS NOT REBUILT AS BLOCKS. This module is the single source of
+// truth for receipt content and is shared with GET
+// /api/payments/stripe/[paymentId]/receipt, the print-to-PDF path. Expressing
+// the same figures twice — once as blocks for email, once as markup for print —
+// is exactly the drift the module exists to prevent, and these are the numbers a
+// customer keeps and quotes in a dispute. So the fragment stays one thing, and
+// `forEmail` only suppresses the two parts the email shell provides better: the
+// inline button, and the "iTutor · Trinidad & Tobago" sign-off that predates the
+// current company name.
+
+import { renderEmail, type RenderedEmail } from '@/lib/email/design';
+
+/** The payer's session receipt. */
+export function receiptEmail(d: ReceiptData, opts: { appUrl?: string } = {}): RenderedEmail {
+  return renderEmail({
+    family: 'payment-receipt',
+    subject: `Your iTutor receipt — ${d.subject}`,
+    preheader: `${fmtMoney(d.total, d.currency)} paid. Keep this for your records.`,
+    heading: 'Thanks for your payment',
+    intro: 'Your payment was successful. Keep this email for your records.',
+    blocks: [{ kind: 'html', html: renderReceiptHtml(d, { ...opts, forEmail: true }) }],
+    cta: opts.appUrl
+      ? { label: 'View my bookings', href: `${opts.appUrl}/student/bookings` }
+      : undefined,
+  });
+}
+
+/** The tutor's "you have been booked" notice for the same payment. */
+export function tutorBookingEmail(d: ReceiptData, opts: { appUrl?: string } = {}): RenderedEmail {
+  return renderEmail({
+    family: 'booking-confirmation',
+    subject: `New booking: ${d.subject} with ${d.studentName}`,
+    heading: 'You have a new booking',
+    intro: `${d.studentName} has booked ${d.subject}.`,
+    eyebrow: 'Booking confirmed',
+    blocks: [{ kind: 'html', html: renderTutorBookingHtml(d, { ...opts, forEmail: true }) }],
+    cta: opts.appUrl ? { label: 'View my sessions', href: `${opts.appUrl}/tutor/sessions` } : undefined,
+  });
+}
+
+/** The payer's subscription receipt. */
+export function subscriptionReceiptEmail(
+  d: SubscriptionReceiptData,
+  opts: { appUrl?: string } = {}
+): RenderedEmail {
+  return renderEmail({
+    family: 'payment-receipt',
+    subject: `Your iTutor receipt — ${d.className}`,
+    heading: 'Thanks for your payment',
+    intro: 'Your payment was successful. Keep this email for your records.',
+    blocks: [{ kind: 'html', html: renderSubscriptionReceiptHtml(d, { ...opts, forEmail: true }) }],
+    cta: opts.appUrl
+      ? { label: 'Manage my subscriptions', href: `${opts.appUrl}/student/subscriptions` }
+      : undefined,
+  });
+}
+
+/** The tutor's "a student joined your class" notice. */
+export function tutorNewMemberEmail(
+  d: SubscriptionReceiptData,
+  opts: { appUrl?: string } = {}
+): RenderedEmail {
+  return renderEmail({
+    family: 'booking-confirmation',
+    subject: `${d.studentName} joined ${d.className}`,
+    heading: 'A student joined your class',
+    intro: `${d.studentName} is enrolled in ${d.className}.`,
+    eyebrow: 'New member',
+    blocks: [{ kind: 'html', html: renderTutorNewMemberHtml(d, { ...opts, forEmail: true }) }],
+    cta: opts.appUrl
+      ? { label: 'View class roster', href: `${opts.appUrl}/tutor/classes/${d.groupId}?tab=roster` }
+      : undefined,
+  });
 }
