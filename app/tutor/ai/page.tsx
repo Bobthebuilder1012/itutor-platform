@@ -32,6 +32,8 @@ import TutorShell from '@/components/tutor/TutorShell';
 import AiCreditMeter from '@/components/ai/AiCreditMeter';
 import AiHistoryPanel, { type AiConversationSummary } from '@/components/ai/AiHistoryPanel';
 import AiElicitation from '@/components/ai/AiElicitation';
+import AiGenerating from '@/components/ai/AiGenerating';
+import AiArtifact, { type AiArtifactData } from '@/components/ai/AiArtifact';
 import { AI_FLOWS, FLOW_FOOTERS, FLOW_TASK_TYPE, type AiFlowKey } from '@/lib/ai/flows';
 import { useProfile } from '@/lib/hooks/useProfile';
 
@@ -74,6 +76,9 @@ const TASK_CARDS: TaskCard[] = [
   },
 ];
 
+/** How often the hub asks whether a running job has finished. */
+const POLL_INTERVAL_MS = 2500;
+
 function greeting(): string {
   const hour = new Date().getHours();
   if (hour < 12) return 'Good morning';
@@ -92,6 +97,10 @@ export default function TutorAiPage() {
   const [credits, setCredits] = useState<{ remaining: number; monthly: number } | null>(null);
   const [composer, setComposer] = useState('');
 
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [artifact, setArtifact] = useState<AiArtifactData | null>(null);
+  const [genError, setGenError] = useState<string | null>(null);
+
   const loadHistory = useCallback(async () => {
     try {
       const res = await fetch('/api/ai/conversations');
@@ -106,16 +115,21 @@ export default function TutorAiPage() {
     }
   }, []);
 
+  const loadCredits = useCallback(async () => {
+    try {
+      const res = await fetch('/api/ai/credits');
+      if (!res.ok) return;
+      const json = await res.json();
+      setCredits({ remaining: json.remaining, monthly: json.monthly });
+    } catch {
+      // The meter simply does not render. Better than a broken pill.
+    }
+  }, []);
+
   useEffect(() => {
     loadHistory();
-
-    fetch('/api/ai/credits')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((json) => json && setCredits({ remaining: json.remaining, monthly: json.monthly }))
-      .catch(() => {
-        // The meter simply does not render. Better than a broken pill.
-      });
-  }, [loadHistory]);
+    loadCredits();
+  }, [loadHistory, loadCredits]);
 
   const rename = useCallback(async (id: string, title: string) => {
     // Optimistic: the rename is inline and instant in the prototype, and a
@@ -133,6 +147,8 @@ export default function TutorAiPage() {
     async (key: AiFlowKey) => {
       setActiveFlow(key);
       setHistoryOpen(false);
+      setArtifact(null);
+      setGenError(null);
 
       // The conversation row is created up front so the run exists in history
       // even if the tutor abandons it halfway. An abandoned plan is still
@@ -147,6 +163,81 @@ export default function TutorAiPage() {
     },
     [loadHistory]
   );
+
+  /**
+   * Enqueue, nudge the worker, then poll.
+   *
+   * The nudge is fire-and-forget on purpose: this page must not block on a
+   * model call, and in production the cron would have picked the job up anyway.
+   * See the header of /api/ai/jobs/drain for why that endpoint exists at all.
+   */
+  const generate = useCallback(async (flow: AiFlowKey, given: Record<string, string>) => {
+    setGenError(null);
+    setArtifact(null);
+
+    // Survives a double-tap: the same key returns the same job rather than
+    // charging twice.
+    const idempotencyKey = `${flow}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    let res: Response;
+    try {
+      res = await fetch('/api/ai/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ flow, answers: given, idempotencyKey }),
+      });
+    } catch {
+      setGenError('Could not reach the server. Check your connection and try again.');
+      return;
+    }
+
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      setGenError(json.error ?? 'Could not start the job.');
+      return;
+    }
+
+    setJobId(json.job.id);
+    fetch('/api/ai/jobs/drain', { method: 'POST' }).catch(() => undefined);
+  }, []);
+
+  // Poll while a job runs. Cleared on unmount so leaving the page does not
+  // leave a timer hitting the API for a result nobody is waiting on.
+  useEffect(() => {
+    if (!jobId) return;
+    let cancelled = false;
+
+    const tick = async () => {
+      try {
+        const res = await fetch(`/api/ai/jobs/${jobId}`);
+        if (!res.ok) return;
+        const { job } = await res.json();
+        if (cancelled) return;
+
+        if (job.status === 'SUCCEEDED') {
+          setArtifact(job.output_ref as AiArtifactData);
+          setJobId(null);
+          loadHistory();
+          loadCredits();
+        } else if (job.status === 'FAILED' || job.status === 'CANCELLED') {
+          setGenError(job.error ?? 'The generation failed. Your credit has been returned.');
+          setJobId(null);
+          loadCredits();
+        }
+      } catch {
+        // A dropped poll is not a failure — the next tick catches up.
+      }
+    };
+
+    const interval = setInterval(tick, POLL_INTERVAL_MS);
+    tick();
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [jobId, loadHistory, loadCredits]);
 
   const onCardClick = (key: AiFlowKey | 'marking') => {
     if (key === 'marking') {
@@ -192,21 +283,34 @@ export default function TutorAiPage() {
         onNew={() => {
           setHistoryOpen(false);
           setActiveFlow(null);
+          setArtifact(null);
         }}
       />
 
-      {activeFlow ? (
-        <AiElicitation
-          flow={AI_FLOWS[activeFlow]}
-          footerSummary={FLOW_FOOTERS[activeFlow]}
-          onBack={() => setActiveFlow(null)}
-          onGenerate={(answers) => {
-            // Generation is an ai_jobs row picked up by the cron worker, per
-            // rule 1 — wired up as each flow's handler lands. Until then this
-            // deliberately does nothing rather than faking a result.
-            console.info('[ai] generate requested', activeFlow, answers);
+      {activeFlow && jobId ? (
+        <AiGenerating flow={activeFlow} />
+      ) : activeFlow && artifact ? (
+        <AiArtifact
+          data={artifact}
+          onStartOver={() => {
+            setArtifact(null);
+            setActiveFlow(null);
           }}
         />
+      ) : activeFlow ? (
+        <div>
+          {genError && (
+            <div className="w-full max-w-[680px] mx-auto mb-4 px-4 py-3 rounded-xl bg-danger-bg text-danger-fg text-[13px] font-medium">
+              {genError}
+            </div>
+          )}
+          <AiElicitation
+            flow={AI_FLOWS[activeFlow]}
+            footerSummary={FLOW_FOOTERS[activeFlow]}
+            onBack={() => setActiveFlow(null)}
+            onGenerate={(given) => generate(activeFlow, given)}
+          />
+        </div>
       ) : (
         <div className="w-full max-w-[680px] mx-auto">
           <div className="flex items-center gap-3">
