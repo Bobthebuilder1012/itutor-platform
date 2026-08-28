@@ -105,3 +105,65 @@ CLASS_MATCH_WEEK_ENABLED       # Class Match Week on/off (default true)
 ```
 
 Google OAuth and Zoom OAuth credentials are also required for those integrations.
+
+## iTutor AI v2
+
+The tutor-facing AI hub at `/tutor/ai` — Plan a Lesson, Create a Quiz, Study
+Sheets, Mark Papers. It replaces the v1 marking tool (`app/api/ai/*`,
+`app/tools/ai/page.tsx`), which was shut down on 7 July 2026 and deleted, not
+extended.
+
+> **Draft — reconstructed, pending owner review.** The build handoff refers to
+> "the six non-negotiable rules" in this section and cites rule 4 by number, but
+> no such section existed in the repo. These six are reconstructed from the
+> handoff's own definition of done. Correct them before relying on them.
+
+### The six non-negotiable rules
+
+1. **No model call inside a request handler.** Every generation, extraction and
+   marking run is an `ai_jobs` row picked up by `/api/cron/process-ai-jobs`. A
+   request handler may enqueue and may read a result; it may never hold a
+   connection open waiting on a provider.
+
+2. **No usage metered by a lifetime counter.** v1 metered on
+   `profiles.ai_uses_count`, an integer that only ever went up. Entitlement is
+   `ai_credit_ledger` — append-only, balance derived by summing `delta`, never
+   stored as a mutable total. A terminal job failure refunds the ledger.
+
+3. **No unverified curriculum row or generated question is visible to a
+   student.** Extraction writes drafts with `verified_at = NULL`. A row reaches
+   a learner surface only after a reviewer sets `verified_by` / `verified_at`.
+   Low-confidence extractions are flagged for review, never silently dropped.
+
+4. **No past-paper content from an unlicensed source, anywhere in the repo.**
+   CXC materials come from CXC Store, with `license_status` recorded on the row.
+   Never fetch from unlicensed past-paper sites — not for seeds, not for
+   fixtures, not for a local test.
+
+5. **No AI mark reaches a student or parent without tutor review.** "AI finished
+   marking" and "Results published" are distinct states, and the gap between
+   them is a deliberate safety boundary. Record the tutor's override delta — it
+   is the only honest quality metric the system has.
+
+6. **One provider entry point.** Only `lib/ai/provider.ts` imports a model SDK,
+   exposing `generateStructured()` and `extractFromImage()`. Grepping for the
+   SDK import must return exactly one file.
+
+### Conventions
+
+- **Migrations** for this feature start at **248**. The numbers the handoff
+  assigns (217–222) are already shipped, unrelated features.
+- **Structured output, not free-form text.** Vision and generation calls pass a
+  strict JSON response schema.
+- **`ai_messages.structured_payload`** drives the rich message renderer (option
+  chips, date pickers, editable summary cards, calendar grids). Build the
+  renderer around it from the start; retrofitting rich message types is painful.
+- **Questions live in our tables** regardless of delivery. Google Forms is one
+  value of `quizzes.delivery_channel`, not the system of record.
+- **Images are optimised client-side** via `lib/utils/imageOptimize.ts` (~1600px
+  long edge, WebP) before any upload.
+
+### Feature flags
+
+- `NEXT_PUBLIC_AI_FEATURE_MAINTENANCE` — the v1 kill switch, default `true`.
+  Retained so the `/tools/ai` stub keeps rendering the maintenance notice.

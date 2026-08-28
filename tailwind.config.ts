@@ -76,12 +76,15 @@ const config: Config = {
         lavender: 'var(--lavender)',
         peach: 'var(--peach)',
         sky: 'var(--sky)',
-        sidebar: {
-          DEFAULT: 'var(--sidebar)',
-          fg: 'var(--sidebar-fg)',
-          muted: 'var(--sidebar-muted)',
-          active: 'var(--sidebar-active)',
-        },
+        // Status palette from the design system. Paired bg/fg so a badge is
+        // two classes that cannot drift apart: bg-success-bg text-success-fg.
+        success: { bg: 'var(--success-bg)', fg: 'var(--success-fg)' },
+        warning: { bg: 'var(--warning-bg)', fg: 'var(--warning-fg)' },
+        danger: { bg: 'var(--danger-bg)', fg: 'var(--danger-fg)' },
+        info: { bg: 'var(--info-bg)', fg: 'var(--info-fg)' },
+        progress: { bg: 'var(--progress-bg)', fg: 'var(--progress-fg)' },
+        neutral: { bg: 'var(--neutral-bg)', fg: 'var(--neutral-fg)' },
+        star: 'var(--star)',
         surface: {
           DEFAULT: 'var(--surface)',
           soft: 'var(--surface-soft)',

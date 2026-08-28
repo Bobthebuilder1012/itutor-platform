@@ -32,12 +32,20 @@ const nav: NavItem[] = [
   { to: '/tutor/wallet', label: 'My Wallet', icon: Wallet },
   { to: '/tutor/reviews', label: 'Reviews', icon: Star },
   { to: '/tutor/business', label: 'My Business', icon: Rocket, gated: true },
-  { to: '/tutor/tools', label: 'iTutor AI', icon: Sparkles },
+  { to: '/tutor/ai', label: 'iTutor AI', icon: Sparkles },
 ];
 
 const COLLAPSE_KEY = 'itutor.tutorSidebar.collapsed';
 
-export default function TutorShell({ children }: { children: ReactNode }) {
+/**
+ * @param actions - extra top-bar controls, rendered just before notifications.
+ *   The AI hub puts its credit meter and history trigger here. Every other page
+ *   passes nothing, which is why this is a slot rather than another flag: the
+ *   top bar already carries search, the campaign CTA, notifications and
+ *   settings, and unconditionally adding two more would crowd it everywhere for
+ *   the sake of one route.
+ */
+export default function TutorShell({ children, actions }: { children: ReactNode; actions?: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname() || '';
   const { profile, loading } = useProfile();
@@ -184,6 +192,7 @@ export default function TutorShell({ children }: { children: ReactNode }) {
                 Renders nothing when none is live, and nothing while a tutor is
                 already inside it. */}
             <CampaignCta audience="teacher" />
+            {actions}
             <div className="flex items-center gap-1">
               <Link href="/tutor/notifications" className="relative size-9 grid place-items-center rounded-lg hover:bg-muted text-muted-foreground" title="Notifications">
                 <Bell className="size-4" />

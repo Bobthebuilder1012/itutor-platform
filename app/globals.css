@@ -42,16 +42,41 @@
     --brand-light: #dcfce7;
     --brand-accent: #22c55e;
 
-    --sidebar: #0f1a14;
-    --sidebar-fg: #e5e7eb;
-    --sidebar-muted: #9ca3af;
-    --sidebar-active: #22c55e;
-
     --surface: #ffffff;
     --surface-soft: #f5faf7;
     --surface-border: #e5e7eb;
 
     --bg: #f3f4f6;
+
+    /* ── Status colours ────────────────────────────────────────────────
+       Lifted verbatim from the design system's tokens/colors.css. The kit
+       tokenises the status palette the app has been writing inline as raw
+       Tailwind classes (orange-50, red-50, blue-50, purple-50, amber-400),
+       and the AI prototype renders its badges straight off these names —
+       a "Live" quiz pill is var(--success-bg), not bg-green-100.
+       Additive: nothing referenced these before, so no existing colour moves. */
+    --success-bg: #dcfce7;
+    --success-fg: #15803d;
+    --warning-bg: #fff7ed;
+    --warning-fg: #ea580c;
+    --danger-bg: #fef2f2;
+    --danger-fg: #dc2626;
+    --info-bg: #eff6ff;
+    --info-fg: #2563eb;
+    --progress-bg: #faf5ff;
+    --progress-fg: #9333ea;
+    --neutral-bg: #f3f4f6;
+    --neutral-fg: #6b7280;
+    --star: #fbbf24;
+
+    /* ── Shadows ───────────────────────────────────────────────────────
+       --shadow-card is the design system's floating-card shadow, verbatim.
+       --shadow-sheet is the mobile bottom sheet's upward cast, which the AI
+       prototype specifies and the kit has no equivalent for — a sheet lifts
+       off the bottom edge, so its shadow points the other way. */
+    --shadow-pop: 0 20px 50px -20px rgba(25, 147, 86, 0.4);
+    --shadow-card: 0 10px 30px -12px rgba(17, 24, 39, 0.18);
+    --shadow-sheet: 0 -8px 30px -12px rgba(17, 24, 39, 0.3);
 
     /* ── Landing page design tokens ────────────────────────────────── */
     --brand-soft: oklch(0.95 0.07 150);
@@ -125,8 +150,9 @@
   color: transparent;
 }
 
-.shadow-pop  { box-shadow: 0 20px 50px -20px rgba(25, 147, 86, 0.4); }
-.shadow-card { box-shadow: 0 10px 30px -12px rgba(17, 24, 39, 0.18); }
+.shadow-pop   { box-shadow: var(--shadow-pop); }
+.shadow-card  { box-shadow: var(--shadow-card); }
+.shadow-sheet { box-shadow: var(--shadow-sheet); }
 
 /**
  * Range slider with a filled track, for the Class Match Week session builder.
