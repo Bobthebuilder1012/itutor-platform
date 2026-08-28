@@ -46,7 +46,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
         id, group_id, title, recurrence_type, recurrence_days,
         start_time, duration_minutes, starts_on, ends_on, created_at,
         occurrences:group_session_occurrences(
-          id, group_session_id, title, scheduled_start_at, scheduled_end_at,
+          id, group_session_id, title, scheduled_start_at, scheduled_end_at, venue_id,
           status, cancelled_at, cancellation_note
         )
       `)
