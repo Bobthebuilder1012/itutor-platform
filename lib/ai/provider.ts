@@ -83,7 +83,16 @@ export class ProviderTransientError extends Error {
 
 // ── Configuration ────────────────────────────────────────────────────────────
 
-const DEFAULT_MODEL = process.env.AI_MODEL ?? 'gemini-2.0-flash';
+/**
+ * Pinned rather than a -latest alias: a default that silently moves would
+ * change every prompt result without a deploy.
+ *
+ * Verified against the live key. gemini-2.0-flash (the original default) and
+ * gemini-2.5-flash both 404 with 'no longer available to new users' — and
+ * 2.5 is still returned by models.list, so listing a model is not evidence
+ * you can call it. Google names gemini-3.6-flash as the replacement.
+ */
+const DEFAULT_MODEL = process.env.AI_MODEL ?? 'gemini-3.6-flash';
 const DEFAULT_VISION_MODEL = process.env.AI_VISION_MODEL ?? DEFAULT_MODEL;
 
 /**
@@ -138,11 +147,21 @@ function classify(error: unknown): never {
 }
 
 function countTokens(response: {
-  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    thoughtsTokenCount?: number;
+  };
 }): { inputTokens: number; outputTokens: number } {
+  const usage = response.usageMetadata;
+
+  // Thinking tokens are billed as output but reported separately, and they are
+  // not a rounding error: one study sheet spent 1766 thinking tokens against
+  // 656 of visible output. Counting only candidatesTokenCount would under-report
+  // the real cost by roughly three quarters, and cost_cents feeds the ledger.
   return {
-    inputTokens: response.usageMetadata?.promptTokenCount ?? 0,
-    outputTokens: response.usageMetadata?.candidatesTokenCount ?? 0,
+    inputTokens: usage?.promptTokenCount ?? 0,
+    outputTokens: (usage?.candidatesTokenCount ?? 0) + (usage?.thoughtsTokenCount ?? 0),
   };
 }
 
