@@ -5,6 +5,7 @@ import type { UpdateGroupInput } from '@/lib/types/groups';
 import { generateUpcomingSessions } from '@/lib/recurrence';
 import { canOpenPreorders } from '@/lib/services/secureSpotService';
 import { classOccupancy } from '@/lib/services/classOccupancy';
+import { syncScheduleSessions } from '@/lib/classes/scheduleSessions';
 
 type Params = { params: Promise<{ groupId: string }> };
 function isSchemaMismatch(error: any): boolean {
@@ -569,9 +570,35 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       await generateUpcomingSessions(groupId, 60);
     }
 
+    // The Settings tab's schedule picker is where most tutors set their weekly
+    // times, and until now it wrote display text and nothing else — the class
+    // advertised "Mondays 4–5pm" but had no session for a join link, a reminder
+    // or an attendance sheet to attach to. Saving a schedule now creates the
+    // sessions too, so both screens leave the class in the same state.
+    //
+    // Add-only and best-effort: it never removes a session the tutor made by
+    // hand, and a failure here must not fail the settings save the tutor just
+    // clicked — the schedule is still stored, and the next save retries.
+    let scheduleSync: Awaited<ReturnType<typeof syncScheduleSessions>> | null = null;
+    if ((body as any).schedule_data !== undefined) {
+      try {
+        scheduleSync = await syncScheduleSessions({
+          service,
+          groupId,
+          scheduleData: (body as any).schedule_data,
+          endDate: (group as any)?.end_date ?? null,
+        });
+        if (!scheduleSync.ok) {
+          console.error('[PATCH /api/groups/[groupId]] schedule sync failed:', scheduleSync.detail);
+        }
+      } catch (syncErr) {
+        console.error('[PATCH /api/groups/[groupId]] schedule sync threw:', syncErr);
+      }
+    }
+
     await auditAdminOverride(actor, 'class.update', { fields: Object.keys(updates).filter((k) => k !== 'updated_at') });
 
-    return NextResponse.json({ group });
+    return NextResponse.json({ group, schedule_sync: scheduleSync });
   } catch (err) {
     console.error('[PATCH /api/groups/[groupId]]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

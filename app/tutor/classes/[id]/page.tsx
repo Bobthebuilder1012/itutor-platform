@@ -2731,7 +2731,10 @@ function SchedulePicker({ entries, onChange }: { entries: ScheduleEntry[]; onCha
   return (
     <div className="space-y-3">
       <div className="text-sm font-semibold text-ink">Schedule</div>
-      <p className="text-xs text-muted-foreground -mt-1">Add your recurring sessions. Students see this on the marketplace.</p>
+      <p className="text-xs text-muted-foreground -mt-1">
+        Add your recurring sessions. Students see this on the marketplace, and saving also puts
+        them on your Sessions tab, so join links, reminders and attendance start working.
+      </p>
 
       {entries.length > 0 && (
         <div className="space-y-2">

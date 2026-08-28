@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
-import type { CreateGroupSessionInput, DayOfWeek } from '@/lib/types/groups';
+import type { CreateGroupSessionInput } from '@/lib/types/groups';
 import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
-import { trinidadInstant } from '@/lib/payments/secureSpot';
+import { buildOccurrenceRows } from '@/lib/classes/scheduleSessions';
 
 type Params = { params: Promise<{ groupId: string }> };
 function isSchemaMismatch(error: any): boolean {
@@ -140,8 +140,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     if (sessionError) throw sessionError;
 
-    // Generate occurrences (pass client timezone since it's not stored in DB)
-    const occurrences = generateOccurrences({ ...session, timezone_offset: body.timezone_offset });
+    const occurrences = buildOccurrenceRows(session);
 
     if (occurrences.length > 0) {
       const { error: occError } = await service
@@ -183,93 +182,15 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 }
 
-// ---------------------------------------------------------------
-// Occurrence generation helper
-// ---------------------------------------------------------------
-function generateOccurrences(session: any) {
-  const occurrences: Array<{
-    scheduled_start_at: string;
-    scheduled_end_at: string;
-    status: 'upcoming';
-  }> = [];
-
-  const [startHour, startMin] = session.start_time.split(':').map(Number);
-  const durationMs = session.duration_minutes * 60 * 1000;
-
-  const [y, m, d] = session.starts_on.split('-').map(Number);
-  const endsOn = session.ends_on
-    ? (() => { const [ey, em, ed] = session.ends_on.split('-').map(Number); return Date.UTC(ey, em - 1, ed, 23, 59, 59); })()
-    : null;
-
-  /**
-   * A class time is a Trinidad time — the UI labels it AST — so it is resolved
-   * against that zone here rather than against whatever timezone the tutor's
-   * browser happened to be in.
-   *
-   * This previously added a client-supplied `timezone_offset`, and the callers
-   * disagreed about its sign: the tutor class page sent
-   * `-getTimezoneOffset()` while the five modals sent `getTimezoneOffset()`.
-   * The API had no way to tell which convention it was being handed, so the
-   * same 6pm class came out at 6pm or at 10am depending on which screen made
-   * it. Ms Maloney's Form 5 Geography was stored at 14:00Z — 10am AST — for a
-   * class its own header advertised as 6–8pm.
-   *
-   * Trusting the browser was also wrong in principle: a tutor scheduling from
-   * abroad would have set the class in their local time, not their students'.
-   */
-  function localToUtc(year: number, month: number, day: number): Date {
-    return trinidadInstant(year, month, day, startHour, startMin);
-  }
-
-  if (session.recurrence_type === 'none') {
-    const start = localToUtc(y, m, d);
-    occurrences.push({
-      scheduled_start_at: start.toISOString(),
-      scheduled_end_at: new Date(start.getTime() + durationMs).toISOString(),
-      status: 'upcoming',
-    });
-    return occurrences;
-  }
-
-  const maxOccurrences = 400;
-  const cursor = new Date(Date.UTC(y, m - 1, d));
-
-  while (occurrences.length < maxOccurrences) {
-    const curY = cursor.getUTCFullYear();
-    const curM = cursor.getUTCMonth() + 1;
-    const curD = cursor.getUTCDate();
-    const curDay = cursor.getUTCDay();
-
-    if (endsOn && cursor.getTime() > endsOn) break;
-
-    if (session.recurrence_type === 'weekly') {
-      const days: DayOfWeek[] = session.recurrence_days ?? [];
-      if (days.length === 0) break;
-
-      if (days.includes(curDay as DayOfWeek)) {
-        const start = localToUtc(curY, curM, curD);
-        occurrences.push({
-          scheduled_start_at: start.toISOString(),
-          scheduled_end_at: new Date(start.getTime() + durationMs).toISOString(),
-          status: 'upcoming',
-        });
-      }
-    } else if (session.recurrence_type === 'daily') {
-      const start = localToUtc(curY, curM, curD);
-      occurrences.push({
-        scheduled_start_at: start.toISOString(),
-        scheduled_end_at: new Date(start.getTime() + durationMs).toISOString(),
-        status: 'upcoming',
-      });
-    } else {
-      break;
-    }
-
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
-
-    const cap = session.recurrence_type === 'daily' ? 365 : 104;
-    if (!endsOn && occurrences.length >= cap) break;
-  }
-
-  return occurrences;
-}
+// Occurrence instants are built by `buildOccurrenceRows` in
+// lib/classes/scheduleSessions.ts, shared with the Settings-tab schedule sync
+// so that a schedule set on either screen lands on the same instants.
+//
+// That generator used to live here, and this copy took a client-supplied
+// `timezone_offset` whose sign the callers disagreed about: the tutor class page
+// sent `-getTimezoneOffset()` while the five modals sent `getTimezoneOffset()`.
+// The API had no way to tell which convention it was handed, so the same 6pm
+// class came out at 6pm or at 10am depending on which screen made it — Ms
+// Maloney's Form 5 Geography was stored at 14:00Z, 10am AST, under a header
+// advertising 6–8pm. Class times are Trinidad times and are resolved as such,
+// in one place. `timezone_offset` is still accepted in the body and ignored.
