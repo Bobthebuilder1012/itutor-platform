@@ -21,10 +21,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowRight,
+  ArrowUp,
   CalendarRange,
   FileText,
   History,
   ListChecks,
+  Loader2,
   Sparkles,
   Stamp,
 } from 'lucide-react';
@@ -100,6 +102,8 @@ export default function TutorAiPage() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [artifact, setArtifact] = useState<AiArtifactData | null>(null);
   const [genError, setGenError] = useState<string | null>(null);
+  const [routing, setRouting] = useState(false);
+  const [seed, setSeed] = useState<Record<string, string> | undefined>(undefined);
 
   const loadHistory = useCallback(async () => {
     try {
@@ -144,8 +148,9 @@ export default function TutorAiPage() {
   }, []);
 
   const startFlow = useCallback(
-    async (key: AiFlowKey) => {
+    async (key: AiFlowKey, prefill?: Record<string, string>) => {
       setActiveFlow(key);
+      setSeed(prefill);
       setHistoryOpen(false);
       setArtifact(null);
       setGenError(null);
@@ -244,8 +249,70 @@ export default function TutorAiPage() {
       router.push('/tutor/ai/marking');
       return;
     }
-    startFlow(key);
+    // No seed: a card press is a deliberate start from the questions.
+    startFlow(key, undefined);
   };
+
+  /**
+   * The composer. Classifies what was typed, then either opens the matching
+   * flow with the extracted parameters already filled, or — when it is a
+   * question rather than a request — opens a chat conversation and sends it.
+   *
+   * The promise under the box is 'Describe a task and I'll take you to the
+   * right tool'. Until now that promise was false: the input was bound to
+   * state nothing ever read.
+   */
+  const submitComposer = useCallback(async () => {
+    const text = composer.trim();
+    if (!text || routing) return;
+
+    setRouting(true);
+    setGenError(null);
+
+    try {
+      const res = await fetch('/api/ai/classify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+
+      const routed = res.ok
+        ? await res.json()
+        : { flow: 'chat', answers: {} };
+
+      if (routed.flow === 'marking') {
+        router.push('/tutor/ai/marking');
+        return;
+      }
+
+      if (routed.flow === 'lesson' || routed.flow === 'sheet' || routed.flow === 'quiz') {
+        setComposer('');
+        await startFlow(routed.flow as AiFlowKey, routed.answers ?? {});
+        return;
+      }
+
+      // Anything else is a question. Open a conversation and carry the text in
+      // so the tutor does not retype it on the next screen.
+      const convo = await fetch('/api/ai/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_type: 'GENERAL', title: text.slice(0, 60) }),
+      });
+
+      if (!convo.ok) {
+        setGenError('Could not start a conversation.');
+        return;
+      }
+
+      const { conversation } = await convo.json();
+      setComposer('');
+      router.push(`/tutor/ai/c/${conversation.id}?ask=${encodeURIComponent(text)}`);
+    } catch {
+      setGenError('Could not work out where to send that. Try again.');
+    } finally {
+      setRouting(false);
+    }
+  }, [composer, routing, router, startFlow]);
 
   const firstName = useMemo(
     () => (profile?.full_name ?? '').trim().split(/\s+/)[0] || 'there',
@@ -307,6 +374,7 @@ export default function TutorAiPage() {
           <AiElicitation
             flow={AI_FLOWS[activeFlow]}
             footerSummary={FLOW_FOOTERS[activeFlow]}
+            seed={seed}
             onBack={() => setActiveFlow(null)}
             onGenerate={(given) => generate(activeFlow, given)}
           />
@@ -372,12 +440,33 @@ export default function TutorAiPage() {
               <input
                 value={composer}
                 onChange={(e) => setComposer(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    submitComposer();
+                  }
+                }}
+                disabled={routing}
                 placeholder="Or tell me what you need…"
-                className="flex-1 bg-transparent outline-none text-[14px]"
+                className="flex-1 bg-transparent outline-none text-[14px] disabled:opacity-60"
               />
+              <button
+                onClick={submitComposer}
+                disabled={!composer.trim() || routing}
+                aria-label="Send"
+                className="size-8 shrink-0 grid place-items-center rounded-lg bg-brand text-white disabled:opacity-35 disabled:cursor-not-allowed hover:bg-brand-dark transition-all duration-200 active:scale-95 disabled:active:scale-100"
+              >
+                {routing ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <ArrowUp className="size-4" />
+                )}
+              </button>
             </div>
             <div className="mt-2 text-center text-[11.5px] text-ink-muted">
-              Describe a task and I&apos;ll take you to the right tool.
+              {routing
+                ? 'Working out where that goes…'
+                : "Describe a task and I'll take you to the right tool, or ask a question."}
             </div>
           </div>
         </div>

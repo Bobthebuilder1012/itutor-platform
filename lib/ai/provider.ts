@@ -274,3 +274,91 @@ export function estimateCostCents(inputTokens: number, outputTokens: number): nu
   const cents = (inputTokens / 1_000_000) * inputRate + (outputTokens / 1_000_000) * outputRate;
   return Math.round(cents * 1000) / 1000;
 }
+
+// ── Streaming ────────────────────────────────────────────────────────────────
+
+/** One turn of a conversation, in provider-neutral shape. */
+export interface ChatTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface StreamResult {
+  /** Yields text fragments as the model writes them. */
+  stream: AsyncIterable<string>;
+  /** Resolves once the stream is exhausted. Token counts are only final then. */
+  usage: () => Promise<{ model: string; inputTokens: number; outputTokens: number }>;
+}
+
+/**
+ * Stream a conversational reply.
+ *
+ * The third entry point, and the one that exists for a UX reason rather than a
+ * technical one. Generation jobs take 21-30s against this model, which is fine
+ * for "write me a quiz" behind a progress list and unusable for conversation —
+ * nobody waits half a minute for a chat reply with no sign of life.
+ *
+ * Deliberately unstructured. The other two entry points force a response schema
+ * because their output is rendered by a component that needs known fields; a
+ * chat reply is prose, and imposing a schema on prose only invents fields the
+ * model then has to fill.
+ *
+ * Callers must drain the stream before awaiting usage() — the provider reports
+ * token counts only in the final chunk.
+ */
+export async function streamChat(
+  history: ChatTurn[],
+  opts: GenerateOptions = {}
+): Promise<StreamResult> {
+  const modelName = opts.model ?? DEFAULT_MODEL;
+
+  const model = getClient().getGenerativeModel({
+    model: modelName,
+    systemInstruction: opts.system,
+    generationConfig: {
+      temperature: opts.temperature ?? 0.6,
+      maxOutputTokens: opts.maxOutputTokens,
+    },
+  });
+
+  // The SDK wants alternating roles with the final user turn passed separately.
+  const last = history[history.length - 1];
+  if (!last || last.role !== 'user') {
+    throw new ProviderPermanentError('streamChat requires the last turn to be from the user');
+  }
+
+  let settled: { model: string; inputTokens: number; outputTokens: number } | null = null;
+
+  try {
+    const chat = model.startChat({
+      history: history.slice(0, -1).map((turn) => ({
+        // Gemini calls the assistant "model"; the mapping stays inside this file.
+        role: turn.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: turn.content }],
+      })),
+    });
+
+    const result = await chat.sendMessageStream(last.content);
+
+    async function* iterate(): AsyncIterable<string> {
+      for await (const chunk of result.stream) {
+        const text = chunk.text();
+        if (text) yield text;
+      }
+      const final = await result.response;
+      const counted = countTokens(final);
+      settled = { model: modelName, ...counted };
+    }
+
+    return {
+      stream: iterate(),
+      usage: async () =>
+        settled ?? { model: modelName, inputTokens: 0, outputTokens: 0 },
+    };
+  } catch (error) {
+    if (error instanceof ProviderPermanentError || error instanceof ProviderTransientError) {
+      throw error;
+    }
+    classify(error);
+  }
+}
