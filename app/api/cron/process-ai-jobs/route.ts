@@ -11,6 +11,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { processAiJobs } from '@/lib/services/aiJobService';
 
+// Registering the flow handlers is a side effect of this import. Without it the
+// worker claims jobs and fails every one of them for want of a handler.
+import '@/lib/ai/handlers';
+
 export const dynamic = 'force-dynamic';
 
 /**
