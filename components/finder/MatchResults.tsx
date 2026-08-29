@@ -29,6 +29,7 @@ import {
 import { nearMissButtonLabel, type GatingDimension } from '@/lib/matching/finder';
 import { levelLabel, type CanonicalLevel } from '@/lib/matching/levels';
 import type { AvailabilityBlock } from '@/lib/matching/availability';
+import { classHref, signupThen } from '@/lib/finder/links';
 import MatchCard, { type MatchCardData } from './MatchCard';
 
 export interface FinderRequestRow {
@@ -142,26 +143,18 @@ export default function MatchResults({
             `Nothing matched exactly, but here is what we teach in this subject.`
           : null;
 
+  // Exactly Explore's own content container — `max-w-6xl mx-auto space-y-6`,
+  // with no padding of its own, because every shell that renders this supplies
+  // it on <main>. All three entry points are now inside one: /student/matches
+  // and /parent/matches through their layouts, and /find/results through
+  // PublicFinderShell. The anonymous branch used to add px-4 py-8 because it
+  // had no shell at all; keeping that here would have indented this screen
+  // relative to the marketplace it sits beside.
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 sm:px-6">
-      {/* Anonymous renders have no app shell around them, so the flow would
-          otherwise lose its frame at the exact moment it pays off. The log-in
-          link carries ?redirect=/find/claim — unlike mid-wizard, where it is
-          bare: someone who has just SEEN their matches and then remembers they
-          have an account should have these answers adopted onto it. */}
-      {isAnonymous ? (
-        <div className="flex items-center justify-between gap-3">
-          <Link href="/" aria-label="iTutor home" className="text-[15px] font-semibold tracking-tight text-ink">
-            iTutor
-          </Link>
-          <Link
-            href="/login?redirect=%2Ffind%2Fclaim"
-            className="rounded-full border border-border bg-white px-4 py-2 text-[14px] font-semibold text-ink transition hover:bg-mint"
-          >
-            Log in
-          </Link>
-        </div>
-      ) : null}
+    <div className="mx-auto w-full max-w-6xl space-y-6">
+      {/* The iTutor wordmark and Log in link that used to sit here are the
+          shell's now — see PublicFinderShell. Rendering them again would put
+          two log-in affordances on one screen. */}
 
       {/* Same header scale as Explore's own h1/subtitle — this is the same
           product handing off to that one, not a smaller-type prelude to it. */}
@@ -247,7 +240,7 @@ export default function MatchResults({
               // the one place in this flow where it genuinely buys the visitor
               // something, so the copy says what it buys.
               <Link
-                href={`/signup?role=${role}&redirect=${encodeURIComponent('/find/claim?to=/find/results')}&intent=notify`}
+                href={`${signupThen(role, '/find/results')}&intent=notify`}
                 className="inline-flex rounded-full bg-brand px-6 py-3 text-[15px] font-semibold text-white transition hover:brightness-110"
               >
                 Create a free account and we&rsquo;ll email you
@@ -311,6 +304,9 @@ export default function MatchResults({
               <MatchCard
                 key={match.group_id}
                 data={match}
+                // Anonymously View class asks for the account first and opens
+                // the class on the other side of it. See lib/finder/links.ts.
+                ctaHref={classHref(match.group_id, role, isAnonymous)}
                 rank={index + 1}
                 nearMissOn={
                   row.match_class === 'near'

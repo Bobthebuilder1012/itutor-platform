@@ -20,6 +20,8 @@ import {
   ChevronUp,
   CreditCard,
   ReceiptText,
+  Lock,
+  UserPlus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { StudentStoreProvider } from '@/lib/student-store';
@@ -36,6 +38,15 @@ type NavItem = {
   icon: ComponentType<{ className?: string }>;
   exact?: boolean;
   tint: string;
+  /**
+   * A destination that needs an account. Only meaningful in `anonymous` mode:
+   * the item still renders, dimmed and with a padlock, and `to` is expected to
+   * be a signup URL that comes back here. Present rather than hidden because a
+   * rail that grows four new icons the moment you sign up hides what the
+   * account is FOR — and because the visitor is standing on a screen whose
+   * whole argument is that an account saves this.
+   */
+  locked?: boolean;
 };
 
 /**
@@ -126,12 +137,81 @@ function ProfileMenu({ collapsed, displayName, initials, roleLabel, avatarUrl }:
   );
 }
 
-function ShellInner({ children, navItems }: { children: ReactNode; navItems: NavItem[] }) {
+/**
+ * What sits where the profile menu sits, for a visitor with no account.
+ *
+ * The profile menu cannot simply be hidden: it anchors the bottom of the rail,
+ * and without it the sidebar ends in nothing. It also cannot be RENDERED, which
+ * is the bug this mode exists to fix — `useProfile()` returns null for a
+ * logged-out browser and the menu then shows an avatar, the literal name
+ * "Student" and a Log out button for an account that does not exist.
+ *
+ * `signupHref` carries the visitor back to where they were standing, so the
+ * account is the thing that continues the journey rather than interrupting it.
+ */
+function AnonymousPanel({
+  collapsed,
+  signupHref,
+  loginHref,
+}: {
+  collapsed: boolean;
+  signupHref: string;
+  loginHref: string;
+}) {
+  return (
+    <div className="border-t border-border p-3">
+      {collapsed ? (
+        <Link
+          href={signupHref}
+          title="Create a free account"
+          className="grid size-10 place-items-center rounded-xl bg-brand text-white transition hover:bg-brand-deep"
+        >
+          <UserPlus className="size-4" />
+        </Link>
+      ) : (
+        <div className="space-y-2">
+          <Link
+            href={signupHref}
+            className="block rounded-xl bg-brand px-3 py-2 text-center text-sm font-semibold text-white transition hover:bg-brand-deep"
+          >
+            Create a free account
+          </Link>
+          <Link
+            href={loginHref}
+            className="block rounded-xl px-3 py-2 text-center text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
+          >
+            Log in
+          </Link>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ShellInner({
+  children,
+  navItems,
+  anonymous = false,
+  signupHref = '/signup',
+  loginHref = '/login',
+  searchAction,
+}: {
+  children: ReactNode;
+  navItems: NavItem[];
+  anonymous?: boolean;
+  signupHref?: string;
+  loginHref?: string;
+  /** Where the top-bar search box submits. Defaults to the student marketplace. */
+  searchAction?: (query: string) => string;
+}) {
   const nav = navItems;
   const pathname = usePathname();
   const router = useRouter();
   const { profile } = useProfile();
-  const [collapsed, setCollapsed] = useState(false);
+  // Anonymous opens collapsed. The rail is orientation for someone who has not
+  // decided to be here yet, not a menu they are navigating — and the screen it
+  // frames (matches, browse) is the thing they came for.
+  const [collapsed, setCollapsed] = useState(anonymous);
   const [query, setQuery] = useState('');
 
   const displayName = profile?.display_name || profile?.full_name?.split(' ')[0] || 'Student';
@@ -151,21 +231,36 @@ function ShellInner({ children, navItems }: { children: ReactNode; navItems: Nav
   const roleLabel =
     profile?.role === 'parent' ? 'Parent' : profile?.role === 'tutor' ? 'Tutor' : 'Student';
 
+  // The stored preference belongs to an account's sessions. An anonymous
+  // visitor neither reads it (they would inherit whatever the last person on
+  // this browser chose, and the mode is specified as collapsed) nor writes it
+  // (toggling the rail on a marketing surface should not change how the app
+  // opens once they do sign up).
   useEffect(() => {
+    if (anonymous) return;
     try {
       const v = localStorage.getItem(COLLAPSE_KEY);
       if (v) setCollapsed(v === '1');
     } catch {}
-  }, []);
+  }, [anonymous]);
 
   useEffect(() => {
+    if (anonymous) return;
     try { localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0'); } catch {}
-  }, [collapsed]);
+  }, [collapsed, anonymous]);
 
   const onSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    const q = encodeURIComponent(query.trim());
-    router.push(`/student/find-tutors${q ? `?q=${q}` : ''}`);
+    const q = query.trim();
+    // Anonymously this must not be /student/find-tutors: that page reads
+    // `groups` through the browser client, and the only SELECT policy on it is
+    // TO authenticated — so RLS empties it with no error and the search looks
+    // broken rather than gated.
+    if (searchAction) {
+      router.push(searchAction(q));
+      return;
+    }
+    router.push(`/student/find-tutors${q ? `?q=${encodeURIComponent(q)}` : ''}`);
   };
 
   return (
@@ -199,23 +294,33 @@ function ShellInner({ children, navItems }: { children: ReactNode; navItems: Nav
         <nav className="flex-1 overflow-y-auto py-2">
           <div className={cn('space-y-0.5', collapsed ? 'px-2' : 'px-3')}>
             {nav.map((item) => {
-              const active = item.exact ? pathname === item.to : pathname.startsWith(item.to);
+              // Compare paths, not hrefs. A destination that carries a query
+              // string (`/find/browse?role=parent`) never matched `pathname`,
+              // so it could never show as the active item.
+              const target = item.to.split('?')[0];
+              const active = item.exact ? pathname === target : pathname.startsWith(target);
               const Icon = item.icon;
+              const locked = anonymous && item.locked;
               return (
                 <Link
                   key={item.to}
                   href={item.to}
-                  title={collapsed ? item.label : undefined}
+                  title={locked ? `${item.label} — create a free account` : collapsed ? item.label : undefined}
                   className={cn(
                     'flex items-center rounded-xl text-sm font-medium transition-colors group',
                     collapsed ? 'justify-center p-2' : 'gap-3 px-2 py-2',
                     active ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
                   )}
                 >
-                  <span className={cn('size-8 rounded-lg grid place-items-center transition', item.tint, !active && 'opacity-80 group-hover:opacity-100')}>
+                  <span className={cn('size-8 rounded-lg grid place-items-center transition', item.tint, !active && 'opacity-80 group-hover:opacity-100', locked && 'opacity-40 group-hover:opacity-70')}>
                     <Icon className="size-4" />
                   </span>
-                  {!collapsed && <span>{item.label}</span>}
+                  {!collapsed && (
+                    <span className={cn('flex flex-1 items-center gap-2', locked && 'opacity-60')}>
+                      {item.label}
+                      {locked ? <Lock className="size-3 shrink-0" /> : null}
+                    </span>
+                  )}
                 </Link>
               );
             })}
@@ -223,7 +328,11 @@ function ShellInner({ children, navItems }: { children: ReactNode; navItems: Nav
 
         </nav>
 
-        <ProfileMenu collapsed={collapsed} displayName={displayName} initials={initials} roleLabel={roleLabel} avatarUrl={profile?.avatar_url} />
+        {anonymous ? (
+          <AnonymousPanel collapsed={collapsed} signupHref={signupHref} loginHref={loginHref} />
+        ) : (
+          <ProfileMenu collapsed={collapsed} displayName={displayName} initials={initials} roleLabel={roleLabel} avatarUrl={profile?.avatar_url} />
+        )}
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto overflow-x-hidden">
@@ -252,17 +361,32 @@ function ShellInner({ children, navItems }: { children: ReactNode; navItems: Nav
 
             {/* Campaign entry point. In the shell rather than on the dashboard
                 so it is reachable from every student page; it renders nothing
-                when no campaign is live, or once inside the campaign itself. */}
-            <CampaignCta />
+                when no campaign is live, or once inside the campaign itself.
+                Anonymously it is skipped outright — the campaign's own pages
+                gate on a session, so the CTA would be an invitation to a login
+                wall. */}
+            {anonymous ? null : <CampaignCta />}
 
-            <div className="flex items-center gap-1">
-              <Link href="/student/notifications" className="relative size-9 grid place-items-center rounded-full hover:bg-muted text-muted-foreground" title="Notifications">
-                <Bell className="size-4" />
+            {anonymous ? (
+              // Notifications and Settings are an account's, so they are
+              // replaced rather than dimmed — there is nothing behind them to
+              // unlock, and Log in is what this visitor might actually want.
+              <Link
+                href={loginHref}
+                className="rounded-full border border-border px-4 py-1.5 text-sm font-semibold text-ink transition hover:bg-muted"
+              >
+                Log in
               </Link>
-              <Link href="/student/settings" className="size-9 grid place-items-center rounded-full hover:bg-muted text-muted-foreground" title="Settings">
-                <Settings className="size-4" />
-              </Link>
-            </div>
+            ) : (
+              <div className="flex items-center gap-1">
+                <Link href="/student/notifications" className="relative size-9 grid place-items-center rounded-full hover:bg-muted text-muted-foreground" title="Notifications">
+                  <Bell className="size-4" />
+                </Link>
+                <Link href="/student/settings" className="size-9 grid place-items-center rounded-full hover:bg-muted text-muted-foreground" title="Settings">
+                  <Settings className="size-4" />
+                </Link>
+              </div>
+            )}
           </div>
         </header>
 
@@ -274,13 +398,15 @@ function ShellInner({ children, navItems }: { children: ReactNode; navItems: Nav
         <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-border bg-background">
           <div className="grid grid-cols-5">
             {nav.slice(0, 5).map((item) => {
-              const active = item.exact ? pathname === item.to : pathname.startsWith(item.to);
+              const target = item.to.split('?')[0];
+              const active = item.exact ? pathname === target : pathname.startsWith(target);
               const Icon = item.icon;
+              const locked = anonymous && item.locked;
               return (
                 <Link
                   key={item.to}
                   href={item.to}
-                  className={cn('flex flex-col items-center gap-1 py-2 text-[10px] font-medium', active ? 'text-brand-deep' : 'text-muted-foreground')}
+                  className={cn('flex flex-col items-center gap-1 py-2 text-[10px] font-medium', active ? 'text-brand-deep' : 'text-muted-foreground', locked && 'opacity-50')}
                 >
                   <span className={cn('size-8 rounded-lg grid place-items-center', active ? item.tint : '')}>
                     <Icon className="size-4" />
@@ -300,14 +426,45 @@ function ShellInner({ children, navItems }: { children: ReactNode; navItems: Nav
 export function StudentShell({
   children,
   navItems,
+  anonymous,
+  signupHref,
+  loginHref,
+  searchAction,
 }: {
   children: ReactNode;
   /** Override the sidebar destinations. Omit for the standard student nav. */
   navItems?: NavItem[];
+  /**
+   * Render for a visitor with NO ACCOUNT: sidebar starts collapsed, the profile
+   * menu is replaced by a signup panel, the notification and settings icons
+   * become Log in, and `locked` nav items dim.
+   *
+   * This mode is why /find/results no longer renders bare. The comment that
+   * used to sit on that page said this shell could not be used logged out
+   * because it "falls back to the literal name Student when useProfile() has no
+   * user" — true of the profile menu, and fixed here rather than routed around,
+   * so the anonymous half of the Finder is the same product as the marketplace
+   * it hands off to instead of a thinner-looking cousin.
+   */
+  anonymous?: boolean;
+  /** Anonymous only: where the signup CTA goes. Carry a redirect back. */
+  signupHref?: string;
+  /** Anonymous only: where Log in goes. Carry a redirect back. */
+  loginHref?: string;
+  /** Build the top-bar search destination. Omit for the student marketplace. */
+  searchAction?: (query: string) => string;
 }) {
   return (
     <StudentStoreProvider>
-      <ShellInner navItems={navItems ?? nav}>{children}</ShellInner>
+      <ShellInner
+        navItems={navItems ?? nav}
+        anonymous={anonymous}
+        signupHref={signupHref}
+        loginHref={loginHref}
+        searchAction={searchAction}
+      >
+        {children}
+      </ShellInner>
     </StudentStoreProvider>
   );
 }
