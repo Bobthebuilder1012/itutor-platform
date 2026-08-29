@@ -9,6 +9,8 @@
 import { type SupabaseClient } from '@supabase/supabase-js';
 import { calculateCommissionForTutor } from '@/lib/utils/commissionCalculator';
 import type { SubscriptionPaymentType } from '@/lib/types/groups';
+import { trackForUser } from '@/lib/analytics/track';
+import { PRODUCT_EVENTS } from '@/lib/analytics/events';
 
 export interface CreatePendingPaymentParams {
   enrollmentId: string;
@@ -19,6 +21,9 @@ export interface CreatePendingPaymentParams {
   originalAmountTtd?: number | null;
   discountPercent?: number | null;
   promotionId?: string | null;
+  /** Who is charged, when that is not the student. Omitted = the student pays.
+   *  Recorded so a refund and a receipt reach the card that was actually used. */
+  payerId?: string | null;
 }
 
 export interface PendingPaymentRow {
@@ -60,6 +65,8 @@ export async function createPendingSubscriptionPayment(
       enrollment_id: params.enrollmentId,
       group_id: params.groupId,
       student_id: params.studentId,
+      payer_id:
+        params.payerId && params.payerId !== params.studentId ? params.payerId : null,
       type: params.type,
       amount_ttd: params.amountTtd,
       original_amount_ttd: params.originalAmountTtd ?? null,
@@ -363,6 +370,26 @@ export async function handleSubscriptionPayment(
       }
     }
   }
+
+  // ── paid ──
+  // The single revenue event for the subscription path. Emitted HERE rather
+  // than in the three webhook branches that call this function, because those
+  // branches differ per provider and per event type — instrumenting them
+  // separately is how one of them silently stops counting after a refactor.
+  // Every successful activation passes through this line.
+  //
+  // Placed after activation, not before: `paid` is meant to mean "the student
+  // got access", and emitting it earlier would count money taken on a seat the
+  // activation RPC then refused.
+  //
+  // The idempotency branch near the top returns before reaching this, and
+  // sp.id dedupes whatever that misses — one subscription_payments row is one
+  // payment, however many times Stripe delivers it.
+  await trackForUser(
+    PRODUCT_EVENTS.PAID,
+    { group_id: sp.group_id, amount: Number(sp.amount_ttd) || 0 },
+    { userId: sp.student_id, dedupeKey: 'sub:' + sp.id }
+  );
 
   return { ok: true, enrollmentId: sp.enrollment_id, receipt };
 }

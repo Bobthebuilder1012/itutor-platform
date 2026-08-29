@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServiceClient } from '@/lib/supabase/server';
 import { randomInt, createHash } from 'crypto';
 import { Resend } from 'resend';
+import { renderEmail } from '@/lib/email/design';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,11 +42,42 @@ export async function POST(req: Request) {
       );
     }
 
+    // Family 02, `verification-code`. This used to send a text-only body with
+    // no HTML part at all — the code arrived as one unbranded sentence, which
+    // for a first-time signup is the least trustworthy-looking email the
+    // platform produces. The text part is kept, because a code is exactly the
+    // kind of mail people read in a text-only client.
+    //
+    // The digits are grouped for reading aloud: someone typing this in has the
+    // phone in one hand.
+    const grouped = code.length === 6 ? `${code.slice(0, 3)} ${code.slice(3)}` : code;
+    const { subject, html, text } = renderEmail({
+      family: 'verification-code',
+      subject: 'Your iTutor verification code',
+      preheader: `Your code is ${grouped}. It expires in 10 minutes.`,
+      heading: 'Your verification code',
+      intro: "Enter this code in iTutor to verify it's you.",
+      blocks: [
+        {
+          kind: 'code',
+          code: grouped,
+          note: 'This code expires in 10 minutes and can only be used once.',
+        },
+        { kind: 'divider' },
+        {
+          kind: 'fineprint',
+          text:
+            'Never share this code with anyone. iTutor Support will never ask you for it.\nIf you did not request this code, you can safely ignore this email.',
+        },
+      ],
+    });
+
     const { error: emailError } = await resend.emails.send({
       from: process.env.RESEND_FROM_EMAIL || 'iTutor <hello@myitutor.com>',
       to: email,
-      subject: 'Your iTutor Verification Code',
-      text: `Your iTutor verification code is: ${code}\n\nThis code expires in 10 minutes. If you didn't request this, ignore this email.`,
+      subject,
+      html,
+      text,
     });
 
     if (emailError) {

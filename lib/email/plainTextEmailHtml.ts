@@ -1,40 +1,48 @@
-const LOGO_IMG =
-  'https://myitutor.com/assets/logo/itutor-logo-dark.png';
+/**
+ * The wrapper for admin-authored email.
+ *
+ * The admin email tool (app/admin/emails) lets someone write plain text and
+ * sends it as HTML; this is what turns one into the other. It used to carry its
+ * own layout — a black logo bar, a white box, and a "© iTutor · Nora Digital,
+ * Ltd." footer naming a company that is no longer the operating entity — which
+ * meant every bulk send looked like it came from a different product than every
+ * transactional email.
+ *
+ * It now renders through lib/email/design, in the `service-announcement` family:
+ * the reader gets the same chrome, the same footer and the same company details
+ * as the rest of their mail.
+ */
 
-export function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+import { renderEmail } from './design/render';
+
+// escapeHtml moved to ./design/escape so the dependency between this file and
+// the design system runs one way. Re-exported because callers import it from
+// here and there is no reason to make them move.
+export { escapeHtml } from './design/escape';
+
+/**
+ * Wrap plain text (with optional `{{firstName}}`) in the iTutor email layout.
+ *
+ * Blank-line-separated blocks become paragraphs and single newlines become line
+ * breaks — the shape the author typed. The first line is NOT promoted to a
+ * heading: an admin writing "Hi {{firstName}}," would get it set at 27px, and
+ * guessing which first lines are titles is worse than having no title.
+ *
+ * `title` sets the heading when the caller has one.
+ */
+export function plainTextToEmailHtml(text: string, title?: string): string {
+  const heading = title?.trim() || 'A message from iTutor';
+
+  return renderEmail({
+    family: 'service-announcement',
+    subject: heading,
+    heading,
+    eyebrow: 'From iTutor',
+    blocks: text.trim() ? [{ kind: 'paragraph', text }] : [],
+  }).html;
 }
 
-/** Wrap plain text (with optional {{firstName}}) in the standard iTutor HTML email layout. */
-export function plainTextToEmailHtml(text: string): string {
-  const trimmed = text.trim();
-  const paragraphs = trimmed
-    ? trimmed.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean)
-    : [''];
-
-  const inner = paragraphs
-    .map((block) => {
-      const lines = block.split('\n').map((line) => escapeHtml(line));
-      const body = lines.join('<br/>');
-      return `<p style="color:#4b5563;line-height:1.6;margin:0 0 16px">${body}</p>`;
-    })
-    .join('');
-
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;font-family:system-ui,-apple-system,sans-serif;background:#f9fafb;">
-<div style="max-width:600px;margin:0 auto;padding:20px;">
-<div style="text-align:center;padding:30px 0;background:#000;border-radius:8px 8px 0 0;"><img src="${LOGO_IMG}" alt="iTutor" style="height:60px;display:block;margin:0 auto"/></div>
-<div style="background:#fff;padding:40px;border-radius:0 0 8px 8px;box-shadow:0 1px 3px rgba(0,0,0,.1)">
-${inner}
-</div>
-<p style="text-align:center;color:#9ca3af;font-size:13px;margin-top:24px">© iTutor · Nora Digital, Ltd.</p>
-</div></body></html>`;
-}
-
-/** Best-effort extract editable plain text from stored HTML (for existing templates). */
+/** Best-effort extract of editable plain text from stored HTML (browser only). */
 export function htmlToPlainTextForEditor(html: string): string {
   if (typeof window === 'undefined') return html;
   try {

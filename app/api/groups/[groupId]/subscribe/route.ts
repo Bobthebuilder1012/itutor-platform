@@ -1,42 +1,34 @@
 // POST /api/groups/[groupId]/subscribe
-// Creates a native Stripe Subscription for a MONTHLY group class.
-// Implements the 14-step decision tree from the subscription billing plan.
+// A student subscribes themself to a MONTHLY group class.
 //
-// Stripe owns the billing cycle: it charges each month, retries failures
-// and runs its own dunning. The enrollment is marked
-// billing_provider='stripe' so our self-managed process-subscriptions
-// cron skips it — running both would suspend a student while Stripe is
-// still successfully retrying.
+// The fourteen-step flow now lives in lib/payments/groupSubscriptionCheckout —
+// it is shared with the parent route, which does the same thing with the payer
+// and the student being different people. Behaviour here is unchanged: this
+// passes studentId === payerId, which is what the code already assumed when it
+// used auth.uid() for both.
 //
-// The enrollment stays PENDING_PAYMENT until the webhook confirms
-// invoice.paid; the client never activates it from confirmPayment.
+// What stays in the route is the part that is genuinely route-specific: proving
+// the caller is who they say they are. A student's proof is their session.
 
 import { NextRequest, NextResponse } from 'next/server';
-import Stripe from 'stripe';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
-import { getStripeClient, ttdToCents } from '@/lib/payments/stripeClient';
-import {
-  ensureStripeCustomer,
-  ensureGroupPrice,
-  endDateToCancelAt,
-} from '@/lib/payments/stripeSubscriptions';
-import { calculateGrossAmountForProvider } from '@/lib/payments/grossUp';
-import {
-  createPendingSubscriptionPayment,
-  expireSubscriptionPayment,
-} from '@/lib/services/subscriptionPayments';
-import { findGroupEnrollmentConflict, conflictMessage } from '@/lib/services/scheduleConflict';
+import { createGroupSubscriptionCheckout } from '@/lib/payments/groupSubscriptionCheckout';
+import { createClassJoinRequest, resolveClassJoinGate } from '@/lib/server/classJoinRequests';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 type Params = { params: Promise<{ groupId: string }> };
 
-const SEAT_RESERVATION_MS = 30 * 60 * 1000; // 30 minutes
-
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const { groupId } = await params;
+
+    // Only 'physical' is meaningful; anything else is online, which is what an
+    // online-only class can offer and what every seat was before migration 242.
+    // A body is optional, so a client that sends none still enrols online.
+    const body = (await req.json().catch(() => ({}))) as { seatType?: string };
+    const seatTypeFromBody = body.seatType === 'physical' ? 'physical' : 'online';
 
     // Step 1: Auth — student only
     const supabase = await getServerClient();
@@ -45,531 +37,44 @@ export async function POST(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // The parent's gate, before any Stripe object exists — the same check and
+    // the same reason as the secure-spot route. A dependent child cannot start
+    // a subscription for themselves; they ask, and the parent enrols them from
+    // the class page, which charges the parent's card rather than the child's.
     const admin = getServiceClient();
-
-    // Step 2: Group must exist and be PUBLISHED
-    const { data: group, error: groupErr } = await admin
-      .from('groups')
-      .select(`
-        id, tutor_id, name, status, pricing_model, price_monthly,
-        max_students, grace_period_days, require_join_requests,
-        visibility, archived_at,
-        end_date, stripe_price_id, stripe_price_amount_ttd
-      `)
-      .eq('id', groupId)
-      .is('archived_at', null)
-      .single();
-
-    if (groupErr || !group) {
-      return NextResponse.json({ error: 'Group not found' }, { status: 404 });
-    }
-    if (group.status !== 'PUBLISHED') {
-      return NextResponse.json({ error: 'Group is not available for enrollment' }, { status: 404 });
+    const gate = await resolveClassJoinGate(admin, user.id);
+    if (gate.needsParentApproval) {
+      const request = await createClassJoinRequest(admin, {
+        groupId,
+        studentId: user.id,
+        parentId: gate.parentId,
+      });
+      return NextResponse.json(
+        {
+          parent_approval_required: true,
+          request_id: request.ok ? request.requestId : null,
+          already_pending: request.ok ? request.alreadyPending : false,
+          error: 'Your parent needs to approve this before you can join.',
+        },
+        { status: 202 }
+      );
     }
 
-    // Step 3: Must be a MONTHLY group with a price
-    if (group.pricing_model !== 'MONTHLY' || !group.price_monthly || group.price_monthly <= 0) {
-      return NextResponse.json({ error: 'This group does not have a monthly subscription' }, { status: 400 });
-    }
-
-    // Tutor cannot subscribe to their own group
-    if (group.tutor_id === user.id) {
-      return NextResponse.json({ error: 'Tutor cannot subscribe to their own group' }, { status: 403 });
-    }
-
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
-    if (!appUrl) {
-      return NextResponse.json({ error: 'Payments are not configured' }, { status: 503 });
-    }
-
-    // Gate on the provider this route actually uses. This checked
-    // LUNIPAY_SECRET_KEY, which would have refused Stripe subscriptions on
-    // any environment where the (now unused) LuniPay key was absent.
-    if (!process.env.STRIPE_SECRET_KEY) {
-      return NextResponse.json({ error: 'Payment processing is not available on this environment' }, { status: 503 });
-    }
-
-    // Step 4: Visibility check
-    let memberRow: { id: string; status: string } | null = null;
-    if (group.visibility === 'private' || group.require_join_requests) {
-      const { data: existing } = await admin
-        .from('group_members')
-        .select('id, status')
-        .eq('group_id', groupId)
-        .eq('user_id', user.id)
-        .maybeSingle();
-      memberRow = existing ?? null;
-    }
-
-    if (group.visibility === 'private') {
-      if (!memberRow || !['invited', 'approved'].includes(memberRow.status)) {
-        return NextResponse.json({ error: 'This group is by invitation only' }, { status: 403 });
-      }
-    }
-
-    // Step 5: Approval check
-    if (group.require_join_requests) {
-      if (!memberRow) {
-        return NextResponse.json({ error: 'Request to join before subscribing' }, { status: 403 });
-      }
-      if (memberRow.status === 'pending') {
-        return NextResponse.json({ error: 'Your join request is pending tutor approval' }, { status: 409 });
-      }
-      if (memberRow.status === 'denied') {
-        return NextResponse.json({ error: 'Your join request was not approved' }, { status: 403 });
-      }
-    }
-
-    // Step 6: Reject duplicate non-cancelled active subscription
-    const { data: activeEnrollment } = await admin
-      .from('group_enrollments')
-      .select('id, status, payment_status')
-      .eq('group_id', groupId)
-      .eq('student_id', user.id)
-      .eq('enrollment_type', 'SUBSCRIPTION')
-      .in('status', ['SECURED', 'ACTIVE', 'GRACE', 'SUSPENDED'])
-      .maybeSingle();
-
-    // A SECURED enrolment is the one case where "you already have an
-    // enrolment" is not a reason to refuse: this IS the month-one prompt
-    // being taken up. The student paid for their first month up front and is
-    // now choosing to continue, so the existing row is converted rather than
-    // duplicated — a second row would trip the unique index on
-    // (student_id, group_id) anyway.
-    const continuingFromSecured = activeEnrollment?.status === 'SECURED';
-
-    if (activeEnrollment && !continuingFromSecured) {
-      return NextResponse.json({
-        error: 'You already have an active subscription for this group',
-        enrollment_id: activeEnrollment.id,
-        status: activeEnrollment.status,
-      }, { status: 409 });
-    }
-
-    // Step 6b: Child schedule conflict — the student's own upcoming schedule
-    // (1:1 + group) vs this class's occurrences. Block before creating a checkout.
-    const conflict = await findGroupEnrollmentConflict(admin, user.id, groupId);
-    if (conflict) {
-      return NextResponse.json({ error: conflictMessage(conflict) }, { status: 409 });
-    }
-
-    const now = new Date();
-
-    // Step 7: Duplicate pending checkout — reuse existing non-expired PENDING_PAYMENT enrollment
-    const { data: pendingEnrollment } = await admin
-      .from('group_enrollments')
-      .select('id, pending_payment_expires_at')
-      .eq('group_id', groupId)
-      .eq('student_id', user.id)
-      .eq('enrollment_type', 'SUBSCRIPTION')
-      .eq('status', 'PENDING_PAYMENT')
-      .maybeSingle();
-
-    let enrollmentId: string | null = null;
-    let isReusingEnrollment = false;
-
-    // Always reuse any existing PENDING_PAYMENT enrollment regardless of expiry.
-    // Inserting a new row would violate the unique index on (student_id, group_id)
-    // for non-cancelled subscriptions. The expiry and checkout session are refreshed below.
-    if (pendingEnrollment) {
-      enrollmentId = pendingEnrollment.id;
-      isReusingEnrollment = true;
-    } else if (continuingFromSecured && activeEnrollment) {
-      // Converting a held spot into a subscription. Reused, and treated as an
-      // existing enrolment for the capacity check below — the student is
-      // already occupying this seat, so counting them against capacity would
-      // refuse them their own place in a full class.
-      enrollmentId = activeEnrollment.id;
-      isReusingEnrollment = true;
-    }
-
-    // Step 8: Capacity check (only for new enrollments)
-    if (!isReusingEnrollment) {
-      if (group.max_students) {
-        const nowIso = now.toISOString();
-
-        const { count: occupiedCount } = await admin
-          .from('group_enrollments')
-          .select('id', { count: 'exact', head: true })
-          .eq('group_id', groupId)
-          .eq('enrollment_type', 'SUBSCRIPTION')
-          .in('status', ['SECURED', 'ACTIVE', 'GRACE', 'SUSPENDED']);
-
-        const { count: pendingCount } = await admin
-          .from('group_enrollments')
-          .select('id', { count: 'exact', head: true })
-          .eq('group_id', groupId)
-          .eq('enrollment_type', 'SUBSCRIPTION')
-          .eq('status', 'PENDING_PAYMENT')
-          .gt('pending_payment_expires_at', nowIso);
-
-        const { count: offeredCount } = await admin
-          .from('group_waitlist_entries')
-          .select('id', { count: 'exact', head: true })
-          .eq('group_id', groupId)
-          .eq('status', 'offered')
-          .gt('offer_expires_at', nowIso);
-
-        const used = (occupiedCount ?? 0) + (pendingCount ?? 0) + (offeredCount ?? 0);
-
-        if (used >= group.max_students) {
-          // Check for existing waitlist entry
-          const { data: waitlistEntry } = await admin
-            .from('group_waitlist_entries')
-            .select('id, position, status')
-            .eq('group_id', groupId)
-            .eq('student_id', user.id)
-            .in('status', ['waiting', 'offered'])
-            .maybeSingle();
-
-          if (!waitlistEntry) {
-            // Get position (count of waiting entries + 1)
-            const { count: waitingCount } = await admin
-              .from('group_waitlist_entries')
-              .select('id', { count: 'exact', head: true })
-              .eq('group_id', groupId)
-              .eq('status', 'waiting');
-
-            const position = (waitingCount ?? 0) + 1;
-
-            await admin.from('group_waitlist_entries').insert({
-              group_id: groupId,
-              student_id: user.id,
-              position,
-              status: 'waiting',
-            });
-
-            return NextResponse.json({ waitlisted: true, position }, { status: 202 });
-          }
-
-          return NextResponse.json({
-            waitlisted: true,
-            position: waitlistEntry.position,
-            status: waitlistEntry.status,
-          }, { status: 202 });
-        }
-      }
-    }
-
-    // Step 9: Check for active promotions
-    let promotionData: {
-      promotionId: string | null;
-      originalPrice: number;
-      discountPercent: number | null;
-      discountedPrice: number;
-      promotionAppliedAt: string | null;
-      promotionDurationDaysSnapshot: number | null;
-      promotionExpiresAt: string | null;
-    } = {
-      promotionId: null,
-      originalPrice: group.price_monthly,
-      discountPercent: null,
-      discountedPrice: group.price_monthly,
-      promotionAppliedAt: null,
-      promotionDurationDaysSnapshot: null,
-      promotionExpiresAt: null,
-    };
-
-    let promotions: any[] | null = null;
-    if (!isReusingEnrollment) {
-      const { data: promoRows } = await admin
-        .from('group_promotions')
-        .select('id, kind, discount, student_cap, duration_days')
-        .eq('group_id', groupId)
-        .eq('active', true)
-        .order('created_at', { ascending: false })
-        .limit(5);
-      promotions = promoRows;
-
-      if (promoRows && promoRows.length > 0) {
-        // Find first applicable promotion
-        for (const promo of promoRows) {
-          let applicable = true;
-
-          if (promo.kind === 'early-bird' && promo.student_cap) {
-            // Count how many subscribers have used this promotion
-            const { count: usedCount } = await admin
-              .from('group_enrollments')
-              .select('id', { count: 'exact', head: true })
-              .eq('group_id', groupId)
-              .eq('promotion_id', promo.id)
-              .neq('status', 'ACTIVATION_FAILED');
-
-            if ((usedCount ?? 0) >= promo.student_cap) {
-              applicable = false;
-            }
-          }
-
-          if (applicable) {
-            const discountedPrice = Math.round(group.price_monthly * (1 - promo.discount / 100) * 100) / 100;
-            const appliedAt = now.toISOString();
-            let promoExpiresAt: string | null = null;
-
-            if (promo.duration_days) {
-              const expiryDate = new Date(now);
-              expiryDate.setDate(expiryDate.getDate() + promo.duration_days);
-              promoExpiresAt = expiryDate.toISOString();
-            }
-
-            promotionData = {
-              promotionId: promo.id,
-              originalPrice: group.price_monthly,
-              discountPercent: promo.discount,
-              discountedPrice,
-              promotionAppliedAt: appliedAt,
-              promotionDurationDaysSnapshot: promo.duration_days ?? null,
-              promotionExpiresAt: promoExpiresAt,
-            };
-            break;
-          }
-        }
-      }
-    }
-
-    const finalPrice = promotionData.discountedPrice;
-    const pendingExpiresAt = new Date(now.getTime() + SEAT_RESERVATION_MS).toISOString();
-
-    // Step 10: Create or reuse group_enrollments row
-    if (!isReusingEnrollment) {
-      const { data: newEnrollment, error: enrollErr } = await admin
-        .from('group_enrollments')
-        .insert({
-          group_id: groupId,
-          student_id: user.id,
-          enrollment_type: 'SUBSCRIPTION',
-          status: 'PENDING_PAYMENT',
-          payment_status: 'PENDING',
-          plan_price_ttd: finalPrice,
-          original_price_ttd: promotionData.originalPrice,
-          discount_percent: promotionData.discountPercent,
-          discounted_price_ttd: promotionData.discountPercent ? finalPrice : null,
-          promotion_id: promotionData.promotionId,
-          promotion_applied_at: promotionData.promotionAppliedAt,
-          promotion_duration_days_snapshot: promotionData.promotionDurationDaysSnapshot,
-          promotion_expires_at: promotionData.promotionExpiresAt,
-          current_period_start: null,
-          current_period_end: null,
-          next_payment_due_at: null,
-          grace_period_ends_at: null,
-          grace_period_days_snapshot: null,
-          cancel_at_period_end: false,
-          pending_payment_expires_at: pendingExpiresAt,
-          reminder_count: 0,
-          last_reminder_sent_at: null,
-        })
-        .select('id')
-        .single();
-
-      if (enrollErr || !newEnrollment) {
-        console.error('[subscribe] Failed to create enrollment:', enrollErr);
-        const detail = enrollErr ? (enrollErr.message || enrollErr.code || JSON.stringify(enrollErr)) : 'no row returned';
-        return NextResponse.json({ error: 'Failed to create enrollment', detail }, { status: 500 });
-      }
-      enrollmentId = newEnrollment.id;
-
-      // Auto-deactivate early-bird promotion if cap is now reached
-      if (promotionData.promotionId) {
-        const appliedPromo = promotions?.find((p: any) => p.id === promotionData.promotionId);
-        if (appliedPromo?.kind === 'early-bird' && appliedPromo.student_cap) {
-          const { count: newUsedCount } = await admin
-            .from('group_enrollments')
-            .select('id', { count: 'exact', head: true })
-            .eq('promotion_id', promotionData.promotionId)
-            .neq('status', 'ACTIVATION_FAILED');
-          if ((newUsedCount ?? 0) >= appliedPromo.student_cap) {
-            await admin
-              .from('group_promotions')
-              .update({ active: false })
-              .eq('id', promotionData.promotionId);
-          }
-        }
-      }
-    } else {
-      // Refresh expiry on existing PENDING_PAYMENT enrollment
-      await admin
-        .from('group_enrollments')
-        .update({ pending_payment_expires_at: pendingExpiresAt })
-        .eq('id', enrollmentId);
-    }
-
-    // Step 11: group_members is created by activate_subscription after payment
-    // completes. Do NOT create it here — doing so would grant access before
-    // payment is confirmed and leave a stale member row if checkout is abandoned.
-
-    // Step 12: Create pending subscription_payments row
-    // If reusing enrollment, expire the previous pending payment row first
-    if (isReusingEnrollment) {
-      const { data: oldPayment } = await admin
-        .from('subscription_payments')
-        .select('id')
-        .eq('enrollment_id', enrollmentId!)
-        .eq('status', 'PENDING')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (oldPayment) {
-        await expireSubscriptionPayment(admin as any, oldPayment.id);
-      }
-    }
-
-    const paymentRow = await createPendingSubscriptionPayment(admin as any, {
-      enrollmentId: enrollmentId!,
+    const result = await createGroupSubscriptionCheckout({
+      admin,
       groupId,
       studentId: user.id,
-      type: 'subscription_initial',
-      amountTtd: finalPrice,
-      originalAmountTtd: promotionData.originalPrice,
-      discountPercent: promotionData.discountPercent,
-      promotionId: promotionData.promotionId,
+      // The student is the payer. Written explicitly rather than defaulted, so
+      // the one place the two can differ is visible at both call sites.
+      payerId: user.id,
+      payerEmail: user.email,
+      // Which kind of seat, for a hybrid class. Read from the body and validated
+      // downstream against what the class actually offers, so an unknown or
+      // absent value becomes 'online' rather than a rejection.
+      seatType: seatTypeFromBody,
     });
 
-    // Update enrollment with checkout_expires_at matching the payment row
-    await admin
-      .from('subscription_payments')
-      .update({ checkout_expires_at: pendingExpiresAt })
-      .eq('id', paymentRow.id);
-
-    // Step 13: Create the Stripe PaymentIntent for this cycle.
-    //
-    // NOT a Stripe Subscription object: we own the recurring cycle
-    // (group_enrollments.next_payment_due_at + the process-subscriptions
-    // cron), so Stripe just charges each period, exactly like the 1:1 flow.
-    const { grossAmount: grossFinalPrice, processingFee: subFee } =
-      calculateGrossAmountForProvider(finalPrice, 'stripe');
-    const amountCents = ttdToCents(grossFinalPrice);
-
-    // Get student email for checkout
-    const { data: profile } = await admin
-      .from('profiles')
-      .select('full_name')
-      .eq('id', user.id)
-      .single();
-
-    const { data: authUser } = await supabase.auth.getUser();
-    const customerEmail = authUser.user?.email;
-
-    if (!customerEmail) {
-      return NextResponse.json({ error: 'Your account is missing an email address' }, { status: 400 });
-    }
-
-    // Native Stripe Subscription: Stripe owns the cycle from here on —
-    // it charges each month, retries failures and runs its own dunning.
-    // Our process-subscriptions cron must therefore SKIP this enrollment,
-    // which is what billing_provider='stripe' below signals.
-    let subscription: Stripe.Subscription;
-    try {
-      const customerId = await ensureStripeCustomer(admin, user.id);
-      const priceId = await ensureGroupPrice(admin, group as any);
-      const cancelAt = endDateToCancelAt((group as any).end_date);
-
-      const stripe = getStripeClient();
-      subscription = await stripe.subscriptions.create(
-        {
-          customer: customerId,
-          items: [{ price: priceId }],
-          // Don't activate until the first invoice is actually paid; the
-          // enrollment stays PENDING_PAYMENT until the webhook says so.
-          payment_behavior: 'default_incomplete',
-          payment_settings: { save_default_payment_method: 'on_subscription' },
-          // NOT 'latest_invoice.payment_intent' — Stripe removed
-          // Invoice.payment_intent in recent API versions (we pin
-          // 2026-07-29.dahlia). That expand is accepted silently but
-          // yields nothing, so the client secret came back undefined and
-          // every subscribe attempt fell into the 502 below.
-          // confirmation_secret is the replacement.
-          expand: ['latest_invoice.confirmation_secret'],
-          // Stops billing when the class ends, without a cron to cancel it.
-          // The timestamp is rounded up to a whole-month boundary — see
-          // endDateToCancelAt — because a mid-period cancel_at makes Stripe
-          // bill a fraction of the month.
-          ...(cancelAt ? { cancel_at: cancelAt } : {}),
-          // Tutors are paid by the month, never a part month. Belt and braces
-          // with the boundary rounding above: this switches off the proration
-          // Stripe would otherwise create when a cancel lands inside a period.
-          proration_behavior: 'none',
-          // Stripe has no concept of "which class/tutor" — these are what
-          // the webhook and the (deferred) pause/resume work key off.
-          metadata: {
-            kind: 'group_subscription',
-            group_id: groupId,
-            tutor_id: group.tutor_id,
-            student_id: user.id,
-            enrollment_id: enrollmentId!,
-            payment_id: paymentRow.id,
-            base_amount_ttd: String(finalPrice),
-          },
-        },
-        { idempotencyKey: `subscribe-${paymentRow.id}` }
-      );
-    } catch (err) {
-      const isApiError = err instanceof Stripe.errors.StripeError;
-      console.error(
-        '[subscribe] Stripe subscriptions.create failed:',
-        isApiError ? { type: err.type, code: err.code, message: err.message } : err
-      );
-      return NextResponse.json({ error: 'Failed to create checkout session' }, { status: 502 });
-    }
-
-    const latestInvoice = subscription.latest_invoice as Stripe.Invoice | null;
-    const clientSecret = (latestInvoice as any)?.confirmation_secret?.client_secret as
-      | string
-      | undefined;
-
-    if (!clientSecret) {
-      console.error(
-        '[subscribe] Subscription created without a payable invoice',
-        {
-          subscription: subscription.id,
-          status: subscription.status,
-          invoice: latestInvoice?.id,
-        }
-      );
-      return NextResponse.json({ error: 'Failed to create checkout session' }, { status: 502 });
-    }
-
-    // A client secret is `pi_XXX_secret_YYY`, so the PaymentIntent id is the
-    // part before `_secret_`. Derived rather than fetched: Invoice no longer
-    // exposes payment_intent, and this saves a round-trip.
-    const intentId = clientSecret.split('_secret_')[0];
-
-    await admin
-      .from('subscription_payments')
-      .update({
-        stripe_payment_intent_id: intentId,
-        stripe_subscription_id: subscription.id,
-        stripe_invoice_id: latestInvoice?.id ?? null,
-        charged_processing_fee_ttd: subFee,
-      })
-      .eq('id', paymentRow.id);
-
-    // Mark the enrollment Stripe-billed so the self-managed dunning cron
-    // leaves it alone. Set BEFORE the student pays: if they abandon
-    // checkout the enrollment is still PENDING_PAYMENT and gets expired by
-    // the normal seat-reservation task, which doesn't consult this flag.
-    await admin
-      .from('group_enrollments')
-      .update({
-        stripe_subscription_id: subscription.id,
-        billing_provider: 'stripe',
-      })
-      .eq('id', enrollmentId!);
-
-    // Step 14: Return the client secret. The enrollment stays PENDING_PAYMENT
-    // until the webhook confirms — the client never activates it from
-    // confirmPayment's result.
-    return NextResponse.json({
-      checkout_url: `/payments/checkout?pi=${intentId}`,
-      client_secret: clientSecret,
-      payment_intent_id: intentId,
-      enrollment_id: enrollmentId,
-      payment_id: paymentRow.id,
-      amount: finalPrice,
-      processing_fee: subFee,
-      total: grossFinalPrice,
-      currency: 'TTD',
-    }, { status: 201 });
-
+    return NextResponse.json(result.body, { status: result.status });
   } catch (err) {
     console.error('[POST /api/groups/[groupId]/subscribe]', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

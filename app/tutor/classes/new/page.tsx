@@ -5,13 +5,14 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, Users, User as UserIcon, ChevronRight, Check, X,
-  Globe, Lock, DollarSign, Info,
+  Globe, Lock, DollarSign, Info, AlertTriangle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import TutorShell from '@/components/tutor/TutorShell';
 import { LEVEL_LABELS } from '@/lib/utils/formatLevel';
+import InPersonSection, { type InPersonDraft } from '@/components/tutor/classes/InPersonSection';
 
 type DbSubject = { id: string; name: string; label: string; curriculum: string };
 
@@ -33,7 +34,8 @@ function CreateClassContent() {
   const { profile } = useProfile();
   const [step, setStep] = useState<1 | 2>(1);
   const [type, setType] = useState<ClassType | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [submitting, setSubmitting] = useState<'PUBLISHED' | 'DRAFT' | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const [allSubjects, setAllSubjects] = useState<DbSubject[]>([]);
   const [subjectSearch, setSubjectSearch] = useState('');
@@ -56,6 +58,22 @@ function CreateClassContent() {
   const [graceDays, setGraceDays] = useState(7);
   const [whatsapp, setWhatsapp] = useState('');
   const [classroom, setClassroom] = useState('');
+  // In person (migration 242). Only offered for a group class — a recurring
+  // 1:1 has exactly one student, and the seat-capacity split this section
+  // manages ("N online seats, N physical seats") has no meaning for a class
+  // of one. This page never asked for a venue at all before, which is the gap
+  // this closes: CreateGroupModal (the older /groups creation flow) got it,
+  // this one — the one "Create a Class" actually links to — did not.
+  const [inPerson, setInPerson] = useState<InPersonDraft>({
+    classFormat: 'online',
+    venueId: null,
+    venueVisibility: 'after_enrolment',
+    maxStudentsOnline: null,
+    maxStudentsPhysical: null,
+    priceOnlineTtd: null,
+    pricePhysicalTtd: null,
+    acceptsCash: false,
+  });
 
   useEffect(() => {
     supabase
@@ -92,14 +110,37 @@ function CreateClassContent() {
     setSubjectDropdownOpen(false);
   };
 
-  const handlePublish = async () => {
+  /**
+   * `status` decides whether this publishes or saves a draft.
+   *
+   * "Save as draft" used to call router.push and nothing else, so it discarded
+   * everything typed — the endpoint had no draft path to call (groups.status is
+   * NOT NULL DEFAULT 'PUBLISHED' and no insert set it). Both buttons now go
+   * through the same request; only the status differs.
+   *
+   * A draft still needs a name and an end date, because the endpoint requires
+   * both of every new class. Relaxing that for drafts would create rows that
+   * EndDateGate then blocks, which is the trap the duplicate-end-date bug came
+   * from.
+   */
+  const handleSubmit = async (status: 'PUBLISHED' | 'DRAFT') => {
     if (!profile?.id || !title.trim() || !endDate) return;
-    setSubmitting(true);
+    // A room is required once the format says the class meets in one. Checked
+    // here rather than left to the API's 400, because the venue picker is
+    // several fields above the submit button and a generic server error would
+    // leave the tutor hunting for what's missing.
+    if (type === 'group' && inPerson.classFormat !== 'online' && !inPerson.venueId) {
+      setSaveError('Choose a venue before setting this class to meet in person.');
+      return;
+    }
+    setSubmitting(status);
+    setSaveError(null);
     try {
       const res = await fetch('/api/groups', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          status,
           tutorId: profile.id,
           name: title,
           subject,
@@ -117,18 +158,35 @@ function CreateClassContent() {
           grace_period_days: graceDays,
           whatsapp_url: whatsapp,
           google_classroom_link: classroom,
+          // In person (migration 242) — group classes only, see the state
+          // comment above for why a recurring 1:1 stays plain 'online'.
+          class_format: type === 'group' ? inPerson.classFormat : 'online',
+          venue_id:
+            type === 'group' && inPerson.classFormat !== 'online' ? inPerson.venueId : null,
+          venue_visibility: inPerson.venueVisibility,
+          max_students_online: type === 'group' ? inPerson.maxStudentsOnline : null,
+          max_students_physical: type === 'group' ? inPerson.maxStudentsPhysical : null,
+          price_online_ttd: type === 'group' ? inPerson.priceOnlineTtd : null,
+          price_physical_ttd: type === 'group' ? inPerson.pricePhysicalTtd : null,
+          accepts_cash:
+            type === 'group' && inPerson.classFormat !== 'online' ? inPerson.acceptsCash : false,
         }),
       });
       if (res.ok) {
         const data = await res.json();
         router.push(`/tutor/classes/${data.group?.id ?? data.id ?? ''}`);
-      } else {
-        router.push('/tutor/classes');
+        return;
       }
+      // Previously this navigated to /tutor/classes on failure, so a rejected
+      // save looked exactly like a successful one that had vanished — the tutor
+      // lost the form and was told nothing. The endpoint's messages are written
+      // for a person ("An end date is required..."), so show them.
+      const json = await res.json().catch(() => ({}));
+      setSaveError(json.error ?? 'We could not save this class — please try again.');
     } catch {
-      router.push('/tutor/classes');
+      setSaveError('We could not save this class — please check your connection and try again.');
     } finally {
-      setSubmitting(false);
+      setSubmitting(null);
     }
   };
 
@@ -279,6 +337,25 @@ function CreateClassContent() {
             </Field>
           </Card>
 
+          {type === 'group' && (
+            <Card title="Where does this meet?">
+              <p className="-mt-2 text-xs text-muted-foreground">
+                You can change this later. Everyone gets a meeting link either way —
+                an in-person student can still join online when they need to.
+              </p>
+              <InPersonSection
+                draft={inPerson}
+                onChange={(patch: Partial<InPersonDraft>) =>
+                  setInPerson((prev) => ({ ...prev, ...patch }))
+                }
+                // A class being created has nobody in it yet, so there is no
+                // seat floor to respect.
+                enrolledOnline={0}
+                enrolledPhysical={0}
+              />
+            </Card>
+          )}
+
           <Card title="Access & policies">
             <Field label="Visibility" hint="Public classes appear in the marketplace. Private classes are invite-only.">
               <div className="grid grid-cols-2 gap-2">
@@ -330,18 +407,44 @@ function CreateClassContent() {
             <p className="text-xs text-muted-foreground">AI-drafted monthly reports reviewed and approved by you before being sent to parents. Available soon.</p>
           </Card>
 
+          {/*
+            * Stated here because this form never asks for a schedule — it is set
+            * afterwards, on the class page. Publishing therefore does NOT put the
+            * class on the marketplace on its own, and a tutor who is not told that
+            * reasonably assumes it did. On production 18 of 38 published classes
+            * have no schedule, which is what this gap produces.
+            */}
+          <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />
+            <p className="text-xs leading-relaxed text-amber-800">
+              <span className="font-semibold">One more step after this.</span> A class only appears
+              on the marketplace once it has a weekly schedule, and you add that on the class page
+              next. Until then students and parents can&rsquo;t find or enrol in it.
+            </p>
+          </div>
+
+          {saveError && (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 p-3">
+              <p className="text-sm text-rose-800">{saveError}</p>
+            </div>
+          )}
+
           <div className="flex justify-between items-center">
             <button onClick={() => setStep(1)} className="text-sm font-semibold text-muted-foreground hover:text-ink">← Back</button>
             <div className="flex items-center gap-2">
-              <button onClick={() => router.push('/tutor/classes')} className="px-4 py-2 rounded-lg border border-border text-sm font-semibold hover:bg-muted">
-                Save as draft
+              <button onClick={() => handleSubmit('DRAFT')} disabled={!!submitting || !title.trim() || !endDate}
+                className="px-4 py-2 rounded-lg border border-border text-sm font-semibold hover:bg-muted disabled:opacity-60">
+                {submitting === 'DRAFT' ? 'Saving…' : 'Save as draft'}
               </button>
-              <button onClick={handlePublish} disabled={submitting || !title.trim() || !endDate}
+              <button onClick={() => handleSubmit('PUBLISHED')} disabled={!!submitting || !title.trim() || !endDate}
                 className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand/90 disabled:opacity-60">
-                <Check className="size-4" /> {submitting ? 'Publishing…' : 'Publish Class'}
+                <Check className="size-4" /> {submitting === 'PUBLISHED' ? 'Publishing…' : 'Publish Class'}
               </button>
             </div>
           </div>
+          <p className="text-xs text-muted-foreground text-right -mt-3">
+            A draft is saved but not listed. You can publish it from the class page.
+          </p>
         </div>
       )}
     </div>

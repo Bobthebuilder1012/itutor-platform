@@ -69,6 +69,20 @@ export default function AdminEmailsPage() {
     });
   }, [router]);
 
+  /**
+   * Repairs for HTML this page did not generate.
+   *
+   * Everything plainTextToEmailHtml produces now comes out of lib/email/design
+   * with a charset meta and a correctly sized, centred wordmark, so neither of
+   * these runs on new content. They stay for the templates already stored in
+   * the database from before that, which are edited and previewed here and do
+   * still need them.
+   *
+   * The logo fix deliberately no longer forces `width:auto`. That was here to
+   * undo a stretched logo in the old layout, and against the new header it
+   * overrides the explicit 108px and renders the wordmark at its natural size.
+   * Centring is all it should ever have done.
+   */
   const ensureUtf8Meta = (html: string) => {
     if (/<meta[^>]+charset=/i.test(html)) return html;
     if (/<head[^>]*>/i.test(html)) {
@@ -79,13 +93,15 @@ export default function AdminEmailsPage() {
 
   const centerITutorLogo = (html: string) => {
     const appendLogoStyles = (tag: string) => {
+      // Already positioned by the design system — leave it exactly as it is.
+      if (/margin:\s*0\s+auto/i.test(tag)) return tag;
       if (/style=/i.test(tag)) {
         return tag.replace(/style=(['"])(.*?)\1/i, (_match, quote: string, style: string) => {
           const normalizedStyle = style.trim().replace(/;?\s*$/, ';');
-          return `style=${quote}${normalizedStyle} display:block; margin:0 auto; width:auto;${quote}`;
+          return `style=${quote}${normalizedStyle} display:block; margin:0 auto;${quote}`;
         });
       }
-      return tag.replace(/<img/i, '<img style="display:block; margin:0 auto; width:auto;"');
+      return tag.replace(/<img/i, '<img style="display:block; margin:0 auto;"');
     };
 
     return html.replace(/<img\b[^>]*itutor-logo-dark\.png[^>]*>/gi, appendLogoStyles);
@@ -93,8 +109,10 @@ export default function AdminEmailsPage() {
 
   const normalizeEmailHtml = (html: string) => centerITutorLogo(ensureUtf8Meta(html));
 
-  const emailHtmlFromPlain = (plain: string) =>
-    normalizeEmailHtml(plainTextToEmailHtml(plain.trim()));
+  // The subject doubles as the heading, so the email leads with what the
+  // admin actually called it instead of a generic "A message from iTutor".
+  const emailHtmlFromPlain = (plain: string, title?: string) =>
+    normalizeEmailHtml(plainTextToEmailHtml(plain.trim(), title));
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -170,7 +188,7 @@ export default function AdminEmailsPage() {
         body: JSON.stringify({
           userIds: selectedUsers,
           subject: emailSubject,
-          htmlContent: emailHtmlFromPlain(emailContent),
+          htmlContent: emailHtmlFromPlain(emailContent, emailSubject),
         })
       });
 
@@ -196,7 +214,7 @@ export default function AdminEmailsPage() {
       return;
     }
 
-    const normalizedTemplateContent = emailHtmlFromPlain(templateContent);
+    const normalizedTemplateContent = emailHtmlFromPlain(templateContent, templateSubject);
 
     setLoading(true);
     try {
@@ -448,7 +466,7 @@ export default function AdminEmailsPage() {
                       <p className="text-sm text-gray-600 mt-1">
                         <strong>Subject:</strong>{' '}
                         {getPreviewHtml(
-                          emailHtmlFromPlain(emailContent),
+                          emailHtmlFromPlain(emailContent, emailSubject),
                           emailSubject || '(No subject)'
                         ).subject}
                       </p>
@@ -457,7 +475,7 @@ export default function AdminEmailsPage() {
                       className="mt-6"
                       dangerouslySetInnerHTML={{
                         __html: getPreviewHtml(
-                          emailHtmlFromPlain(emailContent),
+                          emailHtmlFromPlain(emailContent, emailSubject),
                           emailSubject || ''
                         ).html,
                       }}

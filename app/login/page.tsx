@@ -7,6 +7,7 @@ import { motion } from 'framer-motion';
 import { Eye, EyeOff, Check } from 'lucide-react';
 import { supabase, setRememberMePreference, createSupabaseClient } from '@/lib/supabase/client';
 import { getAdminHomePath, isEmailManagementOnlyAdmin } from '@/lib/auth/adminAccess';
+import { safeRedirectPath } from '@/lib/utils/safeRedirect';
 
 function isNetworkError(error: unknown): boolean {
   if (error instanceof TypeError && error.message === 'Failed to fetch') return true;
@@ -105,20 +106,53 @@ export default function LoginPage() {
 
       if (!profileData.role) { router.push('/signup/complete-role'); return; }
 
-      const redirectUrl = searchParams.get('redirect');
+      // Same-origin paths only — see lib/utils/safeRedirect. An unchecked
+      // `?redirect=` here was an open redirect for anyone who signed in.
+      const redirectUrl = safeRedirectPath(searchParams.get('redirect'));
 
       if (isEmailManagementOnlyAdmin(profileData.email)) { router.push('/admin/emails'); return; }
-      if (redirectUrl) { router.push(decodeURIComponent(redirectUrl)); return; }
+      if (redirectUrl) { router.push(redirectUrl); return; }
       if (profileData.role === 'admin') { router.push(getAdminHomePath(profileData.email)); return; }
       if (profileData.is_reviewer) { router.push('/reviewer/dashboard'); return; }
+
+      // The one-time Finder backfill. Without it the entire existing user base
+      // is permanently unmatched and the test population is new signups only.
+      //
+      // It sits BELOW the two guards above on purpose:
+      //  - `redirectUrl` already won at line ~114. Someone arriving from a QR
+      //    code or deep link has a stated destination, and hijacking it breaks
+      //    the attributed journey this whole feature exists to protect.
+      //  - the incomplete-profile bounce is still checked first, per role, below.
+      //
+      // Only asked for accounts never prompted, so this costs one request once
+      // per account rather than one on every login. The gate itself is decided
+      // server-side because FINDER_GATE_MODE must not be readable — or
+      // defeatable — from the browser.
+      const wantsFinder = async () => {
+        if (profileData.finder_prompted_at) return false;
+        try {
+          const res = await fetch('/api/finder/gate');
+          if (!res.ok) return false;
+          const json = (await res.json()) as { prompt?: boolean };
+          return json.prompt === true;
+        } catch {
+          return false;
+        }
+      };
 
       switch (profileData.role) {
         case 'student': {
           if (profileData.billing_mode === 'parent_required') { router.push('/student/dashboard'); break; }
-          router.push(profileData.form_level ? '/student/dashboard' : '/signup/complete-role');
+          if (!profileData.form_level) { router.push('/signup/complete-role'); break; }
+          if (await wantsFinder()) { router.push('/find?trigger=login_backfill'); break; }
+          router.push('/student/dashboard');
           break;
         }
-        case 'parent': router.push('/parent/dashboard'); break;
+        case 'parent': {
+          if (await wantsFinder()) { router.push('/find?trigger=login_backfill'); break; }
+          router.push('/parent/dashboard');
+          break;
+        }
         case 'tutor': router.push('/tutor/dashboard'); break;
         default: setError('Invalid user role.'); setLoading(false);
       }

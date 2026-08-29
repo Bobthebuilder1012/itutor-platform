@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import ParentShell from '@/components/parent/ParentShell';
+import NotificationPreferences from '@/components/parent/NotificationPreferences';
 
 type NotifRow = { id: string; title: string; message: string; type: string; link: string | null; created_at: string; is_read: boolean };
 
@@ -125,6 +126,10 @@ function NotificationsContent() {
           );
         })}
       </div>
+
+      {/* §10.6: preferences sit beneath the list they govern, so the statement
+          that muting does not hide anything is visible next to the proof. */}
+      <NotificationPreferences />
     </div>
   );
 }

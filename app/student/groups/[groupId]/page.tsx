@@ -289,6 +289,16 @@ export default function StudentGroupPage({ params }: { params: { groupId: string
     try {
       const res = await fetch(`/api/groups/${group.id}/subscribe`, { method: 'POST' });
       const data = await res.json();
+      // The parent's gate. Raised as a request server-side — not a failure, and
+      // not an enrolment either.
+      if (data.parent_approval_required) {
+        alert(
+          data.already_pending
+            ? 'Your parent already has this request — it is still waiting on them.'
+            : 'Sent to your parent for approval. You are not in the class yet, and no place is being held.'
+        );
+        return;
+      }
       if (data.waitlisted) {
         setSubscriptionAccess({ ...subscriptionAccess, waitlisted: true, waitlist_position: data.position });
         return;

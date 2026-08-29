@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { Suspense, useEffect, useRef, useState, useMemo } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   BookOpen, Globe, Lock, Plus, Users, Search,
   TrendingUp, Eye, Settings as SettingsIcon,
   MoreVertical, Calendar as CalendarIcon, Trash2,
+  Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -14,8 +15,20 @@ import { useTutorCompletion } from '@/lib/hooks/useTutorCompletion';
 import { supabase } from '@/lib/supabase/client';
 import TutorShell from '@/components/tutor/TutorShell';
 import { formatLevel } from '@/lib/utils/formatLevel';
+import PauseAllClasses from '@/components/tutor/PauseAllClasses';
+import TeacherCampaignPanel from '@/components/classMatchWeek/teacher/TeacherCampaignPanel';
+import { useTeacherCampaignEntry } from '@/lib/hooks/useTeacherCampaignEntry';
 
 type LessonKind = '1on1-oneoff' | '1on1-recurring' | 'group-oneoff' | 'group-recurring';
+
+/**
+ * My Classes holds the two things a teacher creates: their own classes, and the
+ * free taster sessions of a live campaign. Addressable via ?tab= because the
+ * campaign is linked to from the dashboard countdown, from /class-match-week,
+ * from the old /tutor/class-match-week and /tutor/business?tab=class-match-week
+ * routes, and from email — none of which can click a button.
+ */
+type WorkspaceTab = 'classes' | 'class-match-week';
 type KindFilter = 'all' | 'group' | '1on1';
 
 const LESSON_KIND_META: Record<string, { short: string; chip: string }> = {
@@ -55,15 +68,27 @@ type Lesson = {
 export default function TutorLessonsPage() {
   return (
     <TutorShell>
-      <LessonsContent />
+      {/* useSearchParams needs a Suspense boundary in the App Router. */}
+      <Suspense fallback={null}>
+        <LessonsContent />
+      </Suspense>
     </TutorShell>
   );
 }
 
 function LessonsContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { profile, loading } = useProfile();
   const completion = useTutorCompletion(profile);
+
+  // Unknown ?tab= values fall back to the classes list rather than rendering
+  // nothing, so a stale or mistyped link still lands somewhere useful.
+  const requestedTab = searchParams.get('tab');
+  const [tab, setTab] = useState<WorkspaceTab>(
+    requestedTab === 'class-match-week' ? 'class-match-week' : 'classes'
+  );
+  const campaign = useTeacherCampaignEntry(profile);
   const [search, setSearch] = useState('');
   const [kind, setKind] = useState<KindFilter>('all');
   const [lessons, setLessons] = useState<Lesson[]>([]);
@@ -181,8 +206,14 @@ function LessonsContent() {
     return (
       <div className="max-w-2xl mx-auto mt-12 text-center">
         <div className="size-14 mx-auto rounded-full bg-muted grid place-items-center text-muted-foreground"><Lock className="size-6" /></div>
-        <h1 className="mt-4 text-xl font-bold text-ink">My Classes is locked</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Complete your tutor profile to create and manage your classes.</p>
+        <h1 className="mt-4 text-xl font-bold text-ink">
+          {tab === 'class-match-week' ? 'Finish your profile to join' : 'My Classes is locked'}
+        </h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {tab === 'class-match-week'
+            ? 'Class Match Week puts you in front of families who have never met you, so your profile needs to be complete first. It takes a few minutes.'
+            : 'Complete your tutor profile to create and manage your classes.'}
+        </p>
         <Link href="/tutor/get-listed" className="mt-5 inline-flex px-5 py-2.5 rounded-lg bg-brand text-white font-semibold hover:bg-brand/90">Complete profile</Link>
       </div>
     );
@@ -197,58 +228,122 @@ function LessonsContent() {
           <h1 className="text-3xl lg:text-4xl font-bold text-ink mt-1 tracking-tight">My Classes</h1>
           <p className="text-sm text-muted-foreground mt-1.5">Create, manage and grow every class you run on iTutor.</p>
         </div>
-        <Link href="/tutor/classes/new"
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-ink text-white text-sm font-semibold hover:bg-ink/90 shadow-sm self-start sm:self-auto">
-          <Plus className="size-4" /> Create a class
-        </Link>
+        {/* The two things a teacher creates here. The campaign button only
+            exists while a campaign is live — the rest of the year it would be a
+            button that leads to an empty state. */}
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <Link href="/tutor/classes/new"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-ink text-white text-sm font-semibold hover:bg-ink/90 shadow-sm">
+            <Plus className="size-4" /> Create a class
+          </Link>
+          {campaign.campaign && (
+            campaign.canCreateSession ? (
+              <Link href="/tutor/class-match-week/new"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep shadow-sm">
+                <Sparkles className="size-4" /> Create a Class Match Week session
+              </Link>
+            ) : (
+              /* Not ready yet — joined nothing, or has no class that can host a
+                 taster. The campaign tab is the only place that can say which,
+                 so send them there rather than to a builder with no choices. */
+              <button
+                type="button"
+                onClick={() => setTab('class-match-week')}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep shadow-sm">
+                <Sparkles className="size-4" /> Create a Class Match Week session
+              </button>
+            )
+          )}
+        </div>
       </header>
 
-      {/* Quick stats */}
-      <div className="grid grid-cols-3 gap-3 sm:gap-4">
-        <StatTile icon={<BookOpen className="size-4" />} label="Active classes" value={totals.classes.toString()} tint="brand" />
-        <StatTile icon={<Users className="size-4" />} label="Total members" value={totals.students.toString()} tint="ink" />
-        <StatTile icon={<TrendingUp className="size-4" />} label="Lifetime earnings" value={`TTD ${totals.earnings.toLocaleString()}`} tint="coral" />
-      </div>
-
-      {/* Toolbar */}
-      <div className="flex flex-col md:flex-row md:items-center gap-3 pb-4 border-b border-border">
-        <div className="inline-flex p-1 rounded-xl bg-muted text-xs font-semibold">
+      {/* Workspace tabs. Underlined rather than the pill group used below for
+          the class-kind filter, so the two never read as the same control. */}
+      {campaign.campaign && (
+        <div className="border-b border-border flex items-center gap-4 sm:gap-6 overflow-x-auto scrollbar-hide">
           {([
-            { id: 'all', label: 'All' },
-            { id: 'group', label: 'Group' },
-            { id: '1on1', label: '1-on-1' },
-          ] as { id: KindFilter; label: string }[]).map((f) => (
-            <button key={f.id} onClick={() => setKind(f.id)}
-              className={cn('px-3 py-1.5 rounded-lg transition', kind === f.id ? 'bg-background text-ink shadow-sm' : 'text-muted-foreground hover:text-ink')}>
-              {f.label}
-            </button>
-          ))}
+            { key: 'classes', label: 'My classes', icon: BookOpen },
+            { key: 'class-match-week', label: 'Class Match Week', icon: Sparkles, flag: 'Limited time' },
+          ] as { key: WorkspaceTab; label: string; icon: typeof BookOpen; flag?: string }[]).map((t) => {
+            const Icon = t.icon;
+            return (
+              <button key={t.key} onClick={() => setTab(t.key)}
+                className={cn(
+                  'relative flex items-center gap-1.5 sm:gap-2 pb-3 pt-1 text-[13px] sm:text-sm font-semibold whitespace-nowrap transition',
+                  tab === t.key ? 'text-brand-deep' : 'text-muted-foreground hover:text-ink'
+                )}>
+                <Icon className="size-4" /> {t.label}
+                {t.flag && (
+                  <span className="rounded-full bg-brand/10 px-1 py-0.5 text-[9px] sm:px-1.5 sm:text-[10px] font-bold uppercase tracking-wide text-brand-deep">
+                    {t.flag}
+                  </span>
+                )}
+                {tab === t.key && <span className="absolute -bottom-px left-0 right-0 h-0.5 rounded-full bg-brand" />}
+              </button>
+            );
+          })}
         </div>
-        <div className="ml-auto relative w-full md:w-80">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by title or subject"
-            className="w-full pl-9 pr-3 py-2 rounded-lg border border-border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
-        </div>
-      </div>
+      )}
 
-      {/* Grid */}
-      {visibleLessons.length === 0 ? (
-        <div className="rounded-2xl border-2 border-dashed border-border bg-card/50 p-12 text-center">
-          <div className="mx-auto size-12 rounded-2xl bg-brand/10 text-brand grid place-items-center mb-4">
-            <BookOpen className="size-5" />
+      {tab === 'class-match-week' && <TeacherCampaignPanel profile={profile} />}
+      {tab === 'classes' && (
+        <>
+        {/* Break control and the persistent paused banner. Above the stats because
+            a tutor who paused weeks ago and forgot needs to see it before they
+            wonder why nobody is enrolling. Renders nothing when they have no
+            classes. */}
+        <PauseAllClasses />
+
+        {/* Quick stats */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
+          <StatTile icon={<BookOpen className="size-4" />} label="Active classes" value={totals.classes.toString()} tint="brand" />
+          <StatTile icon={<Users className="size-4" />} label="Total members" value={totals.students.toString()} tint="ink" />
+          {/* Earnings carries the longest label and the longest value, so on a
+              phone it takes the whole row instead of being elided to "LIF… T…". */}
+          <StatTile icon={<TrendingUp className="size-4" />} label="Lifetime earnings" value={`TTD ${totals.earnings.toLocaleString()}`} tint="coral" className="col-span-2 sm:col-span-1" />
+        </div>
+
+        {/* Toolbar */}
+        <div className="flex flex-col md:flex-row md:items-center gap-3 pb-4 border-b border-border">
+          <div className="inline-flex p-1 rounded-xl bg-muted text-xs font-semibold">
+            {([
+              { id: 'all', label: 'All' },
+              { id: 'group', label: 'Group' },
+              { id: '1on1', label: '1-on-1' },
+            ] as { id: KindFilter; label: string }[]).map((f) => (
+              <button key={f.id} onClick={() => setKind(f.id)}
+                className={cn('px-3 py-1.5 rounded-lg transition', kind === f.id ? 'bg-background text-ink shadow-sm' : 'text-muted-foreground hover:text-ink')}>
+                {f.label}
+              </button>
+            ))}
           </div>
-          <h2 className="font-bold text-ink">No classes match</h2>
-          <p className="text-sm text-muted-foreground mt-1">Try a different filter — or create a new class.</p>
+          <div className="ml-auto relative w-full md:w-80">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by title or subject"
+              className="w-full pl-9 pr-3 py-2 rounded-lg border border-border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
+          </div>
         </div>
-      ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {visibleLessons.map((l) => (
-            <LessonCard key={l.id} l={l}
-              onToggleVisibility={() => toggleVisibility(l.id)}
-              onDelete={() => { setPendingDelete(l); setDeleteConfirmName(''); }}
-            />
-          ))}
-        </div>
+
+        {/* Grid */}
+        {visibleLessons.length === 0 ? (
+          <div className="rounded-2xl border-2 border-dashed border-border bg-card/50 p-12 text-center">
+            <div className="mx-auto size-12 rounded-2xl bg-brand/10 text-brand grid place-items-center mb-4">
+              <BookOpen className="size-5" />
+            </div>
+            <h2 className="font-bold text-ink">No classes match</h2>
+            <p className="text-sm text-muted-foreground mt-1">Try a different filter — or create a new class.</p>
+          </div>
+        ) : (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {visibleLessons.map((l) => (
+              <LessonCard key={l.id} l={l}
+                onToggleVisibility={() => toggleVisibility(l.id)}
+                onDelete={() => { setPendingDelete(l); setDeleteConfirmName(''); }}
+              />
+            ))}
+          </div>
+        )}
+        </>
       )}
 
       {/* Delete confirm dialog */}
@@ -284,18 +379,20 @@ function LessonsContent() {
   );
 }
 
-function StatTile({ icon, label, value, tint }: { icon: React.ReactNode; label: string; value: string; tint: 'brand' | 'ink' | 'coral' }) {
+function StatTile({ icon, label, value, tint, className }: { icon: React.ReactNode; label: string; value: string; tint: 'brand' | 'ink' | 'coral'; className?: string }) {
   const tints = {
     brand: 'bg-brand/10 text-brand',
     ink: 'bg-ink/5 text-ink',
     coral: 'bg-rose-50 text-rose-600',
   } as const;
   return (
-    <div className="rounded-2xl border border-border bg-card p-4 flex items-center gap-3">
-      <div className={cn('size-9 rounded-xl grid place-items-center shrink-0', tints[tint])}>{icon}</div>
+    <div className={cn('rounded-2xl border border-border bg-card p-3 sm:p-4 flex items-center gap-2.5 sm:gap-3', className)}>
+      <div className={cn('size-8 sm:size-9 rounded-xl grid place-items-center shrink-0', tints[tint])}>{icon}</div>
+      {/* The label wraps rather than truncates — half a word is worse than two
+          lines — and the value never wraps, because it is a money figure. */}
       <div className="min-w-0">
-        <div className="text-[11px] uppercase tracking-wider font-bold text-muted-foreground truncate">{label}</div>
-        <div className="text-base sm:text-lg font-bold text-ink truncate tabular-nums">{value}</div>
+        <div className="text-[10px] sm:text-[11px] uppercase tracking-wider font-bold text-muted-foreground leading-tight">{label}</div>
+        <div className="mt-0.5 text-base sm:text-lg font-bold text-ink tabular-nums truncate">{value}</div>
       </div>
     </div>
   );

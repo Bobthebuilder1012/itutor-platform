@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { getTutorPublicCalendar } from '@/lib/services/bookingService';
 import ClassesSection from '@/components/tutor/public/ClassesSection';
+import BlurredBannerBackdrop from '@/components/tutor/BlurredBannerBackdrop';
 import TutorCredentials from '@/components/TutorCredentials';
 import { StarRow } from '@/components/ratings/StarInput';
 
@@ -47,6 +48,10 @@ type TutorProfile = {
   username: string | null;
   display_name: string | null;
   avatar_url: string | null;
+  /** Blurred behind the profile header. Null means the platform default. */
+  profile_banner_url?: string | null;
+  /** Cache-busts a re-uploaded banner. */
+  updated_at?: string | null;
   school?: string | null;
   institution_id?: string | null;
   country: string;
@@ -386,7 +391,7 @@ export default function TutorProfilePage() {
     try {
       const { data: tutorData, error: tutorError } = await supabase
         .from('profiles')
-        .select('id, full_name, username, display_name, avatar_url, school, institution_id, country, bio, tutor_verification_status, created_at, is_dev_account')
+        .select('id, full_name, username, display_name, avatar_url, profile_banner_url, updated_at, school, institution_id, country, bio, tutor_verification_status, created_at, is_dev_account')
         .eq('id', tutorId).eq('role', 'tutor').single();
       if (tutorError) throw tutorError;
       if (!tutorData) { alert('Tutor not found'); router.push('/student/find-tutors'); return; }
@@ -613,7 +618,14 @@ export default function TutorProfilePage() {
 
         {/* Header */}
         <div className="rounded-3xl bg-background border border-border overflow-hidden">
-          <div className="h-32 sm:h-40 bg-gradient-to-br from-brand to-brand-deep" />
+          {/* The teacher's own banner, blurred, where a flat green gradient used
+              to be. Falls back to the platform default when they have not
+              uploaded one, so there is no empty state. */}
+          <BlurredBannerBackdrop
+            bannerUrl={tutor.profile_banner_url}
+            version={tutor.updated_at}
+            className="h-32 sm:h-40"
+          />
           <div className="px-5 sm:px-6 pb-6">
             <div className="flex items-end justify-between -mt-12 sm:-mt-14">
               <UserAvatar avatarUrl={tutor.avatar_url} name={getDisplayName(tutor)} size={96} className="ring-4 ring-background rounded-full" />

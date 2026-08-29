@@ -75,30 +75,23 @@ export async function GET(_request: NextRequest) {
       }
     }
 
-    if (role === 'tutor') {
-      const { data: sessions } = await supabase
-        .from('sessions')
-        .select('id, scheduled_end_at')
-        .eq('tutor_id', user.id)
-        .neq('status', 'CANCELLED')
-        .lte('scheduled_end_at', nowIso)
-        .gte('scheduled_end_at', cutoffIso)
-        .order('scheduled_end_at', { ascending: true })
-        .limit(50);
-
-      const sessionIds = (sessions || []).map((s: any) => s.id);
-      if (sessionIds.length > 0) {
-        const { data: feedback } = await supabase
-          .from('tutor_feedback')
-          .select('session_id')
-          .in('session_id', sessionIds);
-
-        const done = new Set((feedback || []).map((f: any) => f.session_id));
-        const pending = (sessions || []).find((s: any) => !done.has(s.id));
-        if (pending?.id) return NextResponse.json({ redirectTo: `/feedback/tutor/${pending.id}` });
-      }
-    }
-
+    // The tutor branch is gone, deliberately, and not just because the table it
+    // read is dropped.
+    //
+    // It used to look for a session with no tutor_feedback row and hand the
+    // middleware a redirect, which trapped the tutor on a feedback form until
+    // they filled it in. That is the strongest enforcement the product has, and
+    // it is the exact opposite of the model that replaced it: §8 makes feedback
+    // optional and pull-based, §8.1 allows "No deadline, no expiry, no reminder,
+    // no escalation", and decision 12 gives it no payout consequence. A forced
+    // redirect is a deadline, a reminder and an escalation at once.
+    //
+    // Tutors are now prompted exactly once, when a family actually asks
+    // (§8.1), and find outstanding requests at /tutor/clients.
+    //
+    // The student branch above stays: it drives session RATINGS, which is a
+    // different system feeding tutor rating_average and the marketplace
+    // rankings, and nothing in this workstream changes it.
     return NextResponse.json({ redirectTo: null });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Internal server error' }, { status: 500 });

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   CreditCard, CheckCircle, AlertCircle, Ban, X, Loader2,
-  RefreshCw, CalendarCheck2, Play, Sparkles, TrendingUp, Clock, Star, LifeBuoy,
+  RefreshCw, CalendarCheck2, Play, Sparkles, TrendingUp, Clock, Star, LifeBuoy, MapPin, Video,
 } from 'lucide-react';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { cn } from '@/lib/utils';
@@ -25,11 +25,18 @@ type Subscription = {
   pending_payment_expires_at: string | null;
   enrolled_at: string;
   next_cycle_paid: boolean;
+  // Migration 242. Absent when the API fell back to its base select.
+  seat_type?: 'online' | 'physical' | null;
+  billing_provider?: string | null;
   group: {
     id: string;
     name: string;
     cover_image: string | null;
     subject: string | null;
+    class_format?: 'online' | 'physical' | 'hybrid' | null;
+    price_online_ttd?: number | null;
+    price_physical_ttd?: number | null;
+    venue?: { id: string; name: string; region: { id: string; name: string } | null } | null;
     tutor: { full_name: string | null; avatar_url: string | null } | null;
   } | null;
 };
@@ -130,8 +137,8 @@ function CancelModal({ sub, onClose, onConfirm, loading }: {
   );
 }
 
-function SubscriptionCard({ sub, onCancel, onUndo, actionLoading }: {
-  sub: Subscription; onCancel: () => void; onUndo: () => void; actionLoading: string | null;
+function SubscriptionCard({ sub, onCancel, onUndo, onSeatChanged, actionLoading }: {
+  sub: Subscription; onCancel: () => void; onUndo: () => void; onSeatChanged: () => void; actionLoading: string | null;
 }) {
   const group = sub.group;
   const tutorName = group?.tutor?.full_name ?? 'Tutor';
@@ -147,6 +154,43 @@ function SubscriptionCard({ sub, onCancel, onUndo, actionLoading }: {
   // Due today: active, not cancelling, and next_payment_due_at has passed
   // (covers the window between due date and when the cron moves it to GRACE)
   const isDueNow    = isActive && !!sub.next_payment_due_at && new Date(sub.next_payment_due_at) <= new Date() && !sub.next_cycle_paid;
+
+  // Seat switching. Only offered on a hybrid class — a class that meets one
+  // way has no second seat to move to — and only on a live enrolment, since
+  // a held place is not theirs yet and a cancelled one has no seat at all.
+  const seat: 'online' | 'physical' = sub.seat_type === 'physical' ? 'physical' : 'online';
+  const canSwitchSeat =
+    sub.group?.class_format === 'hybrid' &&
+    ['SECURED', 'ACTIVE', 'GRACE', 'SUSPENDED'].includes(sub.status);
+  const [switching, setSwitching] = useState(false);
+  const [seatError, setSeatError] = useState<string | null>(null);
+  const targetSeat: 'online' | 'physical' = seat === 'physical' ? 'online' : 'physical';
+  const targetPrice =
+    targetSeat === 'physical' ? sub.group?.price_physical_ttd : sub.group?.price_online_ttd;
+  const priceChanges =
+    typeof targetPrice === 'number' && targetPrice !== (sub.plan_price_ttd ?? targetPrice);
+
+  async function switchSeat() {
+    setSwitching(true);
+    setSeatError(null);
+    try {
+      const res = await fetch(`/api/subscriptions/${sub.id}/seat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ seatType: targetSeat }),
+      });
+      const json = await res.json().catch(() => ({}));
+      // The server's own sentence — "the in-person seats are full" is the
+      // whole answer, and a generic failure would send the student to their
+      // tutor for something the screen already knows.
+      if (!res.ok) { setSeatError(json?.error || 'Could not change your seat.'); return; }
+      onSeatChanged();
+    } catch {
+      setSeatError('Could not change your seat — check your connection.');
+    } finally {
+      setSwitching(false);
+    }
+  }
 
   // Billing cycle starts from last paid date
   const progress  = cycleProgress(sub.last_paid_at, sub.current_period_end);
@@ -297,6 +341,54 @@ function SubscriptionCard({ sub, onCancel, onUndo, actionLoading }: {
             </div>
           )}
         </div>
+
+        {/* How they attend. Shown on any class that has a seat type at all,
+            not just switchable ones — a student needs to know whether to
+            travel on Tuesday whether or not they can change it. */}
+        {sub.seat_type && sub.group?.class_format !== 'online' && (
+          <div className="rounded-xl border border-border bg-muted/20 px-4 py-3 space-y-2">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2 min-w-0">
+                {seat === 'physical'
+                  ? <MapPin className="size-4 shrink-0 text-brand-deep" />
+                  : <Video className="size-4 shrink-0 text-brand-deep" />}
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-ink">
+                    {seat === 'physical' ? 'You attend in person' : 'You attend online'}
+                  </div>
+                  {seat === 'physical' && sub.group?.venue && (
+                    <div className="text-xs text-muted-foreground truncate">
+                      {sub.group.venue.name}
+                      {sub.group.venue.region ? `, ${sub.group.venue.region.name}` : ''}
+                    </div>
+                  )}
+                </div>
+              </div>
+              {canSwitchSeat && (
+                <button
+                  onClick={switchSeat}
+                  disabled={switching}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border bg-background text-xs font-semibold text-ink hover:bg-muted transition disabled:opacity-60 shrink-0">
+                  {switching ? <Loader2 className="size-3.5 animate-spin" /> : null}
+                  {targetSeat === 'physical' ? 'Switch to in person' : 'Switch to online'}
+                </button>
+              )}
+            </div>
+            {/* Said before they tap, not after. The seat moves today and the
+                price moves at renewal — a student who reads that afterwards
+                has been surprised by their own bill. */}
+            {canSwitchSeat && priceChanges && (
+              <p className="text-[11px] text-muted-foreground">
+                Switching moves your seat straight away. Your next payment would be
+                {' '}TT$ {targetPrice} instead of TT$ {sub.plan_price_ttd ?? 0} — this month is
+                {' '}already paid and does not change.
+              </p>
+            )}
+            {seatError && (
+              <p className="text-[11px] font-medium text-red-600">{seatError}</p>
+            )}
+          </div>
+        )}
 
         {/* Actions */}
         <div className="flex items-center gap-2.5 flex-wrap">
@@ -490,6 +582,7 @@ export default function StudentSubscriptionsPage() {
               <SubscriptionCard key={sub.id} sub={sub}
                 onCancel={() => setCancelTarget(sub)}
                 onUndo={() => undoCancel(sub.id)}
+                onSeatChanged={load}
                 actionLoading={actionLoading}
               />
             ))}
@@ -504,6 +597,7 @@ export default function StudentSubscriptionsPage() {
               <SubscriptionCard key={sub.id} sub={sub}
                 onCancel={() => setCancelTarget(sub)}
                 onUndo={() => undoCancel(sub.id)}
+                onSeatChanged={load}
                 actionLoading={actionLoading}
               />
             ))}

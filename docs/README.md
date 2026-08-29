@@ -73,6 +73,12 @@ Located in [`../src/supabase/`](../src/supabase/):
    - API endpoint reference
    - Request/response examples
 
+10. **[class-match-week/](./class-match-week/README.md)**
+    - Campaign build plan: overview plus five phases and an appendix
+    - Supply figures measured against production, not estimated
+    - Start at [00-overview.md](./class-match-week/00-overview.md) — §1 is the
+      supply reality that constrains every other decision
+
 ---
 
 ### Process & Consistency

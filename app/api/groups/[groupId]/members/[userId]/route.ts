@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { promoteNextFromWaitlist } from '@/lib/services/waitlistService';
 import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
+import { notifyParentsChildLeftClass } from '@/lib/server/classRequestNotify';
 
 type Params = { params: Promise<{ groupId: string; userId: string }> };
 
@@ -137,6 +138,24 @@ async function handleSelfLeave(
   immediate: boolean = false,
 ) {
   const groupName: string = group?.name ?? 'this group';
+
+  // A linked parent is told whenever a class ends for their child, whatever
+  // their approval settings are. Not knowing their child had dropped a class
+  // until weeks later is the failure this prevents; the notice is sent after
+  // the leave succeeds, and never blocks it.
+  const tellParents = async (accessUntil: string | null) => {
+    try {
+      await notifyParentsChildLeftClass(admin, {
+        studentId: userId,
+        className: groupName,
+        groupId,
+        how: 'left',
+        accessUntil,
+      });
+    } catch (e) {
+      console.error('[members DELETE] parent leave notice failed:', e);
+    }
+  };
   const { data: subEnrollment } = await admin
     .from('group_enrollments')
     .select('id, status, current_period_end, cancel_at_period_end')
@@ -174,6 +193,8 @@ async function handleSelfLeave(
         metadata: { enrollment_id: subEnrollment.id },
       });
 
+      await tellParents(null);
+
       return NextResponse.json({
         success: true,
         immediate: true,
@@ -203,6 +224,8 @@ async function handleSelfLeave(
       metadata: { enrollment_id: subEnrollment.id },
     });
 
+    await tellParents(accessUntil);
+
     return NextResponse.json({
       success: true,
       immediate: false,
@@ -228,6 +251,8 @@ async function handleSelfLeave(
     link: `/student/classes`,
     group_id: groupId,
   });
+
+  await tellParents(null);
 
   return NextResponse.json({ success: true, immediate: true });
 }
@@ -272,6 +297,20 @@ async function handleTutorRemoval(
       link: `/student/subscriptions`,
       group_id: args.groupId,
     });
+
+    // A removal is a class ending too, and a parent hears about it the same way
+    // — worded as the tutor's decision, not the child's.
+    try {
+      await notifyParentsChildLeftClass(admin, {
+        studentId: args.studentId,
+        className: args.groupName,
+        groupId: args.groupId,
+        how: 'removed',
+        accessUntil: null,
+      });
+    } catch (e) {
+      console.error('[members DELETE] parent removal notice failed:', e);
+    }
 
     await promoteNextFromWaitlist(admin, args.groupId);
     return NextResponse.json({ success: true, refund_amount: 0 });

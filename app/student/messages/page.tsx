@@ -10,6 +10,7 @@ import type { ConversationWithParticipant } from '@/lib/types/notifications';
 import { getRelativeTime } from '@/lib/utils/calendar';
 import { Search, Send, MessageSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import ParentVisibilityNotice from '@/components/messaging/ParentVisibilityNotice';
 
 export default function StudentMessagesPage() {
   const { profile, loading: profileLoading } = useProfile();
@@ -66,6 +67,13 @@ export default function StudentMessagesPage() {
 
   return (
     <div className="max-w-6xl mx-auto">
+      {/* §9.4: persistent and non-dismissible. A linked parent can read the
+          tutor threads on this page, and the student is told so here rather than
+          finding out later. Renders nothing when no parent is linked. */}
+      <div className="mb-4">
+        <ParentVisibilityNotice />
+      </div>
+
       <div className="grid md:grid-cols-[300px_1fr] gap-4 h-[calc(100vh-9rem)]">
         {/* Conversation list */}
         <div className="rounded-2xl bg-background border border-border flex flex-col overflow-hidden">

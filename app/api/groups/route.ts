@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import type { CreateGroupInput } from '@/lib/types/groups';
+import {
+  resolveScheduleEntries,
+  scheduleMatchesDayTime,
+  type ScheduleEntry,
+  type TimeBand,
+} from '@/lib/utils/scheduleFormat';
 import { z } from 'zod';
 
 function isSchemaMismatch(error: any) {
@@ -49,6 +55,26 @@ export async function GET(request: NextRequest) {
       tutor_name: z.string().optional(),
       tutor_id: z.string().uuid().optional(),
       archived: z.enum(['true', 'false']).optional(),
+      // Recurring day-of-week filter: comma-separated indices, 0=Sunday.
+      days: z
+        .string()
+        .optional()
+        .transform((v) =>
+          (v ?? '')
+            .split(',')
+            .map((s) => Number(s.trim()))
+            .filter((n) => Number.isInteger(n) && n >= 0 && n <= 6)
+        ),
+      // Time-of-day bands: comma-separated morning|afternoon|evening.
+      timeOfDay: z
+        .string()
+        .optional()
+        .transform((v) =>
+          (v ?? '')
+            .split(',')
+            .map((s) => s.trim().toLowerCase())
+            .filter((s): s is TimeBand => s === 'morning' || s === 'afternoon' || s === 'evening')
+        ),
     });
     const parsed = querySchema.safeParse(
       Object.fromEntries([...searchParams.entries()].filter(([, v]) => v !== ''))
@@ -74,6 +100,8 @@ export async function GET(request: NextRequest) {
       tutor_name: tutorName,
       tutor_id: filterTutorId,
       archived: archivedParam,
+      days: filterDays,
+      timeOfDay: filterBands,
     } = parsed.data;
 
     const fetchArchived = archivedParam === 'true';
@@ -99,9 +127,16 @@ export async function GET(request: NextRequest) {
       devTutorIds = (devProfiles ?? []).map((p: { id: string }) => p.id);
     }
 
-    const SELECT_TIERS = [
-      // Tier 1: full column set (requires migrations 128-132)
-      `id, name, description, tutor_id, subject, pricing, pricing_model, price_per_session, price_monthly, created_at,
+    // The in-person columns (migration 242) get their OWN tier at the top rather
+    // than joining tier 1. Production does not have 242, and a single missing
+    // column 42703s the whole select — so merging them would make tier 1 fail
+    // there and drop every class to tier 2, silently losing parent_feedback_mode,
+    // whatsapp_url and archived_reason from the marketplace. Only the AREA is
+    // read here, never the street address: this is a list endpoint with no
+    // per-viewer entitlement check, so it must not be able to leak one.
+    const IN_PERSON = 'class_format, venue:venues(id, name, region:regions(id, name))';
+
+    const TIER_1 = `id, name, description, tutor_id, subject, pricing, pricing_model, price_per_session, price_monthly, created_at,
        visibility, primary_channel, whatsapp_url, whatsapp_link, google_classroom_link,
        max_students, parent_feedback_mode, parent_feedback_price,
        price_per_session, price_monthly, price_per_course, member_service_fee,
@@ -109,7 +144,11 @@ export async function GET(request: NextRequest) {
        archived_at, archived_reason, cover_image, form_level, session_length_minutes, schedule_display, schedule_data,
        estimated_earnings,
        tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, rating_average, rating_count, profile_banner_url),
-       group_members(id, user_id, status)`,
+       group_members(id, user_id, status)`;
+
+    const SELECT_TIERS = [
+      `${TIER_1}, ${IN_PERSON}`,
+      TIER_1,
       // Tier 2: drop columns likely missing (parent_feedback_mode → feedback_mode, no archived_reason/whatsapp_url)
       `id, name, description, tutor_id, subject, pricing, pricing_model, price_per_session, price_monthly, created_at,
        visibility, primary_channel, google_classroom_link,
@@ -180,6 +219,50 @@ export async function GET(request: NextRequest) {
     const groupRows = groups ?? [];
     const groupIds = groupRows.map((g: any) => g.id);
 
+    // Preload the recurring schedule per group: powers the card's "Recurring
+    // every Monday and Wednesday · 5:00–7:00 PM AST" line and the day/time
+    // filters below. Manual schedule_data (authored by the tutor) wins over the
+    // pattern derived from group_sessions.
+    const scheduleEntriesByGroupId = new Map<string, ScheduleEntry[]>();
+    if (groupIds.length > 0) {
+      // No recurrence_type filter: classes scheduled as individual dates (no
+      // recurrence rule) still have a real weekly pattern in their occurrences,
+      // and resolveScheduleEntries falls back to those.
+      const { data: recurrenceRows, error: recurrenceError } = await service
+        .from('group_sessions')
+        .select(
+          'group_id, start_time, recurrence_type, recurrence_days, duration_minutes, ' +
+            'group_session_occurrences(scheduled_start_at, scheduled_end_at, cancelled_at, status)'
+        )
+        .in('group_id', groupIds)
+        .order('created_at', { ascending: true });
+
+      if (recurrenceError && !isSchemaMismatch(recurrenceError)) {
+        console.warn('[GET /api/groups] recurring schedule load failed (non-fatal):', recurrenceError.message);
+      }
+
+      const rulesByGroup = new Map<string, any[]>();
+      const occurrencesByGroup = new Map<string, any[]>();
+      for (const row of recurrenceRows ?? []) {
+        const key = String((row as any).group_id);
+        rulesByGroup.set(key, [...(rulesByGroup.get(key) ?? []), row]);
+        occurrencesByGroup.set(key, [
+          ...(occurrencesByGroup.get(key) ?? []),
+          ...(((row as any).group_session_occurrences as any[]) ?? []),
+        ]);
+      }
+
+      for (const g of groupRows) {
+        const key = String(g.id);
+        const entries = resolveScheduleEntries({
+          scheduleData: (g as any).schedule_data ?? null,
+          sessionRows: rulesByGroup.get(key) ?? [],
+          occurrences: occurrencesByGroup.get(key) ?? [],
+        });
+        if (entries.length > 0) scheduleEntriesByGroupId.set(key, entries);
+      }
+    }
+
     // Preload session occurrences to compute next session per group card
     let nextOccurrenceByGroupId = new Map<string, any>();
     if (groupIds.length > 0) {
@@ -225,12 +308,53 @@ export async function GET(request: NextRequest) {
         member_previews: [],
         current_user_membership: currentUserMembership,
         next_occurrence: nextOccurrenceByGroupId.get(g.id) ?? null,
+        schedule_entries: scheduleEntriesByGroupId.get(String(g.id)) ?? [],
       };
     });
 
-    // No profile-completeness gate for group classes — visibility (public/private) and
-    // archived_at are the sole gating mechanisms. Tutor profile quality checks apply to
-    // the 1:1 tutor search (/api/tutors/listed-ids), not here.
+    // Day-of-week / time-of-day filter. Lives here rather than in the `groups`
+    // where-clause because the data is on group_sessions, not groups.
+    if (filterDays.length > 0 || filterBands.length > 0) {
+      enriched = enriched.filter((g: any) => scheduleMatchesDayTime(g.schedule_entries, filterDays, filterBands));
+    }
+
+    // No profile-completeness gate for group classes — visibility (public/private),
+    // archived_at and the schedule requirement below are the gating mechanisms. Tutor
+    // profile quality checks apply to the 1:1 tutor search (/api/tutors/listed-ids).
+
+    /**
+     * A CLASS WITH NO SCHEDULE IS NOT LISTED.
+     *
+     * `schedule_entries` is the same resolved pattern every card and class page
+     * renders (`resolveScheduleEntries`: manual `schedule_data`, then a
+     * `group_sessions` recurrence rule, then two or more dated occurrences). If it
+     * resolves to nothing, the marketplace cannot tell a customer when the class
+     * meets — so the listing is an invitation to enrol in something with no
+     * stated time, which is the one thing a recurring class has to state.
+     *
+     * Gating on the RESOLVED pattern rather than on `group_sessions.recurrence_days`
+     * is deliberate: a tutor who typed their days into `schedule_data` has
+     * answered the question, even with no recurrence row behind it.
+     *
+     * THE OWNING TUTOR ALWAYS SEES THEIR OWN, and the exemption is PER ROW, not
+     * per request. It cannot be keyed on `tutor_id=<self>` being passed, because
+     * the tutor's own lessons home (components/groups/tutor/TutorLessonsHome)
+     * fetches this endpoint with no tutor_id at all and filters by owner on the
+     * client — a request-level exemption would strip their unscheduled classes
+     * before that filter ran, hiding from a tutor the very classes they need to
+     * open in order to fix. Per row also keeps the gate correct for the public
+     * profile card (components/tutor/public/ClassesSection), which passes someone
+     * else's tutor_id: a student browsing it still gets the gate.
+     *
+     * This removes real supply — 18 of 38 published classes on production at the
+     * time of writing. That is the point: those 18 are already broken for paying
+     * customers, and most of them are why Class Match Week's ineligible list exists.
+     */
+    if (!fetchArchived) {
+      enriched = enriched.filter(
+        (g: any) => (g.schedule_entries ?? []).length > 0 || g.tutor_id === user.id
+      );
+    }
 
     if (availability) {
       const now = new Date();
@@ -347,11 +471,15 @@ export async function GET(request: NextRequest) {
     const promotionsByGroupId = new Map<string, any>();
     if (paginatedGroupIds.length > 0) {
       try {
+        // Class-level promotions only — a personal coupon (migration 231)
+        // belongs to one attendee and must not badge the class in a listing.
+        // Service client, so RLS does not scope this.
         const { data: promos } = await service
           .from('group_promotions')
           .select('id, group_id, kind, discount, student_cap, duration_days, created_at')
           .in('group_id', paginatedGroupIds)
           .eq('active', true)
+          .is('user_id', null)
           .order('created_at', { ascending: false });
         const now = new Date();
         for (const promo of promos ?? []) {
@@ -490,6 +618,83 @@ export async function POST(request: NextRequest) {
     const resolvedVisibility: string | null =
       rawBody.visibility ?? (rawBody.isPublic === true ? 'public' : rawBody.isPublic === false ? 'unlisted' : null);
 
+    /**
+     * DRAFT or PUBLISHED. `groups.status` is NOT NULL DEFAULT 'PUBLISHED', and no
+     * insert here used to set it — so this endpoint could only ever publish, and
+     * the creation form's "Save as draft" button had nothing to call. It navigated
+     * away instead, discarding everything typed.
+     *
+     * Anything other than an explicit 'DRAFT' stays PUBLISHED, so every existing
+     * caller keeps its behaviour.
+     *
+     * SET ON EVERY FALLBACK TIER BELOW, not just the primary. The comment on
+     * end_date in those tiers is the cautionary tale: it lived on the primary
+     * insert alone, the primary always failed on production because of a column
+     * that does not exist there, and classes were created without it. A draft
+     * that silently published would be the same bug with worse consequences.
+     */
+    const resolvedStatus = rawBody.status === 'DRAFT' ? 'DRAFT' : 'PUBLISHED';
+
+    // ── In person (migration 242) ────────────────────────────────────────
+    // Validated before the insert rather than left to the NOT VALID CHECKs,
+    // which surface as a raw Postgres error a tutor cannot act on.
+    const FORMATS = ['online', 'physical', 'hybrid'] as const;
+    const rawFormat = (rawBody as any).class_format;
+    const classFormat: (typeof FORMATS)[number] =
+      FORMATS.includes(rawFormat) ? rawFormat : 'online';
+    const wantedVenueId: string | null =
+      classFormat === 'online' ? null : ((rawBody as any).venue_id ?? null);
+
+    if (classFormat !== 'online' && !wantedVenueId) {
+      return NextResponse.json(
+        { error: 'Choose a venue before setting this class to meet in person.' },
+        { status: 400 }
+      );
+    }
+
+    // OWNERSHIP. Not a database constraint, and the only thing stopping a tutor
+    // attaching someone else's venue — and street address — to their class.
+    // "Not yours" and "does not exist" answer the same, so this cannot be used
+    // to probe for venue ids.
+    if (wantedVenueId) {
+      const { data: venueRow, error: venueErr } = await service
+        .from('venues')
+        .select('id, tutor_id, archived_at')
+        .eq('id', wantedVenueId)
+        .maybeSingle();
+      if (venueErr) {
+        console.error('[POST /api/groups] venue lookup failed:', venueErr.message);
+        return NextResponse.json({ error: 'Could not check that venue.' }, { status: 503 });
+      }
+      const v = venueRow as { tutor_id?: string; archived_at?: string | null } | null;
+      if (!v || v.tutor_id !== user.id || v.archived_at) {
+        return NextResponse.json({ error: 'That venue is not available.' }, { status: 400 });
+      }
+    }
+
+    const numOrNull = (raw: unknown): number | null => {
+      if (raw === null || raw === undefined || raw === '') return null;
+      const n = Number(raw);
+      return Number.isFinite(n) && n >= 0 ? n : null;
+    };
+
+    // NOT added to the schema-mismatch fallback insert below, deliberately: on a
+    // database without 242 the primary insert fails on these columns and the
+    // fallback — which omits them — succeeds. That is the degradation we want,
+    // and duplicating them into the fallback would break class creation there
+    // entirely.
+    const inPersonColumns = {
+      class_format: classFormat,
+      venue_id: wantedVenueId,
+      venue_visibility:
+        (rawBody as any).venue_visibility === 'public' ? 'public' : 'after_enrolment',
+      max_students_online: numOrNull((rawBody as any).max_students_online),
+      max_students_physical: numOrNull((rawBody as any).max_students_physical),
+      price_online_ttd: numOrNull((rawBody as any).price_online_ttd),
+      price_physical_ttd: numOrNull((rawBody as any).price_physical_ttd),
+      accepts_cash: classFormat !== 'online' && Boolean((rawBody as any).accepts_cash),
+    };
+
     let { data: group, error } = await service
       .from('groups')
       .insert({
@@ -501,6 +706,8 @@ export async function POST(request: NextRequest) {
         session_length_minutes: body.session_length_minutes ?? null,
         session_frequency: body.session_frequency ?? null,
         tutor_id: user.id,
+        // On every tier — see resolvedStatus above.
+        status: resolvedStatus,
         pricing: 'free',
         pricing_mode: body.pricing_mode ?? body.pricing_model ?? 'FREE',
         pricing_model: body.pricing_model ?? (
@@ -515,6 +722,7 @@ export async function POST(request: NextRequest) {
         availability_window: body.availability_window ?? null,
         cover_image: body.cover_image ?? null,
         header_image: body.header_image ?? null,
+        ...inPersonColumns,
         ...(resolvedVisibility ? { visibility: resolvedVisibility } : {}),
       })
       .select()
@@ -532,6 +740,15 @@ export async function POST(request: NextRequest) {
           session_length_minutes: body.session_length_minutes ?? null,
           session_frequency: body.session_frequency ?? null,
           tutor_id: user.id,
+          // On every tier — see resolvedStatus above.
+          status: resolvedStatus,
+          // end_date is VALIDATED AS REQUIRED above, so it has to survive every
+          // rung of this fallback chain. It was on the primary insert only, and
+          // header_image — which the primary also carries — does not exist on
+          // production, so the primary always failed there and the class was
+          // created with end_date NULL. EndDateGate then demanded it on the next
+          // screen, which is why tutors were asked for the same date twice.
+          end_date: endDateValue,
           pricing: 'free',
           pricing_mode: body.pricing_mode ?? body.pricing_model ?? 'FREE',
           pricing_model: body.pricing_model ?? (
@@ -556,6 +773,15 @@ export async function POST(request: NextRequest) {
           description: body.description?.trim() ?? null,
           subject: subjectString,
           tutor_id: user.id,
+          // On every tier — see resolvedStatus above.
+          status: resolvedStatus,
+          // end_date is VALIDATED AS REQUIRED above, so it has to survive every
+          // rung of this fallback chain. It was on the primary insert only, and
+          // header_image — which the primary also carries — does not exist on
+          // production, so the primary always failed there and the class was
+          // created with end_date NULL. EndDateGate then demanded it on the next
+          // screen, which is why tutors were asked for the same date twice.
+          end_date: endDateValue,
           pricing: 'free',
         })
         .select()
@@ -570,6 +796,15 @@ export async function POST(request: NextRequest) {
           description: body.description?.trim() ?? null,
           subject: subjectString,
           tutor_id: user.id,
+          // On every tier — see resolvedStatus above.
+          status: resolvedStatus,
+          // end_date is VALIDATED AS REQUIRED above, so it has to survive every
+          // rung of this fallback chain. It was on the primary insert only, and
+          // header_image — which the primary also carries — does not exist on
+          // production, so the primary always failed there and the class was
+          // created with end_date NULL. EndDateGate then demanded it on the next
+          // screen, which is why tutors were asked for the same date twice.
+          end_date: endDateValue,
         })
         .select()
         .single());

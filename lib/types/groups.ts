@@ -1,4 +1,5 @@
 import { Profile } from './database';
+import type { ScheduleEntry } from '@/lib/utils/scheduleFormat';
 
 // ============================
 // ENUMS / UNION TYPES
@@ -17,6 +18,43 @@ export type GroupEnrollmentType = 'SUBSCRIPTION' | 'SINGLE_SESSION';
 export type GroupEnrollmentStatus = 'ACTIVE' | 'CANCELLED' | 'WAITLISTED' | 'COMPLETED' | 'PENDING_PAYMENT' | 'GRACE' | 'SUSPENDED' | 'ACTIVATION_FAILED';
 export type GroupPaymentStatus = 'PENDING' | 'PAID' | 'REFUNDED' | 'FREE' | 'PARTIALLY_REFUNDED' | 'OVERDUE' | 'ACTIVATION_FAILED';
 export type GroupAttendanceStatus = 'PRESENT' | 'ABSENT' | 'LATE';
+
+// ---- Physical classes (migration 241) ----
+//
+// class_format decides whether a venue and physical seats apply, and whether
+// cash may be offered at all. seat_type is what the student BOUGHT; it is not
+// attendance mode, which is what they DID and is derived per occurrence.
+export type GroupClassFormat = 'online' | 'physical' | 'hybrid';
+export type GroupSeatType = 'online' | 'physical';
+export type VenueVisibility = 'public' | 'after_enrolment';
+
+export interface Region {
+  id: string;
+  country_code: string;
+  name: string;
+  sort_order: number;
+  active: boolean;
+  created_at?: string;
+}
+
+export interface Venue {
+  id: string;
+  tutor_id: string;
+  name: string;
+  /** Required. Free-text areas cannot be filtered, which is the only reason to store a venue. */
+  region_id: string;
+  address_line?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  access_instructions?: string | null;
+  arrival_notes?: string | null;
+  /** Room capacity, for the tutor. NOT the seat cap that blocks enrolment. */
+  capacity?: number | null;
+  archived_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  region?: Region | null;
+}
 export type GroupWaitlistStatus = 'waiting' | 'offered' | 'expired' | 'accepted' | 'removed';
 export type SubscriptionPaymentType = 'subscription_initial' | 'subscription_renewal' | 'subscription_reactivation';
 export type SubscriptionPaymentStatus = 'PENDING' | 'PAID' | 'REFUNDED' | 'PARTIALLY_REFUNDED' | 'ACTIVATION_FAILED' | 'expired';
@@ -41,6 +79,16 @@ export const DAY_LABELS: Record<DayOfWeek, string> = {
 // ============================
 
 export interface Group {
+  // Physical classes (migration 241).
+  class_format?: GroupClassFormat;
+  venue_id?: string | null;
+  venue_visibility?: VenueVisibility;
+  /** null = unlimited, 0 = none. Distinct answers; max_students cannot express unlimited. */
+  max_students_online?: number | null;
+  max_students_physical?: number | null;
+  price_online_ttd?: number | null;
+  price_physical_ttd?: number | null;
+  accepts_cash?: boolean;
   id: string;
   name: string;
   description: string | null;
@@ -84,6 +132,12 @@ export interface GroupWithTutor extends Group {
   member_previews: Array<Pick<Profile, 'id' | 'full_name' | 'avatar_url'>>;
   current_user_membership: GroupMember | null;
   next_occurrence: GroupOccurrence | null;
+  /**
+   * Recurring weekly pattern (day + AST start time + duration), resolved by
+   * GET /api/groups from the tutor's manual schedule_data or group_sessions.
+   * Empty when the class has no recurring schedule.
+   */
+  schedule_entries?: ScheduleEntry[];
 }
 
 export interface GroupMember {

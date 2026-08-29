@@ -27,6 +27,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceClient } from '@/lib/supabase/server';
 import { sendEmail } from '@/lib/services/emailService';
+import { renderEmail } from '@/lib/email/design';
 import { trinidadToday } from '@/lib/payments/secureSpot';
 
 export const dynamic = 'force-dynamic';
@@ -99,21 +100,50 @@ export async function GET(request: NextRequest) {
       const link = `${appUrl}/student/explore/${row.group_id}`;
 
       if (student?.email) {
+        const className = group?.name ?? 'your class';
+        // Family 10. A place lapsing is a change to something already agreed,
+        // and the sentence that has to survive is "nothing will be charged
+        // automatically" — it gets its own panel rather than bold text inside a
+        // paragraph, because a family that misreads it stops trusting preorders.
+        const email = renderEmail({
+          family: 'schedule-change',
+          subject: `Your first month of ${group?.name ?? 'class'} ends ${fmtDate(releaseDate)}`,
+          heading: 'Your first month is ending',
+          intro: `Hi ${student.full_name ?? 'there'},`,
+          eyebrow: 'Decide whether to continue',
+          blocks: [
+            {
+              kind: 'details',
+              rows: [
+                { label: 'Class', value: className, strong: true },
+                { label: 'First month ends', value: fmtDate(releaseDate) },
+                {
+                  label: 'To continue',
+                  value: price > 0 ? `TT$${price} a month` : 'See the class page',
+                },
+              ],
+            },
+            {
+              kind: 'notice',
+              tone: 'success',
+              title: 'Nothing will be charged automatically',
+              body:
+                'You paid for that first month up front when you secured your spot, and nothing has been charged since.',
+            },
+            {
+              kind: 'paragraph',
+              text: `If you'd rather stop, you don't need to do anything — your place simply ends after ${fmtDate(
+                addDays(releaseDate, GRACE_DAYS_AFTER)
+              )}.`,
+            },
+          ],
+          cta: { label: `Continue in ${className}`, href: link },
+        });
         await sendEmail({
           to: student.email,
-          subject: `Your first month of ${group?.name ?? 'class'} ends ${fmtDate(releaseDate)}`,
-          html: `
-            <p>Hi ${student.full_name ?? 'there'},</p>
-            <p>Your first month of <strong>${group?.name ?? 'your class'}</strong> ends on
-               <strong>${fmtDate(releaseDate)}</strong>.</p>
-            <p>You paid for that month up front when you secured your spot.
-               <strong>Nothing has been charged since, and nothing will be charged automatically.</strong>
-               If you'd like to keep attending, you can continue from
-               ${price > 0 ? `TT$${price} a month` : 'the class page'}:</p>
-            <p><a href="${link}">Continue in ${group?.name ?? 'this class'}</a></p>
-            <p>If you'd rather stop, you don't need to do anything — your place
-               simply ends after ${fmtDate(addDays(releaseDate, GRACE_DAYS_AFTER))}.</p>
-          `.trim(),
+          subject: email.subject,
+          html: email.html,
+          text: email.text,
         });
       }
 
@@ -197,21 +227,48 @@ export async function GET(request: NextRequest) {
       const price = Number(group?.price_monthly ?? 0);
 
       if (student?.email) {
+        const className = group?.name ?? 'your class';
+        const email = renderEmail({
+          family: 'schedule-change',
+          subject: `Your place in ${group?.name ?? 'your class'} has ended`,
+          heading: 'Your place has ended',
+          intro: `Hi ${student.full_name ?? 'there'},`,
+          eyebrow: 'Place released',
+          tone: 'neutral',
+          blocks: [
+            {
+              kind: 'details',
+              rows: [
+                { label: 'Class', value: className },
+                { label: 'First month ran until', value: fmtDate(releaseDate) },
+                { label: 'Place held a further', value: `${GRACE_DAYS_AFTER} days` },
+              ],
+            },
+            {
+              kind: 'paragraph',
+              text:
+                "We held your place in case you wanted to continue, and as we haven't heard from you it has been released.",
+            },
+            {
+              kind: 'notice',
+              tone: 'success',
+              title: 'You have not been charged anything further',
+              body: 'There is nothing you need to do.',
+            },
+            {
+              kind: 'paragraph',
+              text: `If you'd like to come back, the class is still open to join${
+                price > 0 ? ` from TT$${price} a month` : ''
+              }.`,
+            },
+          ],
+          cta: { label: `Rejoin ${className}`, href: rejoinLink },
+        });
         await sendEmail({
           to: student.email,
-          subject: `Your place in ${group?.name ?? 'your class'} has ended`,
-          html: `
-            <p>Hi ${student.full_name ?? 'there'},</p>
-            <p>Your place in <strong>${group?.name ?? 'your class'}</strong> has now ended.</p>
-            <p>You paid for your first month up front when you secured your spot, and that
-               month ran until <strong>${fmtDate(releaseDate)}</strong>. We held your place for a
-               further ${GRACE_DAYS_AFTER} days in case you wanted to continue, and as we
-               haven't heard from you, the place has been released.</p>
-            <p><strong>You have not been charged anything further</strong>, and there is nothing
-               you need to do.</p>
-            <p>If you'd like to come back, the class is still open to join${price > 0 ? ` from TT$${price} a month` : ''}:</p>
-            <p><a href="${rejoinLink}">Rejoin ${group?.name ?? 'this class'}</a></p>
-          `.trim(),
+          subject: email.subject,
+          html: email.html,
+          text: email.text,
         });
       }
 

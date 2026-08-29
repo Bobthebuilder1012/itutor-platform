@@ -86,7 +86,7 @@ export async function GET(request: NextRequest) {
           fullName: profile.full_name,
         });
 
-        const result = await sendEmail({ to: profile.email, subject, html });
+        const result = await sendEmail({ to: profile.email, subject, html, text: template.text });
 
         if (result.success) {
           const nextStage = queueItem.stage + 1;

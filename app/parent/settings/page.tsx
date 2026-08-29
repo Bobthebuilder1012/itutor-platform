@@ -7,10 +7,16 @@ import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import ParentShell from '@/components/parent/ParentShell';
 import LogoutConfirmModal from '@/components/LogoutConfirmModal';
+import ChildBillingControls from '@/components/parent/ChildBillingControls';
+import NotificationPreferences from '@/components/parent/NotificationPreferences';
+import BillingSection from '@/components/parent/BillingSection';
 
 const SECTIONS = [
   { id: 'profile', label: 'Profile', icon: User },
   { id: 'household', label: 'Household', icon: Users },
+  // The design kit puts billing INSIDE Settings rather than as its own
+  // destination, so subscriptions and transactions live here.
+  { id: 'billing', label: 'Billing', icon: CreditCard },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'security', label: 'Security', icon: Lock },
 ] as const;
@@ -122,27 +128,34 @@ function SettingsContent() {
                 {children.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground text-center">No children linked yet.</div>
                 ) : children.map(c => (
-                  <div key={c.id} className="flex items-center gap-3 p-3 rounded-xl border border-border">
-                    <div className="size-10 rounded-full bg-brand-soft text-brand-deep grid place-items-center font-bold text-sm">
-                      {c.name.split(' ').map(n => n[0]).join('').slice(0,2)}
+                  <div key={c.id} className="p-3 rounded-xl border border-border">
+                    <div className="flex items-center gap-3">
+                      <div className="size-10 rounded-full bg-brand-soft text-brand-deep grid place-items-center font-bold text-sm">
+                        {c.name.split(' ').map(n => n[0]).join('').slice(0,2)}
+                      </div>
+                      <div className="flex-1"><div className="font-semibold text-ink text-sm">{c.name}</div></div>
                     </div>
-                    <div className="flex-1"><div className="font-semibold text-ink text-sm">{c.name}</div></div>
+                    {/* §7 and §10.5: the approval gate, the spend limit and the
+                        self-pay toggle. These APIs existed with nothing able to
+                        reach them until now. */}
+                    <ChildBillingControls childId={c.id} childName={c.name} />
                   </div>
                 ))}
               </div>
             </>
           )}
 
+          {section === 'billing' && <BillingSection />}
+
           {section === 'notifications' && (
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">Notification preferences are managed through your account settings.</p>
-              {['Class enrolment updates', 'Monthly feedback reports', 'Payment confirmations', 'Suspension alerts'].map(label => (
-                <div key={label} className="flex items-center justify-between py-1">
-                  <div className="text-sm font-medium text-ink">{label}</div>
-                  <div className="text-xs text-muted-foreground">Email</div>
-                </div>
-              ))}
-            </div>
+            /* Replaces a decorative placeholder: four labels and the word
+               "Email", with no toggles and nothing persisted. Those four
+               categories did not match anything the platform sends either —
+               "Monthly feedback reports" and "Suspension alerts" have no channel
+               behind them. The real control offers only the six §10.6 categories,
+               because a switch a parent turns on and then hears nothing from is
+               worse than no switch. */
+            <NotificationPreferences />
           )}
 
           {section === 'security' && (

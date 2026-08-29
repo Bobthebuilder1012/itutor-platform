@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { ParentAccessError, requireParentContext, requireParentChild } from '@/lib/server/parentAccess';
+import { buildAttendanceOutcomes, formatAttendanceRate, tallyOutcomes } from '@/lib/server/attendance';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,31 +39,75 @@ export async function GET(_request: NextRequest, { params }: Params) {
     const { data: gsRows } = await admin.from('group_sessions').select('id').eq('group_id', groupId);
     const gsIds = (gsRows ?? []).map((g: any) => g.id);
     let upcoming: { id: string; start: string; end: string }[] = [];
-    let attendance: { key: string; start: string; present: boolean }[] = [];
+    let attendance: {
+      key: string;
+      start: string;
+      present: boolean;
+      status: string | null;
+      lateMinutes: number | null;
+    }[] = [];
+    let attendanceSummary: Record<string, unknown> | null = null;
+
     if (gsIds.length) {
+      // cancelled_at is now selected and cancelled occurrences are NOT filtered
+      // out: §6 wants them shown and excluded from the rate. Hiding them left a
+      // gap in the list, and a parent who sees a gap assumes their child missed
+      // something.
       const { data: occ } = await admin
         .from('group_session_occurrences')
-        .select('id, scheduled_start_at, scheduled_end_at')
+        .select('id, scheduled_start_at, scheduled_end_at, cancelled_at')
         .in('group_session_id', gsIds)
-        .is('cancelled_at', null)
         .order('scheduled_start_at', { ascending: true })
         .limit(200);
+      // Upcoming excludes cancelled: a class that is not going to run is not
+      // something to put in front of a parent as "next up".
       upcoming = (occ ?? [])
-        .filter((o: any) => o.scheduled_start_at >= nowISO)
+        .filter((o: any) => o.scheduled_start_at >= nowISO && !o.cancelled_at)
         .slice(0, 10)
         .map((o: any) => ({ id: o.id, start: o.scheduled_start_at, end: o.scheduled_end_at }));
 
-      const { data: logs } = await admin
-        .from('session_attendance_log')
-        .select('occurrence_id')
-        .eq('student_id', childId)
-        .eq('occurrence_type', 'group_occurrence');
-      const present = new Set((logs ?? []).map((l: any) => l.occurrence_id));
-      attendance = (occ ?? [])
+      // Was: read session_attendance_log directly and treat "row exists" as
+      // present. That skipped the §6 tutor-absent guard, so an occurrence the
+      // tutor never opened showed as an absence here while the child's overall
+      // rate — computed by the shared helper — had already excluded it. The two
+      // parent surfaces contradicted each other about the same session.
+      const past = (occ ?? [])
         .filter((o: any) => o.scheduled_start_at < nowISO)
         .sort((a: any, b: any) => (a.scheduled_start_at < b.scheduled_start_at ? 1 : -1))
-        .slice(0, 20)
-        .map((o: any) => ({ key: o.id, start: o.scheduled_start_at, present: present.has(o.id) }));
+        .slice(0, 20);
+
+      const outcomes = await buildAttendanceOutcomes(admin, {
+        studentId: childId,
+        occurrences: past.map((o: any) => ({
+          occurrenceType: 'group_occurrence' as const,
+          occurrenceId: o.id,
+          scheduledStart: o.scheduled_start_at,
+          scheduledEnd: o.scheduled_end_at ?? null,
+          cancelled: Boolean(o.cancelled_at),
+        })),
+      });
+
+      const byId = new Map(outcomes.map((o) => [o.occurrenceId, o]));
+
+      attendance = past.map((o: any) => {
+        const outcome = byId.get(o.id);
+        return {
+          key: o.id,
+          start: o.scheduled_start_at,
+          status: outcome?.outcome ?? null,
+          lateMinutes: outcome?.lateMinutes ?? null,
+          // Kept for anything still reading it. Late still counts as turning up.
+          present: outcome?.outcome === 'attended' || outcome?.outcome === 'late',
+        };
+      });
+
+      const tally = tallyOutcomes(outcomes);
+      attendanceSummary = {
+        ...tally,
+        excluded: outcomes.filter((o) => o.outcome === 'excluded').length,
+        // The one figure, never recomputed downstream.
+        rateLabel: formatAttendanceRate(tally),
+      };
     }
 
     // Stream posts (announcements) — mirrors the student stream, read-only.
@@ -129,6 +174,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
       membershipStatus,
       upcoming,
       attendance,
+      attendanceSummary,
       stream,
       members,
     });

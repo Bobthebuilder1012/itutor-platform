@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import Cropper from 'react-easy-crop';
 import type {
   GroupWithTutor,
@@ -18,7 +19,6 @@ import AddSessionModal from './AddSessionModal';
 import AddRecurringSessionModal from './AddRecurringSessionModal';
 import WhatsAppSetupTab from './WhatsAppSetupTab';
 import TutorStreamView from '../stream/TutorStreamView';
-import TutorFeedbackTab from './TutorFeedbackTab';
 import GroupAnalyticsTab from './GroupAnalyticsTab';
 import RemoveMemberModal from '@/components/RemoveMemberModal';
 import { occurrenceTitle } from '@/lib/utils/scheduleFormat';
@@ -385,7 +385,10 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
   const TABS: { id: Tab; label: string }[] = [
     { id: 'stream', label: 'Stream' },
     { id: 'sessions', label: 'Sessions' },
-    { id: 'feedback', label: 'Feedback' },
+    // The per-class Feedback tab is gone with the period-based system it drove.
+    // Feedback is no longer a property of a class: a family asks a TUTOR about a
+    // CHILD, across whatever they teach them (§8), so it lives on /tutor/clients
+    // where 1:1 and group students appear in one roster.
     { id: 'whatsapp', label: 'WhatsApp' },
     { id: 'analytics', label: 'Analytics' },
   ];
@@ -861,6 +864,15 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
                 <div className="text-[11px] font-bold uppercase tracking-[.08em] text-[#6b7280] mb-[18px] flex items-center gap-2">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2" /><circle cx="9" cy="7" r="4" /></svg>
                   Students
+                  {/* This table is the roster as an admin object — who is in,
+                      when they joined, remove. Clients is the same people as
+                      people: their parent, their attendance, and feedback. */}
+                  <Link
+                    href={`/tutor/clients?classId=${group.id}`}
+                    className="ml-auto normal-case tracking-normal text-[12px] font-semibold text-brand-deep hover:underline"
+                  >
+                    Open in Clients →
+                  </Link>
                 </div>
                 {approvedMembers.filter((m) => m.profile?.role !== 'tutor').length === 0 ? (
                   <p className="text-center py-5 text-[13px] text-[#6b7280] bg-[#f5f7fa] rounded-[10px]">No students yet</p>
@@ -1280,10 +1292,6 @@ export default function TutorGroupView({ group, currentUserId, onGroupUpdated }:
             </div>
           )}
 
-
-          {tab === 'feedback' && (
-            <TutorFeedbackTab groupId={group.id} memberCount={approvedMembers.filter((m) => m.profile?.role !== 'tutor' && m.user_id !== group.tutor_id).length} />
-          )}
 
           {tab === 'whatsapp' && (
             <WhatsAppSetupTab

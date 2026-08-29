@@ -7,8 +7,18 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ArrowLeft, Calendar, Clock, Check, X, BookOpen, Eye, Loader2, MessageSquare, Users, Pin } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, Check, X, BookOpen, Eye, Loader2, MessageSquare, Users, Pin, Ban } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+/** Same vocabulary as the child attendance tab — §6 keeps it identical across
+ *  surfaces rather than re-worded per screen. */
+const CLASS_ATT: Record<string, { label: string; icon: typeof Check; chip: string; text: string }> = {
+  attended:  { label: 'Attended',   icon: Check, chip: 'bg-brand-soft text-brand-deep',  text: 'text-brand-deep' },
+  late:      { label: 'Late',       icon: Clock, chip: 'bg-amber-100 text-amber-700',    text: 'text-amber-700' },
+  absent:    { label: 'Absent',     icon: X,     chip: 'bg-rose-100 text-rose-600',      text: 'text-rose-600' },
+  cancelled: { label: 'Cancelled',  icon: Ban,   chip: 'bg-muted text-muted-foreground', text: 'text-muted-foreground' },
+  excluded:  { label: 'Didn’t run', icon: Ban,   chip: 'bg-muted text-muted-foreground', text: 'text-muted-foreground' },
+};
 import ParentShell from '@/components/parent/ParentShell';
 import ContentBlockRenderer from '@/components/student/ContentBlockRenderer';
 
@@ -18,7 +28,14 @@ type Data = {
   group: { id: string; name: string; subject: string | null; description: string | null; contentBlocks: unknown; tutorName: string };
   membershipStatus: string | null;
   upcoming: { id: string; start: string; end: string }[];
-  attendance: { key: string; start: string; present: boolean }[];
+  attendance: {
+    key: string;
+    start: string;
+    present: boolean;
+    status?: 'attended' | 'late' | 'absent' | 'cancelled' | 'excluded' | null;
+    lateMinutes?: number | null;
+  }[];
+  attendanceSummary?: { rateLabel?: string; excluded?: number } | null;
   stream: StreamPost[];
   members: Member[];
 };
@@ -155,19 +172,42 @@ function Content() {
           {/* In-class attendance */}
           <section className="rounded-2xl bg-background border border-border p-5">
             <h2 className="font-bold text-ink mb-3 flex items-center gap-2"><Check className="size-4 text-brand-deep" /> Attendance in this class</h2>
+            {/* §6: the rate arrives with its denominator attached and is never
+                recomputed here. */}
+            {data.attendanceSummary?.rateLabel && (
+              <p className="mb-3 text-sm font-semibold text-ink">
+                {data.attendanceSummary.rateLabel}
+                {(data.attendanceSummary.excluded ?? 0) > 0 && (
+                  <span className="ml-1 font-normal text-muted-foreground">
+                    · {data.attendanceSummary.excluded} not counted, the class didn&rsquo;t run
+                  </span>
+                )}
+              </p>
+            )}
             {data.attendance.length === 0 ? (
               <p className="text-sm text-muted-foreground">No past sessions yet.</p>
             ) : (
               <ul className="space-y-2">
-                {data.attendance.map((a) => (
-                  <li key={a.key} className="flex items-center gap-2 text-sm">
-                    <span className={cn('size-6 rounded-lg grid place-items-center shrink-0', a.present ? 'bg-brand-soft text-brand-deep' : 'bg-rose-100 text-rose-600')}>
-                      {a.present ? <Check className="size-3.5" /> : <X className="size-3.5" />}
-                    </span>
-                    <span className="text-ink">{new Date(a.start).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</span>
-                    <span className={cn('ml-auto text-xs font-bold uppercase tracking-wider', a.present ? 'text-brand-deep' : 'text-rose-600')}>{a.present ? 'Present' : 'Absent'}</span>
-                  </li>
-                ))}
+                {data.attendance.map((a) => {
+                  const s = CLASS_ATT[a.status ?? (a.present ? 'attended' : 'absent')] ?? CLASS_ATT.absent;
+                  const Icon = s.icon;
+                  return (
+                    <li key={a.key} className="flex items-center gap-2 text-sm">
+                      <span className={cn('size-6 rounded-lg grid place-items-center shrink-0', s.chip)}>
+                        <Icon className="size-3.5" />
+                      </span>
+                      <span className="text-ink">{new Date(a.start).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+                      <span className={cn('ml-auto text-xs font-bold uppercase tracking-wider', s.text)}>
+                        {s.label}
+                        {a.status === 'late' && a.lateMinutes ? (
+                          <span className="ml-1 font-semibold normal-case tracking-normal text-muted-foreground">
+                            {a.lateMinutes} min
+                          </span>
+                        ) : null}
+                      </span>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </section>

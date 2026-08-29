@@ -79,6 +79,35 @@ export default function CompleteRolePage() {
   const [studentInstitution, setStudentInstitution] = useState<Institution | null>(null);
   const [year, setYear] = useState('');
 
+  /**
+   * Pick up the year level from a Finder run answered before this account
+   * existed — the Google path lands here rather than on SignupCard, so without
+   * this the question is asked twice for OAuth signups only.
+   *
+   * Fills an empty field only, and only with a value that is actually an option.
+   * Null for CAPE by construction (both sixth-form years normalise to it, so
+   * there is no inverse), in which case they pick.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/finder/prefill', { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = (await res.json()) as { form_level_label?: string | null };
+        const label = data?.form_level_label ?? null;
+        if (cancelled || !label) return;
+        if (!YEAR_LEVELS.some((y) => y.value === label)) return;
+        setYear((current) => current || label);
+      } catch {
+        /* no run to read; the form behaves as it always did */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Tutor profile
   const [tLevels, setTLevels] = useState<string[]>([]);
   const [tSubjects, setTSubjects] = useState<string[]>([]);
@@ -94,9 +123,12 @@ export default function CompleteRolePage() {
       try {
         const res = await fetch('/api/auth/resolve-role', { method: 'POST' });
         const data = await res.json();
-        // Only redirect if it's a real destination — never redirect back to this page
+        // Only redirect if it's a real destination — never redirect back to this page.
+        // Prefer the visitor's original destination: a user complete enough for
+        // resolve-role to answer must land back where they were headed (a campaign
+        // page, a class from a QR code), not on a dashboard.
         if (data.redirect && !data.redirect.includes('complete-role')) {
-          router.replace(data.redirect);
+          router.replace(returnTo ?? data.redirect);
           return;
         }
         // Role already set but profile incomplete — skip role picker, go straight to profile form
@@ -105,8 +137,9 @@ export default function CompleteRolePage() {
           if (data.role !== 'parent') {
             setStep('profile');
           } else {
-            // Parents need no extra profile step — straight to their dashboard.
-            router.replace('/parent/dashboard');
+            // Parents need no extra profile step — back to where they were
+            // headed, or their dashboard when nothing was carried across.
+            router.replace(returnTo ?? '/parent/dashboard');
             return;
           }
         }
@@ -163,7 +196,11 @@ export default function CompleteRolePage() {
         institution_id: showSchool && studentInstitution ? studentInstitution.id : null,
       });
       if (showSchool && studentInstitution) await ensureSchoolCommunityAndMembership(userId!);
-      setDestination('/student/dashboard');
+      // The role dashboard is the FALLBACK, not the destination. `returnTo` is
+      // the page the visitor was trying to reach before role selection cut in;
+      // overwriting it here dropped it at the last step, after the callback had
+      // carried it all this way.
+      setDestination(returnTo ?? '/student/dashboard');
       setStep('photo');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred.');
@@ -179,7 +216,12 @@ export default function CompleteRolePage() {
     try {
       await saveProfile({ role: 'tutor', teaching_levels: tLevels });
       if (tSubjects.length > 0) await setUserSubjects(userId!, tSubjects);
-      setDestination('/tutor/dashboard');
+      // Same as the student branch: honour `returnTo`. This is the path a
+      // teacher takes when they choose Google from the Class Match Week card,
+      // and landing them on the generic dashboard loses the campaign they came
+      // for — the Google button cannot preset role=tutor, so role selection is
+      // unavoidable here and dropping the destination is the only real break.
+      setDestination(returnTo ?? '/tutor/dashboard');
       setStep('photo');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred.');

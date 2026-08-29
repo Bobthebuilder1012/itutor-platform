@@ -7,6 +7,9 @@ import { ArrowRight, Users, BookOpen, Search, Star } from 'lucide-react';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
+import PendingRequestsSection from '@/components/student/PendingRequestsSection';
+import YourTutorsSection from '@/components/student/YourTutorsSection';
+import MyAttendance from '@/components/student/MyAttendance';
 
 type Lesson = {
   key: string;
@@ -142,6 +145,12 @@ export default function MyClassesPage() {
           )}
         </div>
 
+        {/* §9.2: the pending section belongs in My Classes, not the dashboard.
+            Mounted above the enrolled list and outside the loading/empty branch
+            below, so a student whose only class is still awaiting approval sees
+            it instead of "No classes yet". Renders nothing when empty. */}
+        <PendingRequestsSection />
+
         {loading ? (
           <div className="py-20 flex justify-center">
             <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand" />
@@ -215,6 +224,16 @@ export default function MyClassesPage() {
             </div>
           </>
         )}
+
+        {/* §9.2: the student's own attendance, read-only. It existed for their
+            parent and their tutor and not for them. Renders nothing until there
+            is a past session. */}
+        <MyAttendance />
+
+        {/* §9.2: one card per tutor, group or 1:1, with Request feedback and
+            Message. Outside the branch above so it shows even before the class
+            list loads. Renders nothing when the student has no tutors. */}
+        <YourTutorsSection />
       </div>
   );
 }

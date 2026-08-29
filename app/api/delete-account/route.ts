@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import { removeCustomer } from '@/lib/customerio/sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -132,6 +133,15 @@ export async function DELETE() {
       console.error('Error deleting related data:', relatedError);
       // Continue anyway - profile deletion might still work
     }
+
+    // Remove the Customer.io profile before the local row goes, so a failure is
+    // still attributable to a user we can look up. Left behind, the profile
+    // would keep receiving campaign email after the account was closed.
+    //
+    // Deliberately not fatal: Customer.io being unreachable must not stop
+    // someone deleting their account. It retries internally, and logs the id on
+    // failure — a residual profile then needs removing by hand.
+    await removeCustomer(user.id);
 
     // Delete user profile
     const { error: deleteError } = await supabaseAdmin

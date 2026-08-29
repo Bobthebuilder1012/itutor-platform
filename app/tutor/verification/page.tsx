@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase/client';
 import TutorShell from '@/components/tutor/TutorShell';
 import SupportFormModal from '@/components/SupportFormModal';
 import VerifiedBadge from '@/components/VerifiedBadge';
+import { checkVerificationFile, describeStorageUploadFailure } from '@/lib/utils/verificationUpload';
 
 interface VerificationRequest {
   id: string;
@@ -86,11 +87,19 @@ export default function TutorVerificationPage() {
 
   async function handleFileUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
+    // Clearing the input lets a tutor re-pick the same filename after they
+    // compress it — otherwise no change event fires and nothing happens.
+    event.target.value = '';
     if (!file || !profile) return;
+    setUploadSuccess(false);
+
+    // Checked before the request row is created, so an oversized file does not
+    // leave an empty verification request behind.
+    const rejection = checkVerificationFile(file);
+    if (rejection) { setUploadError(rejection); return; }
 
     setUploading(true);
     setUploadError(null);
-    setUploadSuccess(false);
 
     try {
       // Determine file type
@@ -124,7 +133,7 @@ export default function TutorVerificationPage() {
       });
 
       if (!uploadResponse.ok) {
-        throw new Error('Failed to upload file');
+        throw new Error(await describeStorageUploadFailure(uploadResponse));
       }
 
       // Step 3: Process the request (trigger OCR)

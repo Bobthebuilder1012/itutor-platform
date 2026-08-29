@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { resolveGroupActor } from '@/lib/auth/groupAccess';
 import { resolveSeriesMeetingLink } from '@/lib/services/groupMeetingLink';
+import { recordStudentJoin, recordTutorJoin } from '@/lib/server/attendance';
 
 type Params = {
   params: Promise<{ groupId: string; sessionId: string; occurrenceId: string }>;
@@ -72,12 +73,42 @@ export async function POST(_req: NextRequest, { params }: Params) {
       } catch {
         // Attendance table may not exist in every environment.
       }
-      // New click-based attendance (mig 196): a row == Present for this occurrence.
+      // Click-based attendance (mig 196), now with the §6 derived status
+      // (mig 220). The scheduled start comes from the occurrence itself, so
+      // attended-vs-late is decided against the real timetable.
       try {
-        await service.from('session_attendance_log').upsert(
-          { student_id: user.id, occurrence_type: 'group_occurrence', occurrence_id: occurrenceId, group_id: groupId },
-          { onConflict: 'student_id,occurrence_type,occurrence_id', ignoreDuplicates: true }
-        );
+        const { data: occ } = await service
+          .from('group_session_occurrences')
+          .select('scheduled_start_at')
+          .eq('id', occurrenceId)
+          .maybeSingle();
+
+        if (occ?.scheduled_start_at) {
+          await recordStudentJoin(service, {
+            studentId: user.id,
+            occurrenceType: 'group_occurrence',
+            occurrenceId,
+            groupId,
+            scheduledStart: occ.scheduled_start_at,
+            joinSource: 'group-join-link',
+          });
+        }
+      } catch { /* non-critical */ }
+    } else {
+      // §6 tutor-absent guard: this is the tutor's own join event, and the only
+      // record that the session actually happened. Without it every student in a
+      // class the tutor never opened is marked absent — silently, and against
+      // the party at no fault. Recorded for the acting tutor (a superadmin
+      // acting as tutor is deliberately attributed to the tutor, since what is
+      // being recorded is that the class ran).
+      try {
+        await recordTutorJoin(service, {
+          tutorId: group.tutor_id,
+          occurrenceType: 'group_occurrence',
+          occurrenceId,
+          groupId,
+          joinSource: 'group-join-link',
+        });
       } catch { /* non-critical */ }
     }
 

@@ -13,9 +13,20 @@ export async function GET(_request: NextRequest) {
     const childIds = await getParentChildIds(parentProfile.id);
     if (childIds.length === 0) return NextResponse.json({ children: [] });
 
-    const [{ data: profiles }, { data: mems }] = await Promise.all([
-      admin.from('profiles').select('id, full_name, display_name').in('id', childIds),
+    const [{ data: profiles }, { data: mems }, { data: joinReqs }] = await Promise.all([
+      // form_level added for §5's child picker: showing the level on the chip
+      // lets a parent spot a mismatch before the confirmation warns them.
+      admin.from('profiles').select('id, full_name, display_name, form_level').in('id', childIds),
       admin.from('group_members').select('user_id, status').in('user_id', childIds),
+      // Waiting on the PARENT, not on the tutor. group_members only holds the
+      // tutor's queue, so a child who had asked their parent to enrol them
+      // counted as nothing anywhere and the dashboard read "Pending 0" beside
+      // an approval sitting on /parent/approvals.
+      admin
+        .from('class_join_requests')
+        .select('student_id')
+        .in('student_id', childIds)
+        .eq('status', 'PENDING'),
     ]);
 
     const memsByChild = new Map<string, string[]>();
@@ -25,13 +36,25 @@ export async function GET(_request: NextRequest) {
       memsByChild.set(m.user_id, arr);
     });
 
+    const askedByChild = new Map<string, number>();
+    (joinReqs ?? []).forEach((r: any) => {
+      askedByChild.set(r.student_id, (askedByChild.get(r.student_id) ?? 0) + 1);
+    });
+
     const children = (profiles ?? []).map((p: any) => {
       const statuses = memsByChild.get(p.id) ?? [];
       return {
         id: p.id,
         name: p.display_name || p.full_name || 'Child',
+        form_level: p.form_level ?? null,
         activeClasses: statuses.filter((s) => s === 'approved' || s === 'active').length,
-        pendingCount: statuses.filter((s) => s === 'pending').length,
+        // Both queues. "Pending" on the dashboard sits beside Children and
+        // Active classes, where it reads as enrolments that are not live yet —
+        // and that is true whether the tutor or the parent is the one who has
+        // not answered. No double count: a request only becomes a group_members
+        // row once it has been approved and paid for.
+        pendingCount:
+          statuses.filter((s) => s === 'pending').length + (askedByChild.get(p.id) ?? 0),
       };
     });
 

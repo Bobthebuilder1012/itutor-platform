@@ -7,7 +7,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard, BookOpen, CalendarDays, Users, Wallet,
   Sparkles, Settings, Bell, Search, LogOut, ChevronUp, PanelLeftClose, PanelLeftOpen, Lock,
-  Calendar as CalendarIcon, Star, Rocket, Menu, X,
+  Calendar as CalendarIcon, Star, Rocket, Menu, X, MessageSquareQuote,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -16,6 +16,7 @@ import { useSuspensionCheck } from '@/lib/hooks/useSuspensionCheck';
 import { supabase } from '@/lib/supabase/client';
 import { getUnreadNotificationCount, subscribeToNotifications } from '@/lib/services/notificationService';
 import LogoutConfirmModal from '@/components/LogoutConfirmModal';
+import CampaignCta from '@/components/classMatchWeek/CampaignCta';
 
 type NavItem = { to: string; label: string; icon: ComponentType<{ className?: string }>; exact?: boolean; gated?: boolean };
 
@@ -23,7 +24,11 @@ const nav: NavItem[] = [
   { to: '/tutor/dashboard', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { to: '/tutor/classes', label: 'My Classes', icon: BookOpen },
   { to: '/tutor/sessions', label: 'Sessions', icon: CalendarDays },
-  { to: '/tutor/students', label: 'My Students', icon: Users },
+  // Clients is My Students and Feedback merged. They were two lists of the same
+  // people answering different halves of one question — who they are, and what
+  // to write about them — and a tutor deciding whether to write feedback needs
+  // the attendance, the parent and the request in the same row as the button.
+  { to: '/tutor/clients', label: 'Clients', icon: Users },
   { to: '/tutor/wallet', label: 'My Wallet', icon: Wallet },
   { to: '/tutor/reviews', label: 'Reviews', icon: Star },
   { to: '/tutor/business', label: 'My Business', icon: Rocket, gated: true },
@@ -86,7 +91,7 @@ export default function TutorShell({ children }: { children: ReactNode }) {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    router.push(`/tutor/students${query.trim() ? `?q=${encodeURIComponent(query.trim())}` : ''}`);
+    router.push(`/tutor/clients${query.trim() ? `?q=${encodeURIComponent(query.trim())}` : ''}`);
   };
 
   // Admin "Enter as Tutor": render the class page WITHOUT the tutor sidebar/nav
@@ -149,7 +154,16 @@ export default function TutorShell({ children }: { children: ReactNode }) {
 
       {/* ── Main column — this is the scroll container ── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-        <header className="sticky top-0 z-30 bg-background/90 backdrop-blur border-b border-border">
+        {/* Opaque, and deliberately not frosted. `bg-background/90 backdrop-blur`
+            here emitted NO background-color at all: tailwind.config.ts defines
+            `background: 'var(--background)'` with no <alpha-value> placeholder, so
+            Tailwind cannot apply the /90 modifier and drops the utility silently.
+            That left a transparent bar carrying only a backdrop-filter, which put
+            it on its own composited layer and made it paint bright over any
+            overlay's scrim instead of being dimmed by it. Opaque background, no
+            backdrop-filter, no compositing surface — and the blur was moot the
+            moment the background became opaque. */}
+        <header className="sticky top-0 z-30 bg-background border-b border-border">
           <div className="flex items-center gap-3 px-4 lg:px-8 h-14">
             <button onClick={() => setMobileOpen(true)} className="lg:hidden size-9 grid place-items-center rounded-lg hover:bg-muted text-muted-foreground">
               <Menu className="size-5" />
@@ -166,6 +180,10 @@ export default function TutorShell({ children }: { children: ReactNode }) {
               </div>
             </form>
             <div className="flex-1 sm:hidden" />
+            {/* The campaign, on every tutor page rather than only the dashboard.
+                Renders nothing when none is live, and nothing while a tutor is
+                already inside it. */}
+            <CampaignCta audience="teacher" />
             <div className="flex items-center gap-1">
               <Link href="/tutor/notifications" className="relative size-9 grid place-items-center rounded-lg hover:bg-muted text-muted-foreground" title="Notifications">
                 <Bell className="size-4" />
@@ -184,7 +202,10 @@ export default function TutorShell({ children }: { children: ReactNode }) {
         </main>
 
         {/* Mobile bottom nav */}
-        <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-border bg-background/95 backdrop-blur">
+        {/* Opaque for the same reason as the header above — /95 on a var() token
+            emitted nothing, so this bar was fully transparent with page content
+            scrolling visibly through it. */}
+        <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-border bg-background">
           <div className="grid grid-cols-5">
             {nav.slice(0, 5).map((item) => {
               const active = item.exact ? pathname === item.to : pathname.startsWith(item.to);
