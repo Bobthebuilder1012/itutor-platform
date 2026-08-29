@@ -6,12 +6,17 @@
  * anyone signed in — so the two audiences see the same component in the place
  * that suits each: inside the app chrome with an account, standalone without one.
  *
- * WHY NOT REUSE /student/matches FOR BOTH. StudentShell renders the full student
- * sidebar and falls back to the literal name "Student" when useProfile() has no
- * user, so a logged-out visitor would be shown an account menu for an account
- * that does not exist. The results themselves are safe to render — they are a
- * SNAPSHOT stored on the run, not a live read through RLS — but the furniture
- * around them is not.
+ * IT NOW RENDERS INSIDE THE SAME CHROME AS EXPLORE. This block used to say
+ * StudentShell could not be reused logged out, because it "falls back to the
+ * literal name Student when useProfile() has no user, so a logged-out visitor
+ * would be shown an account menu for an account that does not exist". That was
+ * true of the profile menu specifically, and the answer was to render nothing —
+ * which meant the product visibly changed shape at the exact moment it paid
+ * off, and again when the visitor clicked through to a class page that has the
+ * full marketplace chrome. The shell now has an `anonymous` mode that swaps the
+ * profile menu for a signup panel; PublicFinderShell supplies the destinations.
+ * The results themselves were always safe to render — they are a SNAPSHOT
+ * stored on the run, not a live read through RLS.
  *
  * It is also still the notify-me redirect target, so `?notify=` has to keep
  * working through both branches.
@@ -22,6 +27,7 @@ import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { readFinderToken } from '@/lib/finder/token';
 import { adoptFinderRunFromCookie } from '@/lib/finder/adoptFromCookie';
 import MatchResults, { type FinderRequestRow } from '@/components/finder/MatchResults';
+import PublicFinderShell from '@/components/finder/PublicFinderShell';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
@@ -107,7 +113,14 @@ export default async function FinderResultsPage({
     ? 'parent'
     : 'student') as 'student' | 'parent';
 
-  return <MatchResults row={row} notify={notify} mode="anonymous" role={role} />;
+  // Inside the marketplace's own chrome, collapsed. See PublicFinderShell for
+  // why this is StudentShell rather than a second layout, and the header
+  // comment above for what used to make that impossible.
+  return (
+    <PublicFinderShell role={role} returnTo="/find/results">
+      <MatchResults row={row} notify={notify} mode="anonymous" role={role} />
+    </PublicFinderShell>
+  );
 }
 
 /**

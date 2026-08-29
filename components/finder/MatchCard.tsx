@@ -34,15 +34,25 @@
  * uses — and the class page then shows the correct verb. Same rule the spec
  * intends: one action, one name, product-wide.
  *
- * IT STAYS `View class` FOR AN ANONYMOUS VIEWER TOO, and the href still points at
- * the class page rather than at signup. That looks like it contradicts "clicking
- * a card takes them to sign up", and the reason it does not is that
- * `/api/groups/[groupId]` deliberately serves anonymous reads — its own comment
- * says "you cannot ask someone to sign up for a class they have not been allowed
- * to look at" — and the class page's Join button already redirects to
- * `/login?redirect=…`. So the account is asked for at the moment it is genuinely
- * needed, one screen later, which is more of what this change is for rather than
- * less. `ctaHref` exists so a caller can still override it.
+ * IT STAYS `View class` FOR AN ANONYMOUS VIEWER TOO, but the href no longer
+ * does. This block used to argue the opposite — that the card should link
+ * straight to the class page even logged out, because `/api/groups/[groupId]`
+ * deliberately serves anonymous reads and the class page's own Join button
+ * already redirects to login, so "the account is asked for at the moment it is
+ * genuinely needed, one screen later". The owner decided the account is asked
+ * for HERE: View class goes to signup, and the class opens once the account
+ * exists. What keeps that from being a dead end is the redirect — signup
+ * carries `/find/claim?to=/student/explore/<id>`, so the visitor lands on the
+ * class they clicked with their Finder run already adopted onto the new
+ * account.
+ *
+ * The label does not change with it. `View class` still describes where the
+ * visitor ends up, and a button that says `Sign up` on a class card describes
+ * the toll rather than the destination.
+ *
+ * This card does not decide any of that. `ctaHref` is passed in by the caller,
+ * which is the thing that knows whether the viewer has an account —
+ * `lib/finder/links.ts` holds the rule.
  */
 
 import Link from 'next/link';

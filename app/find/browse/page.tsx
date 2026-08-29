@@ -35,6 +35,8 @@ import { loadFinderSupply } from '@/lib/finder/supply';
 import { isFinderEnabled } from '@/lib/featureFlags/finder';
 import { classAvailabilityBlocks } from '@/lib/matching/availability';
 import MatchCard, { type MatchCardData } from '@/components/finder/MatchCard';
+import PublicFinderShell from '@/components/finder/PublicFinderShell';
+import { classHref } from '@/lib/finder/links';
 import { STEP } from '@/lib/finder/wizard';
 
 export const dynamic = 'force-dynamic';
@@ -46,10 +48,24 @@ function roleFromParam(raw: string | undefined): 'student' | 'parent' {
   return raw === 'parent' ? 'parent' : 'student';
 }
 
+/**
+ * The shell's top-bar search lands here. Name, tutor and subject, matched as a
+ * plain substring — this filters a page of already-loaded supply rather than
+ * pretending to be the marketplace's search, which has filters, facets and a
+ * tutors tab this page deliberately does not.
+ */
+function matchesQuery(row: { name: string; tutorName: string | null; subject: string | null }, q: string): boolean {
+  if (!q) return true;
+  const needle = q.toLowerCase();
+  return [row.name, row.tutorName, row.subject].some(
+    field => (field ?? '').toLowerCase().includes(needle)
+  );
+}
+
 export default async function FinderBrowsePage({
   searchParams,
 }: {
-  searchParams: { role?: string };
+  searchParams: { role?: string; q?: string };
 }) {
   if (!isFinderEnabled()) {
     return (
@@ -60,12 +76,14 @@ export default async function FinderBrowsePage({
   }
 
   const role = roleFromParam(searchParams?.role);
+  const query = (searchParams?.q ?? '').trim();
   const supply = await loadFinderSupply(getServiceClient());
+  const filtered = supply.filter(row => matchesQuery(row, query));
 
   // Classes that can take someone, newest first. `seatsRemaining === null` means
   // "no stated capacity", which is most classes and is NOT the same as full — so
   // it sorts with the roomy ones rather than last.
-  const ordered = [...supply].sort((a, b) => {
+  const ordered = [...filtered].sort((a, b) => {
     const seats = (n: number | null) => (n === null ? Number.POSITIVE_INFINITY : n);
     const bySeats = seats(b.seatsRemaining) - seats(a.seatsRemaining);
     if (bySeats !== 0) return bySeats;
@@ -91,36 +109,33 @@ export default async function FinderBrowsePage({
   }));
 
   return (
-    // Same width and vertical rhythm as Explore and /find/results — see
-    // MatchCard's header comment for why this page's cards were redrawn to
-    // match the marketplace in the first place.
-    <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 sm:px-6">
-      <div className="flex items-center justify-between gap-3">
-        <Link
-          href="/"
-          aria-label="iTutor home"
-          className="text-[15px] font-semibold tracking-tight text-ink"
-        >
-          iTutor
-        </Link>
-        <Link
-          href="/login"
-          className="rounded-full border border-border bg-white px-4 py-2 text-[14px] font-semibold text-ink transition hover:bg-mint"
-        >
-          Log in
-        </Link>
-      </div>
-
+    // Exactly Explore's content container. The wordmark-and-Log-in row that used
+    // to open this page is the shell's now — see PublicFinderShell — and the
+    // padding comes from its <main>, so neither is repeated here.
+    <PublicFinderShell role={role} returnTo={`/find/browse?role=${role}`}>
+    <div className="mx-auto w-full max-w-6xl space-y-6">
       <header>
-        {/* NEVER "no matches" or "nothing found". Nothing was asked for, so
-            nothing failed to match — describing this as an empty result would
-            invent a disappointment. */}
+        {/* NEVER "no matches" or "nothing found" when nothing was ASKED for —
+            describing an unfiltered list as an empty result would invent a
+            disappointment. A search IS a question, though, so once one has been
+            typed the copy says what was searched for and what came back. */}
         <h1 className="text-2xl font-bold text-ink lg:text-3xl">
-          Every class on iTutor right now
+          {query ? `Classes matching “${query}”` : 'Every class on iTutor right now'}
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          You skipped the questions, so nothing is filtered out.{' '}
-          {shown.length === 1 ? '1 class is' : `${shown.length} classes are`} open.
+          {query ? (
+            <>
+              {shown.length === 1 ? '1 class' : `${shown.length} classes`} matched.{' '}
+              <Link href={`/find/browse?role=${role}`} className="font-semibold text-brand-deep underline underline-offset-2">
+                Clear the search
+              </Link>
+            </>
+          ) : (
+            <>
+              You skipped the questions, so nothing is filtered out.{' '}
+              {shown.length === 1 ? '1 class is' : `${shown.length} classes are`} open.
+            </>
+          )}
         </p>
       </header>
 
@@ -165,8 +180,9 @@ export default async function FinderBrowsePage({
 
       {shown.length === 0 ? (
         <p className="rounded-2xl border border-border bg-white px-4 py-5 text-[14px] text-ink-muted">
-          No classes are open at the moment. Answer the questions above and
-          we&rsquo;ll tell you the moment one opens that fits.
+          {query
+            ? 'Nothing matched that search. Try a subject, a class name or a teacher’s name — or clear it to see everything.'
+            : 'No classes are open at the moment. Answer the questions above and we’ll tell you the moment one opens that fits.'}
         </p>
       ) : (
         // Grid, not a stacked list — matching Explore's own lesson grid.
@@ -175,6 +191,10 @@ export default async function FinderBrowsePage({
             <MatchCard
               key={match.group_id}
               data={match}
+              // Everyone on this page is logged out — the whole route exists for
+              // a visitor with no account — so View class always asks for one
+              // first. Same rule as /find/results; lib/finder/links.ts holds it.
+              ctaHref={classHref(match.group_id, role, true)}
               rank={index + 1}
               // Nothing was asked, so there is no near miss to name.
               nearMissOn={null}
@@ -187,5 +207,6 @@ export default async function FinderBrowsePage({
         </section>
       )}
     </div>
+    </PublicFinderShell>
   );
 }

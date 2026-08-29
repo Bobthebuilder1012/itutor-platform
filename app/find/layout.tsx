@@ -14,9 +14,16 @@
  * requiring the httpOnly itutor_anon cookie, which only a real page render can
  * mint.
  *
- * Focused chrome — no sidebar. During the forced first run the wizard is the
- * only thing on screen, because a nav rail beside a five-question interstitial
- * invites the family to leave before they have told us anything.
+ * Focused chrome for the WIZARD — no sidebar. During the questionnaire itself
+ * the wizard is the only thing on screen, because a nav rail beside a
+ * five-question interstitial invites the family to leave before they have told
+ * us anything.
+ *
+ * The two screens AFTER it are the opposite case. /find/results and
+ * /find/browse render PublicFinderShell — the marketplace's own chrome, opened
+ * collapsed — because by then the visitor is looking at classes, and the next
+ * thing they touch is a marketplace page with a full sidebar. This layout still
+ * adds nothing itself; each route brings whatever frame it needs.
  *
  * TUTORS ARE SENT AWAY. The Finder is for people looking for classes. A tutor
  * who lands here (a shared link, a stale bookmark) goes to their own dashboard
