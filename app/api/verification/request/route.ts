@@ -99,11 +99,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Update profile status to PENDING
-    await supabase
+    // Update profile status to PENDING.
+    // Service role, not `supabase`: migration 217 guards
+    // tutor_verification_status against every authenticated request, because
+    // the same unrestricted profiles policy would otherwise let a tutor write
+    // VERIFIED onto themselves and appear verified in search. A tutor may ask
+    // to be verified; they may not declare it. The row is the caller's own and
+    // the caller is authenticated above, so nothing widens here but the writer.
+    const service = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+
+    const { error: statusError } = await service
       .from('profiles')
       .update({ tutor_verification_status: 'PENDING' })
       .eq('id', user.id);
+
+    // Not fatal — the request row exists and the upload can still proceed. But
+    // this result was discarded before, which is how the status could sit stale
+    // with nothing anywhere saying why.
+    if (statusError) {
+      console.error(
+        '[verification/request] could not set tutor_verification_status:',
+        statusError.message
+      );
+    }
 
     // Generate signed upload URL
     const { data: uploadData, error: uploadError } = await supabase.storage
