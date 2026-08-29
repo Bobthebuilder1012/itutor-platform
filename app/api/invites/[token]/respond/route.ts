@@ -51,7 +51,24 @@ export async function POST(request: NextRequest, { params }: Params) {
     const { data: existing } = await admin
       .from('parent_child_links').select('id').eq('parent_id', invite.parent_id).eq('child_id', invite.child_id).maybeSingle();
     if (!existing) {
-      await admin.from('parent_child_links').insert({ parent_id: invite.parent_id, child_id: invite.child_id });
+      // CHECKED, because the link is the entire point of accepting. This insert
+      // used to be fire-and-forget: when it failed, the invite was still marked
+      // 'accepted' and the parent was still told it had worked, so both sides
+      // believed they were connected and no link existed. That was not
+      // hypothetical — a BEFORE INSERT trigger refused every self-registered
+      // student until migration 251 removed it.
+      const { error: linkError } = await admin
+        .from('parent_child_links')
+        .insert({ parent_id: invite.parent_id, child_id: invite.child_id });
+      if (linkError) {
+        console.error('[invites/respond] link insert failed:', linkError.message);
+        // The invite stays 'pending' so the student can try again, rather than
+        // being burned on a connection that was never made.
+        return NextResponse.json(
+          { error: 'We could not connect your accounts. Please try again.' },
+          { status: 500 }
+        );
+      }
     }
     await admin.from('parent_child_invites').update({ status: 'accepted', responded_at: now }).eq('id', invite.id);
     await admin.from('notifications').insert({
