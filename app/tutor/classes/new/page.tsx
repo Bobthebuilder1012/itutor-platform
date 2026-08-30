@@ -13,6 +13,7 @@ import { supabase } from '@/lib/supabase/client';
 import TutorShell from '@/components/tutor/TutorShell';
 import { LEVEL_LABELS } from '@/lib/utils/formatLevel';
 import InPersonSection, { type InPersonDraft } from '@/components/tutor/classes/InPersonSection';
+import { usePhysicalClasses } from '@/lib/hooks/usePhysicalClasses';
 
 type DbSubject = { id: string; name: string; label: string; curriculum: string };
 
@@ -64,6 +65,7 @@ function CreateClassContent() {
   // of one. This page never asked for a venue at all before, which is the gap
   // this closes: CreateGroupModal (the older /groups creation flow) got it,
   // this one — the one "Create a Class" actually links to — did not.
+  const physicalClasses = usePhysicalClasses();
   const [inPerson, setInPerson] = useState<InPersonDraft>({
     classFormat: 'online',
     venueId: null,
@@ -337,7 +339,7 @@ function CreateClassContent() {
             </Field>
           </Card>
 
-          {type === 'group' && (
+          {type === 'group' && physicalClasses && (
             <Card title="Where does this meet?">
               <p className="-mt-2 text-xs text-muted-foreground">
                 You can change this later. Everyone gets a meeting link either way —

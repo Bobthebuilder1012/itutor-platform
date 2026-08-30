@@ -19,8 +19,10 @@ import { useRouter } from 'next/navigation';
 import { useProfile } from '@/lib/hooks/useProfile';
 import TutorShell from '@/components/tutor/TutorShell';
 import VenuesTab from '@/components/tutor/VenuesTab';
+import { usePhysicalClasses } from '@/lib/hooks/usePhysicalClasses';
 
 export default function TutorVenuesPage() {
+  const physicalClasses = usePhysicalClasses();
   const { profile, loading } = useProfile();
   const router = useRouter();
   const [checked, setChecked] = useState(false);
@@ -38,6 +40,18 @@ export default function TutorVenuesPage() {
     return (
       <TutorShell>
         <div className="flex items-center justify-center py-20 text-sm text-gray-400">Loading…</div>
+      </TutorShell>
+    );
+  }
+
+  // The route is left reachable rather than 404'd: a tutor who bookmarked it
+  // should be told the feature is off, not shown a broken page.
+  if (!physicalClasses) {
+    return (
+      <TutorShell>
+        <div className="px-4 py-16 text-center text-sm text-gray-500 sm:px-0">
+          In-person classes are not available yet. Classes meet online for now.
+        </div>
       </TutorShell>
     );
   }

@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase/client';
 import { getCroppedImg, type Area } from '@/lib/utils/imageCrop';
 import { randomDefaultThumbnailValue, isDefaultThumbnail } from '@/lib/defaultThumbnails';
 import InPersonSection, { type InPersonDraft } from '@/components/tutor/classes/InPersonSection';
+import { usePhysicalClasses } from '@/lib/hooks/usePhysicalClasses';
 
 interface CreateGroupModalProps {
   onCreated: (groupId: string) => void;
@@ -50,6 +51,7 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
   // Defaults to online, which is what every class was before migration 242 and
   // what most still are — so a tutor who does not care about this step can pass
   // straight through it.
+  const physicalClasses = usePhysicalClasses();
   const [inPerson, setInPerson] = useState<InPersonDraft>({
     classFormat: 'online',
     venueId: null,
@@ -333,6 +335,16 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
                     need to.
                   </p>
                 </div>
+                {/* The step itself stays — `step === 2` and `step === 3` are
+                    hardcoded throughout this wizard, so removing it would
+                    renumber the two after it. With the feature off there is
+                    nothing to choose, and the payload already defaults to
+                    online. */}
+                {!physicalClasses ? (
+                  <p className="text-sm text-gray-500">
+                    This class will meet online. Everyone joins from home.
+                  </p>
+                ) : (
                 <InPersonSection
                   draft={inPerson}
                   onChange={(patch: Partial<InPersonDraft>) =>
@@ -343,6 +355,7 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
                   enrolledOnline={0}
                   enrolledPhysical={0}
                 />
+                )}
               </div>
             )}
 

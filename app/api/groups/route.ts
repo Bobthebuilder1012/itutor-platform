@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isPhysicalClassesEnabled, PHYSICAL_CLASSES_DISABLED_MESSAGE } from '@/lib/featureFlags/physicalClasses';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import type { CreateGroupInput } from '@/lib/types/groups';
 import {
@@ -640,8 +641,14 @@ export async function POST(request: NextRequest) {
     // which surface as a raw Postgres error a tutor cannot act on.
     const FORMATS = ['online', 'physical', 'hybrid'] as const;
     const rawFormat = (rawBody as any).class_format;
+    // Refused server-side, not merely hidden: the creation form stops
+    // offering the format step when the flag is off, but a hidden control
+    // stops nobody from posting class_format directly.
+    if (!isPhysicalClassesEnabled() && rawFormat && rawFormat !== 'online') {
+      return NextResponse.json({ error: PHYSICAL_CLASSES_DISABLED_MESSAGE }, { status: 400 });
+    }
     const classFormat: (typeof FORMATS)[number] =
-      FORMATS.includes(rawFormat) ? rawFormat : 'online';
+      isPhysicalClassesEnabled() && FORMATS.includes(rawFormat) ? rawFormat : 'online';
     const wantedVenueId: string | null =
       classFormat === 'online' ? null : ((rawBody as any).venue_id ?? null);
 

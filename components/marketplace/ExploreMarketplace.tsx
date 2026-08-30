@@ -33,6 +33,7 @@ import {
 } from '@/lib/classes/locationFilter';
 import LocationFilter from '@/components/marketplace/LocationFilter';
 import ClassCard from '@/components/marketplace/ClassCard';
+import { usePhysicalClasses } from '@/lib/hooks/usePhysicalClasses';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 import {
   parseScheduleData,
@@ -307,6 +308,7 @@ export default function ExploreMarketplace({ variant = 'student' }: { variant?: 
   // Where a class meets. See lib/classes/locationFilter.ts — the rule is
   // "what can I attend from here", not "what has a venue here", and the
   // difference is a silent bug rather than a visible one.
+  const physicalClasses = usePhysicalClasses();
   const [locationFilter, setLocationFilter] = useState<LocationFilterState>(DEFAULT_LOCATION_FILTER);
   const [regions, setRegions] = useState<Array<{ id: string; name: string }>>([]);
   useEffect(() => {
@@ -1417,7 +1419,7 @@ export default function ExploreMarketplace({ variant = 'student' }: { variant?: 
           {/* Where a class meets. Lessons only — a 1:1 tutor has no venue, so
               on the tutors tab this would narrow nothing while looking as if it
               should. */}
-          {tab === 'lessons' && (
+          {tab === 'lessons' && physicalClasses && (
             <LocationFilter value={locationFilter} onChange={setLocationFilter} regions={regions} />
           )}
 

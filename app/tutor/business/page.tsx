@@ -19,6 +19,7 @@ import VerifiedBadge from '@/components/VerifiedBadge';
 import ClassesSection from '@/components/tutor/public/ClassesSection';
 import EditableProfilePanel from '@/components/tutor/business/EditableProfilePanel';
 import VenuesTab from '@/components/tutor/VenuesTab';
+import { usePhysicalClasses } from '@/lib/hooks/usePhysicalClasses';
 import ProfileQrCard from '@/components/tutor/business/ProfileQrCard';
 import AvailabilityEditor from '@/components/tutor/AvailabilityEditor';
 import OneOnOneMarketplaceToggle from '@/components/tutor/OneOnOneMarketplaceToggle';
@@ -68,6 +69,7 @@ function MyBusinessContent() {
   // fall back to overview rather than rendering nothing.
   const requestedTab = searchParams.get('tab');
   const initialTab: Tab = TAB_KEYS.includes(requestedTab as Tab) ? (requestedTab as Tab) : 'overview';
+  const physicalClasses = usePhysicalClasses();
   const [tab, setTab] = useState<Tab>(initialTab);
 
   // Class Match Week used to be a tab here and is now the second tab of My
@@ -178,7 +180,8 @@ function MyBusinessContent() {
   }[] = [
     { key: 'overview',   label: 'Overview',        icon: Briefcase },
     { key: 'availability', label: 'Availability',   icon: CalendarClock },
-    { key: 'venues',     label: 'Venues',          icon: MapPin },
+    // Hidden with the feature: a venue is only ever used by a physical class.
+    ...(physicalClasses ? [{ key: 'venues' as const, label: 'Venues', icon: MapPin }] : []),
     { key: 'promotions', label: 'Promotions',       icon: Tag },
     { key: 'verification', label: 'Verification',   icon: ShieldCheck },
     { key: 'analytics',  label: 'Analytics',        icon: BarChart3 },
@@ -224,7 +227,7 @@ function MyBusinessContent() {
 
       {tab === 'overview'   && <OverviewTab activeClasses={activeClasses} totalRevenue={totalRevenue} totalStudents={totalStudents} profile={profile} onProfileUpdated={refreshProfile} />}
       {tab === 'availability' && <AvailabilityTab tutorId={profile?.id} />}
-      {tab === 'venues'     && <VenuesTab />}
+      {tab === 'venues'     && physicalClasses && <VenuesTab />}
       {tab === 'promotions' && <PromotionsTab classes={activeClasses} />}
       {tab === 'verification' && <VerificationCredentialsTab />}
       {tab === 'analytics'  && <BusinessAnalyticsTab classes={activeClasses} totalRevenue={totalRevenue} />}

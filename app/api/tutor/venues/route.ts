@@ -23,6 +23,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient } from '@/lib/supabase/server';
+import { isPhysicalClassesEnabled, PHYSICAL_CLASSES_DISABLED_MESSAGE } from '@/lib/featureFlags/physicalClasses';
 
 export const dynamic = 'force-dynamic';
 
@@ -115,6 +116,11 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  // Reading venues stays open so an existing physical class can still show
+  // where it meets; only CREATING a new one is closed.
+  if (!isPhysicalClassesEnabled()) {
+    return NextResponse.json({ error: PHYSICAL_CLASSES_DISABLED_MESSAGE }, { status: 400 });
+  }
   const auth = await requireTutor();
   if ('error' in auth) return auth.error;
   const { supabase, userId } = auth;

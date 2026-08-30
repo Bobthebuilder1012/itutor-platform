@@ -25,6 +25,7 @@
 // rather than the payment.
 
 import { NextRequest, NextResponse } from 'next/server';
+import { isPhysicalClassesEnabled, PHYSICAL_CLASSES_DISABLED_MESSAGE } from '@/lib/featureFlags/physicalClasses';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { canTakeSeat, seatConfigFromRow } from '@/lib/services/seatOccupancy';
 import { formatOffersSeat, type SeatType } from '@/lib/utils/seatCapacity';
@@ -55,6 +56,13 @@ export async function POST(req: NextRequest, { params }: Params) {
     } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Cash IS the physical-classes feature; with the flag off there is no
+    // supported way to reach this, so it refuses rather than holding a seat
+    // nobody can settle.
+    if (!isPhysicalClassesEnabled()) {
+      return NextResponse.json({ error: PHYSICAL_CLASSES_DISABLED_MESSAGE }, { status: 400 });
     }
 
     const body = (await req.json().catch(() => ({}))) as { seatType?: string };

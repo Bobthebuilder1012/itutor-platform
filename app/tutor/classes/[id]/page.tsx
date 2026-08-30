@@ -122,6 +122,7 @@ const URL_LINE_RE = /^https?:\/\/\S+$/;
 // this page is one of the two callers it was written for.
 import type { ClassFormat } from '@/lib/utils/seatCapacity';
 import InPersonSection, { type InPersonDraft } from '@/components/tutor/classes/InPersonSection';
+import { usePhysicalClasses } from '@/lib/hooks/usePhysicalClasses';
 import PaymentsGrid from '@/components/tutor/classes/PaymentsGrid';
 
 type GroupDetail = {
@@ -2276,6 +2277,7 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
   onDirtyChange: (dirty: boolean) => void;
   enrolledCount: number;
 }) {
+  const physicalClasses = usePhysicalClasses();
   // Capacity can be raised or lowered at any time, including on a class that
   // has already started — but never below the seats already taken, since there
   // is no rule for who would be dropped.
@@ -2514,7 +2516,7 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
       <div className="grid lg:grid-cols-[220px_1fr] gap-6">
         {/* Sidebar nav */}
         <nav className="space-y-1">
-          {SETTINGS_SECTIONS.map((s) => {
+          {SETTINGS_SECTIONS.filter((s) => s.id !== 'inperson' || physicalClasses).map((s) => {
             const Icon = s.icon;
             const active = section === s.id;
             const danger = s.id === 'danger';
@@ -2645,7 +2647,7 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
             </>
           )}
 
-          {section === 'inperson' && (
+          {section === 'inperson' && physicalClasses && (
             <>
               <SettingsHead
                 title="In person"

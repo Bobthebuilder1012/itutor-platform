@@ -14,6 +14,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { usePhysicalClasses } from '@/lib/hooks/usePhysicalClasses';
 import {
   ArrowLeft, Star, Calendar, Clock, Users, Check, Lock,
   CreditCard, X, Loader2, Sparkles, BadgeCheck,
@@ -1248,7 +1249,9 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
   // Cash is offered only when the tutor switched it on AND the class actually
   // meets somewhere — there is no one to hand money to on an online class, and
   // the server enforces the same pair.
+  const physicalClasses = usePhysicalClasses();
   const cashAvailable =
+    physicalClasses &&
     group.accepts_cash === true && group.class_format && group.class_format !== 'online';
   const [payMethod, setPayMethod] = useState<'card' | 'cash'>('card');
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isPhysicalClassesEnabled, PHYSICAL_CLASSES_DISABLED_MESSAGE } from '@/lib/featureFlags/physicalClasses';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { seatState } from '@/lib/services/seatOccupancy';
 import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
@@ -654,6 +655,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
       const rawFormat = (body as any).class_format;
       const wantsFormat = rawFormat !== undefined;
+      // Same reasoning as the create route: the Settings tab hides the
+      // format card when the flag is off, and this is what makes that real.
+      // An existing physical class is left alone — only a CHANGE is refused.
+      if (!isPhysicalClassesEnabled() && wantsFormat && rawFormat !== 'online') {
+        return NextResponse.json({ error: PHYSICAL_CLASSES_DISABLED_MESSAGE }, { status: 400 });
+      }
       if (wantsFormat && !FORMATS.includes(rawFormat)) {
         return NextResponse.json({ error: 'Unknown class format.' }, { status: 400 });
       }
