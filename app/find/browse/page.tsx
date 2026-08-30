@@ -33,8 +33,8 @@ import Link from 'next/link';
 import { getServiceClient } from '@/lib/supabase/server';
 import { loadFinderSupply } from '@/lib/finder/supply';
 import { isFinderEnabled } from '@/lib/featureFlags/finder';
-import { classAvailabilityBlocks } from '@/lib/matching/availability';
-import MatchCard, { type MatchCardData } from '@/components/finder/MatchCard';
+import ClassCard from '@/components/marketplace/ClassCard';
+import { supplyRowToCard } from '@/lib/finder/cardData';
 import PublicFinderShell from '@/components/finder/PublicFinderShell';
 import { classHref } from '@/lib/finder/links';
 import { STEP } from '@/lib/finder/wizard';
@@ -90,23 +90,9 @@ export default async function FinderBrowsePage({
     return (b.tutorVerified ? 1 : 0) - (a.tutorVerified ? 1 : 0);
   });
 
-  const shown: MatchCardData[] = ordered.slice(0, MAX_SHOWN).map((row, index) => ({
-    group_id: row.groupId,
-    rank: index + 1,
-    blocks: classAvailabilityBlocks(row.scheduleEntries),
-    // Nothing was asked, so nothing was missed. An empty array here is what
-    // stops MatchCard rendering a "you asked for…" line about a question that
-    // was never put.
-    missed: [],
-    name: row.name,
-    tutor_name: row.tutorName,
-    tutor_verified: row.tutorVerified,
-    monthly_price: row.monthlyPrice,
-    class_format: row.classFormat,
-    region_name: row.regionName,
-    seats_remaining: row.seatsRemaining,
-    session_length_minutes: row.sessionLengthMinutes,
-  }));
+  // Straight to the shared marketplace card — same component Explore renders,
+  // so this page cannot drift into a poorer version of the same catalogue.
+  const shown = ordered.slice(0, MAX_SHOWN);
 
   return (
     // Exactly Explore's content container. The wordmark-and-Log-in row that used
@@ -187,21 +173,14 @@ export default async function FinderBrowsePage({
       ) : (
         // Grid, not a stacked list — matching Explore's own lesson grid.
         <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="All classes">
-          {shown.map((match, index) => (
-            <MatchCard
-              key={match.group_id}
-              data={match}
-              // Everyone on this page is logged out — the whole route exists for
-              // a visitor with no account — so View class always asks for one
-              // first. Same rule as /find/results; lib/finder/links.ts holds it.
-              ctaHref={classHref(match.group_id, role, true)}
-              rank={index + 1}
-              // Nothing was asked, so there is no near miss to name.
-              nearMissOn={null}
-              requestedBlocks={[]}
-              // This page explicitly does not rank (see the header comment) —
-              // `rank` here is a list position, not a match quality signal.
-              ranked={false}
+          {shown.map((supplyRow) => (
+            <ClassCard
+              key={supplyRow.groupId}
+              l={supplyRowToCard(supplyRow)}
+              // Everyone on this page is logged out — the whole route exists
+              // for a visitor with no account — so View class always asks for
+              // one first. Same rule as /find/results; lib/finder/links.ts.
+              href={classHref(supplyRow.groupId, role, true)}
             />
           ))}
         </section>

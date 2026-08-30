@@ -30,7 +30,31 @@ import { nearMissButtonLabel, type GatingDimension } from '@/lib/matching/finder
 import { levelLabel, type CanonicalLevel } from '@/lib/matching/levels';
 import type { AvailabilityBlock } from '@/lib/matching/availability';
 import { classHref, signupThen } from '@/lib/finder/links';
-import MatchCard, { type MatchCardData } from './MatchCard';
+/**
+ * What `finder_requests.results` stores per match: the RANKING, not the card.
+ * It used to live on MatchCard, which no longer exists — the Finder renders
+ * the marketplace card now. The snapshot deliberately keeps only what must not
+ * change after the run (which class, what rank, what was missed); everything
+ * drawn on the card is read live. See lib/finder/cardData.ts.
+ */
+export interface MatchCardData {
+  group_id: string;
+  rank: number;
+  blocks: string[];
+  missed: string[];
+  name: string | null;
+  tutor_name: string | null;
+  tutor_verified: boolean;
+  monthly_price: number | null;
+  class_format: string | null;
+  region_name: string | null;
+  seats_remaining: number | null;
+  session_length_minutes: number | null;
+}
+import ClassCard from '@/components/marketplace/ClassCard';
+import { getServiceClient } from '@/lib/supabase/server';
+import { loadFinderSupply } from '@/lib/finder/supply';
+import { supplyRowToCard } from '@/lib/finder/cardData';
 
 export interface FinderRequestRow {
   id: string;
@@ -99,7 +123,7 @@ function FilterChip({
   );
 }
 
-export default function MatchResults({
+export default async function MatchResults({
   row,
   notify,
   mode = 'account',
@@ -119,6 +143,17 @@ export default function MatchResults({
   // Chips must carry the role forward when there is no account to infer it from.
   const findBase = isAnonymous ? `/find?role=${role}&` : '/find?';
   const matches = Array.isArray(row.results) ? row.results : [];
+
+  // The card is read LIVE; the snapshot only says which classes and in what
+  // order. A banner, a blurb, a price and a seat count all move after a run
+  // is recorded, so a frozen copy of them would be wrong rather than stale.
+  // A class that has since been unlisted simply drops out, which is the
+  // honest outcome — we cannot offer a place that no longer exists.
+  const supply = await loadFinderSupply(getServiceClient());
+  const supplyById = new Map(supply.map((r) => [r.groupId, r]));
+  const cards = matches
+    .map((m) => ({ match: m, row: supplyById.get(m.group_id) }))
+    .filter((x): x is { match: MatchCardData; row: NonNullable<typeof x.row> } => Boolean(x.row));
   const blocks = row.availability_blocks ?? [];
   const learner = row.child_label?.trim() || null;
   const levelText = row.level ? levelLabel(row.level as CanonicalLevel) : null;
@@ -300,20 +335,20 @@ export default function MatchResults({
               own class cards, and the reason MatchCard was redrawn to that
               card's shape rather than a bordered list row. */}
           <section className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="Recommended classes">
-            {matches.map((match, index) => (
-              <MatchCard
+            {cards.map(({ match, row: supplyRow }) => (
+              <ClassCard
                 key={match.group_id}
-                data={match}
+                l={supplyRowToCard(supplyRow)}
                 // Anonymously View class asks for the account first and opens
                 // the class on the other side of it. See lib/finder/links.ts.
-                ctaHref={classHref(match.group_id, role, isAnonymous)}
-                rank={index + 1}
-                nearMissOn={
-                  row.match_class === 'near'
-                    ? (row.near_miss_on as GatingDimension | null)
-                    : null
+                href={classHref(match.group_id, role, isAnonymous)}
+                // The one thing the marketplace card cannot know: what this
+                // family asked for and did not get.
+                missNote={
+                  row.match_class === 'near' && row.near_miss_on === 'availability' && blocks.length > 0 ? (
+                    <>You asked for {blocksPhrase(blocks)}</>
+                  ) : null
                 }
-                requestedBlocks={blocks}
               />
             ))}
           </section>

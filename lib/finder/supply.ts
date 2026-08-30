@@ -53,6 +53,11 @@ export interface SupplyRow extends FinderCandidate {
   tutorAvatarUrl: string | null;
   sessionLengthMinutes: number | null;
   scheduleEntries: ScheduleEntry[];
+  /** Stated capacity, or null when the class does not cap. */
+  maxStudents: number | null;
+  /** For the shared marketplace card — the banner and the blurb. */
+  coverImage: string | null;
+  description: string | null;
 }
 
 interface GroupRow {
@@ -61,6 +66,8 @@ interface GroupRow {
   tutor_id: string;
   subject: string | null;
   form_level: string | null;
+  cover_image: string | null;
+  description: string | null;
   price_per_course: number | string | null;
   price_monthly: number | string | null;
   max_students: number | null;
@@ -112,7 +119,7 @@ const TUTOR_JOIN = `tutor:profiles!groups_tutor_id_fkey(
        )`;
 
 const BASE_COLUMNS = `id, name, tutor_id, subject, form_level, price_monthly, price_per_course, max_students,
-       visibility, session_length_minutes`;
+       visibility, session_length_minutes, cover_image, description`;
 
 /**
  * Where the class meets, when it meets anywhere.
@@ -269,6 +276,9 @@ export async function loadFinderSupply(service: SupabaseClient): Promise<SupplyR
       tutorAvatarUrl: row.tutor?.avatar_url ?? null,
       subject: row.subject,
       formLevel: row.form_level,
+      maxStudents: toNumber(row.max_students),
+      coverImage: row.cover_image ?? null,
+      description: row.description ?? null,
       monthlyPrice: toNumber(row.price_monthly) ?? toNumber(row.price_per_course),
       scheduleEntries: entries,
       // undefined (the column was not selected) and null (selected, not set)
