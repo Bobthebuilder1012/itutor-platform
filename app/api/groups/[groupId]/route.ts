@@ -420,21 +420,25 @@ export async function GET(_req: NextRequest, { params }: Params) {
       availability_window: group.availability_window ?? null,
     };
 
-    // ── The venue's street address is gated; its AREA is not ─────────────────
+    // ── Where the class meets is public; how to get INSIDE is not ───────────
     //
-    // `venue_visibility` defaults to 'after_enrolment' (migration 242), and this
-    // endpoint is deliberately readable by anonymous visitors — so without this
-    // the tier above would hand a tutor's street address, and often their home
-    // address, to anyone who opens a class page or scrapes the API.
+    // This used to gate the street address on `venue_visibility`, which
+    // defaulted to 'after_enrolment'. That asked a family to enrol before they
+    // could find out whether the class was somewhere they could actually reach.
+    // The address is now shown to everyone, and the control that hid it is
+    // gone from class creation.
     //
-    // The REGION always survives, because a location filter nobody can see does
-    // not work: a family has to be able to tell that a class is in Arima before
-    // deciding whether to enrol in it. What is stripped is the line that gets
-    // someone to the door — address_line, access_instructions, arrival_notes.
+    // KNOWN TRADE-OFF, made deliberately: this endpoint is readable by
+    // anonymous visitors, so a venue that is a tutor's home is now a public
+    // street address. `venue_visibility` is left on the table rather than
+    // dropped so restoring the gate is one line.
     //
-    // "Enrolled" is read from viewerMembership rather than recomputed, so this
-    // cannot drift from what the page uses to decide whether to show a Join
-    // button. A secured place counts: they have paid.
+    // Arrival notes and access instructions stay behind enrolment. They are
+    // the gate code and the side door — operational detail for people who are
+    // coming, which helps nobody choose a class. "Enrolled" is read from
+    // viewerMembership rather than recomputed, so it cannot drift from what the
+    // page uses to decide whether to show a Join button. A secured place
+    // counts: they have paid.
     // ── Per-seat availability ────────────────────────────────────────────────
     //
     // Computed server-side so every surface reads the same answer. The rule
@@ -456,11 +460,20 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
     const venueRaw = (group as any).venue ?? null;
     const venue = Array.isArray(venueRaw) ? (venueRaw[0] ?? null) : venueRaw;
-    const maySeeAddress =
-      (group as any).venue_visibility === 'public' ||
+    // THE STREET ADDRESS IS PUBLIC NOW. `venue_visibility` is no longer
+    // read: a family deciding whether a class is reachable needs to know where
+    // it actually is, and 'the address after you join' asks them to commit
+    // before they can answer that. The column is left in place rather than
+    // dropped, so this is one line to reverse.
+    //
+    // ARRIVAL NOTES AND ACCESS INSTRUCTIONS ARE NOT. Those are the gate code,
+    // the side door, which bell to ring — operational detail for people who
+    // are coming, not information that helps anyone choose a class. Publishing
+    // a street is a different decision from publishing how to get inside.
+    const maySeeArrivalDetail =
       viewerMembership.enrolled ||
       viewerMembership.secured ||
-      // The tutor's own class. They wrote the address.
+      // The tutor's own class. They wrote it.
       (!!user && user.id === (group as any).tutor_id);
 
     const venueForViewer = venue
@@ -468,11 +481,12 @@ export async function GET(_req: NextRequest, { params }: Params) {
           id: venue.id,
           name: venue.name,
           region: Array.isArray(venue.region) ? (venue.region[0] ?? null) : (venue.region ?? null),
-          address_line: maySeeAddress ? (venue.address_line ?? null) : null,
-          access_instructions: maySeeAddress ? (venue.access_instructions ?? null) : null,
-          arrival_notes: maySeeAddress ? (venue.arrival_notes ?? null) : null,
-          /** So the UI can say "address after you join" rather than nothing. */
-          address_hidden: !maySeeAddress && Boolean(venue.address_line),
+          address_line: venue.address_line ?? null,
+          access_instructions: maySeeArrivalDetail ? (venue.access_instructions ?? null) : null,
+          arrival_notes: maySeeArrivalDetail ? (venue.arrival_notes ?? null) : null,
+          /** Always false now — the address is shown to everyone. Kept so the
+           *  UI does not have to change shape to stop reading it. */
+          address_hidden: false,
         }
       : null;
 

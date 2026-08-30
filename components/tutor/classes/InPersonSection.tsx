@@ -148,6 +148,8 @@ export default function InPersonSection({
   const seats = seatTypesFor(draft.classFormat);
   const offersOnline = seats.includes('online');
   const offersPhysical = seats.includes('physical');
+  /** Only a hybrid class has two kinds of seat to tell apart. */
+  const bothSeatKinds = offersOnline && offersPhysical;
   const regionOf = (venue: Venue) => regions.find(r => r.id === venue.region_id)?.name ?? '';
 
   // The class total, shown rather than edited. It is what groups.max_students
@@ -318,29 +320,6 @@ export default function InPersonSection({
             </div>
           ) : null}
 
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Who sees the street address
-            </span>
-            <select
-              className={FIELD}
-              value={draft.venueVisibility}
-              onChange={e =>
-                onChange({ venueVisibility: e.target.value as InPersonDraft['venueVisibility'] })
-              }
-            >
-              <option value="after_enrolment">Only students who have joined</option>
-              <option value="public">Anyone looking at the class</option>
-            </select>
-            {/* The half that is never hidden, said plainly — a tutor choosing
-                "only students" should not think the class is invisible to
-                people searching their area. */}
-            <span className="mt-1.5 block text-xs text-muted-foreground">
-              The area is always shown, so families can find classes near them.
-              This only controls the street address and your arrival notes.
-            </span>
-          </label>
-
           <label className="flex items-start gap-2.5 pt-1">
             <input
               type="checkbox"
@@ -364,36 +343,48 @@ export default function InPersonSection({
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Seats
         </p>
-        {/* The rule, stated once, where the numbers are. */}
+        {/* The rule, stated once, where the numbers are — and only the part
+            that applies. A class with one kind of seat cannot have a full room
+            close its online seats, so saying so there is noise. */}
         <p className="text-xs leading-relaxed text-muted-foreground">
-          Leave a limit blank for no limit. The class is only full when{' '}
-          <strong className="font-semibold">every</strong> kind of seat is full —
-          so a full room does not close your online seats.
+          Leave a limit blank for no limit.
+          {bothSeatKinds ? (
+            <>
+              {' '}The class is only full when{' '}
+              <strong className="font-semibold">every</strong> kind of seat is
+              full — so a full room does not close your online seats.
+            </>
+          ) : null}
         </p>
 
         <div className="grid gap-4 sm:grid-cols-2">
           {offersOnline ? (
             <SeatFields
-              title="Online seats"
+              title={bothSeatKinds ? 'Online seats' : 'Student limit'}
               cap={draft.maxStudentsOnline}
               price={draft.priceOnlineTtd}
               enrolled={enrolledOnline}
               onCap={v => onChange({ maxStudentsOnline: v })}
               onPrice={v => onChange({ priceOnlineTtd: v })}
+              showPrice={bothSeatKinds}
             />
           ) : null}
           {offersPhysical ? (
             <SeatFields
-              title="In-person seats"
+              title={bothSeatKinds ? 'In-person seats' : 'Student limit'}
               cap={draft.maxStudentsPhysical}
               price={draft.pricePhysicalTtd}
               enrolled={enrolledPhysical}
               onCap={v => onChange({ maxStudentsPhysical: v })}
               onPrice={v => onChange({ pricePhysicalTtd: v })}
+              showPrice={bothSeatKinds}
             />
           ) : null}
         </div>
 
+        {/* Only a tally is worth showing. With one kind of seat the "total"
+            is the number the tutor just typed, restated. */}
+        {bothSeatKinds ? (
         <p className="border-t border-border pt-3 text-xs text-muted-foreground">
           Class total:{' '}
           <strong className="font-semibold text-foreground">
@@ -402,6 +393,7 @@ export default function InPersonSection({
           . This is worked out from the seats above — you do not set it
           separately.
         </p>
+        ) : null}
       </div>
 
       {venues.length === 0 && draft.classFormat === 'online' ? (
@@ -421,6 +413,7 @@ function SeatFields({
   enrolled,
   onCap,
   onPrice,
+  showPrice,
 }: {
   title: string;
   cap: number | null;
@@ -428,6 +421,13 @@ function SeatFields({
   enrolled: number;
   onCap: (v: number | null) => void;
   onPrice: (v: number | null) => void;
+  /**
+   * Only a class offering BOTH kinds of seat can price them differently. On a
+   * class that offers one, the class price IS that seat's price and asking a
+   * second time is the same question twice — the server already falls back to
+   * price_monthly when a seat price is null.
+   */
+  showPrice: boolean;
 }) {
   return (
     <div className="space-y-2">
@@ -450,6 +450,7 @@ function SeatFields({
           </span>
         ) : null}
       </label>
+      {showPrice ? (
       <label className="block">
         <span className="mb-1 block text-xs text-muted-foreground">
           Price / month (TTD)
@@ -463,6 +464,7 @@ function SeatFields({
           placeholder="Same as the class price"
         />
       </label>
+      ) : null}
     </div>
   );
 }
