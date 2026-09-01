@@ -216,41 +216,74 @@ export async function GET(req: NextRequest) {
     results.task2b_expired_renewal_payments = { error: String(err) };
   }
 
-  // ─── TASK 3: Expire waitlist offers ──────────────────────────────
+  // ─── TASK 3: Expire waitlist offers ──────────────────
+  //
+  // expire_waitlist_offers() returns a single jsonb object
+  //   { ok: true, affected_groups: uuid[] }
+  // — not a row set, and not the student ids. So read the rows we are about
+  // to expire first (that is the only place student_id lives), then use
+  // affected_groups to confirm which of them the RPC actually flipped.
   try {
+    const { data: dueOffers, error: dueErr } = await admin
+      .from('group_waitlist_entries')
+      .select('id, group_id, student_id')
+      .eq('status', 'offered')
+      .lt('offer_expires_at', nowIso);
+    if (dueErr) throw dueErr;
+
     if (dryRun) {
-      const { data: expiredOffers } = await admin
-        .from('group_waitlist_entries')
-        .select('id, group_id, student_id:user_id')
-        .eq('status', 'offered')
-        .lt('offer_expires_at', nowIso);
       results.task3_waitlist_offers = {
-        would_expire: (expiredOffers ?? []).length,
-        rows: expiredOffers ?? [],
+        would_expire: (dueOffers ?? []).length,
+        rows: dueOffers ?? [],
       };
     } else {
       const { data: rpcResult, error: rpcErr } = await admin.rpc('expire_waitlist_offers');
       if (rpcErr) throw rpcErr;
 
-      const expiredOffers = (rpcResult as any[]) ?? [];
-      const affectedGroups = new Set<string>(expiredOffers.map((r: any) => r.group_id));
+      const affectedGroups = new Set<string>(
+        (rpcResult as { affected_groups?: string[] } | null)?.affected_groups ?? []
+      );
 
-      for (const gid of affectedGroups) {
-        const expiredEntry = expiredOffers.find((r: any) => r.group_id === gid);
-        if (expiredEntry?.student_id) {
-          await admin.from('notifications').insert({
-            user_id: expiredEntry.student_id,
+      // Confirm by id which of the rows we read are now 'expired'. They were
+      // all 'offered' a moment ago, so anything now 'expired' was expired by
+      // the call above — no clock comparison, no guessing.
+      const dueIds = (dueOffers ?? []).map((r) => r.id);
+      let lapsed: { id: string; group_id: string; student_id: string }[] = [];
+      if (dueIds.length) {
+        const { data: confirmed, error: confirmErr } = await admin
+          .from('group_waitlist_entries')
+          .select('id, group_id, student_id')
+          .in('id', dueIds)
+          .eq('status', 'expired');
+        if (confirmErr) throw confirmErr;
+        lapsed = (confirmed ?? []) as typeof lapsed;
+      }
+
+      // Notify every student whose offer lapsed — a group can have more than
+      // one expiring entry, and each of those students is owed the notice.
+      if (lapsed.length) {
+        const { error: notifErr } = await admin.from('notifications').insert(
+          lapsed.map((r) => ({
+            user_id: r.student_id,
             type: 'waitlist_offer_expired',
             title: 'Waitlist offer expired',
             message: 'Your waitlist spot offer has expired. You remain on the waitlist.',
-            link: `/student/groups/${gid}`,
-            group_id: gid,
-          });
-        }
+            link: `/student/groups/${r.group_id}`,
+            group_id: r.group_id,
+          }))
+        );
+        // Never let a failed notify block the re-promotion below.
+        if (notifErr) console.warn('[cron/process-subscriptions] Task 3 notify failed:', notifErr);
+      }
+
+      for (const gid of affectedGroups) {
         await promoteNextFromWaitlist(admin as any, gid);
       }
 
-      results.task3_waitlist_offers = { expired: expiredOffers.length };
+      results.task3_waitlist_offers = {
+        expired: lapsed.length,
+        groups_repromoted: affectedGroups.size,
+      };
     }
   } catch (err) {
     console.error('[cron/process-subscriptions] Task 3 failed:', err);
@@ -574,5 +607,19 @@ export async function GET(req: NextRequest) {
     results.task6_suspended = { error: String(err) };
   }
 
-  return NextResponse.json({ ok: true, ran_at: nowIso, ...results });
+  // Every task above swallows its own error so one failure cannot stop the
+  // rest of the run. That is deliberate — but the response must still say so,
+  // otherwise a task can no-op for months while the cron reports success.
+  const failedTasks = Object.entries(results)
+    .filter(([, v]) => v && typeof v === 'object' && (v as { error?: unknown }).error)
+    .map(([k]) => k);
+
+  if (failedTasks.length) {
+    console.error('[cron/process-subscriptions] tasks failed:', failedTasks.join(', '));
+  }
+
+  return NextResponse.json(
+    { ok: failedTasks.length === 0, failed_tasks: failedTasks, ran_at: nowIso, ...results },
+    { status: failedTasks.length ? 500 : 200 }
+  );
 }
