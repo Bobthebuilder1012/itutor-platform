@@ -23,7 +23,7 @@ import ParentShell from '@/components/parent/ParentShell';
 import ChildPickerCheck from '@/components/parent/ChildPickerCheck';
 import { Detail, preorderFor, type GroupData } from '@/components/classes/ClassDetailView';
 import { fetchClassDetail } from '@/lib/classes/fetchClassDetail';
-import { isPaidGroup } from '@/lib/payments/groupPricing';
+import { hasAnyPrice } from '@/lib/payments/groupPricing';
 
 export default function ParentClassPage() {
   return (
@@ -79,10 +79,25 @@ function ClassContent() {
     );
   }
 
-  // The same predicate the server uses, so the page cannot send a free class to
-  // checkout or a paid one to the free join route. price_monthly alone was close
-  // but not identical; isPaidGroup is the one definition.
-  const isPaid = isPaidGroup(group);
+  // WHICH PREDICATE DECIDES THE ROUTE
+  //
+  // hasAnyPrice, not isPaidGroup — because the free route accepts exactly
+  // !hasAnyPrice and refuses everything else with a 402. Routing on the wider
+  // test is what makes the two sides agree by construction rather than by
+  // both happening to read the same fields.
+  //
+  // isPaidGroup also asks about pricing_model, and this page is holding an API
+  // payload, not a database row: on production the winning select in
+  // /api/groups/[groupId] omitted pricing_model entirely, so a TT$130/mo class
+  // answered isPaidGroup() === false and every parent enrolling a child hit
+  // "This class is paid. Use the subscribe flow" — from the free route they
+  // should never have been sent to. The select is fixed, but the page should
+  // not be one absent field away from giving a paid seat away for nothing.
+  //
+  // A price the parent can SEE is the honest test, and it is the one the
+  // student's own JoinFlow already uses (`price > 0` → subscribe). The two
+  // paths through the same <Detail> now decide this the same way.
+  const isPaid = hasAnyPrice(group);
 
   // A class that has not started yet is sold as a one-time held charge, not a
   // subscription — and the parent has to be buying the same product as the

@@ -69,13 +69,25 @@ export async function GET(_req: NextRequest, { params }: Params) {
         group_members(id, user_id, status, profile:profiles!group_members_user_id_fkey(id, full_name, avatar_url))
       `;
 
+    // EVERY TIER MUST CARRY pricing_model ALONGSIDE THE PRICE COLUMNS.
+    // Two tiers used to select price_monthly without it, and production is
+    // exactly where one of those tiers wins: `content_blocks` does not exist
+    // there, so WIDEST_BASE 42703s and the third tier answers instead. A
+    // TT$130/mo class then came back with price_monthly 130 and no
+    // pricing_model at all, which made isPaidGroup() false on the client —
+    // the parent's class page sent a paid class to the free join route and
+    // the parent got a 402 they could do nothing about. It also made
+    // key_info.pricing_mode read 'FREE' for that same class.
+    //
+    // A select that reports what a class costs but not how it is billed is
+    // half an answer, and the half it drops is the half the checkout routes on.
     const groupSelects = [
       `${WIDEST_BASE}, ${IN_PERSON_COLUMNS}`,
       WIDEST_BASE,
       `
         id, name, description, tutor_id, subject, pricing, created_at, archived_at,
         form_level, topic, session_length_minutes, session_frequency, price_per_course, pricing_mode, availability_window,
-        max_students, price_per_session, price_monthly, cover_image, whatsapp_url, whatsapp_link,
+        max_students, price_per_session, price_monthly, pricing_model, cover_image, whatsapp_url, whatsapp_link,
         google_classroom_link, primary_channel, meeting_link, schedule_display, schedule_data,
         require_join_requests, auto_suspend_missed_payment, grace_period_days, secure_spot_enabled, end_date,
         visibility, parent_feedback_mode, parent_feedback_price, feedback_mode, status,
@@ -84,7 +96,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       `,
       `
         id, name, description, tutor_id, subject, pricing, created_at,
-        max_students, price_per_session, price_monthly, cover_image, whatsapp_url, whatsapp_link,
+        max_students, price_per_session, price_monthly, pricing_model, cover_image, whatsapp_url, whatsapp_link,
         google_classroom_link, schedule_display, schedule_data, require_join_requests, visibility, status, secure_spot_enabled, end_date,
         tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url),
         group_members(id, user_id, status, profile:profiles!group_members_user_id_fkey(id, full_name, avatar_url))
