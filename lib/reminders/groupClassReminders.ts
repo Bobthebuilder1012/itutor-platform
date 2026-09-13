@@ -39,6 +39,12 @@ export interface GroupReminderResult {
   claimed: number;
   sent: number;
   failed: number;
+  /**
+   * The occurrence was gone by the time we tried to claim it — the session or
+   * the whole series was deleted between the poll's read and this write. Not
+   * an error: there is no class left to remind anybody about.
+   */
+  vanished: boolean;
 }
 
 interface Recipient {
@@ -158,11 +164,24 @@ async function resolveRecipients(
 }
 
 /**
+ * What happened when we tried to claim one reminder for one recipient.
+ *
+ *   'claimed'  this run owns the send.
+ *   'taken'    someone else has it — a concurrent poll, or this cron an hour
+ *              ago. Skip this recipient.
+ *   'gone'     the occurrence itself no longer exists. Skip the WHOLE
+ *              occurrence: every remaining recipient fails identically.
+ *   'error'    something unexpected. Skip this recipient, keep the rest.
+ */
+type ClaimOutcome = 'claimed' | 'taken' | 'gone' | 'error';
+
+/**
  * Claims one reminder for one recipient.
  *
- * Returns false when the row already exists — someone else (a concurrent run,
- * or this cron an hour ago) has it. The insert IS the lock; checking first and
- * inserting after would leave a window between the two.
+ * The insert IS the lock; checking first and inserting after would leave a
+ * window between the two. Two rejections are ordinary rather than exceptional
+ * — a duplicate, and a dangling foreign key when the occurrence was deleted
+ * after the poll read it — and neither deserves a log line per recipient.
  */
 async function claim(
   admin: SupabaseClient,
@@ -170,7 +189,7 @@ async function claim(
   recipient: Recipient,
   reminderType: GroupReminderType,
   sendAt: string
-): Promise<boolean> {
+): Promise<ClaimOutcome> {
   const { error } = await admin.from('session_reminders').insert({
     group_occurrence_id: occurrenceId,
     session_id: null,
@@ -181,13 +200,19 @@ async function claim(
     status: 'sent',
   });
 
-  // 23505 = unique violation: already claimed. Any other error is real.
-  if (error) {
-    if (error.code === '23505') return false;
-    console.error('[groupReminders] claim failed:', error.message);
-    return false;
-  }
-  return true;
+  if (!error) return 'claimed';
+
+  // 23505 = unique violation: already claimed.
+  if (error.code === '23505') return 'taken';
+
+  // 23503 = foreign key violation on group_occurrence_id. The occurrence was
+  // deleted between this poll's read and now, so the class is off and there is
+  // nothing to send. Reported by the caller once for the occurrence, not here
+  // once per student — that is how one deleted series produced 164 log lines.
+  if (error.code === '23503') return 'gone';
+
+  console.error('[groupReminders] claim failed:', error.message);
+  return 'error';
 }
 
 /** 12-hour, matching how times read everywhere else in the product. */
@@ -284,7 +309,7 @@ export async function sendGroupOccurrenceReminder(args: {
   appUrl: string;
 }): Promise<GroupReminderResult> {
   const { admin, occurrenceId, groupId, groupName, tutorId, startAt, reminderType, joinUrl, appUrl } = args;
-  const result: GroupReminderResult = { claimed: 0, sent: 0, failed: 0 };
+  const result: GroupReminderResult = { claimed: 0, sent: 0, failed: 0, vanished: false };
 
   const recipients = await resolveRecipients(admin, groupId, tutorId);
   if (recipients.length === 0) return result;
@@ -299,7 +324,13 @@ export async function sendGroupOccurrenceReminder(args: {
 
   for (const r of recipients) {
     const got = await claim(admin, occurrenceId, r, reminderType, new Date().toISOString());
-    if (!got) continue;
+    if (got === 'gone') {
+      // Deleted under us. Stop rather than walking the rest of the roster to
+      // collect the same rejection once per student.
+      result.vanished = true;
+      return result;
+    }
+    if (got !== 'claimed') continue;
     result.claimed += 1;
 
     try {

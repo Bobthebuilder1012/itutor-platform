@@ -57,7 +57,11 @@ export async function GET(request: NextRequest) {
   const admin = getServiceClient();
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? '';
   const now = new Date();
-  const out = { ten_minute: 0, starts_today: 0, errors: [] as string[] };
+  // A vanished occurrence is one that was deleted between a poll reading it
+  // and the reminder being claimed. Reported rather than logged as an
+  // error: it is a cancelled class, not a fault — but a number that climbs is
+  // worth seeing, because nobody on that roster was told.
+  const out = { ten_minute: 0, starts_today: 0, vanished: 0, errors: [] as string[] };
 
   // NB: group_session_occurrences has no meeting_link column — not on
   // production, not on staging, not anywhere. Both selects below used to ask
@@ -103,6 +107,7 @@ export async function GET(request: NextRequest) {
           appUrl,
         });
         out.ten_minute += res.sent;
+        if (res.vanished) out.vanished += 1;
       }
     }
   } catch (err) {
@@ -171,6 +176,7 @@ export async function GET(request: NextRequest) {
           appUrl,
         });
         out.starts_today += res.sent;
+        if (res.vanished) out.vanished += 1;
       }
     }
   } catch (err) {
