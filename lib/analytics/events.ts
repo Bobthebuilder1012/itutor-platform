@@ -30,6 +30,12 @@ export const PRODUCT_EVENTS = {
   RETAINED_30D: 'retained_30d',
   DEMAND_RECORDED: 'demand_recorded',
   NOTIFY_ME_CLICKED: 'notify_me_clicked',
+  /**
+   * A tutor sent a class invitation from the share sheet. `channel` is the
+   * only way to tell whether the social targets earn their place or whether
+   * everyone simply copies the link.
+   */
+  CLASS_SHARED: 'class_shared',
 } as const;
 
 export type ProductEvent = (typeof PRODUCT_EVENTS)[keyof typeof PRODUCT_EVENTS];
@@ -45,6 +51,11 @@ export type FinderEntryRoute = 'forced' | 'nav' | 'dashboard' | 'email';
 export type FinderTrigger = 'signup' | 'login_backfill';
 
 export type MatchClass = 'exact' | 'near' | 'none';
+
+/** Where a tutor sent a class invitation. */
+export type ShareChannel =
+  | 'whatsapp' | 'facebook' | 'x' | 'telegram' | 'sms' | 'email'
+  | 'copy_link' | 'copy_invite' | 'native';
 
 /** Outcome of resolving a /r/[code] link. */
 export type RefResolution = 'resolved' | 'unresolved' | 'unvalidated' | 'invalid';
@@ -75,6 +86,7 @@ export interface EventProps {
   [PRODUCT_EVENTS.RETAINED_30D]: { group_id: string };
   [PRODUCT_EVENTS.DEMAND_RECORDED]: { subject: string; level: string };
   [PRODUCT_EVENTS.NOTIFY_ME_CLICKED]: { demand_id: string };
+  [PRODUCT_EVENTS.CLASS_SHARED]: { group_id: string; channel: ShareChannel };
 }
 
 /**
@@ -90,6 +102,7 @@ export const CLIENT_EMITTABLE: ReadonlySet<string> = new Set<string>([
   PRODUCT_EVENTS.MATCH_VIEWED,
   PRODUCT_EVENTS.ENROLMENT_STARTED,
   PRODUCT_EVENTS.NOTIFY_ME_CLICKED,
+  PRODUCT_EVENTS.CLASS_SHARED,
 ]);
 
 export const ALL_EVENT_NAMES: ReadonlySet<string> = new Set<string>(
