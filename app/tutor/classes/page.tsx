@@ -7,7 +7,7 @@ import {
   BookOpen, Globe, Lock, Plus, Users, Search,
   TrendingUp, Eye, Settings as SettingsIcon,
   MoreVertical, Calendar as CalendarIcon, Trash2,
-  Sparkles,
+  Sparkles, Share2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -18,6 +18,7 @@ import { formatLevel } from '@/lib/utils/formatLevel';
 import PauseAllClasses from '@/components/tutor/PauseAllClasses';
 import TeacherCampaignPanel from '@/components/classMatchWeek/teacher/TeacherCampaignPanel';
 import { useTeacherCampaignEntry } from '@/lib/hooks/useTeacherCampaignEntry';
+import ShareClassModal from '@/components/classes/ShareClassModal';
 
 type LessonKind = '1on1-oneoff' | '1on1-recurring' | 'group-oneoff' | 'group-recurring';
 
@@ -337,6 +338,7 @@ function LessonsContent() {
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {visibleLessons.map((l) => (
               <LessonCard key={l.id} l={l}
+                tutorName={profile?.full_name}
                 onToggleVisibility={() => toggleVisibility(l.id)}
                 onDelete={() => { setPendingDelete(l); setDeleteConfirmName(''); }}
               />
@@ -399,14 +401,18 @@ function StatTile({ icon, label, value, tint, className }: { icon: React.ReactNo
 }
 
 function LessonCard({
-  l, onToggleVisibility, onDelete,
+  l, tutorName, onToggleVisibility, onDelete,
 }: {
   l: Lesson;
+  /** Signs the invitation. The card has no tutor of its own — this is the
+   *  signed-in teacher, who by definition owns every class on this page. */
+  tutorName?: string | null;
   onToggleVisibility: () => void;
   onDelete: () => void;
 }) {
   const m = LESSON_KIND_META[l.kind] ?? LESSON_KIND_META['group-recurring'];
   const [menuOpen, setMenuOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const isPublic = l.visibility === 'public';
 
@@ -504,6 +510,10 @@ function LessonCard({
                   className="flex items-center gap-2 px-3 py-2 hover:bg-muted text-ink transition">
                   <CalendarIcon className="size-4 text-muted-foreground" /> View sessions
                 </Link>
+                <button onClick={() => { setMenuOpen(false); setShareOpen(true); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted text-ink transition">
+                  <Share2 className="size-4 text-muted-foreground" /> Invite student
+                </button>
                 <div className="my-1 border-t border-border" />
                 <button onClick={() => { setMenuOpen(false); onToggleVisibility(); }}
                   className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted text-ink transition">
@@ -519,7 +529,26 @@ function LessonCard({
             )}
           </div>
         </div>
+
+        {/* Sharing gets a full-width row of its own. The action row above is
+            already three controls wide; a fourth would squeeze them all at the
+            three-column grid size. */}
+        <button
+          onClick={() => setShareOpen(true)}
+          className="mt-2 w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-border bg-background text-xs font-semibold text-ink hover:border-brand hover:text-brand hover:bg-brand/5 transition"
+        >
+          Invite student <Share2 className="size-3.5" />
+        </button>
       </div>
+
+      {shareOpen && (
+        <ShareClassModal
+          classInfo={{ ...l, tutorName }}
+          isPrivate={!isPublic}
+          onMakePublic={() => { setShareOpen(false); onToggleVisibility(); }}
+          onClose={() => setShareOpen(false)}
+        />
+      )}
     </div>
   );
 }

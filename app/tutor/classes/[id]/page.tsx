@@ -4,9 +4,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
-  ArrowLeft, Users, UserPlus, Copy, Check, Star,
+  ArrowLeft, Users, UserPlus, Check, Star,
   Bell, X, Plus, ExternalLink, Trash2, Globe, Eye,
-  Video, MoreVertical, Pin, Sparkles, Link as LinkIcon, Paperclip, UploadCloud, AlertTriangle, ShieldAlert,
+  Video, MoreVertical, Pin, Sparkles, Link as LinkIcon, Share2, Paperclip, UploadCloud, AlertTriangle, ShieldAlert,
   Mail, MessageSquare, DollarSign, BarChart3, ArrowUp, ArrowDown, Lock,
   Calendar as CalendarIcon, BookOpen, Ban, Repeat, Clock, Info, ArrowUpRight, ChevronRight,
   RefreshCw,
@@ -14,6 +14,7 @@ import {
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
+import ShareClassModal from '@/components/classes/ShareClassModal';
 import { useUnsavedGuard } from '@/lib/hooks/useUnsavedGuard';
 import { UnsavedBar } from '@/components/UnsavedBar';
 import { supabase } from '@/lib/supabase/client';
@@ -1400,18 +1401,16 @@ function RosterTab({ members, setMembers, group, isOneOnOne, atCapacity, onRefre
   members: GroupMember[]; setMembers: React.Dispatch<React.SetStateAction<GroupMember[]>>;
   group: GroupDetail; isOneOnOne: boolean; atCapacity: boolean; onRefresh?: () => void;
 }) {
-  const [copied, setCopied] = useState(false);
-  const [inviteOpen, setInviteOpen] = useState<null | 'link' | 'user'>(null);
+  const { profile } = useProfile();
+  const [shareOpen, setShareOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState<null | 'user'>(null);
   const [inviteQuery, setInviteQuery] = useState('');
   const [inviteSending, setInviteSending] = useState(false);
   const [inviteError, setInviteError] = useState('');
   const [inviteOk, setInviteOk] = useState('');
-  const inviteUrl = typeof window !== 'undefined' ? `${window.location.origin}/classes/${group.id}` : '';
 
   const updateMember = (sid: string, patch: Partial<GroupMember>) =>
     setMembers((ms) => ms.map((m) => m.studentId === sid ? { ...m, ...patch } : m));
-
-  const copy = () => { navigator.clipboard?.writeText(inviteUrl); setCopied(true); setTimeout(() => setCopied(false), 1500); };
 
   const sendInvite = async () => {
     if (!inviteQuery.trim() || inviteSending) return;
@@ -1497,13 +1496,15 @@ function RosterTab({ members, setMembers, group, isOneOnOne, atCapacity, onRefre
               <RefreshCw className="size-3.5" /> Refresh
             </button>
           )}
+          {/* Sharing is deliberately not gated on capacity or class size: a
+              full class still wants a waiting list, and a 1:1 tutor still
+              wants to be found. */}
+          <button onClick={() => setShareOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border bg-background text-xs font-semibold hover:bg-muted">
+            Invite student <Share2 className="size-3.5" />
+          </button>
           {!isOneOnOne && (
             <>
-              <button disabled={atCapacity} onClick={() => setInviteOpen('link')}
-                className={cn('inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-semibold',
-                  atCapacity ? 'border-border text-muted-foreground cursor-not-allowed' : 'border-border bg-background hover:bg-muted')}>
-                <LinkIcon className="size-3.5" /> Invite by Link
-              </button>
               <button disabled={atCapacity} onClick={() => setInviteOpen('user')}
                 className={cn('inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold',
                   atCapacity ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'bg-brand text-white hover:bg-brand/90')}>
@@ -1521,16 +1522,22 @@ function RosterTab({ members, setMembers, group, isOneOnOne, atCapacity, onRefre
 
       <SecuredSpotsSummary members={members} />
 
-      {inviteOpen === 'link' && (
-        <div className="rounded-2xl bg-card border border-border p-5 space-y-3">
-          <div className="font-semibold text-ink">Invite link</div>
-          <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2">
-            <span className="text-xs text-muted-foreground truncate font-mono flex-1">{inviteUrl}</span>
-            <button onClick={copy} className="text-xs font-semibold text-brand-deep hover:underline inline-flex items-center gap-1">
-              {copied ? <Check className="size-3" /> : <Copy className="size-3" />} {copied ? 'Copied' : 'Copy'}
-            </button>
-          </div>
-        </div>
+      {shareOpen && (
+        <ShareClassModal
+          classInfo={{
+            id: group.id,
+            title: group.title,
+            subject: group.subject,
+            level: group.level,
+            kind: isOneOnOne ? '1on1' : 'group',
+            capacity: group.capacity,
+            enrolled: group.enrolled,
+            pricePerSession: group.pricePerSession,
+            tutorName: profile?.full_name,
+          }}
+          isPrivate={group.visibility === 'private'}
+          onClose={() => setShareOpen(false)}
+        />
       )}
 
       {inviteOpen === 'user' && (
