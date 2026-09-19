@@ -278,25 +278,42 @@ function FilterMenu({
   );
 }
 
-export default function ExploreMarketplace({ variant = 'student' }: { variant?: 'student' | 'parent' }) {
+export default function ExploreMarketplace({
+  variant = 'student',
+  initialQuery = '',
+  initialTab = 'lessons',
+}: {
+  variant?: 'student' | 'parent' | 'anonymous';
+  /** Seeds the search box — /search is reached from the landing search bar. */
+  initialQuery?: string;
+  initialTab?: 'lessons' | 'tutors';
+}) {
   const isParent = variant === 'parent';
+  // A logged-out visitor, on the public /search. Same catalogue, same filters,
+  // same cards — what changes is that nothing below may assume a signed-in
+  // profile, and a card opens a public page rather than a booking or
+  // enrolment route. /search used to be a second, older implementation of
+  // this screen; it drifted, and only one of the two ever got the filters.
+  const isAnonymous = variant === 'anonymous';
   // The only thing the variant decides. Everything below is shared.
+  // /student/explore/[id] is already public, so it serves the stranger too.
   const classHref = (id) => (isParent ? `/parent/classes/${id}` : `/student/explore/${id}`);
   const enrolledClassHref = (id) => (isParent ? `/parent/classes/${id}` : `/student/classes/${id}`);
-  const tutorHref = (id) => (isParent ? `/parent/tutors/${id}` : `/student/tutors/${id}/book`);
+  const tutorHref = (id) =>
+    isAnonymous ? `/tutors/${id}` : isParent ? `/parent/tutors/${id}` : `/student/tutors/${id}/book`;
   const { profile, loading } = useProfile();
   const router = useRouter();
   const [tutors, setTutors] = useState<Tutor[]>([]);
   const [loadingTutors, setLoadingTutors] = useState(true);
   const [institutions, setInstitutions] = useState<Institution[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialQuery);
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
   const [selectedRating, setSelectedRating] = useState<number | null>(null);
   const [priceBand, setPriceBand] = useState<string>(ANY_PRICE);
   const [selectedSchool, setSelectedSchool] = useState<string>('');
   const [currentPage, setCurrentPage] = useState(1);
   const [sortOrder, setSortOrder] = useState<'relevance' | 'price_low' | 'rating_high'>('relevance');
-  const [tab, setTab] = useState<'lessons' | 'tutors'>('lessons');
+  const [tab, setTab] = useState<'lessons' | 'tutors'>(initialTab);
   const [activeChip, setActiveChip] = useState('All');
   // Day / time-of-day narrowing. Both multi-select; a lesson matches when one of
   // its recurring sessions satisfies every active filter, and a tutor matches
@@ -325,15 +342,22 @@ export default function ExploreMarketplace({ variant = 'student' }: { variant?: 
     
     // The role this screen belongs to depends on who is rendering it. Left as
     // "student only", the parent's Explore bounced every parent to /login.
-    const allowedRole = isParent ? 'parent' : 'student';
-    if (!profile || profile.role !== allowedRole) {
-      router.push('/login');
-      return;
+    // The anonymous variant belongs to no role at all — bouncing a stranger to
+    // /login is the opposite of what a public browse page is for.
+    if (!isAnonymous) {
+      const allowedRole = isParent ? 'parent' : 'student';
+      if (!profile || profile.role !== allowedRole) {
+        router.push('/login');
+        return;
+      }
     }
 
     fetchTutors();
-    fetchGroupLessons();
-  }, [profile, loading, router, isParent]);
+    // Skipped for the signed-out visitor: `groups` is authenticated-only, so
+    // this would spend a round trip to arrive at an empty list. See the note
+    // on the tab switcher.
+    if (!isAnonymous) fetchGroupLessons();
+  }, [profile, loading, router, isParent, isAnonymous]);
 
   async function fetchTutors() {
     setLoadingTutors(true);
@@ -604,7 +628,7 @@ export default function ExploreMarketplace({ variant = 'student' }: { variant?: 
   async function fetchGroupLessons() {
     setLoadingGroupLessons(true);
     try {
-      if (!profile?.id) return;
+      if (!isAnonymous && !profile?.id) return;
 
       // Query groups directly — avoids API column-schema issues
       let groups: any[] | null = null;
@@ -654,7 +678,10 @@ export default function ExploreMarketplace({ variant = 'student' }: { variant?: 
           ? supabase.from('ratings').select('tutor_id, stars').in('tutor_id', tutorIds)
           : Promise.resolve({ data: [] as any[] }),
         supabase.from('group_members').select('group_id, user_id, status').in('group_id', groupIds),
-        supabase
+        // Nobody is enrolled when nobody is signed in.
+        isAnonymous
+        ? Promise.resolve({ data: [] as any[] })
+        : supabase
           .from('group_enrollments')
           .select('group_id')
           .eq('student_id', profile.id)
@@ -707,7 +734,7 @@ export default function ExploreMarketplace({ variant = 'student' }: { variant?: 
         // 'suspended', 'banned' and 'removed' members as enrolled. The three
         // allowed values match viewer_membership on /api/groups/[groupId], so
         // the card and the class page cannot disagree about who is in.
-        if (m.user_id === profile.id && ['approved', 'active', 'invited'].includes(m.status)) enrolledSet.add(m.group_id);
+        if (profile?.id && m.user_id === profile.id && ['approved', 'active', 'invited'].includes(m.status)) enrolledSet.add(m.group_id);
         // Only fall back to group_members count when server didn't return a count
         if (!(m.group_id in serverCounts)) {
           memberCountMap.set(m.group_id, (memberCountMap.get(m.group_id) ?? 0) + 1);
@@ -1072,7 +1099,7 @@ export default function ExploreMarketplace({ variant = 'student' }: { variant?: 
     currentPage * TUTORS_PER_PAGE
   );
 
-  if (loading || !profile) {
+  if (loading || (!isAnonymous && !profile)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-itutor-green"></div>
@@ -1169,10 +1196,24 @@ export default function ExploreMarketplace({ variant = 'student' }: { variant?: 
         {/* Header */}
         <div>
           <h1 className="text-2xl lg:text-3xl font-bold text-ink">Explore</h1>
-          <p className="text-sm text-muted-foreground mt-1">Join a recurring group lesson, or book a 1:1 with a tutor.</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            {isAnonymous
+              ? 'Find a tutor for one-to-one sessions.'
+              : 'Join a recurring group lesson, or book a 1:1 with a tutor.'}
+          </p>
         </div>
 
-        {/* Tab switcher */}
+        {/* Tab switcher.
+
+            Hidden for the signed-out visitor, because the Group Lessons half
+            cannot be served to them yet: this page reads `groups` straight
+            from the table and that table is authenticated-only at the RLS
+            level. It cannot simply be opened — `groups` also holds
+            meeting_link and whatsapp_link, so a blanket public policy would
+            hand every class's join link to anyone. Serving classes publicly
+            needs a marketplace projection that exposes only safe columns;
+            until then a Group Lessons tab here would render an empty list. */}
+        {!isAnonymous && (
         <div className="inline-flex p-1 rounded-2xl bg-muted">
           <button
             // School is a 1:1-only filter, so drop it on the way out instead of
@@ -1189,6 +1230,7 @@ export default function ExploreMarketplace({ variant = 'student' }: { variant?: 
             <GraduationCap className="size-4" /> 1:1 Tutors
           </button>
         </div>
+        )}
 
         {/* Search bar */}
         <div className="rounded-2xl bg-background border border-border p-2 flex items-center gap-2 shadow-sm">

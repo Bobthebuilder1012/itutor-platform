@@ -20,11 +20,15 @@ export type TutorAvailability = { days: number[]; bands: TimeBand[] };
  */
 export async function GET() {
   try {
+    // Deliberately open to anonymous callers. This returns the marketplace
+    // roster — which tutors are listed, and the weekday/time-of-day buckets
+    // their availability falls into — and the public browse page at /search
+    // cannot show a catalogue without it. Nothing here is private: a listed
+    // tutor is one who has chosen to appear, the raw availability rules are
+    // still never exposed (only the derived buckets), and every id returned
+    // leads to a profile page that is already public.
     const supabase = await getServerClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { data: { user } } = await supabase.auth.getUser();
 
     const service = getServiceClient();
 
@@ -59,13 +63,17 @@ export async function GET() {
       return NextResponse.json({ ids: [] });
     }
 
-    // Check whether the requesting user is a dev account
-    const { data: requesterProfile } = await service
-      .from('profiles')
-      .select('is_dev_account')
-      .eq('id', user.id)
-      .single();
-    const requesterIsDev = requesterProfile?.is_dev_account === true;
+    // Check whether the requesting user is a dev account. A signed-out visitor
+    // is never one, so dev tutors stay hidden from the public catalogue.
+    let requesterIsDev = false;
+    if (user) {
+      const { data: requesterProfile } = await service
+        .from('profiles')
+        .select('is_dev_account')
+        .eq('id', user.id)
+        .single();
+      requesterIsDev = requesterProfile?.is_dev_account === true;
+    }
 
     // Also require avatar_url and bio from profiles; exclude dev accounts for non-dev viewers
     let profileQuery = service
