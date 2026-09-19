@@ -3,17 +3,23 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowRight, Users, BookOpen, Search, Star } from 'lucide-react';
+import { ArrowRight, Users, BookOpen, Search, Star, Share2 } from 'lucide-react';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
 import PendingRequestsSection from '@/components/student/PendingRequestsSection';
 import YourTutorsSection from '@/components/student/YourTutorsSection';
 import MyAttendance from '@/components/student/MyAttendance';
+import ShareClassModal from '@/components/classes/ShareClassModal';
 
 type Lesson = {
   key: string;
   type: 'group' | 'one-on-one';
+  /**
+   * Group classes only. A 1:1 booking has no class for anyone else to join,
+   * so it gets no invite button.
+   */
+  groupId?: string;
   href: string;
   title: string;
   tutorName: string;
@@ -52,6 +58,7 @@ export default function MyClassesPage() {
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [shareFor, setShareFor] = useState<Lesson | null>(null);
 
   useEffect(() => {
     if (profileLoading) return;
@@ -84,6 +91,7 @@ export default function MyClassesPage() {
         result.push({
           key: `group-${grp.id}`,
           type: 'group',
+          groupId: grp.id,
           href: `/student/classes/${grp.id}`,
           title: grp.name,
           subject: grp.subject || '',
@@ -182,8 +190,12 @@ export default function MyClassesPage() {
 
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {filtered.map((l) => (
-                <Link key={l.key} href={l.href}
+                // The card is a div wrapping a Link rather than one big Link:
+                // the invite button has to sit outside the anchor, because a
+                // button nested inside one is invalid and swallows the click.
+                <div key={l.key}
                   className="group rounded-2xl bg-card border border-border overflow-hidden hover:shadow-lg hover:-translate-y-0.5 hover:border-brand/30 transition-all flex flex-col">
+                <Link href={l.href} className="flex flex-col flex-1">
                   <div className={cn('h-24 bg-gradient-to-br relative', l.gradient)}>
                     <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.2),transparent_60%)]" />
                     <BookOpen className="absolute bottom-3 left-4 size-6 text-white/80" />
@@ -214,6 +226,20 @@ export default function MyClassesPage() {
                     </div>
                   </div>
                 </Link>
+
+                {/* Group classes only — there is nothing to invite anyone to
+                    on a 1:1 booking. */}
+                {l.groupId && (
+                  <div className="px-4 pb-4">
+                    <button
+                      onClick={() => setShareFor(l)}
+                      className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-border bg-background text-xs font-semibold text-ink hover:border-brand hover:text-brand hover:bg-brand/5 transition"
+                    >
+                      Invite a friend <Share2 className="size-3.5" />
+                    </button>
+                  </div>
+                )}
+                </div>
               ))}
 
               {filtered.length === 0 && (
@@ -234,6 +260,22 @@ export default function MyClassesPage() {
             Message. Outside the branch above so it shows even before the class
             list loads. Renders nothing when the student has no tutors. */}
         <YourTutorsSection />
+
+        {shareFor?.groupId && (
+          <ShareClassModal
+            classInfo={{
+              id: shareFor.groupId,
+              title: shareFor.title,
+              subject: shareFor.subject,
+              kind: 'group',
+              tutorName: shareFor.tutorName,
+              // Price is deliberately omitted: this page never loads it, and
+              // guessing would advertise a paid class as free.
+              voice: 'student',
+            }}
+            onClose={() => setShareFor(null)}
+          />
+        )}
       </div>
   );
 }

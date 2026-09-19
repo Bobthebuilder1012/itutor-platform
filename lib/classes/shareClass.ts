@@ -25,9 +25,17 @@ export type ShareClassInput = {
   /** '1on1-*' or 'group-*'. Anything else is treated as a group class. */
   kind?: string | null;
   capacity?: number | null;
-  enrolled?: number | null;
+  /**
+   * `null` or `0` means the class is known to be free. `undefined` means the
+   * caller does not know the price — the student's own My Classes card does
+   * not load it — and the invitation must then say nothing about cost rather
+   * than advertise a paid class as free.
+   */
   pricePerSession?: number | null;
+  enrolled?: number | null;
   tutorName?: string | null;
+  /** Who is sending it. A student is inviting a friend, not teaching. */
+  voice?: 'tutor' | 'student';
 };
 
 /**
@@ -57,11 +65,16 @@ function shortLevel(level?: string | null): string | null {
  */
 export function classInviteMessage(c: ShareClassInput): string {
   const isOneOnOne = (c.kind ?? '').startsWith('1on1');
-  const isFree = c.pricePerSession == null || c.pricePerSession <= 0;
+  const fromStudent = c.voice === 'student';
+  // Only when the price is actually known. See the note on the field.
+  const isFree = c.pricePerSession === null
+    || (typeof c.pricePerSession === 'number' && c.pricePerSession <= 0);
 
-  const opener = isOneOnOne
-    ? `I'm taking on students for ${c.title} on iTutor and I'd love to work with you.`
-    : `I'm teaching ${c.title} on iTutor and I'd love you in the room.`;
+  const opener = fromStudent
+    ? `I'm taking ${c.title} on iTutor and I think you'd like it.`
+    : isOneOnOne
+      ? `I'm taking on students for ${c.title} on iTutor and I'd love to work with you.`
+      : `I'm teaching ${c.title} on iTutor and I'd love you in the room.`;
 
   // Subject · Form 5 · live group classes with <tutor>.
   const facts = [c.subject?.trim(), shortLevel(c.level)].filter(Boolean);
@@ -82,6 +95,7 @@ export function classInviteMessage(c: ShareClassInput): string {
 
   let callToAction: string;
   if (scarce) callToAction = `Only ${left} ${left === 1 ? 'seat' : 'seats'} left — claim yours here:`;
+  else if (fromStudent) callToAction = 'Come and join me:';
   else if (isOneOnOne) callToAction = 'Book a time that suits you here:';
   else callToAction = 'Come and see what we do:';
 
