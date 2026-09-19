@@ -12,6 +12,7 @@ import TutorCredentials from '@/components/TutorCredentials';
 import RatingComment from '@/components/tutor/RatingComment';
 import AuthPromptModal from '@/components/AuthPromptModal';
 import { useAuthPrompt } from '@/hooks/useAuthPrompt';
+import { isUuid, resolveTutorIdFromUsername } from '@/lib/tutors/resolveTutorParam';
 import { getAvatarColor } from '@/lib/utils/avatarColors';
 import Link from 'next/link';
 
@@ -78,10 +79,25 @@ export default function PublicTutorProfilePage() {
   const [showAboutMenu, setShowAboutMenu] = useState(false);
 
   useEffect(() => {
+    // A shared profile link carries the username; a QR code carries the UUID.
+    // Everything below — and every child on this page — keys off the UUID, so
+    // swap the URL for the canonical one and let this effect run again rather
+    // than firing a dozen queries against a username.
+    if (!isUuid(tutorId)) {
+      let cancelled = false;
+      resolveTutorIdFromUsername(tutorId).then((id) => {
+        if (cancelled) return;
+        if (id) router.replace(`/tutors/${id}`);
+        else setLoading(false); // falls through to the "Tutor not found" state
+      });
+      return () => { cancelled = true; };
+    }
+
     fetchTutorProfile();
     fetchVerifiedSubjects();
     checkAuth();
     fetchPaidClassesFlag();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tutorId]);
 
   async function fetchPaidClassesFlag() {
@@ -126,11 +142,12 @@ export default function PublicTutorProfilePage() {
 
     if (!profile) return;
 
+    // Only a student gets the booking view. /student/tutors is student-only
+    // and pushes everyone else to /login — which is why a tutor pressing
+    // "Open live profile", and any signed-in parent opening a shared link,
+    // used to land on a login screen instead of the profile. They stay here,
+    // on the public view, which is exactly what those entry points promise.
     if (profile.role === 'student') {
-      router.replace(`/student/tutors/${tutorId}`);
-    } else if (profile.role === 'parent') {
-      router.replace(`/student/tutors/${tutorId}`);
-    } else if (profile.role === 'tutor') {
       router.replace(`/student/tutors/${tutorId}`);
     }
   }
