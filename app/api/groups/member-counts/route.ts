@@ -11,18 +11,33 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: NextRequest) {
   try {
     const supabase = await getServerClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { data: { user } } = await supabase.auth.getUser();
+    // Anonymous callers are allowed: a class card shows "3/20" to the public
+    // already. Only a count ever leaves here, never who is in the class — and
+    // for a signed-out caller, only for classes that are public.
+    const isAnonymous = !user;
 
     const ids = req.nextUrl.searchParams.get('ids');
     if (!ids) return NextResponse.json({ counts: {} });
 
-    const groupIds = ids.split(',').filter(Boolean).slice(0, 100);
+    let groupIds = ids.split(',').filter(Boolean).slice(0, 100);
     if (groupIds.length === 0) return NextResponse.json({ counts: {} });
 
     const admin = getServiceClient();
+
+    if (isAnonymous) {
+      const { data: publicRows } = await admin
+        .from('groups')
+        .select('id, visibility, archived_at')
+        .in('id', groupIds);
+      const allowed = new Set(
+        (publicRows ?? [])
+          .filter((g: any) => String(g.visibility ?? 'public').toLowerCase() === 'public' && !g.archived_at)
+          .map((g: any) => g.id),
+      );
+      groupIds = groupIds.filter((id) => allowed.has(id));
+      if (groupIds.length === 0) return NextResponse.json({ counts: {} });
+    }
 
     // Count both subscription enrollments AND direct group members
     const [{ data: enrollmentRows, error: eErr }, { data: memberRows, error: mErr }] = await Promise.all([

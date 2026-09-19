@@ -86,20 +86,36 @@ function isSchemaMismatch(error: any): boolean {
 export async function GET(req: NextRequest) {
   try {
     const supabase = await getServerClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { data: { user } } = await supabase.auth.getUser();
+    // Anonymous callers are allowed — the public browse page at /search shows
+    // the same schedules the public class page does — but only for classes
+    // that are actually public. A signed-out visitor must not be able to read
+    // the timetable of a private class by guessing its id.
+    const isAnonymous = !user;
 
     const ids = req.nextUrl.searchParams.get('ids');
     if (!ids) return NextResponse.json({ schedules: {} });
 
-    const groupIds = Array.from(
+    let groupIds = Array.from(
       new Set(ids.split(',').map((s) => s.trim()).filter(Boolean))
     ).slice(0, 100);
     if (groupIds.length === 0) return NextResponse.json({ schedules: {} });
 
     const admin = getServiceClient();
+
+    if (isAnonymous) {
+      const { data: publicRows } = await admin
+        .from('groups')
+        .select('id, visibility, archived_at')
+        .in('id', groupIds);
+      const allowed = new Set(
+        (publicRows ?? [])
+          .filter((g: any) => String(g.visibility ?? 'public').toLowerCase() === 'public' && !g.archived_at)
+          .map((g: any) => g.id),
+      );
+      groupIds = groupIds.filter((id) => allowed.has(id));
+      if (groupIds.length === 0) return NextResponse.json({ schedules: {} });
+    }
 
     // schedule_data is production-only (absent on staging), and asking for a
     // column that isn't there costs the whole select — so it is requested
