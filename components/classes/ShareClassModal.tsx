@@ -5,9 +5,11 @@
 // It carries its own modal shell rather than importing the one from
 // ClassDetailView: that module is 1500 lines of student-facing class detail,
 // and pulling it into the tutor bundle for twenty lines of backdrop is a poor
-// trade. The shell below is deliberately identical in behaviour and classes.
+// trade. The shell below matches it closely, with one necessary difference
+// noted where it is defined.
 
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Check, Copy, Link2, Lock, Mail, MessageSquare, Share2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -51,9 +53,22 @@ const TelegramGlyph = ({ className }: GlyphProps) => (
 
 /* ─── Modal shell ────────────────────────────────────────
    Mirrors components/classes/ClassDetailView.tsx — escape to close, scroll
-   lock, bottom sheet on mobile and a centred card from sm up. */
+   lock, bottom sheet on mobile and a centred card from sm up.
+
+   It portals to document.body, which the original does not need to. This one
+   is mounted inside a class card that lifts on hover, and a `transform` on an
+   ancestor becomes the containing block for `position: fixed` descendants —
+   so the sheet anchored itself to the card instead of the viewport. That also
+   fed back on itself: re-anchoring moved the sheet out from under the cursor,
+   which dropped the hover, which re-centred it under the cursor again, at
+   screen-refresh speed. Escaping the card entirely is the fix. */
 
 function Shell({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+  // document does not exist during the server render, so the portal can only
+  // be opened once mounted on the client.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKey);
@@ -65,7 +80,9 @@ function Shell({ onClose, children }: { onClose: () => void; children: React.Rea
     };
   }, [onClose]);
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} aria-hidden />
       <div
@@ -76,7 +93,8 @@ function Shell({ onClose, children }: { onClose: () => void; children: React.Rea
       >
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
