@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import { getDisplayName } from '@/lib/utils/displayName';
+import { isUuid, resolveTutorIdFromUsername } from '@/lib/tutors/resolveTutorParam';
 import SuggestTimeModal from '@/components/booking/SuggestTimeModal';
 import UserAvatar from '@/components/UserAvatar';
 import { cn } from '@/lib/utils';
@@ -374,6 +375,19 @@ export default function TutorProfilePage() {
   useEffect(() => {
     if (profileLoading) return;
     if (!profile || profile.role !== 'student') { router.push('/login'); return; }
+
+    // A shared link carries the tutor's username, but this page and its
+    // children all query by UUID. Canonicalise the URL first.
+    if (!isUuid(tutorId)) {
+      let cancelled = false;
+      resolveTutorIdFromUsername(tutorId).then((id) => {
+        if (cancelled) return;
+        if (id) router.replace(`/student/tutors/${id}`);
+        else { setLoading(false); router.push('/student/find-tutors'); }
+      });
+      return () => { cancelled = true; };
+    }
+
     fetchPaidClassesFlag();
     fetchTutorProfile();
   // eslint-disable-next-line react-hooks/exhaustive-deps
