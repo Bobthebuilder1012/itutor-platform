@@ -14,7 +14,8 @@
     "migrate:097": "node scripts/run-migration-097.js",
     "seed:groups": "npx ts-node prisma/seeds/groupSessions.seed.ts",
     "finder:verify": "npx ts-node --project scripts/tsconfig.verify.json scripts/verify-finder-matcher.ts",
-    "finder:migrate": "npx ts-node scripts/apply-finder-migrations.ts"
+    "finder:migrate": "npx ts-node scripts/apply-finder-migrations.ts",
+    "customerio:migrate": "npx ts-node scripts/apply-customerio-migrations.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
