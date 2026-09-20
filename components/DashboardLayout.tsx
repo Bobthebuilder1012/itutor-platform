@@ -281,6 +281,10 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/admin/tutors', label: 'Tutor Promotion', icon: icons.star },
           { href: '/admin/marketplace/classes', label: 'Class Promotion', icon: icons.sparkles },
           { href: '/admin/signups', label: 'Signups & Onboarding', icon: icons.userPlus },
+          // TDR: students brought by teachers over activated teachers. Sits
+          // beside Signups because it answers the question that one raises —
+          // the teachers arrived, did they bring anybody.
+          { href: '/admin/tdr', label: 'Teacher Distribution', icon: icons.star },
         ]},
         { label: 'Finance', items: [
           { href: '/admin/payments', label: 'Payments Overview', icon: icons.creditCard },
