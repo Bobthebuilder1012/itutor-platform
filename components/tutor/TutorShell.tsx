@@ -7,7 +7,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard, BookOpen, CalendarDays, Users, Wallet,
   Sparkles, Settings, Bell, Search, LogOut, ChevronUp, PanelLeftClose, PanelLeftOpen, Lock,
-  Calendar as CalendarIcon, Star, Rocket, Menu, X, MessageSquareQuote,
+  Calendar as CalendarIcon, Star, Rocket, Menu, X, MessageSquareQuote, Send,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -17,6 +17,7 @@ import { supabase } from '@/lib/supabase/client';
 import { getUnreadNotificationCount, subscribeToNotifications } from '@/lib/services/notificationService';
 import LogoutConfirmModal from '@/components/LogoutConfirmModal';
 import CampaignCta from '@/components/classMatchWeek/CampaignCta';
+import TutorHeaderStrip from '@/components/tutor/TutorHeaderStrip';
 
 type NavItem = { to: string; label: string; icon: ComponentType<{ className?: string }>; exact?: boolean; gated?: boolean };
 
@@ -33,6 +34,11 @@ const nav: NavItem[] = [
   { to: '/tutor/reviews', label: 'Reviews', icon: Star },
   { to: '/tutor/business', label: 'My Business', icon: Rocket, gated: true },
   { to: '/tutor/ai', label: 'iTutor AI', icon: Sparkles },
+  // Appended deliberately. The mobile bottom bar below renders nav.slice(0, 5),
+  // so inserting this anywhere above index 5 would silently knock My Wallet off
+  // every phone. Mobile reaches Launch by tapping the header strip, which is on
+  // mobile by design.
+  { to: '/tutor/launch', label: 'Launch', icon: Send },
 ];
 
 const COLLAPSE_KEY = 'itutor.tutorSidebar.collapsed';
@@ -203,7 +209,8 @@ export default function TutorShell({ children, actions }: { children: ReactNode;
               </Link>
             </div>
           </div>
-          <ListingBanner completion={completion} />
+          {/* One slot, one strip. TutorHeaderStrip decides which. */}
+          <TutorHeaderStrip completion={completion} />
         </header>
 
         <main className="flex-1 px-4 lg:px-8 py-6 lg:py-8 pb-24 lg:pb-8">
@@ -298,34 +305,6 @@ function SidebarNav({ collapsed, pathname, completion, onNavClick }: { collapsed
         </div>
       )}
     </nav>
-  );
-}
-
-function ListingBanner({ completion }: { completion: ReturnType<typeof useTutorCompletion> }) {
-  if (completion.loading || completion.listed) return null;
-  const pct = Math.round((completion.completed / completion.total) * 100);
-  return (
-    <div className="border-b border-border bg-gradient-to-r from-[oklch(0.97_0.05_150)] to-[oklch(0.96_0.04_165)]">
-      <div className="px-4 lg:px-8 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
-        <div className="size-9 rounded-xl bg-brand text-white grid place-items-center shrink-0">
-          <Sparkles className="size-4" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold text-ink">Complete your profile to get listed and start teaching.</div>
-          <div className="mt-1 flex items-center gap-2">
-            <div className="h-1.5 flex-1 max-w-xs bg-white rounded-full overflow-hidden border border-border">
-              <div className="h-full bg-brand transition-all" style={{ width: `${pct}%` }} />
-            </div>
-            <span className="text-xs text-muted-foreground font-medium tabular-nums">
-              {completion.completed} of {completion.total} steps complete
-            </span>
-          </div>
-        </div>
-        <Link href="/tutor/get-listed" className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ink text-white text-sm font-semibold hover:bg-ink/90 shrink-0">
-          Complete profile
-        </Link>
-      </div>
-    </div>
   );
 }
 

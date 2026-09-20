@@ -17,6 +17,7 @@ import { getServiceClient } from '@/lib/supabase/server';
 import { authenticateUser, requireTutor } from '@/lib/api/groupAuth';
 import { ok, fail } from '@/lib/api/http';
 import { isTeacherActivationEnabled } from '@/lib/featureFlags/teacherActivation';
+import { isParentAccountsEnabled } from '@/lib/featureFlags/parentAccounts';
 import { buildActivationSnapshot } from '@/lib/classInvites/dashboard';
 
 export const dynamic = 'force-dynamic';
@@ -40,6 +41,10 @@ export async function GET(request: Request): Promise<NextResponse> {
       // The client hides the invite tools when this is false, but keeps
       // showing whatever is already in flight.
       canInvite: isTeacherActivationEnabled(),
+      // Neither flag carries a NEXT_PUBLIC_ prefix, deliberately, so the
+      // browser cannot read them directly. It learns them here instead, which
+      // is also what makes flipping one take effect without a rebuild.
+      parentAccountsEnabled: isParentAccountsEnabled(),
     });
   } catch (error) {
     return fail(error instanceof Error ? error.message : 'Internal server error', 500);
