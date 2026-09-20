@@ -73,6 +73,16 @@ Flags read from env vars:
   campaign were running. Nothing is deleted; turning it back on restores the
   same campaign, opt-ins, sessions, reservations and coupons.
 
+- `isTeacherActivationEnabled()` — `TEACHER_ACTIVATION_ENABLED`. Gates the
+  teacher activation feature: class invitations, the Migration Dashboard and
+  the 14-day launch goal. Enforced in one chokepoint,
+  `requireTeacherActivation()` in `lib/classInvites/guard.ts`, which also
+  refuses any tutor who is not `VERIFIED` — that check is the spam control,
+  not a nicety. Turning the flag off stops NEW invitations; it deliberately
+  does not gate fulfilment, the reconciler cron or the admin metric, so
+  people already holding an invitation can still complete and the numbers
+  stay honest.
+
 Check these before adding functionality tied to premium/gated features.
 
 ### Cron jobs
@@ -101,6 +111,7 @@ CRON_SECRET
 NEXT_PUBLIC_VAPID_PUBLIC_KEY   # Web push notifications
 TOKEN_ENCRYPTION_KEY           # For encrypting OAuth tokens
 PAID_CLASSES_ENABLED           # Feature flag (true/false)
+TEACHER_ACTIVATION_ENABLED     # Class invites + launch goal (default true)
 CLASS_MATCH_WEEK_ENABLED       # Class Match Week on/off (default true)
 ```
 
