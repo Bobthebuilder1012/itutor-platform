@@ -6,6 +6,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { ParentAccessError, requireParentContext, requireParentChild } from '@/lib/server/parentAccess';
+import { trackForUser } from '@/lib/analytics/track';
+import { PRODUCT_EVENTS } from '@/lib/analytics/events';
+import { syncProfileNow } from '@/lib/customerio/sync';
 import { findGroupEnrollmentConflict, conflictMessage } from '@/lib/services/scheduleConflict';
 import { hasAnyPrice, isPaidGroup } from '@/lib/payments/groupPricing';
 import { holdsPlace } from '@/lib/services/groupMembership';
@@ -27,7 +30,7 @@ export async function POST(request: NextRequest) {
     const { data: group } = await admin
       .from('groups')
       .select(
-        'id, name, tutor_id, require_join_requests, archived_at, pricing_model, price_monthly, price_per_session, price_per_course'
+        'id, name, subject, tutor_id, require_join_requests, archived_at, pricing_model, price_monthly, price_per_session, price_per_course'
       )
       .eq('id', groupId)
       .maybeSingle();
@@ -94,6 +97,31 @@ export async function POST(request: NextRequest) {
         .from('group_members')
         .insert({ group_id: groupId, user_id: childId, status: memberStatus });
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // The seat belongs to the CHILD, so the event is keyed to them — their
+    // classes_joined_count is what the student ladder reads. `on_behalf_of`
+    // carries the parent, whose own ladder branches on
+    // child_classes_joined_count and must stop nagging them too. This route
+    // refuses priced classes above, so the seat is always free here.
+    await trackForUser(
+      PRODUCT_EVENTS.CLASS_JOINED,
+      {
+        group_id: groupId,
+        tutor_id: group.tutor_id ?? null,
+        subject: (group as any).subject ?? null,
+        membership: memberStatus === 'approved' ? 'enrolled' : 'pending',
+        seat_source: 'parent_enrol',
+        is_paid: false,
+        on_behalf_of: parentProfile.id,
+      },
+      { userId: childId, dedupeKey: `join:${groupId}:${childId}` }
+    );
+    if (memberStatus === 'approved') {
+      // Both profiles change: the child gains a class, and the parent's
+      // child_classes_joined_count moves with it.
+      await syncProfileNow(childId);
+      await syncProfileNow(parentProfile.id);
     }
 
     // Notify the tutor (attributed to the parent acting for the child).

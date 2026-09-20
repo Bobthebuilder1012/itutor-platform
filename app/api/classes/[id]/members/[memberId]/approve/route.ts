@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
+import { trackForUser } from '@/lib/analytics/track';
+import { PRODUCT_EVENTS } from '@/lib/analytics/events';
+import { syncProfileNow } from '@/lib/customerio/sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +24,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
     // service client for the member read/update below so an admin override isn't
     // blocked by group_members RLS (tutor-only).
     const service = getServiceClient();
-    const actor = await resolveGroupActor({ groupId: classId, userId: user.id, email: user.email });
+    const actor = await resolveGroupActor({ groupId: classId, userId: user.id, email: user.email, columns: 'subject' });
     if (actor.notFound) {
       return NextResponse.json({ ok: false, error: 'not_found' }, { status: 404 });
     }
@@ -51,6 +54,24 @@ export async function POST(_req: NextRequest, { params }: Params) {
       .single();
 
     if (updateError) throw updateError;
+
+    // The legacy vocabulary's version of the pending -> seat transition
+    // ('active' here, 'approved' in the groups route). Both need the event, and
+    // the shared dedupe key means a seat approved through both surfaces is
+    // still one join. trackForUser: these cookies are the tutor's.
+    await trackForUser(
+      PRODUCT_EVENTS.CLASS_JOINED,
+      {
+        group_id: classId,
+        tutor_id: (actor.group as any).tutor_id ?? null,
+        subject: (actor.group as any).subject ?? null,
+        membership: 'enrolled',
+        seat_source: 'tutor_approval',
+        is_paid: false,
+      },
+      { userId: member.user_id, dedupeKey: `join:${classId}:${member.user_id}` }
+    );
+    await syncProfileNow(member.user_id);
 
     // Notify the student
     await service

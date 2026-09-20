@@ -28,6 +28,9 @@ import {
 } from '@/lib/server/classRequestNotify';
 import { notifyInApp } from '@/lib/server/bookingRequestNotify';
 import { classifyMembership } from '@/lib/services/groupMembership';
+import { trackForUser } from '@/lib/analytics/track';
+import { PRODUCT_EVENTS, type SeatSource } from '@/lib/analytics/events';
+import { syncProfileNow } from '@/lib/customerio/sync';
 import { hasAnyPrice } from '@/lib/payments/groupPricing';
 
 export type ClassRequestRow = {
@@ -44,6 +47,8 @@ export type ClassRequestRow = {
 type GroupRow = {
   id: string;
   name: string | null;
+  /** Carried for the class_joined event, which segments campaigns by subject. */
+  subject: string | null;
   tutor_id: string;
   require_join_requests: boolean | null;
   pricing_model: string | null;
@@ -69,7 +74,7 @@ async function loadGroup(admin: SupabaseClient, groupId: string): Promise<GroupR
   const { data } = await admin
     .from('groups')
     .select(
-      'id, name, tutor_id, require_join_requests, pricing_model, price_monthly, price_per_session, price_per_course, archived_at'
+      'id, name, subject, tutor_id, require_join_requests, pricing_model, price_monthly, price_per_session, price_per_course, archived_at'
     )
     .eq('id', groupId)
     .maybeSingle();
@@ -236,7 +241,19 @@ export type JoinOutcome =
 
 export async function performGroupJoin(
   admin: SupabaseClient,
-  params: { groupId: string; studentId: string; notifyTutor?: boolean }
+  params: {
+    groupId: string;
+    studentId: string;
+    notifyTutor?: boolean;
+    /**
+     * Which path produced the seat, for the class_joined event. A student
+     * choosing a class and a parent approving one deserve different
+     * follow-ups, and this is the only place that still knows the difference.
+     */
+    seatSource?: SeatSource;
+    /** The parent, when a parent's action created a child's seat. */
+    onBehalfOf?: string;
+  }
 ): Promise<JoinOutcome> {
   const group = await loadGroup(admin, params.groupId);
   if (!group || group.archived_at) return { ok: false, reason: 'class_unavailable' };
@@ -276,6 +293,31 @@ export async function performGroupJoin(
       .insert({ group_id: params.groupId, user_id: params.studentId, status });
     if (error) return { ok: false, reason: error.message };
   }
+
+  // The seat now exists. Emitted here rather than at each caller because this
+  // function is the convergence point for the free paths — a direct join, a
+  // parent approving a request, and a tutor invite all land on the same write
+  // above, and an event wired per-caller would miss whichever one is added
+  // next. trackForUser, not track: the request's cookies belong to whoever
+  // acted, which for an approval or an invite is NOT the student whose
+  // activation this is, and track() would stamp the wrong attribution on it.
+  await trackForUser(
+    PRODUCT_EVENTS.CLASS_JOINED,
+    {
+      group_id: params.groupId,
+      tutor_id: group.tutor_id,
+      subject: group.subject ?? null,
+      membership: status === 'approved' ? 'enrolled' : 'pending',
+      seat_source: params.seatSource ?? 'free_join',
+      is_paid: false,
+      ...(params.onBehalfOf ? { on_behalf_of: params.onBehalfOf } : {}),
+    },
+    { userId: params.studentId, dedupeKey: `join:${params.groupId}:${params.studentId}` }
+  );
+
+  // Only a real seat changes classes_joined_count; a pending request does not,
+  // so there is nothing for Customer.io to re-read yet.
+  if (status === 'approved') await syncProfileNow(params.studentId);
 
   if (params.notifyTutor !== false) {
     const studentName = await displayName(admin, params.studentId);
@@ -357,6 +399,8 @@ export async function approveClassJoinRequest(
   const joined = await performGroupJoin(admin, {
     groupId: req.group_id,
     studentId: req.student_id,
+    seatSource: 'parent_approval',
+    onBehalfOf: req.parent_id ?? undefined,
   });
   if (!joined.ok) return { ok: false, reason: joined.reason };
 

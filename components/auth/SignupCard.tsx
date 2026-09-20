@@ -138,6 +138,9 @@ export default function SignupCard({
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [agree, setAgree] = useState(false);
+  // Ticked by default: the copy beside it says so, and the server treats an
+  // absent field as consent, so the two agree.
+  const [marketingConsent, setMarketingConsent] = useState(true);
   const [usernameError, setUsernameError] = useState('');
   const [usernameChecking, setUsernameChecking] = useState(false);
   const [usernameAvailable, setUsernameAvailable] = useState(false);
@@ -365,6 +368,7 @@ export default function SignupCard({
           password,
           role,
           verificationCode: joined,
+          marketingConsent,
         }),
       });
       const regData = await regRes.json();
@@ -537,6 +541,23 @@ export default function SignupCard({
                           <a href="/terms/student" target="_blank" className="font-medium text-gray-900 underline">Terms</a>{' '}
                           and{' '}
                           <a href="/terms/student" target="_blank" className="font-medium text-gray-900 underline">Privacy Policy</a>.
+                        </span>
+                      </label>
+
+                      {/* Separate from the Terms box on purpose: agreeing to the
+                          Terms is required to hold an account, and consenting to
+                          marketing email is not. Ticked by default and freely
+                          unticked — what is recorded is the answer the person
+                          actually left, along with the fact that it came from
+                          this form rather than from the backfill of existing
+                          accounts. */}
+                      <label className="flex cursor-pointer items-start gap-2.5 text-sm text-gray-500">
+                        <input type="checkbox" checked={marketingConsent}
+                          onChange={(e) => setMarketingConsent(e.target.checked)}
+                          className="mt-0.5 h-4 w-4 rounded border-gray-300 text-itutor-green focus:ring-itutor-green" />
+                        <span>
+                          Send me class recommendations and occasional updates. You can
+                          unsubscribe from any email.
                         </span>
                       </label>
 

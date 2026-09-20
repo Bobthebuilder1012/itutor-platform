@@ -3,6 +3,9 @@ import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { promoteNextFromWaitlist } from '@/lib/services/waitlistService';
 import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
 import { notifyParentsChildLeftClass } from '@/lib/server/classRequestNotify';
+import { trackForUser } from '@/lib/analytics/track';
+import { PRODUCT_EVENTS } from '@/lib/analytics/events';
+import { syncProfileNow } from '@/lib/customerio/sync';
 
 type Params = { params: Promise<{ groupId: string; userId: string }> };
 
@@ -21,7 +24,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
     const service = getServiceClient();
 
-    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email });
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email, columns: 'subject' });
     if (actor.notFound) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
     if (!actor.authorized) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
@@ -42,6 +45,26 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (error) throw error;
 
     await auditAdminOverride(actor, 'member.update', { targetUserId: userId, status });
+
+    // The pending -> seat transition. Until the tutor approves, the student
+    // holds no seat and customerio_profiles_v1 does not count them, so this is
+    // the moment the join becomes real. trackForUser because the cookies here
+    // belong to the tutor doing the approving, not the student being approved.
+    if (status === 'approved') {
+      await trackForUser(
+        PRODUCT_EVENTS.CLASS_JOINED,
+        {
+          group_id: groupId,
+          tutor_id: (actor.group as any).tutor_id ?? null,
+          subject: (actor.group as any).subject ?? null,
+          membership: 'enrolled',
+          seat_source: 'tutor_approval',
+          is_paid: false,
+        },
+        { userId, dedupeKey: `join:${groupId}:${userId}` }
+      );
+      await syncProfileNow(userId);
+    }
 
     // 'ENROLLMENT_CONFIRMED' was not a permitted notifications.type, so this
     // insert threw and was swallowed by the catch below — students were never

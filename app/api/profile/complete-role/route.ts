@@ -4,6 +4,9 @@ import { cookies } from 'next/headers';
 import { getServiceClient } from '@/lib/supabase/server';
 import { bootstrapProfileIfMissing } from '@/lib/server/bootstrapProfileIfMissing';
 import { isParentAccountsEnabled, PARENT_ACCOUNTS_DISABLED_MESSAGE } from '@/lib/featureFlags/parentAccounts';
+import { track } from '@/lib/analytics/track';
+import { PRODUCT_EVENTS } from '@/lib/analytics/events';
+import { syncProfileNow } from '@/lib/customerio/sync';
 
 type SelectableRole = 'student' | 'tutor' | 'parent';
 
@@ -114,6 +117,23 @@ export async function POST(request: NextRequest) {
     if (userError) {
       return NextResponse.json({ error: userError.message }, { status: 400 });
     }
+
+    // THE GOOGLE SIGNUP GAP. /api/auth/register emits signup_completed, but a
+    // Google account never passes through it: the auth callback bootstraps a
+    // profile with a null role and sends the user here to choose one. So this
+    // is the first moment an OAuth account has a role at all — and without an
+    // event here, every Google signup was invisible to all three activation
+    // ladders, which key on account_type.
+    //
+    // Identify before the event, for the reason register does: an event for an
+    // id Customer.io has not seen creates a profile with no email address, and
+    // a welcome campaign then has nobody to mail.
+    await syncProfileNow(user.id);
+    await track(
+      PRODUCT_EVENTS.SIGNUP_COMPLETED,
+      { role },
+      { userId: user.id }
+    );
 
     return NextResponse.json({ ok: true });
   } catch (e: any) {

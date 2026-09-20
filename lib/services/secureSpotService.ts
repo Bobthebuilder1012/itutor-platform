@@ -189,6 +189,29 @@ export async function confirmSecuredSpot(
       },
       { userId: (enrollment as any).student_id, dedupeKey: `pi:${stripePaymentIntentId}` }
     );
+
+    // ── class_joined ──
+    // A SECURED enrolment holds a seat and grants class access, so it counts
+    // as a join — and customerio_profiles_v1 counts it too, which is what
+    // stops a student who has preordered from being told to join their first
+    // class. Keyed on group+student rather than the payment intent so this
+    // cannot double-count against the free path if a seat is ever written by
+    // both.
+    await trackForUser(
+      PRODUCT_EVENTS.CLASS_JOINED,
+      {
+        group_id: (enrollment as any).group_id,
+        tutor_id: (group as any)?.tutor_id ?? null,
+        subject: (group as any)?.subject ?? null,
+        membership: 'enrolled',
+        seat_source: 'secure_spot',
+        is_paid: true,
+      },
+      {
+        userId: (enrollment as any).student_id,
+        dedupeKey: `join:${(enrollment as any).group_id}:${(enrollment as any).student_id}`,
+      }
+    );
   }
 
   return {

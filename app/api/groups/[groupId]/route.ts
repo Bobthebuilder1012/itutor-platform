@@ -8,6 +8,8 @@ import { generateUpcomingSessions } from '@/lib/recurrence';
 import { canOpenPreorders } from '@/lib/services/secureSpotService';
 import { classOccupancy } from '@/lib/services/classOccupancy';
 import { syncScheduleSessions } from '@/lib/classes/scheduleSessions';
+import { track } from '@/lib/analytics/track';
+import { PRODUCT_EVENTS } from '@/lib/analytics/events';
 
 type Params = { params: Promise<{ groupId: string }> };
 function isSchemaMismatch(error: any): boolean {
@@ -30,7 +32,7 @@ function isSchemaMismatch(error: any): boolean {
 // GET /api/groups/[groupId] — get group detail
 export const dynamic = 'force-dynamic';
 
-export async function GET(_req: NextRequest, { params }: Params) {
+export async function GET(req: NextRequest, { params }: Params) {
   try {
     const { groupId } = await params;
     const supabase = await getServerClient();
@@ -220,6 +222,37 @@ export async function GET(_req: NextRequest, { params }: Params) {
       if (!isPublic || group.archived_at) {
         return NextResponse.json({ error: 'Group not found' }, { status: 404 });
       }
+    }
+
+    // ---- class_viewed -------------------------------------------------
+    // This GET is the one server endpoint every class detail page passes
+    // through — student, parent, shared link and QR code alike — which is why
+    // the event lives here rather than in the four client components that
+    // render the page. It also serves re-fetches and polling, so the caller
+    // has to declare intent with ?view=1; anything without it is not a view.
+    //
+    // Placed after the visibility gate so a class the viewer is not allowed to
+    // see cannot be recorded as viewed, and after the group row is loaded so
+    // tutor_id and subject come from the database rather than the request.
+    //
+    // Not emitted for anonymous visitors: uq_events_once is keyed on user_id
+    // and Postgres treats NULLs as distinct, so anonymous rows cannot be
+    // deduped — and Customer.io could not mail them in any case. Not emitted
+    // for the tutor's own class either; that is not marketplace interest, and
+    // it would leave every tutor's last_viewed_class pointing at themselves.
+    if (req.nextUrl.searchParams.get('view') === '1' && user && group.tutor_id !== user.id) {
+      // 30-minute bucket, minted here rather than accepted from the client:
+      // a caller that chose its own bucket could reset it on every keystroke.
+      const bucket = Math.floor(Date.now() / 1_800_000);
+      await track(
+        PRODUCT_EVENTS.CLASS_VIEWED,
+        {
+          group_id: group.id,
+          tutor_id: group.tutor_id ?? null,
+          subject: group.subject ?? null,
+        },
+        { userId: user.id, dedupeKey: `cv:${group.id}:${bucket}` }
+      );
     }
 
     const approvedMembers = (group.group_members ?? []).filter((m: any) => m.status === 'approved');

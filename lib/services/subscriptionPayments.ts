@@ -150,14 +150,14 @@ export async function handleSubscriptionPayment(
   const { data: sp, error: spErr } = await admin
     .from('subscription_payments')
     .select(`
-      id, enrollment_id, group_id, student_id, type,
+      id, enrollment_id, group_id, student_id, payer_id, type,
       amount_ttd, platform_fee_ttd, tutor_payout_ttd,
       status, checkout_expires_at, period_start, period_end,
       enrollment:group_enrollments!enrollment_id (
         id, status, payment_status, current_period_end,
         pending_payment_expires_at, group_id,
         group:groups!group_id (
-          tutor_id, grace_period_days, max_students, name
+          tutor_id, grace_period_days, max_students, name, subject
         )
       )
     `)
@@ -390,6 +390,35 @@ export async function handleSubscriptionPayment(
     { group_id: sp.group_id, amount: Number(sp.amount_ttd) || 0 },
     { userId: sp.student_id, dedupeKey: 'sub:' + sp.id }
   );
+
+  // ── class_joined ──
+  // Same placement and the same reasoning as `paid` above, with one extra
+  // condition: a renewal is not a join. Without the type guard every monthly
+  // charge would re-announce the student as newly joined, and the activation
+  // ladder would treat a long-standing subscriber as someone who just started.
+  if (sp.type === 'subscription_initial' || sp.type === 'subscription_reactivation') {
+    await trackForUser(
+      PRODUCT_EVENTS.CLASS_JOINED,
+      {
+        group_id: sp.group_id,
+        tutor_id: group?.tutor_id ?? null,
+        subject: group?.subject ?? null,
+        membership: 'enrolled',
+        seat_source: 'subscription',
+        is_paid: true,
+        ...(sp.payer_id && sp.payer_id !== sp.student_id
+          ? { on_behalf_of: sp.payer_id as string }
+          : {}),
+      },
+      { userId: sp.student_id, dedupeKey: `join:${sp.group_id}:${sp.student_id}` }
+    );
+
+    // No syncProfileNow here. This runs inside a Stripe/LuniPay webhook with a
+    // provider deadline and redelivery semantics, and the enrolment's
+    // updated_at already moves the activation watermark — so the reconciler
+    // picks the new counters up within five minutes. The campaign that matters
+    // is triggered by the event above, not by the attribute.
+  }
 
   return { ok: true, enrollmentId: sp.enrollment_id, receipt };
 }

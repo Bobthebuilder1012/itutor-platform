@@ -48,16 +48,18 @@ function ClassContent() {
     position: number | null;
   } | null>(null);
 
-  const load = useCallback(async () => {
+  // `countAsView` is passed only by the mount effect below. The reloads after
+  // enrolling or requesting a seat must not count as browsing the class again.
+  const load = useCallback(async (countAsView = false) => {
     // Same loader the student page uses, so the two cannot disagree about what
     // this class is.
-    const mapped = await fetchClassDetail(groupId);
+    const mapped = await fetchClassDetail(groupId, { countAsView });
     setGroup(mapped);
     setLoading(false);
   }, [groupId]);
 
   useEffect(() => {
-    void load();
+    void load(true);
   }, [load]);
 
   if (loading) {

@@ -33,6 +33,13 @@ const FORWARDED: ReadonlySet<string> = new Set<string>([
   PRODUCT_EVENTS.RETAINED_30D,
   PRODUCT_EVENTS.DEMAND_RECORDED,
   PRODUCT_EVENTS.NOTIFY_ME_CLICKED,
+
+  // The activation ladders trigger and exit on these three. class_joined is
+  // what stops a "join your first class" reminder reaching someone who just
+  // did; class_created does the same for the tutor ladder.
+  PRODUCT_EVENTS.CLASS_VIEWED,
+  PRODUCT_EVENTS.CLASS_CREATED,
+  PRODUCT_EVENTS.CLASS_JOINED,
 ]);
 
 /**
@@ -43,7 +50,12 @@ const FORWARDED: ReadonlySet<string> = new Set<string>([
  * event data is visible to everyone with workspace access — so the event goes
  * without them.
  */
-const STRIPPED_PROPS: ReadonlySet<string> = new Set(['answers']);
+const STRIPPED_PROPS: ReadonlySet<string> = new Set([
+  'answers',
+  // Internal plumbing for uq_events_once. It carries a 30-minute time bucket
+  // that would read as meaningful campaign data in Customer.io's UI and is not.
+  'dedupe_key',
+]);
 
 function sanitize(props: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
