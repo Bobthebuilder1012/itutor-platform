@@ -9,6 +9,9 @@ import {
   type TimeBand,
 } from '@/lib/utils/scheduleFormat';
 import { z } from 'zod';
+import { track } from '@/lib/analytics/track';
+import { PRODUCT_EVENTS } from '@/lib/analytics/events';
+import { syncProfileNow } from '@/lib/customerio/sync';
 
 function isSchemaMismatch(error: any) {
   const code = String(error?.code ?? '');
@@ -818,6 +821,27 @@ export async function POST(request: NextRequest) {
     }
 
     if (error) throw error;
+
+    // Emitted here, after the fallback chain, rather than beside any one
+    // insert: four rungs can be the one that succeeded, and only this point
+    // knows which `group` actually exists. Ordered after the commit so a class
+    // is never announced that does not exist, and deduped on the group id so a
+    // retried request cannot report two classes.
+    await track(
+      PRODUCT_EVENTS.CLASS_CREATED,
+      {
+        group_id: group.id,
+        subject: group.subject ?? null,
+        pricing_model: group.pricing_model ?? null,
+        status: group.status ?? null,
+      },
+      { userId: user.id, dedupeKey: `class:${group.id}` }
+    );
+
+    // The tutor ladder's next step branches on classes_created_count, so push
+    // the recomputed attributes now rather than waiting up to five minutes for
+    // the reconciler. Bounded to one 3s attempt and swallows its own failures.
+    await syncProfileNow(user.id);
 
     return NextResponse.json({ group }, { status: 201 });
   } catch (err) {

@@ -25,6 +25,17 @@ interface TrackOptions {
   /** Override the cookie-derived attribution (used by /r/[code], which knows
    *  the attribution before the cookie round-trips). */
   attribution?: Attribution | null;
+  /**
+   * Written to props.dedupe_key, where the partial unique index from migration
+   * 239 (uq_events_once) rejects the repeat. Same mechanism trackForUser has
+   * used since it was written; it lives here too because a repeatable
+   * request-path event needs it as much as a redelivered webhook does —
+   * class_viewed fires on every page load and is bucketed to 30 minutes.
+   *
+   * The index is keyed on user_id, and Postgres treats NULLs as distinct, so
+   * this does nothing for anonymous events. Dedupe those before calling.
+   */
+  dedupeKey?: string | null;
 }
 
 /**
@@ -72,16 +83,25 @@ export async function track<E extends ProductEvent>(
       anonId = anonId ?? fromRequest.anonId;
     }
 
+    const payload: Record<string, unknown> = { ...(props ?? {}) };
+    if (options.dedupeKey) payload.dedupe_key = options.dedupeKey;
+
     const service = getServiceClient();
     const { error } = await service.from('product_events').insert({
       user_id: options.userId ?? null,
       anon_id: anonId,
       event,
-      props: props ?? {},
+      props: payload,
       attribution,
     });
 
     if (error) {
+      // 23505 is uq_events_once absorbing a duplicate — a refreshed class page
+      // inside the same 30-minute bucket, or a retried request. Return BEFORE
+      // forwarding: the whole point of suppressing the row is that the
+      // campaign must not re-trigger either, and making both decisions here
+      // keeps them from drifting apart.
+      if (String(error.code) === '23505') return;
       console.error(`[analytics] failed to write ${event}:`, error.message);
     }
 

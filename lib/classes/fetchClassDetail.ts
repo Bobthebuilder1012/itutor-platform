@@ -11,9 +11,29 @@
 import { supabase } from '@/lib/supabase/client';
 import type { GroupData, SessionRow } from '@/components/classes/ClassDetailView';
 
-export async function fetchClassDetail(groupId: string): Promise<GroupData | null> {
+export interface FetchClassDetailOptions {
+  /**
+   * Whether this load is a person opening the class page, as opposed to a
+   * refresh after an action or a background refetch. Passing true lets the API
+   * record a class_viewed event, which is what the marketplace re-engagement
+   * campaign triggers on.
+   *
+   * Opt-in rather than automatic: this loader is also called to re-read a
+   * class after joining it, and counting that as a fresh view would tell the
+   * campaign someone is still browsing a class they have already joined. The
+   * server additionally dedupes to one view per class per 30 minutes, so a
+   * caller that passes true on every render cannot inflate the count.
+   */
+  countAsView?: boolean;
+}
+
+export async function fetchClassDetail(
+  groupId: string,
+  options: FetchClassDetailOptions = {}
+): Promise<GroupData | null> {
   try {
-  const res = await fetch(`/api/groups/${groupId}`, { cache: 'no-store' });
+  const query = options.countAsView ? '?view=1' : '';
+  const res = await fetch(`/api/groups/${groupId}${query}`, { cache: 'no-store' });
   if (!res.ok) return null;
   const payload = await res.json();
   const g = payload?.group ?? payload?.data?.group ?? payload;

@@ -14,40 +14,36 @@ import { identify, deleteCustomer, REQUEST_PATH_CALL, type CallOptions } from '.
 import {
   buildCustomerAttributes,
   hashAttributes,
-  PROFILE_SYNC_COLUMNS,
-  subjectNamesFrom,
-  type SyncableProfile,
+  CUSTOMERIO_PROFILE_VIEW,
+  type CustomerIoProfileRow,
 } from './attributes';
 
 /**
- * A tutor's subject names, from the tutor_subjects join table.
+ * The origin used to build class links in the attribute payload.
  *
- * Only called for tutors, so this costs nothing on the student and parent rows
- * that make up most of the table. Returns null on failure rather than throwing:
- * a profile synced without its subject list is far better than one not synced
- * at all, and the next run will pick the subjects up.
+ * Falls back to the production site rather than to a relative path: a
+ * half-formed URL in an email is worse than a link that points at the live
+ * site from a preview.
  */
-async function fetchTutorSubjects(
-  service: AnyClient,
-  tutorId: string
-): Promise<string[] | null> {
-  const { data, error } = await service
-    .from('tutor_subjects')
-    .select('subjects(name)')
-    .eq('tutor_id', tutorId);
+function appUrl(): string {
+  return process.env.NEXT_PUBLIC_APP_URL || 'https://myitutor.com';
+}
 
-  if (error) {
-    console.error('[customerio] tutor subject read failed:', error.message);
-    return null;
-  }
-
-  const names = ((data ?? []) as unknown as Array<{ subjects: unknown }>).flatMap(row =>
-    subjectNamesFrom(row.subjects)
+/**
+ * Does this error mean the activation view has not been migrated here?
+ *
+ * Mirrors the isSchemaMismatch predicate the group routes use for the same
+ * class of drift between environments.
+ */
+function isMissingView(error: { code?: string; message?: string } | null): boolean {
+  const code = String(error?.code ?? '');
+  const message = String(error?.message ?? '').toLowerCase();
+  return (
+    code === '42P01' ||
+    code === 'PGRST205' ||
+    message.includes('could not find the table') ||
+    message.includes('does not exist')
   );
-
-  // De-duplicated: a tutor can list the same subject at two levels, and a
-  // repeated value segments no better while making the payload larger.
-  return Array.from(new Set(names));
 }
 
 export type SyncOutcome =
@@ -135,35 +131,63 @@ export async function syncProfile(
 
   const service = getServiceClient();
 
+  // One read. The view flattens the activation facts that used to require a
+  // second tutor_subjects query, so there is no longer a path where a profile
+  // ships with some of its attributes and not others.
   const { data, error } = await service
-    .from('profiles')
-    .select(PROFILE_SYNC_COLUMNS)
-    .eq('id', userId)
+    .from(CUSTOMERIO_PROFILE_VIEW)
+    .select('*')
+    .eq('customer_id', userId)
     .maybeSingle();
 
   if (error) {
+    // Deliberately NOT degraded to a plain profiles read. Every "send only if"
+    // test in the activation ladders branches on a counter that exists only in
+    // this view — so falling back would ship a payload in which
+    // classes_created_count is simply absent, and Customer.io would evaluate
+    // those conditions against a missing attribute rather than a real zero.
+    // A campaign that mails the wrong people is worse than one that pauses, so
+    // this fails loudly and the cron response carries the count.
+    if (isMissingView(error)) {
+      console.error(
+        `[customerio] ${CUSTOMERIO_PROFILE_VIEW} is missing — apply migration 259 ` +
+          'before enabling the sync on this environment.'
+      );
+      return { outcome: 'failed', reason: 'activation_view_missing' };
+    }
     console.error('[customerio] profile read failed:', error.message);
     return { outcome: 'failed', reason: error.message };
   }
   if (!data) return { outcome: 'not_found' };
 
-  const profile = data as unknown as SyncableProfile;
+  const profile = data as unknown as CustomerIoProfileRow;
+
+  // The watermark is the activation timestamp, never profiles.updated_at:
+  // counters that live on groups and enrolments never touch the profile row,
+  // so storing updated_at here would either lose the change or re-queue the
+  // row forever. This is the single line the whole freshness design rests on.
+  const watermark = profile.activation_updated_at ?? profile.updated_at;
 
   const gate = isProfileSyncable(config, profile);
   if (!gate.allowed) {
     // A skip is a decision, not a failure: advance the watermark so the
     // reconciler stops re-examining this row every single run.
+    //
+    // NOTE FOR LAUNCH: this is what makes CUSTOMERIO_ALLOWED_EMAILS a trap.
+    // Running with the allowlist set marks every other profile as delivered,
+    // and clearing it later does NOT bring them back — a dormant profile's
+    // activation_updated_at never moves again. Before widening the allowlist,
+    // reset the rows this wrote:
+    //   UPDATE customerio_sync_state SET synced_updated_at = NULL,
+    //     attributes_hash = NULL WHERE attributes_hash LIKE 'skipped:%';
     await recordAttempt(service, userId, true, {
-      profileUpdatedAt: profile.updated_at,
+      profileUpdatedAt: watermark,
       hash: `skipped:${gate.reason}`,
     });
     return { outcome: 'skipped', reason: gate.reason };
   }
 
-  const tutorSubjects =
-    profile.role === 'tutor' ? await fetchTutorSubjects(service, userId) : null;
-
-  const attributes = buildCustomerAttributes(profile, { tutorSubjects });
+  const attributes = buildCustomerAttributes(profile, { appUrl: appUrl() });
   const hash = hashAttributes(attributes);
 
   if (!options.force) {
@@ -177,7 +201,7 @@ export async function syncProfile(
       // Nothing Customer.io cares about changed. Move the watermark up so the
       // row leaves the pending set without spending an API call.
       await recordAttempt(service, userId, true, {
-        profileUpdatedAt: profile.updated_at,
+        profileUpdatedAt: watermark,
         hash,
       });
       return { outcome: 'unchanged' };
@@ -194,7 +218,7 @@ export async function syncProfile(
   }
 
   await recordAttempt(service, userId, true, {
-    profileUpdatedAt: profile.updated_at,
+    profileUpdatedAt: watermark,
     hash,
   });
   return { outcome: 'sent' };

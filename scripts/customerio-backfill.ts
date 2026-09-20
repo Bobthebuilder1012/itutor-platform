@@ -60,10 +60,12 @@ import { identify } from '../lib/customerio/client';
 import {
   buildCustomerAttributes,
   hashAttributes,
-  PROFILE_SYNC_COLUMNS,
-  subjectNamesFrom,
-  type SyncableProfile,
+  CUSTOMERIO_PROFILE_VIEW,
+  type CustomerIoProfileRow,
 } from '../lib/customerio/attributes';
+
+/** Matches the origin the running sync uses, so both build the same links. */
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://myitutor.com';
 
 /** Rows read from Postgres per page. */
 const PAGE_SIZE = 500;
@@ -151,55 +153,28 @@ async function main(): Promise<void> {
   let cursor: string | null = null;
 
   for (;;) {
+    // Reads the same view the reconciler does, so a backfilled profile and an
+    // incrementally synced one carry byte-identical attributes — and the hash
+    // written here is one the reconciler will recognise rather than redo.
+    // This also retires the per-page tutor_subjects batching that used to live
+    // here: subject names are columns of the view now.
     let query = supabase
-      .from('profiles')
-      .select(PROFILE_SYNC_COLUMNS)
-      .order('id', { ascending: true })
+      .from(CUSTOMERIO_PROFILE_VIEW)
+      .select('*')
+      .order('customer_id', { ascending: true })
       .limit(PAGE_SIZE);
 
-    if (cursor) query = query.gt('id', cursor);
-    if (args.role) query = query.eq('role', args.role);
+    if (cursor) query = query.gt('customer_id', cursor);
+    if (args.role) query = query.eq('account_type', args.role);
 
     const { data, error } = await query;
     if (error) throw new Error(`profile read failed: ${error.message}`);
 
-    const rows = (data ?? []) as unknown as SyncableProfile[];
+    const rows = (data ?? []) as unknown as CustomerIoProfileRow[];
     if (rows.length === 0) break;
 
     page += 1;
     console.log(`[backfill] page ${page}: ${rows.length} profiles`);
-
-    // Subject names for every tutor on this page in one query. The per-profile
-    // lookup the sync service uses is fine for a handful of rows, but at 500 a
-    // page it would triple the runtime of the import for no benefit.
-    const tutorIds = rows.filter(r => r.role === 'tutor').map(r => r.id);
-    const subjectsByTutor = new Map<string, string[]>();
-
-    if (tutorIds.length > 0) {
-      const { data: subjectRows, error: subjectError } = await supabase
-        .from('tutor_subjects')
-        .select('tutor_id, subjects(name)')
-        .in('tutor_id', tutorIds);
-
-      if (subjectError) {
-        // Non-fatal: tutors just sync without a subjects attribute this pass.
-        console.error(`[backfill] tutor subject read failed: ${subjectError.message}`);
-      } else {
-        for (const row of (subjectRows ?? []) as unknown as Array<{
-          tutor_id: string;
-          subjects: unknown;
-        }>) {
-          for (const name of subjectNamesFrom(row.subjects)) {
-            const list = subjectsByTutor.get(row.tutor_id);
-            if (list) {
-              if (!list.includes(name)) list.push(name);
-            } else {
-              subjectsByTutor.set(row.tutor_id, [name]);
-            }
-          }
-        }
-      }
-    }
 
     for (const profile of rows) {
       if (args.limit !== null && stats.seen >= args.limit) {
@@ -209,11 +184,9 @@ async function main(): Promise<void> {
       }
 
       stats.seen += 1;
-      cursor = profile.id;
+      cursor = profile.customer_id;
 
-      const attributes = buildCustomerAttributes(profile, {
-        tutorSubjects: subjectsByTutor.get(profile.id) ?? null,
-      });
+      const attributes = buildCustomerAttributes(profile, { appUrl: APP_URL });
       const hash = hashAttributes(attributes);
 
       // Dry run reports the gate verdict too, so you can see who the allowlist
@@ -224,7 +197,7 @@ async function main(): Promise<void> {
 
       if (!gate.allowed) {
         stats.skipped += 1;
-        console.log(`  skip ${profile.email ?? profile.id} (${gate.reason})`);
+        console.log(`  skip ${profile.email ?? profile.customer_id} (${gate.reason})`);
         continue;
       }
 
@@ -238,7 +211,7 @@ async function main(): Promise<void> {
         const { data: state } = await supabase
           .from('customerio_sync_state')
           .select('attributes_hash')
-          .eq('user_id', profile.id)
+          .eq('user_id', profile.customer_id)
           .maybeSingle();
 
         if (state?.attributes_hash === hash) {
@@ -247,7 +220,7 @@ async function main(): Promise<void> {
         }
       }
 
-      const result = await identify(profile.id, attributes);
+      const result = await identify(profile.customer_id, attributes);
       const now = new Date().toISOString();
 
       if (result.ok) {
@@ -256,8 +229,11 @@ async function main(): Promise<void> {
         // re-sending everything on its next pass.
         await supabase.from('customerio_sync_state').upsert(
           {
-            user_id: profile.id,
-            synced_updated_at: profile.updated_at ?? now,
+            user_id: profile.customer_id,
+            // The activation watermark, matching what the reconciler stores —
+            // writing profiles.updated_at here would leave every backfilled
+            // row looking stale to customerio_pending_profiles().
+            synced_updated_at: profile.activation_updated_at ?? profile.updated_at ?? now,
             attributes_hash: hash,
             synced_at: now,
             last_attempt_at: now,

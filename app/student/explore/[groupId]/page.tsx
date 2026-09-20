@@ -40,13 +40,15 @@ export default function ExploreClassDetailPage() {
   // profile.id, and firing while it is still null used to silently skip it.
   useEffect(() => {
     if (!groupId || profileLoading) return;
-    fetchGroup();
+    fetchGroup(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupId, profile?.id, profileLoading]);
 
-  async function fetchGroup() {
+  // `countAsView` is passed only by the mount effect. The reload after a
+  // successful join must not count as browsing a class you have just joined.
+  async function fetchGroup(countAsView = false) {
     try {
-      const mapped = await fetchClassDetail(groupId);
+      const mapped = await fetchClassDetail(groupId, { countAsView });
       if (!mapped) { setLoading(false); return; }
       setGroup(mapped);
 

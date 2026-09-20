@@ -30,6 +30,20 @@ export const PRODUCT_EVENTS = {
   RETAINED_30D: 'retained_30d',
   DEMAND_RECORDED: 'demand_recorded',
   NOTIFY_ME_CLICKED: 'notify_me_clicked',
+
+  /**
+   * Activation events, added for the Customer.io onboarding ladders.
+   *
+   * There is deliberately no `class_published` and no `account_created`.
+   * "Created but not published" is `classes_created_count > 0 AND
+   * published_classes_count = 0` — an attribute check, which is what the
+   * campaign's "re-check the target action before sending" rule wants anyway;
+   * and account creation is already `signup_completed` above. Two fewer names
+   * in a taxonomy whose whole point is that names are expensive.
+   */
+  CLASS_VIEWED: 'class_viewed',
+  CLASS_CREATED: 'class_created',
+  CLASS_JOINED: 'class_joined',
 } as const;
 
 export type ProductEvent = (typeof PRODUCT_EVENTS)[keyof typeof PRODUCT_EVENTS];
@@ -48,6 +62,22 @@ export type MatchClass = 'exact' | 'near' | 'fallback' | 'none';
 
 /** Outcome of resolving a /r/[code] link. */
 export type RefResolution = 'resolved' | 'unresolved' | 'unvalidated' | 'invalid';
+
+/**
+ * Which path produced a seat. The platform has two membership tables and
+ * several write paths into them; without this, `class_joined` cannot tell a
+ * student who chose a class from one a tutor added, and the two deserve
+ * different follow-ups.
+ */
+export type SeatSource =
+  | 'free_join'
+  | 'tutor_approval'
+  | 'tutor_invite'
+  | 'parent_approval'
+  | 'parent_enrol'
+  | 'subscription'
+  | 'secure_spot'
+  | 'cash';
 
 /**
  * Required props per event, per the plan §2.4 table. Typed so a caller cannot
@@ -75,12 +105,47 @@ export interface EventProps {
   [PRODUCT_EVENTS.RETAINED_30D]: { group_id: string };
   [PRODUCT_EVENTS.DEMAND_RECORDED]: { subject: string; level: string };
   [PRODUCT_EVENTS.NOTIFY_ME_CLICKED]: { demand_id: string };
+
+  [PRODUCT_EVENTS.CLASS_VIEWED]: {
+    group_id: string;
+    tutor_id: string | null;
+    subject: string | null;
+  };
+  [PRODUCT_EVENTS.CLASS_CREATED]: {
+    group_id: string;
+    subject: string | null;
+    pricing_model: string | null;
+    status: string | null;
+  };
+  [PRODUCT_EVENTS.CLASS_JOINED]: {
+    group_id: string;
+    tutor_id: string | null;
+    subject: string | null;
+    /**
+     * 'pending' means the seat is awaiting tutor approval, which is NOT an
+     * activation — and `classes_joined_count` in customerio_profiles_v1
+     * excludes it for the same reason. Emitted rather than dropped because
+     * "requested, still waiting" is its own campaign, aimed at the tutor.
+     */
+    membership: 'enrolled' | 'pending';
+    seat_source: SeatSource;
+    is_paid: boolean;
+    /** Set when a parent's action created a child's seat. */
+    on_behalf_of?: string;
+  };
 }
 
 /**
  * Events a browser is allowed to emit through /api/events. Server-authoritative
  * events — paid, retained_30d — are deliberately excluded: they are money and
  * retention facts and must not be assertable by a client.
+ *
+ * None of the three activation events is here. class_created and class_joined
+ * are money-and-roster facts for the same reason as `paid`. class_viewed looks
+ * like a browser event and is not: it is emitted server-side from
+ * GET /api/groups/[groupId], where the group_id can be checked against a real
+ * class and the 30-minute dedupe bucket is minted out of reach of the caller.
+ * A client-supplied bucket would let one tab reset it at will.
  */
 export const CLIENT_EMITTABLE: ReadonlySet<string> = new Set<string>([
   PRODUCT_EVENTS.FINDER_PROMPTED,

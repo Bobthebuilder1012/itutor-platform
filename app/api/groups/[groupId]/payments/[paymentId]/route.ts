@@ -20,6 +20,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { calculateCommissionForTutor } from '@/lib/utils/commissionCalculator';
+import { trackForUser } from '@/lib/analytics/track';
+import { PRODUCT_EVENTS } from '@/lib/analytics/events';
+import { syncProfileNow } from '@/lib/customerio/sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -115,6 +118,32 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         // The money is recorded; failing the request now would invite the tutor
         // to record it twice. Logged for repair instead.
         console.error('[payments] enrolment activation failed:', enrolErr.message);
+      } else if (p.student_id) {
+        // This is where an in-person student actually joins: the cash-hold
+        // route only ever created a PENDING_PAYMENT row, so until the tutor
+        // confirms the money the seat is not real. The path emitted nothing at
+        // all before — not even `paid` — so a cash student stayed invisible to
+        // every campaign and would have been nagged to join a class they were
+        // already sitting in. trackForUser: the cookies are the tutor's.
+        const amountTtd = Number((p as any).amount_ttd) || 0;
+        await trackForUser(
+          PRODUCT_EVENTS.PAID,
+          { group_id: groupId, amount: amountTtd },
+          { userId: p.student_id, dedupeKey: `cash:${paymentId}` }
+        );
+        await trackForUser(
+          PRODUCT_EVENTS.CLASS_JOINED,
+          {
+            group_id: groupId,
+            tutor_id: user.id,
+            subject: null,
+            membership: 'enrolled',
+            seat_source: 'cash',
+            is_paid: true,
+          },
+          { userId: p.student_id, dedupeKey: `join:${groupId}:${p.student_id}` }
+        );
+        await syncProfileNow(p.student_id);
       }
     }
 

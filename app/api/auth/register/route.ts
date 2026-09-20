@@ -42,6 +42,11 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { username, email, country, password, role, verificationCode } = body;
+
+    // Only an explicit `false` withholds consent. An absent field is treated
+    // as consent so a cached older build of the signup form keeps working, and
+    // the ticked box it does not know about is the default state anyway.
+    const marketingConsent = body.marketingConsent !== false;
     const name: string = (typeof body.name === 'string' && body.name.trim().length >= 2)
       ? body.name.trim()
       : username;
@@ -131,6 +136,14 @@ export async function POST(req: Request) {
         country,
         terms_accepted: true,
         terms_accepted_at: new Date().toISOString(),
+        // Consent is recorded per signup rather than inherited from the column
+        // default, so marketing_consent_source can tell an explicit answer
+        // apart from the one-off backfill of existing accounts (migration 257).
+        // Absent from the body means consent: the signup form ships the box
+        // ticked, and an older client that posts nothing behaves as before.
+        marketing_consent: marketingConsent,
+        marketing_consent_at: new Date().toISOString(),
+        marketing_consent_source: 'signup_form',
         first_touch: attribution,
         last_touch: attribution,
         signup_ref: attribution?.ref ?? null,

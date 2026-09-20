@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { resolveGroupActor, auditAdminOverride } from '@/lib/auth/groupAccess';
+import { trackForUser } from '@/lib/analytics/track';
+import { PRODUCT_EVENTS } from '@/lib/analytics/events';
+import { syncProfileNow } from '@/lib/customerio/sync';
 
 type Params = { params: Promise<{ groupId: string }> };
 
@@ -19,7 +22,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     const service = getServiceClient();
 
     // Verify caller is the tutor of this group (or superadmin acting as tutor)
-    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email, columns: 'max_students' });
+    const actor = await resolveGroupActor({ groupId, userId: user.id, email: user.email, columns: 'max_students, subject' });
     const group = actor.group;
     if (actor.notFound || group.archived_at) return NextResponse.json({ error: 'Class not found' }, { status: 404 });
     if (!actor.authorized) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -88,6 +91,25 @@ export async function POST(request: NextRequest, { params }: Params) {
       if (error) throw error;
       member = inserted;
     }
+
+    // A tutor adding a student writes an approved seat with no student action,
+    // so it is a join and must stop the "you haven't joined a class yet"
+    // ladder. trackForUser rather than track: the cookies on this request are
+    // the TUTOR's, and track() would attribute the student's activation to
+    // whatever campaign brought the tutor to the site.
+    await trackForUser(
+      PRODUCT_EVENTS.CLASS_JOINED,
+      {
+        group_id: groupId,
+        tutor_id: (group as any).tutor_id ?? null,
+        subject: (group as any).subject ?? null,
+        membership: 'enrolled',
+        seat_source: 'tutor_invite',
+        is_paid: false,
+      },
+      { userId: studentId, dedupeKey: `join:${groupId}:${studentId}` }
+    );
+    await syncProfileNow(studentId);
 
     // Notify the student (non-critical)
     try {

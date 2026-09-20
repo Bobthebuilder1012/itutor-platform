@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { track } from '@/lib/analytics/track';
+import { PRODUCT_EVENTS } from '@/lib/analytics/events';
+import { syncProfileNow } from '@/lib/customerio/sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +22,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
     // Load class
     const { data: group, error: groupError } = await supabase
       .from('groups')
-      .select('id, tutor_id, require_join_requests, archived_at, visibility, max_students')
+      .select('id, tutor_id, subject, require_join_requests, archived_at, visibility, max_students')
       .eq('id', classId)
       .maybeSingle();
 
@@ -61,6 +64,26 @@ export async function POST(_req: NextRequest, { params }: Params) {
       if (error) throw error;
       member = inserted;
     }
+
+    // This route is a second, independent join implementation: it writes the
+    // 'active' / 'pending_approval' vocabulary rather than the
+    // 'approved' / 'pending' one performGroupJoin uses, and it does not call
+    // that function. It therefore needs its own emit — and the dedupe key,
+    // which is the same shape as the one performGroupJoin passes, is what
+    // keeps the two from both counting the same seat.
+    await track(
+      PRODUCT_EVENTS.CLASS_JOINED,
+      {
+        group_id: classId,
+        tutor_id: group.tutor_id ?? null,
+        subject: (group as any).subject ?? null,
+        membership: memberStatus === 'active' ? 'enrolled' : 'pending',
+        seat_source: 'free_join',
+        is_paid: false,
+      },
+      { userId: user.id, dedupeKey: `join:${classId}:${user.id}` }
+    );
+    if (memberStatus === 'active') await syncProfileNow(user.id);
 
     // Always notify tutor — request vs instant join use different types
     const service = getServiceClient();
