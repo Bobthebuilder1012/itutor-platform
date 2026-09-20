@@ -28,6 +28,7 @@ import {
 } from '@/lib/server/classRequestNotify';
 import { notifyInApp } from '@/lib/server/bookingRequestNotify';
 import { classifyMembership } from '@/lib/services/groupMembership';
+import { fulfilClassInvite } from '@/lib/classInvites/fulfil';
 import { hasAnyPrice } from '@/lib/payments/groupPricing';
 
 export type ClassRequestRow = {
@@ -251,6 +252,13 @@ export async function performGroupJoin(
 
   const row = existing as { id: string; status: string } | null;
   if (row && classifyMembership(row.status)) {
+    // Already on the roster, but an invitation may still be open against this
+    // person — the teacher may have added them directly after emailing one.
+    // Fulfilment is idempotent and checks enrolment itself, so this is safe.
+    await fulfilClassInvite(admin, {
+      studentId: params.studentId,
+      groupId: params.groupId,
+    });
     return {
       ok: true,
       status: classifyMembership(row.status) === 'pending' ? 'pending' : 'approved',
@@ -308,6 +316,16 @@ export async function performGroupJoin(
       console.error('[classJoinRequests] tutor email failed:', e);
     }
   }
+
+  // THE PRIMARY FULFILMENT HOOK for teacher activation. This is the shared
+  // writer every approved request and direct join passes through, so closing
+  // the invitation here covers all of them at once. It no-ops when no
+  // invitation is open, and when the tutor's own gate left this 'pending' it
+  // correctly declines to count them yet.
+  await fulfilClassInvite(admin, {
+    studentId: params.studentId,
+    groupId: params.groupId,
+  });
 
   return { ok: true, status, alreadyMember: false };
 }

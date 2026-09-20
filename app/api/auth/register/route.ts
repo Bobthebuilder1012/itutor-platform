@@ -4,6 +4,7 @@ import { createHash } from 'crypto';
 import { isParentAccountsEnabled, PARENT_ACCOUNTS_DISABLED_MESSAGE } from '@/lib/featureFlags/parentAccounts';
 import { getRequestAttribution, track } from '@/lib/analytics/track';
 import { PRODUCT_EVENTS } from '@/lib/analytics/events';
+import { adoptClassInviteFromCookie } from '@/lib/classInvites/adoptFromCookie';
 
 export const dynamic = 'force-dynamic';
 
@@ -144,6 +145,15 @@ export async function POST(req: Request) {
 
     // Clean up verification code
     await supabase.from('verification_codes').delete().eq('id', codeRow.id);
+
+    // Adopt any class invitation this browser is carrying, now that a profile
+    // exists for it to attach to. Never throws: a failed adoption costs a
+    // teacher their attribution, not this person their registration.
+    //
+    // Ordered BEFORE the signup event on purpose. Adoption may write
+    // profiles.signup_ref, and the event should carry the settled attribution
+    // rather than a pre-adoption one.
+    await adoptClassInviteFromCookie(authData.user.id);
 
     // First event in the funnel that carries a user_id. track() swallows its
     // own failures, so this cannot fail a registration.
