@@ -42,7 +42,6 @@ export interface InPersonDraft {
   maxStudentsPhysical: number | null;
   priceOnlineTtd: number | null;
   pricePhysicalTtd: number | null;
-  acceptsCash: boolean;
 }
 
 const FORMATS: Array<{ value: ClassFormat; label: string; detail: string }> = [
@@ -208,10 +207,7 @@ export default function InPersonSection({
                 if (f.value !== 'online' && venues.length === 0) setAddingVenue(true);
                 onChange({
                   classFormat: f.value,
-                  // Online classes cannot take cash — there is no room to hand
-                  // it over in. Cleared here so the save is never refused for a
-                  // flag the tutor cannot see any more.
-                  ...(f.value === 'online' ? { acceptsCash: false, venueId: null } : {}),
+                  ...(f.value === 'online' ? { venueId: null } : {}),
                 });
               }}
               className={`flex w-full items-start gap-3 rounded-xl border px-4 py-3 text-left transition ${
@@ -319,22 +315,6 @@ export default function InPersonSection({
               </div>
             </div>
           ) : null}
-
-          <label className="flex items-start gap-2.5 pt-1">
-            <input
-              type="checkbox"
-              checked={draft.acceptsCash}
-              onChange={e => onChange({ acceptsCash: e.target.checked })}
-              className="mt-0.5 size-4 rounded border-border text-brand focus:ring-brand"
-            />
-            <span className="min-w-0">
-              <span className="block text-sm font-medium">Accept cash at the venue</span>
-              <span className="mt-0.5 block text-xs text-muted-foreground">
-                Students can pay you in person instead of online. You collect and
-                record it yourself — iTutor does not process or track it.
-              </span>
-            </span>
-          </label>
         </div>
       ) : null}
 

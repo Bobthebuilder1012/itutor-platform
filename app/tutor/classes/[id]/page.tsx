@@ -6,7 +6,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft, Users, UserPlus, Copy, Check, Star, MapPin,
   Bell, X, Plus, ExternalLink, Trash2, Globe, Eye,
-  Banknote, ListChecks, Video, MoreVertical, Pin, Sparkles, Link as LinkIcon, Paperclip, UploadCloud, AlertTriangle, ShieldAlert,
+  ListChecks, Video, MoreVertical, Pin, Sparkles, Link as LinkIcon, Paperclip, UploadCloud, AlertTriangle, ShieldAlert,
   Mail, MessageSquare, DollarSign, BarChart3, ArrowUp, ArrowDown, Lock,
   Calendar as CalendarIcon, BookOpen, Ban, Repeat, Clock, Info, ArrowUpRight, ChevronRight,
   RefreshCw,
@@ -77,8 +77,6 @@ type GroupMember = {
   outstandingTtd?: number;
   /** What they bought. Everything before 242 was online. */
   seatType: 'online' | 'physical';
-  /** How they pay. 'cash' means the tutor collects it and records it. */
-  paymentMethod: 'card' | 'cash';
   email?: string | null;
   subscription?: Subscriber | null;
 };
@@ -144,7 +142,6 @@ type GroupDetail = {
   maxStudentsPhysical: number | null;
   priceOnlineTtd: number | null;
   pricePhysicalTtd: number | null;
-  acceptsCash: boolean;
   pricePerSession: number | null;
   memberServiceFee: number;
   billingModel: 'per-session' | 'per-month' | 'prepaid';
@@ -307,7 +304,6 @@ function ClassHubContent() {
           maxStudentsPhysical: g.max_students_physical ?? null,
           priceOnlineTtd: g.price_online_ttd ?? null,
           pricePhysicalTtd: g.price_physical_ttd ?? null,
-          acceptsCash: g.accepts_cash === true,
           pricePerSession: billingModel === 'per-month'
             ? (g.price_monthly ?? g.price_per_session ?? null)
             : (g.price_per_session ?? null),
@@ -378,7 +374,6 @@ function ClassHubContent() {
           status: m.status ?? 'active',
           joinedAt: m.joined_at ?? null,
           seatType: sub?.seat_type === 'physical' ? 'physical' : 'online',
-          paymentMethod: sub?.billing_provider === 'cash' ? 'cash' : 'card',
           email: m.profile?.email ?? null,
           subscription: sub,
           outstandingTtd: sub?.plan_price_ttd ?? 0,
@@ -1559,9 +1554,9 @@ function RosterTab({ members, setMembers, group, isOneOnOne, atCapacity, onRefre
   const [inviteOk, setInviteOk] = useState('');
   const inviteUrl = typeof window !== 'undefined' ? `${window.location.origin}/classes/${group.id}` : '';
 
-  // The Seat column earns its place only when the class can actually differ
-  // by seat or by payment method.
-  const showSeat = group.classFormat !== 'online' || group.acceptsCash;
+  // The Seat column earns its place only when the class can actually meet in
+  // more than one place.
+  const showSeat = group.classFormat !== 'online';
 
   const updateMember = (sid: string, patch: Partial<GroupMember>) =>
     setMembers((ms) => ms.map((m) => m.studentId === sid ? { ...m, ...patch } : m));
@@ -1597,7 +1592,6 @@ function RosterTab({ members, setMembers, group, isOneOnOne, atCapacity, onRefre
             // kind that is the answer; where it offers both this is a
             // placeholder the next roster fetch replaces with their choice.
             seatType: group.classFormat === 'physical' ? 'physical' : 'online',
-            paymentMethod: 'card',
             joinedAt: json.member.joined_at ?? new Date().toISOString(),
           };
           return [...ms, newMember];
@@ -2126,14 +2120,6 @@ function RosterRow({ m, groupId, onUpdate, onRemoved, externalChannels, showSeat
                 {m.seatType === 'physical' ? <MapPin className="size-3" /> : <Video className="size-3" />}
                 {m.seatType === 'physical' ? 'In person' : 'Online'}
               </span>
-              {/* Cash is worth naming on the roster: it is the one payment
-                  the platform never sees, so the tutor is the only record
-                  that it happened. */}
-              {m.paymentMethod === 'cash' && (
-                <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border bg-amber-50 text-amber-800 border-amber-200">
-                  <Banknote className="size-3" /> Cash
-                </span>
-              )}
             </div>
           </td>
         )}
@@ -2418,7 +2404,6 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
           max_students_physical: draft.maxStudentsPhysical,
           price_online_ttd: draft.priceOnlineTtd,
           price_physical_ttd: draft.pricePhysicalTtd,
-          accepts_cash: draft.classFormat === 'online' ? false : draft.acceptsCash,
         }),
       });
       const basicJson = await basicRes.json().catch(() => ({}));
@@ -2668,7 +2653,6 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
                     maxStudentsPhysical: draft.maxStudentsPhysical,
                     priceOnlineTtd: draft.priceOnlineTtd,
                     pricePhysicalTtd: draft.pricePhysicalTtd,
-                    acceptsCash: draft.acceptsCash,
                   }}
                   onChange={(patch: Partial<InPersonDraft>) =>
                     setDraft((prev) => ({ ...prev, ...patch }))

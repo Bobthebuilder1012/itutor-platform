@@ -8,12 +8,6 @@
  * "Paid" and "Waived" chips against real students' names. That is worse than an
  * empty screen, so nothing about the old shape is preserved for continuity.
  *
- * ── HELD SEATS SIT ABOVE THE GRID ──────────────────────────────────────────
- * An unpaid cash hold occupies a scarce physical seat. As one purple cell in a
- * wall of cells it would be missed, and the cost of missing it is a room that
- * looks full while nobody has paid. So they are their own block, at the top,
- * with the two actions that settle them.
- *
  * ── THE GRID SCROLLS, THE NAME COLUMN DOES NOT ─────────────────────────────
  * Six months of columns will not fit a phone. The student column is sticky, so
  * a tutor scrolling to March never loses track of whose row they are reading —
@@ -22,8 +16,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Banknote,
-  Check,
   CreditCard,
   Loader2,
   MoreHorizontal,
@@ -36,7 +28,7 @@ interface Cell {
   month: string;
   state: CellState;
   amount: number | null;
-  method: 'card' | 'cash' | null;
+  method: 'card' | null;
   id: string | null;
 }
 
@@ -50,23 +42,12 @@ interface StudentRow {
   cells: Cell[];
 }
 
-interface HeldSeat {
-  enrollment_id: string;
-  payment_id: string;
-  student_id: string;
-  name: string;
-  seat_type: 'online' | 'physical';
-  amount: number;
-  days_held: number;
-}
-
 interface GridData {
   months: string[];
   students: StudentRow[];
-  heldSeats: HeldSeat[];
   summary: {
-    collected: { card: number; cash: number };
-    outstanding: { card: number; cash: number };
+    collected: number;
+    outstanding: number;
     graceDays: number;
   } | null;
 }
@@ -120,7 +101,7 @@ export default function PaymentsGrid({ groupId }: { groupId: string }) {
 
   const act = async (
     paymentId: string,
-    action: 'record_cash' | 'waive' | 'void',
+    action: 'waive' | 'void',
     reason?: string
   ) => {
     setBusyId(paymentId);
@@ -133,9 +114,7 @@ export default function PaymentsGrid({ groupId }: { groupId: string }) {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        // The server's sentence, not a generic one: the refusals here ("only
-        // cash can be recorded by hand", "already recorded") are both things
-        // the tutor needs to read rather than retry past.
+        // The server's sentence, not a generic one.
         setError(json?.error || 'That did not save.');
         return;
       }
@@ -150,12 +129,7 @@ export default function PaymentsGrid({ groupId }: { groupId: string }) {
 
   const totals = useMemo(() => {
     if (!data?.summary) return null;
-    const { collected, outstanding } = data.summary;
-    return {
-      collected: collected.card + collected.cash,
-      outstanding: outstanding.card + outstanding.cash,
-      cashCollected: collected.cash,
-    };
+    return data.summary;
   }, [data]);
 
   if (loading) {
@@ -186,11 +160,6 @@ export default function PaymentsGrid({ groupId }: { groupId: string }) {
         {totals ? (
           <div className="rounded-xl border border-border bg-card px-4 py-2 text-sm">
             <span className="font-bold text-emerald-700">Collected {ttd(totals.collected)}</span>
-            {totals.cashCollected > 0 ? (
-              <span className="ml-1.5 text-xs text-muted-foreground">
-                ({ttd(totals.cashCollected)} cash)
-              </span>
-            ) : null}
             <span className="mx-2 text-muted-foreground">vs</span>
             <span
               className={
@@ -209,68 +178,6 @@ export default function PaymentsGrid({ groupId }: { groupId: string }) {
         <p className="flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
           <TriangleAlert className="h-4 w-4 shrink-0" /> {error}
         </p>
-      ) : null}
-
-      {/* Held seats — above the grid, deliberately. See the header. */}
-      {data.heldSeats.length > 0 ? (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
-          <h3 className="flex items-center gap-1.5 text-sm font-bold text-amber-900">
-            <Banknote className="h-4 w-4" />
-            {data.heldSeats.length} seat{data.heldSeats.length === 1 ? '' : 's'} held for cash
-          </h3>
-          <p className="mt-0.5 text-xs text-amber-800">
-            These places are taken but not paid for. Record the cash when you receive it, or
-            release the seat.
-          </p>
-          <ul className="mt-3 space-y-2">
-            {data.heldSeats.map((h) => (
-              <li
-                key={h.enrollment_id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-white px-3 py-2.5"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-ink">{h.name}</p>
-                  <p className="text-[12px] text-muted-foreground">
-                    {h.seat_type === 'physical' ? 'In-person seat' : 'Online seat'} ·{' '}
-                    {ttd(h.amount)} · held{' '}
-                    {h.days_held === 0
-                      ? 'today'
-                      : `${h.days_held} day${h.days_held === 1 ? '' : 's'}`}
-                  </p>
-                </div>
-                <div className="flex shrink-0 gap-2">
-                  <button
-                    type="button"
-                    disabled={busyId === h.payment_id}
-                    onClick={() => act(h.payment_id, 'record_cash')}
-                    className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg bg-brand px-3 text-sm font-semibold text-white transition hover:bg-brand-deep disabled:opacity-60"
-                  >
-                    {busyId === h.payment_id ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Check className="h-3.5 w-3.5" />
-                    )}
-                    Cash received
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busyId === h.payment_id}
-                    onClick={() => {
-                      // Confirmed, because it takes the seat back off someone
-                      // who believes they have a place in the class.
-                      if (!window.confirm(`Release ${h.name}'s seat? They will lose their place.`))
-                        return;
-                      void act(h.payment_id, 'void', 'Seat released — cash never received');
-                    }}
-                    className="min-h-[38px] rounded-lg border border-border px-3 text-sm font-semibold text-muted-foreground transition hover:border-rose-300 hover:text-rose-700 disabled:opacity-60"
-                  >
-                    Release
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
       ) : null}
 
       {data.students.length === 0 ? (
@@ -330,11 +237,7 @@ export default function PaymentsGrid({ groupId }: { groupId: string }) {
                             }`}
                             title={c.amount ? ttd(c.amount) : undefined}
                           >
-                            {c.method === 'cash' ? (
-                              <Banknote className="h-3 w-3" />
-                            ) : c.method === 'card' ? (
-                              <CreditCard className="h-3 w-3" />
-                            ) : null}
+                            {c.method === 'card' ? <CreditCard className="h-3 w-3" /> : null}
                             {look.label}
                             {actionable ? <MoreHorizontal className="h-3 w-3 opacity-50" /> : null}
                           </button>
@@ -342,16 +245,6 @@ export default function PaymentsGrid({ groupId }: { groupId: string }) {
 
                         {openCell === key && c.id ? (
                           <div className="absolute left-1/2 z-20 mt-1 w-48 -translate-x-1/2 rounded-xl border border-border bg-white p-1.5 text-left shadow-lg">
-                            {c.state !== 'paid' && c.state !== 'paid_late' && c.method === 'cash' ? (
-                              <button
-                                type="button"
-                                disabled={busyId === c.id}
-                                onClick={() => act(c.id as string, 'record_cash')}
-                                className="block w-full rounded-lg px-2.5 py-2 text-sm font-medium text-ink hover:bg-muted/60"
-                              >
-                                Cash received
-                              </button>
-                            ) : null}
                             <button
                               type="button"
                               disabled={busyId === c.id}

@@ -371,10 +371,6 @@ export async function GET(req: NextRequest) {
 
   // ─── TASK 5: Enter grace period ──────────────────────────────────
   try {
-    // `billing_provider` decides what the student is TOLD to do. A cash
-    // student has no card on file and no checkout to return to — pointing them
-    // at /pay is an instruction they cannot follow, and the money is meant to
-    // reach the tutor by hand.
     const { data: overdue } = await admin
       .from('group_enrollments')
       .select('id, student_id, group_id, grace_period_days_snapshot, billing_provider')
@@ -401,7 +397,6 @@ export async function GET(req: NextRequest) {
         groupId: string;
         groupName: string;
         studentId: string;
-        isCash: boolean;
         graceEnd: string;
       }>>();
 
@@ -416,17 +411,12 @@ export async function GET(req: NextRequest) {
         }).eq('id', e.id);
 
         const { data: group } = await admin.from('groups').select('name, tutor_id').eq('id', e.group_id).single();
-        const isCash = (e as any).billing_provider === 'cash';
         await admin.from('notifications').insert([{
           user_id: e.student_id,
           type: 'subscription_grace_started',
           title: 'Payment overdue',
-          message: isCash
-            ? `Your place in "${group?.name}" is overdue. Pay your tutor within ${graceDays} days to keep it.`
-            : `Your subscription to "${group?.name}" is overdue. You have ${graceDays} days to renew before access is suspended.`,
-          // A cash student is sent to the class, not to a checkout they cannot
-          // complete. Their tutor is the payment method.
-          link: isCash ? `/student/classes/${e.group_id}` : `/student/subscriptions/${e.id}/pay`,
+          message: `Your subscription to "${group?.name}" is overdue. You have ${graceDays} days to renew before access is suspended.`,
+          link: `/student/subscriptions/${e.id}/pay`,
           group_id: e.group_id,
         }]);
 
@@ -437,7 +427,6 @@ export async function GET(req: NextRequest) {
             groupId: e.group_id,
             groupName: group?.name ?? 'your class',
             studentId: e.student_id,
-            isCash,
             graceEnd,
           });
           tutorOverdue.set(group.tutor_id, bucket);
@@ -448,9 +437,7 @@ export async function GET(req: NextRequest) {
       // ── One email per tutor, naming who is behind ────────────────────────
       //
       // A tutor cannot act on "a student's subscription is overdue". They can
-      // act on a list of names, and on a class they can go and open. Cash rows
-      // are marked, because those are the ones the tutor themselves has to
-      // collect and record — nothing else in the system will settle them.
+      // act on a list of names, and on a class they can go and open.
       //
       // Non-fatal throughout: the enrolments have already been moved to GRACE,
       // and failing the task now would re-run task 5 against rows that are no
@@ -472,7 +459,6 @@ export async function GET(req: NextRequest) {
             return prof?.display_name || prof?.full_name || 'A student';
           };
 
-          const cashCount = rows.filter((r) => r.isCash).length;
           const groups = [...new Set(rows.map((r) => r.groupName))];
 
           await admin.from('notifications').insert({
@@ -503,20 +489,9 @@ export async function GET(req: NextRequest) {
                   kind: 'details',
                   rows: rows.map((r) => ({
                     label: nameOf(r.studentId),
-                    value: r.isCash
-                      ? `${r.groupName} · pay you in cash`
-                      : r.groupName,
+                    value: r.groupName,
                   })),
                 },
-                ...(cashCount > 0
-                  ? [{
-                      kind: 'paragraph' as const,
-                      text:
-                        cashCount === 1
-                          ? 'One of these is a cash place. Once you have the money, record it on the class Payments screen — nothing else will mark it paid.'
-                          : `${cashCount} of these are cash places. Once you have the money, record each one on the class Payments screen — nothing else will mark them paid.`,
-                    }]
-                  : []),
                 {
                   kind: 'paragraph' as const,
                   text: 'They keep access during the grace period. After that their place is suspended automatically.',
@@ -575,15 +550,8 @@ export async function GET(req: NextRequest) {
           user_id: e.student_id,
           type: 'subscription_suspended',
           title: 'Subscription suspended',
-          message: (e as any).billing_provider === 'cash'
-            ? `Your place in "${group?.name}" has been suspended. Speak to your tutor to settle it and get back in.`
-            : `Your subscription to "${group?.name}" has been suspended due to non-payment.`,
-          // Same reason as the grace notice: a cash student has no checkout to
-          // return to, and sending them to one is a dead end at the moment they
-          // most need a way back.
-          link: (e as any).billing_provider === 'cash'
-            ? `/student/classes/${e.group_id}`
-            : `/student/subscriptions/${e.id}/pay`,
+          message: `Your subscription to "${group?.name}" has been suspended due to non-payment.`,
+          link: `/student/subscriptions/${e.id}/pay`,
           group_id: e.group_id,
         }];
         if (group?.tutor_id) {

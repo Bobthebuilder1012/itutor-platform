@@ -1,15 +1,8 @@
 // PATCH /api/groups/[groupId]/payments/[paymentId] — the row actions.
 //
-// §7: record cash, waive, void. Suspension is deliberately NOT here — it reuses
-// the existing group_members machinery and its confirmation copy, and forking
-// that into a second implementation is how two suspensions start behaving
-// differently.
-//
-// ── ONLY CASH CAN BE RECORDED BY HAND ──────────────────────────────────────
-// A card payment's witness is the gateway. Letting a tutor mark a card row PAID
-// would let them assert money that never moved, and nothing downstream could
-// tell the difference. So `record_cash` refuses anything whose payment_method
-// is not cash.
+// §7: waive, void. Suspension is deliberately NOT here — it reuses the existing
+// group_members machinery and its confirmation copy, and forking that into a
+// second implementation is how two suspensions start behaving differently.
 //
 // ── VOID HAS NO TIME LIMIT, BY DESIGN ──────────────────────────────────────
 // The spec is explicit that voiding is tutor-managed and the audit trail is the
@@ -19,13 +12,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
-import { calculateCommissionForTutor } from '@/lib/utils/commissionCalculator';
 
 export const dynamic = 'force-dynamic';
 
 type Params = { params: Promise<{ groupId: string; paymentId: string }> };
 
-const ACTIONS = ['record_cash', 'waive', 'void'] as const;
+const ACTIONS = ['waive', 'void'] as const;
 type Action = (typeof ACTIONS)[number];
 
 export async function PATCH(req: NextRequest, { params }: Params) {
@@ -83,75 +75,6 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const now = new Date().toISOString();
   const reason = typeof body.reason === 'string' ? body.reason.trim().slice(0, 500) : null;
 
-  if (action === 'record_cash') {
-    if ((p.payment_method ?? 'card') !== 'cash') {
-      return NextResponse.json(
-        { error: 'Only a cash payment can be recorded by hand.' },
-        { status: 400 }
-      );
-    }
-    if (p.status === 'PAID') {
-      return NextResponse.json({ error: 'Already recorded.' }, { status: 409 });
-    }
-
-    const { error } = await admin
-      .from('subscription_payments')
-      .update({ status: 'PAID', paid_at: now, recorded_by: user.id })
-      .eq('id', paymentId);
-    if (error) {
-      console.error('[payments] record cash failed:', error.message);
-      return NextResponse.json({ error: 'could_not_save' }, { status: 500 });
-    }
-
-    // Activate the seat the hold was keeping. A cash hold sits in
-    // PENDING_PAYMENT with no expiry, so nothing else would ever move it.
-    if (p.enrollment_id) {
-      const { error: enrolErr } = await admin
-        .from('group_enrollments')
-        .update({ status: 'ACTIVE', payment_status: 'PAID' })
-        .eq('id', p.enrollment_id)
-        .eq('status', 'PENDING_PAYMENT');
-      if (enrolErr) {
-        // The money is recorded; failing the request now would invite the tutor
-        // to record it twice. Logged for repair instead.
-        console.error('[payments] enrolment activation failed:', enrolErr.message);
-      }
-    }
-
-    // The platform never saw this money, so it could not withhold its
-    // share. Written as a debt against the tutor's next payout — see
-    // migration 249 for why this is tutor_deductions and not a new table.
-    //
-    // Non-fatal on purpose: the cash HAS been handed over, and failing the
-    // request now would invite the tutor to record it a second time. The
-    // partial unique index in 249 is what makes that retry safe, and this
-    // log is what makes a missing debt findable.
-    try {
-      const amount = Number((p as any).amount_ttd) || 0;
-      if (amount > 0) {
-        const { platformFee } = await calculateCommissionForTutor(admin, user.id, amount);
-        if (platformFee > 0) {
-          const { error: debtErr } = await admin.from('tutor_deductions').insert({
-            tutor_id: user.id,
-            amount_ttd: platformFee,
-            reason: 'cash_commission',
-            source_enrollment_id: p.enrollment_id ?? null,
-            source_subscription_payment_id: paymentId,
-            status: 'pending',
-          });
-          // 23505 = the one-per-payment index caught a retry. Not an error.
-          if (debtErr && String(debtErr.code) !== '23505') {
-            console.error('[payments] cash commission debt failed:', debtErr.message);
-          }
-        }
-      }
-    } catch (debtErr) {
-      console.error('[payments] cash commission debt threw:', debtErr);
-    }
-
-    return NextResponse.json({ ok: true, status: 'PAID' });
-  }
-
   if (action === 'waive') {
     const { error } = await admin
       .from('subscription_payments')
@@ -195,18 +118,6 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       .eq('id', p.enrollment_id)
       .eq('status', 'PENDING_PAYMENT');
   }
-
-  // Voiding says the money did not really arrive. A cash commission debt
-  // raised against it must go with it, or the tutor is left owing the
-  // platform a share of a payment the platform has just been told never
-  // happened. Waived rather than deleted: the row is the only evidence the
-  // debt was ever raised, and an admin reviewing a disputed void needs it.
-  await admin
-    .from('tutor_deductions')
-    .update({ status: 'waived', resolved_at: now })
-    .eq('source_subscription_payment_id', paymentId)
-    .eq('reason', 'cash_commission')
-    .eq('status', 'pending');
 
   return NextResponse.json({ ok: true, voided: true });
 }

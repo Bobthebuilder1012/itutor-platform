@@ -54,7 +54,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     // on the last tier records.
     const IN_PERSON_COLUMNS =
       'class_format, venue_id, venue_visibility, max_students_online, max_students_physical, ' +
-      'price_online_ttd, price_physical_ttd, accepts_cash, ' +
+      'price_online_ttd, price_physical_ttd, ' +
       'venue:venues(id, name, region_id, address_line, access_instructions, arrival_notes, region:regions(id, name))';
 
     const WIDEST_BASE = `
@@ -773,17 +773,6 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           );
         }
         updates[field] = field.startsWith('max_') ? Math.trunc(n) : n;
-      }
-
-      if ((body as any).accepts_cash !== undefined) {
-        const cash = Boolean((body as any).accepts_cash);
-        if (cash && effectiveFormat === 'online') {
-          return NextResponse.json(
-            { error: 'Cash can only be accepted for a class that meets in person.' },
-            { status: 400 }
-          );
-        }
-        updates.accepts_cash = cash;
       }
     }
 

@@ -88,7 +88,6 @@ export interface Group {
   max_students_physical?: number | null;
   price_online_ttd?: number | null;
   price_physical_ttd?: number | null;
-  accepts_cash?: boolean;
   id: string;
   name: string;
   description: string | null;

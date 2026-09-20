@@ -60,7 +60,6 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
     maxStudentsPhysical: null,
     priceOnlineTtd: null,
     pricePhysicalTtd: null,
-    acceptsCash: false,
   });
 
   // Schedule state
@@ -192,7 +191,6 @@ export default function CreateGroupModal({ onCreated, onClose }: CreateGroupModa
         max_students_physical: inPerson.maxStudentsPhysical,
         price_online_ttd: inPerson.priceOnlineTtd,
         price_physical_ttd: inPerson.pricePhysicalTtd,
-        accepts_cash: inPerson.classFormat === 'online' ? false : inPerson.acceptsCash,
       };
       // Widening payload to Record<string, unknown> for the in-person fields
       // costs the narrow type here, so the cover image is read back explicitly.

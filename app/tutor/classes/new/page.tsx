@@ -75,7 +75,6 @@ function CreateClassContent() {
     maxStudentsPhysical: null,
     priceOnlineTtd: null,
     pricePhysicalTtd: null,
-    acceptsCash: false,
   });
 
   /**
@@ -195,8 +194,6 @@ function CreateClassContent() {
           max_students_physical: type === 'group' ? inPerson.maxStudentsPhysical : null,
           price_online_ttd: type === 'group' ? inPerson.priceOnlineTtd : null,
           price_physical_ttd: type === 'group' ? inPerson.pricePhysicalTtd : null,
-          accepts_cash:
-            type === 'group' && inPerson.classFormat !== 'online' ? inPerson.acceptsCash : false,
         }),
       });
       if (res.ok) {

@@ -11,12 +11,6 @@
 // arithmetic lib/utils/paymentCycles.ts already does elsewhere, so the grid and
 // the dunning logic cannot disagree about who is late.
 //
-// ── HELD SEATS ARE SEPARATED OUT ───────────────────────────────────────────
-// An unpaid CASH hold occupies a scarce physical seat, so it is returned apart
-// from the grid rather than as another purple cell. A cell in a wall of cells
-// is exactly where that would be missed, and the cost of missing it is a room
-// that looks full while nobody has paid.
-//
 // ── ATTENDANCE TRAVELS WITH PAYMENT ────────────────────────────────────────
 // Each row carries recent attendance, because the decision the grid exists to
 // support — keep this student or remove them — rests on both together. A
@@ -118,7 +112,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   ).filter(Boolean);
 
   if (studentIds.length === 0) {
-    return NextResponse.json({ months, students: [], heldSeats: [], summary: null });
+    return NextResponse.json({ months, students: [], summary: null });
   }
 
   const [{ data: profiles }, { data: attendance }] = await Promise.all([
@@ -216,54 +210,17 @@ export async function GET(_req: NextRequest, { params }: Params) {
     })
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  // Held seats, surfaced ABOVE the grid rather than inside it.
-  const heldSeats = ((enrolments ?? []) as any[])
-    .filter((e) => e.status === 'PENDING_PAYMENT')
-    .map((e) => {
-      const held = payments.find(
-        (p) => p.enrollment_id === e.id && p.status === 'PENDING' && (p.payment_method ?? 'card') === 'cash'
-      );
-      if (!held) return null;
-      const days = Math.floor((Date.now() - new Date(e.created_at).getTime()) / 86_400_000);
-      const prof = ((profiles ?? []) as any[]).find((p) => p.id === e.student_id);
-      return {
-        enrollment_id: e.id,
-        payment_id: held.id,
-        student_id: e.student_id,
-        name: prof?.display_name || prof?.full_name || 'Student',
-        seat_type: e.seat_type === 'physical' ? 'physical' : 'online',
-        amount: held.amount_ttd,
-        days_held: days,
-      };
-    })
-    .filter(Boolean);
-
   const collected = payments
     .filter((p) => p.status === 'PAID' && !p.voided_at && !p.waived_at)
-    .reduce(
-      (acc, p) => {
-        const m = (p.payment_method ?? 'card') as 'card' | 'cash';
-        acc[m] += Number(p.amount_ttd) || 0;
-        return acc;
-      },
-      { card: 0, cash: 0 }
-    );
+    .reduce((sum, p) => sum + (Number(p.amount_ttd) || 0), 0);
 
   const outstanding = payments
     .filter((p) => p.status !== 'PAID' && !p.voided_at && !p.waived_at)
-    .reduce(
-      (acc, p) => {
-        const m = (p.payment_method ?? 'card') as 'card' | 'cash';
-        acc[m] += Number(p.amount_ttd) || 0;
-        return acc;
-      },
-      { card: 0, cash: 0 }
-    );
+    .reduce((sum, p) => sum + (Number(p.amount_ttd) || 0), 0);
 
   return NextResponse.json({
     months,
     students,
-    heldSeats,
     summary: { collected, outstanding, graceDays },
   });
 }

@@ -699,7 +699,9 @@ export async function POST(request: NextRequest) {
       max_students_physical: numOrNull((rawBody as any).max_students_physical),
       price_online_ttd: numOrNull((rawBody as any).price_online_ttd),
       price_physical_ttd: numOrNull((rawBody as any).price_physical_ttd),
-      accepts_cash: classFormat !== 'online' && Boolean((rawBody as any).accepts_cash),
+      // Cash is no longer a payment option — every class is billed online
+      // regardless of which seat a student buys, so this is never set true.
+      accepts_cash: false,
     };
 
     let { data: group, error } = await service
