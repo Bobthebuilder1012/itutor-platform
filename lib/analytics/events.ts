@@ -36,6 +36,26 @@ export const PRODUCT_EVENTS = {
    * everyone simply copies the link.
    */
   CLASS_SHARED: 'class_shared',
+
+  /**
+   * The teacher activation funnel. Four events for one journey because the
+   * gaps between them are the product question: sent → opened says whether the
+   * email lands, opened → accepted whether signup is the wall, and accepted →
+   * joined whether the class itself is.
+   *
+   * teacher_invite_joined is the TDR numerator. It is emitted from the server
+   * only, for the same reason `paid` is: a browser must not be able to assert
+   * that a teacher earned a student.
+   */
+  TEACHER_INVITE_SENT: 'teacher_invite_sent',
+  TEACHER_INVITE_OPENED: 'teacher_invite_opened',
+  TEACHER_INVITE_ACCEPTED: 'teacher_invite_accepted',
+  TEACHER_INVITE_JOINED: 'teacher_invite_joined',
+  TEACHER_INVITE_FAILED: 'teacher_invite_failed',
+
+  /** The 14-day launch goal was shown, and reached. */
+  LAUNCH_GOAL_VIEWED: 'launch_goal_viewed',
+  LAUNCH_GOAL_MET: 'launch_goal_met',
 } as const;
 
 export type ProductEvent = (typeof PRODUCT_EVENTS)[keyof typeof PRODUCT_EVENTS];
@@ -59,6 +79,24 @@ export type ShareChannel =
 
 /** Outcome of resolving a /r/[code] link. */
 export type RefResolution = 'resolved' | 'unresolved' | 'unvalidated' | 'invalid';
+
+/** Who a teacher addressed an invitation to, as the teacher described them. */
+export type InviteeKind = 'student' | 'parent' | 'unknown';
+
+/** How an invitation was created. */
+export type InviteSource = 'single' | 'csv' | 'link' | 'direct_add';
+
+/**
+ * Why an invitation needs the teacher's attention. 'stale' is the honest
+ * stand-in for a bounce until delivery webhooks exist: an address with no
+ * engagement after a week is where bounces actually live.
+ */
+export type InviteFailureReason =
+  | 'invalid_email' | 'send_failed' | 'suppressed' | 'duplicate'
+  | 'self_invite' | 'stale' | 'parent_declined';
+
+/** Which route carried a student over the line into a class. */
+export type JoinRoute = 'student' | 'parent' | 'link' | 'direct_add';
 
 /**
  * Required props per event, per the plan §2.4 table. Typed so a caller cannot
@@ -87,6 +125,46 @@ export interface EventProps {
   [PRODUCT_EVENTS.DEMAND_RECORDED]: { subject: string; level: string };
   [PRODUCT_EVENTS.NOTIFY_ME_CLICKED]: { demand_id: string };
   [PRODUCT_EVENTS.CLASS_SHARED]: { group_id: string; channel: ShareChannel };
+
+  [PRODUCT_EVENTS.TEACHER_INVITE_SENT]: {
+    invite_id: string;
+    group_id: string | null;
+    kind: InviteeKind;
+    source: InviteSource;
+    /** Rows in the same send. 1 for a single invite; the file size for a CSV. */
+    batch_size: number;
+  };
+  [PRODUCT_EVENTS.TEACHER_INVITE_OPENED]: {
+    invite_id: string | null;
+    group_id: string | null;
+  };
+  [PRODUCT_EVENTS.TEACHER_INVITE_ACCEPTED]: {
+    invite_id: string;
+    tutor_id: string;
+    role: string;
+  };
+  [PRODUCT_EVENTS.TEACHER_INVITE_JOINED]: {
+    invite_id: string;
+    tutor_id: string;
+    group_id: string | null;
+    student_id: string;
+    via: JoinRoute;
+    /** Sent-to-joined latency. The number that says how long the funnel takes. */
+    days_since_sent: number;
+  };
+  [PRODUCT_EVENTS.TEACHER_INVITE_FAILED]: {
+    invite_id: string;
+    reason: InviteFailureReason;
+  };
+  [PRODUCT_EVENTS.LAUNCH_GOAL_VIEWED]: {
+    joined: number;
+    target: number;
+    days_left: number;
+  };
+  [PRODUCT_EVENTS.LAUNCH_GOAL_MET]: {
+    joined: number;
+    days_to_goal: number;
+  };
 }
 
 /**
@@ -103,6 +181,12 @@ export const CLIENT_EMITTABLE: ReadonlySet<string> = new Set<string>([
   PRODUCT_EVENTS.ENROLMENT_STARTED,
   PRODUCT_EVENTS.NOTIFY_ME_CLICKED,
   PRODUCT_EVENTS.CLASS_SHARED,
+  // The banner reporting that it rendered is the one thing in the teacher
+  // activation set a browser may assert. Everything else in that funnel —
+  // sent, opened, accepted, joined, failed, goal met — is server-emitted,
+  // because teacher_invite_joined IS the TDR numerator and the rest are the
+  // trail that explains it.
+  PRODUCT_EVENTS.LAUNCH_GOAL_VIEWED,
 ]);
 
 export const ALL_EVENT_NAMES: ReadonlySet<string> = new Set<string>(

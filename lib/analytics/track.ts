@@ -87,3 +87,59 @@ export async function track<E extends ProductEvent>(
     console.error(`[analytics] threw while writing ${event}:`, err);
   }
 }
+
+/**
+ * Write one product event for a known user, from OUTSIDE a request scope.
+ *
+ * track() reads attribution from cookies. A cron sweep, a payment webhook or a
+ * background reconciler has no cookie jar — getRequestAttribution() catches the
+ * throw and returns nulls, so track() still writes, but it writes an event with
+ * no attribution at all. For a funnel event that is the difference between
+ * "this student came from a teacher invitation" and a blank.
+ *
+ * So this reads the attribution the account already carries. first_touch is
+ * preferred over last_touch for the same reason track() prefers it: credit goes
+ * to what brought someone here, not to wherever they happened to be last.
+ *
+ * NOT IDEMPOTENT. There is no dedupe index on product_events on this branch, so
+ * callers must not rely on one. Every caller here is instead guarded at the row
+ * that causes the event — fulfilClassInvite only emits inside an UPDATE that
+ * matched `status <> 'joined'`, so a replayed cron run writes nothing and
+ * therefore emits nothing.
+ */
+export async function trackForUser<E extends ProductEvent>(
+  event: E,
+  props: E extends keyof EventProps ? EventProps[E] : Record<string, unknown>,
+  userId: string
+): Promise<void> {
+  try {
+    const service = getServiceClient();
+
+    let attribution: Attribution | null = null;
+    const { data: profile } = await service
+      .from('profiles')
+      .select('first_touch, last_touch')
+      .eq('id', userId)
+      .maybeSingle();
+    if (profile) {
+      attribution =
+        (profile.first_touch as Attribution | null) ??
+        (profile.last_touch as Attribution | null) ??
+        null;
+    }
+
+    const { error } = await service.from('product_events').insert({
+      user_id: userId,
+      anon_id: null,
+      event,
+      props: props ?? {},
+      attribution,
+    });
+
+    if (error) {
+      console.error(`[analytics] failed to write ${event}:`, error.message);
+    }
+  } catch (err) {
+    console.error(`[analytics] threw while writing ${event}:`, err);
+  }
+}
