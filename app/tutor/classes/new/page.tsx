@@ -322,44 +322,42 @@ function CreateClassContent() {
             </Field>
           </Card>
 
-          {type === 'group' && physicalClasses && (
+          {type === 'group' && (
             <Card title="Where does this meet?">
-              <p className="-mt-2 text-xs text-muted-foreground">
-                You can change this later. Everyone gets a meeting link either way —
-                an in-person student can still join online when they need to.
-              </p>
-              <InPersonSection
-                draft={inPerson}
-                onChange={(patch: Partial<InPersonDraft>) =>
-                  setInPerson((prev) => ({ ...prev, ...patch }))
-                }
-                // A class being created has nobody in it yet, so there is no
-                // seat floor to respect.
-                enrolledOnline={0}
-                enrolledPhysical={0}
-              />
+              {physicalClasses ? (
+                <>
+                  <p className="-mt-2 text-xs text-muted-foreground">
+                    You can change this later. Everyone gets a meeting link either way —
+                    an in-person student can still join online when they need to.
+                  </p>
+                  <InPersonSection
+                    draft={inPerson}
+                    onChange={(patch: Partial<InPersonDraft>) =>
+                      setInPerson((prev) => ({ ...prev, ...patch }))
+                    }
+                    // A class being created has nobody in it yet, so there is no
+                    // seat floor to respect.
+                    enrolledOnline={0}
+                    enrolledPhysical={0}
+                  />
+                </>
+              ) : (
+                // In-person classes are off here, so there is only one place
+                // this class can meet — the format picker and seat split in
+                // InPersonSection would offer choices the API refuses anyway.
+                <Field label="Student limit" hint="Min 2 · Max 500. Everyone joins online.">
+                  <div className="inline-flex items-center gap-2">
+                    <button onClick={() => setStudentLimit(Math.max(2, studentLimit - 1))} className="size-9 grid place-items-center rounded-lg border border-border hover:bg-muted text-lg font-semibold">−</button>
+                    <input type="number" value={studentLimit} onChange={(e) => setStudentLimit(Math.max(2, Math.min(500, Number(e.target.value))))}
+                      className="w-20 text-center px-3 py-2 rounded-lg border border-border bg-background text-sm" />
+                    <button onClick={() => setStudentLimit(Math.min(500, studentLimit + 1))} className="size-9 grid place-items-center rounded-lg border border-border hover:bg-muted text-lg font-semibold">+</button>
+                  </div>
+                </Field>
+              )}
             </Card>
           )}
 
-          <Card title="Capacity & pricing">
-            {/* Asked HERE only when the format card is hidden. With physical
-                classes on, the limit is asked once per seat type up in "Where
-                does this meet?" and the class total is the TALLY of those —
-                groups.max_students is a trigger-maintained sum of the seat
-                caps, so a second field here would compete with a derived
-                number, and on an online-only class it asked the same question
-                twice. With the feature off there are no seat fields, so this
-                is the only place left to ask. */}
-            {type === 'group' && !physicalClasses && (
-              <Field label="Student limit" hint="Min 2 · Max 500.">
-                <div className="inline-flex items-center gap-2">
-                  <button onClick={() => setStudentLimit(Math.max(2, studentLimit - 1))} className="size-9 grid place-items-center rounded-lg border border-border hover:bg-muted text-lg font-semibold">−</button>
-                  <input type="number" value={studentLimit} onChange={(e) => setStudentLimit(Math.max(2, Math.min(500, Number(e.target.value))))}
-                    className="w-20 text-center px-3 py-2 rounded-lg border border-border bg-background text-sm" />
-                  <button onClick={() => setStudentLimit(Math.min(500, studentLimit + 1))} className="size-9 grid place-items-center rounded-lg border border-border hover:bg-muted text-lg font-semibold">+</button>
-                </div>
-              </Field>
-            )}
+          <Card title="Billing">
             <div className="grid grid-cols-2 gap-3">
               <Field label="Monthly price (TTD)">
                 <div className="relative">
