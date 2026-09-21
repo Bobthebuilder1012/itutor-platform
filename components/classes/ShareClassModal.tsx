@@ -121,8 +121,37 @@ export default function ShareClassModal({
   onMakePublic?: () => void;
   onClose: () => void;
 }) {
-  const url = useMemo(() => classShareUrl(classInfo.id), [classInfo.id]);
+  // The plain class URL is the floor, not the goal. A tokenised invite link
+  // names its sender and records the acceptance; if minting fails for any
+  // reason the sheet still works, because a share sheet that cannot share
+  // because an API call failed is worse than one that shares an anonymous
+  // link.
+  const fallbackUrl = useMemo(() => classShareUrl(classInfo.id), [classInfo.id]);
+  const [url, setUrl] = useState(fallbackUrl);
   const [message, setMessage] = useState(() => classInviteMessage(classInfo));
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/classes/${classInfo.id}/invites`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+        if (!res.ok) return;
+        const json = await res.json();
+        if (cancelled || typeof json?.url !== 'string') return;
+        setUrl(json.url);
+        // Swap the link inside the invitation the tutor may already be
+        // editing, without discarding their edit.
+        setMessage((m) => m.split(fallbackUrl).join(json.url));
+      } catch {
+        // Keep the fallback. See above.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [classInfo.id, fallbackUrl]);
   const [copied, setCopied] = useState<'link' | 'invite' | null>(null);
   const [canNativeShare, setCanNativeShare] = useState(false);
 
@@ -150,47 +179,57 @@ export default function ShareClassModal({
 
   const nativeShare = async () => {
     try {
-      await navigator.share({ title: classInfo.title, text: message, url });
+      await navigator.share({
+        title: classInfo.title,
+        text: message.split(url).join(withSource('native')),
+        url: withSource('native'),
+      });
       track('native');
     } catch {
       // Includes AbortError when the sheet is dismissed. Not a failure.
     }
   };
 
-  const text = encodeURIComponent(message);
-  const encodedUrl = encodeURIComponent(url);
+  // ?s= records which button actually produced the student, at redemption.
+  // One link serves every channel, so the source cannot be baked into it.
+  const withSource = (channel: ShareChannel) =>
+    url === fallbackUrl ? url : `${url}?s=${channel}`;
+  const textFor = (channel: ShareChannel) =>
+    encodeURIComponent(message.split(url).join(withSource(channel)));
+
+  const urlFor = (channel: ShareChannel) => encodeURIComponent(withSource(channel));
 
   const targets: Target[] = [
     {
       channel: 'whatsapp', label: 'WhatsApp',
-      href: `https://wa.me/?text=${text}`,
+      href: `https://wa.me/?text=${textFor('whatsapp')}`,
       icon: <WhatsAppGlyph className="size-5" />, tint: 'text-[#25D366]',
     },
     {
       // Facebook's sharer takes a URL and nothing else — it drops prefilled
       // text by policy. What lands there is the Open Graph unfurl.
       channel: 'facebook', label: 'Facebook',
-      href: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`,
+      href: `https://www.facebook.com/sharer/sharer.php?u=${urlFor('facebook')}`,
       icon: <FacebookGlyph className="size-5" />, tint: 'text-[#1877F2]',
     },
     {
       channel: 'x', label: 'X',
-      href: `https://twitter.com/intent/tweet?text=${text}`,
+      href: `https://twitter.com/intent/tweet?text=${textFor('x')}`,
       icon: <XGlyph className="size-4" />, tint: 'text-ink',
     },
     {
       channel: 'telegram', label: 'Telegram',
-      href: `https://t.me/share/url?url=${encodedUrl}&text=${text}`,
+      href: `https://t.me/share/url?url=${urlFor('telegram')}&text=${textFor('telegram')}`,
       icon: <TelegramGlyph className="size-5" />, tint: 'text-[#26A5E4]',
     },
     {
       channel: 'sms', label: 'Messages',
-      href: `sms:?&body=${text}`,
+      href: `sms:?&body=${textFor('sms')}`,
       icon: <MessageSquare className="size-5" />, tint: 'text-emerald-600',
     },
     {
       channel: 'email', label: 'Email',
-      href: `mailto:?subject=${encodeURIComponent(classInviteSubject(classInfo))}&body=${text}`,
+      href: `mailto:?subject=${encodeURIComponent(classInviteSubject(classInfo))}&body=${textFor('email')}`,
       icon: <Mail className="size-5" />, tint: 'text-amber-600',
     },
   ];
@@ -256,7 +295,7 @@ export default function ShareClassModal({
       />
       <div className="mt-1.5 flex justify-end">
         <button
-          onClick={() => copy(message, 'invite')}
+          onClick={() => copy(message.split(url).join(withSource('copy_invite')), 'invite')}
           className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground hover:text-ink transition"
         >
           {copied === 'invite' ? <Check className="size-3" /> : <Copy className="size-3" />}
@@ -298,7 +337,7 @@ export default function ShareClassModal({
           <Link2 className="size-3.5 shrink-0 text-muted-foreground" />
           <span className="flex-1 truncate font-mono text-xs text-muted-foreground">{url}</span>
           <button
-            onClick={() => copy(url, 'link')}
+            onClick={() => copy(withSource('copy_link'), 'link')}
             className={cn(
               'shrink-0 inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition',
               copied === 'link' ? 'bg-brand/10 text-brand' : 'bg-ink text-white hover:bg-ink/90',

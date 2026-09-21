@@ -36,6 +36,11 @@ export const PRODUCT_EVENTS = {
    * everyone simply copies the link.
    */
   CLASS_SHARED: 'class_shared',
+  /**
+   * Someone accepted a class invitation. Server-emitted only: it asserts a
+   * seat was granted, so it is deliberately absent from CLIENT_EMITTABLE.
+   */
+  CLASS_INVITE_ACCEPTED: 'class_invite_accepted',
 } as const;
 
 export type ProductEvent = (typeof PRODUCT_EVENTS)[keyof typeof PRODUCT_EVENTS];
@@ -87,6 +92,11 @@ export interface EventProps {
   [PRODUCT_EVENTS.DEMAND_RECORDED]: { subject: string; level: string };
   [PRODUCT_EVENTS.NOTIFY_ME_CLICKED]: { demand_id: string };
   [PRODUCT_EVENTS.CLASS_SHARED]: { group_id: string; channel: ShareChannel };
+  [PRODUCT_EVENTS.CLASS_INVITE_ACCEPTED]: {
+    group_id: string;
+    outcome: 'joined' | 'requested' | 'pending_payment';
+    source: string | null;
+  };
 }
 
 /**
