@@ -1,184 +1,274 @@
 -- =====================================================
--- CUSTOMER.IO DATA WAREHOUSE SYNC (Reverse ETL)
+-- CUSTOMER.IO DATA WAREHOUSE SYNC (Reverse ETL) — v2, view-backed
 -- =====================================================
 -- For Customer.io's "Data Warehouse Sync" source, where Customer.io connects to
--- Postgres and runs this query on a schedule. NOT the same thing as
--- customerio-export-profiles.sql (a one-off CSV export) or the Track API push
--- in lib/customerio/ — see the note at the bottom about which to use.
+-- Postgres and runs this query on a schedule. Paste into CUSTOMER.IO's query
+-- editor, not the Supabase SQL editor.
 --
--- Required columns for this source type: userId, timestamp. `email` is a known
--- column. Anything else lands in the traits object automatically, but is
--- prefixed explicitly below so the attribute name in Customer.io is obvious
--- from reading the query.
+-- WHAT CHANGED FROM v1
+-- v1 selected ~13 basic columns straight from public.profiles, which is what a
+-- Customer.io workspace running it ends up with. It could not carry any
+-- activation attribute — classes_created_count, published_classes_count,
+-- profile_complete, the child block, the class_has_* booleans — because none of
+-- those live on the profiles row. They are computed across groups,
+-- group_members, group_enrollments, parent_child_links and product_events.
+--
+-- Migration 259 put all of that behind one relation, public.customerio_profiles_v1,
+-- guaranteed to return exactly one row per profile. This query is that view,
+-- flattened into Customer.io's column contract. Every attribute the three
+-- activation ladders branch on is now present.
+--
+-- ---------------------------------------------------------------------------
+-- THE WATERMARK IS activation_updated_at, NOT updated_at.
+-- ---------------------------------------------------------------------------
+-- This is the one line not to "simplify". profiles.updated_at only moves when
+-- the profile ROW is written. Every activation counter changes when a GROUP or
+-- an ENROLMENT changes, which never touches that row — so a tutor who publishes
+-- their first class would never re-sync, and a "publish your class" email would
+-- go to someone who already had. activation_updated_at is the greatest of the
+-- profile's own timestamp and the last change to anything else Customer.io
+-- syncs for them.
 --
 -- ---------------------------------------------------------------------------
 -- POSTGRES GOTCHA: every camelCase alias MUST be double-quoted.
 -- ---------------------------------------------------------------------------
--- Postgres folds unquoted identifiers to lower case, so the documented example
--- `id AS userId` actually produces a column named `userid`, and Customer.io's
--- required-column check does not find userId. Verified against this database:
--- unquoted `AS userId` came back as `userid`.
+-- Postgres folds unquoted identifiers to lower case, so `id AS userId` produces
+-- `userid` and Customer.io's required-column check does not find userId.
 --
--- Paste this into CUSTOMER.IO's query editor, not the Supabase SQL editor.
 -- `{{last_sync_time}}` is a Customer.io placeholder, not SQL — Supabase will
--- reject it with a syntax error. To test the query in Supabase, temporarily
--- swap that line for a literal, e.g. `p.updated_at > '2026-01-01'::timestamptz`.
+-- reject it with a syntax error. To test in Supabase, swap that line for
+-- `> EXTRACT(EPOCH FROM '2026-01-01'::timestamptz)`.
 --
--- Verified against staging 2026-08-26: quoted "userId" comes back with its
--- capital intact, and all required + recommended checklist fields are present.
+-- Permissions: Customer.io connects as `postgres`, which can read the view.
+-- Verified on production 2026-09-21 — `postgres`, `supabase_admin`,
+-- `supabase_etl_admin` and `supabase_read_only_user` all have SELECT on it.
+-- anon and authenticated deliberately have none (it carries emails and phones).
 
 SELECT
     -- The identifier. MUST be the Supabase UUID, and must match what the app
-    -- sends at runtime (lib/customerio/client.ts identifies by p.id). A
+    -- sends at runtime (lib/customerio/client.ts identifies by the same id). A
     -- different identifier here creates a second profile per user rather than
     -- updating the one the app already made.
-    p.id                                        AS "userId",
+    v.customer_id                               AS "userId",
 
-    -- Known column, not a trait.
-    p.email                                     AS "email",
+    -- Known column, not a trait. Already lower-cased by the view.
+    v.email                                     AS "email",
 
-    p.full_name                                 AS "traits.full_name",
-    COALESCE(NULLIF(TRIM(p.display_name), ''),
-             SPLIT_PART(TRIM(p.full_name), ' ', 1))
-                                                AS "traits.first_name",
-    p.role                                      AS "traits.role",
-    p.country                                   AS "traits.country",
-    p.region                                    AS "traits.region",
-    p.school                                    AS "traits.school",
-    p.form_level                                AS "traits.grade_level",
-    p.subjects_of_study                         AS "traits.subjects",
-    p.tutor_verification_status                 AS "traits.tutor_verification_status",
+    -- ---- identity ---------------------------------------------------
+    v.full_name                                 AS "traits.full_name",
+    v.first_name                                AS "traits.first_name",
+    v.username                                  AS "traits.username",
+    v.phone_number                              AS "traits.phone",
 
-    -- billing_mode comes from migration 224 and I could not confirm it is on
-    -- prod. Run the column probe below; if it lists billing_mode, uncomment:
-    --   p.billing_mode                         AS "traits.billing_mode",
-    -- Worth having — a child on parent_required cannot buy anything, so a
-    -- "complete your purchase" campaign needs to exclude them.
+    -- ---- role. May be NULL, and may be 'admin'. Neither belongs in any
+    -- of the three ladders, so segment on it explicitly rather than
+    -- relying on a catch-all branch.
+    v.account_type                              AS "traits.role",
 
-    COALESCE(p.is_suspended, FALSE)             AS "traits.is_suspended",
+    -- ---- who they are -----------------------------------------------
+    v.country                                   AS "traits.country",
+    v.region                                    AS "traits.region",
+    v.school                                    AS "traits.school",
+    v.education_level                           AS "traits.grade_level",
+    v.subjects_of_study                         AS "traits.subjects_of_study",
+    v.tutor_subject_names                       AS "traits.tutor_subjects",
+    v.primary_subject                           AS "traits.primary_subject",
+    v.teaching_levels                           AS "traits.teaching_levels",
+    v.tutor_type                                AS "traits.tutor_type",
+    v.teaching_mode                             AS "traits.teaching_mode",
+    v.tutor_verification_status                 AS "traits.tutor_verification_status",
+    v.rating_average                            AS "traits.rating_average",
+    v.rating_count                              AS "traits.rating_count",
 
-    -- signup_ref / first_touch / last_touch are NOT selected here.
-    -- Migration 238 adds them, and 238 is applied to the staging branch but not
-    -- to production — which is the database this source connects to. Selecting
-    -- signup_ref there fails the whole query with 42703. Add these back once
-    -- 238 has been applied to prod:
-    --   p.signup_ref                           AS "traits.signup_ref",
-    --   p.first_touch->>'utm_source'           AS "traits.utm_source",
-    --   p.first_touch->>'utm_campaign'         AS "traits.utm_campaign",
+    -- A child on parent_required billing cannot buy anything themselves, so a
+    -- "complete your purchase" campaign must be able to exclude them. Safe to
+    -- select now: the view resolves it, and migration 224 is on production.
+    v.billing_mode                              AS "traits.billing_mode",
 
+    -- Sent as attributes rather than withheld, so a campaign can exclude them
+    -- by segment. Withholding the row would make an unsuspension invisible.
+    v.is_suspended                              AS "traits.is_suspended",
+    v.is_dev_account                            AS "traits.is_dev_account",
+
+    -- ---- attribution ------------------------------------------------
+    v.signup_ref                                AS "traits.signup_ref",
+    v.first_touch ->> 'utm_source'              AS "traits.utm_source",
+    v.first_touch ->> 'utm_campaign'            AS "traits.utm_campaign",
+
+    -- ---- ACTIVATION: what every ladder's "send only if" test reads ---
+    -- Counters are sent as real numbers including zero, never withheld. A step
+    -- conditioned on classes_created_count = 0 has to match a tutor who has
+    -- none, and an archived last class has to be able to take the count back
+    -- DOWN to zero rather than leaving a stale value standing.
+    v.profile_complete                          AS "traits.profile_complete",
+    v.classes_joined_count                      AS "traits.classes_joined_count",
+    v.classes_created_count                     AS "traits.classes_created_count",
+    v.published_classes_count                   AS "traits.published_classes_count",
+
+    -- Tutor's first class, published ranked above draft.
+    v.first_class_id                            AS "traits.first_class_id",
+    v.first_class_name                          AS "traits.first_class_name",
+    -- URL built here rather than in the view: the database does not know
+    -- NEXT_PUBLIC_APP_URL, and this query only ever runs against production, so
+    -- the origin is unambiguous. /student/explore/<id> is the canonical class
+    -- page; /classes/<id> only redirects to it.
+    CASE WHEN v.first_class_id IS NOT NULL
+         THEN 'https://myitutor.com/student/explore/' || v.first_class_id::text
+    END                                         AS "traits.first_class_url",
+    v.class_has_schedule                        AS "traits.class_has_schedule",
+    -- groups.start_date does not exist and its absence is deliberate
+    -- (migration 204). This reflects group_sessions.starts_on.
+    v.class_has_start_date                      AS "traits.class_has_start_date",
+    v.class_has_banner                          AS "traits.class_has_banner",
+    v.class_first_session_at                    AS "traits.class_first_session_at",
+    v.class_next_session_at                     AS "traits.class_next_session_at",
+
+    -- Parent block. NULL where there is no child — deliberately not zero, or a
+    -- childless tutor reads as a parent whose child has joined nothing, which is
+    -- exactly the segment the Day-3 parent nudge targets.
+    v.child_id                                  AS "traits.child_id",
+    v.child_name                                AS "traits.child_name",
+    v.child_level                               AS "traits.child_level",
+    v.child_primary_subject                     AS "traits.child_primary_subject",
+    v.child_classes_joined_count                AS "traits.child_classes_joined_count",
+    -- So a two-child parent is not addressed as though they had one.
+    v.children_count                            AS "traits.children_count",
+
+    -- Last class viewed. Populates only from the moment class_viewed shipped
+    -- (2026-09-21) — it cannot be backfilled, nothing recorded views before.
+    v.last_viewed_class_id                      AS "traits.last_viewed_class_id",
+    v.last_viewed_class_name                    AS "traits.last_viewed_class_name",
+    CASE WHEN v.last_viewed_class_id IS NOT NULL
+         THEN 'https://myitutor.com/student/explore/' || v.last_viewed_class_id::text
+    END                                         AS "traits.last_viewed_class_url",
+    v.last_viewed_tutor_name                    AS "traits.last_viewed_tutor_name",
+    v.last_viewed_subject                       AS "traits.last_viewed_subject",
+    v.last_class_viewed_at                      AS "traits.last_class_viewed_at",
+
+    -- ---- consent ----------------------------------------------------
+    -- marketing_consent_source distinguishes a real answer from the one-off
+    -- backfill of accounts that predate the signup checkbox.
+    v.marketing_consent                         AS "traits.marketing_opt_in",
+    v.marketing_consent_source                  AS "traits.marketing_consent_source",
+    -- `unsubscribed` is a Customer.io RESERVED attribute: true stops every
+    -- campaign for that profile. Only ever set it true — sending false would
+    -- resurrect someone who unsubscribed via Customer.io's own footer link,
+    -- because this sync would overwrite their choice on the next run.
+    CASE WHEN v.marketing_consent IS FALSE THEN TRUE END
+                                                AS "traits.unsubscribed",
+
+    -- ---- required plumbing ------------------------------------------
     -- The record timestamp. The query checklist types this as a string, so it
-    -- is formatted as ISO 8601 rather than handed over as a Postgres
-    -- timestamptz (which renders as "2026-02-10 01:13:23.492574+00" — a space
-    -- instead of a T, and no guarantee it parses the same way at the far end).
-    TO_CHAR(p.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+    -- is formatted ISO 8601 rather than handed over as a timestamptz (which
+    -- renders with a space instead of a T and may not parse the same way).
+    TO_CHAR(v.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
                                                 AS "timestamp",
 
-    -- Recommended: an idempotency key, so a row re-sent by an overlapping or
-    -- re-run sync is recognised as the same change rather than applied twice.
-    -- Built from id + updated_at so it changes exactly when the profile does.
-    p.id::text || ':' || EXTRACT(EPOCH FROM p.updated_at)::bigint::text
+    -- Idempotency key, so a row re-sent by an overlapping or re-run sync is
+    -- recognised as the same change rather than applied twice. Built from the
+    -- ACTIVATION watermark, so it changes exactly when anything synced changes.
+    v.customer_id::text || ':' ||
+      EXTRACT(EPOCH FROM v.activation_updated_at)::bigint::text
                                                 AS "messageId"
 
-FROM public.profiles p
+FROM public.customerio_profiles_v1 v
 
--- Incremental watermark. updated_at is safe to rely on here: it is maintained
--- by the profiles_updated_at trigger (migration 001), so it advances on EVERY
--- write, from all ~32 places that touch this table. created_at would not work
--- in this clause — edits to existing profiles would never sync.
+-- Incremental watermark. See the note at the top: this MUST be
+-- activation_updated_at, not updated_at.
 --
 -- {{last_sync_time}} is a UNIX TIMESTAMP (an integer), not a timestamptz, so
--- the column has to be converted to epoch seconds to compare against it.
--- Comparing a timestamptz directly is what triggers Customer.io's "should be
--- compared to a Unix timestamp" warning.
---
--- If a sync ever gets slow, `p.updated_at > TO_TIMESTAMP({{last_sync_time}})`
--- is equivalent and leaves the column bare so an index on updated_at can be
--- used — but it reads as a timestamptz comparison to Customer.io's linter and
--- re-raises the warning.
-WHERE EXTRACT(EPOCH FROM p.updated_at) > {{last_sync_time}}
+-- the column is converted to epoch seconds to compare against it. Comparing a
+-- timestamptz directly is what triggers Customer.io's "should be compared to a
+-- Unix timestamp" warning.
+WHERE EXTRACT(EPOCH FROM v.activation_updated_at) > {{last_sync_time}}
 
-  -- Undeliverable addresses. Excluded because every hard bounce damages the
-  -- sending reputation of the whole domain. is_dev_account alone is NOT enough:
-  -- only 1 row on staging has it set, while 10 carry @demo.itutor.test seed
-  -- addresses that would all bounce.
-  AND p.email IS NOT NULL
-  AND TRIM(p.email) <> ''
-  AND COALESCE(p.is_dev_account, FALSE) = FALSE
-  AND p.email NOT ILIKE '%@demo.itutor.test'
-  AND p.email NOT ILIKE '%.test'
-  AND p.email NOT ILIKE '%@example.com';
+  -- Undeliverable addresses. Every hard bounce damages the sending reputation
+  -- of the whole domain. is_dev_account alone is not enough — seed accounts
+  -- carry .test addresses without the flag set.
+  AND v.email IS NOT NULL
+  AND TRIM(v.email) <> ''
+  AND v.is_dev_account = FALSE
+  AND v.email NOT ILIKE '%@demo.itutor.test'
+  AND v.email NOT ILIKE '%.test'
+  AND v.email NOT ILIKE '%@example.com';
 
 
 -- ===========================================================================
--- COLUMN PROBE — run this in Customer.io's editor first
+-- FIRST RUN: YOU MUST BACKFILL
 -- ===========================================================================
--- Customer.io connects to PRODUCTION, whose schema lags the staging branch, and
--- a single missing column fails the whole query with 42703. Rather than
--- discovering that one column at a time, run this to see exactly what exists on
--- the database Customer.io is actually querying:
+-- The WHERE clause above is incremental, so on a normal run it returns only
+-- profiles that changed since the last sync — which is why a freshly-saved
+-- query reports "0 rows processed" and no new attributes appear. Existing
+-- profiles are NOT picked up by an incremental run; their activation watermark
+-- is in the past.
 --
---   SELECT string_agg(column_name, ', ' ORDER BY column_name) AS available
---   FROM information_schema.columns
---   WHERE table_schema = 'public'
---     AND table_name = 'profiles'
---     AND column_name IN (
---       'billing_mode', 'signup_ref', 'first_touch', 'last_touch',
---       'notification_preferences', 'teaching_levels', 'tutor_type',
---       'teaching_mode', 'is_dev_account', 'subjects_of_study', 'region'
---     );
+-- Use Customer.io's own "Resync"/"Backfill" control on the sync if it offers
+-- one. If it does not, run the query ONCE with the watermark line replaced by:
 --
--- Whatever it lists is safe to select. Whatever it omits must stay commented
--- out until the relevant migration reaches prod.
+--   WHERE TRUE
 --
--- Known origins, so you can tell what a missing column implies:
---   tutor_verification_status  migration 024
---   is_suspended               migration 040
---   teaching_levels            migration 124
---   is_dev_account             migration 183
---   billing_mode               migration 224   <- uncertain on prod
---   notification_preferences   migration 226   <- unapplied even on staging
---   signup_ref / first_touch   migration 238   <- confirmed absent on prod
--- Everything else above is in the base schema (001) and is always present.
+-- ...then put the incremental clause back. One backfill run moves every
+-- eligible profile (426 on production as of 2026-09-21); after that the
+-- incremental clause keeps up on its own, and correctly, because
+-- activation_updated_at moves when a class or an enrolment changes and not
+-- only when the profile row is touched.
 
 
 -- ===========================================================================
--- WHICH MECHANISM TO USE
+-- EVENTS ARE A SEPARATE PIPE — this query cannot carry them
 -- ===========================================================================
--- This query and lib/customerio/ overlap. They are not both needed for
--- profiles:
+-- A person sync moves ATTRIBUTES. The four events the ladders trigger on
+-- (signup_completed, class_created, class_joined, class_viewed) reach
+-- Customer.io through the Track API, from lib/customerio/events.ts, at the
+-- moment they happen. Nothing in this file affects them.
 --
---   Data Warehouse Sync (this file)   — pull. Customer.io queries the DB on a
---     schedule. Replaces BOTH scripts/customerio-backfill.ts and
---     /api/cron/sync-customerio: the first sync backfills everyone, and the
---     {{last_sync_time}} clause handles the ongoing delta. Less code to own.
+-- Historical events do NOT backfill through the Track API: forwardEvent fires
+-- once, live, as the event occurs. product_events on production already holds
+-- real class_viewed and class_joined rows from before the credentials were
+-- live, and those will never appear in Customer.io.
 --
---   Track API push (lib/customerio/) — push. Needed for the things a scheduled
---     pull cannot do:
---       * events, in seconds rather than at the next sync (a welcome email that
---         arrives 15 minutes after signup is a different product)
---       * profile deletion on account close — a pull only ever adds and
---         updates, so a closed account would stay mailable
+-- So to populate the Data Index, either:
+--   (a) trigger fresh ones — view a class, join it, create a class — now that
+--       the Track API credentials are live; each forwards within the request; or
+--   (b) add a SECOND Data Warehouse Sync of type "event" over public.product_events,
+--       which would also carry the history. Sketch:
 --
--- So: if you adopt this file, set CUSTOMERIO_ENABLED=true but consider removing
--- the /api/cron/sync-customerio entry from vercel.json, and keep the event
--- forwarding in lib/analytics/track.ts and the delete hook in
--- app/api/delete-account/route.ts.
+--         SELECT pe.user_id                  AS "userId",
+--                pe.event                    AS "event",
+--                TO_CHAR(pe.created_at AT TIME ZONE 'UTC',
+--                        'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "timestamp",
+--                pe.id::text                 AS "messageId",
+--                pe.props ->> 'group_id'     AS "properties.group_id",
+--                pe.props ->> 'subject'      AS "properties.subject",
+--                pe.props ->> 'membership'   AS "properties.membership",
+--                pe.props ->> 'seat_source'  AS "properties.seat_source"
+--         FROM public.product_events pe
+--         WHERE pe.user_id IS NOT NULL
+--           AND pe.event IN ('signup_completed','class_created','class_joined','class_viewed')
+--           AND EXTRACT(EPOCH FROM pe.created_at) > {{last_sync_time}}
 --
+--       Anonymous rows are excluded: user_id is NULL on pre-signup events and
+--       Customer.io cannot key them to a person. If you add this, note that
+--       events would then arrive by BOTH routes — dedupe on "messageId", which
+--       is the product_events row id and stable.
+
+
 -- ===========================================================================
--- BEFORE THIS CAN RUN
+-- THIS QUERY AND lib/customerio/ BOTH SYNC ATTRIBUTES
 -- ===========================================================================
--- 1. Customer.io needs a direct Postgres connection. Check this reaches the
---    staging database at all: staging here is a Supabase BRANCH, and direct
---    connections to it have previously only been reachable over IPv6 with the
---    pooler refusing branch connections. If that still holds, this source can
---    only be pointed at production.
--- 2. Create a dedicated read-only role for it. Do not hand over the service
---    role key or the postgres superuser:
+-- They overlap, and that is now safe rather than a conflict: since migration
+-- 259 both read the SAME relation (customerio_profiles_v1), so they cannot
+-- disagree about a value. Last write wins and both writes are identical.
 --
---      CREATE ROLE customerio_readonly LOGIN PASSWORD '<generated>';
---      GRANT CONNECT ON DATABASE postgres TO customerio_readonly;
---      GRANT USAGE ON SCHEMA public TO customerio_readonly;
---      GRANT SELECT ON public.profiles TO customerio_readonly;
+--   Data Warehouse Sync (this file)  — pull, hourly. Owns the bulk attribute
+--                                      state. Survives app deploys and needs no
+--                                      credentials in Vercel.
+--   Track API (lib/customerio/)      — push, within the request. Owns the four
+--                                      events, and re-pushes a profile
+--                                      immediately after class_created and
+--                                      class_joined so a ladder's next step
+--                                      sees fresh counters rather than waiting
+--                                      up to an hour.
 --
---    Granting SELECT on only public.profiles keeps the blast radius of that
---    credential to the columns above, rather than the whole schema.
+-- Keep both. Turning the Track API off to avoid the overlap would also turn off
+-- every event, which is the half this query cannot replace.
