@@ -104,7 +104,7 @@ async function main(): Promise<void> {
     // ---- 1. an event is written at all -----------------------------------
     await track(
       PRODUCT_EVENTS.CLASS_VIEWED,
-      { group_id: groupId, tutor_id: null, subject: 'Smoke Test' },
+      { group_id: groupId, class_name: "Smoke Test Class", tutor_id: null, tutor_name: "Smoke Tutor", subject: "Smoke Test", viewed_at: new Date().toISOString() },
       { userId, dedupeKey: `cv:${groupId}:${bucket}` }
     );
 
@@ -126,7 +126,7 @@ async function main(): Promise<void> {
     // campaign. Same bucket must collapse.
     await track(
       PRODUCT_EVENTS.CLASS_VIEWED,
-      { group_id: groupId, tutor_id: null, subject: 'Smoke Test' },
+      { group_id: groupId, class_name: "Smoke Test Class", tutor_id: null, tutor_name: "Smoke Tutor", subject: "Smoke Test", viewed_at: new Date().toISOString() },
       { userId, dedupeKey: `cv:${groupId}:${bucket}` }
     );
     const afterRepeat = await countViewed();
@@ -135,7 +135,7 @@ async function main(): Promise<void> {
     // ---- 3. a new bucket is allowed through ------------------------------
     await track(
       PRODUCT_EVENTS.CLASS_VIEWED,
-      { group_id: groupId, tutor_id: null, subject: 'Smoke Test' },
+      { group_id: groupId, class_name: "Smoke Test Class", tutor_id: null, tutor_name: "Smoke Tutor", subject: "Smoke Test", viewed_at: new Date().toISOString() },
       { userId, dedupeKey: `cv:${groupId}:${bucket + 1}` }
     );
     const afterNextBucket = await countViewed();
@@ -157,21 +157,36 @@ async function main(): Promise<void> {
       JSON.stringify(props)
     );
 
+    // The campaign copy says "still interested in <class> with <tutor>?", so a
+    // class_viewed without these names cannot be written into an email at all.
+    // They were missing from the first implementation and only surfaced when
+    // someone tried to build the campaign — hence an explicit assertion.
+    record(
+      'class_viewed carries the names the reminder copy needs',
+      props.class_name === 'Smoke Test Class' &&
+        props.tutor_name === 'Smoke Tutor' &&
+        typeof props.viewed_at === 'string',
+      `class_name=${String(props.class_name)} tutor_name=${String(props.tutor_name)} viewed_at=${String(props.viewed_at)}`
+    );
+
     // ---- 5. the other two events are emittable ---------------------------
     await track(
       PRODUCT_EVENTS.CLASS_CREATED,
-      { group_id: groupId, subject: 'Smoke Test', pricing_model: 'FREE', status: 'DRAFT' },
+      { group_id: groupId, class_name: "Smoke Test Class", subject: "Smoke Test", pricing_model: "FREE", status: "DRAFT", created_at: new Date().toISOString() },
       { userId, dedupeKey: `class:${groupId}` }
     );
     await track(
       PRODUCT_EVENTS.CLASS_JOINED,
       {
         group_id: groupId,
+        class_name: 'Smoke Test Class',
         tutor_id: null,
+        tutor_name: 'Smoke Tutor',
         subject: 'Smoke Test',
         membership: 'enrolled',
         seat_source: 'free_join',
         is_paid: false,
+        joined_at: new Date().toISOString(),
       },
       { userId, dedupeKey: `join:${groupId}:${userId}` }
     );

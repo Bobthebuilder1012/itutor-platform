@@ -106,21 +106,40 @@ export interface EventProps {
   [PRODUCT_EVENTS.DEMAND_RECORDED]: { subject: string; level: string };
   [PRODUCT_EVENTS.NOTIFY_ME_CLICKED]: { demand_id: string };
 
+  /**
+   * A class page was opened. The campaign this drives writes "still interested
+   * in <class> with <tutor>?", so the human-readable names are not optional
+   * decoration — without them the reminder cannot name what it is about and
+   * the whole class-view nudge is unbuildable.
+   *
+   * `class_url` is deliberately absent here and added at the Customer.io
+   * boundary instead: the database should not store an origin that differs per
+   * environment. See forwardEvent.
+   */
   [PRODUCT_EVENTS.CLASS_VIEWED]: {
     group_id: string;
+    class_name: string | null;
     tutor_id: string | null;
+    tutor_name: string | null;
     subject: string | null;
+    viewed_at: string;
   };
   [PRODUCT_EVENTS.CLASS_CREATED]: {
     group_id: string;
+    class_name: string | null;
     subject: string | null;
     pricing_model: string | null;
     status: string | null;
+    created_at: string;
   };
   [PRODUCT_EVENTS.CLASS_JOINED]: {
     group_id: string;
+    /** Nullable only because a couple of join paths do not load the row. */
+    class_name: string | null;
     tutor_id: string | null;
+    tutor_name: string | null;
     subject: string | null;
+    joined_at: string;
     /**
      * 'pending' means the seat is awaiting tutor approval, which is NOT an
      * activation — and `classes_joined_count` in customerio_profiles_v1

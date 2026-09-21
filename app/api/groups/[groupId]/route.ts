@@ -244,12 +244,24 @@ export async function GET(req: NextRequest, { params }: Params) {
       // 30-minute bucket, minted here rather than accepted from the client:
       // a caller that chose its own bucket could reset it on every keystroke.
       const bucket = Math.floor(Date.now() / 1_800_000);
+      // The tutor is already embedded on `group` by the select chain above, so
+      // the names cost nothing here. They are what lets the reminder say
+      // "still interested in <class> with <tutor>?" rather than linking to an
+      // unnamed page. The embed is an object on some select tiers and a
+      // one-element array on others, so normalise before reading it.
+      const tutorEmbed: any = Array.isArray((group as any).tutor)
+        ? (group as any).tutor[0]
+        : (group as any).tutor;
+
       await track(
         PRODUCT_EVENTS.CLASS_VIEWED,
         {
           group_id: group.id,
+          class_name: group.name ?? null,
           tutor_id: group.tutor_id ?? null,
+          tutor_name: tutorEmbed?.full_name ?? null,
           subject: group.subject ?? null,
+          viewed_at: new Date().toISOString(),
         },
         { userId: user.id, dedupeKey: `cv:${group.id}:${bucket}` }
       );

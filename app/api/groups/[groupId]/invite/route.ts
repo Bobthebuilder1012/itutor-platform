@@ -101,7 +101,10 @@ export async function POST(request: NextRequest, { params }: Params) {
       PRODUCT_EVENTS.CLASS_JOINED,
       {
         group_id: groupId,
+        class_name: (group as any).name ?? null,
         tutor_id: (group as any).tutor_id ?? null,
+        tutor_name: null,
+        joined_at: new Date().toISOString(),
         subject: (group as any).subject ?? null,
         membership: 'enrolled',
         seat_source: 'tutor_invite',

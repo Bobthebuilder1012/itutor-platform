@@ -201,7 +201,10 @@ export async function confirmSecuredSpot(
       PRODUCT_EVENTS.CLASS_JOINED,
       {
         group_id: (enrollment as any).group_id,
+        class_name: (group as any)?.name ?? null,
         tutor_id: (group as any)?.tutor_id ?? null,
+        tutor_name: null,
+        joined_at: new Date().toISOString(),
         subject: (group as any)?.subject ?? null,
         membership: 'enrolled',
         seat_source: 'secure_spot',

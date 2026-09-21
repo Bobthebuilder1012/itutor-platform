@@ -57,6 +57,25 @@ const STRIPPED_PROPS: ReadonlySet<string> = new Set([
   'dedupe_key',
 ]);
 
+/**
+ * Add the class URL to any event that names a class.
+ *
+ * Built here rather than at each call site, and deliberately NOT stored in
+ * product_events: the origin differs per environment, so a stored URL would be
+ * wrong on every preview branch and unfixable without a data migration. This
+ * is the same reasoning that keeps URLs out of customerio_profiles_v1.
+ *
+ * /student/explore/<id> is the canonical class page; /classes/<id> only
+ * redirects to it, and an email should not spend a redirect.
+ */
+function withClassUrl(props: Record<string, unknown>): Record<string, unknown> {
+  const groupId = props.group_id;
+  if (typeof groupId !== 'string' || groupId.length === 0) return props;
+
+  const origin = (process.env.NEXT_PUBLIC_APP_URL || 'https://myitutor.com').replace(/\/+$/, '');
+  return { ...props, class_url: `${origin}/student/explore/${groupId}` };
+}
+
 function sanitize(props: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(props)) {
@@ -99,7 +118,12 @@ export async function forwardEvent(
     // Bounded to a single 3s attempt: track() is awaited inside user-facing
     // requests (registration, enrolment), so this must add a small, predictable
     // ceiling to those rather than up to three retries' worth of latency.
-    const result = await trackEvent(userId, event, sanitize(props ?? {}), REQUEST_PATH_CALL);
+    const result = await trackEvent(
+      userId,
+      event,
+      sanitize(withClassUrl(props ?? {})),
+      REQUEST_PATH_CALL
+    );
 
     if (!result.ok && !result.skipped) {
       // Logged, not retried. An event is a point-in-time fact; by the time a

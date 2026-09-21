@@ -401,7 +401,10 @@ export async function handleSubscriptionPayment(
       PRODUCT_EVENTS.CLASS_JOINED,
       {
         group_id: sp.group_id,
+        class_name: group?.name ?? null,
         tutor_id: group?.tutor_id ?? null,
+        tutor_name: null,
+        joined_at: new Date().toISOString(),
         subject: group?.subject ?? null,
         membership: 'enrolled',
         seat_source: 'subscription',

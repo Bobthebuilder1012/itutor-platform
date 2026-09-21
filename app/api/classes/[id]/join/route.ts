@@ -22,7 +22,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
     // Load class
     const { data: group, error: groupError } = await supabase
       .from('groups')
-      .select('id, tutor_id, subject, require_join_requests, archived_at, visibility, max_students')
+      .select('id, name, tutor_id, subject, require_join_requests, archived_at, visibility, max_students')
       .eq('id', classId)
       .maybeSingle();
 
@@ -75,7 +75,10 @@ export async function POST(_req: NextRequest, { params }: Params) {
       PRODUCT_EVENTS.CLASS_JOINED,
       {
         group_id: classId,
+        class_name: (group as any).name ?? null,
         tutor_id: group.tutor_id ?? null,
+        tutor_name: null,
+        joined_at: new Date().toISOString(),
         subject: (group as any).subject ?? null,
         membership: memberStatus === 'active' ? 'enrolled' : 'pending',
         seat_source: 'free_join',

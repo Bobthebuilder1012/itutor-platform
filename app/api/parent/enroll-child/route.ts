@@ -108,7 +108,10 @@ export async function POST(request: NextRequest) {
       PRODUCT_EVENTS.CLASS_JOINED,
       {
         group_id: groupId,
+        class_name: (group as any).name ?? null,
         tutor_id: group.tutor_id ?? null,
+        tutor_name: null,
+        joined_at: new Date().toISOString(),
         subject: (group as any).subject ?? null,
         membership: memberStatus === 'approved' ? 'enrolled' : 'pending',
         seat_source: 'parent_enrol',

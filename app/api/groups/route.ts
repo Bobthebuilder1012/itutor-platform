@@ -831,9 +831,11 @@ export async function POST(request: NextRequest) {
       PRODUCT_EVENTS.CLASS_CREATED,
       {
         group_id: group.id,
+        class_name: group.name ?? null,
         subject: group.subject ?? null,
         pricing_model: group.pricing_model ?? null,
         status: group.status ?? null,
+        created_at: new Date().toISOString(),
       },
       { userId: user.id, dedupeKey: `class:${group.id}` }
     );

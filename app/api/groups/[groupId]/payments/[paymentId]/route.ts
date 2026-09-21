@@ -135,7 +135,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           PRODUCT_EVENTS.CLASS_JOINED,
           {
             group_id: groupId,
+            // The payment row carries no class name and this path should not
+            // spend a query on one; the profile attributes carry it anyway.
+            class_name: null,
             tutor_id: user.id,
+            tutor_name: null,
+            joined_at: new Date().toISOString(),
             subject: null,
             membership: 'enrolled',
             seat_source: 'cash',

@@ -55,7 +55,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         PRODUCT_EVENTS.CLASS_JOINED,
         {
           group_id: groupId,
+          class_name: (actor.group as any).name ?? null,
           tutor_id: (actor.group as any).tutor_id ?? null,
+          tutor_name: null,
+          joined_at: new Date().toISOString(),
           subject: (actor.group as any).subject ?? null,
           membership: 'enrolled',
           seat_source: 'tutor_approval',

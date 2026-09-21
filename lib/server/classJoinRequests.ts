@@ -305,7 +305,10 @@ export async function performGroupJoin(
     PRODUCT_EVENTS.CLASS_JOINED,
     {
       group_id: params.groupId,
+      class_name: group.name ?? null,
       tutor_id: group.tutor_id,
+      tutor_name: null,
+      joined_at: new Date().toISOString(),
       subject: group.subject ?? null,
       membership: status === 'approved' ? 'enrolled' : 'pending',
       seat_source: params.seatSource ?? 'free_join',
