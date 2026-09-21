@@ -1,0 +1,14 @@
+{
+  // ts-node uses this for compilerOptions only (it compiles the entry file it is
+  // given). The include/exclude override exists so the same file also works for
+  // a standalone `tsc --noEmit --project scripts/tsconfig.scripts.json` — the
+  // root config excludes scripts/**, which an `extends` would otherwise inherit.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "noEmit": true
+  },
+  "include": ["./**/*.ts"],
+  "exclude": []
+}

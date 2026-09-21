@@ -104,4 +104,22 @@ PAID_CLASSES_ENABLED           # Feature flag (true/false)
 CLASS_MATCH_WEEK_ENABLED       # Class Match Week on/off (default true)
 ```
 
+Customer.io (all optional — the integration is inert unless `CUSTOMERIO_ENABLED`
+is exactly `true`, and `getCustomerIoConfig()` returns null before any database
+read, so an unconfigured environment costs nothing):
+```
+CUSTOMERIO_ENABLED             # 'true' switches the integration on. Anything else = off
+CUSTOMERIO_SITE_ID             # Track API site id
+CUSTOMERIO_API_KEY             # Track API key
+CUSTOMERIO_REGION              # us | eu (default us)
+CUSTOMERIO_ALLOWED_EMAILS      # Comma list. When non-empty ONLY these addresses sync
+CUSTOMERIO_INCLUDE_DEV_ACCOUNTS# Sync is_dev_account profiles too (default false)
+```
+**Set `CUSTOMERIO_ALLOWED_EMAILS` to a single inbox before ever setting
+`CUSTOMERIO_ENABLED=true`.** Staging is a Supabase branch of production and
+holds real customer addresses; enabling with an empty allow-list loads all of
+them into a tool that can mail them. And read the note in `lib/customerio/sync.ts`
+before clearing the allow-list again — a skipped profile is recorded as
+delivered, so simply removing the list does not bring those profiles back.
+
 Google OAuth and Zoom OAuth credentials are also required for those integrations.
