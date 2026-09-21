@@ -18,17 +18,28 @@
 -- are indistinguishable once written, and the first complaint is the wrong
 -- moment to discover that. `marketing_consent_source` says which one this was.
 
+-- WHY THE BACKFILL IS A COLUMN DEFAULT AND NOT AN UPDATE
+-- An `UPDATE public.profiles SET ...` would touch every row and therefore fire
+-- every row-level UPDATE trigger on the table. `profiles` carries triggers that
+-- exist in NO migration in this repository -- auto_queue_onboarding_on_signup
+-- among them, which queues onboarding email. It is AFTER INSERT on staging, so
+-- an UPDATE is harmless there; but production has its own out-of-band history
+-- and cannot be read from here to confirm it matches.
+--
+-- Filling the column through ADD COLUMN ... DEFAULT sidesteps the question
+-- entirely: existing rows are populated as part of the DDL, no UPDATE runs, and
+-- no row trigger fires whatever production happens to have. The default is then
+-- dropped so NEW rows get NULL and only a real answer from the signup form ever
+-- writes 'signup_form' -- otherwise every future account would be stamped as a
+-- backfill.
+
 ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS marketing_consent boolean NOT NULL DEFAULT true,
-  ADD COLUMN IF NOT EXISTS marketing_consent_at timestamptz,
-  ADD COLUMN IF NOT EXISTS marketing_consent_source text;
+  ADD COLUMN IF NOT EXISTS marketing_consent_at timestamptz DEFAULT now(),
+  ADD COLUMN IF NOT EXISTS marketing_consent_source text DEFAULT 'backfill_existing_customer';
 
--- Idempotent: only rows that have never recorded a provenance are stamped, so
--- re-running this cannot overwrite a real signup-form answer with 'backfill'.
-UPDATE public.profiles
-   SET marketing_consent_source = 'backfill_existing_customer',
-       marketing_consent_at = COALESCE(marketing_consent_at, now())
- WHERE marketing_consent_source IS NULL;
+ALTER TABLE public.profiles ALTER COLUMN marketing_consent_at     DROP DEFAULT;
+ALTER TABLE public.profiles ALTER COLUMN marketing_consent_source DROP DEFAULT;
 
 COMMENT ON COLUMN public.profiles.marketing_consent IS
   'Gate for lifecycle/marketing email. Mapped onto Customer.io''s reserved '
