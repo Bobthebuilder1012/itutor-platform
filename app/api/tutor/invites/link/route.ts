@@ -22,9 +22,9 @@ import { NextResponse } from 'next/server';
 import { getServiceClient } from '@/lib/supabase/server';
 import { authenticateUser, requireGroupOwner } from '@/lib/api/groupAuth';
 import { ok, fail } from '@/lib/api/http';
-import { requireTeacherActivation } from '@/lib/classInvites/guard';
-import { mintInviteToken } from '@/lib/classInvites/token';
-import { classLinkUrl } from '@/lib/classInvites/links';
+import { requireTeacherActivation } from '@/lib/teacherInvites/guard';
+import { mintInviteToken } from '@/lib/teacherInvites/token';
+import { classLinkUrl } from '@/lib/teacherInvites/links';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';

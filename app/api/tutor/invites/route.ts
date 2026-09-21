@@ -19,17 +19,17 @@ import { ok, fail } from '@/lib/api/http';
 import { track } from '@/lib/analytics/track';
 import { PRODUCT_EVENTS } from '@/lib/analytics/events';
 import { isParentAccountsEnabled } from '@/lib/featureFlags/parentAccounts';
-import { requireTeacherActivation } from '@/lib/classInvites/guard';
+import { requireTeacherActivation } from '@/lib/teacherInvites/guard';
 import { deliverClassInvite } from '@/lib/services/classInvite';
-import { buildActivationSnapshot } from '@/lib/classInvites/dashboard';
-import { INVITE_COLUMNS } from '@/lib/classInvites/fulfil';
-import { mintInviteToken } from '@/lib/classInvites/token';
+import { buildActivationSnapshot } from '@/lib/teacherInvites/dashboard';
+import { INVITE_COLUMNS } from '@/lib/teacherInvites/fulfil';
+import { mintInviteToken } from '@/lib/teacherInvites/token';
 import {
   MAX_NEW_INVITES_PER_DAY,
   BATCH_SEND_DELAY_MS,
   MAX_CSV_ROWS,
-} from '@/lib/classInvites/limits';
-import type { ClassInviteRow, InviteeKind } from '@/lib/classInvites/types';
+} from '@/lib/teacherInvites/limits';
+import type { ClassInviteRow, InviteeKind } from '@/lib/teacherInvites/types';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -167,7 +167,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     // day so it cannot be reset by waiting for midnight.
     const since = new Date(Date.now() - 86_400_000).toISOString();
     const { count: sentToday } = await admin
-      .from('class_invites')
+      .from('teacher_invites')
       .select('id', { count: 'exact', head: true })
       .eq('tutor_id', user.id)
       .gte('created_at', since);
@@ -183,7 +183,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     const addresses = Array.from(new Set(recipients.map((r) => r.email)));
     const [{ data: openRows }, { data: existingProfiles }] = await Promise.all([
       admin
-        .from('class_invites')
+        .from('teacher_invites')
         .select('id, invitee_email, status')
         .eq('tutor_id', user.id)
         .in('invitee_email', addresses)
@@ -279,7 +279,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       };
 
       const { data: inserted, error } = await admin
-        .from('class_invites')
+        .from('teacher_invites')
         .insert(row)
         .select(INVITE_COLUMNS)
         .maybeSingle();

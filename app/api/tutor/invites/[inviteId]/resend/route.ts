@@ -13,12 +13,12 @@ import { NextResponse } from 'next/server';
 import { getServiceClient } from '@/lib/supabase/server';
 import { authenticateUser } from '@/lib/api/groupAuth';
 import { ok, fail } from '@/lib/api/http';
-import { requireTeacherActivation } from '@/lib/classInvites/guard';
+import { requireTeacherActivation } from '@/lib/teacherInvites/guard';
 import { deliverClassInvite } from '@/lib/services/classInvite';
-import { INVITE_COLUMNS } from '@/lib/classInvites/fulfil';
-import { INVITE_TTL_DAYS } from '@/lib/classInvites/limits';
-import { resendBlockedReason } from '@/lib/classInvites/resend';
-import type { ClassInviteRow } from '@/lib/classInvites/types';
+import { INVITE_COLUMNS } from '@/lib/teacherInvites/fulfil';
+import { INVITE_TTL_DAYS } from '@/lib/teacherInvites/limits';
+import { resendBlockedReason } from '@/lib/teacherInvites/resend';
+import type { ClassInviteRow } from '@/lib/teacherInvites/types';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -37,7 +37,7 @@ export async function POST(_request: Request, { params }: Params): Promise<NextR
     const admin = getServiceClient();
 
     const { data } = await admin
-      .from('class_invites')
+      .from('teacher_invites')
       .select(INVITE_COLUMNS)
       .eq('id', inviteId)
       .eq('tutor_id', user.id)
@@ -69,7 +69,7 @@ export async function POST(_request: Request, { params }: Params): Promise<NextR
     // A reminder restarts the clock. Otherwise an invitation sent 29 days ago
     // is reminded today and expires tomorrow.
     await admin
-      .from('class_invites')
+      .from('teacher_invites')
       .update({
         expires_at: new Date(Date.now() + INVITE_TTL_DAYS * 86_400_000).toISOString(),
         // A previous send failure is being retried, so it is pending again.

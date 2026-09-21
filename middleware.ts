@@ -48,7 +48,15 @@ function isProtectedPath(pathname: string) {
  * still fires on the destination page, so nothing is bypassed.
  */
 function isAttributionRedirectPath(pathname: string) {
-  return pathname === '/r' || pathname.startsWith('/r/');
+  // /i/[token] is a class invitation. It is exempt for the same reason /r is,
+  // and for one more: the pending-feedback gate would bounce a signed-in
+  // student straight off the invitation before they ever read who invited
+  // them. The gate still fires on the class page they land on afterwards, so
+  // nothing is bypassed.
+  return (
+    pathname === '/r' || pathname.startsWith('/r/') ||
+    pathname === '/i' || pathname.startsWith('/i/')
+  );
 }
 
 // ---------------------------------------------------------------------------

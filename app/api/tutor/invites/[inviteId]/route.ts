@@ -29,7 +29,7 @@ export async function DELETE(_request: Request, { params }: Params): Promise<Nex
     // Scoped by tutor_id in the same statement as the write, so ownership is
     // not a separate check that a later refactor can drop.
     const { data, error } = await admin
-      .from('class_invites')
+      .from('teacher_invites')
       .update({ status: 'revoked', revoked_at: new Date().toISOString() })
       .eq('id', inviteId)
       .eq('tutor_id', user.id)

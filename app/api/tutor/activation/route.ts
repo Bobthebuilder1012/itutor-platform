@@ -18,7 +18,7 @@ import { authenticateUser, requireTutor } from '@/lib/api/groupAuth';
 import { ok, fail } from '@/lib/api/http';
 import { isTeacherActivationEnabled } from '@/lib/featureFlags/teacherActivation';
 import { isParentAccountsEnabled } from '@/lib/featureFlags/parentAccounts';
-import { buildActivationSnapshot } from '@/lib/classInvites/dashboard';
+import { buildActivationSnapshot } from '@/lib/teacherInvites/dashboard';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';

@@ -11,12 +11,12 @@ import { NextResponse } from 'next/server';
 import { getServiceClient } from '@/lib/supabase/server';
 import { authenticateUser } from '@/lib/api/groupAuth';
 import { ok, fail } from '@/lib/api/http';
-import { requireTeacherActivation } from '@/lib/classInvites/guard';
+import { requireTeacherActivation } from '@/lib/teacherInvites/guard';
 import { deliverClassInvite } from '@/lib/services/classInvite';
-import { INVITE_COLUMNS } from '@/lib/classInvites/fulfil';
-import { MAX_BULK_RESEND, BATCH_SEND_DELAY_MS } from '@/lib/classInvites/limits';
-import { resendBlockedReason } from '@/lib/classInvites/resend';
-import type { ClassInviteRow } from '@/lib/classInvites/types';
+import { INVITE_COLUMNS } from '@/lib/teacherInvites/fulfil';
+import { MAX_BULK_RESEND, BATCH_SEND_DELAY_MS } from '@/lib/teacherInvites/limits';
+import { resendBlockedReason } from '@/lib/teacherInvites/resend';
+import type { ClassInviteRow } from '@/lib/teacherInvites/types';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -33,7 +33,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     const admin = getServiceClient();
 
     let query = admin
-      .from('class_invites')
+      .from('teacher_invites')
       .select(INVITE_COLUMNS)
       .eq('tutor_id', user.id)
       .in('status', ['pending', 'failed'])

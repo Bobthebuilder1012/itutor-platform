@@ -27,7 +27,7 @@ export type DeliveryState =
 export type InviteeKind = 'student' | 'parent' | 'unknown';
 export type InviteSource = 'single' | 'csv' | 'link' | 'direct_add';
 
-/** A class_invites row, as every module here reads it. */
+/** A teacher_invites row, as every module here reads it. */
 export type ClassInviteRow = {
   id: string;
   tutor_id: string;

@@ -23,8 +23,8 @@ import { sendEmail } from '@/lib/services/emailService';
 import { notifyInApp } from '@/lib/server/bookingRequestNotify';
 import { classInviteEmail } from '@/lib/services/classInviteEmail';
 import { nextSessionLabel } from '@/lib/server/classJoinRequests';
-import { inviteUrl } from '@/lib/classInvites/links';
-import type { ClassInviteRow, DeliveryState } from '@/lib/classInvites/types';
+import { inviteUrl } from '@/lib/teacherInvites/links';
+import type { ClassInviteRow, DeliveryState } from '@/lib/teacherInvites/types';
 
 export type DeliveryOutcome = {
   state: DeliveryState;
@@ -83,7 +83,7 @@ export async function deliverClassInvite(
 
   const now = new Date().toISOString();
   await admin
-    .from('class_invites')
+    .from('teacher_invites')
     .update({
       delivery_state: outcome.state,
       delivery_error: outcome.error,

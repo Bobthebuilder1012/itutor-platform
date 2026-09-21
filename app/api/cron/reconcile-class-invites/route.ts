@@ -22,8 +22,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceClient } from '@/lib/supabase/server';
-import { fulfilClassInvite } from '@/lib/classInvites/fulfil';
-import { childrenOf } from '@/lib/classInvites/counting';
+import { fulfilClassInvite } from '@/lib/teacherInvites/fulfil';
+import { childrenOf } from '@/lib/teacherInvites/counting';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     // 1. Expire what has run out. Done first, so the fulfilment pass below is
     //    not spending work on rows nobody can accept any more.
     const { data: expiredRows, error: expireError } = await service
-      .from('class_invites')
+      .from('teacher_invites')
       .update({ status: 'expired' })
       .eq('status', 'pending')
       .lt('expires_at', nowIso)
@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
     //    joined without ever clicking is picked up by the inline hook in
     //    performGroupJoin, which matches on the address too.
     const { data: openRows } = await service
-      .from('class_invites')
+      .from('teacher_invites')
       .select('id, user_id, group_id, joined_student_id')
       .eq('status', 'accepted')
       .not('user_id', 'is', null)

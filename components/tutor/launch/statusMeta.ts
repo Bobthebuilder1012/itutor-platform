@@ -13,7 +13,7 @@
  * wrong person.
  */
 
-import type { InviteState, AttentionReason } from '@/lib/classInvites/types';
+import type { InviteState, AttentionReason } from '@/lib/teacherInvites/types';
 
 export type StatusConfig = {
   label: string;

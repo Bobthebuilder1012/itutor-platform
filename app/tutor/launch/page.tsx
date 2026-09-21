@@ -34,9 +34,9 @@ import ShareLinkCard from '@/components/tutor/launch/ShareLinkCard';
 import {
   STATUS_CFG, ATTENTION_LABEL, ATTENTION_FIX, FILTERS, type FilterKey,
 } from '@/components/tutor/launch/statusMeta';
-import { isInvitedState } from '@/lib/classInvites/counting';
+import { isInvitedState } from '@/lib/teacherInvites/counting';
 import { notifyLaunchGoalUpdated } from '@/lib/hooks/useTeacherLaunchGoal';
-import type { InviteeView, LaunchGoal } from '@/lib/classInvites/types';
+import type { InviteeView, LaunchGoal } from '@/lib/teacherInvites/types';
 
 type Payload = {
   goal: LaunchGoal;
@@ -187,7 +187,7 @@ function LaunchContent() {
   if (data?.unavailable) {
     return (
       <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800">
-        Class invitations are not set up in this environment yet (migration 257 has
+        Class invitations are not set up in this environment yet (migration 258 has
         not run here).
       </div>
     );

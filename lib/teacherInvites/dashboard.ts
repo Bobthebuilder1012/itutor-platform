@@ -32,7 +32,7 @@ export type ActivationSnapshot = {
   rows: InviteeView[];
   classes: Array<{ groupId: string; name: string; joined: number; invited: number }>;
   /**
-   * True when this environment has not run migration 257 yet.
+   * True when this environment has not run migration 258 yet.
    *
    * Without it a missing table reads as an empty result, and the banner would
    * confidently tell a verified teacher they have 0 of 5 — indistinguishable
@@ -123,7 +123,7 @@ export async function buildActivationSnapshot(
   } | null;
 
   let query = admin
-    .from('class_invites')
+    .from('teacher_invites')
     .select(INVITE_COLUMNS)
     .eq('tutor_id', tutorId)
     .order('created_at', { ascending: false })

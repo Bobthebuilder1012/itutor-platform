@@ -60,7 +60,7 @@ async function findOpenInvite(
   // filter chain without or() string building, and an email address interpolated
   // into an or() filter is an injection surface. Two queries, merged in TS.
   const byClaimant = admin
-    .from('class_invites')
+    .from('teacher_invites')
     .select(INVITE_COLUMNS)
     .in('user_id', claimants)
     .in('status', ['pending', 'accepted'])
@@ -68,7 +68,7 @@ async function findOpenInvite(
 
   const byEmail = params.studentEmail
     ? admin
-        .from('class_invites')
+        .from('teacher_invites')
         .select(INVITE_COLUMNS)
         .eq('invitee_email', params.studentEmail.trim().toLowerCase())
         .in('status', ['pending', 'accepted'])
@@ -144,7 +144,7 @@ export async function fulfilClassInvite(
 
     const now = new Date().toISOString();
     const { data: updated, error } = await admin
-      .from('class_invites')
+      .from('teacher_invites')
       .update({
         status: 'joined',
         joined_student_id: params.studentId,
@@ -212,7 +212,7 @@ async function markGoalIfMet(admin: SupabaseClient, tutorId: string): Promise<vo
     if (!row || row.launch_goal_met_at) return;
 
     const { data } = await admin
-      .from('class_invites')
+      .from('teacher_invites')
       .select('joined_student_id')
       .eq('tutor_id', tutorId)
       .eq('status', 'joined')

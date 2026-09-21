@@ -29,10 +29,10 @@ import {
   serializeAttribution,
   type Attribution,
 } from '@/lib/analytics/attribution';
-import { INVITE_COOKIE } from '@/lib/classInvites/token';
-import { isTokenShaped } from '@/lib/classInvites/token';
-import { INVITE_COOKIE_MAX_AGE_S } from '@/lib/classInvites/limits';
-import { classDestination } from '@/lib/classInvites/links';
+import { INVITE_COOKIE } from '@/lib/teacherInvites/token';
+import { isTokenShaped } from '@/lib/teacherInvites/token';
+import { INVITE_COOKIE_MAX_AGE_S } from '@/lib/teacherInvites/limits';
+import { classDestination } from '@/lib/teacherInvites/links';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest, { params }: Params) {
       const admin = getServiceClient();
 
       const { data: inviteData } = await admin
-        .from('class_invites')
+        .from('teacher_invites')
         .select('id, group_id, tutor_id, status, expires_at')
         .eq('token', token)
         .maybeSingle();
@@ -75,7 +75,7 @@ export async function GET(request: NextRequest, { params }: Params) {
         // rather than by a sweep, the same way the parent invite reader does it.
         if (invite.status === 'pending' && Date.parse(invite.expires_at) < Date.now()) {
           await admin
-            .from('class_invites')
+            .from('teacher_invites')
             .update({ status: 'expired' })
             .eq('id', invite.id)
             .eq('status', 'pending');

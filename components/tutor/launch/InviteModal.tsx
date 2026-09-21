@@ -23,8 +23,8 @@
 import { useCallback, useRef, useState } from 'react';
 import { X, Upload, Loader2, CheckCircle2, AlertCircle, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { extractRecipients, CSV_TEMPLATE } from '@/lib/classInvites/parseCsv';
-import { MAX_CSV_ROWS, MAX_CSV_BYTES } from '@/lib/classInvites/limits';
+import { extractRecipients, CSV_TEMPLATE } from '@/lib/teacherInvites/parseCsv';
+import { MAX_CSV_ROWS, MAX_CSV_BYTES } from '@/lib/teacherInvites/limits';
 import { notifyLaunchGoalUpdated } from '@/lib/hooks/useTeacherLaunchGoal';
 
 type Recipient = { email: string; name: string | null; valid: boolean };

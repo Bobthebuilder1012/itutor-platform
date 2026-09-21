@@ -9,7 +9,7 @@
 // implementation of this algorithm, and it is not on this branch. Copying it
 // would have imported a footgun it documents at length: its `unclaimPrior` step
 // nulls user_id on every OTHER row the account holds, which is correct only for
-// tables with UNIQUE(user_id). class_invites is deliberately many-rows-per
+// tables with UNIQUE(user_id). teacher_invites is deliberately many-rows-per
 // person — two teachers may invite the same student, and one teacher may invite
 // them to two classes — so that step would silently destroy a rival teacher's
 // attribution with no error anywhere. There is no collision to resolve here, so
@@ -45,7 +45,7 @@ export async function claimClassInvite(
     }
 
     const { data, error } = await admin
-      .from('class_invites')
+      .from('teacher_invites')
       .select(INVITE_COLUMNS)
       .eq('token', params.token)
       .maybeSingle();
@@ -79,7 +79,7 @@ export async function claimClassInvite(
       // Lazy expiry, the same way the parent invite reader does it: the row is
       // corrected by the first person to look at it rather than by a sweep.
       await admin
-        .from('class_invites')
+        .from('teacher_invites')
         .update({ status: 'expired' })
         .eq('id', invite.id)
         .eq('status', 'pending');
@@ -100,7 +100,7 @@ export async function claimClassInvite(
 
     const now = new Date().toISOString();
     const { data: updated, error: updateError } = await admin
-      .from('class_invites')
+      .from('teacher_invites')
       .update({
         user_id: params.userId,
         claimed_at: invite.claimed_at ?? now,
@@ -195,7 +195,7 @@ export async function recordLinkArrival(
     // to this address, THAT invitation is the record, and this arrival closes
     // it through the normal path.
     const { data: open } = await admin
-      .from('class_invites')
+      .from('teacher_invites')
       .select('id')
       .eq('tutor_id', params.tutorId)
       .eq('invitee_email', email)
@@ -214,7 +214,7 @@ export async function recordLinkArrival(
 
     const role = p.role === 'parent' ? 'parent' : 'student';
     const { data, error } = await admin
-      .from('class_invites')
+      .from('teacher_invites')
       .insert({
         tutor_id: params.tutorId,
         group_id: params.groupId,

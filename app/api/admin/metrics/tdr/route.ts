@@ -20,7 +20,7 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/middleware/adminAuth';
 import { getServiceClient } from '@/lib/supabase/server';
-import { LAUNCH_GOAL_TARGET, LAUNCH_WINDOW_DAYS } from '@/lib/classInvites/types';
+import { LAUNCH_GOAL_TARGET, LAUNCH_WINDOW_DAYS } from '@/lib/teacherInvites/types';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -95,12 +95,12 @@ export async function GET(request: Request): Promise<NextResponse> {
     const tutorIds = teachers.map((t) => t.id);
 
     const { data: inviteData, error: inviteError } = await admin
-      .from('class_invites')
+      .from('teacher_invites')
       .select('tutor_id, joined_student_id, joined_at, status')
       .in('tutor_id', tutorIds);
 
     // The same degradation the tutor-facing surfaces use: an environment
-    // without migration 257 says so, rather than reporting a TDR of zero,
+    // without migration 258 says so, rather than reporting a TDR of zero,
     // which is indistinguishable from a real and alarming answer.
     if (inviteError) {
       const missing =

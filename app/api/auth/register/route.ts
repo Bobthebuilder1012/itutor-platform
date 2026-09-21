@@ -4,7 +4,7 @@ import { createHash } from 'crypto';
 import { isParentAccountsEnabled, PARENT_ACCOUNTS_DISABLED_MESSAGE } from '@/lib/featureFlags/parentAccounts';
 import { getRequestAttribution, track } from '@/lib/analytics/track';
 import { PRODUCT_EVENTS } from '@/lib/analytics/events';
-import { adoptClassInviteFromCookie } from '@/lib/classInvites/adoptFromCookie';
+import { adoptClassInviteFromCookie } from '@/lib/teacherInvites/adoptFromCookie';
 
 export const dynamic = 'force-dynamic';
 

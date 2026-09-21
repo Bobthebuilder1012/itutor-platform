@@ -28,7 +28,7 @@ import {
 } from '@/lib/server/classRequestNotify';
 import { notifyInApp } from '@/lib/server/bookingRequestNotify';
 import { classifyMembership } from '@/lib/services/groupMembership';
-import { fulfilClassInvite } from '@/lib/classInvites/fulfil';
+import { fulfilClassInvite } from '@/lib/teacherInvites/fulfil';
 import { hasAnyPrice } from '@/lib/payments/groupPricing';
 
 export type ClassRequestRow = {

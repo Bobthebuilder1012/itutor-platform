@@ -149,7 +149,7 @@ export default function AdminTdrPage() {
 
         {data?.unavailable && (
           <div className="rounded-lg border border-amber-600/40 bg-amber-900/20 px-4 py-3 text-sm text-amber-200">
-            Migration 257 has not run in this environment, so there is nothing to
+            Migration 258 has not run in this environment, so there is nothing to
             measure yet.
           </div>
         )}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import type { LaunchGoal } from '@/lib/classInvites/types';
+import type { LaunchGoal } from '@/lib/teacherInvites/types';
 
 export const LAUNCH_GOAL_UPDATED_EVENT = 'teacher-launch-goal-updated';
 
@@ -15,7 +15,7 @@ export function notifyLaunchGoalUpdated() {
 
 export type LaunchGoalState = LaunchGoal & {
   loading: boolean;
-  /** This environment has not run migration 257. Show nothing rather than 0/5. */
+  /** This environment has not run migration 258. Show nothing rather than 0/5. */
   unavailable: boolean;
   canInvite: boolean;
   parentAccountsEnabled: boolean;
