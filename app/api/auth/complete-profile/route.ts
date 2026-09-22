@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { isParentAccountsEnabled, PARENT_ACCOUNTS_DISABLED_MESSAGE } from '@/lib/featureFlags/parentAccounts';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,7 +52,21 @@ export async function POST(req: Request) {
 
     if (role === 'set-role') {
       const { newRole } = body;
-      if (!newRole) return NextResponse.json({ error: 'Role is required' }, { status: 400 });
+      // This write runs as the service role, so migration 217's column guard
+      // does not apply: whatever this accepts is written. It used to accept any
+      // value, which let any signed-in account post newRole: 'admin' (is_admin()
+      // is role = 'admin') or swap its existing role. It is the first-role step
+      // of /signup/complete-role and nothing else.
+      if (newRole !== 'student' && newRole !== 'tutor' && newRole !== 'parent') {
+        return NextResponse.json({ error: 'Invalid role selected.' }, { status: 400 });
+      }
+      if (newRole === 'parent' && !isParentAccountsEnabled()) {
+        return NextResponse.json({ error: PARENT_ACCOUNTS_DISABLED_MESSAGE }, { status: 403 });
+      }
+      const { data: current } = await service.from('profiles').select('role').eq('id', user.id).maybeSingle();
+      if (current?.role && current.role !== newRole) {
+        return NextResponse.json({ error: 'This account already has a role.' }, { status: 409 });
+      }
       const { error } = await service.from('profiles').update({ role: newRole }).eq('id', user.id);
       if (error) return NextResponse.json({ error: error.message }, { status: 400 });
       return NextResponse.json({ success: true });
