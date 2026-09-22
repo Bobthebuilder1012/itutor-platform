@@ -68,7 +68,7 @@ export async function GET() {
     admin
       .from('group_enrollments')
       .select(`
-        id, status, payment_status, enrolled_at, updated_at, enrollment_type,
+        id, status, payment_status, removal_reason, enrolled_at, updated_at, enrollment_type,
         student:profiles!student_id(id, full_name, email),
         group:groups!group_id(id, name, tutor_id,
           tutor:profiles!tutor_id(id, full_name)
@@ -108,10 +108,12 @@ export async function GET() {
   });
 
   // ── Filter cancelled-left: exclude enrollments that have a group_removal ───
+  // and holds released as abandoned preorder reservations (never paid, no
+  // student decision to act on) — see lib/payments/staleSecureSpotHold.
   const allCancelled = (cancelledLeftRes.data ?? []) as any[];
   const removalEnrollmentIds = new Set(allRemovals.map((r) => r.enrollment_id));
   const cancelled_left = allCancelled.filter(
-    (e) => !removalEnrollmentIds.has(e.id)
+    (e) => !removalEnrollmentIds.has(e.id) && e.removal_reason !== 'stale_secure_spot_hold'
   );
 
   // ── Stats ─────────────────────────────────────────────────────────────────

@@ -3,9 +3,11 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 /**
  * Enrolment statuses that occupy a seat.
  *
- * Mirrors GET /api/groups/member-counts, which is what feeds the "3/15" the
- * tutor reads on the class header — a capacity floor computed from a different
- * set would contradict the number on screen. SECURED counts: a preordered seat
+ * Same statuses, and the same one-per-student rule, as GET
+ * /api/groups/member-counts, which feeds the seat counts students see on class
+ * cards — a capacity floor computed from a different set would contradict the
+ * number on screen. (The tutor's "3/15" header is the roster from
+ * /api/groups/[groupId]/members, not this.) SECURED counts: a preordered seat
  * is paid for and held.
  */
 const OCCUPYING_ENROLMENT_STATUSES = ['SECURED', 'ACTIVE', 'GRACE', 'SUSPENDED'];

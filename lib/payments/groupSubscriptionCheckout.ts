@@ -40,6 +40,7 @@ import { findGroupEnrollmentConflict, conflictMessage } from '@/lib/services/sch
 import { isPaidGroup } from '@/lib/payments/groupPricing';
 import { canTakeSeat, seatConfigFromRow } from '@/lib/services/seatOccupancy';
 import { formatOffersSeat, type SeatType } from '@/lib/utils/seatCapacity';
+import { releaseStaleSecureSpotHold, type ReleaseHoldOutcome } from '@/lib/payments/staleSecureSpotHold';
 import { track } from '@/lib/analytics/track';
 import { PRODUCT_EVENTS } from '@/lib/analytics/events';
 
@@ -240,6 +241,14 @@ export async function createGroupSubscriptionCheckout(params: {
   // theirs to finish or abandon first. A preorder class does not reach here at
   // all — both the student and the parent are routed to the secure-spot
   // checkout, whose claim RPC resumes the student's own hold (migration 214).
+  //
+  // A LAPSED hold is abandoned, not in progress, and is released here. This
+  // used to refuse on the status alone and tell the student to "let it expire",
+  // but nothing ever expired it — and once the class starts, the secure-spot
+  // route that could resume it is closed as well, so the student was locked out
+  // until someone edited the database. Releasing it is not converting it: the
+  // unpaid intent is cancelled, the row is CANCELLED, and the student starts a
+  // fresh subscription they chose on this screen.
   if (!isReusingEnrollment) {
     const { data: heldSpot } = await admin
       .from('group_enrollments')
@@ -251,13 +260,60 @@ export async function createGroupSubscriptionCheckout(params: {
       .maybeSingle();
 
     if (heldSpot) {
-      return { ok: false as const, status: 409, body: {
-        error:
-          'There is already a reservation in progress for this class. Finish that payment, or let it expire, before subscribing.',
-        reason: 'secure_spot_hold_open',
-        enrollment_id: (heldSpot as { id: string }).id,
-        expires_at: (heldSpot as { pending_payment_expires_at: string | null }).pending_payment_expires_at,
-      } };
+      const hold = heldSpot as { id: string; pending_payment_expires_at: string | null };
+      let outcome: ReleaseHoldOutcome;
+      try {
+        outcome = await releaseStaleSecureSpotHold(admin, hold.id, now);
+      } catch (releaseErr) {
+        console.error('[subscribe] could not release stale secure-spot hold:', releaseErr);
+        outcome = { released: false, reason: 'stripe_unavailable' };
+      }
+
+      if (!outcome.released && outcome.reason !== 'not_a_hold') {
+        const error =
+          outcome.reason === 'still_open'
+            ? 'You started reserving this class a few minutes ago. Finish that payment, or try again in a few minutes.'
+            : outcome.reason === 'payment_in_flight'
+              ? 'Your earlier payment for this class is still being processed. Please check back in a few minutes.'
+              : 'We could not clear your earlier reservation for this class. Please try again shortly.';
+        return { ok: false as const, status: 409, body: {
+          error,
+          reason: 'secure_spot_hold_open',
+          hold_state: outcome.reason,
+          enrollment_id: hold.id,
+          expires_at: hold.pending_payment_expires_at,
+        } };
+      }
+      // Released, or it stopped being a hold under us. The second case means
+      // a payment for this hold's OWN intent landed between our read and the
+      // release attempt — the webhook confirmed it SECURED (or another
+      // process cancelled it) while we were still deciding. Told apart from
+      // "released" here rather than left to the Step 10 insert's unique-index
+      // 23505, so the student sees why, not a raw constraint-violation detail.
+      if (!outcome.released) {
+        const { data: liveRow } = await admin
+          .from('group_enrollments')
+          .select('id, status')
+          .eq('group_id', groupId)
+          .eq('student_id', studentId)
+          .eq('enrollment_type', 'SUBSCRIPTION')
+          .not('status', 'in', '(CANCELLED,COMPLETED,ACTIVATION_FAILED)')
+          .maybeSingle();
+        if (liveRow) {
+          const live = liveRow as { id: string; status: string };
+          const paidStatuses = ['SECURED', 'ACTIVE', 'GRACE', 'SUSPENDED'];
+          return { ok: false as const, status: 409, body: {
+            error: paidStatuses.includes(live.status)
+              ? 'You already have a place in this class.'
+              : 'A checkout for this class is already in progress.',
+            reason: 'already_enrolled',
+            enrollment_id: live.id,
+            status: live.status,
+          } };
+        }
+        // Nothing live came back — CANCELLED by a concurrent release or the
+        // cron between our two reads. Fall through to a normal subscription.
+      }
     }
   }
 
@@ -589,6 +645,18 @@ export async function createGroupSubscriptionCheckout(params: {
     }
 
     if (enrollErr || !newEnrollment) {
+      // 23505 on the (student_id, group_id) unique index: something made this
+      // student's SUBSCRIPTION row live between the checks above and this
+      // insert (a concurrent payment confirming, a double-submitted request).
+      // Reported as a 409 the student can act on, not a 500 with a raw
+      // Postgres detail string glued onto it.
+      if (String((enrollErr as any)?.code) === '23505') {
+        console.warn('[subscribe] enrollment insert raced a concurrent enrolment/checkout:', enrollErr);
+        return { ok: false as const, status: 409, body: {
+          error: 'You already have a place or a checkout in progress for this class. Refresh the page to see it.',
+          reason: 'already_enrolled',
+        } };
+      }
       console.error('[subscribe] Failed to create enrollment:', enrollErr);
       const detail = enrollErr ? (enrollErr.message || enrollErr.code || JSON.stringify(enrollErr)) : 'no row returned';
       return { ok: false as const, status: 500, body: { error: 'Failed to create enrollment', detail } };

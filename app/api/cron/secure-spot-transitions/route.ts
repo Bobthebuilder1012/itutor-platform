@@ -16,6 +16,12 @@
 //      this a secured student keeps access forever off one month's payment,
 //      and the seat is never resold.
 //
+//   3. RELEASE — an unpaid SECURED_PENDING_PAYMENT hold whose checkout window
+//      lapsed more than a day ago is cancelled, intent first. Nothing else ever
+//      expired these, and a lingering one locks its student out of /subscribe
+//      for that class. /subscribe also releases a lapsed hold on the spot, so
+//      this is the sweep for everyone who never comes back to ask.
+//
 // Deliberately NOT here: releasing the money. That is
 // flip_owed_to_release_ready, driven by its own cron, and it keys off
 // release_date independently. A student choosing not to continue has no
@@ -29,6 +35,7 @@ import { getServiceClient } from '@/lib/supabase/server';
 import { sendEmail } from '@/lib/services/emailService';
 import { renderEmail } from '@/lib/email/design';
 import { trinidadToday } from '@/lib/payments/secureSpot';
+import { releaseStaleSecureSpotHold } from '@/lib/payments/staleSecureSpotHold';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -38,6 +45,17 @@ const REMIND_DAYS_BEFORE = 7;
 
 /** How long after release_date the seat is held while they decide. */
 const GRACE_DAYS_AFTER = 7;
+
+/**
+ * How long past its checkout window an unpaid hold is left before the sweep
+ * releases it. A day, not the moment it lapses: a student who comes back the
+ * same evening can still resume the hold through the claim RPC, and /subscribe
+ * releases a lapsed hold itself when that is what they ask for.
+ */
+const HOLD_RELEASE_AFTER_MS = 24 * 60 * 60 * 1000;
+
+/** Bounds one run's Stripe calls; the rest are picked up tomorrow. */
+const HOLD_RELEASE_BATCH = 100;
 
 function addDays(iso: string, days: number): string {
   const d = new Date(`${iso}T00:00:00Z`);
@@ -61,7 +79,7 @@ export async function GET(request: NextRequest) {
   const today = trinidadToday();
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? '';
 
-  const result = { reminded: 0, lapsed: 0, errors: [] as string[] };
+  const result = { reminded: 0, lapsed: 0, holdsReleased: 0, holdsKept: 0, errors: [] as string[] };
 
   // ---------------------------------------------------------------
   // 1. REMIND — release_date within the next REMIND_DAYS_BEFORE days
@@ -286,6 +304,43 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     console.error('[secure-spot-transitions] lapse failed:', err);
     result.errors.push(`lapse: ${(err as Error)?.message}`);
+  }
+
+  // ---------------------------------------------------------------
+  // 3. RELEASE — unpaid holds whose checkout window lapsed a day ago
+  // ---------------------------------------------------------------
+  // No email: the student never paid, and nothing they had is being taken
+  // away. The seat was already free for everyone else the moment the window
+  // lapsed (secure_spot_seats_used ignores lapsed holds); this only removes
+  // the row that blocked the student themself.
+  try {
+    const cutoffIso = new Date(Date.now() - HOLD_RELEASE_AFTER_MS).toISOString();
+    const { data: stale, error } = await admin
+      .from('group_enrollments')
+      .select('id')
+      .eq('status', 'SECURED_PENDING_PAYMENT')
+      .or(`pending_payment_expires_at.is.null,pending_payment_expires_at.lt.${cutoffIso}`)
+      .order('pending_payment_expires_at', { ascending: true, nullsFirst: true })
+      .limit(HOLD_RELEASE_BATCH);
+
+    if (error) throw error;
+
+    for (const row of stale ?? []) {
+      try {
+        const outcome = await releaseStaleSecureSpotHold(admin as any, row.id);
+        if (outcome.released) result.holdsReleased += 1;
+        else if (outcome.reason !== 'not_a_hold') {
+          // payment_in_flight or stripe_unavailable: kept on purpose, retried
+          // tomorrow. Counted so a hold that never clears is visible.
+          result.holdsKept += 1;
+        }
+      } catch (err) {
+        result.errors.push(`release ${row.id}: ${(err as Error)?.message}`);
+      }
+    }
+  } catch (err) {
+    console.error('[secure-spot-transitions] release failed:', err);
+    result.errors.push(`release: ${(err as Error)?.message}`);
   }
 
   console.log('[secure-spot-transitions]', result);

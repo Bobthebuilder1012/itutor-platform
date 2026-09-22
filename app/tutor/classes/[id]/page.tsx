@@ -346,7 +346,16 @@ function ClassHubContent() {
         if (mRes.ok) rawMembers = (await mRes.json()).members ?? [];
         if (sRes.ok) {
           const subs: any[] = (await sRes.json()).subscribers ?? [];
-          for (const s of subs) subMap.set(s.student_id, s);
+          // /subscribers returns newest-enrolled_at first, and a student can
+          // now legitimately hold two SUBSCRIPTION rows for this class: a
+          // released "Secure your spot" hold left CANCELLED, and the live
+          // enrolment they made afterwards (lib/payments/staleSecureSpotHold).
+          // Keep the newest row we see per student, not the last one written
+          // — the loop order below used to overwrite the live row with the
+          // older CANCELLED one and show a paid, active student as cancelled.
+          for (const s of subs) {
+            if (!subMap.has(s.student_id)) subMap.set(s.student_id, s);
+          }
         }
       } catch { /* leave empty */ }
 

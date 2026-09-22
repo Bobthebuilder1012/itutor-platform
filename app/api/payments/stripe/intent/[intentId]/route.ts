@@ -279,6 +279,65 @@ export async function GET(
     // so the checkout has to say exactly when the class starts and what the
     // money is for. Nothing renews.
     if (md.kind === 'secure_spot') {
+      // An intent outlives its hold. A stale tab or a bookmarked checkout link
+      // can still carry it after the hold was released (lapsed and swept, or
+      // cleared when the student subscribed instead), and paying it then is
+      // money with no seat behind it — secure_spot_confirm only confirms a
+      // SECURED_PENDING_PAYMENT row. So the checkout is refused, and the intent
+      // cancelled, unless the hold and its payment row are both still open.
+      if (
+        intent.status === 'requires_payment_method' ||
+        intent.status === 'requires_confirmation' ||
+        intent.status === 'requires_action'
+      ) {
+        const admin = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY!,
+          { auth: { autoRefreshToken: false, persistSession: false } }
+        );
+        const [holdRes, payRes] = await Promise.all([
+          md.enrollment_id
+            ? admin.from('group_enrollments').select('status').eq('id', md.enrollment_id).maybeSingle()
+            : Promise.resolve({ data: null, error: null }),
+          md.payment_id
+            ? admin.from('subscription_payments').select('status').eq('id', md.payment_id).maybeSingle()
+            : Promise.resolve({ data: null, error: null }),
+        ]);
+        // A read failure must not read as "the hold is gone" — that would
+        // cancel a live, legitimately open checkout over nothing worse than a
+        // transient database timeout (prod has had exactly these during its
+        // backup window). Refused rather than guessed: the webhook and
+        // secure_spot_confirm already protect the money if the hold really
+        // was released, so there is nothing to gain by deciding here.
+        if (holdRes.error || payRes.error) {
+          console.error(
+            '[stripe/intent] could not verify secure-spot hold, refusing to cancel',
+            intent.id,
+            holdRes.error ?? payRes.error
+          );
+          return NextResponse.json(
+            { error: 'We could not load this checkout just now. Please try again in a moment.' },
+            { status: 503 }
+          );
+        }
+        const hold = holdRes.data;
+        const payRow = payRes.data;
+        const holdOpen =
+          (hold as any)?.status === 'SECURED_PENDING_PAYMENT' &&
+          (!md.payment_id || (payRow as any)?.status === 'PENDING');
+        if (!holdOpen) {
+          try {
+            await stripe.paymentIntents.cancel(intent.id, { cancellation_reason: 'abandoned' });
+          } catch (cancelErr) {
+            console.warn('[stripe/intent] could not cancel orphaned secure-spot intent', intent.id, cancelErr);
+          }
+          return NextResponse.json(
+            { error: 'This reservation has expired. Please open the class again to join.' },
+            { status: 410 }
+          );
+        }
+      }
+
       const { data: group } = await userClient
         .from('groups')
         .select('id, name, subject, tutor_id, session_length_minutes, end_date')

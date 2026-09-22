@@ -61,6 +61,13 @@ export async function GET(_req: NextRequest) {
         .select(cols)
         .eq('student_id', user.id)
         .eq('enrollment_type', 'SUBSCRIPTION')
+        // An abandoned "Secure your spot" hold the student never paid
+        // (lib/payments/staleSecureSpotHold) is not a subscription they had
+        // and stopped — showing it under Past subscriptions reads as a
+        // cancelled class they never actually held. .neq() alone would drop
+        // every row here, since almost all have removal_reason NULL and
+        // PostgREST's <> excludes NULLs — hence the explicit .is.null half.
+        .or('removal_reason.is.null,removal_reason.neq.stale_secure_spot_hold')
         .order('enrolled_at', { ascending: false });
       if (!res.error) { data = (res.data ?? []) as any[]; error = null; break; }
       error = res.error;

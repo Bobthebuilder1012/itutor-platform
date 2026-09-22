@@ -21,6 +21,7 @@ import {
   preorderReasonMessage,
 } from '@/lib/payments/secureSpot';
 import type { SessionPattern } from '@/lib/utils/scheduleFormat';
+import { STALE_HOLD_REMOVAL_REASON } from '@/lib/payments/staleSecureSpotHold';
 import { trackForUser } from '@/lib/analytics/track';
 import { PRODUCT_EVENTS } from '@/lib/analytics/events';
 
@@ -91,7 +92,7 @@ export async function confirmSecuredSpot(
     .from('group_enrollments')
     // plan_price_ttd is read only so the `paid` event below can carry an
     // amount. It is what secure_spot_claim wrote as the securing charge.
-    .select('id, group_id, student_id, status, plan_price_ttd')
+    .select('id, group_id, student_id, status, payment_status, removal_reason, plan_price_ttd')
     .eq('id', enrollmentId)
     .maybeSingle();
 
@@ -101,6 +102,27 @@ export async function confirmSecuredSpot(
   // Already secured by an earlier delivery of the same event.
   if ((enrollment as any).status === 'SECURED') {
     return { ok: true, idempotent: true, enrollmentId };
+  }
+
+  // Paid AFTER the hold was released as stale (lib/payments/staleSecureSpotHold).
+  // The release cancels every intent it knows about before the row, so this
+  // should not happen — but a cancel is refused once Stripe has already
+  // captured the charge, so a webhook for that intent can still arrive after
+  // release. Without this, secure_spot_confirm would refuse the CANCELLED row
+  // with unexpected_status and the money would be kept with no seat behind
+  // it. Give it back instead.
+  //
+  // Checked PER INTENT, not per enrollment: one released hold can have several
+  // superseded intents behind it (each "Secure your spot" retry left one),
+  // and an enrollment-level "already refunded" flag would let the second
+  // paid intent slip through with the money kept once the first has flipped
+  // it. removal_reason keeps this branch from firing on the refund paths
+  // above (oversubscribed, schedule_removed), which use their own reasons.
+  if (
+    (enrollment as any).status === 'CANCELLED' &&
+    (enrollment as any).removal_reason === STALE_HOLD_REMOVAL_REASON
+  ) {
+    return refundStaleReleasedHold(admin, enrollment as any, stripePaymentIntentId);
   }
 
   const { data: group, error: grpErr } = await admin
@@ -153,6 +175,29 @@ export async function confirmSecuredSpot(
     const refunded = await refundSecuringCharge(stripePaymentIntentId);
     await releaseClaim(admin, enrollmentId, 'oversubscribed');
     return { ok: false, error: 'oversubscribed', refunded, enrollmentId };
+  }
+
+  if (rpc?.ok === false && rpc?.reason === 'unexpected_status') {
+    // The row was SECURED_PENDING_PAYMENT at the read above but is something
+    // else now — most likely the hold was released as stale between that
+    // read and this RPC (secure_spot_confirm takes its own row lock, so the
+    // release can land in that gap). Re-read rather than assume: refunding on
+    // every unexpected_status, no matter the actual cause, would retry a
+    // CANCELLED row forever for reasons that were never about a released hold.
+    const { data: recheck } = await admin
+      .from('group_enrollments')
+      .select('status, removal_reason')
+      .eq('id', enrollmentId)
+      .maybeSingle();
+    if (
+      (recheck as any)?.status === 'CANCELLED' &&
+      (recheck as any)?.removal_reason === STALE_HOLD_REMOVAL_REASON
+    ) {
+      // Not deduped: marking this transient sends Stripe's redelivery back
+      // through the branch above, which does the actual refund and is safe
+      // to repeat (refundSecuringCharge is idempotency-keyed per intent).
+      return { ok: false, transient: true, error: 'hold_released_during_confirm', enrollmentId };
+    }
   }
 
   if (rpc?.ok === false) {
@@ -514,6 +559,77 @@ async function refundSecuringCharge(paymentIntentId: string): Promise<boolean> {
     });
     return false;
   }
+}
+
+/**
+ * Refund a payment that succeeded on a hold that lib/payments/staleSecureSpotHold
+ * had already released as abandoned. Called from confirmSecuredSpot for each
+ * webhook delivery of a stale intent.
+ *
+ * Checks and records state PER INTENT (the subscription_payments row for
+ * `stripePaymentIntentId`), not on the enrollment as a whole — the release
+ * this can follow may have failed to cancel more than one superseded intent
+ * off the same hold, and an enrollment-level flag would let a second one
+ * through once the first had flipped it.
+ *
+ * A failed refund is reported transient rather than terminal. Nothing is
+ * written on that path — the row stays exactly as it was, so it is safe for
+ * the caller to mark the webhook event retryable and let Stripe redeliver;
+ * refundSecuringCharge's idempotency key makes repeating it safe. A durable
+ * exception is also logged, in case retries are exhausted before it clears:
+ * the alternative is a captured charge whose only trace is a console.error.
+ */
+async function refundStaleReleasedHold(
+  admin: SupabaseClient,
+  enrollment: { id: string; group_id: string; student_id: string },
+  stripePaymentIntentId: string
+): Promise<ConfirmSecuredSpotResult> {
+  const enrollmentId = enrollment.id;
+
+  const { data: paymentRow, error: payErr } = await admin
+    .from('subscription_payments')
+    .select('id, status')
+    .eq('enrollment_id', enrollmentId)
+    .eq('stripe_payment_intent_id', stripePaymentIntentId)
+    .limit(1)
+    .maybeSingle();
+  if (payErr) return { ok: false, transient: true, error: `rpc_failed: ${payErr.message}` };
+
+  if ((paymentRow as any)?.status === 'REFUNDED') {
+    return { ok: false, error: 'hold_released', refunded: true, enrollmentId };
+  }
+
+  const refunded = await refundSecuringCharge(stripePaymentIntentId);
+  if (!refunded) {
+    await admin.from('subscription_payment_exceptions').insert({
+      subscription_payment_id: (paymentRow as any)?.id ?? null,
+      enrollment_id: enrollmentId,
+      group_id: enrollment.group_id,
+      student_id: enrollment.student_id,
+      exception_type: 'refund_required',
+      status: 'open',
+      error_message: `secure_spot paid after its hold was released as stale; refund failed for ${stripePaymentIntentId}`,
+    }).then(({ error: xe }) => {
+      // A retry (this function is re-entered on every redelivery until the
+      // refund succeeds) would otherwise open a fresh exception row each
+      // time. Fine either way — 'open' rows for the same enrollment are
+      // exactly the ones an admin needs to see — but not worth failing over.
+      if (xe) console.warn('[secureSpot] exception insert failed:', xe.message);
+    });
+    return { ok: false, transient: true, error: 'hold_released_refund_failed', enrollmentId };
+  }
+
+  await admin
+    .from('group_enrollments')
+    .update({ payment_status: 'REFUNDED' })
+    .eq('id', enrollmentId);
+  if ((paymentRow as any)?.id) {
+    await admin
+      .from('subscription_payments')
+      .update({ status: 'REFUNDED', refunded_at: new Date().toISOString() })
+      .eq('id', (paymentRow as any).id);
+  }
+  return { ok: false, error: 'hold_released', refunded: true, enrollmentId };
 }
 
 /** Give the seat back and mark the payment refunded. Never leaves it SECURED. */

@@ -1,7 +1,13 @@
 // GET /api/groups/member-counts?ids=id1,id2,...
-// Returns the count of active subscribers per group using the service client
+// Returns how many students hold a seat in each group, using the service client
 // (bypasses RLS so students get accurate counts for all visible groups).
-// Counts group_enrollments with status ACTIVE | GRACE | SUSPENDED.
+//
+// A student counts once, whichever way they joined: group_enrollments with
+// status SECURED | ACTIVE | GRACE | SUSPENDED, or group_members with status
+// active | approved. A paid student is in BOTH tables — activation and
+// secure_spot_confirm each grant membership — so summing the two counted every
+// paying student twice, and a class with 3 students read "Only 9 spots left"
+// out of 15. Same rule as lib/services/classOccupancy.ts.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
@@ -28,12 +34,12 @@ export async function GET(req: NextRequest) {
     const [{ data: enrollmentRows, error: eErr }, { data: memberRows, error: mErr }] = await Promise.all([
       admin
         .from('group_enrollments')
-        .select('group_id')
+        .select('group_id, student_id')
         .in('group_id', groupIds)
         .in('status', ['SECURED', 'ACTIVE', 'GRACE', 'SUSPENDED']),
       admin
         .from('group_members')
-        .select('group_id')
+        .select('group_id, user_id')
         .in('group_id', groupIds)
         .in('status', ['active', 'approved']),
     ]);
@@ -41,10 +47,18 @@ export async function GET(req: NextRequest) {
     if (eErr) console.error('[member-counts] enrollments error:', eErr.message);
     if (mErr) console.error('[member-counts] members error:', mErr.message);
 
+    const studentsByGroup = new Map<string, Set<string>>();
+    const add = (groupId: string, studentId: string | null) => {
+      if (!studentId) return;
+      let set = studentsByGroup.get(groupId);
+      if (!set) studentsByGroup.set(groupId, (set = new Set()));
+      set.add(studentId);
+    };
+    for (const row of enrollmentRows ?? []) add(row.group_id, row.student_id);
+    for (const row of memberRows ?? []) add(row.group_id, row.user_id);
+
     const counts: Record<string, number> = {};
-    for (const row of [...(enrollmentRows ?? []), ...(memberRows ?? [])]) {
-      counts[row.group_id] = (counts[row.group_id] ?? 0) + 1;
-    }
+    for (const [groupId, students] of studentsByGroup) counts[groupId] = students.size;
 
     return NextResponse.json({ counts });
   } catch (err) {
