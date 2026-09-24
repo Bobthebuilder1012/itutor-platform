@@ -6,8 +6,11 @@ import { addDays, addMonths, isAfter } from 'date-fns';
  * IMPORTANT — this history is SYNTHESIZED, not real payment records. The app
  * only stores a subscription's CURRENT cycle (group_enrollments), so past
  * cycles are generated from the join date using the model below:
- *   - Due dates are anchored to the student's original join day-of-month and
- *     never drift.
+ *   - Due dates are anchored to the billing anchor's day-of-month and never
+ *     drift. The anchor is the join date, except for a student who secured a
+ *     spot in advance: their paid first month starts at the class's first
+ *     session, so that is the anchor, and cycle one is paid on the day they
+ *     secured.
  *   - A student has exactly ONE open (current) cycle at a time; the next cycle
  *     does not open until the current one is settled. So a student can never
  *     hold two simultaneous unpaid/overdue cycles, and "outstanding balance" is
@@ -85,6 +88,10 @@ export interface MemberBilling {
   /** plan_price_ttd */
   amount: number | null;
   lastPaidAt: string | null;
+  /** When set, cycles start here instead of joinedAt (a secured spot's class start). */
+  anchorAt?: string | null;
+  /** The first cycle was paid in advance on this date (secured_at). */
+  prepaidAt?: string | null;
 }
 
 // Stable per-student hash → deterministic demo lateness (no Math.random, so the
@@ -107,10 +114,12 @@ function paidLatenessDays(studentId: string, cycleIndex: number): number {
  * first. Returns [] when the member has no subscription or join date.
  */
 export function generateHistoryForMember(mb: MemberBilling, today: Date = new Date()): PaymentCycle[] {
-  if (!mb.joinedAt || !mb.status) return [];
+  const anchorSource = mb.anchorAt ?? mb.joinedAt;
+  if (!anchorSource || !mb.status) return [];
   const amount = mb.amount ?? 0;
-  const joined = new Date(mb.joinedAt);
+  const joined = new Date(anchorSource);
   if (isNaN(joined.getTime())) return [];
+  const prepaid = mb.prepaidAt ? new Date(mb.prepaidAt) : null;
 
   const currentUnsettled = UNSETTLED_STATUSES.includes(mb.status);
   const lastPaid = mb.lastPaidAt ? new Date(mb.lastPaidAt) : null;
@@ -119,18 +128,23 @@ export function generateHistoryForMember(mb: MemberBilling, today: Date = new Da
   let anchor = new Date(joined);
   let index = 0;
 
-  while (!isAfter(anchor, today)) {
+  // A prepaid first cycle exists even before the class has started.
+  while (!isAfter(anchor, today) || (index === 0 && prepaid)) {
     const dueDate = new Date(anchor);
     const gracePeriodEnd = addDays(dueDate, GRACE_PERIOD_DAYS);
     const periodEnd = addDays(addMonths(dueDate, 1), -1);
     const isLatest = isAfter(addMonths(anchor, 1), today); // next anchor is in the future
 
     let paidDate: Date | null;
-    if (isLatest && currentUnsettled) {
+    if (index === 0 && prepaid) {
+      // Paid up front when the spot was secured — before the due date, so on time.
+      paidDate = prepaid;
+    } else if (isLatest && currentUnsettled) {
       // The single open cycle — seeded from the real subscription state.
       paidDate = null;
-    } else if (isLatest && lastPaid && !isAfter(dueDate, lastPaid)) {
+    } else if (isLatest && lastPaid && isAfter(lastPaid, addMonths(dueDate, -1))) {
       // Settled current cycle: use the real payment date so lateness is honest.
+      // Paying ahead (e.g. continuing a secured spot before it ends) counts.
       paidDate = lastPaid;
     } else {
       paidDate = addDays(dueDate, paidLatenessDays(mb.studentId, index));
@@ -148,6 +162,9 @@ export function generateHistoryForMember(mb: MemberBilling, today: Date = new Da
     });
 
     if (paidDate === null) break; // one open cycle only
+    // A held spot is exactly the prepaid month; nothing is billed after it
+    // until the student chooses to continue.
+    if (mb.status === 'SECURED') break;
     anchor = addMonths(anchor, 1);
     index++;
   }
