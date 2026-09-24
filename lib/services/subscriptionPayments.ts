@@ -211,7 +211,15 @@ export async function handleSubscriptionPayment(
   let periodStart: Date;
   let periodEnd: Date;
 
-  if (sp.type === 'subscription_initial') {
+  if (sp.type === 'subscription_initial' && enrollment.status === 'SECURED') {
+    // Continuing from a secured spot. The first month was paid up front and
+    // runs to current_period_end (the release date); the reminder goes out a
+    // week before that, so starting at `now` would swallow days already paid for.
+    const securedEnd = enrollment.current_period_end ? new Date(enrollment.current_period_end) : now;
+    periodStart = securedEnd > now ? securedEnd : now;
+    periodEnd = new Date(periodStart);
+    periodEnd.setMonth(periodEnd.getMonth() + 1);
+  } else if (sp.type === 'subscription_initial') {
     periodStart = now;
     periodEnd = new Date(now);
     periodEnd.setMonth(periodEnd.getMonth() + 1);

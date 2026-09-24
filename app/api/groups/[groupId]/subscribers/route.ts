@@ -79,21 +79,24 @@ async function attachSecuredDetail(
   groupId: string,
   rows: any[]
 ): Promise<any[]> {
-  const secured = rows.filter((r) => r.status === 'SECURED');
-  if (secured.length === 0) return rows;
+  // secured_at, not just status: a student who secured and then continued is
+  // ACTIVE now, but their billing still runs from the class start they paid for.
+  const everSecured = rows.filter((r) => r.status === 'SECURED' || r.secured_at);
+  if (everSecured.length === 0) return rows;
 
   try {
     const { data: payments } = await admin
       .from('subscription_payments')
-      .select('enrollment_id, tutor_payout_ttd, amount_ttd, status')
+      .select('enrollment_id, tutor_payout_ttd, amount_ttd, status, period_start')
       .eq('group_id', groupId)
       .eq('type', 'secure_spot');
 
-    const payoutByEnrollment = new Map<string, { held: number; paid: boolean }>();
+    const payoutByEnrollment = new Map<string, { held: number; paid: boolean; periodStart: string | null }>();
     for (const p of payments ?? []) {
       payoutByEnrollment.set(p.enrollment_id, {
         held: Number(p.tutor_payout_ttd ?? 0),
         paid: p.status === 'PAID',
+        periodStart: (p as any).period_start ?? null,
       });
     }
 
@@ -115,10 +118,16 @@ async function attachSecuredDetail(
     const shortClass = firstSession ? isShortClass({ firstSession, endDate }) : false;
 
     return rows.map((r) => {
-      if (r.status !== 'SECURED') return r;
+      if (r.status !== 'SECURED' && !r.secured_at) return r;
       const money = payoutByEnrollment.get(r.id);
+      // The paid first month starts at the class's first session, not the day
+      // the spot was secured. The securing payment's period_start fixes that
+      // date at purchase; the schedule is the fallback when it is missing.
+      const billingAnchor = money?.periodStart ?? firstSession?.toISOString() ?? null;
+      if (r.status !== 'SECURED') return { ...r, billing_anchor: billingAnchor };
       return {
         ...r,
+        billing_anchor: billingAnchor,
         secured: {
           releaseDate: r.release_date ?? null,
           heldTtd: money?.held ?? 0,

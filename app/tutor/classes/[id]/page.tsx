@@ -57,6 +57,8 @@ type Subscriber = {
   grace_period_ends_at: string | null;
   secured_at?: string | null;
   release_date?: string | null;
+  /** Start of the paid first month for a student who secured a spot — the class start. */
+  billing_anchor?: string | null;
   /** Present only for SECURED enrolments — a held spot, not a live subscription. */
   secured?: { releaseDate: string | null; heldTtd: number; free: boolean; shortClass: boolean } | null;
   student: { id: string; full_name: string | null; avatar_url: string | null; email: string | null } | null;
@@ -1865,6 +1867,8 @@ function RosterRow({ m, groupId, onUpdate, onRemoved, externalChannels }: { m: G
     status: m.subscription?.status ?? null,
     amount: m.subscription?.plan_price_ttd ?? null,
     lastPaidAt: m.subscription?.last_paid_at ?? null,
+    anchorAt: m.subscription?.billing_anchor ?? null,
+    prepaidAt: m.subscription?.secured_at ?? null,
   };
   const currentCycle = generateHistoryForMember(billing)[0];
   const payMembership = currentCycle ? getMembershipStatus(getPaymentStatus(currentCycle)) : 'ACTIVE';
