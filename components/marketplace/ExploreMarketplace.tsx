@@ -132,6 +132,9 @@ type GroupLesson = {
   activePromotion?: { id: string; kind: string; discount: number; student_cap: number | null; duration_days: number | null } | null;
   /** Set when the class hasn't started and the tutor has opened preorders. */
   preorder?: { firstSession: string; releaseDate: string; shortClass: boolean } | null;
+  /** Badge-only signals — never the links themselves. See ClassCardData. */
+  hasWhatsapp?: boolean;
+  hasClassroom?: boolean;
 };
 
 function promoLabel(promo: { kind: string; discount: number; student_cap: number | null; duration_days: number | null; created_at?: string; used_count?: number }): string {
@@ -835,6 +838,8 @@ export default function ExploreMarketplace({ variant = 'student' }: { variant?: 
           feedbackMode: g.feedback_mode ?? g.parent_feedback_mode ?? null,
           parentFeedbackPrice: g.parent_feedback_price ?? null,
           activePromotion: null,
+          hasWhatsapp: !!(g.whatsapp_link ?? g.whatsapp_url),
+          hasClassroom: !!g.google_classroom_link,
         };
       });
 

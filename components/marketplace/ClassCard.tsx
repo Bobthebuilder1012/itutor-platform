@@ -19,7 +19,7 @@
  */
 
 import Link from 'next/link';
-import { Star, Calendar, Clock, Users, Flame, MapPin } from 'lucide-react';
+import { Star, Calendar, Clock, Users, Flame, MapPin, MessageSquare, Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { classCapacityDisplay } from '@/lib/utils/classCapacity';
@@ -50,6 +50,12 @@ export type ClassCardData = {
   venueArea?: string | null;
   activePromotion?: { id: string; kind: string; discount: number; student_cap: number | null; duration_days: number | null } | null;
   preorder?: { firstSession: string; releaseDate: string; shortClass: boolean } | null;
+  /** Whether the tutor has a WhatsApp group / Google Classroom set up for this
+   *  class. Booleans, not the links themselves — the marketplace is browsable
+   *  before enrolling, and the actual invite is only ever handed out through
+   *  the membership-gated join flow on the class page. */
+  hasWhatsapp?: boolean;
+  hasClassroom?: boolean;
 };
 
 function promoLabel(promo: { kind: string; discount: number; student_cap: number | null; duration_days: number | null; created_at?: string; used_count?: number }): string {
@@ -159,7 +165,23 @@ export default function ClassCard({
             <TutorAvatar avatarUrl={l.tutorAvatar} name={l.tutor} size={22} />
             <span className="text-sm text-muted-foreground">by {l.tutor}</span>
           </div>
-          <div className="text-xs text-muted-foreground mt-1">{l.subject}{l.level ? ` · ${l.level}` : ''}</div>
+          <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1.5 flex-wrap">
+            <span>{l.subject}{l.level ? ` · ${l.level}` : ''}</span>
+            {(l.hasWhatsapp || l.hasClassroom) && (
+              <span className="inline-flex items-center gap-1">
+                {l.hasWhatsapp && (
+                  <span title="Tutor uses a WhatsApp group for this class" className="inline-flex items-center justify-center size-4 rounded-full bg-[#e7f9ef]">
+                    <MessageSquare className="size-2.5 text-[#25D366]" />
+                  </span>
+                )}
+                {l.hasClassroom && (
+                  <span title="Tutor uses Google Classroom for this class" className="inline-flex items-center justify-center size-4 rounded-full bg-[#e8f0fe]">
+                    <Globe className="size-2.5 text-[#1A73E8]" />
+                  </span>
+                )}
+              </span>
+            )}
+          </div>
           {l.description && (
             <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">{l.description}</p>
           )}
