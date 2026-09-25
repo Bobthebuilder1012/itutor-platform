@@ -1,4 +1,4 @@
-// POST /api/classes/[groupId]/invites
+// POST /api/classes/[id]/invites
 // Mints (or returns) the caller's share link for a class.
 //
 // Rate-limited on the trailing-window pattern from lib/services/aiRateLimit —
@@ -17,7 +17,7 @@ const MINTS_PER_HOUR = 30;
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { groupId: string } },
+  { params }: { params: { id: string } },
 ) {
   try {
     const supabase = await getServerClient();
@@ -28,7 +28,7 @@ export async function POST(
 
     // Not "forbidden" — a stranger asking about a class they cannot invite to
     // learns nothing about whether it exists.
-    if (!(await canInviteToClass(admin, params.groupId, user.id))) {
+    if (!(await canInviteToClass(admin, params.id, user.id))) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
@@ -50,7 +50,7 @@ export async function POST(
     const source = typeof body?.source === 'string' ? body.source.slice(0, 40) : null;
 
     const invite = await mintShareInvite(admin, {
-      groupId: params.groupId,
+      groupId: params.id,
       inviterId: user.id,
       source,
     });
