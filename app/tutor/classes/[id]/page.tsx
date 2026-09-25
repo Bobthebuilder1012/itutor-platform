@@ -101,7 +101,7 @@ type GroupSession = {
   paymentStatus?: string;
 };
 
-import { type ScheduleEntry, formatScheduleEntry, scheduleToDisplay } from '@/lib/utils/scheduleFormat';
+import { type ScheduleEntry } from '@/lib/utils/scheduleFormat';
 import { preorderReasonMessage, type PreorderIneligibility } from '@/lib/payments/secureSpot';
 import ClassPausePanel from '@/components/tutor/ClassPausePanel';
 
@@ -2472,13 +2472,6 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
                   placeholder="Tell students what this class covers, who it's for, and what they'll achieve…"
                   className="w-full min-h-24 px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
               </SetField>
-              <SchedulePicker
-                entries={draft.scheduleData ?? []}
-                onChange={(entries) => {
-                  d('scheduleData', entries);
-                  d('scheduleDisplay', scheduleToDisplay(entries));
-                }}
-              />
               <ClassBannerUpload
                 groupId={draft.id}
                 currentUrl={draft.coverImage ?? ''}
@@ -2719,120 +2712,6 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
       )}
 
       <UnsavedBar dirty={dirty} onSave={handleSave} onDiscard={handleDiscard} saveLabel="Save class settings" saving={saving} />
-    </div>
-  );
-}
-
-/* ─── Schedule picker ────────────────────────────────── */
-const DURATION_OPTIONS = [
-  { value: 30, label: '30 min' },
-  { value: 45, label: '45 min' },
-  { value: 60, label: '1 hour' },
-  { value: 90, label: '1h 30m' },
-  { value: 120, label: '2 hours' },
-  { value: 150, label: '2h 30m' },
-  { value: 180, label: '3 hours' },
-];
-
-function SchedulePicker({ entries, onChange }: { entries: ScheduleEntry[]; onChange: (e: ScheduleEntry[]) => void }) {
-  const [adding, setAdding] = useState(false);
-  const [newDay, setNewDay] = useState(1);
-  const [newTime, setNewTime] = useState('16:00');
-  const [newDur, setNewDur] = useState(60);
-
-  const add = () => {
-    if (entries.some(e => e.day === newDay && e.time === newTime)) return;
-    const next = [...entries, { day: newDay, time: newTime, durationMin: newDur }]
-      .sort((a, b) => a.day !== b.day ? a.day - b.day : a.time.localeCompare(b.time));
-    onChange(next);
-    setAdding(false);
-  };
-
-  const remove = (i: number) => onChange(entries.filter((_, idx) => idx !== i));
-
-  return (
-    <div className="space-y-3">
-      <div className="text-sm font-semibold text-ink">Schedule</div>
-      <p className="text-xs text-muted-foreground -mt-1">
-        Add your recurring sessions. Students see this on the marketplace, and a class without a
-        schedule isn&rsquo;t listed at all.
-      </p>
-
-      {/* The requirement, stated where it is acted on. A listing that cannot say
-          when the class meets is an invitation to enrol in an unstated time, so
-          the marketplace filters these out rather than showing them half-formed. */}
-      {entries.length === 0 && (
-        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />
-          <p className="text-xs leading-relaxed text-amber-800">
-            <span className="font-semibold">This class isn&rsquo;t on the marketplace yet.</span>{' '}
-            Students and parents can&rsquo;t find or enrol in it until it has a weekly schedule. Add
-            one below and it&rsquo;s listed straight away.
-          </p>
-        </div>
-      )}
-
-      {entries.length > 0 && (
-        <div className="space-y-2">
-          {entries.map((e, i) => (
-            <div key={i} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-border bg-muted/30 text-sm">
-              <span className="font-medium text-ink">{formatScheduleEntry(e)}</span>
-              <button onClick={() => remove(i)} className="size-6 grid place-items-center rounded-md hover:bg-muted text-muted-foreground hover:text-rose-600 shrink-0">
-                <X className="size-3.5" />
-              </button>
-            </div>
-          ))}
-          {/* Generated display text preview */}
-          <div className="px-3 py-2 rounded-lg bg-brand/5 border border-brand/20 text-xs text-brand-deep font-medium whitespace-pre-line">
-            {scheduleToDisplay(entries)}
-          </div>
-        </div>
-      )}
-
-      {adding ? (
-        <div className="rounded-xl border border-border bg-background p-4 space-y-3">
-          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">New session</div>
-          <div className="grid grid-cols-3 gap-2">
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Day</label>
-              <select value={newDay} onChange={(e) => setNewDay(Number(e.target.value))}
-                className="w-full px-2 py-1.5 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand">
-                {DAY_NAMES.map((d, i) => <option key={i} value={i}>{d}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Start time</label>
-              <input type="time" value={newTime} onChange={(e) => setNewTime(e.target.value)}
-                className="w-full px-2 py-1.5 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Duration</label>
-              <select value={newDur} onChange={(e) => setNewDur(Number(e.target.value))}
-                className="w-full px-2 py-1.5 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand">
-                {DURATION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </div>
-          </div>
-          <div className="text-xs text-muted-foreground">
-            → <span className="font-medium text-ink">{formatScheduleEntry({ day: newDay, time: newTime, durationMin: newDur })}</span>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={add}
-              className="px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90">
-              Add session
-            </button>
-            <button onClick={() => setAdding(false)}
-              className="px-3 py-1.5 rounded-lg border border-border text-xs font-semibold hover:bg-muted">
-              Cancel
-            </button>
-          </div>
-        </div>
-      ) : (
-        <button onClick={() => setAdding(true)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-border text-xs font-semibold text-muted-foreground hover:text-ink hover:border-border hover:bg-muted transition">
-          <Plus className="size-3.5" /> Add session
-        </button>
-      )}
     </div>
   );
 }
