@@ -13,7 +13,6 @@ import {
   Settings,
   Bell,
   GraduationCap,
-  Wrench,
   PanelLeftClose,
   PanelLeftOpen,
   LogOut,
@@ -55,7 +54,6 @@ const nav: NavItem[] = [
   { to: '/student/subscriptions', label: 'Subscriptions', icon: CreditCard, tint: 'bg-purple-500/20 text-purple-300 ring-1 ring-purple-400/30' },
   // Transactions moved into Settings → Billing. A payment history is something a
   // student looks up occasionally; the sidebar is for the places they go weekly.
-  { to: '/student/tools', label: 'Tools', icon: Wrench, tint: 'bg-violet-500/20 text-violet-300 ring-1 ring-violet-400/30' },
 ];
 
 const COLLAPSE_KEY = 'itutor.sidebarCollapsed';
