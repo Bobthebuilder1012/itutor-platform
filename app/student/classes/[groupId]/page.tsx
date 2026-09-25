@@ -13,6 +13,7 @@ import { supabase } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
 import { CommentSection } from '@/components/ratings/CommentSection';
 import { occurrenceTitle } from '@/lib/utils/scheduleFormat';
+import WhatsAppJoinButton from '@/components/groups/student/WhatsAppJoinButton';
 
 /* ─── Types ──────────────────────────────────────────── */
 
@@ -746,6 +747,27 @@ function StreamTab({ groupId, group, tutorName }: { groupId: string; group: Grou
             )}
           </ul>
         </div>
+        {(group.whatsapp_link || group.google_classroom_link) && (
+          <div className="rounded-2xl bg-background border border-border p-4">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Class channels</div>
+            <div className="mt-3 space-y-2">
+              {/* The real WhatsApp URL never reaches this page — this button asks
+                  the server for a single-use redirect token, same as the toolbar
+                  version, so it self-hides for anyone who isn't an approved member. */}
+              {group.whatsapp_link && <WhatsAppJoinButton groupId={groupId} variant="toolbar" />}
+              {group.google_classroom_link && (
+                <a
+                  href={group.google_classroom_link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-[10px] text-[12px] font-semibold no-underline border border-border bg-muted/40 text-ink hover:bg-muted transition"
+                >
+                  <Globe className="size-4 text-[#1A73E8] shrink-0" /> Google Classroom
+                </a>
+              )}
+            </div>
+          </div>
+        )}
       </aside>
     </div>
   );

@@ -24,7 +24,7 @@ import { getDisplayName } from '@/lib/utils/displayName';
 import VerifiedBadge from '@/components/VerifiedBadge';
 import UserAvatar from '@/components/UserAvatar';
 import { cn } from '@/lib/utils';
-import { Search, Star, Heart, Calendar, Clock, Users, GraduationCap, Flame, X, Check, Video, Sparkles, ChevronDown } from 'lucide-react';
+import { Search, Star, Heart, Calendar, Clock, Users, GraduationCap, Flame, X, Check, Video, Sparkles, ChevronDown, MessageSquare, Globe } from 'lucide-react';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 import {
   parseScheduleData,
@@ -118,6 +118,9 @@ type GroupLesson = {
   activePromotion?: { id: string; kind: string; discount: number; student_cap: number | null; duration_days: number | null } | null;
   /** Set when the class hasn't started and the tutor has opened preorders. */
   preorder?: { firstSession: string; releaseDate: string; shortClass: boolean } | null;
+  /** Badge-only signals — never the links themselves. See ClassCardData. */
+  hasWhatsapp?: boolean;
+  hasClassroom?: boolean;
 };
 
 function promoLabel(promo: { kind: string; discount: number; student_cap: number | null; duration_days: number | null; created_at?: string; used_count?: number }): string {
@@ -825,6 +828,8 @@ export default function ExploreMarketplace({
           feedbackMode: g.feedback_mode ?? g.parent_feedback_mode ?? null,
           parentFeedbackPrice: g.parent_feedback_price ?? null,
           activePromotion: null,
+          hasWhatsapp: !!(g.whatsapp_link ?? g.whatsapp_url),
+          hasClassroom: !!g.google_classroom_link,
         };
       });
 
@@ -1532,7 +1537,19 @@ export default function ExploreMarketplace({
                           <TutorAvatar avatarUrl={l.tutorAvatar} name={l.tutor} size={22} />
                           <span className="text-sm text-muted-foreground">by {l.tutor}</span>
                         </div>
-                        <div className="text-xs text-muted-foreground mt-1">{l.subject}{l.level ? ` · ${l.level}` : ''}</div>
+                        <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1.5 flex-wrap">
+                          <span>{l.subject}{l.level ? ` · ${l.level}` : ''}</span>
+                          {l.hasWhatsapp && (
+                            <span title="Tutor uses a WhatsApp group for this class" className="inline-flex items-center justify-center size-4 rounded-full bg-[#e7f9ef]">
+                              <MessageSquare className="size-2.5 text-[#25D366]" />
+                            </span>
+                          )}
+                          {l.hasClassroom && (
+                            <span title="Tutor uses Google Classroom for this class" className="inline-flex items-center justify-center size-4 rounded-full bg-[#e8f0fe]">
+                              <Globe className="size-2.5 text-[#1A73E8]" />
+                            </span>
+                          )}
+                        </div>
                         {l.description && (
                           <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">{l.description}</p>
                         )}
