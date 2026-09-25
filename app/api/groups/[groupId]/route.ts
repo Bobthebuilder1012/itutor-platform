@@ -48,7 +48,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
         difficulty, goals, price_per_session, price_monthly, pricing_model, recurrence_type, recurrence_rule,
         form_level, topic, session_length_minutes, session_frequency, price_per_course, pricing_mode, availability_window, media_gallery,
         timezone, max_students, cover_image, header_image, content_blocks, status, updated_at,
-        whatsapp_url, google_classroom_link, primary_channel, meeting_link,
+        whatsapp_url, whatsapp_link, google_classroom_link, primary_channel, meeting_link,
         require_join_requests, auto_suspend_missed_payment, grace_period_days, secure_spot_enabled, end_date,
         visibility, parent_feedback_mode, parent_feedback_price, member_service_fee,
         tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, response_time_minutes),
@@ -91,7 +91,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
         max_students, price_per_session, price_monthly, pricing_model, require_join_requests, visibility,
         secure_spot_enabled, end_date, cover_image, form_level, topic,
         session_length_minutes, session_frequency, recurrence_type,
-        grace_period_days, auto_suspend_missed_payment, google_classroom_link,
+        grace_period_days, auto_suspend_missed_payment, google_classroom_link, whatsapp_link,
         tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url),
         group_members(id, user_id, status, profile:profiles!group_members_user_id_fkey(id, full_name, avatar_url))
       `,
@@ -486,7 +486,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if ((body as any).pricing_mode !== undefined) updates.pricing_mode = (body as any).pricing_mode;
     if ((body as any).availability_window !== undefined) updates.availability_window = (body as any).availability_window;
     if ((body as any).whatsapp_url !== undefined) updates.whatsapp_url = (body as any).whatsapp_url;
-    if ((body as any).whatsapp_link !== undefined) updates.whatsapp_url = (body as any).whatsapp_link;
+    // whatsapp_link is the column the secure wa-token/wa-redirect flow actually
+    // reads (migration 101). This used to overwrite whatsapp_url instead, so a
+    // tutor saving a link here from the group profile's WhatsApp tab never
+    // reached the column students' join button checks — it silently updated a
+    // different, unread column, and the "Connected" link stayed invisible to
+    // every student no matter how many times it was re-saved.
+    if ((body as any).whatsapp_link !== undefined) updates.whatsapp_link = (body as any).whatsapp_link;
     if ((body as any).google_classroom_link !== undefined) updates.google_classroom_link = (body as any).google_classroom_link;
     if ((body as any).meeting_link !== undefined) updates.meeting_link = (body as any).meeting_link;
     if ((body as any).require_join_requests !== undefined) updates.require_join_requests = (body as any).require_join_requests;
