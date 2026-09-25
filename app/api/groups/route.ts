@@ -259,7 +259,6 @@ export async function GET(request: NextRequest) {
       for (const g of groupRows) {
         const key = String(g.id);
         const entries = resolveScheduleEntries({
-          scheduleData: (g as any).schedule_data ?? null,
           sessionRows: rulesByGroup.get(key) ?? [],
           occurrences: occurrencesByGroup.get(key) ?? [],
         });

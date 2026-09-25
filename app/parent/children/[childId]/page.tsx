@@ -314,9 +314,9 @@ function ClassesTab({ enrollments, childId }: { enrollments: Enrollment[]; child
       {enrollments.map((e) => {
         const sm = statusMeta[e.status] ?? { label: e.status, cls: 'bg-muted text-muted-foreground' };
         const scheduleLine = (() => {
+          if (e.sessionSchedule) return e.sessionSchedule.split('\n')[0];
           const entries = parseScheduleData(e.scheduleData);
-          if (entries.length) return scheduleToDisplay(entries).split('\n')[0];
-          return e.sessionSchedule?.split('\n')[0] || null;
+          return entries.length ? scheduleToDisplay(entries).split('\n')[0] : null;
         })();
         return (
           <ParentClassCard

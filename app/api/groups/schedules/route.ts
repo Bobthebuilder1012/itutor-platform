@@ -12,9 +12,9 @@
 // THIS ROUTE SERVES TWO CONTRACTS, reconciled here rather than picked between:
 //
 //   entries[]                    the resolved weekly pattern, derived from
-//                                schedule_data + recurrence rules + dated
-//                                occurrences, so a class scheduled as
-//                                individual dates still shows a schedule.
+//                                recurrence rules + dated occurrences, so a
+//                                class scheduled as individual dates still
+//                                shows a schedule.
 //   display / days / sessionLength
 //   preorder / preorderReady     Secure your spot. Decided here for the same
 //                                reason the schedule is, and so the CTA and the
@@ -101,25 +101,11 @@ export async function GET(req: NextRequest) {
 
     const admin = getServiceClient();
 
-    // schedule_data is production-only (absent on staging), and asking for a
-    // column that isn't there costs the whole select — so it is requested
-    // separately from the columns every environment has.
-    let scheduleDataById = new Map<string, string | null>();
-    const { data: groupRows, error: groupErr } = await admin
+    const { data: groups } = await admin
       .from('groups')
-      .select('id, secure_spot_enabled, end_date, schedule_data')
+      .select('id, secure_spot_enabled, end_date')
       .in('id', groupIds);
 
-    let groups: any[] | null = groupRows;
-    if (groupErr && isSchemaMismatch(groupErr)) {
-      ({ data: groups } = await admin
-        .from('groups')
-        .select('id, secure_spot_enabled, end_date')
-        .in('id', groupIds));
-    }
-    scheduleDataById = new Map(
-      (groups ?? []).map((g: any) => [String(g.id), g.schedule_data ?? null])
-    );
     const groupById = new Map((groups ?? []).map((g: any) => [g.id, g]));
 
     // Sessions carry the recurrence rule; the embedded occurrences cover classes
@@ -170,7 +156,6 @@ export async function GET(req: NextRequest) {
       const group = groupById.get(groupId);
 
       const entries = resolveScheduleEntries({
-        scheduleData: scheduleDataById.get(groupId) ?? null,
         sessionRows: patterns,
         occurrences: bucket?.occurrences ?? [],
       });

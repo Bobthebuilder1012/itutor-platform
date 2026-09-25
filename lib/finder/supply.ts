@@ -73,7 +73,6 @@ interface GroupRow {
   max_students: number | null;
   visibility: string | null;
   session_length_minutes: number | null;
-  schedule_data?: string | null;
   class_format?: string | null;
   venue?: { region: { name: string | null } | null } | null;
   tutor: {
@@ -95,9 +94,10 @@ function toNumber(value: number | string | null | undefined): number | null {
 
 /**
  * Same predicate as /api/groups. Environments disagree about which columns
- * exist — `groups.schedule_data` is present in some and absent in staging — and
- * a missing column fails the WHOLE select, so the difference between a tiered
- * read and a plain one is the difference between results and a blank page.
+ * exist — migration 242's `class_format`/`venue_id` are present in some and
+ * absent in others — and a missing column fails the WHOLE select, so the
+ * difference between a tiered read and a plain one is the difference between
+ * results and a blank page.
  */
 function isSchemaMismatch(error: unknown): boolean {
   const err = error as { code?: unknown; message?: unknown } | null;
@@ -133,26 +133,19 @@ const BASE_COLUMNS = `id, name, tutor_id, subject, form_level, price_monthly, pr
 const VENUE_JOIN = `venue:venues(region:regions(name))`;
 
 /**
- * FOUR TIERS, WIDEST FIRST, BECAUSE THE ENVIRONMENTS DISAGREE.
+ * TWO TIERS, WIDEST FIRST, BECAUSE THE ENVIRONMENTS DISAGREE.
  *
  * A missing column fails the WHOLE PostgREST select, and the Finder's failure
  * mode for that is a blank results page — indistinguishable from "we have
- * nothing for you". Two columns are environment-dependent:
- *
- *   schedule_data  — present in some environments, absent on staging
- *   class_format / venue_id — migration 242, applied on staging, NOT on
- *                   production, where every class is online anyway
- *
- * So the tiers drop them independently rather than together. Dropping
+ * nothing for you". `class_format` / `venue_id` are migration 242, applied on
+ * staging, NOT on production, where every class is online anyway. Dropping
  * class_format on an environment that has it would silently disable the
  * delivery filter and start recommending physical classes to families who
  * asked for online — the exact bug this join exists to prevent — so the widest
  * tier that works is always the one used.
  */
 const SELECT_TIERS = [
-  `${BASE_COLUMNS}, schedule_data, class_format, ${VENUE_JOIN}, ${TUTOR_JOIN}, group_members(status)`,
   `${BASE_COLUMNS}, class_format, ${VENUE_JOIN}, ${TUTOR_JOIN}, group_members(status)`,
-  `${BASE_COLUMNS}, schedule_data, ${TUTOR_JOIN}, group_members(status)`,
   `${BASE_COLUMNS}, ${TUTOR_JOIN}, group_members(status)`,
 ];
 
@@ -228,9 +221,8 @@ export async function loadFinderSupply(service: SupabaseClient): Promise<SupplyR
 
   if (visible.length === 0) return [];
 
-  // Resolve each class's weekly pattern through the SAME three-tier resolver
-  // /api/groups renders from: manual schedule_data, then the group_sessions
-  // recurrence rule, then dated occurrences.
+  // Resolve each class's weekly pattern through the SAME resolver /api/groups
+  // renders from: the group_sessions recurrence rule, then dated occurrences.
   const groupIds = visible.map(r => r.id);
   const { data: sessionRows, error: sessionError } = await service
     .from('group_sessions')
@@ -260,7 +252,6 @@ export async function loadFinderSupply(service: SupabaseClient): Promise<SupplyR
 
   for (const row of visible) {
     const entries = resolveScheduleEntries({
-      scheduleData: row.schedule_data ?? null,
       sessionRows: rulesByGroup.get(row.id) ?? [],
       occurrences: occurrencesByGroup.get(row.id) ?? [],
     });

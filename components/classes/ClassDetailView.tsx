@@ -325,14 +325,18 @@ export function Detail({
   const tutorName = group.tutor?.display_name || group.tutor?.full_name || 'Tutor';
   const tutorInitials = tutorName.replace(/^(Mr\.|Ms\.|Mrs\.|Dr\.)\s*/i, '').split(' ').map((p) => p[0]).join('').slice(0, 2);
 
-  // Recurring schedule pattern (fallback when a class has no dated occurrences).
-  // Tutors set the schedule by adding a recurring session far more often than by
-  // filling in the class's own schedule field, so group_sessions comes second
-  // only to a hand-written schedule_data.
+  // Recurring schedule pattern. group_sessions — the Sessions tab, which is
+  // what actually generates join links, reminders and attendance — is the
+  // only version of "when this class meets" that can't drift from reality, so
+  // it goes first. The hand-written `schedule_data` field has no editor left
+  // (removed from Settings) and is read only as a last resort for a class
+  // that somehow still has one but no real session behind it.
   const scheduleText = useMemo(() => {
+    const fromSessions = sessionPatternsToDisplay(group.sessions);
+    if (fromSessions) return fromSessions;
     const entries = parseScheduleData(group.schedule_data);
     if (entries.length) return scheduleToDisplay(entries);
-    return sessionPatternsToDisplay(group.sessions) ?? group.schedule_display ?? null;
+    return group.schedule_display ?? null;
   }, [group.schedule_data, group.schedule_display, group.sessions]);
 
   // Real dated agenda from group_sessions occurrences
@@ -1786,9 +1790,11 @@ function ClassSummaryCard({ group }: { group: GroupData }) {
   const discountedPrice = promo ? Math.round(price * (1 - promo.discount / 100)) : null;
   const tutorName = group.tutor?.display_name || group.tutor?.full_name || 'Tutor';
   const schedule = (() => {
+    const fromSessions = sessionPatternsToDisplay(group.sessions);
+    if (fromSessions) return fromSessions;
     const entries = parseScheduleData(group.schedule_data);
     if (entries.length) return scheduleToDisplay(entries);
-    return sessionPatternsToDisplay(group.sessions) ?? group.schedule_display ?? null;
+    return group.schedule_display ?? null;
   })();
 
   return (
