@@ -59,6 +59,10 @@ export default function CompleteRolePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [checkingSession, setCheckingSession] = useState(true);
+  // PARENT_ACCOUNTS_ENABLED, served by /api/feature-flags. This page used to
+  // hard-code the parent card as "Coming soon", so turning the flag on opened
+  // parent signup for email accounts only — every Google signup lands here.
+  const [parentAccountsEnabled, setParentAccountsEnabled] = useState(false);
 
   // Where to send them once this is finished. The auth callback forwards the
   // page the visitor originally wanted (a class from a QR code, a tutor
@@ -119,6 +123,13 @@ export default function CompleteRolePage() {
       if (!user) { router.replace('/login'); return; }
       setUserId(user.id);
 
+      // Read while the spinner is still up, so the parent card renders once in
+      // its final state rather than appearing as "Coming soon" and then changing.
+      const parentFlag = fetch('/api/feature-flags', { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((d) => Boolean(d?.parentAccountsEnabled))
+        .catch(() => false);
+
       // Ask the server to resolve role for this user (checks linked accounts by email)
       try {
         const res = await fetch('/api/auth/resolve-role', { method: 'POST' });
@@ -145,6 +156,7 @@ export default function CompleteRolePage() {
         }
       } catch { /* continue to show role picker */ }
 
+      setParentAccountsEnabled(await parentFlag);
       setCheckingSession(false);
     };
     init();
@@ -266,6 +278,9 @@ export default function CompleteRolePage() {
                   {([
                     { id: 'student' as UserRole, icon: <GraduationCap className="h-5 w-5" />, title: "I'm a student", desc: 'Find tutors and join lessons' },
                     { id: 'tutor' as UserRole, icon: <UserRound className="h-5 w-5" />, title: "I'm an iTutor", desc: 'Teach 1:1s and run lessons' },
+                    ...(parentAccountsEnabled
+                      ? [{ id: 'parent' as UserRole, icon: <Users className="h-5 w-5" />, title: "I'm a parent / guardian", desc: "Manage my child's learning" }]
+                      : []),
                   ]).map(({ id, icon, title, desc }) => (
                     <button key={id} type="button" onClick={() => { setRole(id); setError(''); }}
                       className={cn('flex w-full items-center gap-4 rounded-2xl border-2 p-4 text-left transition',
@@ -284,7 +299,8 @@ export default function CompleteRolePage() {
                       </div>
                     </button>
                   ))}
-                  {/* Parent — Coming Soon */}
+                  {/* Parent — Coming Soon, while PARENT_ACCOUNTS_ENABLED is off */}
+                  {!parentAccountsEnabled && (
                   <div className="flex w-full items-center gap-4 rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 p-4 opacity-60 cursor-not-allowed select-none">
                     <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gray-100 text-gray-400">
                       <Users className="h-5 w-5" />
@@ -297,6 +313,7 @@ export default function CompleteRolePage() {
                       <div className="text-sm text-gray-400">Manage my child&apos;s learning</div>
                     </div>
                   </div>
+                  )}
                 </div>
                 <button onClick={handleRoleContinue} disabled={!role || loading}
                   className="mt-6 w-full rounded-xl bg-itutor-green py-3 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:opacity-40">
