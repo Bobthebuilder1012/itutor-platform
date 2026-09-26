@@ -43,16 +43,16 @@ import { preorderEligibility, computeReleaseDate, isShortClass } from '@/lib/pay
 import { classCapacityDisplay } from '@/lib/utils/classCapacity';
 import TutorCredentials from '@/components/TutorCredentials';
 
-// 'cash-held' is its own outcome rather than 'joined': the seat is held but
-// nothing is paid, and telling someone they have joined when the tutor can
-// still release the place would be a claim they act on.
+// 'cash-requested' is its own outcome rather than 'joined': the tutor has not
+// accepted yet and no seat is held, and telling someone they have joined would
+// be a claim they act on.
 export type Step =
   | 'detail'
   | 'join'
   | 'joined'
   | 'awaiting-approval'
   | 'awaiting-parent'
-  | 'cash-held';
+  | 'cash-requested';
 
 /**
  * Whether this viewer needs a parent's permission to enrol, resolved server-side
@@ -1294,22 +1294,22 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
   const gated = Boolean(parentGate?.needsParentApproval) && !isFull;
   const parentLabel = parentGate?.parentName ?? 'your parent';
 
+  const cashChosen = payMethod === 'cash' && price > 0 && !isFull;
+
   const heading = isFull ? 'Join the waitlist'
     : gated ? `Ask ${parentLabel}`
+    : cashChosen ? 'Ask to join & pay cash'
     : preorder ? 'Secure your spot'
     : isRequest ? 'Request to join'
     : 'Confirm your enrolment';
 
   const confirmLabel = isFull ? 'Add me to the waitlist'
     : gated ? 'Ask parent to enrol'
+    // Nothing is paid here and nothing is held — the tutor decides first.
+    : cashChosen ? 'Send request to tutor'
     : preorder
       ? (price > 0 ? `Pay ${fmtTTD(price)} & reserve my place` : 'Reserve my place')
     : isRequest ? 'Send request to tutor'
-    // The button must not say "pay" when nothing is being paid here. A cash
-    // student is holding a place and settling with the tutor afterwards, and a
-    // label promising payment is the kind of small lie that produces a support
-    // ticket about a card that was never charged.
-    : (payMethod === 'cash' && price > 0) ? 'Hold my place'
     : 'Confirm & join class';
 
   const handleConfirm = async () => {
@@ -1332,6 +1332,23 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
         return;
       }
 
+      // ── Cash: ask the tutor, pay them in person ─────────────────────────
+      // Ahead of the preorder and card branches: a student who chose cash must
+      // never land in a card checkout. Nothing is charged and nothing is held —
+      // the tutor accepts or declines, and only acceptance takes a seat.
+      if (cashChosen) {
+        const res = await fetch(`/api/groups/${group.id}/cash-request`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ seatType: chosenSeat }),
+        });
+        const data = await res.json();
+        if (data.parent_approval_required) { onSuccess('awaiting-parent'); return; }
+        if (!res.ok) throw new Error(data.error || 'Could not send your request. Please try again.');
+        onSuccess('cash-requested');
+        return;
+      }
+
       // Preorder: a one-time charge for the first month, not a subscription.
       // Free preorders come back confirmed with no Stripe round trip at all.
       if (preorder && !isFull) {
@@ -1349,23 +1366,6 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
         if (data.checkout_url) { window.location.href = data.checkout_url; return; }
         if (data.free) { onSuccess('joined'); return; }
         throw new Error('Could not start the payment. Please try again.');
-      }
-
-      // ── Cash: hold the seat, hand the money over in person ──────────────
-      // Deliberately BEFORE the card branch, and a separate endpoint: no Stripe
-      // object is created, nothing is charged, and the hold has no expiry
-      // because the tutor releases it rather than a timer.
-      if (payMethod === 'cash' && price > 0 && !isFull) {
-        const res = await fetch(`/api/groups/${group.id}/cash-hold`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ seatType: chosenSeat }),
-        });
-        const data = await res.json();
-        if (data.parent_approval_required) { onSuccess('awaiting-parent'); return; }
-        if (!res.ok) throw new Error(data.error || 'Could not hold your place. Please try again.');
-        onSuccess('cash-held');
-        return;
       }
 
       if (price > 0 && !isFull) {
@@ -1517,10 +1517,8 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
               },
               {
                 v: 'cash' as const,
-                title: 'Pay your tutor directly',
-                // No date, deliberately — the tutor releases the hold, so any
-                // deadline shown here would be one nothing enforces.
-                detail: 'We hold your place. Pay your tutor in person to confirm it.',
+                title: 'Ask to join & pay cash',
+                detail: 'Your tutor accepts or declines. If accepted, you pay them in person each month.',
               },
             ].map((opt) => {
               const selected = payMethod === opt.v;
@@ -1553,8 +1551,8 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
           </div>
           {payMethod === 'cash' && (
             <p className="text-xs leading-relaxed text-muted-foreground">
-              iTutor does not handle this payment — you pay {group.tutor?.display_name || group.tutor?.full_name || 'your tutor'} directly,
-              and they record it.
+              You are not in the class until {group.tutor?.display_name || group.tutor?.full_name || 'your tutor'} accepts, and no
+              place is held while they decide. iTutor does not handle this payment.
             </p>
           )}
         </section>
@@ -1720,7 +1718,7 @@ function ParentAskPanel({
 
 /* ─── Success screens ────────────────────────────────── */
 
-export function JoinedScreen({ group, kind }: { group: GroupData; kind: 'enrolled' | 'awaiting-approval' | 'awaiting-parent' | 'cash-held' }) {
+export function JoinedScreen({ group, kind }: { group: GroupData; kind: 'enrolled' | 'awaiting-approval' | 'awaiting-parent' | 'cash-requested' }) {
   const copy = {
     enrolled: {
       icon: <Check className="size-6 text-white" />,
@@ -1738,17 +1736,15 @@ export function JoinedScreen({ group, kind }: { group: GroupData; kind: 'enrolle
       next: 'Back to explore',
       href: '/student/find-tutors',
     },
-    // Held, not paid, and NO DATE. The spec is explicit: the tutor releases a
-    // cash hold manually, so there is no deadline the system will enforce and
-    // showing one would be a promise nothing keeps. "Pay your tutor to confirm"
-    // is the whole instruction.
-    'cash-held': {
-      icon: <Check className="size-6 text-white" />,
+    // Not in, and nothing held. Said plainly, because a student who thinks a
+    // cash request is a seat will turn up to a room with no place for them.
+    'cash-requested': {
+      icon: <Loader2 className="size-6 text-white animate-spin" />,
       tone: 'bg-amber-500',
-      title: 'Your place is held',
-      body: `Pay ${group.tutor?.display_name || group.tutor?.full_name || 'your tutor'} to confirm it. They will mark it as paid and your place becomes permanent.`,
-      next: 'Go to my class',
-      href: `/student/classes/${group.id}`,
+      title: 'Request sent',
+      body: `${group.tutor?.display_name || group.tutor?.full_name || 'Your tutor'} has been emailed and will accept or decline. If accepted, you pay them in cash directly. Your place is not held until then.`,
+      next: 'Back to explore',
+      href: '/student/find-tutors',
     },
     // The parent's gate, not the tutor's. Said plainly, because a student who
     // thinks they are enrolled will turn up to a class they have no place in.

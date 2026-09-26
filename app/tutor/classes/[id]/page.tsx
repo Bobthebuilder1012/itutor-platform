@@ -123,7 +123,7 @@ const URL_LINE_RE = /^https?:\/\/\S+$/;
 import type { ClassFormat } from '@/lib/utils/seatCapacity';
 import InPersonSection, { type InPersonDraft } from '@/components/tutor/classes/InPersonSection';
 import { usePhysicalClasses } from '@/lib/hooks/usePhysicalClasses';
-import PaymentsGrid from '@/components/tutor/classes/PaymentsGrid';
+import ClassPayments from '@/components/tutor/classes/ClassPayments';
 
 type GroupDetail = {
   id: string;
@@ -596,7 +596,7 @@ function ClassHubContent() {
           {tab === 'stream'    && <StreamTab group={group} posts={posts} setPosts={setPosts} />}
           {tab === 'sessions'  && <SessionsTab sessions={sessions} groupId={group.id} setSessions={setSessions} meetingLink={group.meetingLink ?? ''} reconnected={reconnectedFromOAuth} group={group} />}
           {tab === 'roster'    && <RosterTab members={members} setMembers={setMembers} group={group} isOneOnOne={isOneOnOne} atCapacity={atCapacity} onRefresh={() => fetchAll(group.id)} />}
-          {tab === 'payments'  && <PaymentsGrid groupId={group.id} />}
+          {tab === 'payments'  && <ClassPayments groupId={group.id} onRosterChange={() => fetchAll(group.id)} />}
           {tab === 'settings'  && <SettingsTab group={group} setGroup={setGroup} isOneOnOne={isOneOnOne} onDirtyChange={setSettingsDirty} enrolledCount={enrolledCount} />}
           {tab === 'analytics' && !isOneOnOne && <AnalyticsTab group={group} members={members} />}
         </div>

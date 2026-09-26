@@ -320,21 +320,35 @@ export default function InPersonSection({
             </div>
           ) : null}
 
-          <label className="flex items-start gap-2.5 pt-1">
-            <input
-              type="checkbox"
-              checked={draft.acceptsCash}
-              onChange={e => onChange({ acceptsCash: e.target.checked })}
-              className="mt-0.5 size-4 rounded border-border text-brand focus:ring-brand"
-            />
-            <span className="min-w-0">
-              <span className="block text-sm font-medium">Accept cash at the venue</span>
-              <span className="mt-0.5 block text-xs text-muted-foreground">
-                Students can pay you in person instead of online. You collect and
-                record it yourself — iTutor does not process or track it.
-              </span>
-            </span>
-          </label>
+          {/* Cash: an explicit allow / decline rather than a checkbox that is
+              easy to skim past — it decides whether students see "Ask to join
+              & pay cash" at all. */}
+          <fieldset className="space-y-2 pt-1">
+            <legend className="text-sm font-medium">Cash payments</legend>
+            {[
+              {
+                v: true,
+                title: 'Allow cash',
+                detail:
+                  'Students can ask to join and pay you in person. You accept or decline each request, then mark months paid or missed on the Cash payments tab.',
+              },
+              { v: false, title: 'Online payments only', detail: 'Students pay by card through iTutor.' },
+            ].map(opt => (
+              <label key={String(opt.v)} className="flex items-start gap-2.5">
+                <input
+                  type="radio"
+                  name="accepts-cash"
+                  checked={draft.acceptsCash === opt.v}
+                  onChange={() => onChange({ acceptsCash: opt.v })}
+                  className="mt-0.5 size-4 border-border text-brand focus:ring-brand"
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium">{opt.title}</span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">{opt.detail}</span>
+                </span>
+              </label>
+            ))}
+          </fieldset>
         </div>
       ) : null}
 

@@ -19,7 +19,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
-import { calculateCommissionForTutor } from '@/lib/utils/commissionCalculator';
+import { raiseCashCommission, waiveCashCommission } from '@/lib/server/cashLedger';
 
 export const dynamic = 'force-dynamic';
 
@@ -120,34 +120,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
     // The platform never saw this money, so it could not withhold its
     // share. Written as a debt against the tutor's next payout — see
-    // migration 249 for why this is tutor_deductions and not a new table.
-    //
-    // Non-fatal on purpose: the cash HAS been handed over, and failing the
-    // request now would invite the tutor to record it a second time. The
-    // partial unique index in 249 is what makes that retry safe, and this
-    // log is what makes a missing debt findable.
-    try {
-      const amount = Number((p as any).amount_ttd) || 0;
-      if (amount > 0) {
-        const { platformFee } = await calculateCommissionForTutor(admin, user.id, amount);
-        if (platformFee > 0) {
-          const { error: debtErr } = await admin.from('tutor_deductions').insert({
-            tutor_id: user.id,
-            amount_ttd: platformFee,
-            reason: 'cash_commission',
-            source_enrollment_id: p.enrollment_id ?? null,
-            source_subscription_payment_id: paymentId,
-            status: 'pending',
-          });
-          // 23505 = the one-per-payment index caught a retry. Not an error.
-          if (debtErr && String(debtErr.code) !== '23505') {
-            console.error('[payments] cash commission debt failed:', debtErr.message);
-          }
-        }
-      }
-    } catch (debtErr) {
-      console.error('[payments] cash commission debt threw:', debtErr);
-    }
+    // lib/server/cashLedger.ts and migration 249.
+    await raiseCashCommission(admin, {
+      tutorId: user.id,
+      paymentId,
+      enrollmentId: p.enrollment_id ?? null,
+      amountTtd: Number(p.amount_ttd) || 0,
+    });
 
     return NextResponse.json({ ok: true, status: 'PAID' });
   }
@@ -201,12 +180,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   // platform a share of a payment the platform has just been told never
   // happened. Waived rather than deleted: the row is the only evidence the
   // debt was ever raised, and an admin reviewing a disputed void needs it.
-  await admin
-    .from('tutor_deductions')
-    .update({ status: 'waived', resolved_at: now })
-    .eq('source_subscription_payment_id', paymentId)
-    .eq('reason', 'cash_commission')
-    .eq('status', 'pending');
+  await waiveCashCommission(admin, paymentId);
 
   return NextResponse.json({ ok: true, voided: true });
 }
