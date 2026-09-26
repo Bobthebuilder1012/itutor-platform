@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import BatchAmount from '@/components/admin/BatchAmount';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import { isEmailManagementOnlyAdmin } from '@/lib/auth/adminAccess';
@@ -71,6 +72,8 @@ interface CsvHistoryBatch {
   paid_at: string | null;
   status: string;
   total_amount_ttd: number;
+  total_amount_usd?: number | null;
+  currency?: 'TTD' | 'USD';
   line_count: number;
   csv_filename: string | null;
   csv_available: boolean;
@@ -81,6 +84,7 @@ interface CsvHistoryWeek {
   week_end: string;
   label: string;
   total_ttd: number;
+  total_usd?: number;
   batch_count: number;
   batches: CsvHistoryBatch[];
 }
@@ -773,7 +777,7 @@ export default function LessonPaymentsPage() {
                               <span className="text-sm font-semibold text-gray-900">{wk.label}</span>
                               <span className="text-xs text-gray-500">{wk.batch_count} batch{wk.batch_count !== 1 ? 'es' : ''}</span>
                             </div>
-                            <span className="text-sm font-bold text-emerald-700 tabular-nums">{fmtTTD(wk.total_ttd)}</span>
+                            <span className="text-sm font-bold text-emerald-700 tabular-nums">{fmtTTD(wk.total_ttd)}{(wk.total_usd ?? 0) > 0 && <> + US${(wk.total_usd ?? 0).toFixed(2)}</>}</span>
                           </button>
                           {open && (
                             <table className="w-full text-sm border-t border-gray-200">
@@ -794,7 +798,7 @@ export default function LessonPaymentsPage() {
                                     <tr key={b.batch_id} className="hover:bg-gray-50" style={{ background: '#f9fafb' }}>
                                       <td className="px-4 py-2.5 font-mono text-xs text-gray-600">{b.batch_id.slice(0, 8)}…</td>
                                       <td className="px-4 py-2.5 text-xs text-gray-500">{fmtDate(b.generated_at)}</td>
-                                      <td className="px-4 py-2.5 text-right text-sm text-gray-900 tabular-nums">{fmtTTD(b.total_amount_ttd)}</td>
+                                      <td className="px-4 py-2.5 text-right text-sm text-gray-900 tabular-nums"><BatchAmount batch={b} /></td>
                                       <td className="px-4 py-2.5 text-right text-sm text-gray-600 tabular-nums">{b.line_count}</td>
                                       <td className="px-4 py-2.5 text-center">
                                         <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold ${b.status === 'paid' ? 'bg-purple-100 text-purple-700' : 'bg-emerald-100 text-emerald-700'}`}>

@@ -19,6 +19,8 @@ type DashboardStats = {
   activeStudents: number;
   upcomingSessions: number;
   monthEarnings: number;
+  /** Payout currency (migration 260). USD figures use each row's frozen rate. */
+  currency: 'TTD' | 'USD';
   profileViews: number;
 };
 
@@ -52,7 +54,7 @@ function DashboardContent() {
   const { profile, loading } = useProfile();
   const completion = useTutorCompletion(profile);
   const router = useRouter();
-  const [stats, setStats] = useState<DashboardStats>({ activeStudents: 0, upcomingSessions: 0, monthEarnings: 0, profileViews: 0 });
+  const [stats, setStats] = useState<DashboardStats>({ activeStudents: 0, upcomingSessions: 0, monthEarnings: 0, profileViews: 0, currency: 'TTD' });
   const [upcoming, setUpcoming] = useState<UpcomingSession[]>([]);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [joinRequests, setJoinRequests] = useState<{ id: string; studentId: string; studentName: string; groupId: string; groupName: string; joinedAt: string }[]>([]);
@@ -108,9 +110,17 @@ function DashboardContent() {
 
       // Source of truth: payout_ledger via /api/tutor/wallet — matches the wallet's
       // "This month: TT$X" hint exactly.
+      // For a USD tutor, rows stamped USD use their frozen amount_usd; rows
+      // earned before switching are shown at today's rate.
+      const payoutCurrency: 'TTD' | 'USD' = walletRes?.payout_currency === 'USD' ? 'USD' : 'TTD';
+      const usdRate = Number(walletRes?.fx_rate?.ttd_per_usd ?? 0);
       const monthTotal = ((walletRes?.history ?? []) as any[])
         .filter((h) => h.status === 'paid' && h.released_at && new Date(h.released_at).getTime() >= monthStartMs)
-        .reduce((sum: number, h: any) => sum + Number(h.amount_ttd ?? 0), 0);
+        .reduce((sum: number, h: any) => {
+          if (payoutCurrency === 'TTD') return sum + Number(h.amount_ttd ?? 0);
+          if (h.payout_currency === 'USD' && h.amount_usd != null) return sum + Number(h.amount_usd);
+          return sum + (usdRate ? Number(h.amount_ttd ?? 0) / usdRate : 0);
+        }, 0);
 
       const oneOnOneSessions: UpcomingSession[] = (upcomingData ?? []).map((s: any) => {
         const booking = Array.isArray(s.booking) ? s.booking[0] : s.booking;
@@ -157,7 +167,8 @@ function DashboardContent() {
       setStats({
         activeStudents: studentCount ?? 0,
         upcomingSessions: allUpcoming.length,
-        monthEarnings: monthTotal,
+        monthEarnings: Math.round(monthTotal * 100) / 100,
+        currency: payoutCurrency,
         profileViews: 0,
       });
 
@@ -238,7 +249,7 @@ function DashboardContent() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
           <StatCard icon={Users} label="Active students" value="23" locked={!listed} />
           <StatCard icon={CalendarDays} label="Upcoming sessions" value={String(stats.upcomingSessions)} locked={!listed} />
-          <StatCard icon={DollarSign} label="This month (TTD)" value={stats.monthEarnings.toLocaleString()} locked={!listed} />
+          <StatCard icon={DollarSign} label={`This month (${stats.currency})`} value={stats.monthEarnings.toLocaleString()} locked={!listed} />
           <StatCard icon={Eye} label="Profile views" value={String(stats.profileViews)} locked={!listed} showLockIcon />
         </div>
       </section>

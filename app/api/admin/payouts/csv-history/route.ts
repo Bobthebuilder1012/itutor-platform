@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
   // pending_download (not yet downloaded) and cancelled are excluded.
   const { data, error } = await admin
     .from('payout_batches')
-    .select('id, generated_at, paid_at, total_amount_ttd, line_count, status, csv_filename, csv_generated_at, window_start, window_end, batch_type')
+    .select('id, generated_at, paid_at, total_amount_ttd, total_amount_usd, currency, line_count, status, csv_filename, csv_generated_at, window_start, window_end, batch_type')
     .eq('batch_type', type)
     .in('status', ['exported', 'paid'])
     .order('generated_at', { ascending: false })
@@ -64,7 +64,10 @@ export async function GET(req: NextRequest) {
     week_start: string;
     week_end: string;
     label: string;
+    // Totals per currency: a USD batch's TTD equivalent is NOT added to
+    // total_ttd, because it is not TTD that leaves the bank.
     total_ttd: number;
+    total_usd: number;
     batch_count: number;
     batches: any[];
   };
@@ -80,10 +83,11 @@ export async function GET(req: NextRequest) {
 
     let folder = byWeek.get(key);
     if (!folder) {
-      folder = { week_start: key, week_end: ymd(end), label: weekLabel(start, end), total_ttd: 0, batch_count: 0, batches: [] };
+      folder = { week_start: key, week_end: ymd(end), label: weekLabel(start, end), total_ttd: 0, total_usd: 0, batch_count: 0, batches: [] };
       byWeek.set(key, folder);
     }
-    folder.total_ttd += Number(b.total_amount_ttd ?? 0);
+    if (b.currency === 'USD') folder.total_usd += Number(b.total_amount_usd ?? 0);
+    else folder.total_ttd += Number(b.total_amount_ttd ?? 0);
     folder.batch_count += 1;
     folder.batches.push({
       batch_id:         b.id,
@@ -91,6 +95,8 @@ export async function GET(req: NextRequest) {
       paid_at:          b.paid_at ?? null,
       status:           b.status,
       total_amount_ttd: Math.round(Number(b.total_amount_ttd ?? 0) * 100) / 100,
+      currency:         b.currency ?? 'TTD',
+      total_amount_usd: b.total_amount_usd == null ? null : Math.round(Number(b.total_amount_usd) * 100) / 100,
       line_count:       b.line_count ?? 0,
       csv_filename:     b.csv_filename ?? null,
       csv_available:    !!b.csv_generated_at,
@@ -98,7 +104,7 @@ export async function GET(req: NextRequest) {
   }
 
   const weeks = Array.from(byWeek.values())
-    .map((f) => ({ ...f, total_ttd: Math.round(f.total_ttd * 100) / 100 }))
+    .map((f) => ({ ...f, total_ttd: Math.round(f.total_ttd * 100) / 100, total_usd: Math.round(f.total_usd * 100) / 100 }))
     .sort((a, b) => b.week_start.localeCompare(a.week_start));
 
   return NextResponse.json({ weeks });

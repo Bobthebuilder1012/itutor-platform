@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import BatchAmount from '@/components/admin/BatchAmount';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
@@ -26,6 +27,8 @@ interface Batch {
   paid_at: string | null;
   cancelled_at: string | null;
   total_amount_ttd: number;
+  total_amount_usd?: number | null;
+  currency?: 'TTD' | 'USD';
   line_count: number;
   status: 'exported' | 'paid' | 'cancelled';
   csv_filename: string | null;
@@ -346,7 +349,7 @@ export default function AdminPayoutsPage() {
                         </span>
                       </td>
                       <td className="py-2 pr-4 text-right">{b.line_count}</td>
-                      <td className="py-2 pr-4 text-right font-semibold">${b.total_amount_ttd.toFixed(2)}</td>
+                      <td className="py-2 pr-4 text-right font-semibold"><BatchAmount batch={b} /></td>
                       <td className="py-2 pr-0 text-right space-x-2">
                         {b.status === 'exported' && (
                           <>

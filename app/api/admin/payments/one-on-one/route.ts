@@ -119,7 +119,7 @@ export async function GET() {
     // All recent payout batches (for context + batch_failed + this-week)
     admin
       .from('payout_batches')
-      .select('id, generated_at, paid_at, cancelled_at, total_amount_ttd, line_count, status, csv_filename, csv_generated_at, batch_type, window_start, window_end, notes, generated_by')
+      .select('id, generated_at, paid_at, cancelled_at, total_amount_ttd, total_amount_usd, currency, line_count, status, csv_filename, csv_generated_at, batch_type, window_start, window_end, notes, generated_by')
       .order('generated_at', { ascending: false })
       .limit(100),
 
@@ -143,7 +143,7 @@ export async function GET() {
     // Failed / cancelled batches
     admin
       .from('payout_batches')
-      .select('id, generated_at, cancelled_at, total_amount_ttd, line_count, status, csv_filename, notes')
+      .select('id, generated_at, cancelled_at, total_amount_ttd, total_amount_usd, currency, line_count, status, csv_filename, notes')
       .in('status', ['cancelled'])
       .order('generated_at', { ascending: false })
       .limit(50),
@@ -709,6 +709,8 @@ export async function GET() {
     generated_at:     b.generated_at,
     cancelled_at:     b.cancelled_at ?? null,
     total_amount_ttd: r2(Number(b.total_amount_ttd ?? 0)),
+    currency:         b.currency ?? 'TTD',
+    total_amount_usd: b.total_amount_usd == null ? null : r2(Number(b.total_amount_usd)),
     line_count:       b.line_count ?? 0,
     status:           b.status,
     csv_filename:     b.csv_filename ?? null,
@@ -800,6 +802,8 @@ export async function GET() {
     paid_at:          b.paid_at ?? null,
     cancelled_at:     b.cancelled_at ?? null,
     total_amount_ttd: r2(Number(b.total_amount_ttd ?? 0)),
+    currency:         b.currency ?? 'TTD',
+    total_amount_usd: b.total_amount_usd == null ? null : r2(Number(b.total_amount_usd)),
     line_count:       b.line_count ?? 0,
     status:           b.status,
     csv_filename:     b.csv_filename ?? null,
@@ -843,6 +847,8 @@ export async function GET() {
       generated_at:     b.generated_at,
       status:           b.status,
       total_amount_ttd: r2(Number(b.total_amount_ttd ?? 0)),
+      currency:         b.currency ?? 'TTD',
+      total_amount_usd: b.total_amount_usd == null ? null : r2(Number(b.total_amount_usd)),
       line_count:       b.line_count ?? 0,
       csv_filename:     b.csv_filename ?? null,
       csv_downloaded:   !!b.csv_generated_at,

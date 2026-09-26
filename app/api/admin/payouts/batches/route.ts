@@ -16,7 +16,7 @@ export async function GET() {
   const admin = getServiceClient();
   const { data, error } = await admin
     .from('payout_batches')
-    .select('id, generated_at, paid_at, cancelled_at, total_amount_ttd, line_count, status, csv_filename, generated_by')
+    .select('id, generated_at, paid_at, cancelled_at, total_amount_ttd, total_amount_usd, currency, line_count, status, csv_filename, generated_by')
     .order('generated_at', { ascending: false })
     .limit(50);
 

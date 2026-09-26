@@ -8,6 +8,7 @@ import { useProfile } from '@/lib/hooks/useProfile';
 import { useTutorCompletion } from '@/lib/hooks/useTutorCompletion';
 import { supabase } from '@/lib/supabase/client';
 import TutorShell from '@/components/tutor/TutorShell';
+import { useTutorPayoutCurrency } from '@/lib/hooks/useTutorPayoutCurrency';
 
 type MonthData = { month: string; actual: number; projected: number; isCurrentMonth: boolean };
 
@@ -35,6 +36,7 @@ export default function TutorAnalyticsPage() {
 }
 
 function AnalyticsContent() {
+  const { usdMode, rate } = useTutorPayoutCurrency();
   const router = useRouter();
   const { profile, loading } = useProfile();
   const completion = useTutorCompletion(profile);
@@ -156,6 +158,12 @@ function AnalyticsContent() {
     return <div className="min-h-[400px] flex items-center justify-center"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand" /></div>;
   }
 
+  // Earnings here come from sessions.payout_amount_ttd, which has no frozen
+  // rate, so a USD tutor sees them at today's CBTT rate (marked ≈).
+  const money = (ttd: number) =>
+    usdMode && rate
+      ? `≈ US$ ${(ttd / rate.ttd_per_usd).toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+      : `TT$ ${Math.round(ttd).toLocaleString()}`;
   const maxEarning = Math.max(...stats.monthlyEarnings.map((m) => m.actual + m.projected), 1);
 
   const pastMonths = stats.monthlyEarnings.filter((m) => !m.isCurrentMonth && m.actual > 0);
@@ -170,9 +178,9 @@ function AnalyticsContent() {
       </header>
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <Card label="Total earnings" value={`TT$ ${stats.totalEarnings.toLocaleString()}`} icon={DollarSign} />
-        <Card label="Earned this month" value={`TT$ ${stats.earnedThisMonth.toLocaleString()}`} icon={DollarSign} />
-        <Card label="Projected this month" value={`TT$ ${stats.projectedThisMonth.toLocaleString()}`} icon={TrendingUp} accent={isWeakMonth ? 'warn' : undefined} />
+        <Card label="Total earnings" value={money(stats.totalEarnings)} icon={DollarSign} />
+        <Card label="Earned this month" value={money(stats.earnedThisMonth)} icon={DollarSign} />
+        <Card label="Projected this month" value={money(stats.projectedThisMonth)} icon={TrendingUp} accent={isWeakMonth ? 'warn' : undefined} />
         <Card label="Sessions completed" value={String(stats.totalSessions)} icon={Calendar} />
         <Card label="Avg rating" value={stats.ratingCount > 0 ? `${stats.avgRating.toFixed(1)} (${stats.ratingCount})` : '—'} icon={Star} />
       </div>
@@ -183,7 +191,7 @@ function AnalyticsContent() {
           <div>
             <p className="text-sm font-semibold text-amber-900">This month is tracking below your average</p>
             <p className="text-xs text-amber-700 mt-0.5">
-              Projected TT$ {stats.projectedThisMonth.toLocaleString()} vs your {pastMonths.length}-month avg of TT$ {Math.round(avgPastMonthly).toLocaleString()}.
+              Projected {money(stats.projectedThisMonth)} vs your {pastMonths.length}-month avg of {money(avgPastMonthly)}.
               Consider sharing your profile or reaching out to past students to book more sessions.
             </p>
           </div>
@@ -244,8 +252,8 @@ function AnalyticsContent() {
         <div className="rounded-2xl border border-border bg-card p-5">
           <h3 className="font-semibold text-ink mb-3">Top metrics</h3>
           <div className="space-y-2 text-sm">
-            <div className="flex justify-between"><span className="text-muted-foreground">Avg per session</span><span className="font-semibold tabular-nums text-ink">TT$ {stats.totalSessions > 0 ? Math.round(stats.totalEarnings / stats.totalSessions) : 0}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Avg per student</span><span className="font-semibold tabular-nums text-ink">TT$ {stats.totalStudents > 0 ? Math.round(stats.totalEarnings / stats.totalStudents) : 0}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Avg per session</span><span className="font-semibold tabular-nums text-ink">{money(stats.totalSessions > 0 ? stats.totalEarnings / stats.totalSessions : 0)}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Avg per student</span><span className="font-semibold tabular-nums text-ink">{money(stats.totalStudents > 0 ? stats.totalEarnings / stats.totalStudents : 0)}</span></div>
             <div className="flex justify-between"><span className="text-muted-foreground">Sessions per student</span><span className="font-semibold tabular-nums text-ink">{stats.totalStudents > 0 ? (stats.totalSessions / stats.totalStudents).toFixed(1) : 0}</span></div>
           </div>
         </div>
