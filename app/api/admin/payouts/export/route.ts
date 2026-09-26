@@ -43,7 +43,10 @@ export async function POST() {
     .from('payout_ledger')
     .select('id, tutor_id, amount_ttd')
     .eq('status', 'release_ready')
-    .is('batch_id', null);
+    .is('batch_id', null)
+    // USD payouts (migration 260) go out through the weekly move, which
+    // writes single-currency batches. This sweep's CSV is TTD.
+    .eq('payout_currency', 'TTD');
 
   if (ledgerError) {
     return NextResponse.json({ error: ledgerError.message }, { status: 500 });

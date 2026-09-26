@@ -28,6 +28,7 @@
 
 import { NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { getRate } from '@/lib/fx/rates';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -36,6 +37,10 @@ interface WalletHistoryRow {
   ledger_id: string;
   session_id: string;
   amount_ttd: number;
+  // Migration 260. amount_usd is the frozen payout value for a USD row;
+  // null for TTD rows and for USD rows still waiting on a CBTT rate.
+  amount_usd: number | null;
+  payout_currency: 'TTD' | 'USD';
   status: 'in_escrow' | 'awaiting_transfer' | 'paid' | 'reversed' | 'under_review' | 'unknown';
   ledger_status: string;
   created_at: string;
@@ -171,10 +176,43 @@ export async function GET() {
     console.warn('[wallet] secured breakdown unavailable (non-fatal):', (err as Error)?.message);
   }
 
+  // -- USD payouts (migration 260) --
+  // tutor_balances is a TTD aggregate. A tutor paid in USD is owed the SUM
+  // of each row's frozen amount_usd, which is not balance / today's rate, so
+  // the USD figures are summed from the ledger directly.
+  const [{ data: payoutAccount }, fxRate, { data: usdRows }] = await Promise.all([
+    admin.from('tutor_payout_accounts').select('payout_currency').eq('tutor_id', user.id).maybeSingle(),
+    getRate(admin),
+    admin
+      .from('payout_ledger')
+      .select('status, amount_usd, amount_ttd')
+      .eq('tutor_id', user.id)
+      .eq('payout_currency', 'USD'),
+  ]);
+  const payoutCurrency: 'TTD' | 'USD' = payoutAccount?.payout_currency === 'USD' ? 'USD' : 'TTD';
+  // open_ttd: the TTD value of unpaid USD rows. The client subtracts it from
+  // the TTD balances to find money earned BEFORE switching, still paid in TTD.
+  const usdTotals = { pending_usd: 0, available_usd: 0, lifetime_paid_usd: 0, held_usd: 0, awaiting_rate_ttd: 0, open_ttd: 0 };
+  for (const r of (usdRows ?? []) as any[]) {
+    if (r.status === 'owed' || r.status === 'release_ready') usdTotals.open_ttd += Number(r.amount_ttd ?? 0);
+    if (r.amount_usd == null) {
+      if (r.status !== 'released' && r.status !== 'reversed') usdTotals.awaiting_rate_ttd += Number(r.amount_ttd ?? 0);
+      continue;
+    }
+    const v = Number(r.amount_usd);
+    if (r.status === 'owed') usdTotals.pending_usd += v;
+    else if (r.status === 'release_ready') usdTotals.available_usd += v;
+    else if (r.status === 'released') usdTotals.lifetime_paid_usd += v;
+    else if (r.status === 'admin_hold') usdTotals.held_usd += v;
+  }
+  for (const k of Object.keys(usdTotals) as (keyof typeof usdTotals)[]) {
+    usdTotals[k] = Math.round(usdTotals[k] * 100) / 100;
+  }
+
   // -- Transaction history (ledger joined with sessions + subscription payments) --
   const { data: ledger } = await admin
     .from('payout_ledger')
-    .select('id, session_id, subscription_payment_id, amount_ttd, status, created_at, released_at, batch_id')
+    .select('id, session_id, subscription_payment_id, amount_ttd, amount_usd, payout_currency, status, created_at, released_at, batch_id')
     .eq('tutor_id', user.id)
     .order('created_at', { ascending: false })
     .limit(200);
@@ -251,6 +289,8 @@ export async function GET() {
           ledger_id: row.id,
           session_id: null,
           amount_ttd: Number(row.amount_ttd ?? 0),
+          amount_usd: row.amount_usd == null ? null : Number(row.amount_usd),
+          payout_currency: row.payout_currency ?? 'TTD',
           status: mapLedgerStatus(row.status),
           ledger_status: row.status,
           created_at: row.created_at,
@@ -277,6 +317,8 @@ export async function GET() {
         ledger_id: row.id,
         session_id: row.session_id,
         amount_ttd: Number(row.amount_ttd ?? 0),
+        amount_usd: row.amount_usd == null ? null : Number(row.amount_usd),
+        payout_currency: row.payout_currency ?? 'TTD',
         status: mapLedgerStatus(row.status),
         ledger_status: row.status,
         created_at: row.created_at,
@@ -380,6 +422,9 @@ export async function GET() {
         ledger_id: `unprocessed-${s.id}`,
         session_id: s.id,
         amount_ttd: amount,
+        // Not in the ledger yet, so no rate has been frozen for it.
+        amount_usd: null,
+        payout_currency: payoutCurrency,
         status: 'in_escrow',
         ledger_status: 'unprocessed',
         created_at: s.charged_at ?? s.scheduled_start_at ?? new Date().toISOString(),
@@ -415,6 +460,11 @@ export async function GET() {
     // overview has already double-counted once by adding a term to a total
     // that contained it; this is explicitly labelled to stop that repeating.
     secured_held: securedHeld,
+    payout_currency: payoutCurrency,
+    fx_rate: fxRate,
+    // USD-stamped rows only. TTD-stamped rows (earned before switching)
+    // are still paid in TTD and remain in the *_ttd balances.
+    usd: usdTotals,
     pending_deductions: [],
     history,
   });

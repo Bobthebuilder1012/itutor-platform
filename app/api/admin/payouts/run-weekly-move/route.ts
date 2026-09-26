@@ -46,13 +46,23 @@ export async function POST(_request: NextRequest) {
 
   // ── Step 2: MOVE release_ready 1:1 rows into this week's batch ─────────────
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
-  const { data: moveData, error: moveError } = await admin.rpc('move_release_ready_to_weekly_batch', {
-    p_generated_by: auth.user!.id,
-    p_batch_type:   'one_on_one',
-    p_csv_filename: `itutor-payouts-week-${ts}.csv`,
-    p_window_start: null,
-    p_window_end:   null,
-  });
+  // One batch per payout currency (migration 260): a bank CSV is
+  // single-currency, so TTD and USD tutors never share a file.
+  let moveError: { message: string } | null = null;
+  const moveData: Record<string, unknown> = {};
+  for (const currency of ['TTD', 'USD'] as const) {
+    const suffix = currency === 'USD' ? '-usd' : '';
+    const { data, error } = await admin.rpc('move_release_ready_to_weekly_batch', {
+      p_generated_by: auth.user!.id,
+      p_batch_type:   'one_on_one',
+      p_csv_filename: `itutor-payouts-week-${ts}${suffix}.csv`,
+      p_window_start: null,
+      p_window_end:   null,
+      p_currency:     currency,
+    });
+    if (error) { moveError = error; break; }
+    moveData[currency] = data;
+  }
   if (moveError) {
     console.error('[run-weekly-move] move RPC failed:', moveError);
     return NextResponse.json(

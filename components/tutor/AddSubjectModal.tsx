@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase/client';
 import { Subject } from '@/lib/types/database';
 import PaidClassesLockNotice from '@/components/tutor/PaidClassesLockNotice';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
+import { useTutorPayoutCurrency } from '@/lib/hooks/useTutorPayoutCurrency';
 import { getCommissionRatePercentage } from '@/lib/utils/commissionCalculator';
 
 type AddSubjectModalProps = {
@@ -27,6 +28,7 @@ export default function AddSubjectModal({
   existingSubjectIds,
   onSubjectAdded,
 }: AddSubjectModalProps) {
+  const { approxUsdLabel } = useTutorPayoutCurrency();
   const [allSubjects, setAllSubjects] = useState<Subject[]>([]);
   const [selectedSubjects, setSelectedSubjects] = useState<SubjectWithPrice[]>([]);
   const [loading, setLoading] = useState(false);
@@ -376,6 +378,11 @@ export default function AddSubjectModal({
                             <span className="text-emerald-400 font-medium">You earn</span>
                             <span className="text-emerald-400 font-bold">{fmtTTD(earnings)}/hr</span>
                           </div>
+                          {approxUsdLabel(earnings) && (
+                            <div className="text-right text-[11px] text-gray-400 mt-0.5">
+                              {approxUsdLabel(earnings)}/hr at today&apos;s CBTT rate
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

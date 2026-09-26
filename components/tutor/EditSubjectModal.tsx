@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase/client';
 import { TutorSubject, Subject } from '@/lib/types/database';
 import PaidClassesLockNotice from '@/components/tutor/PaidClassesLockNotice';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
+import { useTutorPayoutCurrency } from '@/lib/hooks/useTutorPayoutCurrency';
 import { getCommissionRatePercentage } from '@/lib/utils/commissionCalculator';
 
 type EditSubjectModalProps = {
@@ -22,6 +23,7 @@ export default function EditSubjectModal({
   onSubjectUpdated,
   onSubjectDeleted,
 }: EditSubjectModalProps) {
+  const { approxUsdLabel } = useTutorPayoutCurrency();
   const [pricePerHour, setPricePerHour] = useState('100');
   const [loading, setLoading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -177,6 +179,11 @@ export default function EditSubjectModal({
                       <span className="text-emerald-300 font-semibold">Your Earnings</span>
                       <span className="text-emerald-300 font-bold text-lg">{fmtTTD(yourEarnings)}</span>
                     </div>
+                    {approxUsdLabel(yourEarnings) && (
+                      <div className="text-right text-xs text-gray-400">
+                        {approxUsdLabel(yourEarnings)} at today&apos;s CBTT rate
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

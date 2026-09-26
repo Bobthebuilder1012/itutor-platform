@@ -56,12 +56,12 @@ async function handlePost(request: NextRequest) {
   const { data: ledgerRows, error: ledgerErr } = ledgerIds
     ? await admin
         .from('payout_ledger')
-        .select('id, status, amount_ttd, tutor_id, batch_id')
+        .select('id, status, amount_ttd, amount_usd, payout_currency, tutor_id, batch_id')
         .in('id', ledgerIds)
         .not('status', 'in', '(reversed,admin_hold,released)')
     : await admin
         .from('payout_ledger')
-        .select('id, status, amount_ttd, tutor_id, batch_id')
+        .select('id, status, amount_ttd, amount_usd, payout_currency, tutor_id, batch_id')
         .in('subscription_payment_id', spIds)
         .not('status', 'in', '(reversed,admin_hold,released)');
 
@@ -73,6 +73,8 @@ async function handlePost(request: NextRequest) {
     id: string;
     status: string;
     amount_ttd: string | number;
+    amount_usd: string | number | null;
+    payout_currency: 'TTD' | 'USD';
     tutor_id: string;
     batch_id: string | null;
   }>;
@@ -83,6 +85,25 @@ async function handlePost(request: NextRequest) {
     return NextResponse.json(
       { error: 'No unbatched payout ledger rows found for the selected payments' },
       { status: 400 }
+    );
+  }
+
+  // ── One currency per batch (migration 260) ───────────────────────────────
+  // A bank CSV pays in a single currency, so a selection that mixes TTD and
+  // USD tutors must be split. A USD row still waiting on its CBTT rate has
+  // no payable amount yet and cannot be batched.
+  const currencies = Array.from(new Set(unbatched.map((r) => r.payout_currency ?? 'TTD')));
+  if (currencies.length > 1) {
+    return NextResponse.json(
+      { error: 'This selection mixes TTD and USD payouts. Create one batch per currency.' },
+      { status: 400 }
+    );
+  }
+  const batchCurrency = (currencies[0] ?? 'TTD') as 'TTD' | 'USD';
+  if (batchCurrency === 'USD' && unbatched.some((r) => r.amount_usd == null)) {
+    return NextResponse.json(
+      { error: "Some USD payouts have no exchange rate yet. Set the day's rate in admin, then retry." },
+      { status: 409 }
     );
   }
 
@@ -170,7 +191,7 @@ async function handlePost(request: NextRequest) {
   const totalAmount = Array.from(netByTutor.values()).reduce((s, amount) => s + amount, 0);
   const uniqueTutors = Array.from(netByTutor.values()).filter((amount) => amount > 0).length;
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
-  const filename = `itutor-lesson-payouts-${ts}.csv`;
+  const filename = `itutor-lesson-payouts-${ts}${batchCurrency === 'USD' ? '-usd' : ''}.csv`;
 
   const { data: rpcResult, error: rpcErr } = await (admin as any).rpc(
     'create_payout_batch_atomic',
@@ -212,13 +233,26 @@ async function handlePost(request: NextRequest) {
     Array.isArray(rpc.stamped_ledger_ids) ? rpc.stamped_ledger_ids : []
   );
   const amountByTutorFinal = new Map<string, number>();
+  const usdByTutorFinal = new Map<string, number>();
   for (const r of unbatched) {
     if (!stampedIds.has(r.id)) continue;
     amountByTutorFinal.set(
       r.tutor_id,
       (amountByTutorFinal.get(r.tutor_id) ?? 0) + Number(r.amount_ttd)
     );
+    usdByTutorFinal.set(
+      r.tutor_id,
+      (usdByTutorFinal.get(r.tutor_id) ?? 0) + Number(r.amount_usd ?? 0)
+    );
   }
+  // Deductions are owed in TTD. For a USD tutor they reduce the payout by the
+  // same PROPORTION, so every earning keeps the rate it was frozen at.
+  function netUsd(tutorId: string, grossTtd: number, netTtd: number): number {
+    const usd = usdByTutorFinal.get(tutorId) ?? 0;
+    if (grossTtd <= 0) return 0;
+    return Math.max(0, Math.round(usd * (netTtd / grossTtd) * 100) / 100);
+  }
+  let totalUsd = 0;
 
   function cell(v: string | number | null | undefined): string {
     if (v == null) return '';
@@ -227,11 +261,14 @@ async function handlePost(request: NextRequest) {
       ? `"${s.replace(/"/g, '""')}"` : s;
   }
 
-  const csvRows = ['tutor_id,name,bank_name,branch,account_number,account_type,amount_ttd,reference'];
+  const amountColumn = batchCurrency === 'USD' ? 'amount_usd' : 'amount_ttd';
+  const csvRows = [`tutor_id,name,bank_name,branch,account_number,account_type,${amountColumn},reference`];
   for (const [tutorId, amount] of amountByTutorFinal) {
     const deduction = deductionByTutor.get(tutorId) ?? 0;
     const netAmount = Math.max(0, Math.round((amount - deduction) * 100) / 100);
     if (netAmount <= 0) continue;
+    const payAmount = batchCurrency === 'USD' ? netUsd(tutorId, amount, netAmount) : netAmount;
+    totalUsd += batchCurrency === 'USD' ? payAmount : 0;
 
     const acc = accountByTutor.get(tutorId);
     const pro = profileById.get(tutorId);
@@ -242,7 +279,7 @@ async function handlePost(request: NextRequest) {
       cell(acc?.branch),
       cell(acc?.payout_account_identifier),
       cell(acc?.account_type),
-      cell(netAmount.toFixed(2)),
+      cell(payAmount.toFixed(2)),
       cell(`ITUTOR-${rpc.batch_id?.slice(0, 8) ?? 'BATCH'}`),
     ].join(','));
   }
@@ -258,6 +295,8 @@ async function handlePost(request: NextRequest) {
       csv_body: csvBody,
       csv_generated_at: new Date().toISOString(),
       batch_type: ledgerIds ? 'one_on_one' : 'lesson',
+      currency: batchCurrency,
+      total_amount_usd: batchCurrency === 'USD' ? Math.round(totalUsd * 100) / 100 : null,
     })
     .eq('id', rpc.batch_id);
 
@@ -270,6 +309,8 @@ async function handlePost(request: NextRequest) {
       line_count:       rpc.line_count,
       status:           rpc.status,
       csv_filename:     filename,
+      currency:         batchCurrency,
+      total_amount_usd: batchCurrency === 'USD' ? Math.round(totalUsd * 100) / 100 : null,
     },
     csv:      csvBody,
     filename,

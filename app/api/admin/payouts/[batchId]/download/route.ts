@@ -24,7 +24,12 @@ import { getServiceClient } from '@/lib/supabase/server';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const CSV_HEADER = ['tutor_id', 'name', 'bank_name', 'branch', 'account_number', 'account_type', 'amount_ttd', 'reference'];
+// The amount column follows the batch currency (migration 260). TTD batches
+// keep the exact header the bank template already expects.
+function csvHeader(currency: string): string[] {
+  return ['tutor_id', 'name', 'bank_name', 'branch', 'account_number', 'account_type',
+    currency === 'USD' ? 'amount_usd' : 'amount_ttd', 'reference'];
+}
 
 function csvCell(value: string | number | null | undefined): string {
   if (value === null || value === undefined) return '';
@@ -47,7 +52,7 @@ export async function POST(
   // ── Load the batch ─────────────────────────────────────────────────────────
   const { data: batch, error: batchErr } = await admin
     .from('payout_batches')
-    .select('id, status, csv_body, csv_filename, csv_generated_at')
+    .select('id, status, currency, csv_body, csv_filename, csv_generated_at')
     .eq('id', params.batchId)
     .maybeSingle();
 
@@ -71,7 +76,7 @@ export async function POST(
   // ── Build the CSV from this batch's stamped ledger rows ────────────────────
   const { data: ledger, error: ledgerErr } = await admin
     .from('payout_ledger')
-    .select('id, tutor_id, amount_ttd')
+    .select('id, tutor_id, amount_ttd, amount_usd')
     .eq('batch_id', params.batchId);
 
   if (ledgerErr) return NextResponse.json({ error: ledgerErr.message }, { status: 500 });
@@ -91,12 +96,18 @@ export async function POST(
   const profileById    = new Map((profiles ?? []).map((p: any) => [p.id, p]));
   const accountByTutor = new Map((accounts ?? []).map((a: any) => [a.tutor_id, a]));
 
-  const amountByTutor = new Map<string, number>();
-  for (const row of ledger as any[]) {
-    amountByTutor.set(row.tutor_id, (amountByTutor.get(row.tutor_id) ?? 0) + Number(row.amount_ttd));
+  const isUsd = batch.currency === 'USD';
+  if (isUsd && (ledger as any[]).some((r) => r.amount_usd == null)) {
+    return NextResponse.json({ error: 'Batch has USD rows without an exchange rate' }, { status: 409 });
   }
 
-  const rows: string[] = [CSV_HEADER.join(',')];
+  const amountByTutor = new Map<string, number>();
+  for (const row of ledger as any[]) {
+    const amt = isUsd ? Number(row.amount_usd) : Number(row.amount_ttd);
+    amountByTutor.set(row.tutor_id, (amountByTutor.get(row.tutor_id) ?? 0) + amt);
+  }
+
+  const rows: string[] = [csvHeader(batch.currency ?? 'TTD').join(',')];
   for (const [tutorId, amount] of amountByTutor) {
     const acc = accountByTutor.get(tutorId);
     const pro = profileById.get(tutorId);

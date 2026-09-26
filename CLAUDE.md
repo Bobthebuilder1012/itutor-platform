@@ -113,6 +113,8 @@ TOKEN_ENCRYPTION_KEY           # For encrypting OAuth tokens
 PAID_CLASSES_ENABLED           # Feature flag (true/false)
 TEACHER_ACTIVATION_ENABLED     # Class invites + launch goal (default true)
 CLASS_MATCH_WEEK_ENABLED       # Class Match Week on/off (default true)
+USD_PAYOUTS_ENABLED            # Lets tutors elect USD payouts (default false)
+CBTT_RATE_URL                  # Optional override for the CBTT TTD/USD rate source
 ```
 
 Google OAuth and Zoom OAuth credentials are also required for those integrations.

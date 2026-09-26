@@ -11,6 +11,7 @@ import { UnsavedBar } from '@/components/UnsavedBar';
 import { supabase } from '@/lib/supabase/client';
 import CountrySelect from '@/components/CountrySelect';
 import TutorShell from '@/components/tutor/TutorShell';
+import PayoutCurrencyCard from '@/components/tutor/PayoutCurrencyCard';
 
 type Section = 'profile' | 'teaching' | 'notifications' | 'security' | 'payouts';
 
@@ -432,7 +433,7 @@ function SettingsContent() {
             </>
           )}
 
-          {section === 'payouts' && <PayoutAccountForm />}
+          {section === 'payouts' && (<><PayoutAccountForm /><PayoutCurrencyCard /></>)}
         </div>
       </div>
 

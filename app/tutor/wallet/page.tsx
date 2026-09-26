@@ -19,6 +19,9 @@ interface WalletHistoryRow {
   ledger_id: string;
   session_id: string;
   amount_ttd: number;
+  /** Frozen USD payout value (migration 260). Null for TTD rows. */
+  amount_usd?: number | null;
+  payout_currency?: 'TTD' | 'USD';
   status: HistoryStatus;
   ledger_status: string;
   created_at: string;
@@ -57,6 +60,17 @@ interface WalletPayload {
   };
   pending_deductions: PendingDeduction[];
   history: WalletHistoryRow[];
+  payout_currency?: 'TTD' | 'USD';
+  fx_rate?: { rate_date: string; ttd_per_usd: number; published_date: string | null } | null;
+  /** Totals of USD-stamped ledger rows only. */
+  usd?: {
+    pending_usd: number;
+    available_usd: number;
+    lifetime_paid_usd: number;
+    held_usd: number;
+    awaiting_rate_ttd: number;
+    open_ttd: number;
+  };
 }
 
 interface StudentBreakdownRow {
@@ -80,6 +94,16 @@ const EARNED_LEDGER_STATUSES: HistoryStatus[] = ['in_escrow', 'awaiting_transfer
 
 function fmtTTD(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/** A ledger row paid in USD whose rate has been frozen. */
+function rowIsUsd(r: WalletHistoryRow): boolean {
+  return r.payout_currency === 'USD' && r.amount_usd != null;
+}
+
+/** The row in the currency it will actually be paid in. */
+function fmtRowAmount(r: WalletHistoryRow): string {
+  return rowIsUsd(r) ? `US$ ${fmtTTD(r.amount_usd!)}` : `TT$ ${fmtTTD(r.amount_ttd)}`;
 }
 
 export default function TutorWalletPage() {
@@ -162,6 +186,23 @@ function WalletContent() {
   const balances = data?.balances;
   const history = data?.history ?? [];
 
+  // USD payouts (migration 260). Settled figures use each row's FROZEN
+  // amount_usd. Forward-looking figures (projected, tentative) have no
+  // payment date yet, so they are shown as ≈ at today's CBTT rate.
+  const usdMode = data?.payout_currency === 'USD';
+  const rate = data?.fx_rate?.ttd_per_usd ?? null;
+  const usd = data?.usd;
+  const approxUsd = (ttd: number) => (rate ? ttd / rate : 0);
+  /** Unpaid money earned before switching to USD. Still paid in TTD. */
+  const ttdCarryover = Math.max(
+    0,
+    Math.round(((balances?.available_ttd ?? 0) + (balances?.pending_ttd ?? 0) - (usd?.open_ttd ?? 0)) * 100) / 100,
+  );
+  /** Per-row value in the display currency, for summaries across rows. */
+  const rowDisplayValue = (h: WalletHistoryRow) =>
+    !usdMode ? h.amount_ttd : rowIsUsd(h) ? h.amount_usd! : approxUsd(h.amount_ttd);
+  const cur = usdMode ? 'US$' : 'TT$';
+
   const breakdown = useMemo<StudentBreakdownRow[]>(() => {
     const map = new Map<string, StudentBreakdownRow>();
     // Tracks distinct subscription group names per student to compute groupsCount
@@ -183,7 +224,7 @@ function WalletContent() {
       if (!h.student_id) continue;
       if (!EARNED_LEDGER_STATUSES.includes(h.status)) continue;
       const row = ensure(h.student_id, h.student_name, h.student_avatar_url);
-      row.totalPaid += h.amount_ttd;
+      row.totalPaid += rowDisplayValue(h);
       if (h.source_type === 'subscription') {
         const key = h.subject_name ?? '__group__';
         if (!groupNamesByStudent.has(h.student_id)) groupNamesByStudent.set(h.student_id, new Set());
@@ -203,20 +244,20 @@ function WalletContent() {
       const meta = upcomingStudents.get(u.studentId);
       const row = ensure(u.studentId, meta?.name ?? null, meta?.avatarUrl ?? null);
       row.upcomingCount += 1;
-      row.projectedUpcoming += u.payout;
+      row.projectedUpcoming += usdMode ? approxUsd(u.payout) : u.payout;
     }
 
     return Array.from(map.values())
       .filter((r) => r.totalPaid > 0 || r.upcomingCount > 0)
       .sort((a, b) => b.totalPaid + b.projectedUpcoming - (a.totalPaid + a.projectedUpcoming));
-  }, [history, upcoming, upcomingStudents]);
+  }, [history, upcoming, upcomingStudents, usdMode, rate]);
 
   const monthEarned = useMemo(() => {
     const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
     return history
       .filter((h) => h.status === 'paid' && h.released_at && new Date(h.released_at).getTime() >= monthStart)
-      .reduce((s, h) => s + h.amount_ttd, 0);
-  }, [history]);
+      .reduce((s, h) => s + rowDisplayValue(h), 0);
+  }, [history, usdMode, rate]);
 
   const completedThisMonth = useMemo(() => {
     const now = new Date();
@@ -281,6 +322,32 @@ function WalletContent() {
             <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-white/60 font-semibold">
               <Banknote className="size-3.5" /> Awaiting bank transfer
             </div>
+            {usdMode ? (
+              <>
+                <div className="mt-2 text-4xl font-bold tabular-nums">
+                  US$ {fmtTTD((usd?.available_usd ?? 0) + (usd?.pending_usd ?? 0))}
+                </div>
+                <div className="mt-1 text-sm text-white/70">
+                  {(usd?.available_usd ?? 0) > 0 || (usd?.pending_usd ?? 0) > 0
+                    ? `US$ ${fmtTTD(usd?.available_usd ?? 0)} ready · US$ ${fmtTTD(usd?.pending_usd ?? 0)} in escrow`
+                    : 'No pending USD earnings'}
+                </div>
+                <div className="mt-1 text-xs text-white/60">
+                  Each earning is locked at the Central Bank (CBTT) rate on the day the student paid.
+                </div>
+                {(usd?.awaiting_rate_ttd ?? 0) > 0 && (
+                  <div className="mt-3 rounded-xl bg-white/10 px-3 py-2 text-sm text-white/80">
+                    TT$ {fmtTTD(usd!.awaiting_rate_ttd)} is waiting on the CBTT rate for its payment day and will convert shortly.
+                  </div>
+                )}
+                {ttdCarryover > 0 && (
+                  <div className="mt-3 rounded-xl bg-white/10 px-3 py-2 text-sm text-white/80">
+                    + TT$ {fmtTTD(ttdCarryover)} earned before you switched to USD. This is still paid in TTD.
+                  </div>
+                )}
+              </>
+            ) : (
+            <>
             <div className="mt-2 text-4xl font-bold tabular-nums">
               TT$ {fmtTTD((balances?.available_ttd ?? 0) + (balances?.pending_ttd ?? 0))}
             </div>
@@ -293,6 +360,8 @@ function WalletContent() {
                     ? `TT$ ${fmtTTD(balances?.pending_ttd ?? 0)} in escrow — releases after 7 days`
                     : 'No pending earnings'}
             </div>
+            </>
+            )}
             {/* Part of the escrow figure above, itemised. A tutor waiting weeks
                 for secured-spot money needs to see why here, not work it out
                 from a short payout. NOT added to any total — it is already
@@ -315,7 +384,9 @@ function WalletContent() {
               <div className="mt-3 flex items-center gap-2 rounded-xl bg-amber-500/20 px-3 py-2 text-sm">
                 <AlertCircle className="size-4 text-amber-300 shrink-0" />
                 <span className="text-amber-200">
-                  TT$ {fmtTTD(balances?.held_ttd ?? 0)} under review — awaiting admin decision
+                  {usdMode && (usd?.held_usd ?? 0) > 0
+                    ? `US$ ${fmtTTD(usd!.held_usd)}`
+                    : `TT$ ${fmtTTD(balances?.held_ttd ?? 0)}`} under review — awaiting admin decision
                 </span>
               </div>
             )}
@@ -327,23 +398,23 @@ function WalletContent() {
           <div className="grid sm:grid-cols-3 gap-4">
             <Stat
               label="Projected"
-              value={`TT$ ${fmtTTD(projectedThisMonth)}`}
+              value={usdMode ? `≈ US$ ${fmtTTD(approxUsd(projectedThisMonth))}` : `TT$ ${fmtTTD(projectedThisMonth)}`}
               icon={TrendingUp}
-              hint="All earnings this month (sessions + subscriptions)"
+              hint={usdMode ? "All earnings this month, at today's CBTT rate" : 'All earnings this month (sessions + subscriptions)'}
               valueClass="text-brand-deep"
             />
             <Stat
               label="Tentative"
-              value={`TT$ ${fmtTTD(tentativeThisMonth)}`}
+              value={usdMode ? `≈ US$ ${fmtTTD(approxUsd(tentativeThisMonth))}` : `TT$ ${fmtTTD(tentativeThisMonth)}`}
               icon={AlertCircle}
               hint="Upcoming sessions this month. Could still cancel."
               valueClass="text-amber-600"
             />
             <Stat
               label="Lifetime paid"
-              value={`TT$ ${fmtTTD(balances?.lifetime_paid_ttd ?? 0)}`}
+              value={usdMode ? `US$ ${fmtTTD(usd?.lifetime_paid_usd ?? 0)}` : `TT$ ${fmtTTD(balances?.lifetime_paid_ttd ?? 0)}`}
               icon={Wallet}
-              hint={`This month: TT$ ${fmtTTD(monthEarned)}`}
+              hint={usdMode ? `USD payouts only · this month: ≈ US$ ${fmtTTD(monthEarned)}` : `This month: TT$ ${fmtTTD(monthEarned)}`}
             />
           </div>
 
@@ -394,6 +465,7 @@ function WalletContent() {
             oneOnOneCount={totalOneOnOneCount}
             upcomingCount={upcomingCount}
             loading={summaryLoading}
+            currencyPrefix={cur}
           />
 
           <div className="rounded-2xl border border-border bg-card p-5">
@@ -452,12 +524,13 @@ function Stat({ label, value, icon: Icon, hint, valueClass }: { label: string; v
 }
 
 function StudentBreakdown({
-  breakdown, oneOnOneCount, upcomingCount, loading,
+  breakdown, oneOnOneCount, upcomingCount, loading, currencyPrefix = 'TT$',
 }: {
   breakdown: StudentBreakdownRow[];
   oneOnOneCount: number;
   upcomingCount: number;
   loading: boolean;
+  currencyPrefix?: string;
 }) {
   const hasRows = breakdown.length > 0;
   const totalGroups = breakdown.reduce((s, r) => s + r.groupsCount, 0);
@@ -507,7 +580,7 @@ function StudentBreakdown({
                 </div>
                 <div className="col-span-6 sm:col-span-2 text-right tabular-nums font-semibold text-ink">
                   <span className="sm:hidden text-xs text-muted-foreground mr-1">Paid</span>
-                  TT$ {fmtTTD(row.totalPaid)}
+                  {currencyPrefix} {fmtTTD(row.totalPaid)}
                 </div>
                 <div className="col-span-2 sm:col-span-2 text-right tabular-nums text-ink">
                   <span className="sm:hidden text-xs text-muted-foreground mr-1">Groups</span>
@@ -603,7 +676,7 @@ function TxRow({ row, detailed }: { row: WalletHistoryRow; detailed?: boolean })
         </div>
       )}
       <div className="text-right">
-        <div className="font-bold text-ink tabular-nums">TT$ {fmtTTD(row.amount_ttd)}</div>
+        <div className="font-bold text-ink tabular-nums">{fmtRowAmount(row)}</div>
         <StatusPill status={row.status} />
       </div>
     </div>
