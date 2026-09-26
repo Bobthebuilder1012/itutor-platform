@@ -2414,8 +2414,13 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
           class_format: draft.classFormat,
           venue_id: draft.classFormat === 'online' ? null : draft.venueId,
           venue_visibility: draft.venueVisibility,
-          max_students_online: draft.maxStudentsOnline,
-          max_students_physical: draft.maxStudentsPhysical,
+          // An online class has one seat type, so its cap IS the capacity.
+          // Re-sending the cap loaded with the page made the trigger restore
+          // the old total over the capacity the tutor just typed.
+          max_students_online: draft.classFormat === 'online'
+            ? (draft.capacity > 0 ? draft.capacity : 20)
+            : draft.maxStudentsOnline,
+          max_students_physical: draft.classFormat === 'online' ? null : draft.maxStudentsPhysical,
           price_online_ttd: draft.priceOnlineTtd,
           price_physical_ttd: draft.pricePhysicalTtd,
           accepts_cash: draft.classFormat === 'online' ? false : draft.acceptsCash,
@@ -2615,6 +2620,12 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
               {isOneOnOne ? (
                 <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
                   This is a 1-on-1 class — capacity is fixed at 1.
+                </div>
+              ) : draft.classFormat !== 'online' ? (
+                <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                  This class takes <span className="font-semibold text-ink">{draft.capacity}</span> students in total.
+                  It meets in person, so the limit is the online and in-person seats added together.
+                  Change them on the In person tab.
                 </div>
               ) : (
                 <SetField
