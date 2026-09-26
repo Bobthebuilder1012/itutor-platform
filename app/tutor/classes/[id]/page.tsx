@@ -1052,7 +1052,7 @@ function SessionRow({ s, groupId, meetingLink, selected, onSelect, onCancel, rec
           </div>
           <div className="min-w-0">
             <div className="font-semibold text-ink text-sm truncate">
-              {valid ? d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : 'Scheduled'}
+              {valid ? d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', ...(d.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}) }) : 'Scheduled'}
             </div>
             <div className="text-xs text-muted-foreground">
               {valid ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : ''}{valid ? ' · ' : ''}{durLabel}
@@ -1154,7 +1154,14 @@ function SessionRow({ s, groupId, meetingLink, selected, onSelect, onCancel, rec
 }
 
 function SessionsTab({ sessions, groupId, setSessions, meetingLink, reconnected, group }: { sessions: GroupSession[]; groupId: string; setSessions: React.Dispatch<React.SetStateAction<GroupSession[]>>; meetingLink: string; reconnected?: boolean; group: GroupDetail }) {
-  const upcoming = sessions.filter((s) => s.status === 'upcoming');
+  // Sessions arrive grouped by series (every Monday, then every Tuesday),
+  // so a two-day class read as two separate years-long lists. Sort across
+  // series: upcoming soonest first, history most recent first.
+  const byTime = (s: GroupSession) => new Date(s.date).getTime();
+  const upcoming = sessions.filter((s) => s.status === 'upcoming').sort((a, b) => byTime(a) - byTime(b));
+  const history = sessions.filter((s) => s.status !== 'upcoming').sort((a, b) => byTime(b) - byTime(a));
+  const [view, setView] = useState<'upcoming' | 'history'>('upcoming');
+  const shown = view === 'upcoming' ? upcoming : history;
   // Loaded once, here rather than per row: a class with twenty sessions
   // would otherwise make twenty identical requests the moment it renders.
   // Only for classes that meet somewhere — an online class has nowhere to
@@ -1178,7 +1185,7 @@ function SessionsTab({ sessions, groupId, setSessions, meetingLink, reconnected,
   const toggleSelect = (id: string) =>
     setSelectedIds((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const toggleAll = () =>
-    setSelectedIds(selectedIds.size === sessions.length ? new Set() : new Set(sessions.map((s) => s.id)));
+    setSelectedIds(selectedIds.size === shown.length ? new Set() : new Set(shown.map((s) => s.id)));
 
   const bulkDelete = async () => {
     if (!selectedIds.size) return;
@@ -1317,7 +1324,7 @@ function SessionsTab({ sessions, groupId, setSessions, meetingLink, reconnected,
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-lg font-bold text-ink">Sessions</h2>
-          <p className="text-xs text-muted-foreground">{upcoming.length} upcoming · manage attendance and join links.</p>
+          <p className="text-xs text-muted-foreground">{upcoming.length} upcoming · {history.length} in history · manage attendance and join links.</p>
         </div>
         <button onClick={() => setAddOpen(true)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90">
           <Plus className="size-3.5" /> Add Session
@@ -1452,13 +1459,24 @@ function SessionsTab({ sessions, groupId, setSessions, meetingLink, reconnected,
         Meeting links are generated automatically from your connected video provider.
       </div>
 
+      <div className="inline-flex rounded-lg border border-border p-0.5 text-xs font-semibold">
+        {(['upcoming', 'history'] as const).map((v) => (
+          <button
+            key={v}
+            onClick={() => { setView(v); setSelectedIds(new Set()); }}
+            className={`px-3 py-1.5 rounded-md ${view === v ? 'bg-brand text-white' : 'text-muted-foreground hover:bg-muted'}`}>
+            {v === 'upcoming' ? `Upcoming (${upcoming.length})` : `History (${history.length})`}
+          </button>
+        ))}
+      </div>
+
       {/* Bulk action bar */}
-      {sessions.length > 0 && (
+      {shown.length > 0 && (
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
             <input
               type="checkbox"
-              checked={selectedIds.size === sessions.length && sessions.length > 0}
+              checked={selectedIds.size === shown.length && shown.length > 0}
               onChange={toggleAll}
               className="rounded"
             />
@@ -1476,8 +1494,11 @@ function SessionsTab({ sessions, groupId, setSessions, meetingLink, reconnected,
       )}
 
       {sessions.length === 0 && <EmptyState icon={CalendarIcon} title="No sessions scheduled" body="Add your first session to publish a calendar entry to enrolled students." />}
+      {sessions.length > 0 && shown.length === 0 && (
+        <p className="text-sm text-muted-foreground py-6 text-center">{view === 'upcoming' ? 'No upcoming sessions.' : 'No past sessions yet.'}</p>
+      )}
       <div className="space-y-2">
-        {sessions.map((s) => (
+        {shown.map((s) => (
           <SessionRow
             key={s.id}
             s={s}
