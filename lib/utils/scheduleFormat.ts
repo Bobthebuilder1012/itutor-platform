@@ -256,17 +256,25 @@ export function occurrencesToEntries(
 
 /**
  * Single source of truth for how a class's recurring pattern is resolved, so
- * every card and page agrees. Precedence: the tutor's manual schedule_data, then
- * a group_sessions recurrence rule, then dated occurrences.
+ * every card and page agrees. Precedence: a group_sessions recurrence rule,
+ * then dated occurrences.
+ *
+ * The tutor's manual `groups.schedule_data` — typed by hand on the class
+ * Settings screen, disconnected from any real session — USED to win here.
+ * That let a class advertise a time nothing on the Sessions tab actually
+ * matched: the marketplace card said "Mondays 4-5pm" while the real sessions
+ * ran Sundays at 3, because whichever one was entered later never had to
+ * agree with the other. The Sessions tab is what generates join links,
+ * reminders, attendance and RSVPs, so it is the only version of "when this
+ * class meets" that can't drift from reality — it now drives the schedule
+ * everywhere, unconditionally. The Settings editor for the manual field has
+ * been removed to match; this only stops READING it, in case old rows still
+ * carry a value.
  */
 export function resolveScheduleEntries(input: {
-  scheduleData?: string | null;
   sessionRows?: SessionRecurrenceRow[] | null;
   occurrences?: OccurrenceLike[] | null;
 }): ScheduleEntry[] {
-  const manual = parseScheduleData(input.scheduleData);
-  if (manual.length > 0) return manual;
-
   const fromRules = sessionRowsToEntries(input.sessionRows);
   if (fromRules.length > 0) return fromRules;
 
