@@ -90,7 +90,7 @@ async function recordAttempt(
       },
       { onConflict: 'user_id' }
     );
-    if (error) console.error('[customerio] state upsert failed:', error.message);
+    if (error) logStateError('state upsert failed', userId, error);
     return;
   }
 
@@ -113,7 +113,23 @@ async function recordAttempt(
     },
     { onConflict: 'user_id' }
   );
-  if (error) console.error('[customerio] failure state upsert failed:', error.message);
+  if (error) logStateError('failure state upsert failed', userId, error);
+}
+
+// The user id and Postgres detail are what make a state-write failure
+// actionable. A foreign-key violation here means the row can never be written,
+// so it can never be parked either — it recurs every run until the orphaned
+// profile is removed, and without the id there is no way to tell which one.
+function logStateError(
+  what: string,
+  userId: string,
+  error: { message: string; code?: string; details?: string | null }
+): void {
+  console.error(
+    `[customerio] ${what} for ${userId}: ${error.message}` +
+      (error.code ? ` [${error.code}]` : '') +
+      (error.details ? ` — ${error.details}` : '')
+  );
 }
 
 /**
