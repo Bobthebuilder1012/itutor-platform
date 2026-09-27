@@ -51,7 +51,7 @@ export default function MotivationSection() {
           {/* Action Buttons */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <a
-              href="/signup"
+              href="/start"
               className="inline-flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-itutor-green to-emerald-500 text-itutor-black font-bold rounded-xl hover:shadow-lg hover:shadow-itutor-green/50 hover:scale-105 transition-all duration-300"
             >
               <span>Join Now</span>

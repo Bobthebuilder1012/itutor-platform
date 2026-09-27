@@ -38,6 +38,10 @@ import {
 } from '@/lib/services/subscriptionPayments';
 import { findGroupEnrollmentConflict, conflictMessage } from '@/lib/services/scheduleConflict';
 import { isPaidGroup } from '@/lib/payments/groupPricing';
+import { canTakeSeat, seatConfigFromRow } from '@/lib/services/seatOccupancy';
+import { formatOffersSeat, type SeatType } from '@/lib/utils/seatCapacity';
+import { track } from '@/lib/analytics/track';
+import { PRODUCT_EVENTS } from '@/lib/analytics/events';
 
 const SEAT_RESERVATION_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -54,21 +58,48 @@ export async function createGroupSubscriptionCheckout(params: {
   payerId: string;
   /** The payer's email — Stripe sends the receipt here. */
   payerEmail: string | null | undefined;
+  /**
+   * Which kind of seat is being bought. Omitted means 'online', which is what
+   * every enrolment before migration 242 was and the only thing an online-only
+   * class can offer — so the default is history rather than a guess.
+   */
+  seatType?: SeatType | null;
 }): Promise<CheckoutOutcome> {
-  const { admin, groupId, studentId, payerId, payerEmail } = params;
+  const { admin, groupId, studentId, payerId, payerEmail, seatType } = params;
 
   // Step 2: Group must exist and be PUBLISHED
-  const { data: group, error: groupErr } = await admin
-    .from('groups')
-    .select(`
+  //
+  // Two select tiers: the seat columns arrive in migration 242, which is not on
+  // every environment, and a missing column 42703s the WHOLE select — which here
+  // would mean nobody can enrol in anything.
+  const GROUP_BASE = `
       id, tutor_id, name, status, pricing_model, price_monthly,
       max_students, grace_period_days, require_join_requests,
       visibility, archived_at,
       end_date, stripe_price_id, stripe_price_amount_ttd
-    `)
-    .eq('id', groupId)
-    .is('archived_at', null)
-    .single();
+    `;
+  const GROUP_SEATS =
+    'class_format, max_students_online, max_students_physical, price_online_ttd, price_physical_ttd';
+
+  let group: any = null;
+  let groupErr: any = null;
+  for (const select of [`${GROUP_BASE}, ${GROUP_SEATS}`, GROUP_BASE]) {
+    const res = await admin
+      .from('groups')
+      .select(select)
+      .eq('id', groupId)
+      .is('archived_at', null)
+      .single();
+    if (!res.error) {
+      group = res.data;
+      groupErr = null;
+      break;
+    }
+    groupErr = res.error;
+    const missingColumn =
+      String(res.error.code) === '42703' || String(res.error.code) === 'PGRST204';
+    if (!missingColumn) break;
+  }
 
   if (groupErr || !group) {
     return { ok: false as const, status: 404, body: { error: 'Group not found' } };
@@ -231,8 +262,83 @@ export async function createGroupSubscriptionCheckout(params: {
   }
 
   // Step 8: Capacity check (only for new enrollments)
+  // ── The seat this student is buying ──────────────────────────────────────
+  //
+  // Defaults to 'online', which is what every enrolment before migration 242
+  // was and what an online-only class can only ever be. A caller that asks for
+  // 'physical' on a class with no physical seats is refused rather than silently
+  // downgraded: someone who chose "in person" and got an online seat would find
+  // out by turning up at a venue that is not expecting them.
+  const requestedSeat: SeatType = seatType === 'physical' ? 'physical' : 'online';
+  const seatConfig = seatConfigFromRow(group as any);
+  if (!formatOffersSeat(seatConfig.class_format, requestedSeat)) {
+    return {
+      ok: false as const,
+      status: 400,
+      body: {
+        error:
+          requestedSeat === 'physical'
+            ? 'This class does not have in-person seats.'
+            : 'This class does not have online seats.',
+      },
+    };
+  }
+
   if (!isReusingEnrollment) {
-    if (group.max_students) {
+    // ── PER-SEAT capacity, before the class-level check ────────────────────
+    //
+    // The class-level test below compares against `max_students`, which a
+    // trigger keeps as the SUM of the two seat caps. On a hybrid class that sum
+    // having room says nothing about whether the seat this student wants has
+    // room — so without this a full physical room keeps selling in-person seats
+    // right up until the class total fills. This is the bug
+    // lib/utils/seatCapacity.ts was written to fix, and it can only be fixed
+    // here, before money is taken.
+    //
+    // Non-fatal on a read failure: it falls through to the class-level check,
+    // which is still correct for an online-only class — every class on
+    // production today.
+    // Set once the per-seat gate has actually run and approved. See the
+    // class-level check below for why that then supersedes it.
+    let perSeatApproved = false;
+    try {
+      const allowed = await canTakeSeat(admin, groupId, group as any, requestedSeat);
+      perSeatApproved = allowed;
+      if (!allowed) {
+        return {
+          ok: false as const,
+          status: 409,
+          body: {
+            error:
+              requestedSeat === 'physical'
+                ? 'The in-person seats for this class are full. Online seats may still be open.'
+                : 'The online seats for this class are full.',
+            reason: 'seat_full',
+            seat_type: requestedSeat,
+          },
+        };
+      }
+    } catch (seatErr: any) {
+      console.warn('[checkout] per-seat capacity unavailable:', seatErr?.message);
+    }
+
+    // ── The class-level total, which is DERIVED and lossy ─────────────────
+    //
+    // Skipped once the per-seat gate has approved a non-online class, and that
+    // is a correctness fix rather than an optimisation.
+    //
+    // A trigger keeps `max_students` as the SUM of the two seat caps, and
+    // COALESCEs a NULL cap to 0 — so a hybrid class with ten online seats and
+    // UNLIMITED physical ones stores max_students = 10. Once those ten online
+    // seats sell, `used >= max_students` is true and this block would refuse an
+    // in-person enrolment that the per-seat gate had just correctly allowed,
+    // offering a waitlist for a room with space in it.
+    //
+    // The caps are the fact; the total is a convenience for everything written
+    // before migration 242. Where the two disagree, the caps win.
+    const skipClassTotal = perSeatApproved && seatConfig.class_format !== 'online';
+
+    if (group.max_students && !skipClassTotal) {
       const nowIso = now.toISOString();
 
       const { count: occupiedCount } = await admin
@@ -397,9 +503,7 @@ export async function createGroupSubscriptionCheckout(params: {
 
   // Step 10: Create or reuse group_enrollments row
   if (!isReusingEnrollment) {
-    const { data: newEnrollment, error: enrollErr } = await admin
-      .from('group_enrollments')
-      .insert({
+    const enrolmentRow: Record<string, unknown> = {
         group_id: groupId,
         student_id: studentId,
         enrollment_type: 'SUBSCRIPTION',
@@ -415,6 +519,11 @@ export async function createGroupSubscriptionCheckout(params: {
         promotion_expires_at: promotionData.promotionExpiresAt,
         // NULL when the student pays for themself (migration 230).
         payer_id: payerId === studentId ? null : payerId,
+        // What they BOUGHT (migration 242) — not what they attend, which is
+        // per-occurrence and may legitimately differ week to week. This is the
+        // column seatCounts splits on, so an unwritten value would make a
+        // physical seat invisible to the capacity gate above.
+        seat_type: requestedSeat,
         current_period_start: null,
         current_period_end: null,
         next_payment_due_at: null,
@@ -424,9 +533,60 @@ export async function createGroupSubscriptionCheckout(params: {
         pending_payment_expires_at: pendingExpiresAt,
         reminder_count: 0,
         last_reminder_sent_at: null,
-      })
-      .select('id')
-      .single();
+    };
+
+    // TOLERANT OF A DATABASE WITHOUT 242. `seat_type` is the only key in this
+    // row that might not exist as a column, and a missing column rejects the
+    // WHOLE insert — which here would mean nobody can enrol in any class on any
+    // environment that has not run the migration. Retried once without it, with
+    // a log that names the migration, rather than turning a schema gap into a
+    // total enrolment outage.
+    let newEnrollment: { id: string } | null = null;
+    let enrollErr: any = null;
+    {
+      const first = await admin
+        .from('group_enrollments')
+        .insert(enrolmentRow)
+        .select('id')
+        .single();
+
+      if (!first.error) {
+        newEnrollment = first.data as { id: string };
+      } else {
+        const missingSeatType =
+          String(first.error.code) === 'PGRST204' ||
+          String(first.error.code) === '42703' ||
+          /seat_type/i.test(first.error.message ?? '');
+
+        if (!missingSeatType) {
+          enrollErr = first.error;
+        } else {
+          console.warn(
+            '[subscribe] group_enrollments.seat_type absent — is migration 242 applied? ' +
+              'Retrying without it; the seat kind will not be recorded.'
+          );
+          // Refuse rather than silently sell a physical seat the database cannot
+          // record: seatCounts would never see it, so the room could oversell
+          // without limit. An online seat is safe to record as before, because
+          // that is what every row on such a database already is.
+          if (requestedSeat === 'physical') {
+            return {
+              ok: false as const,
+              status: 503,
+              body: { error: 'In-person enrolment is not available yet. Please try online.' },
+            };
+          }
+          const { seat_type: _dropped, ...withoutSeat } = enrolmentRow;
+          const second = await admin
+            .from('group_enrollments')
+            .insert(withoutSeat)
+            .select('id')
+            .single();
+          if (second.error) enrollErr = second.error;
+          else newEnrollment = second.data as { id: string };
+        }
+      }
+    }
 
     if (enrollErr || !newEnrollment) {
       console.error('[subscribe] Failed to create enrollment:', enrollErr);
@@ -622,6 +782,24 @@ export async function createGroupSubscriptionCheckout(params: {
       billing_provider: 'stripe',
     })
     .eq('id', enrollmentId!);
+
+  // ── enrolment_started ──
+  // Instrumented in this shared helper rather than in the two routes that call
+  // it, so the student path and the parent-enrols-a-child path are counted by
+  // the same line. Two call sites would drift, and a funnel that silently omits
+  // parent enrolments would be worse than one that omits them visibly.
+  //
+  // Emitted here, at the end, because everything above can still refuse the
+  // enrolment — full class, schedule clash, waitlist, Stripe failure. Those are
+  // not abandoned checkouts and must not be counted as ones.
+  //
+  // Attributed to the STUDENT, matching `paid` (which uses sp.student_id): the
+  // funnel follows the learner through, even when a parent holds the card.
+  await track(
+    PRODUCT_EVENTS.ENROLMENT_STARTED,
+    { group_id: groupId },
+    { userId: studentId }
+  );
 
   // Step 14: Return the client secret. The enrollment stays PENDING_PAYMENT
   // until the webhook confirms — the client never activates it from

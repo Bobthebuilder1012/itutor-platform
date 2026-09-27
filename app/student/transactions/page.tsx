@@ -107,7 +107,7 @@ function ReceiptCard({ txn }: { txn: Transaction }) {
       {/* Amount + receipt link */}
       <div className="shrink-0 text-right">
         <div className="font-bold text-ink tabular-nums">{fmtTTD(txn.amount_ttd)}</div>
-        {txn.receipt_url && (
+        {txn.receipt_url ? (
           <a
             href={txn.receipt_url}
             target="_blank"
@@ -116,7 +116,15 @@ function ReceiptCard({ txn }: { txn: Transaction }) {
           >
             Receipt <ExternalLink className="size-2.5" />
           </a>
-        )}
+        ) : txn.payment_method === 'cash' ? (
+          // Cash never passes through a gateway, so there is no receipt to
+          // link to. Saying nothing would leave the row looking like a card
+          // payment whose receipt failed to generate — this row IS the
+          // student's record that the money was handed over and accepted.
+          <span className="mt-0.5 inline-flex items-center gap-0.5 text-[11px] text-muted-foreground">
+            Paid in cash
+          </span>
+        ) : null}
       </div>
     </div>
   );

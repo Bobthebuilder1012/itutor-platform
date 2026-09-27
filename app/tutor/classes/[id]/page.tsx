@@ -4,9 +4,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
-  ArrowLeft, Users, UserPlus, Check, Star,
+  ArrowLeft, Users, UserPlus, Copy, Check, Star, MapPin,
   Bell, X, Plus, ExternalLink, Trash2, Globe, Eye,
-  Video, MoreVertical, Pin, Sparkles, Link as LinkIcon, Share2, Paperclip, UploadCloud, AlertTriangle, ShieldAlert,
+  Banknote, ListChecks, Video, MoreVertical, Pin, Sparkles, Link as LinkIcon, Share2, Paperclip, UploadCloud, AlertTriangle, ShieldAlert,
   Mail, MessageSquare, DollarSign, BarChart3, ArrowUp, ArrowDown, Lock,
   Calendar as CalendarIcon, BookOpen, Ban, Repeat, Clock, Info, ArrowUpRight, ChevronRight,
   RefreshCw,
@@ -59,6 +59,9 @@ type Subscriber = {
   release_date?: string | null;
   /** Start of the paid first month for a student who secured a spot — the class start. */
   billing_anchor?: string | null;
+  /** Migration 242. Absent when the roster fell back to the base select. */
+  seat_type?: 'online' | 'physical' | null;
+  billing_provider?: string | null;
   /** Present only for SECURED enrolments — a held spot, not a live subscription. */
   secured?: { releaseDate: string | null; heldTtd: number; free: boolean; shortClass: boolean } | null;
   student: { id: string; full_name: string | null; avatar_url: string | null; email: string | null } | null;
@@ -75,6 +78,10 @@ type GroupMember = {
   status: 'active' | 'approved' | 'invited' | 'pending' | 'suspended' | 'banned' | 'removed';
   joinedAt: string | null;
   outstandingTtd?: number;
+  /** What they bought. Everything before 242 was online. */
+  seatType: 'online' | 'physical';
+  /** How they pay. 'cash' means the tutor collects it and records it. */
+  paymentMethod: 'card' | 'cash';
   email?: string | null;
   subscription?: Subscriber | null;
 };
@@ -99,6 +106,8 @@ type GroupSession = {
   status: 'upcoming' | 'past';
   attendanceStatus?: string;
   paymentStatus?: string;
+  /** Per-session relocation (242). NULL means the class venue. */
+  venueId?: string | null;
 };
 
 import { type ScheduleEntry } from '@/lib/utils/scheduleFormat';
@@ -111,6 +120,14 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
 // URL as its own line in message_body, so detect a line that IS a bare URL.
 const URL_LINE_RE = /^https?:\/\/\S+$/;
 
+// The seat-type rules live in one place. seatCapacity.ts holds the one that
+// matters — a class is not full until every seat type it offers is full — and
+// this page is one of the two callers it was written for.
+import type { ClassFormat } from '@/lib/utils/seatCapacity';
+import InPersonSection, { type InPersonDraft } from '@/components/tutor/classes/InPersonSection';
+import { usePhysicalClasses } from '@/lib/hooks/usePhysicalClasses';
+import ClassPayments from '@/components/tutor/classes/ClassPayments';
+
 type GroupDetail = {
   id: string;
   title: string;
@@ -119,6 +136,18 @@ type GroupDetail = {
   description: string;
   capacity: number;
   enrolled: number;
+  // ── In person (migration 242) ──
+  // `capacity` above stays the class TOTAL — a trigger keeps groups.max_students
+  // as the sum of the two seat caps, so it is derived, not a third number to
+  // reconcile. These are the per-seat caps that actually gate enrolment.
+  classFormat: ClassFormat;
+  venueId: string | null;
+  venueVisibility: 'public' | 'after_enrolment';
+  maxStudentsOnline: number | null;
+  maxStudentsPhysical: number | null;
+  priceOnlineTtd: number | null;
+  pricePhysicalTtd: number | null;
+  acceptsCash: boolean;
   pricePerSession: number | null;
   memberServiceFee: number;
   billingModel: 'per-session' | 'per-month' | 'prepaid';
@@ -272,6 +301,16 @@ function ClassHubContent() {
           scheduleData: (() => { try { return g.schedule_data ? JSON.parse(g.schedule_data) : []; } catch { return []; } })(),
           capacity: g.max_students ?? 20,
           enrolled: 0,
+          // Absent on any environment without migration 242, which is why every
+          // one of these falls back rather than being read straight through.
+          classFormat: (g.class_format ?? 'online') as ClassFormat,
+          venueId: g.venue_id ?? null,
+          venueVisibility: (g.venue_visibility ?? 'after_enrolment') as GroupDetail['venueVisibility'],
+          maxStudentsOnline: g.max_students_online ?? null,
+          maxStudentsPhysical: g.max_students_physical ?? null,
+          priceOnlineTtd: g.price_online_ttd ?? null,
+          pricePhysicalTtd: g.price_physical_ttd ?? null,
+          acceptsCash: g.accepts_cash === true,
           pricePerSession: billingModel === 'per-month'
             ? (g.price_monthly ?? g.price_per_session ?? null)
             : (g.price_per_session ?? null),
@@ -341,6 +380,8 @@ function ClassHubContent() {
           paymentStatus: derivePaymentStatus(sub),
           status: m.status ?? 'active',
           joinedAt: m.joined_at ?? null,
+          seatType: sub?.seat_type === 'physical' ? 'physical' : 'online',
+          paymentMethod: sub?.billing_provider === 'cash' ? 'cash' : 'card',
           email: m.profile?.email ?? null,
           subscription: sub,
           outstandingTtd: sub?.plan_price_ttd ?? 0,
@@ -362,6 +403,7 @@ function ClassHubContent() {
                 const dt = o.scheduled_start_at ?? o.scheduled_at;
                 return {
                   id: o.id ?? s.id,
+                  venueId: o.venue_id ?? null,
                   date: dt,
                   durationMin,
                   status: dt && new Date(dt) > new Date() ? 'upcoming' : 'past',
@@ -442,6 +484,10 @@ function ClassHubContent() {
   const isOneOnOne = group.capacity === 1;
   const enrolledCount = members.filter((m) => m.status !== 'removed').length;
   const atCapacity = enrolledCount >= group.capacity;
+  const seatCounts = {
+    physical: members.filter((m) => m.status !== 'removed' && m.seatType === 'physical').length,
+    online: members.filter((m) => m.status !== 'removed' && m.seatType !== 'physical').length,
+  };
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'stream', label: 'Stream' },
@@ -506,6 +552,19 @@ function ClassHubContent() {
                 <div className="rounded-xl bg-white/95 text-ink px-4 py-2 text-right">
                   <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Members</div>
                   <div className="text-lg font-bold tabular-nums">{enrolledCount}/{group.capacity}</div>
+                  {/* The class total is a DERIVED sum of the two seat caps, and
+                      it COALESCEs an unlimited cap to 0 — so on a class with
+                      seats of both kinds it is the least trustworthy number on
+                      the screen. The per-seat counts below are what actually
+                      gate enrolment, so they are shown beside it. */}
+                  {group.classFormat !== 'online' && (
+                    <div className="mt-0.5 text-[11px] font-semibold text-muted-foreground tabular-nums">
+                      {seatCounts.physical} in person{group.maxStudentsPhysical != null ? `/${group.maxStudentsPhysical}` : ''}
+                      {group.classFormat === 'hybrid' && (
+                        <> · {seatCounts.online} online{group.maxStudentsOnline != null ? `/${group.maxStudentsOnline}` : ''}</>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -538,9 +597,9 @@ function ClassHubContent() {
 
         <div className="mt-6">
           {tab === 'stream'    && <StreamTab group={group} posts={posts} setPosts={setPosts} />}
-          {tab === 'sessions'  && <SessionsTab sessions={sessions} groupId={group.id} setSessions={setSessions} meetingLink={group.meetingLink ?? ''} reconnected={reconnectedFromOAuth} />}
+          {tab === 'sessions'  && <SessionsTab sessions={sessions} groupId={group.id} setSessions={setSessions} meetingLink={group.meetingLink ?? ''} reconnected={reconnectedFromOAuth} group={group} />}
           {tab === 'roster'    && <RosterTab members={members} setMembers={setMembers} group={group} isOneOnOne={isOneOnOne} atCapacity={atCapacity} onRefresh={() => fetchAll(group.id)} />}
-          {tab === 'payments'  && <PaymentsTab members={members} group={group} />}
+          {tab === 'payments'  && <ClassPayments groupId={group.id} onRosterChange={() => fetchAll(group.id)} />}
           {tab === 'settings'  && <SettingsTab group={group} setGroup={setGroup} isOneOnOne={isOneOnOne} onDirtyChange={setSettingsDirty} enrolledCount={enrolledCount} />}
           {tab === 'analytics' && !isOneOnOne && <AnalyticsTab group={group} members={members} />}
         </div>
@@ -907,15 +966,48 @@ const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
   return { value, label };
 });
 
-function SessionRow({ s, groupId, meetingLink, selected, onSelect, onCancel, reconnected }: { s: GroupSession; groupId: string; meetingLink: string; selected: boolean; onSelect: () => void; onCancel: () => void; reconnected?: boolean }) {
+function SessionRow({ s, groupId, meetingLink, selected, onSelect, onCancel, reconnected, venues, classVenueId }: { s: GroupSession; groupId: string; meetingLink: string; selected: boolean; onSelect: () => void; onCancel: () => void; reconnected?: boolean; venues?: Array<{ id: string; name: string }>; classVenueId?: string | null }) {
   const d = new Date(s.date);
   const valid = !isNaN(d.getTime());
   const durationMin = s.durationMin ?? 60;
   const durLabel = durationMin < 60 ? `${durationMin}m` : durationMin % 60 === 0 ? `${durationMin / 60}hr` : `${Math.floor(durationMin / 60)}h ${durationMin % 60}m`;
+  // The register is only offered once the session has begun. A "Take
+  // attendance" button on a class three weeks away is noise, and worse, it
+  // invites a sheet to be filled in before anybody is in the room.
+  const hasStarted = valid && d.getTime() <= Date.now();
   const [cancelling, setCancelling] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [joiningLink, setJoiningLink] = useState(false);
   const [joinError, setJoinError] = useState('');
+  const [relocateOpen, setRelocateOpen] = useState(false);
+  const [relocating, setRelocating] = useState(false);
+  const [venueId, setVenueId] = useState<string | null>(s.venueId ?? null);
+
+  // A relocation is a one-off, so it is only offered on a session that has
+  // not happened yet. Telling students last Tuesday moved is not information.
+  const canRelocate = Boolean(venues && venues.length > 0) && !hasStarted;
+  const movedTo = venueId && venueId !== classVenueId
+    ? venues?.find((v) => v.id === venueId)?.name ?? 'another venue'
+    : null;
+
+  const relocate = async (next: string | null) => {
+    setRelocating(true);
+    try {
+      const res = await fetch(`/api/groups/${groupId}/sessions/occurrences/${s.id}/relocate`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ venue_id: next }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error ?? 'Could not move this session');
+      setVenueId(next);
+      setRelocateOpen(false);
+    } catch (e: any) {
+      setJoinError(e?.message ?? 'Could not move this session');
+    } finally {
+      setRelocating(false);
+    }
+  };
 
   const handleJoin = async () => {
     setJoiningLink(true); setJoinError('');
@@ -971,9 +1063,52 @@ function SessionRow({ s, groupId, meetingLink, selected, onSelect, onCancel, rec
           </div>
         </div>
 
-        <div className="flex flex-1 items-center gap-2 flex-wrap" />
+        <div className="flex flex-1 items-center gap-2 flex-wrap">
+          {movedTo && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border bg-amber-50 text-amber-800 border-amber-200">
+              <MapPin className="size-3" /> Moved to {movedTo}
+            </span>
+          )}
+        </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {canRelocate && (
+            <div className="relative">
+              <button
+                onClick={() => setRelocateOpen((o) => !o)}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border text-ink text-xs font-semibold hover:bg-muted transition">
+                <MapPin className="size-3.5" /> {movedTo ? 'Moved' : 'Move'}
+              </button>
+              {relocateOpen && (
+                <div className="absolute right-0 z-30 mt-1 w-56 rounded-xl border border-border bg-background p-1.5 shadow-lg">
+                  <div className="px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Meet somewhere else</div>
+                  {venues!.map((v) => (
+                    <button key={v.id} disabled={relocating} onClick={() => relocate(v.id)}
+                      className={cn('block w-full text-left rounded-lg px-2.5 py-2 text-sm font-medium hover:bg-muted', v.id === venueId ? 'text-brand-deep' : 'text-ink')}>
+                      {v.name}{v.id === classVenueId ? ' (usual)' : ''}
+                    </button>
+                  ))}
+                  {/* Clearing the override is its own action. Asking a tutor
+                      to re-pick their own venue from a list to undo a move
+                      is not the same instruction, and leaves the override
+                      row set to a value that only happens to match. */}
+                  {venueId && (
+                    <button disabled={relocating} onClick={() => relocate(null)}
+                      className="mt-1 block w-full text-left rounded-lg px-2.5 py-2 text-sm font-medium text-muted-foreground border-t border-border hover:bg-muted">
+                      Back to the usual place
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          {hasStarted && (
+            <Link
+              href={`/tutor/classes/${groupId}/sessions/${s.id}/attendance`}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border text-ink text-xs font-semibold hover:bg-muted transition">
+              <ListChecks className="size-3.5" /> Attendance
+            </Link>
+          )}
           <button
             onClick={handleJoin}
             disabled={joiningLink}
@@ -1021,7 +1156,7 @@ function SessionRow({ s, groupId, meetingLink, selected, onSelect, onCancel, rec
   );
 }
 
-function SessionsTab({ sessions, groupId, setSessions, meetingLink, reconnected }: { sessions: GroupSession[]; groupId: string; setSessions: React.Dispatch<React.SetStateAction<GroupSession[]>>; meetingLink: string; reconnected?: boolean }) {
+function SessionsTab({ sessions, groupId, setSessions, meetingLink, reconnected, group }: { sessions: GroupSession[]; groupId: string; setSessions: React.Dispatch<React.SetStateAction<GroupSession[]>>; meetingLink: string; reconnected?: boolean; group: GroupDetail }) {
   // Sessions arrive grouped by series (every Monday, then every Tuesday),
   // so a two-day class read as two separate years-long lists. Sort across
   // series: upcoming soonest first, history most recent first.
@@ -1030,6 +1165,20 @@ function SessionsTab({ sessions, groupId, setSessions, meetingLink, reconnected 
   const history = sessions.filter((s) => s.status !== 'upcoming').sort((a, b) => byTime(b) - byTime(a));
   const [view, setView] = useState<'upcoming' | 'history'>('upcoming');
   const shown = view === 'upcoming' ? upcoming : history;
+  // Loaded once, here rather than per row: a class with twenty sessions
+  // would otherwise make twenty identical requests the moment it renders.
+  // Only for classes that meet somewhere — an online class has nowhere to
+  // move to.
+  const [venues, setVenues] = useState<Array<{ id: string; name: string }>>([]);
+  useEffect(() => {
+    if (group.classFormat === 'online') return;
+    let alive = true;
+    fetch('/api/tutor/venues')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (alive && j?.venues) setVenues(j.venues); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [group.classFormat]);
   const [addOpen, setAddOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -1358,6 +1507,8 @@ function SessionsTab({ sessions, groupId, setSessions, meetingLink, reconnected 
             s={s}
             groupId={groupId}
             meetingLink={meetingLink}
+            venues={venues}
+            classVenueId={group.venueId}
             selected={selectedIds.has(s.id)}
             onSelect={() => toggleSelect(s.id)}
             onCancel={() => { setSessions((prev) => prev.filter((x) => x.id !== s.id)); setSelectedIds((p) => { const n = new Set(p); n.delete(s.id); return n; }); }}
@@ -1432,6 +1583,10 @@ function RosterTab({ members, setMembers, group, isOneOnOne, atCapacity, onRefre
   const [inviteError, setInviteError] = useState('');
   const [inviteOk, setInviteOk] = useState('');
 
+  // The Seat column earns its place only when the class can actually differ
+  // by seat or by payment method.
+  const showSeat = group.classFormat !== 'online' || group.acceptsCash;
+
   const updateMember = (sid: string, patch: Partial<GroupMember>) =>
     setMembers((ms) => ms.map((m) => m.studentId === sid ? { ...m, ...patch } : m));
 
@@ -1459,6 +1614,12 @@ function RosterTab({ members, setMembers, group, isOneOnOne, atCapacity, onRefre
             name: json.profile?.full_name ?? inviteQuery.trim(),
             status: 'active',
             paymentStatus: 'pending',
+            // An invited member has not chosen a seat yet — there is no
+            // enrolment row to read one from. Where the class offers only one
+            // kind that is the answer; where it offers both this is a
+            // placeholder the next roster fetch replaces with their choice.
+            seatType: group.classFormat === 'physical' ? 'physical' : 'online',
+            paymentMethod: 'card',
             joinedAt: json.member.joined_at ?? new Date().toISOString(),
           };
           return [...ms, newMember];
@@ -1595,6 +1756,10 @@ function RosterTab({ members, setMembers, group, isOneOnOne, atCapacity, onRefre
                 <th className="text-left font-bold px-4 py-2">Member</th>
                 <th className="text-left font-bold px-4 py-2">Contact</th>
                 <th className="text-left font-bold px-4 py-2">Membership</th>
+                {/* Only when it says something. "Online" against every
+                    student of a purely online class is a column of noise on
+                    a table that already scrolls sideways. */}
+                {showSeat && <th className="text-left font-bold px-4 py-2">Seat</th>}
                 <th className="text-left font-bold px-4 py-2">Subscription</th>
                 <th className="text-left font-bold px-4 py-2">Joined</th>
                 <th className="px-4 py-2"></th>
@@ -1602,7 +1767,7 @@ function RosterTab({ members, setMembers, group, isOneOnOne, atCapacity, onRefre
             </thead>
             <tbody className="divide-y divide-border">
               {visible.map((m) => (
-                <RosterRow key={m.studentId} m={m} groupId={group.id} onUpdate={(p) => updateMember(m.studentId, p)} onRemoved={onRefresh} externalChannels={[group.whatsappLink && 'WhatsApp', group.googleClassroomLink && 'Google Classroom'].filter(Boolean).join(' and ') || undefined} />
+                <RosterRow key={m.studentId} m={m} groupId={group.id} showSeat={showSeat} onUpdate={(p) => updateMember(m.studentId, p)} onRemoved={onRefresh} externalChannels={[group.whatsappLink && 'WhatsApp', group.googleClassroomLink && 'Google Classroom'].filter(Boolean).join(' and ') || undefined} />
               ))}
             </tbody>
           </table>
@@ -1814,7 +1979,7 @@ function SecuredPayoutInfo({ secured }: { secured: NonNullable<Subscriber['secur
   );
 }
 
-function RosterRow({ m, groupId, onUpdate, onRemoved, externalChannels }: { m: GroupMember; groupId: string; onUpdate: (p: Partial<GroupMember>) => void; onRemoved?: () => void; externalChannels?: string }) {
+function RosterRow({ m, groupId, onUpdate, onRemoved, externalChannels, showSeat }: { m: GroupMember; groupId: string; onUpdate: (p: Partial<GroupMember>) => void; onRemoved?: () => void; externalChannels?: string; showSeat?: boolean }) {
   const [menu, setMenu] = useState(false);
   const [menuPos, setMenuPos] = useState({ top: 0, right: 0 });
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -1985,6 +2150,25 @@ function RosterRow({ m, groupId, onUpdate, onRemoved, externalChannels }: { m: G
         <td className="px-4 py-3">
           <span className={cn('text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border', membershipView.chip)}>{membershipView.label}</span>
         </td>
+        {showSeat && (
+          <td className="px-4 py-3">
+            <div className="flex items-center gap-1.5">
+              <span className={cn('inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border',
+                m.seatType === 'physical' ? 'bg-brand-soft text-brand-deep border-brand/30' : 'bg-sky-50 text-sky-700 border-sky-200')}>
+                {m.seatType === 'physical' ? <MapPin className="size-3" /> : <Video className="size-3" />}
+                {m.seatType === 'physical' ? 'In person' : 'Online'}
+              </span>
+              {/* Cash is worth naming on the roster: it is the one payment
+                  the platform never sees, so the tutor is the only record
+                  that it happened. */}
+              {m.paymentMethod === 'cash' && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full border bg-amber-50 text-amber-800 border-amber-200">
+                  <Banknote className="size-3" /> Cash
+                </span>
+              )}
+            </div>
+          </td>
+        )}
         <td className="px-4 py-3">
           {m.subscription ? (
             <div className="space-y-1">
@@ -2036,7 +2220,7 @@ function RosterRow({ m, groupId, onUpdate, onRemoved, externalChannels }: { m: G
       </tr>
 
       {confirm && conf && (
-        <tr><td colSpan={6} className="p-0">
+        <tr><td colSpan={showSeat ? 7 : 6} className="p-0">
           <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4" onClick={closeConfirm}>
             <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl bg-background border border-border shadow-xl p-6 space-y-4">
               <div className="font-bold text-ink text-lg">{conf.title}</div>
@@ -2105,86 +2289,11 @@ function RosterRow({ m, groupId, onUpdate, onRemoved, externalChannels }: { m: G
   );
 }
 
-/* ----------- Payments ----------- */
-const PAYMENT_PERIODS = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'] as const;
-
-function PaymentsTab({ members, group }: { members: GroupMember[]; group: GroupDetail }) {
-  const visible = members.filter((m) => m.status !== 'removed');
-  const outstanding = members.reduce((s, m) => s + (m.paymentStatus === 'overdue' ? (m.outstandingTtd ?? 0) : 0), 0);
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h2 className="text-lg font-bold text-ink">Payments</h2>
-          <p className="text-xs text-muted-foreground">Track every member × period in one grid.</p>
-        </div>
-        <div className="rounded-xl border border-border bg-card px-4 py-2 text-sm">
-          <span className="text-emerald-700 font-bold">Collected {fmtTTD(group.earningsTtd ?? 0)}</span>
-          <span className="text-muted-foreground mx-2">vs</span>
-          <span className={cn('font-bold', outstanding > 0 ? 'text-rose-700' : 'text-muted-foreground')}>
-            Outstanding {fmtTTD(outstanding)}
-          </span>
-        </div>
-      </div>
-
-      {visible.length === 0 ? (
-        <EmptyState icon={DollarSign} title="No members to bill" body="Once members join, you'll see a status chip per period here." />
-      ) : (
-        <div className="rounded-2xl border border-border bg-card overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="text-left font-bold px-4 py-2 sticky left-0 bg-muted/40">Member</th>
-                {PAYMENT_PERIODS.map((c) => <th key={c} className="text-center font-bold px-3 py-2">{c}</th>)}
-                <th className="text-right font-bold px-4 py-2">Outstanding</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {visible.map((m) => (
-                <tr key={m.studentId}>
-                  <td className="px-4 py-3 sticky left-0 bg-card">
-                    <div className="flex items-center gap-2">
-                      <div className="size-7 rounded-full bg-gradient-to-br from-brand to-emerald-400 grid place-items-center text-[10px] font-bold text-white">
-                        {m.name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
-                      </div>
-                      <span className="font-semibold text-ink">{m.name}</span>
-                    </div>
-                  </td>
-                  {PAYMENT_PERIODS.map((_, pi) => {
-                    const seed = (members.indexOf(m) * 7 + pi * 3) % 11;
-                    const status = m.paymentStatus === 'overdue' && pi >= PAYMENT_PERIODS.length - 2 ? 'overdue'
-                      : m.paymentStatus === 'pending' && pi === PAYMENT_PERIODS.length - 1 ? 'due'
-                      : seed === 0 ? 'waived' : 'paid';
-                    const chip = status === 'paid' ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
-                      : status === 'due' ? 'bg-amber-100 text-amber-800 border-amber-200'
-                      : status === 'overdue' ? 'bg-rose-100 text-rose-700 border-rose-200'
-                      : 'bg-slate-100 text-slate-600 border-slate-200';
-                    return (
-                      <td key={pi} className="px-2 py-2 text-center">
-                        <span className={cn('inline-block px-2 py-1 rounded-md border text-[10px] font-bold uppercase tracking-wider', chip)}>
-                          {status === 'paid' ? 'Paid' : status === 'due' ? 'Due' : status === 'overdue' ? 'Overdue' : 'Waived'}
-                        </span>
-                      </td>
-                    );
-                  })}
-                  <td className="px-4 py-3 text-right font-semibold tabular-nums">
-                    {m.paymentStatus === 'overdue' ? <span className="text-rose-600">TTD {(m.outstandingTtd ?? 0).toLocaleString()}</span> : <span className="text-muted-foreground">—</span>}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
-
 /* ----------- Settings ----------- */
 const SETTINGS_SECTIONS = [
   { id: 'basics',    label: 'Display',           icon: Info },
   { id: 'capacity',  label: 'Capacity',          icon: Users },
+  { id: 'inperson',  label: 'In person',         icon: MapPin },
   { id: 'billing',   label: 'Billing',           icon: DollarSign },
   { id: 'access',    label: 'Access & policies', icon: Lock },
   { id: 'channels',  label: 'Communication',     icon: MessageSquare },
@@ -2200,6 +2309,7 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
   onDirtyChange: (dirty: boolean) => void;
   enrolledCount: number;
 }) {
+  const physicalClasses = usePhysicalClasses();
   // Capacity can be raised or lowered at any time, including on a class that
   // has already started — but never below the seats already taken, since there
   // is no rule for who would be dropped.
@@ -2324,6 +2434,23 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
           form_level: draft.level && draft.level !== '—' ? draft.level : null,
           max_students: draft.capacity > 0 ? draft.capacity : 20,
           status: draft.visibility === 'private' ? 'DRAFT' : 'PUBLISHED',
+          // In person (migration 242). Sent to the groups PATCH rather than the
+          // settings endpoint because that is where the venue-ownership and
+          // format rules are enforced.
+          //
+          // max_students above is still sent, and a trigger will immediately
+          // overwrite it with the sum of the two seat caps once either is set.
+          // That is the intended precedence — the caps are the fact, the total is
+          // derived — and it is why the In person tab shows the derived total
+          // read-only rather than offering a third number to edit.
+          class_format: draft.classFormat,
+          venue_id: draft.classFormat === 'online' ? null : draft.venueId,
+          venue_visibility: draft.venueVisibility,
+          max_students_online: draft.maxStudentsOnline,
+          max_students_physical: draft.maxStudentsPhysical,
+          price_online_ttd: draft.priceOnlineTtd,
+          price_physical_ttd: draft.pricePhysicalTtd,
+          accepts_cash: draft.classFormat === 'online' ? false : draft.acceptsCash,
         }),
       });
       const basicJson = await basicRes.json().catch(() => ({}));
@@ -2421,7 +2548,7 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
       <div className="grid lg:grid-cols-[220px_1fr] gap-6">
         {/* Sidebar nav */}
         <nav className="space-y-1">
-          {SETTINGS_SECTIONS.map((s) => {
+          {SETTINGS_SECTIONS.filter((s) => s.id !== 'inperson' || physicalClasses).map((s) => {
             const Icon = s.icon;
             const active = section === s.id;
             const danger = s.id === 'danger';
@@ -2541,6 +2668,44 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
                     </p>
                   )}
                 </SetField>
+              )}
+            </>
+          )}
+
+          {section === 'inperson' && physicalClasses && (
+            <>
+              <SettingsHead
+                title="In person"
+                desc="Run this class at a venue, online, or both."
+              />
+              {isOneOnOne ? (
+                <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                  1-on-1 sessions are arranged directly with the student, so this
+                  is set per session rather than on the class.
+                </div>
+              ) : (
+                <InPersonSection
+                  draft={{
+                    classFormat: draft.classFormat,
+                    venueId: draft.venueId,
+                    venueVisibility: draft.venueVisibility,
+                    maxStudentsOnline: draft.maxStudentsOnline,
+                    maxStudentsPhysical: draft.maxStudentsPhysical,
+                    priceOnlineTtd: draft.priceOnlineTtd,
+                    pricePhysicalTtd: draft.pricePhysicalTtd,
+                    acceptsCash: draft.acceptsCash,
+                  }}
+                  onChange={(patch: Partial<InPersonDraft>) =>
+                    setDraft((prev) => ({ ...prev, ...patch }))
+                  }
+                  // Per-seat counts need group_enrollments.seat_type, which this
+                  // page does not load. Passing the class total as the ONLINE
+                  // floor is the safe direction while every existing enrolment
+                  // is online: it can only ever refuse a cap that is too low,
+                  // never allow one. Revisit when the roster carries seat_type.
+                  enrolledOnline={enrolledCount}
+                  enrolledPhysical={0}
+                />
               )}
             </>
           )}

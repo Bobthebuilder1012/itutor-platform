@@ -154,7 +154,9 @@ async function notifyTutor(
     type: 'feedback_requested',
     title: `Feedback requested for ${childName}`,
     // No date pressure, no "by when". The request date is the only fact given.
-    message: 'They asked for a general update on how this student is doing.',
+    // The title already names the student, so this says who asked instead of
+    // repeating them — "this student" reads coldly about a child by name.
+    message: `${childName}'s family would like a general update. No deadline.`,
     link: '/tutor/clients',
     metadata: { request_id: params.requestId, child_id: params.childId },
   });
@@ -165,15 +167,21 @@ async function notifyTutor(
   const { subject, html, text } = renderEmail({
     family: 'service-announcement',
     subject: `Feedback requested for ${childName}`,
-    heading: `${childName}'s family has asked for feedback`,
+    // The eyebrow above already reads "Feedback requested", so the heading says
+    // WHO rather than repeating the word a third time in as many lines.
+    heading: `${childName}'s family would like an update`,
     intro: `Hi ${(tutor.display_name || tutor.full_name || 'there').split(' ')[0]},`,
     eyebrow: 'Feedback requested',
     tone: 'neutral',
     badge: '★',
     blocks: [
       {
+        // The student is NAMED here rather than pronouned. This line used to
+        // read "They have asked for a general update on how they are doing" —
+        // two different "they" in one sentence, the family and then the child,
+        // which a reader has to stop and untangle.
         kind: 'paragraph',
-        text: 'They have asked for a general update on how they are doing.',
+        text: `They'd like a general update on how ${childName} is getting on in your class.`,
       },
       // No deadline, and saying so is the point: §8 deliberately puts no date
       // pressure on a tutor, and an email that implied one would undo that.
@@ -183,7 +191,10 @@ async function notifyTutor(
         body: 'There is no deadline. Write it when you have something worth saying.',
       },
     ],
-    cta: { label: 'Open your clients', href: `${base}/tutor/clients` },
+    // Names the action, not the destination. "Open your clients" asks the
+    // reader to know what Clients is and what to do once they are there;
+    // /tutor/clients hosts FeedbackComposer, so this is where they write it.
+    cta: { label: 'Write the update', href: `${base}/tutor/clients` },
   });
 
   const result = await sendEmail({ to: tutor.email, subject, html, text });

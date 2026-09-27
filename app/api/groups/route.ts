@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isPhysicalClassesEnabled, PHYSICAL_CLASSES_DISABLED_MESSAGE } from '@/lib/featureFlags/physicalClasses';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import type { CreateGroupInput } from '@/lib/types/groups';
 import {
@@ -127,9 +128,16 @@ export async function GET(request: NextRequest) {
       devTutorIds = (devProfiles ?? []).map((p: { id: string }) => p.id);
     }
 
-    const SELECT_TIERS = [
-      // Tier 1: full column set (requires migrations 128-132)
-      `id, name, description, tutor_id, subject, pricing, pricing_model, price_per_session, price_monthly, created_at,
+    // The in-person columns (migration 242) get their OWN tier at the top rather
+    // than joining tier 1. Production does not have 242, and a single missing
+    // column 42703s the whole select — so merging them would make tier 1 fail
+    // there and drop every class to tier 2, silently losing parent_feedback_mode,
+    // whatsapp_url and archived_reason from the marketplace. Only the AREA is
+    // read here, never the street address: this is a list endpoint with no
+    // per-viewer entitlement check, so it must not be able to leak one.
+    const IN_PERSON = 'class_format, venue:venues(id, name, region:regions(id, name))';
+
+    const TIER_1 = `id, name, description, tutor_id, subject, pricing, pricing_model, price_per_session, price_monthly, created_at,
        visibility, primary_channel, whatsapp_url, whatsapp_link, google_classroom_link,
        max_students, parent_feedback_mode, parent_feedback_price,
        price_per_session, price_monthly, price_per_course, member_service_fee,
@@ -137,7 +145,11 @@ export async function GET(request: NextRequest) {
        archived_at, archived_reason, cover_image, form_level, session_length_minutes, schedule_display, schedule_data,
        estimated_earnings,
        tutor:profiles!groups_tutor_id_fkey(id, full_name, avatar_url, rating_average, rating_count, profile_banner_url),
-       group_members(id, user_id, status)`,
+       group_members(id, user_id, status)`;
+
+    const SELECT_TIERS = [
+      `${TIER_1}, ${IN_PERSON}`,
+      TIER_1,
       // Tier 2: drop columns likely missing (parent_feedback_mode → feedback_mode, no archived_reason/whatsapp_url)
       `id, name, description, tutor_id, subject, pricing, pricing_model, price_per_session, price_monthly, created_at,
        visibility, primary_channel, google_classroom_link,
@@ -623,6 +635,72 @@ export async function POST(request: NextRequest) {
      */
     const resolvedStatus = rawBody.status === 'DRAFT' ? 'DRAFT' : 'PUBLISHED';
 
+    // ── In person (migration 242) ────────────────────────────────────────
+    // Validated before the insert rather than left to the NOT VALID CHECKs,
+    // which surface as a raw Postgres error a tutor cannot act on.
+    const FORMATS = ['online', 'physical', 'hybrid'] as const;
+    const rawFormat = (rawBody as any).class_format;
+    // Refused server-side, not merely hidden: the creation form stops
+    // offering the format step when the flag is off, but a hidden control
+    // stops nobody from posting class_format directly.
+    if (!isPhysicalClassesEnabled() && rawFormat && rawFormat !== 'online') {
+      return NextResponse.json({ error: PHYSICAL_CLASSES_DISABLED_MESSAGE }, { status: 400 });
+    }
+    const classFormat: (typeof FORMATS)[number] =
+      isPhysicalClassesEnabled() && FORMATS.includes(rawFormat) ? rawFormat : 'online';
+    const wantedVenueId: string | null =
+      classFormat === 'online' ? null : ((rawBody as any).venue_id ?? null);
+
+    if (classFormat !== 'online' && !wantedVenueId) {
+      return NextResponse.json(
+        { error: 'Choose a venue before setting this class to meet in person.' },
+        { status: 400 }
+      );
+    }
+
+    // OWNERSHIP. Not a database constraint, and the only thing stopping a tutor
+    // attaching someone else's venue — and street address — to their class.
+    // "Not yours" and "does not exist" answer the same, so this cannot be used
+    // to probe for venue ids.
+    if (wantedVenueId) {
+      const { data: venueRow, error: venueErr } = await service
+        .from('venues')
+        .select('id, tutor_id, archived_at')
+        .eq('id', wantedVenueId)
+        .maybeSingle();
+      if (venueErr) {
+        console.error('[POST /api/groups] venue lookup failed:', venueErr.message);
+        return NextResponse.json({ error: 'Could not check that venue.' }, { status: 503 });
+      }
+      const v = venueRow as { tutor_id?: string; archived_at?: string | null } | null;
+      if (!v || v.tutor_id !== user.id || v.archived_at) {
+        return NextResponse.json({ error: 'That venue is not available.' }, { status: 400 });
+      }
+    }
+
+    const numOrNull = (raw: unknown): number | null => {
+      if (raw === null || raw === undefined || raw === '') return null;
+      const n = Number(raw);
+      return Number.isFinite(n) && n >= 0 ? n : null;
+    };
+
+    // NOT added to the schema-mismatch fallback insert below, deliberately: on a
+    // database without 242 the primary insert fails on these columns and the
+    // fallback — which omits them — succeeds. That is the degradation we want,
+    // and duplicating them into the fallback would break class creation there
+    // entirely.
+    const inPersonColumns = {
+      class_format: classFormat,
+      venue_id: wantedVenueId,
+      venue_visibility:
+        (rawBody as any).venue_visibility === 'public' ? 'public' : 'after_enrolment',
+      max_students_online: numOrNull((rawBody as any).max_students_online),
+      max_students_physical: numOrNull((rawBody as any).max_students_physical),
+      price_online_ttd: numOrNull((rawBody as any).price_online_ttd),
+      price_physical_ttd: numOrNull((rawBody as any).price_physical_ttd),
+      accepts_cash: classFormat !== 'online' && Boolean((rawBody as any).accepts_cash),
+    };
+
     let { data: group, error } = await service
       .from('groups')
       .insert({
@@ -650,6 +728,7 @@ export async function POST(request: NextRequest) {
         availability_window: body.availability_window ?? null,
         cover_image: body.cover_image ?? null,
         header_image: body.header_image ?? null,
+        ...inPersonColumns,
         ...(resolvedVisibility ? { visibility: resolvedVisibility } : {}),
       })
       .select()

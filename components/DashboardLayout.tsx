@@ -285,6 +285,9 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           // beside Signups because it answers the question that one raises —
           // the teachers arrived, did they bring anybody.
           { href: '/admin/tdr', label: 'Teacher Distribution', icon: icons.star },
+          // The recruitment worklist. In Operations rather than System because
+          // it is something someone acts on weekly, not a setting.
+          { href: '/admin/demand', label: 'Demand Map', icon: icons.search },
         ]},
         { label: 'Finance', items: [
           { href: '/admin/payments', label: 'Payments Overview', icon: icons.creditCard },

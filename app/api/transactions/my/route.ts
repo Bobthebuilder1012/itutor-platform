@@ -23,6 +23,8 @@ export interface Transaction {
   period_start: string | null;   // subscriptions only
   period_end: string | null;     // subscriptions only
   receipt_url: string | null;
+  /** 'cash' has no gateway and therefore no receipt — see below. */
+  payment_method: 'card' | 'cash';
   booking_start_at: string | null; // lessons only
 }
 
@@ -44,19 +46,35 @@ export async function GET(_req: NextRequest) {
     const admin = getServiceClient();
 
     // ── Subscription payments ──────────────────────────────────────────────
-    const { data: subPayments, error: spErr } = await admin
-      .from('subscription_payments')
-      .select(`
-        id, type, amount_ttd, paid_at, period_start, period_end, receipt_url,
+    // Two tiers. `payment_method` arrives in migration 248, and a missing
+    // column fails the WHOLE select — which here would empty a student's
+    // payment history rather than merely omit one field from it.
+    const SUB_JOIN = `
         group:groups!group_id (
           name,
           tutor:profiles!tutor_id ( full_name, avatar_url )
         )
-      `)
-      .eq('student_id', user.id)
-      .eq('status', 'PAID')
-      .not('paid_at', 'is', null)
-      .order('paid_at', { ascending: false });
+      `;
+    const SUB_FULL =
+      `id, type, amount_ttd, paid_at, period_start, period_end, receipt_url, payment_method,` + SUB_JOIN;
+    const SUB_BASE =
+      `id, type, amount_ttd, paid_at, period_start, period_end, receipt_url,` + SUB_JOIN;
+
+    let subPayments: any[] | null = null;
+    let spErr: any = null;
+    for (const cols of [SUB_FULL, SUB_BASE]) {
+      const res = await admin
+        .from('subscription_payments')
+        .select(cols)
+        .eq('student_id', user.id)
+        .eq('status', 'PAID')
+        .not('paid_at', 'is', null)
+        .order('paid_at', { ascending: false });
+      if (!res.error) { subPayments = (res.data ?? []) as any[]; spErr = null; break; }
+      spErr = res.error;
+      const missing = String(res.error.code) === '42703' || String(res.error.code) === 'PGRST204';
+      if (!missing) break;
+    }
 
     if (spErr) throw spErr;
 
@@ -72,6 +90,7 @@ export async function GET(_req: NextRequest) {
       period_start: sp.period_start ?? null,
       period_end: sp.period_end ?? null,
       receipt_url: sp.receipt_url ?? null,
+      payment_method: sp.payment_method === 'cash' ? 'cash' : 'card',
       booking_start_at: null,
     }));
 
@@ -107,6 +126,7 @@ export async function GET(_req: NextRequest) {
         period_start: null,
         period_end: null,
         receipt_url: null,
+        payment_method: 'card' as const,
         booking_start_at: startAt,
       };
     });

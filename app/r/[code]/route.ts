@@ -87,7 +87,10 @@ function safeRelativePath(raw: string | null): string | null {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ code: string }> }
+  // Next 14 passes params as a plain object (15 made it a Promise). Typed for
+  // 14 to match the rest of the app; `await` below is harmless either way and
+  // keeps this working if the app moves to 15.
+  { params }: { params: { code: string } }
 ) {
   const { code: rawCode } = await params;
   const code = (rawCode ?? '').trim();

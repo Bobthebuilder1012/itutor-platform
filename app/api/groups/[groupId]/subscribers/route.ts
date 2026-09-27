@@ -33,9 +33,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const { data, error } = await admin
-      .from('group_enrollments')
-      .select(`
+    // Two tiers. `seat_type` and `billing_provider` arrive in migration 242,
+    // and a missing column fails the WHOLE PostgREST select — which here would
+    // empty the roster rather than merely omit two columns from it.
+    const ENROLMENT_BASE = `
         id, student_id, status, payment_status,
         plan_price_ttd, original_price_ttd, discount_percent,
         current_period_start, current_period_end,
@@ -44,11 +45,26 @@ export async function GET(_req: NextRequest, { params }: Params) {
         last_paid_at, reminder_count, secured_at, release_date,
         pending_payment_expires_at, enrolled_at, updated_at,
         student:profiles!student_id ( id, full_name, avatar_url, email )
-      `)
-      .eq('group_id', groupId)
-      .eq('enrollment_type', 'SUBSCRIPTION')
-      .order('enrolled_at', { ascending: false });
+    `;
+    const ENROLMENT_FULL = ENROLMENT_BASE.replace(
+      "pending_payment_expires_at,",
+      "pending_payment_expires_at, seat_type, billing_provider,"
+    );
 
+    let data: any[] | null = null;
+    let error: any = null;
+    for (const cols of [ENROLMENT_FULL, ENROLMENT_BASE]) {
+      const res = await admin
+        .from('group_enrollments')
+        .select(cols)
+        .eq('group_id', groupId)
+        .eq('enrollment_type', 'SUBSCRIPTION')
+        .order('enrolled_at', { ascending: false });
+      if (!res.error) { data = (res.data ?? []) as any[]; error = null; break; }
+      error = res.error;
+      const missing = String(res.error.code) === '42703' || String(res.error.code) === 'PGRST204';
+      if (!missing) break;
+    }
     if (error) throw error;
 
     const subscribers = await attachSecuredDetail(admin, groupId, data ?? []);

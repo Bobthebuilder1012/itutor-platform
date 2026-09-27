@@ -145,23 +145,11 @@ export interface ClassMatchSubmission {
 }
 
 /**
- * The six availability blocks the questionnaire offers. Measured against the
- * paid class schedule, these cover 100% of current supply — there is no
- * weekday-morning or weekend-evening class the questionnaire cannot express.
+ * The availability vocabulary now lives in `lib/matching/availability.ts`,
+ * shared with Find Your iTutor, next to the block map and the matching helper
+ * that consume it. Re-exported here so the campaign import sites are unchanged.
  */
-export type AvailabilityBlock =
-  | 'weekday_afternoon'
-  | 'weekday_evening'
-  | 'saturday_morning'
-  | 'saturday_afternoon'
-  | 'sunday_morning'
-  | 'sunday_afternoon';
-
-export const AVAILABILITY_BLOCKS: ReadonlyArray<{ value: AvailabilityBlock; label: string }> = [
-  { value: 'weekday_afternoon', label: 'Weekday afternoons' },
-  { value: 'weekday_evening', label: 'Weekday evenings' },
-  { value: 'saturday_morning', label: 'Saturday mornings' },
-  { value: 'saturday_afternoon', label: 'Saturday afternoons' },
-  { value: 'sunday_morning', label: 'Sunday mornings' },
-  { value: 'sunday_afternoon', label: 'Sunday afternoons' },
-];
+export {
+  AVAILABILITY_BLOCKS,
+  type AvailabilityBlock,
+} from '@/lib/matching/availability';

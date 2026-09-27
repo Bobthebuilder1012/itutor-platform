@@ -17,6 +17,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { promoteNextFromWaitlist } from '@/lib/services/waitlistService';
+import { sendEmail } from '@/lib/services/emailService';
+import { renderEmail } from '@/lib/email/design';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -336,9 +338,13 @@ export async function GET(req: NextRequest) {
 
   // ─── TASK 5: Enter grace period ──────────────────────────────────
   try {
+    // `billing_provider` decides what the student is TOLD to do. A cash
+    // student has no card on file and no checkout to return to — pointing them
+    // at /pay is an instruction they cannot follow, and the money is meant to
+    // reach the tutor by hand.
     const { data: overdue } = await admin
       .from('group_enrollments')
-      .select('id, student_id, group_id, grace_period_days_snapshot')
+      .select('id, student_id, group_id, grace_period_days_snapshot, billing_provider')
       .eq('enrollment_type', 'SUBSCRIPTION')
       // Stripe owns the cycle for these — it charges, retries and duns them
       // itself. Running our reminders/grace/suspension against them too would
@@ -355,6 +361,16 @@ export async function GET(req: NextRequest) {
       };
     } else {
       let graced = 0;
+      // Collected across the whole run and sent once per tutor at the end.
+      // One notification per overdue student, none of them naming anybody, is
+      // how a tutor with six overdue students learns nothing six times.
+      const tutorOverdue = new Map<string, Array<{
+        groupId: string;
+        groupName: string;
+        studentId: string;
+        isCash: boolean;
+        graceEnd: string;
+      }>>();
 
       for (const e of overdue ?? []) {
         const graceDays = e.grace_period_days_snapshot ?? 7;
@@ -367,29 +383,125 @@ export async function GET(req: NextRequest) {
         }).eq('id', e.id);
 
         const { data: group } = await admin.from('groups').select('name, tutor_id').eq('id', e.group_id).single();
-        const notifications: any[] = [{
+        const isCash = (e as any).billing_provider === 'cash';
+        await admin.from('notifications').insert([{
           user_id: e.student_id,
           type: 'subscription_grace_started',
           title: 'Payment overdue',
-          message: `Your subscription to "${group?.name}" is overdue. You have ${graceDays} days to renew before access is suspended.`,
-          link: `/student/subscriptions/${e.id}/pay`,
+          message: isCash
+            ? `Your place in "${group?.name}" is overdue. Pay your tutor within ${graceDays} days to keep it.`
+            : `Your subscription to "${group?.name}" is overdue. You have ${graceDays} days to renew before access is suspended.`,
+          // A cash student is sent to the class, not to a checkout they cannot
+          // complete. Their tutor is the payment method.
+          link: isCash ? `/student/classes/${e.group_id}` : `/student/subscriptions/${e.id}/pay`,
           group_id: e.group_id,
-        }];
+        }]);
+
+        // The tutor is told ONCE, after the loop, with names. See below.
         if (group?.tutor_id) {
-          notifications.push({
-            user_id: group.tutor_id,
-            type: 'subscription_grace_started',
-            title: 'Student payment overdue',
-            message: `A student's subscription to "${group?.name}" is overdue.`,
-            link: `/tutor/classes/${e.group_id}`,
-            group_id: e.group_id,
+          const bucket = tutorOverdue.get(group.tutor_id) ?? [];
+          bucket.push({
+            groupId: e.group_id,
+            groupName: group?.name ?? 'your class',
+            studentId: e.student_id,
+            isCash,
+            graceEnd,
           });
+          tutorOverdue.set(group.tutor_id, bucket);
         }
-        await admin.from('notifications').insert(notifications);
         graced++;
       }
 
-      results.task5_grace = { processed: graced };
+      // ── One email per tutor, naming who is behind ────────────────────────
+      //
+      // A tutor cannot act on "a student's subscription is overdue". They can
+      // act on a list of names, and on a class they can go and open. Cash rows
+      // are marked, because those are the ones the tutor themselves has to
+      // collect and record — nothing else in the system will settle them.
+      //
+      // Non-fatal throughout: the enrolments have already been moved to GRACE,
+      // and failing the task now would re-run task 5 against rows that are no
+      // longer ACTIVE, which does nothing except lose the email.
+      for (const [tutorId, rows] of tutorOverdue) {
+        try {
+          const { data: tutor } = await admin
+            .from('profiles')
+            .select('full_name, email')
+            .eq('id', tutorId)
+            .maybeSingle();
+
+          const { data: students } = await admin
+            .from('profiles')
+            .select('id, full_name, display_name')
+            .in('id', rows.map((r) => r.studentId));
+          const nameOf = (id: string) => {
+            const prof = (students ?? []).find((p: any) => p.id === id) as any;
+            return prof?.display_name || prof?.full_name || 'A student';
+          };
+
+          const cashCount = rows.filter((r) => r.isCash).length;
+          const groups = [...new Set(rows.map((r) => r.groupName))];
+
+          await admin.from('notifications').insert({
+            user_id: tutorId,
+            type: 'subscription_grace_started',
+            title: rows.length === 1 ? 'A student is behind on payment' : `${rows.length} students are behind on payment`,
+            message:
+              rows.length === 1
+                ? `${nameOf(rows[0].studentId)} is overdue in "${rows[0].groupName}".`
+                : `${rows.length} students are overdue across ${groups.length === 1 ? `"${groups[0]}"` : `${groups.length} classes`}.`,
+            link: `/tutor/classes/${rows[0].groupId}`,
+            group_id: rows[0].groupId,
+          });
+
+          if ((tutor as any)?.email) {
+            const { subject, html, text } = renderEmail({
+              family: 'payment-problem',
+              subject:
+                rows.length === 1
+                  ? `${nameOf(rows[0].studentId)} is behind on payment`
+                  : `${rows.length} students are behind on payment`,
+              heading: 'Payments to chase',
+              intro: (tutor as any).full_name
+                ? `Hi ${(tutor as any).full_name}, these places are overdue.`
+                : 'These places are overdue.',
+              blocks: [
+                {
+                  kind: 'details',
+                  rows: rows.map((r) => ({
+                    label: nameOf(r.studentId),
+                    value: r.isCash
+                      ? `${r.groupName} · pay you in cash`
+                      : r.groupName,
+                  })),
+                },
+                ...(cashCount > 0
+                  ? [{
+                      kind: 'paragraph' as const,
+                      text:
+                        cashCount === 1
+                          ? 'One of these is a cash place. Once you have the money, record it on the class Payments screen — nothing else will mark it paid.'
+                          : `${cashCount} of these are cash places. Once you have the money, record each one on the class Payments screen — nothing else will mark them paid.`,
+                    }]
+                  : []),
+                {
+                  kind: 'paragraph' as const,
+                  text: 'They keep access during the grace period. After that their place is suspended automatically.',
+                },
+              ],
+              cta: {
+                label: 'Open Payments',
+                href: `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/tutor/classes/${rows[0].groupId}`,
+              },
+            });
+            await sendEmail({ to: (tutor as any).email, subject, html, text });
+          }
+        } catch (mailErr) {
+          console.error('[cron/process-subscriptions] tutor overdue digest failed:', mailErr);
+        }
+      }
+
+      results.task5_grace = { processed: graced, tutors_notified: tutorOverdue.size };
     }
   } catch (err) {
     console.error('[cron/process-subscriptions] Task 5 failed:', err);
@@ -400,7 +512,7 @@ export async function GET(req: NextRequest) {
   try {
     const { data: toSuspend } = await admin
       .from('group_enrollments')
-      .select('id, student_id, group_id')
+      .select('id, student_id, group_id, billing_provider')
       .eq('enrollment_type', 'SUBSCRIPTION')
       // Stripe owns the cycle for these — it charges, retries and duns them
       // itself. Running our reminders/grace/suspension against them too would
@@ -430,8 +542,15 @@ export async function GET(req: NextRequest) {
           user_id: e.student_id,
           type: 'subscription_suspended',
           title: 'Subscription suspended',
-          message: `Your subscription to "${group?.name}" has been suspended due to non-payment.`,
-          link: `/student/subscriptions/${e.id}/pay`,
+          message: (e as any).billing_provider === 'cash'
+            ? `Your place in "${group?.name}" has been suspended. Speak to your tutor to settle it and get back in.`
+            : `Your subscription to "${group?.name}" has been suspended due to non-payment.`,
+          // Same reason as the grace notice: a cash student has no checkout to
+          // return to, and sending them to one is a dead end at the moment they
+          // most need a way back.
+          link: (e as any).billing_provider === 'cash'
+            ? `/student/classes/${e.group_id}`
+            : `/student/subscriptions/${e.id}/pay`,
           group_id: e.group_id,
         }];
         if (group?.tutor_id) {
@@ -439,7 +558,7 @@ export async function GET(req: NextRequest) {
             user_id: group.tutor_id,
             type: 'subscription_suspended',
             title: 'Student suspended',
-            message: `A student's subscription to "${group?.name}" has been suspended.`,
+            message: `A student's place in "${group?.name}" has been suspended for non-payment.`,
             link: `/tutor/classes/${e.group_id}`,
             group_id: e.group_id,
           });

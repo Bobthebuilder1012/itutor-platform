@@ -95,10 +95,10 @@ export default function Hero() {
             className="mt-8 flex flex-wrap items-center gap-3"
           >
             <a
-              href="/signup"
+              href="/start"
               className="group inline-flex items-center gap-2 rounded-full bg-brand px-7 py-3.5 text-base font-semibold text-white shadow-pop transition-transform hover:scale-[1.04] active:scale-95"
             >
-              Find a Tutor
+              Find a class
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
             </a>
             <a

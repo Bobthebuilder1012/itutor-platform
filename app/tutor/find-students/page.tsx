@@ -8,6 +8,7 @@ import TutorShell from '@/components/tutor/TutorShell';
 import SubjectMultiSelect from '@/components/SubjectMultiSelect';
 import { getDisplayName } from '@/lib/utils/displayName';
 import UserAvatar from '@/components/UserAvatar';
+import DemandPanel from '@/components/tutor/DemandPanel';
 
 type Student = {
   id: string;
@@ -278,6 +279,11 @@ export default function FindStudentsPage() {
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Find Students</h1>
           <p className="text-gray-600">Discover students looking for tutoring in your subjects</p>
         </div>
+
+        {/* Aggregate demand, above the one-by-one browser. Renders nothing when
+            there is no demand in this tutor's subjects, so the page below is
+            untouched for anyone it cannot help. */}
+        <DemandPanel />
 
         {/* ── FILTER PANEL ── */}
         {(() => {

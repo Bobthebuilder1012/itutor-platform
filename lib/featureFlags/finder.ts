@@ -103,6 +103,10 @@ export function getFinderMaxMatches(): number {
  * this at an existing route lets those codes work before /find exists.
  */
 export function getFinderLandingPath(): string {
-  const raw = process.env.FINDER_LANDING_PATH ?? '/find';
+  // Defaults to /start, not /find. A printed code's scanner has no account and no
+  // role, and /start is the screen that asks for one — /find would render the
+  // picker inline anyway, but landing on the route whose whole job is that
+  // question is the clearer of the two.
+  const raw = process.env.FINDER_LANDING_PATH ?? '/start';
   return raw.startsWith('/') ? raw : `/${raw}`;
 }

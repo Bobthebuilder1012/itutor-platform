@@ -15,17 +15,20 @@ export type SessionPattern = {
   ends_on?: string | null;
 };
 
+/**
+ * Class times are authored, stored and displayed in Atlantic Standard Time
+ * (UTC-4, no DST) — the platform's home timezone. Every surface that shows or
+ * resolves a class time must agree on this; rendering some in the viewer's
+ * local zone and others in AST is how a student ends up at the wrong hour.
+ * The `AST` suffix is written literally in the formatters below.
+ */
+export const AST_TIME_ZONE = 'America/Port_of_Spain';
+
 const DAY_PLURAL = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays'];
 const DAY_SINGULAR = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-/**
- * Class times are authored, stored and displayed in Atlantic Standard Time
- * (UTC−4, no DST) — the platform's home timezone. Every surface that shows a
- * class time must agree on this; rendering some in the viewer's local zone and
- * others in AST is how a student ends up at the wrong hour.
- */
-export const AST_TIME_ZONE = 'America/Port_of_Spain';
+/** The literal suffix rendered next to a time, e.g. "5:00 PM AST". */
 export const AST_LABEL = 'AST';
 
 export function formatTimeRange(time: string, durationMin: number): string {

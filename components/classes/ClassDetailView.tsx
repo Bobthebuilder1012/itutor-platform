@@ -14,11 +14,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { usePhysicalClasses } from '@/lib/hooks/usePhysicalClasses';
 import {
   ArrowLeft, Star, Calendar, Clock, Users, Check, Lock,
   CreditCard, X, Loader2, Sparkles, BadgeCheck,
   MessageSquare, Globe, Flame, BookOpen, ShieldCheck, ChevronRight, CheckCircle2,
-  HeartHandshake, Lightbulb,
+  HeartHandshake, Lightbulb, MapPin,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { StarRow } from '@/components/ratings/StarInput';
@@ -42,7 +43,16 @@ import { preorderEligibility, computeReleaseDate, isShortClass } from '@/lib/pay
 import { classCapacityDisplay } from '@/lib/utils/classCapacity';
 import TutorCredentials from '@/components/TutorCredentials';
 
-export type Step = 'detail' | 'join' | 'joined' | 'awaiting-approval' | 'awaiting-parent';
+// 'cash-requested' is its own outcome rather than 'joined': the tutor has not
+// accepted yet and no seat is held, and telling someone they have joined would
+// be a claim they act on.
+export type Step =
+  | 'detail'
+  | 'join'
+  | 'joined'
+  | 'awaiting-approval'
+  | 'awaiting-parent'
+  | 'cash-requested';
 
 /**
  * Whether this viewer needs a parent's permission to enrol, resolved server-side
@@ -116,6 +126,38 @@ export type GroupData = {
   end_date: string | null;
   /** Set when THIS student holds a secured spot in the class. */
   secured: { releaseDate: string | null } | null;
+  // ── In person (migration 242) ──
+  // All optional: absent on any environment without 242, and on every class
+  // created before it. Absent means online, which is what those classes are.
+  class_format?: 'online' | 'physical' | 'hybrid' | null;
+  /**
+   * The venue, already filtered by the API for this viewer. `address_line` and
+   * the notes are null unless the class is public-address, the viewer is
+   * enrolled or secured, or they are the tutor — so this component never has to
+   * decide who may see a street address, and cannot get it wrong.
+   */
+  venue?: {
+    id: string;
+    name: string;
+    region: { id: string; name: string } | null;
+    address_line: string | null;
+    access_instructions: string | null;
+    arrival_notes: string | null;
+    /** True when there IS an address and this viewer is not allowed it yet. */
+    address_hidden: boolean;
+  } | null;
+  /** The tutor takes cash at the venue. Never true for an online-only class. */
+  accepts_cash?: boolean | null;
+  /** Per seat type, from the server. Null when 242 is not applied. */
+  seat_availability?: Array<{
+    seat: 'online' | 'physical';
+    unavailable: boolean;
+    capacity: number | null;
+    enrolled: number;
+    remaining: number | null;
+    full: boolean;
+    priceTtd: number | null;
+  }> | null;
 };
 
 /**
@@ -253,7 +295,22 @@ export function Detail({
   const router = useRouter();
   const isPending = group.memberStatus === 'pending';
   const spotsLeft = Math.max(0, group.max_students - group.member_count);
-  const isFull = spotsLeft <= 0;
+  // ── Fullness, per seat type where the class has them ──────────────────────
+  //
+  // `group.max_students` is kept by a trigger as the SUM of the two seat caps,
+  // so the class-level subtraction above is arithmetically right and still
+  // answers the wrong question on a hybrid class: a full room with online space
+  // left is not a full class, and a class whose total has room may have no seat
+  // of the kind this student wants.
+  //
+  // `seats_full` comes from the server, which computed it with
+  // lib/utils/seatCapacity — the one place the rule lives. When it is null (242
+  // unapplied, or an older API) the class-level answer is used, which is correct
+  // for an online-only class and that is every class on production today.
+  const seatRows = group.seat_availability ?? null;
+  const offeredSeats = (seatRows ?? []).filter(s => !s.unavailable);
+  const isFull =
+    offeredSeats.length > 0 ? offeredSeats.every(s => s.full) : spotsLeft <= 0;
   const isLow = spotsLeft > 0 && spotsLeft <= 3;
   // What a student is told about capacity. isFull still drives the CTA and
   // the waitlist — those are behaviour, not display, and must keep reading
@@ -813,6 +870,77 @@ export function Detail({
             </div>
           )}
 
+          {/* ── Where it meets ──────────────────────────────────────────────
+              Only rendered for a class that meets somewhere. An online class
+              already says so everywhere else, and a card reading "Online" on
+              every class in the catalogue is noise. */}
+          {group.venue && group.class_format && group.class_format !== 'online' ? (
+            <div className="rounded-3xl border border-border bg-background p-4">
+              <div className="flex items-center gap-2">
+                <MapPin aria-hidden className="h-4 w-4 shrink-0 text-brand-deep" />
+                <h3 className="text-sm font-bold text-ink">
+                  {group.class_format === 'hybrid' ? 'Meets in person or online' : 'Where it meets'}
+                </h3>
+              </div>
+
+              <p className="mt-2 text-xs font-semibold text-ink">
+                {group.venue.name}
+                {group.venue.region ? (
+                  <span className="font-normal text-muted-foreground">
+                    {' · '}
+                    {group.venue.region.name}
+                  </span>
+                ) : null}
+              </p>
+
+              {group.venue.address_line ? (
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  {group.venue.address_line}
+                </p>
+              ) : group.venue.address_hidden ? (
+                // Says WHY rather than showing a gap. The area is above, so the
+                // family can already tell whether it is reachable; what is
+                // withheld is only the doorstep.
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  The full address is shared once you join.
+                </p>
+              ) : null}
+
+              {group.venue.access_instructions ? (
+                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                  {group.venue.access_instructions}
+                </p>
+              ) : null}
+              {group.venue.arrival_notes ? (
+                <p className="mt-1.5 whitespace-pre-line text-xs leading-relaxed text-muted-foreground">
+                  {group.venue.arrival_notes}
+                </p>
+              ) : null}
+
+              {/* Per-seat availability, only when the class genuinely offers a
+                  choice. On a physical-only class the single row says nothing the
+                  capacity line above has not already said. */}
+              {group.class_format === 'hybrid' && offeredSeats.length > 1 ? (
+                <ul className="mt-3 space-y-1 border-t border-border pt-3">
+                  {offeredSeats.map(s => (
+                    <li key={s.seat} className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">
+                        {s.seat === 'physical' ? 'In person' : 'Online'}
+                      </span>
+                      <span className={s.full ? 'font-semibold text-coral' : 'text-ink'}>
+                        {s.full
+                          ? 'Full'
+                          : s.remaining === null
+                            ? 'Open'
+                            : `${s.remaining} left`}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
+
           {/* Upcoming schedule agenda */}
           {agenda.length > 0 && (
             <div className="rounded-3xl border border-border bg-background">
@@ -1118,7 +1246,37 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
   hasLinkedParent: boolean;
   parentGate?: ParentGate | null;
 }) {
-  const isFull = group.max_students - group.member_count <= 0;
+  // ── Which seats this class has, and which one is being bought ─────────────
+  //
+  // Server-computed (lib/utils/seatCapacity via the class GET), so the choice
+  // offered here and the capacity gate that will judge it read the same numbers.
+  // Cash is offered only when the tutor switched it on AND the class actually
+  // meets somewhere — there is no one to hand money to on an online class, and
+  // the server enforces the same pair.
+  const physicalClasses = usePhysicalClasses();
+  const cashAvailable =
+    physicalClasses &&
+    group.accepts_cash === true && group.class_format && group.class_format !== 'online';
+  const [payMethod, setPayMethod] = useState<'card' | 'cash'>('card');
+
+  const openSeats = (group.seat_availability ?? []).filter(s => !s.unavailable && !s.full);
+  const seatChoiceNeeded = openSeats.length > 1;
+  const [chosenSeat, setChosenSeat] = useState<'online' | 'physical'>(
+    // Defaults to the only open seat when there is one, and to online otherwise
+    // — which is what every class without migration 242 offers.
+    openSeats.length === 1 ? openSeats[0].seat : 'online'
+  );
+
+  // Per-seat fullness. The class-level subtraction is arithmetically right
+  // (max_students is kept as the sum of the caps by a trigger) and answers the
+  // wrong question on a hybrid class: a full room with online space left is not
+  // a full class. Falls back to the class total when the server did not report
+  // seats, which is correct for an online-only class.
+  const offeredSeats = (group.seat_availability ?? []).filter(s => !s.unavailable);
+  const isFull =
+    offeredSeats.length > 0
+      ? offeredSeats.every(s => s.full)
+      : group.max_students - group.member_count <= 0;
   const isRequest = group.require_join_requests;
   const price = group.price_monthly ?? group.price_per_session ?? 0;
   const promo = group.active_promotion;
@@ -1140,14 +1298,19 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
   const gated = Boolean(parentGate?.needsParentApproval) && !isFull;
   const parentLabel = parentGate?.parentName ?? 'your parent';
 
+  const cashChosen = payMethod === 'cash' && price > 0 && !isFull;
+
   const heading = isFull ? 'Join the waitlist'
     : gated ? `Ask ${parentLabel}`
+    : cashChosen ? 'Ask to join & pay cash'
     : preorder ? 'Secure your spot'
     : isRequest ? 'Request to join'
     : 'Confirm your enrolment';
 
   const confirmLabel = isFull ? 'Add me to the waitlist'
     : gated ? 'Ask parent to enrol'
+    // Nothing is paid here and nothing is held — the tutor decides first.
+    : cashChosen ? 'Send request to tutor'
     : preorder
       ? (price > 0 ? `Pay ${fmtTTD(price)} & reserve my place` : 'Reserve my place')
     : isRequest ? 'Send request to tutor'
@@ -1173,6 +1336,23 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
         return;
       }
 
+      // ── Cash: ask the tutor, pay them in person ─────────────────────────
+      // Ahead of the preorder and card branches: a student who chose cash must
+      // never land in a card checkout. Nothing is charged and nothing is held —
+      // the tutor accepts or declines, and only acceptance takes a seat.
+      if (cashChosen) {
+        const res = await fetch(`/api/groups/${group.id}/cash-request`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ seatType: chosenSeat }),
+        });
+        const data = await res.json();
+        if (data.parent_approval_required) { onSuccess('awaiting-parent'); return; }
+        if (!res.ok) throw new Error(data.error || 'Could not send your request. Please try again.');
+        onSuccess('cash-requested');
+        return;
+      }
+
       // Preorder: a one-time charge for the first month, not a subscription.
       // Free preorders come back confirmed with no Stripe round trip at all.
       if (preorder && !isFull) {
@@ -1193,7 +1373,16 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
       }
 
       if (price > 0 && !isFull) {
-        const res = await fetch(`/api/groups/${group.id}/subscribe`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+        const res = await fetch(`/api/groups/${group.id}/subscribe`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          // The seat they picked. Only meaningful on a hybrid class; the server
+          // validates it against what the class actually offers and refuses a
+          // seat that does not exist rather than downgrading it, because someone
+          // who chose "in person" and got an online seat would find out by
+          // turning up at a venue not expecting them.
+          body: JSON.stringify({ seatType: chosenSeat }),
+        });
         const data = await res.json();
         if (data.parent_approval_required) { onSuccess('awaiting-parent'); return; }
         if (data.checkout_url) { window.location.href = data.checkout_url; return; }
@@ -1251,6 +1440,128 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
       {/* Billing. A preorder is a one-time charge for a class that hasn't
           started — describing it as a monthly subscription that renews would
           be false on every line, so the whole block switches. */}
+      {/* ── Seat choice ──────────────────────────────────────────────────────
+          Only when the class genuinely offers more than one OPEN seat. A picker
+          with a single option is a decision the visitor cannot make, and asking
+          them to confirm the obvious is how a join flow gains a step for
+          nothing. When one kind is full the other is preselected and this does
+          not render at all. */}
+      {seatChoiceNeeded && (
+        <section className="rounded-2xl border border-border bg-background p-5 space-y-3">
+          <h2 className="text-sm font-bold text-ink">How will you attend?</h2>
+          <div className="space-y-2">
+            {openSeats.map((s) => {
+              const selected = chosenSeat === s.seat;
+              // Per-seat price when the tutor set one, otherwise the class price
+              // — which is what the server will charge in that case.
+              const seatPrice = s.priceTtd ?? effectivePrice;
+              return (
+                <button
+                  key={s.seat}
+                  type="button"
+                  onClick={() => setChosenSeat(s.seat)}
+                  className={cn(
+                    'flex w-full items-start gap-3 rounded-xl border px-4 py-3 text-left transition',
+                    selected ? 'border-brand bg-brand/5' : 'border-border hover:border-brand/50'
+                  )}
+                >
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'mt-0.5 grid size-4 shrink-0 place-items-center rounded-full border-2',
+                      selected ? 'border-brand' : 'border-border'
+                    )}
+                  >
+                    {selected && <span className="size-2 rounded-full bg-brand" />}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold text-ink">
+                      {s.seat === 'physical' ? 'In person' : 'Online'}
+                    </span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      {s.seat === 'physical'
+                        ? group.venue?.region
+                          ? `At ${group.venue.name} · ${group.venue.region.name}`
+                          : 'At the venue'
+                        : 'Join from home'}
+                      {s.remaining !== null ? ` · ${s.remaining} left` : ''}
+                    </span>
+                  </span>
+                  {seatPrice > 0 && (
+                    <span className="shrink-0 text-xs font-semibold text-ink">
+                      {fmtTTD(seatPrice)}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          {/* The address, and when they get it. Said here because this is the
+              moment the choice is being made, not after the money. */}
+          {chosenSeat === 'physical' && group.venue?.address_hidden && (
+            <p className="text-xs text-muted-foreground">
+              You&apos;ll get the full address as soon as you join.
+            </p>
+          )}
+        </section>
+      )}
+
+      {/* ── How they pay ────────────────────────────────────────────────────
+          Only when the tutor takes cash. ONE EXTRA CHOICE, NO EXTRA STEP — it
+          sits in the modal the visitor is already in, per §4. */}
+      {cashAvailable && price > 0 && !isFull && (
+        <section className="rounded-2xl border border-border bg-background p-5 space-y-3">
+          <h2 className="text-sm font-bold text-ink">How would you like to pay?</h2>
+          <div className="space-y-2">
+            {[
+              {
+                v: 'card' as const,
+                title: 'Pay online now',
+                detail: 'Card payment. Your place is confirmed straight away.',
+              },
+              {
+                v: 'cash' as const,
+                title: 'Ask to join & pay cash',
+                detail: 'Your tutor accepts or declines. If accepted, you pay them in person each month.',
+              },
+            ].map((opt) => {
+              const selected = payMethod === opt.v;
+              return (
+                <button
+                  key={opt.v}
+                  type="button"
+                  onClick={() => setPayMethod(opt.v)}
+                  className={cn(
+                    'flex w-full items-start gap-3 rounded-xl border px-4 py-3 text-left transition',
+                    selected ? 'border-brand bg-brand/5' : 'border-border hover:border-brand/50'
+                  )}
+                >
+                  <span
+                    aria-hidden
+                    className={cn(
+                      'mt-0.5 grid size-4 shrink-0 place-items-center rounded-full border-2',
+                      selected ? 'border-brand' : 'border-border'
+                    )}
+                  >
+                    {selected && <span className="size-2 rounded-full bg-brand" />}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-ink">{opt.title}</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">{opt.detail}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {payMethod === 'cash' && (
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              You are not in the class until {group.tutor?.display_name || group.tutor?.full_name || 'your tutor'} accepts, and no
+              place is held while they decide. iTutor does not handle this payment.
+            </p>
+          )}
+        </section>
+      )}
+
       <section className="rounded-2xl border border-border bg-background p-5 space-y-3">
         <h2 className="font-bold text-ink text-sm">Billing</h2>
         <InfoRow icon={<CreditCard className="size-4 text-brand-deep" />} label="Model">
@@ -1411,7 +1722,7 @@ function ParentAskPanel({
 
 /* ─── Success screens ────────────────────────────────── */
 
-export function JoinedScreen({ group, kind }: { group: GroupData; kind: 'enrolled' | 'awaiting-approval' | 'awaiting-parent' }) {
+export function JoinedScreen({ group, kind }: { group: GroupData; kind: 'enrolled' | 'awaiting-approval' | 'awaiting-parent' | 'cash-requested' }) {
   const copy = {
     enrolled: {
       icon: <Check className="size-6 text-white" />,
@@ -1426,6 +1737,16 @@ export function JoinedScreen({ group, kind }: { group: GroupData; kind: 'enrolle
       tone: 'bg-amber-500',
       title: 'Request sent!',
       body: `${group.tutor?.display_name || group.tutor?.full_name || 'The tutor'} typically responds within 48 hours. You'll get a notification when they approve.`,
+      next: 'Back to explore',
+      href: '/student/find-tutors',
+    },
+    // Not in, and nothing held. Said plainly, because a student who thinks a
+    // cash request is a seat will turn up to a room with no place for them.
+    'cash-requested': {
+      icon: <Loader2 className="size-6 text-white animate-spin" />,
+      tone: 'bg-amber-500',
+      title: 'Request sent',
+      body: `${group.tutor?.display_name || group.tutor?.full_name || 'Your tutor'} has been emailed and will accept or decline. If accepted, you pay them in cash directly. Your place is not held until then.`,
       next: 'Back to explore',
       href: '/student/find-tutors',
     },
