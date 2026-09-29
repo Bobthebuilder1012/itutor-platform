@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { resolveGoogleRedirectUri } from '@/lib/auth/resolveGoogleRedirectUri';
+import { createOAuthState, setOAuthNonceCookie } from '@/lib/auth/oauthState';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,9 +59,28 @@ export async function GET(request: Request) {
     }, { status: 500 });
   }
 
-  const from = new URL(request.url).searchParams.get('from') || '';
-  // State = "userId|returnPath" — pipe is safe since UUIDs don't contain it
-  const state = from ? `${user.id}|${from}` : user.id;
+  // `state` used to be the plain "userId|returnPath", and the callback stored
+  // Google's tokens against whatever id it found there, so anyone could make
+  // their own Google account a stranger's meeting host. It is now signed and
+  // bound to a nonce cookie on this browser (lib/auth/oauthState.ts), and the
+  // callback also requires the signed-in user to be the one named in it.
+  // `from` is cut down to a same-site path, so the callback can't be used to
+  // bounce a tutor to another site.
+  const from = new URL(request.url).searchParams.get('from');
+  let state: string;
+  let nonce: string;
+  try {
+    ({ state, nonce } = createOAuthState(user.id, from, 'google'));
+  } catch (err) {
+    // Only throws when TOKEN_ENCRYPTION_KEY is missing. The callback couldn't
+    // encrypt the tokens without it either, so stop before the consent screen
+    // rather than after the tutor has granted access.
+    console.error('Could not sign Google OAuth state:', err);
+    return NextResponse.json({
+      error: 'Server configuration error. Please contact support.',
+      details: 'OAuth state could not be signed',
+    }, { status: 500 });
+  }
 
   // Build OAuth URL
   const params = new URLSearchParams({
@@ -74,7 +94,9 @@ export async function GET(request: Request) {
   });
 
   const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
-  
-  return NextResponse.redirect(authUrl);
+
+  const res = NextResponse.redirect(authUrl);
+  setOAuthNonceCookie(res, 'google', nonce);
+  return res;
 }
 

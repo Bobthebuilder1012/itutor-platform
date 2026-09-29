@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { createOAuthState, setOAuthNonceCookie } from '@/lib/auth/oauthState';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,8 +70,23 @@ export async function GET(request: Request) {
   fetch('http://127.0.0.1:7242/ingest/96e0dc54-0d29-41a7-8439-97ee7ad5934e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/auth/zoom/connect/route.ts:65',message:'ENV vars loaded',data:{clientId,redirectUri,userId:user.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,C,E'})}).catch(()=>{});
   // #endregion
 
-  const from = new URL(request.url).searchParams.get('from') || '';
-  const state = from ? `${user.id}|${from}` : user.id;
+  // Signed state bound to a nonce cookie on this browser, not the old plain
+  // "userId|returnPath" the callback trusted outright. See the Google connect
+  // route and lib/auth/oauthState.ts for why.
+  const from = new URL(request.url).searchParams.get('from');
+  let state: string;
+  let nonce: string;
+  try {
+    ({ state, nonce } = createOAuthState(user.id, from, 'zoom'));
+  } catch (err) {
+    // Only throws when TOKEN_ENCRYPTION_KEY is missing, which the callback
+    // needs to encrypt the tokens too. Stop before the consent screen.
+    console.error('Could not sign Zoom OAuth state:', err);
+    return NextResponse.json({
+      error: 'Server configuration error. Please contact support.',
+      details: 'OAuth state could not be signed',
+    }, { status: 500 });
+  }
 
   // Build OAuth URL
   const params = new URLSearchParams({
@@ -85,6 +101,8 @@ export async function GET(request: Request) {
   // #region agent log
   fetch('http://127.0.0.1:7242/ingest/96e0dc54-0d29-41a7-8439-97ee7ad5934e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/auth/zoom/connect/route.ts:72',message:'OAuth URL constructed',data:{authUrl,paramsString:params.toString()},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,C,D'})}).catch(()=>{});
   // #endregion
-  
-  return NextResponse.redirect(authUrl);
+
+  const res = NextResponse.redirect(authUrl);
+  setOAuthNonceCookie(res, 'zoom', nonce);
+  return res;
 }
