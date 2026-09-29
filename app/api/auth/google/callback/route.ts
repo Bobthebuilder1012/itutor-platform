@@ -3,34 +3,95 @@ import { createClient } from '@supabase/supabase-js';
 import { encrypt } from '@/lib/utils/encryption';
 import { migrateSessionsToNewProvider } from '@/lib/services/migrateSessionsToNewProvider';
 import { resolveGoogleRedirectUri } from '@/lib/auth/resolveGoogleRedirectUri';
+import { getServerClient } from '@/lib/supabase/server';
+import {
+  DEFAULT_OAUTH_RETURN,
+  clearOAuthNonceCookie,
+  oauthNonceCookieName,
+  safeReturnPath,
+  verifyOAuthState,
+} from '@/lib/auth/oauthState';
+import type { VerifiedOAuthState } from '@/lib/auth/oauthState';
 
 export const dynamic = 'force-dynamic';
 
+const PROVIDER = 'google' as const;
+
+/**
+ * Every exit from this route goes through here, so every exit spends the
+ * nonce: success or failure, the cookie is cleared and replaying the callback
+ * URL finds nothing to match. `returnTo` is already a same-site path (it comes
+ * from verifyOAuthState, or is the default); it goes through safeReturnPath
+ * again so that stays true whatever a later edit passes in.
+ */
 function redirect(returnTo: string, baseUrl: string, params: Record<string, string>) {
-  const url = new URL(returnTo, baseUrl);
+  const url = new URL(safeReturnPath(returnTo), baseUrl);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-  return NextResponse.redirect(url);
+  const res = NextResponse.redirect(url);
+  clearOAuthNonceCookie(res, PROVIDER);
+  return res;
 }
 
 export async function GET(request: NextRequest) {
-  // Use service role for callback (user context in state parameter)
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
   const searchParams = request.nextUrl.searchParams;
   const code = searchParams.get('code');
   const stateRaw = searchParams.get('state');
   const error = searchParams.get('error');
 
-  // Decode state — "userId|returnPath" or legacy plain userId
-  const stateParts = (stateRaw ?? '').split('|');
-  const tutorId = stateParts[0] ?? '';
-  const returnTo = stateParts[1] || '/tutor/video-setup';
+  // Whose tokens these are. This used to be read straight out of an unsigned
+  // "userId|returnPath" state, so anyone could send a consent link carrying a
+  // victim's id and have their own Google account become the victim's meeting
+  // host. `state` must now carry our signature and match the nonce cookie this
+  // browser was given at /connect. The legacy form is refused, which only
+  // affects flows already in flight at deploy time.
+  let verified: VerifiedOAuthState;
+  try {
+    verified = verifyOAuthState(
+      stateRaw,
+      request.cookies.get(oauthNonceCookieName(PROVIDER))?.value,
+      PROVIDER,
+    );
+  } catch (err) {
+    // Only throws when TOKEN_ENCRYPTION_KEY is missing, in which case nothing
+    // can be verified or encrypted.
+    console.error('Google OAuth state could not be verified:', err);
+    return redirect(DEFAULT_OAUTH_RETURN, request.url, { error: 'server_config' });
+  }
+  const returnTo = verified.returnTo;
 
-  if (error || !code || !tutorId) {
+  if (!verified.ok) {
+    console.warn('Google OAuth callback refused, state check failed:', verified.reason);
     return redirect(returnTo, request.url, { error: 'auth_failed' });
   }
+
+  if (error || !code) {
+    return redirect(returnTo, request.url, { error: 'auth_failed' });
+  }
+
+  // The nonce proves this browser started the flow. This proves the person
+  // signed in on it now is the tutor it was started for, so a shared computer
+  // where someone else signed in mid-flow can't attach their Google account to
+  // the first tutor.
+  let sessionUserId: string | null = null;
+  try {
+    const authClient = await getServerClient();
+    const { data: { user } } = await authClient.auth.getUser();
+    sessionUserId = user?.id ?? null;
+  } catch (err) {
+    console.error('Google OAuth callback could not read the session:', err);
+  }
+  if (!sessionUserId || sessionUserId !== verified.userId) {
+    console.warn('Google OAuth callback refused: signed-in user does not match state');
+    return redirect(returnTo, request.url, { error: 'auth_failed' });
+  }
+  const tutorId = verified.userId;
+
+  // Service role for the connection row, as before. Whose row it is has been
+  // settled above.
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
 
   try {
     const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
