@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { MEETING_LINK_MODES } from '@/lib/types/groups';
+import { CLASS_LINK_MAX_LENGTH } from '@/lib/utils/meetingLink';
 
 const WHATSAPP_RE = /^https:\/\/chat\.whatsapp\.com\//;
 const CLASSROOM_RE = /^https:\/\/classroom\.google\.com\/(c|h)\//;
@@ -16,7 +18,14 @@ export const classSettingsSchema = z.object({
   primary_channel: z.enum(['native', 'whatsapp', 'classroom']).optional(),
   parent_feedback_mode: z.enum(['off', 'included_free', 'paid_addon']).optional(),
   parent_feedback_price: z.number().min(0).or(z.null()).optional(),
-  meeting_link: z.string().url('Must be a valid URL').or(z.literal('')).or(z.null()).optional(),
+  // How students join: 'generated' (Meet / Zoom, minted on the tutor's first
+  // Join) or 'custom' (the tutor's own link, in meeting_link).
+  meeting_link_mode: z.enum(MEETING_LINK_MODES).optional(),
+  // Deliberately loose here. The route runs it through normalizeClassLinkUrl,
+  // which accepts "zoom.us/j/123" and a pasted invitation — z.string().url()
+  // refused both, and accepted javascript: — and it is honoured ONLY alongside
+  // meeting_link_mode in the same body. The cap mirrors the DB CHECK.
+  meeting_link: z.string().max(CLASS_LINK_MAX_LENGTH, 'That link is too long.').or(z.literal('')).or(z.null()).optional(),
   price_monthly: z.number().min(0).or(z.null()).optional(),
   pricing_model: z.enum(['MONTHLY', 'FREE', 'PER_SESSION']).optional(),
   member_service_fee: z.number().min(0).optional(),

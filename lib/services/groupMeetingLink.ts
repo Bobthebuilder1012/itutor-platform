@@ -18,6 +18,7 @@
 import { getServiceClient } from '@/lib/supabase/server';
 import { ensureTutorConnected, createMeeting } from '@/lib/services/videoProviders';
 import { isLinkStillValid } from '@/lib/utils/meetingLink';
+import { readClassLinkState } from '@/lib/classes/classLinkState';
 import type { Session, VideoProvider } from '@/lib/types/sessions';
 
 export type SeriesLinkResult =
@@ -111,6 +112,24 @@ export async function resolveSeriesMeetingLink(opts: {
 }): Promise<SeriesLinkResult> {
   const { groupId, tutorId, sessionId, occurrenceId } = opts;
   const service = getServiceClient();
+
+  // A class on the tutor's own link (groups.meeting_link_mode = 'custom',
+  // migration 262) has ONE link for every session, and it is not ours to
+  // regenerate. No live page calls the routes that use this function any more,
+  // but they are still reachable — and without this guard one of them would
+  // mint a Meet room on the tutor's account and hand it to a student while
+  // every other Join button opened the tutor's own room.
+  const classLink = await readClassLinkState(service, groupId);
+  if (classLink.mode === 'custom') {
+    if (classLink.link) {
+      return { ok: true, join_url: classLink.link, provider: 'custom', meeting_external_id: null, cached: true };
+    }
+    return {
+      ok: false,
+      status: 422,
+      error: "This class uses your own class link, but none is saved yet. Add it on the class's Sessions tab.",
+    };
+  }
 
   // Resolve the series row: by sessionId, else via the occurrence's parent,
   // else the group's earliest series (handles stale ids after edits).

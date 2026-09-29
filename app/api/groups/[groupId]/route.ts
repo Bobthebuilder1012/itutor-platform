@@ -10,6 +10,8 @@ import { classOccupancy } from '@/lib/services/classOccupancy';
 import { syncScheduleSessions } from '@/lib/classes/scheduleSessions';
 import { track } from '@/lib/analytics/track';
 import { PRODUCT_EVENTS } from '@/lib/analytics/events';
+import { canSeeClassLink, readClassLinkState } from '@/lib/classes/classLinkState';
+import { normalizeClassLinkUrl } from '@/lib/utils/meetingLink';
 
 type Params = { params: Promise<{ groupId: string }> };
 function isSchemaMismatch(error: any): boolean {
@@ -338,6 +340,23 @@ export async function GET(req: NextRequest, { params }: Params) {
       seat_type: viewerSeatType,
     };
 
+    // ── The class link is for people who can join ────────────────────────────
+    //
+    // This endpoint is readable by anyone, signed out included, and it used to
+    // return groups.meeting_link to all of them. That was a Meet link minted on
+    // the tutor's first Join; now it can be the tutor's own permanent room
+    // (meeting_link_mode = 'custom'), and handing that to every visitor of a
+    // shared class page lets anyone sit in without enrolling. canSeeClassLink
+    // is the one rule every surface uses: the tutor, a superadmin acting as
+    // tutor, or an enrolled student. The per-occurrence copies of old links
+    // below go through the same gate. No parent, explore or class-detail page
+    // reads the link from here, so nulling it costs them nothing.
+    const maySeeClassLink = await canSeeClassLink(
+      service,
+      { userId: user?.id, email: user?.email },
+      { groupId, tutorId: (group as any).tutor_id },
+    );
+
     // Fetch sessions with upcoming occurrences (service client bypasses RLS so all users get schedule preview)
     let sessionsRaw: any[] | null = null;
     let sessionsError: any = null;
@@ -368,7 +387,9 @@ export async function GET(req: NextRequest, { params }: Params) {
 
     const sessions = (sessionsRaw ?? []).map((s: any) => ({
       ...s,
-      occurrences: s.group_session_occurrences ?? [],
+      occurrences: (s.group_session_occurrences ?? []).map((o: any) =>
+        maySeeClassLink || !o?.meeting_link ? o : { ...o, meeting_link: null },
+      ),
       group_session_occurrences: undefined,
     }));
 
@@ -539,6 +560,11 @@ export async function GET(req: NextRequest, { params }: Params) {
         ...group,
         group_members: undefined,
         venue: venueForViewer,
+        // See maySeeClassLink above. The generated-at stamp is dropped for
+        // everyone: it only drives the tutor-side 30-day reuse rule, which
+        // POST /meeting-link reads for itself.
+        meeting_link: maySeeClassLink ? (group.meeting_link ?? null) : null,
+        meeting_link_generated_at: undefined,
         /** Per seat type: capacity, enrolled, remaining, full, price. */
         seat_availability: seats?.availability ?? null,
         /** True only when every seat type the class offers is full. */
@@ -570,8 +596,11 @@ export async function GET(req: NextRequest, { params }: Params) {
           // some callers, so it has to be stripped for anonymous viewers too.
           // That includes the venue: `...group` spreads the RAW joined row, so
           // omitting this line would hand the street address out through the
-          // legacy shape while the modern one gated it.
+          // legacy shape while the modern one gated it. The class link is the
+          // same story.
           venue: venueForViewer,
+          meeting_link: maySeeClassLink ? (group.meeting_link ?? null) : null,
+          meeting_link_generated_at: undefined,
           seat_availability: seats?.availability ?? null,
           seats_full: seats?.full ?? null,
           members: isAnonymous ? [] : group.group_members,
@@ -651,7 +680,33 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if ((body as any).whatsapp_url !== undefined) updates.whatsapp_url = (body as any).whatsapp_url;
     if ((body as any).whatsapp_link !== undefined) updates.whatsapp_url = (body as any).whatsapp_link;
     if ((body as any).google_classroom_link !== undefined) updates.google_classroom_link = (body as any).google_classroom_link;
-    if ((body as any).meeting_link !== undefined) updates.meeting_link = (body as any).meeting_link;
+    // No live page sends meeting_link here (the class link is saved through
+    // PATCH /api/classes/[id]/settings, together with its mode), but the field
+    // is still accepted, and whatever lands in it becomes every student's Join
+    // href and the reminder emails' button. So it gets the same normalisation
+    // as the settings route — https only, no credentials, attribute-safe — and
+    // the mode is left alone. Clearing it is refused while the class is on the
+    // tutor's own link, where the database requires one
+    // (groups_custom_link_required) and the write would fail as a bare 500.
+    if ((body as any).meeting_link !== undefined) {
+      const rawLink = (body as any).meeting_link;
+      if (rawLink === null || rawLink === '') {
+        const linkState = await readClassLinkState(service, groupId);
+        if (linkState.mode === 'custom') {
+          return NextResponse.json(
+            { error: "This class uses your own class link. To stop using it, switch the class to Google Meet on the Sessions tab." },
+            { status: 400 }
+          );
+        }
+        updates.meeting_link = null;
+      } else {
+        const normalized = normalizeClassLinkUrl(rawLink);
+        if (!normalized.ok) {
+          return NextResponse.json({ error: normalized.error }, { status: 400 });
+        }
+        updates.meeting_link = normalized.url;
+      }
+    }
     if ((body as any).require_join_requests !== undefined) updates.require_join_requests = (body as any).require_join_requests;
     if ((body as any).auto_suspend_missed_payment !== undefined) updates.auto_suspend_missed_payment = (body as any).auto_suspend_missed_payment;
     if ((body as any).grace_period_days !== undefined) updates.grace_period_days = (body as any).grace_period_days;

@@ -32,16 +32,43 @@ export type EmailCta = { label: string; href: string };
 /**
  * A URL, ready for an href.
  *
- * encodeURI on the way out, so a stray space or quote in a signed link cannot
- * break out of the attribute — EXCEPT when the "URL" is a mail-template
- * placeholder. The Supabase auth templates are rendered by this same code with
- * `{{ .ConfirmationURL }}` in place of a link, and encoding it to
- * %7B%7B%20.ConfirmationURL%20%7D%7D leaves Supabase nothing to substitute and
- * every confirmation email pointing at a dead relative path. Placeholders pass
- * through untouched; they come from our own template definitions, never from a
- * request.
+ * Three cases, tried in this order:
+ *
+ * 1. An absolute http(s) URL is re-serialised by the URL parser and then
+ *    HTML-escaped. This is the case that matters now that class links can be
+ *    tutor-supplied (groups.meeting_link_mode = 'custom') and land in the
+ *    reminder emails' Join button. The parser percent-encodes the spaces,
+ *    quotes, angle brackets and braces that could break out of the attribute,
+ *    but — unlike encodeURI — leaves existing escapes alone. encodeURI turned a
+ *    Teams link's %3a into %253a, so every Teams "Join now" button pointed at a
+ *    meeting that does not exist. escapeHtml covers what the parser keeps (a
+ *    query string's &).
+ *
+ *    It runs BEFORE the placeholder check on purpose. The old "contains {{ ->
+ *    pass through untouched" rule was an escape hatch: any link with {{ in it,
+ *    tutor-typed or not, skipped encoding entirely and could close the
+ *    attribute. An absolute URL now has its braces encoded like everything
+ *    else.
+ *
+ * 2. A mail-template placeholder passes through untouched. The Supabase auth
+ *    templates are rendered by this same code with `{{ .ConfirmationURL }}` in
+ *    place of a link, and encoding it to %7B%7B%20.ConfirmationURL%20%7D%7D
+ *    leaves Supabase nothing to substitute and every confirmation email
+ *    pointing at a dead relative path. Every placeholder href we have starts
+ *    with {{, so none of them parses as an absolute URL in case 1; they come
+ *    from our own template definitions, never from a request.
+ *
+ * 3. Anything else (a relative path, mailto:) is encodeURI'd as before.
  */
 function safeHref(href: string): string {
+  try {
+    const url = new URL(href);
+    if (url.protocol === 'https:' || url.protocol === 'http:') {
+      return escapeHtml(url.toString());
+    }
+  } catch {
+    // Not an absolute URL — fall through to the placeholder / relative cases.
+  }
   return href.includes('{{') ? href : encodeURI(href);
 }
 
