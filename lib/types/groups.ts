@@ -61,6 +61,14 @@ export type SubscriptionPaymentStatus = 'PENDING' | 'PAID' | 'REFUNDED' | 'PARTI
 export type GroupRemovalStatus = 'auto_processed' | 'approved' | 'overturned';
 export type GroupVisibility = 'public' | 'unlisted' | 'private';
 
+// ---- Class link (migration 262) ----
+//
+// 'generated' = the Meet / Zoom link minted on demand by
+// POST /api/groups/[id]/meeting-link. 'custom' = the tutor's own link, stored
+// in groups.meeting_link. Either way every Join button opens meeting_link.
+export const MEETING_LINK_MODES = ['generated', 'custom'] as const;
+export type MeetingLinkMode = (typeof MEETING_LINK_MODES)[number];
+
 // Day-of-week: 0 = Sunday … 6 = Saturday (matches JS getDay())
 export type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
@@ -120,6 +128,14 @@ export interface Group {
   require_join_requests?: boolean;
   grace_period_days?: number;
   auto_suspend_missed_payment?: boolean;
+  /** Billing stops after this date (migration 200). */
+  end_date?: string | null;
+  /** School year in which form_level was last true (migration 262). */
+  form_level_school_year?: number;
+  /** The class's join link. Only returned to its tutor and enrolled members. */
+  meeting_link?: string | null;
+  meeting_link_generated_at?: string | null;
+  meeting_link_mode?: MeetingLinkMode;
   created_at: string;
   updated_at?: string;
   archived_at: string | null;
@@ -345,7 +361,7 @@ export interface CreateGroupSessionInput {
   start_time: string;
   duration_minutes: number;
   starts_on: string;
-  ends_on?: string;
+  ends_on?: string | null;
   timezone_offset?: number;
 }
 
