@@ -353,14 +353,37 @@ function TutorClassJoinButton({ groupId }: { groupId: string }) {
   const [loading, setLoading] = useState(false);
 
   const join = async () => {
+    // Open the tab now, while we are still inside the click. The POST can
+    // take a few seconds when it has to mint a Meet room, and a window.open
+    // that runs after an await is no longer tied to a user gesture, so popup
+    // blockers swallowed it and Join looked dead. The blank tab is pointed
+    // at the link once it arrives.
+    const w = window.open('about:blank', '_blank');
     setLoading(true);
     try {
       const res = await fetch(`/api/groups/${groupId}/meeting-link`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
       const json = await res.json();
       const url = json?.join_url;
-      if (url) window.open(url, '_blank', 'noreferrer');
-      else alert(json?.error ?? 'Could not generate meeting link');
+      // The tab we opened is about:blank, which shares this page's origin,
+      // so only ever send it to a web address. Class links are https-only
+      // in the database; this keeps that true here even if one slips by.
+      if (typeof url === 'string' && /^https?:\/\//i.test(url)) {
+        if (w) {
+          w.opener = null;
+          w.location.href = url;
+        } else {
+          // Blocked anyway (or opened in a way that hid the handle): go
+          // there in this tab rather than do nothing.
+          window.location.href = url;
+        }
+      } else {
+        // Includes the 422 for a class in own-link mode with no link saved
+        // yet: its error text tells the tutor where to add one.
+        w?.close();
+        alert(json?.error ?? 'Could not generate meeting link');
+      }
     } catch {
+      w?.close();
       alert('Could not get meeting link');
     } finally {
       setLoading(false);

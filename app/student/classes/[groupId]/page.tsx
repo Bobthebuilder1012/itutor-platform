@@ -403,13 +403,28 @@ function JoinSessionButton({ groupId, staticLink }: { groupId: string; staticLin
   // GET /api/groups/[id]/meeting-link is the authoritative, membership-gated
   // source, so ask it directly whenever the payload didn't carry a link, and
   // re-check periodically while the page is open.
-  const [fetched, setFetched] = useState<string | null>(null);
+  //
+  // The poll used to stop at the first link it saw. That was fine while the
+  // only link was a Meet room minted once and reused, but a tutor can now
+  // paste their own link, swap it for another, or switch the class back to
+  // generated Meet links (which clears the saved one until the next Join
+  // mints a fresh room). A student who opened the page before class would
+  // keep the old URL and land in a room nobody is in. So the poll keeps
+  // running and whatever the server says now wins: a new URL replaces the
+  // old one, and a 404/403 (no link any more, or this viewer may no longer
+  // have it) takes the button back to its disabled state. Network errors and
+  // other statuses change nothing, so a flaky connection can't hide a link
+  // that is still good.
+  const [link, setLink] = useState<string | null>(staticLink);
   const [checking, setChecking] = useState(false);
 
-  const link = staticLink ?? fetched;
+  // The page reloads the group payload when the profile changes; adopt what
+  // it carried rather than keep a value from the previous load.
+  useEffect(() => {
+    setLink(staticLink);
+  }, [staticLink]);
 
   useEffect(() => {
-    if (staticLink || fetched) return;
     let cancelled = false;
 
     const check = async () => {
@@ -418,33 +433,38 @@ function JoinSessionButton({ groupId, staticLink }: { groupId: string; staticLin
         const res = await fetch(`/api/groups/${groupId}/meeting-link`, {
           cache: 'no-store',
         });
-        if (!cancelled && res.ok) {
+        if (cancelled) return;
+        if (res.ok) {
           const d = await res.json();
-          if (d?.join_url) setFetched(d.join_url);
+          if (!cancelled && typeof d?.join_url === 'string' && d.join_url) setLink(d.join_url);
+        } else if (res.status === 404 || res.status === 403) {
+          setLink(null);
         }
       } catch {
-        /* 404 just means the tutor hasn't generated one yet */
+        /* offline or a transient failure — keep whatever we already have */
       } finally {
         if (!cancelled) setChecking(false);
       }
     };
 
-    check();
+    // The payload already answered for this moment when it carried a link,
+    // so only ask straight away when it didn't.
+    if (!staticLink) check();
     // Cheap poll so a student sitting on the page before class sees the
-    // button light up without reloading.
+    // button light up, or pick up a changed link, without reloading.
     const timer = setInterval(check, 60_000);
     return () => {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [groupId, staticLink, fetched]);
+  }, [groupId, staticLink]);
 
   if (!link) {
     return (
       <div className="w-full sm:w-auto shrink-0">
         <button
           disabled
-          title="Your tutor hasn't generated the class link yet. It'll appear here automatically."
+          title="Your tutor hasn't shared the class link yet. It'll appear here automatically."
           className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-muted text-muted-foreground font-semibold text-sm cursor-not-allowed opacity-60"
         >
           <Video className="size-4" /> {checking ? 'Checking for link…' : 'Link not ready yet'}
@@ -910,7 +930,7 @@ function SessionsTab({ groupId, userId, group }: { groupId: string; userId: stri
       ) : (
         <div className="rounded-xl border border-dashed border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground flex items-start gap-2">
           <Video className="size-3.5 mt-0.5 shrink-0 text-brand-deep" />
-          <span>Your tutor's Zoom / Google Meet link for this class. The same link is reused for every session — join any time it's available.</span>
+          <span>Your tutor's class link — the same link is used for every session. Tap Join when it's time.</span>
         </div>
       )}
 
@@ -997,13 +1017,13 @@ function SessionsTab({ groupId, userId, group }: { groupId: string; userId: stri
                 <a
                   href={meetingLink}
                   target="_blank"
-                  rel="noreferrer"
+                  rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90">
                   <Video className="size-3.5" /> Join
                 </a>
               )}
               {!meetingLink && (
-                <span className="text-[11px] text-muted-foreground italic">No link set</span>
+                <span className="text-[11px] text-muted-foreground italic">Link not shared yet</span>
               )}
               </>)}
             </div>
