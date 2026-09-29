@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isPhysicalClassesEnabled, PHYSICAL_CLASSES_DISABLED_MESSAGE } from '@/lib/featureFlags/physicalClasses';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import type { CreateGroupInput } from '@/lib/types/groups';
+import { trinidadToday } from '@/lib/payments/secureSpot';
 import {
   resolveScheduleEntries,
   scheduleMatchesDayTime,
@@ -589,16 +590,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'End date is not a valid date' }, { status: 400 });
     }
     // Compare on the date, not the instant, so "today" isn't rejected for
-    // being a few hours in the past.
-    const todayUtc = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z');
-    if (endDate.getTime() < todayUtc.getTime()) {
+    // being a few hours in the past — and on TRINIDAD's date, not the
+    // server's. The servers run UTC, which is already tomorrow from 20:00 AST,
+    // so a tutor picking today's date in the evening (which the create page's
+    // date input offers: its `min` is Trinidad today) was told it was in the
+    // past. Midnight UTC of the Trinidad date keeps this comparison, and the
+    // two-year cap below, on the same whole-date footing as endDate — and the
+    // cap is the same arithmetic as maxClassEndDate in
+    // lib/classes/academicCalendar.ts, which sets the input's `max`.
+    const today = new Date(`${trinidadToday()}T00:00:00Z`);
+    if (endDate.getTime() < today.getTime()) {
       return NextResponse.json(
         { error: 'End date cannot be in the past' },
         { status: 400 }
       );
     }
     const MAX_CLASS_YEARS = 2;
-    const maxEnd = new Date(todayUtc);
+    const maxEnd = new Date(today);
     maxEnd.setUTCFullYear(maxEnd.getUTCFullYear() + MAX_CLASS_YEARS);
     if (endDate.getTime() > maxEnd.getTime()) {
       return NextResponse.json(

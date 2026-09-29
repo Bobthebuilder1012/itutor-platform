@@ -14,6 +14,17 @@ import TutorShell from '@/components/tutor/TutorShell';
 import { LEVEL_LABELS } from '@/lib/utils/formatLevel';
 import InPersonSection, { type InPersonDraft } from '@/components/tutor/classes/InPersonSection';
 import { usePhysicalClasses } from '@/lib/hooks/usePhysicalClasses';
+import {
+  trinidadToday,
+  suggestEndDate,
+  nextProgression,
+  isProgressingLevel,
+  schoolYearOf,
+  maxClassEndDate,
+  shortLevelLabel,
+  formatSchoolDate,
+  MAX_CLASS_YEARS,
+} from '@/lib/classes/academicCalendar';
 
 type DbSubject = { id: string; name: string; label: string; curriculum: string };
 
@@ -52,6 +63,18 @@ function CreateClassContent() {
   // Required by /api/groups — billing recurs until this date, so a class
   // without one would charge students forever.
   const [endDate, setEndDate] = useState('');
+  // Whether the date in the box is one the tutor chose. Until they do, picking
+  // a Level fills in that level's suggested end date (suggestEndDate), and
+  // picking another level replaces it — which is only safe because it was never
+  // theirs. Once they type or pick a date, a level change leaves it alone: a
+  // tutor who knows their class ends in March should not have that silently
+  // moved to April by tidying up the Level. Clearing the box hands it back to
+  // the suggestion, and so does "Use suggested date".
+  //
+  // Before this the field started blank and tutors guessed: 8 of the 9 live
+  // classes on staging end on the same 2027-12-12, which no school calendar
+  // produces.
+  const [endDateTouched, setEndDateTouched] = useState(false);
   const [memberFee, setMemberFee] = useState(0);
   const [visibility, setVisibility] = useState<Visibility>('public');
   const [joinRequests, setJoinRequests] = useState(false);
@@ -134,6 +157,49 @@ function CreateClassContent() {
     setSubjectDropdownOpen(false);
   };
 
+  /*
+   * The end-date window, on Trinidad's calendar. `min` used to be the UTC date,
+   * which from 20:00 AST is already tomorrow, so the evening's own date was
+   * greyed out. `max` mirrors the API's two-year cap exactly (same
+   * setUTCFullYear arithmetic), so the picker never offers a date the save then
+   * refuses. Worked out on every render rather than held in state: a form left
+   * open past midnight should move with the day, and it costs nothing.
+   */
+  const today = trinidadToday();
+  const maxEndDate = maxClassEndDate(today);
+  const suggestion = suggestEndDate(level || null, today);
+  // A class created now is stamped with the current school year (migration
+  // 262's insert trigger does the same on the server), so its first move-up is
+  // the coming 1 July — unless it ends before then.
+  const progression = nextProgression(level || null, schoolYearOf(today), endDate || null);
+
+  const handleLevelChange = (next: string) => {
+    setLevel(next);
+    if (endDateTouched) return;
+    // A level with no suggestion (SEA, or back to "Select level…") clears the
+    // date rather than leaving the previous level's suggestion in the box. That
+    // date was worked out for a different level; left there it looks chosen and
+    // would be saved unread, while a blank box makes the tutor pick one.
+    setEndDate(suggestEndDate(next || null, trinidadToday())?.date ?? '');
+  };
+
+  const handleEndDateChange = (value: string) => {
+    setEndDate(value);
+    // Clearing the box counts as "not decided", so the next level change fills
+    // it again. The browser also reports '' while a date is half-typed, which
+    // lands in the same place and is harmless — the finished date marks it
+    // touched.
+    setEndDateTouched(value !== '');
+  };
+
+  const applySuggestedEndDate = () => {
+    if (!suggestion) return;
+    setEndDate(suggestion.date);
+    // Taking the suggestion is not choosing a date of their own, so a later
+    // level change is free to swap it for that level's suggestion.
+    setEndDateTouched(false);
+  };
+
   /**
    * `status` decides whether this publishes or saves a draft.
    *
@@ -146,9 +212,39 @@ function CreateClassContent() {
    * both of every new class. Relaxing that for drafts would create rows that
    * EndDateGate then blocks, which is the trap the duplicate-end-date bug came
    * from.
+   *
+   * Either way the tutor lands on the new class's Sessions tab with the
+   * scheduling pop-up open (?schedule=1), because a class without a schedule
+   * is invisible on the marketplace and the pop-up is where they also choose
+   * how students join. router.replace, not push: Back from the class page
+   * should not reopen this form, filled in, one click from creating the same
+   * class a second time.
    */
   const handleSubmit = async (status: 'PUBLISHED' | 'DRAFT') => {
     if (!profile?.id || !title.trim() || !endDate) return;
+    // The date input's min/max only shape the picker — a typed date, or one
+    // left in the box overnight, can still fall outside them, and nothing here
+    // is a <form> for the browser to validate. The API refuses the same
+    // dates, but its messages don't say what the latest allowed date is.
+    // Round-tripping through Date catches 2027-02-31, which Date would
+    // otherwise quietly roll into March.
+    const todayYmd = trinidadToday();
+    const latestYmd = maxClassEndDate(todayYmd);
+    const parsed = /^\d{4}-\d{2}-\d{2}$/.test(endDate) ? new Date(`${endDate}T00:00:00Z`) : null;
+    if (!parsed || !Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== endDate) {
+      setSaveError('The class end date isn’t a valid date. Pick one from the calendar.');
+      return;
+    }
+    if (endDate < todayYmd) {
+      setSaveError('The class end date can’t be in the past. Pick today or a later date.');
+      return;
+    }
+    if (endDate > latestYmd) {
+      setSaveError(
+        `The class end date can be at most ${MAX_CLASS_YEARS} years away — the latest is ${formatSchoolDate(latestYmd)}.`,
+      );
+      return;
+    }
     // A room is required once the format says the class meets in one. Checked
     // here rather than left to the API's 400, because the venue picker is
     // several fields above the submit button and a generic server error would
@@ -159,6 +255,10 @@ function CreateClassContent() {
     }
     setSubmitting(status);
     setSaveError(null);
+    // Set once the class exists and we are navigating away. The buttons stay
+    // disabled until the class page takes over — re-enabling them in `finally`
+    // left a window in which a second click created a second class.
+    let leaving = false;
     try {
       const res = await fetch('/api/groups', {
         method: 'POST',
@@ -168,8 +268,11 @@ function CreateClassContent() {
           tutorId: profile.id,
           name: title,
           subject,
-          formLevel: level,
-          form_level: level,
+          // null, not '', when no level is picked. The API passes '' straight
+          // through to groups.form_level, and an empty-string level is neither
+          // "no level" to the filters nor a level anything can label.
+          formLevel: level || null,
+          form_level: level || null,
           description: bio,
           // The TALLY, not a separately-typed number. A null seat cap means
           // 'no limit', and a class with any uncapped seat kind has no total —
@@ -201,7 +304,11 @@ function CreateClassContent() {
       });
       if (res.ok) {
         const data = await res.json();
-        router.push(`/tutor/classes/${data.group?.id ?? data.id ?? ''}`);
+        const newId: string | undefined = data.group?.id ?? data.id;
+        leaving = true;
+        // No id means the response shape changed under us; the class list is
+        // still somewhere the tutor can find what they just made.
+        router.replace(newId ? `/tutor/classes/${newId}?schedule=1` : '/tutor/classes');
         return;
       }
       // Previously this navigated to /tutor/classes on failure, so a rejected
@@ -213,7 +320,7 @@ function CreateClassContent() {
     } catch {
       setSaveError('We could not save this class — please check your connection and try again.');
     } finally {
-      setSubmitting(null);
+      if (!leaving) setSubmitting(null);
     }
   };
 
@@ -305,7 +412,7 @@ function CreateClassContent() {
               <Field label="Level">
                 <select
                   value={level}
-                  onChange={(e) => setLevel(e.target.value)}
+                  onChange={(e) => handleLevelChange(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand appearance-none"
                 >
                   <option value="">Select level…</option>
@@ -313,6 +420,22 @@ function CreateClassContent() {
                     <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
                 </select>
+                {/*
+                  * Said up front because the move-up is automatic and has no
+                  * opt-out: a tutor setting up a Form 4 class in September is
+                  * told now that it will read "Form 5" next July, rather than
+                  * finding out when it happens. A class that ends before then
+                  * never moves, and that is worth saying too — the level they
+                  * pick is the level it keeps.
+                  */}
+                {isProgressingLevel(level) && (
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    Form 1–4 classes move up a level each 1 July.{' '}
+                    {progression
+                      ? `This class becomes ${shortLevelLabel(progression.toLevel)} on ${formatSchoolDate(progression.on)}.`
+                      : `This class ends before then, so it stays ${shortLevelLabel(level)}.`}
+                  </p>
+                )}
               </Field>
             </div>
             <Field label="Class bio">
@@ -382,10 +505,41 @@ function CreateClassContent() {
               <input
                 type="date"
                 value={endDate}
-                min={new Date().toISOString().slice(0, 10)}
-                onChange={(e) => setEndDate(e.target.value)}
+                min={today}
+                max={maxEndDate}
+                onChange={(e) => handleEndDateChange(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand"
               />
+              {/*
+                * Children rather than the Field hint, which is a plain string
+                * and can't carry the button. The suggestion stays visible after
+                * the tutor picks their own date, so the reason behind it (the
+                * exam, or the end of the school year) is still there to weigh
+                * their date against.
+                */}
+              {suggestion ? (
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <p className="text-xs text-muted-foreground">
+                    Suggested for {shortLevelLabel(level)}:{' '}
+                    <span className="font-semibold text-ink">{formatSchoolDate(suggestion.date)}</span>,{' '}
+                    {suggestion.reason}.
+                  </p>
+                  {endDate !== suggestion.date && (
+                    <button
+                      type="button"
+                      onClick={applySuggestedEndDate}
+                      className="text-xs font-semibold text-brand-deep hover:underline"
+                    >
+                      Use suggested date
+                    </button>
+                  )}
+                </div>
+              ) : !endDate ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Pick an end date.
+                  {!level && ' Choose a level above and we’ll suggest one.'}
+                </p>
+              ) : null}
             </Field>
           </Card>
 
@@ -443,17 +597,32 @@ function CreateClassContent() {
 
           {/*
             * Stated here because this form never asks for a schedule — it is set
-            * afterwards, on the class page. Publishing therefore does NOT put the
-            * class on the marketplace on its own, and a tutor who is not told that
-            * reasonably assumes it did. On production 18 of 38 published classes
-            * have no schedule, which is what this gap produces.
+            * in the scheduling pop-up that opens on the class page straight after
+            * this saves (?schedule=1), along with how students join: Google Meet
+            * links generated per session, or the tutor's own class link.
+            * Publishing therefore does NOT put the class on the marketplace on
+            * its own, and a tutor who is not told that reasonably assumes it did
+            * — and may close the pop-up thinking the job is done. On production
+            * 18 of 38 published classes have no schedule, which is what this gap
+            * produces.
             */}
           <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />
             <p className="text-xs leading-relaxed text-amber-800">
-              <span className="font-semibold">One more step after this.</span> A class only appears
-              on the marketplace once it has a weekly schedule, and you add that on the class page
-              next. Until then students and parents can&rsquo;t find or enrol in it.
+              <span className="font-semibold">One more step after this.</span>{' '}
+              {type === 'group' && inPerson.classFormat === 'physical' ? (
+                // An in-person-only class has no online join, so the pop-up
+                // skips the link step for it — don't promise a choice it won't
+                // be offered.
+                <>Next you&rsquo;ll set the class schedule.</>
+              ) : (
+                <>
+                  Next you&rsquo;ll set the class schedule and choose how students join &mdash;
+                  Google Meet links we generate for each session, or your own class link.
+                </>
+              )}{' '}
+              A class only appears on the marketplace once it has a weekly schedule; until then
+              students and parents can&rsquo;t find or enrol in it.
             </p>
           </div>
 
@@ -477,7 +646,8 @@ function CreateClassContent() {
             </div>
           </div>
           <p className="text-xs text-muted-foreground text-right -mt-3">
-            A draft is saved but not listed. You can publish it from the class page.
+            A draft is saved but not listed. You&rsquo;ll still set its schedule next; publish it
+            later from the class&rsquo;s Settings.
           </p>
         </div>
       )}
