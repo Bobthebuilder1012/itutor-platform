@@ -36,7 +36,6 @@ type Group = {
   tutor_rating?: number;
   tutor_reviews?: number;
   enrollment_count?: number;
-  meeting_link?: string | null;
   upcoming_sessions?: SessionRow[];
 };
 
@@ -208,13 +207,18 @@ export default function StudentGroupPage({ params }: { params: { groupId: string
   async function loadGroup() {
     setLoading(true);
     try {
+      // No meeting_link here. A browser read of the groups row hands the
+      // class link to anyone signed in who opens this page, member or not,
+      // and a tutor's own link is usually a permanent room. The enrolled view
+      // asks GET /api/groups/[id]/meeting-link for it instead, which only
+      // answers the tutor and enrolled students (see ClassHomepage).
       const { data: grp } = await supabase
         .from('groups')
         .select(`
           id, name, description, subject, tutor_id, max_students,
           require_join_requests, feedback_mode, primary_channel,
           whatsapp_link, google_classroom_link, pricing, pricing_model,
-          visibility, archived_at, meeting_link,
+          visibility, archived_at,
           tutor:profiles!groups_tutor_id_fkey(full_name, display_name)
         `)
         .eq('id', groupId)
@@ -714,6 +718,24 @@ function ClassHomepage({ group, memberStatus, userId, subscriptionAccess }: { gr
   const isBanned = memberStatus === 'banned' || memberStatus === 'removed' || memberStatus === 'rejected';
   const blocked = isSuspended || isBanned;
 
+  // The header Join URL, from the one membership-gated source. A member gets
+  // { join_url }; anyone else, or a class with no link yet, gets a 403/404
+  // and simply sees no Join button. Asked here rather than in loadGroup so a
+  // student only browsing the class never makes the call at all.
+  const [joinUrl, setJoinUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (blocked) { setJoinUrl(null); return; }
+    let cancelled = false;
+    fetch(`/api/groups/${group.id}/meeting-link`, { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled) setJoinUrl(typeof d?.join_url === 'string' && d.join_url ? d.join_url : null);
+      })
+      .catch(() => { if (!cancelled) setJoinUrl(null); });
+    return () => { cancelled = true; };
+  }, [group.id, blocked]);
+
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="flex items-center justify-between gap-3">
@@ -740,8 +762,8 @@ function ClassHomepage({ group, memberStatus, userId, subscriptionAccess }: { gr
               )}
             </div>
           </div>
-          {!blocked && group.meeting_link && (
-            <a href={group.meeting_link}
+          {!blocked && joinUrl && (
+            <a href={joinUrl}
               target="_blank"
               rel="noreferrer"
               onClick={() => markGroupPresent(group.id, group.upcoming_sessions?.[0]?.id)}

@@ -8,10 +8,9 @@ import {
   Bell, X, Plus, ExternalLink, Trash2, Globe, Eye,
   Banknote, ListChecks, Video, MoreVertical, Pin, Sparkles, Link as LinkIcon, Paperclip, UploadCloud, AlertTriangle, ShieldAlert,
   Mail, MessageSquare, DollarSign, BarChart3, ArrowUp, ArrowDown, Lock,
-  Calendar as CalendarIcon, BookOpen, Ban, Repeat, Clock, Info, ArrowUpRight, ChevronRight,
+  Calendar as CalendarIcon, BookOpen, Ban, Clock, Info, ArrowUpRight, ChevronRight,
   RefreshCw,
 } from 'lucide-react';
-import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { useUnsavedGuard } from '@/lib/hooks/useUnsavedGuard';
@@ -110,8 +109,9 @@ type GroupSession = {
 import { type ScheduleEntry } from '@/lib/utils/scheduleFormat';
 import { preorderReasonMessage, type PreorderIneligibility } from '@/lib/payments/secureSpot';
 import ClassPausePanel from '@/components/tutor/ClassPausePanel';
-
-const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+import ScheduleSessionsModal, { type CreatedOccurrence } from '@/components/tutor/classes/ScheduleSessionsModal';
+import { ClassLinkPanel, providerLabel, useVideoConnection } from '@/components/tutor/classes/ClassLinkChoice';
+import type { MeetingLinkMode } from '@/lib/types/groups';
 
 // Link posts have no dedicated link_url column — the composer writes the raw
 // URL as its own line in message_body, so detect a line that IS a bare URL.
@@ -167,7 +167,20 @@ type GroupDetail = {
   rating?: number | null;
   reviewCount?: number;
   whatsappLink?: string;
-  meetingLink?: string;
+  /** groups.tutor_id — the class's owner, which is not the viewer in admin mode. */
+  tutorId: string | null;
+  /** groups.end_date as 'YYYY-MM-DD'. Sessions can't be scheduled past it. */
+  endDate: string | null;
+  // ── Class link (migration 262) ──
+  // One link per class. 'generated' = minted by POST /meeting-link on the first
+  // Join; 'custom' = the tutor's own room, opened as-is by every Join button.
+  // Always set (never undefined) — Settings compares JSON snapshots of this
+  // object, and a key that comes and goes would flag unsaved changes.
+  meetingLink: string;
+  meetingLinkMode: MeetingLinkMode;
+  meetingLinkGeneratedAt: string | null;
+  /** False when the row has no meeting_link_mode column: the own-link option is hidden. */
+  linkModeAvailable: boolean;
   coverImage?: string;
   scheduleDisplay?: string;
   scheduleData?: ScheduleEntry[];
@@ -190,13 +203,50 @@ function ClassHubContent() {
   const { profile, loading } = useProfile();
   const reconnectedFromOAuth = searchParams?.get('success') === 'true';
 
+  // What the URL asked for on arrival, read ONCE. The params are stripped from
+  // the address bar below so a refresh doesn't reopen the pop-up, and nothing
+  // may re-derive state from them afterwards.
+  //   ?schedule=1    the create page, straight after a class is made
+  //   ?tab=sessions  the Google / Zoom OAuth callback coming back to this class
+  //   ?error=…       that callback, when the connection didn't go through
+  const [arrival] = useState(() => ({
+    schedule: searchParams?.get('schedule') === '1',
+    sessionsTab: searchParams?.get('tab') === 'sessions',
+    oauthError: searchParams?.get('error') ?? null,
+  }));
+
   const [group, setGroup] = useState<GroupDetail | null>(null);
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [sessions, setSessions] = useState<GroupSession[]>([]);
   const [posts, setPosts] = useState<StreamPost[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
-  const [tab, setTab] = useState<Tab>('stream');
+  const [tab, setTab] = useState<Tab>(() => (arrival.schedule || arrival.sessionsTab ? 'sessions' : 'stream'));
   const [settingsDirty, setSettingsDirty] = useState(false);
+
+  // The scheduling pop-up lives here rather than in SessionsTab so it outlives
+  // anything that remounts the tab. `afterCreate` = it opened by itself after
+  // the class was made, so a backdrop click must not dismiss it.
+  const [scheduleModal, setScheduleModal] = useState<{ linkOnly: boolean; afterCreate: boolean } | null>(
+    () => (arrival.schedule ? { linkOnly: false, afterCreate: true } : null),
+  );
+  const [oauthError, setOauthError] = useState<string | null>(arrival.oauthError);
+
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      let changed = false;
+      for (const key of ['schedule', 'tab', 'error', 'detail']) {
+        if (url.searchParams.has(key)) { url.searchParams.delete(key); changed = true; }
+      }
+      // Passing window.history.state through keeps the App Router's own entry,
+      // and because it carries __NA, Next's patched replaceState skips its URL
+      // sync. So this only tidies the address bar: useSearchParams keeps its
+      // arrival values (?success=true still labels Join "Generate") and
+      // nothing re-renders. `error`/`detail` go too, or a refresh would show
+      // the OAuth failure again after it was dismissed.
+      if (changed) window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    } catch { /* cosmetic — the modal state above is already captured */ }
+  }, []);
 
   // Admin "Enter as Tutor" mode. null = undetermined (still resolving), false =
   // real tutor viewing their own class, true = a superadmin acting as tutor.
@@ -263,15 +313,34 @@ function ClassHubContent() {
     return () => { supabase.removeChannel(channel); };
   }, [id, adminMode]);
 
+  // Only the FIRST load shows the spinner. After that every fetchAll — the
+  // realtime member events below, the roster's refresh — runs in the
+  // background. Setting dataLoading again unmounted the whole hub, which threw
+  // away an open scheduling pop-up and any unsaved Settings draft every time a
+  // join request arrived.
+  const loadedOnceRef = useRef(false);
+  // Realtime INSERT + UPDATE often land together; only the newest fetch may
+  // write state, or an older, slower one could overwrite fresher results.
+  const fetchSeqRef = useRef(0);
+
   async function fetchAll(groupId: string) {
-    setDataLoading(true);
+    const seq = ++fetchSeqRef.current;
+    const superseded = () => seq !== fetchSeqRef.current;
+    if (!loadedOnceRef.current) setDataLoading(true);
     try {
       // Fetch group + active promotion in parallel. In admin mode the group row
       // comes from the server probe (service client) — the browser's RLS client
-      // can't read archived/private groups the admin doesn't own.
+      // can't read archived/private groups the admin doesn't own. A background
+      // refresh re-probes: reusing the arrival row would put back a class link
+      // the admin had just changed.
       const [groupRes, { data: promoRows }] = await Promise.all([
         adminMode
-          ? Promise.resolve({ data: adminGroupRow })
+          ? loadedOnceRef.current
+            ? fetch(`/api/admin/classes/${groupId}/access`)
+                .then((r) => (r.ok ? r.json() : null))
+                .then((j) => ({ data: j?.group ?? adminGroupRow }))
+                .catch(() => ({ data: adminGroupRow }))
+            : Promise.resolve({ data: adminGroupRow })
           : supabase.from('groups').select('*').eq('id', groupId).single(),
         // `.is('user_id', null)` keeps this to class-level promotions. Personal
         // coupons (migration 231) belong to one attendee; with `.limit(1)` here
@@ -279,6 +348,7 @@ function ClassHubContent() {
         // promotion and misreport the class's own discount to its tutor.
         supabase.from('group_promotions').select('*').eq('group_id', groupId).eq('active', true).is('user_id', null).limit(1),
       ]);
+      if (superseded()) return;
       const g = (groupRes as { data: any }).data;
       if (g) {
         const pricingModel = g.pricing_model ?? 'FREE';
@@ -328,7 +398,13 @@ function ClassHubContent() {
           earningsTtd: 0,
           totalSessionsRun: 0,
           whatsappLink: g.whatsapp_url ?? g.whatsapp_link ?? '',
+          tutorId: g.tutor_id ?? null,
+          endDate: typeof g.end_date === 'string' && g.end_date ? g.end_date.slice(0, 10) : null,
           meetingLink: g.meeting_link ?? '',
+          meetingLinkMode: g.meeting_link_mode === 'custom' ? 'custom' : 'generated',
+          meetingLinkGeneratedAt: g.meeting_link_generated_at ?? null,
+          // select('*') simply has no such key where migration 262 isn't applied.
+          linkModeAvailable: 'meeting_link_mode' in g,
           rating: null,
           reviewCount: 0,
           activePromotion,
@@ -358,6 +434,7 @@ function ClassHubContent() {
           }
         }
       } catch { /* leave empty */ }
+      if (superseded()) return;
 
       const now = new Date();
       function derivePaymentStatus(sub: any): 'paid' | 'pending' | 'overdue' | 'secured' {
@@ -400,6 +477,7 @@ function ClassHubContent() {
         const sRes = await fetch(`/api/groups/${groupId}/sessions`);
         if (sRes.ok) {
           const sJson = await sRes.json();
+          if (superseded()) return;
           setSessions((sJson.sessions ?? []).flatMap((s: any): GroupSession[] => {
             const durationMin = s.duration_minutes ?? s.duration_min ?? s.duration ?? 60;
             // If occurrences exist, use them as individual entries
@@ -439,6 +517,7 @@ function ClassHubContent() {
         const pRes = await fetch(`/api/groups/${groupId}/stream`);
         if (pRes.ok) {
           const pJson = await pRes.json();
+          if (superseded()) return;
           setPosts((pJson.posts ?? []).map((p: any): StreamPost => {
             const msgBody: string = p.message_body ?? p.body ?? p.content ?? '';
             const rawLines = msgBody.split('\n').filter(Boolean);
@@ -479,9 +558,47 @@ function ClassHubContent() {
     } catch {
       // keep empty state
     } finally {
-      setDataLoading(false);
+      // A superseded first load leaves the spinner to the fetch that replaced it.
+      if (!superseded()) {
+        loadedOnceRef.current = true;
+        setDataLoading(false);
+      }
     }
   }
+
+  // The pop-up hands back the server's own occurrence rows, so the cards carry
+  // real ids at once (Join, Attendance and Cancel all key on them). An older
+  // server that returns none gets a quiet refetch instead of invented ids.
+  const handleSessionsCreated = (occurrences: CreatedOccurrence[], durationMin: number) => {
+    if (!group) return;
+    if (occurrences.length === 0) { fetchAll(group.id); return; }
+    const now = Date.now();
+    const created: GroupSession[] = occurrences.map((o) => ({
+      id: o.id,
+      date: o.scheduled_start_at,
+      durationMin,
+      status: new Date(o.scheduled_start_at).getTime() > now ? 'upcoming' : 'past',
+      venueId: null,
+    }));
+    setSessions((prev) => [...prev, ...created].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
+  };
+
+  // Saved from the pop-up, the Sessions strip or Settings. A new generated
+  // link is minted on the next Join, so its timestamp resets whenever the mode
+  // changes or the link is the tutor's own.
+  const handleLinkSaved = (mode: MeetingLinkMode, url: string) =>
+    setGroup((g) => g ? {
+      ...g,
+      meetingLinkMode: mode,
+      meetingLink: url,
+      meetingLinkGeneratedAt: mode === 'custom' || mode !== g.meetingLinkMode ? null : g.meetingLinkGeneratedAt,
+    } : g);
+
+  const OAUTH_ERRORS: Record<string, string> = {
+    auth_failed: "Connecting your video account didn't finish. Please try again.",
+    connection_failed: "We couldn't save your video connection. Please try again.",
+    server_config: "Video connections aren't set up on this server. Please contact support.",
+  };
 
   if (loading || dataLoading || !group) {
     return <div className="min-h-[400px] flex items-center justify-center"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand" /></div>;
@@ -601,15 +718,56 @@ function ClassHubContent() {
           ))}
         </div>
 
+        {oauthError && (
+          <div role="alert" className="mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+            <AlertTriangle className="size-4 mt-0.5 shrink-0" />
+            <span className="flex-1 min-w-0">
+              {OAUTH_ERRORS[oauthError] ?? "Something went wrong connecting your video account. Please try again."}
+              <span className="ml-1 text-xs text-amber-700/80">({oauthError})</span>
+            </span>
+            <button onClick={() => setOauthError(null)} aria-label="Dismiss" className="shrink-0 size-6 grid place-items-center rounded-md hover:bg-amber-100">
+              <X className="size-3.5" />
+            </button>
+          </div>
+        )}
+
         <div className="mt-6">
           {tab === 'stream'    && <StreamTab group={group} posts={posts} setPosts={setPosts} />}
-          {tab === 'sessions'  && <SessionsTab sessions={sessions} groupId={group.id} setSessions={setSessions} meetingLink={group.meetingLink ?? ''} reconnected={reconnectedFromOAuth} group={group} />}
+          {tab === 'sessions'  && (
+            <SessionsTab
+              sessions={sessions}
+              groupId={group.id}
+              setSessions={setSessions}
+              reconnected={reconnectedFromOAuth}
+              group={group}
+              onOpenSchedule={(linkOnly) => setScheduleModal({ linkOnly, afterCreate: false })}
+              onLinkSaved={handleLinkSaved}
+            />
+          )}
           {tab === 'roster'    && <RosterTab members={members} setMembers={setMembers} group={group} isOneOnOne={isOneOnOne} atCapacity={atCapacity} onRefresh={() => fetchAll(group.id)} />}
           {tab === 'payments'  && <PaymentsGrid groupId={group.id} />}
           {tab === 'settings'  && <SettingsTab group={group} setGroup={setGroup} isOneOnOne={isOneOnOne} onDirtyChange={setSettingsDirty} enrolledCount={enrolledCount} />}
           {tab === 'analytics' && !isOneOnOne && <AnalyticsTab group={group} members={members} />}
         </div>
       </div>
+
+      {scheduleModal && (
+        <ScheduleSessionsModal
+          groupId={group.id}
+          tutorId={group.tutorId}
+          classEndDate={group.endDate}
+          classFormat={group.classFormat}
+          existing={sessions.map((s) => ({ date: s.date, durationMin: s.durationMin }))}
+          linkMode={group.meetingLinkMode}
+          link={group.meetingLink}
+          linkModeAvailable={group.linkModeAvailable}
+          linkOnly={scheduleModal.linkOnly}
+          dismissOnBackdrop={!scheduleModal.afterCreate}
+          onClose={() => setScheduleModal(null)}
+          onLinkSaved={handleLinkSaved}
+          onSessionsCreated={handleSessionsCreated}
+        />
+      )}
     </div>
   );
 }
@@ -617,6 +775,15 @@ function ClassHubContent() {
 /* ----------- Stream ----------- */
 function StreamTab({ group, posts, setPosts }: { group: GroupDetail; posts: StreamPost[]; setPosts: React.Dispatch<React.SetStateAction<StreamPost[]>> }) {
   const sorted = [...posts].sort((a, b) => (a.pinned ? -1 : 0) - (b.pinned ? -1 : 0));
+  // Generated links come from whichever provider the tutor connected — Zoom
+  // for some — so name it when we can tell. (An admin viewer can't, and gets
+  // the default.)
+  const connection = useVideoConnection(group.classFormat === 'physical' || group.meetingLinkMode === 'custom' ? null : group.tutorId);
+  const videoLabel = group.classFormat === 'physical'
+    ? 'In person'
+    : group.meetingLinkMode === 'custom'
+      ? 'Own link'
+      : providerLabel(connection.status === 'connected' ? connection.provider : null);
 
   const togglePin = async (id: string) => {
     const post = posts.find(p => p.id === id);
@@ -658,7 +825,7 @@ function StreamTab({ group, posts, setPosts }: { group: GroupDetail; posts: Stre
         <SideCard title="Class info">
           <InfoRow label="Subject" value={group.subject} />
           <InfoRow label="Level" value={formatLevel(group.level)} />
-          <InfoRow label="Video" value={group.videoProvider ?? '—'} />
+          <InfoRow label="Video" value={videoLabel} />
           <InfoRow label="Status" value={group.status} />
         </SideCard>
         <SideCard title="Pinned">
@@ -961,18 +1128,32 @@ function StreamCard({ post, onPin, onRemove }: { post: StreamPost; onPin: () => 
 }
 
 /* ----------- Sessions ----------- */
-type Recurrence = 'none' | 'daily' | 'weekly';
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
-  const h = Math.floor(i / 2), m = i % 2 === 0 ? '00' : '30';
-  const value = `${String(h).padStart(2, '0')}:${m}`;
-  const period = h < 12 ? 'AM' : 'PM';
-  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-  const label = `${h12}:${m} ${period}`;
-  return { value, label };
-});
+// The Add-session form, its preview and its clash check live in
+// components/tutor/classes/ScheduleSessionsModal, opened from ClassHubContent.
 
-function SessionRow({ s, groupId, meetingLink, selected, onSelect, onCancel, reconnected, venues, classVenueId }: { s: GroupSession; groupId: string; meetingLink: string; selected: boolean; onSelect: () => void; onCancel: () => void; reconnected?: boolean; venues?: Array<{ id: string; name: string }>; classVenueId?: string | null }) {
+// Shown when a custom-mode class has no link. The server's 422 for the same
+// case carries code 'no_class_link', which is what decides whether to offer
+// "Add class link" — not the wording, which is free to change.
+const NO_CLASS_LINK_MESSAGE =
+  "This class uses your own class link, but none is saved yet. Add it on the class's Sessions tab.";
+
+function SessionRow({ s, groupId, meetingLink, linkMode, classFormat, selected, onSelect, onCancel, reconnected, venues, classVenueId, onEditLink, onLinkMinted }: {
+  s: GroupSession;
+  groupId: string;
+  meetingLink: string;
+  linkMode: MeetingLinkMode;
+  classFormat: ClassFormat;
+  selected: boolean;
+  onSelect: () => void;
+  onCancel: () => void;
+  reconnected?: boolean;
+  venues?: Array<{ id: string; name: string }>;
+  classVenueId?: string | null;
+  /** Opens the link editor — offered when Join fails for want of a link. */
+  onEditLink?: () => void;
+  /** A generated link came back from Join; lets the page show it without a reload. */
+  onLinkMinted?: (url: string, mode: MeetingLinkMode) => void;
+}) {
   const d = new Date(s.date);
   const valid = !isNaN(d.getTime());
   const durationMin = s.durationMin ?? 60;
@@ -985,6 +1166,7 @@ function SessionRow({ s, groupId, meetingLink, selected, onSelect, onCancel, rec
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [joiningLink, setJoiningLink] = useState(false);
   const [joinError, setJoinError] = useState('');
+  const [joinNeedsLink, setJoinNeedsLink] = useState(false);
   const [relocateOpen, setRelocateOpen] = useState(false);
   const [relocating, setRelocating] = useState(false);
   const [venueId, setVenueId] = useState<string | null>(s.venueId ?? null);
@@ -1015,23 +1197,46 @@ function SessionRow({ s, groupId, meetingLink, selected, onSelect, onCancel, rec
     }
   };
 
+  // Popup blockers only allow a window opened inside the click itself. So the
+  // tutor's own link opens synchronously, with no request in front of it, and
+  // a generated link opens a blank tab FIRST and points it at the link once
+  // the POST answers — opening after the await is what got blocked.
   const handleJoin = async () => {
-    setJoiningLink(true); setJoinError('');
+    setJoinError('');
+    setJoinNeedsLink(false);
+    if (linkMode === 'custom') {
+      if (!meetingLink) { setJoinNeedsLink(true); setJoinError(NO_CLASS_LINK_MESSAGE); return; }
+      window.open(meetingLink, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    const w = window.open('about:blank', '_blank');
+    // Severed by hand rather than with 'noopener' in the features string,
+    // which makes window.open return null and leaves nothing to navigate.
+    if (w) w.opener = null;
+    setJoiningLink(true);
     try {
       const res = await fetch(`/api/groups/${groupId}/meeting-link`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
       if (res.status === 401 && json?.error === 'token_expired') {
+        w?.close();
         window.location.href = json.reconnectUrl;
         return;
       }
-      if (!res.ok) throw new Error(json?.error ?? 'Could not generate link');
-      const url = json?.join_url;
-      if (url) window.open(url, '_blank', 'noreferrer');
-      else throw new Error('No link returned');
+      if (!res.ok) {
+        if (json?.code === 'no_class_link') setJoinNeedsLink(true);
+        throw new Error(json?.error ?? 'Could not generate link');
+      }
+      const url: string | undefined = json?.join_url;
+      if (!url) throw new Error('No link returned');
+      if (w && !w.closed) w.location.href = url;
+      else window.open(url, '_blank', 'noopener,noreferrer');
+      onLinkMinted?.(url, json?.mode === 'custom' ? 'custom' : 'generated');
     } catch (e: any) {
+      w?.close();
       setJoinError(e?.message ?? 'Failed to get meeting link');
     } finally {
       setJoiningLink(false);
@@ -1115,12 +1320,15 @@ function SessionRow({ s, groupId, meetingLink, selected, onSelect, onCancel, rec
               <ListChecks className="size-3.5" /> Attendance
             </Link>
           )}
-          <button
-            onClick={handleJoin}
-            disabled={joiningLink}
-            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90 disabled:opacity-60">
-            <Video className="size-3.5" /> {joiningLink ? 'Getting link…' : reconnected ? 'Generate' : 'Join'}
-          </button>
+          {/* Nothing to join in a room. */}
+          {classFormat !== 'physical' && (
+            <button
+              onClick={handleJoin}
+              disabled={joiningLink}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90 disabled:opacity-60">
+              <Video className="size-3.5" /> {joiningLink ? 'Getting link…' : reconnected && linkMode === 'generated' ? 'Generate' : 'Join'}
+            </button>
+          )}
           <button
             onClick={() => setConfirmCancel(true)}
             className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-rose-200 text-rose-600 text-xs font-semibold hover:bg-rose-50 transition">
@@ -1134,7 +1342,10 @@ function SessionRow({ s, groupId, meetingLink, selected, onSelect, onCancel, rec
           <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-2xl bg-background border border-border shadow-xl p-6 space-y-3">
             <div className="font-bold text-ink text-lg">Could not get meeting link</div>
             <p className="text-sm text-muted-foreground">{joinError}</p>
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
+              {joinNeedsLink && onEditLink && (
+                <button onClick={() => { setJoinError(''); onEditLink(); }} className="px-4 py-2 rounded-xl border border-border text-sm font-semibold hover:bg-muted">Add class link</button>
+              )}
               <button onClick={() => setJoinError('')} className="px-4 py-2 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand/90">OK</button>
             </div>
           </div>
@@ -1162,7 +1373,16 @@ function SessionRow({ s, groupId, meetingLink, selected, onSelect, onCancel, rec
   );
 }
 
-function SessionsTab({ sessions, groupId, setSessions, meetingLink, reconnected, group }: { sessions: GroupSession[]; groupId: string; setSessions: React.Dispatch<React.SetStateAction<GroupSession[]>>; meetingLink: string; reconnected?: boolean; group: GroupDetail }) {
+function SessionsTab({ sessions, groupId, setSessions, reconnected, group, onOpenSchedule, onLinkSaved }: {
+  sessions: GroupSession[];
+  groupId: string;
+  setSessions: React.Dispatch<React.SetStateAction<GroupSession[]>>;
+  reconnected?: boolean;
+  group: GroupDetail;
+  /** Opens the scheduling pop-up — at step 1, or straight at the link step. */
+  onOpenSchedule: (linkOnly: boolean) => void;
+  onLinkSaved: (mode: MeetingLinkMode, url: string) => void;
+}) {
   // Sessions arrive grouped by series (every Monday, then every Tuesday),
   // so a two-day class read as two separate years-long lists. Sort across
   // series: upcoming soonest first, history most recent first.
@@ -1171,6 +1391,7 @@ function SessionsTab({ sessions, groupId, setSessions, meetingLink, reconnected,
   const history = sessions.filter((s) => s.status !== 'upcoming').sort((a, b) => byTime(b) - byTime(a));
   const [view, setView] = useState<'upcoming' | 'history'>('upcoming');
   const shown = view === 'upcoming' ? upcoming : history;
+  const physical = group.classFormat === 'physical';
   // Loaded once, here rather than per row: a class with twenty sessions
   // would otherwise make twenty identical requests the moment it renders.
   // Only for classes that meet somewhere — an online class has nowhere to
@@ -1185,11 +1406,8 @@ function SessionsTab({ sessions, groupId, setSessions, meetingLink, reconnected,
       .catch(() => {});
     return () => { alive = false; };
   }, [group.classFormat]);
-  const [addOpen, setAddOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
-  const [conflictDates, setConflictDates] = useState<Date[]>([]);
 
   const toggleSelect = (id: string) =>
     setSelectedIds((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -1209,124 +1427,15 @@ function SessionsTab({ sessions, groupId, setSessions, meetingLink, reconnected,
     setBulkDeleting(false);
   };
 
-  const blankForm = () => {
-    const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
-    return {
-      date: tomorrow.toISOString().slice(0, 10),
-      time: '16:00',
-      duration: 60,
-      recurrence: 'none' as Recurrence,
-      weekdays: [tomorrow.getDay()],
-      endDate: '',
-      notes: '',
-    };
-  };
-  const [form, setForm] = useState(blankForm);
-
-  const buildOccurrences = (): Date[] => {
-    if (!form.date) return [];
-    const [hh, mm] = form.time.split(':').map(Number);
-    const start = new Date(`${form.date}T${form.time}`);
-    if (form.recurrence === 'none') return [start];
-    const horizon = form.endDate ? new Date(`${form.endDate}T23:59:59`) : (() => { const d = new Date(start); d.setMonth(d.getMonth() + 3); return d; })();
-    const out: Date[] = [];
-    const cursor = new Date(start);
-    while (cursor <= horizon && out.length < 60) {
-      if (form.recurrence === 'daily') { out.push(new Date(cursor)); cursor.setDate(cursor.getDate() + 1); }
-      else { if (form.weekdays.includes(cursor.getDay())) out.push(new Date(cursor)); cursor.setDate(cursor.getDate() + 1); }
-    }
-    return out;
-  };
-  const occurrences = buildOccurrences();
-
-  const detectConflicts = (): Date[] => {
-    return occurrences.filter((newOcc) => {
-      const newStart = newOcc.getTime();
-      const newEnd = newStart + form.duration * 60000;
-      return sessions.some((existing) => {
-        const existStart = new Date(existing.date).getTime();
-        if (isNaN(existStart)) return false;
-        const existEnd = existStart + (existing.durationMin ?? 60) * 60000;
-        return newStart < existEnd && newEnd > existStart;
-      });
-    });
-  };
-
-  const handleAddSession = () => {
-    if (!form.date) return;
-    const conflicts = detectConflicts();
-    if (conflicts.length > 0) { setConflictDates(conflicts); return; }
-    createSession();
-  };
-
-  const createSession = async () => {
-    if (!form.date) return;
-    setSaving(true);
-    setConflictDates([]);
-    try {
-      // The API expects a single session record with recurrence info —
-      // it generates all occurrences server-side.
-      // A recurring series covers many dates, so naming it after the first one
-      // is wrong the moment the second occurrence exists — that is how every
-      // row of a weekly class ended up reading "Session — Wed, Sep 9". One-off
-      // sessions keep the dated name, because for them it is accurate.
-      const startsAt = new Date(form.date + 'T' + form.time);
-      const title =
-        form.recurrence === 'weekly'
-          ? `Weekly session — ${
-              (form.weekdays ?? []).length
-                ? (form.weekdays as number[])
-                    .slice()
-                    .sort((a, b) => a - b)
-                    .map((d) => DAY_NAMES[d]?.slice(0, 3))
-                    .filter(Boolean)
-                    .join(', ')
-                : startsAt.toLocaleDateString(undefined, { weekday: 'long' })
-            }`
-          : form.recurrence === 'daily'
-            ? 'Daily session'
-            : `Session — ${startsAt.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}`;
-      const payload = {
-        title,
-        start_time: form.time,             // "HH:MM"
-        starts_on: form.date,              // "YYYY-MM-DD"
-        ends_on: form.endDate || null,
-        duration_minutes: form.duration,
-        recurrence_type: form.recurrence,  // "none" | "daily" | "weekly"
-        recurrence_days: form.recurrence === 'weekly' ? form.weekdays : [],
-        // Ignored by the API, which resolves class times in Trinidad time. Left
-        // only so older deployments keep working; note this caller used the
-        // opposite sign to every other one, which is what broke the times.
-        timezone_offset: new Date().getTimezoneOffset(),
-      };
-
-      const res = await fetch(`/api/groups/${groupId}/sessions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error ?? `Failed (${res.status})`);
-
-      // Add occurrences returned by the server to local state
-      const serverOccs: GroupSession[] = (json.session?.occurrences ?? occurrences.map((d) => ({ scheduled_start_at: d.toISOString() }))).map((o: any) => ({
-        id: o.id ?? `tmp-${Date.now()}-${Math.random()}`,
-        date: o.scheduled_start_at ?? o,
-        durationMin: form.duration,
-        status: 'upcoming' as const,
-      }));
-      setSessions((prev) => [...prev, ...serverOccs].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
-      setAddOpen(false);
-      setForm(blankForm());
-    } catch (e: any) {
-      alert(e?.message ?? 'Failed to create session');
-    } finally {
-      setSaving(false);
+  // A Join that mints a Meet link stores it on the class; mirror it so the
+  // strip and Settings show the link without a reload. Only for generated
+  // mode — a stale page whose server now says 'custom' gets a real refresh
+  // from the next fetchAll instead of a guess here.
+  const handleLinkMinted = (url: string, mode: MeetingLinkMode) => {
+    if (mode === 'generated' && group.meetingLinkMode === 'generated' && url !== group.meetingLink) {
+      onLinkSaved('generated', url);
     }
   };
-
-  const toggleWeekday = (i: number) =>
-    setForm((f) => ({ ...f, weekdays: f.weekdays.includes(i) ? f.weekdays.filter((x) => x !== i) : [...f.weekdays, i].sort() }));
 
   return (
     <div className="space-y-4">
@@ -1335,138 +1444,47 @@ function SessionsTab({ sessions, groupId, setSessions, meetingLink, reconnected,
           <h2 className="text-lg font-bold text-ink">Sessions</h2>
           <p className="text-xs text-muted-foreground">{upcoming.length} upcoming · {history.length} in history · manage attendance and join links.</p>
         </div>
-        <button onClick={() => setAddOpen(true)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90">
+        <button onClick={() => onOpenSchedule(false)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90">
           <Plus className="size-3.5" /> Add Session
         </button>
       </div>
 
-      {/* Add Session Modal */}
-      {addOpen && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setAddOpen(false)}>
-          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-lg rounded-2xl bg-background shadow-xl border border-border max-h-[90vh] flex flex-col">
-            <div className="px-5 py-4 border-b border-border flex items-center justify-between shrink-0">
-              <div><div className="font-bold text-ink">Add session</div><div className="text-xs text-muted-foreground mt-0.5">Students will see this on their calendar</div></div>
-              <button onClick={() => setAddOpen(false)} className="size-8 grid place-items-center rounded-lg hover:bg-muted"><X className="size-4" /></button>
+      {/* The marketplace lists a class by its upcoming schedule (see the gate
+          in GET /api/groups), and students join sessions, so a class with
+          nothing ahead is invisible and unjoinable — say so where it's fixed. */}
+      {upcoming.length === 0 && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="flex items-start gap-3 flex-1 min-w-0">
+            <div className="size-9 rounded-xl bg-amber-100 grid place-items-center shrink-0">
+              <CalendarIcon className="size-4 text-amber-700" />
             </div>
-            <div className="p-5 space-y-4 overflow-y-auto">
-              {/* Date + time */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Date</label>
-                  <input type="date" value={form.date} min={new Date().toISOString().slice(0, 10)}
-                    onChange={(e) => setForm({ ...form, date: e.target.value })}
-                    className="mt-1 w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
-                </div>
-                <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Start time</label>
-                  <div className="mt-1 relative">
-                    <Clock className="size-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                    <select value={form.time} onChange={(e) => setForm({ ...form, time: e.target.value })}
-                      className="w-full pl-9 pr-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand appearance-none">
-                      {TIME_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                    </select>
-                  </div>
-                </div>
+            <div className="text-sm text-amber-900">
+              <div className="font-semibold">
+                {history.length === 0 ? 'No schedule yet' : 'No upcoming sessions'} — students can&apos;t find or join this class until it has one.
               </div>
-
-              {/* Duration */}
-              <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Duration</label>
-                <div className="mt-1 flex gap-2 flex-wrap">
-                  {[30, 60, 90, 120, 180, 300].map((d) => (
-                    <button key={d} onClick={() => setForm({ ...form, duration: d })}
-                      className={cn('px-3 py-1.5 rounded-lg border text-xs font-semibold',
-                        form.duration === d ? 'bg-brand/10 border-brand text-brand-deep' : 'border-border bg-background text-muted-foreground hover:text-ink')}>
-                      {d < 60 ? `${d} min` : d % 60 === 0 ? `${d / 60} hr` : `${Math.floor(d / 60)}h ${d % 60}m`}
-                    </button>
-                  ))}
-                </div>
-                <div className="mt-2 flex items-center gap-2">
-                  <button onClick={() => setForm((f) => ({ ...f, duration: Math.max(15, f.duration - 15) }))}
-                    className="size-8 grid place-items-center rounded-lg border border-border hover:bg-muted text-sm font-bold">−</button>
-                  <div className="text-sm font-semibold text-ink w-20 text-center">
-                    {form.duration < 60 ? `${form.duration} min` : form.duration % 60 === 0 ? `${form.duration / 60} hr` : `${Math.floor(form.duration / 60)}h ${form.duration % 60}m`}
-                  </div>
-                  <button onClick={() => setForm((f) => ({ ...f, duration: Math.min(300, f.duration + 15) }))}
-                    className="size-8 grid place-items-center rounded-lg border border-border hover:bg-muted text-sm font-bold">+</button>
-                  <span className="text-xs text-muted-foreground">15 min steps · max 5 hr</span>
-                </div>
-              </div>
-
-              {/* Recurrence */}
-              <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5"><Repeat className="size-3.5" /> Recurrence</label>
-                <div className="mt-1 grid grid-cols-3 gap-2">
-                  {(['none', 'daily', 'weekly'] as Recurrence[]).map((r) => (
-                    <button key={r} onClick={() => setForm({ ...form, recurrence: r })}
-                      className={cn('px-3 py-2 rounded-lg border text-xs font-semibold capitalize',
-                        form.recurrence === r ? 'bg-brand/10 border-brand text-brand-deep' : 'border-border bg-background text-muted-foreground hover:text-ink')}>
-                      {r === 'none' ? 'One-off' : r}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {form.recurrence === 'weekly' && (
-                <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Repeat on</label>
-                  <div className="mt-1 flex gap-1.5 flex-wrap">
-                    {WEEKDAYS.map((w, i) => (
-                      <button key={w} onClick={() => toggleWeekday(i)}
-                        className={cn('size-10 rounded-lg border text-xs font-semibold',
-                          form.weekdays.includes(i) ? 'bg-brand text-white border-brand' : 'border-border bg-background text-muted-foreground hover:text-ink')}>
-                        {w[0]}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {form.recurrence !== 'none' && (
-                <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">End date <span className="font-normal lowercase opacity-70">(optional · default 3 months)</span></label>
-                  <input type="date" value={form.endDate} min={form.date}
-                    onChange={(e) => setForm({ ...form, endDate: e.target.value })}
-                    className="mt-1 w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
-                </div>
-              )}
-
-              {/* Notes */}
-              <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Notes (optional)</label>
-                <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                  placeholder="Topic, prep, anything students should know…"
-                  className="mt-1 w-full min-h-20 px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
-              </div>
-
-              {/* Preview */}
-              {form.recurrence !== 'none' && occurrences.length > 0 && (
-                <div className="rounded-lg bg-brand/5 border border-brand/20 px-3 py-2 text-xs text-brand-deep">
-                  Will create <strong>{occurrences.length}</strong> session{occurrences.length !== 1 ? 's' : ''} between{' '}
-                  <strong>{format(occurrences[0], 'MMM d')}</strong> and <strong>{format(occurrences[occurrences.length - 1], 'MMM d, yyyy')}</strong>.
-                </div>
-              )}
-
-              <div className="rounded-lg bg-muted/40 border border-dashed border-border px-3 py-2 text-[11px] text-muted-foreground flex items-start gap-2">
-                <Video className="size-3.5 mt-0.5 shrink-0 text-brand-deep" />
-                Meeting links are auto-generated from your connected video provider when each session goes live.
-              </div>
-            </div>
-            <div className="px-5 py-3 border-t border-border flex justify-end gap-2 shrink-0">
-              <button onClick={() => setAddOpen(false)} className="px-3 py-1.5 rounded-lg text-sm text-muted-foreground hover:bg-muted">Cancel</button>
-              <button onClick={handleAddSession} disabled={!form.date || saving}
-                className="px-4 py-1.5 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand/90 disabled:opacity-50">
-                {saving ? 'Saving…' : form.recurrence === 'none' ? 'Add session' : `Add ${occurrences.length} session${occurrences.length !== 1 ? 's' : ''}`}
-              </button>
+              <div className="text-xs text-amber-800 mt-0.5">Set the days and times it meets, and how students join.</div>
             </div>
           </div>
+          <button onClick={() => onOpenSchedule(false)}
+            className="shrink-0 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand/90">
+            <CalendarIcon className="size-3.5" /> Set schedule
+          </button>
         </div>
       )}
 
-      <div className="rounded-xl border border-dashed border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground flex items-start gap-2">
-        <Video className="size-3.5 mt-0.5 shrink-0 text-brand-deep" />
-        Meeting links are generated automatically from your connected video provider.
-      </div>
+      {/* How students join. Nothing to join for an in-person-only class. */}
+      {!physical && (
+        <ClassLinkPanel
+          compact
+          groupId={groupId}
+          tutorId={group.tutorId}
+          mode={group.meetingLinkMode}
+          url={group.meetingLink}
+          linkModeAvailable={group.linkModeAvailable}
+          onEdit={() => onOpenSchedule(true)}
+          onSaved={onLinkSaved}
+        />
+      )}
 
       <div className="inline-flex rounded-lg border border-border p-0.5 text-xs font-semibold">
         {(['upcoming', 'history'] as const).map((v) => (
@@ -1502,7 +1520,7 @@ function SessionsTab({ sessions, groupId, setSessions, meetingLink, reconnected,
         </div>
       )}
 
-      {sessions.length === 0 && <EmptyState icon={CalendarIcon} title="No sessions scheduled" body="Add your first session to publish a calendar entry to enrolled students." />}
+      {/* With no sessions at all the banner above already says what to do. */}
       {sessions.length > 0 && shown.length === 0 && (
         <p className="text-sm text-muted-foreground py-6 text-center">{view === 'upcoming' ? 'No upcoming sessions.' : 'No past sessions yet.'}</p>
       )}
@@ -1512,51 +1530,20 @@ function SessionsTab({ sessions, groupId, setSessions, meetingLink, reconnected,
             key={s.id}
             s={s}
             groupId={groupId}
-            meetingLink={meetingLink}
+            meetingLink={group.meetingLink}
+            linkMode={group.meetingLinkMode}
+            classFormat={group.classFormat}
             venues={venues}
             classVenueId={group.venueId}
             selected={selectedIds.has(s.id)}
             onSelect={() => toggleSelect(s.id)}
             onCancel={() => { setSessions((prev) => prev.filter((x) => x.id !== s.id)); setSelectedIds((p) => { const n = new Set(p); n.delete(s.id); return n; }); }}
             reconnected={reconnected}
+            onEditLink={() => onOpenSchedule(true)}
+            onLinkMinted={handleLinkMinted}
           />
         ))}
       </div>
-
-      {/* Conflict warning modal */}
-      {conflictDates.length > 0 && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md rounded-2xl bg-background border border-border shadow-xl p-6 space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="size-10 rounded-xl bg-amber-100 grid place-items-center shrink-0">
-                <AlertTriangle className="size-5 text-amber-600" />
-              </div>
-              <div>
-                <div className="font-bold text-ink text-lg">Time conflict detected</div>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  The following {conflictDates.length === 1 ? 'time' : 'times'} overlap with an existing session in this class:
-                </p>
-              </div>
-            </div>
-            <ul className="space-y-1 text-sm bg-amber-50 rounded-xl p-3 border border-amber-200">
-              {conflictDates.map((d, i) => (
-                <li key={i} className="text-amber-900 font-medium">
-                  {d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · {d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                </li>
-              ))}
-            </ul>
-            <div className="flex justify-end gap-2 pt-1">
-              <button onClick={() => setConflictDates([])} className="px-4 py-2 rounded-xl border border-border text-sm font-semibold hover:bg-muted">
-                Change time
-              </button>
-              <button onClick={() => { setConflictDates([]); createSession(); }}
-                className="px-4 py-2 rounded-xl bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700">
-                Add anyway
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -2294,6 +2281,7 @@ const SETTINGS_SECTIONS = [
   { id: 'inperson',  label: 'In person',         icon: MapPin },
   { id: 'billing',   label: 'Billing',           icon: DollarSign },
   { id: 'access',    label: 'Access & policies', icon: Lock },
+  { id: 'classlink', label: 'Class link',        icon: Video },
   { id: 'channels',  label: 'Communication',     icon: MessageSquare },
   { id: 'feedback',  label: 'Parent feedback',   icon: Mail },
   { id: 'danger',    label: 'Danger zone',        icon: AlertTriangle },
@@ -2418,7 +2406,22 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
         'prepaid': 'FREE',
       };
 
+      // The level this draft was built from. form_level is sent only when the
+      // tutor actually changed it: every Form 1–4 class moves up a form on
+      // 1 July (the progress-class-levels cron), and a Settings tab left open
+      // across that night would otherwise put the old level back on its next
+      // save — and re-stamp the school year, so it would never move up again.
+      const savedLevel = (JSON.parse(savedRef.current) as GroupDetail).level;
+      const levelChanged = draft.level !== savedLevel;
+
       // Basics + capacity/billing → existing groups PATCH (name, description, subject, level, capacity, price, billing model)
+      //
+      // schedule_display / schedule_data are NOT sent. They were echo-only once
+      // the Settings schedule picker went (the Sessions tab is the schedule),
+      // and on an environment where those columns don't exist sending them made
+      // the route fall back to an attempt that writes only name, description,
+      // subject and cover — silently dropping level, capacity, status and
+      // format. (Main still has the picker; don't carry this line there alone.)
       const basicRes = await fetch(`/api/groups/${draft.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -2426,10 +2429,8 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
           name: draft.title || 'Untitled class',
           description: draft.description || null,
           cover_image: draft.coverImage?.trim() || null,
-          schedule_display: draft.scheduleDisplay?.trim() || null,
-          schedule_data: draft.scheduleData?.length ? JSON.stringify(draft.scheduleData) : null,
           subject: draft.subject && draft.subject !== '—' ? draft.subject : null,
-          form_level: draft.level && draft.level !== '—' ? draft.level : null,
+          ...(levelChanged ? { form_level: draft.level && draft.level !== '—' ? draft.level : null } : {}),
           max_students: draft.capacity > 0 ? draft.capacity : 20,
           status: draft.visibility === 'private' ? 'DRAFT' : 'PUBLISHED',
           // In person (migration 242). Sent to the groups PATCH rather than the
@@ -2472,7 +2473,10 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
           primary_channel: draft.primaryChannel,
           whatsapp_url: draft.whatsappLink || null,
           google_classroom_link: draft.googleClassroomLink || null,
-          meeting_link: draft.meetingLink || null,
+          // No meeting_link: the class link has its own section and its own
+          // save (ClassLinkPanel), which sends it together with its mode. The
+          // route ignores a bare meeting_link anyway, so resending the draft's
+          // copy could only ever look like it did something.
           parent_feedback_mode: draft.feedbackMode,
           parent_feedback_price: draft.feedbackMode === 'paid_addon' ? (draft.parentFeedbackPrice ?? 0) : null,
           price_monthly: draft.pricePerSession ?? 0,
@@ -2491,7 +2495,17 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
         throw new Error(detail);
       }
 
-      setGroup((g) => g ? { ...g, ...draft } : g);
+      // The link fields are the class's, not the draft's — they are saved
+      // separately and may have changed (a Join minting a Meet link) since the
+      // draft was taken.
+      setGroup((g) => g ? {
+        ...g,
+        ...draft,
+        meetingLink: g.meetingLink,
+        meetingLinkMode: g.meetingLinkMode,
+        meetingLinkGeneratedAt: g.meetingLinkGeneratedAt,
+        linkModeAvailable: g.linkModeAvailable,
+      } : g);
       savedRef.current = JSON.stringify(draft);
       setSaveOk(true);
       setTimeout(() => setSaveOk(false), 2500);
@@ -2506,6 +2520,21 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
     const parsed = JSON.parse(savedRef.current) as GroupDetail;
     setDraft({ ...parsed });
     setSubjectSearch(parsed.subject && parsed.subject !== '—' ? parsed.subject : '');
+  };
+
+  // Class link saves on its own, outside the draft and the unsaved bar. The
+  // result is folded into the class, the draft AND the saved snapshot at once;
+  // leaving either copy behind would light up "unsaved changes" for something
+  // that is already saved (or have Discard put the old link back on screen).
+  const handleClassLinkSaved = (mode: MeetingLinkMode, url: string) => {
+    const patch = {
+      meetingLinkMode: mode,
+      meetingLink: url,
+      meetingLinkGeneratedAt: mode === 'custom' || mode !== group.meetingLinkMode ? null : group.meetingLinkGeneratedAt,
+    };
+    setGroup((g) => g ? { ...g, ...patch } : g);
+    setDraft((prev) => ({ ...prev, ...patch }));
+    savedRef.current = JSON.stringify({ ...(JSON.parse(savedRef.current) as GroupDetail), ...patch });
   };
 
   const handleDelete = async (force = false) => {
@@ -2551,7 +2580,11 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
       <div className="grid lg:grid-cols-[220px_1fr] gap-6">
         {/* Sidebar nav */}
         <nav className="space-y-1">
-          {SETTINGS_SECTIONS.filter((s) => s.id !== 'inperson' || physicalClasses).map((s) => {
+          {SETTINGS_SECTIONS.filter((s) =>
+            (s.id !== 'inperson' || physicalClasses) &&
+            // An in-person-only class has nothing to join.
+            (s.id !== 'classlink' || group.classFormat !== 'physical')
+          ).map((s) => {
             const Icon = s.icon;
             const active = section === s.id;
             const danger = s.id === 'danger';
@@ -2801,6 +2834,23 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
                     className="w-32 px-3 py-2 rounded-lg border border-border bg-background text-sm" />
                 </SetField>
               )}
+            </>
+          )}
+
+          {section === 'classlink' && group.classFormat !== 'physical' && (
+            <>
+              <SettingsHead
+                title="Class link"
+                desc="How students join your online sessions. This saves on its own — it isn't part of the Save button for the rest of Settings."
+              />
+              <ClassLinkPanel
+                groupId={group.id}
+                tutorId={group.tutorId}
+                mode={group.meetingLinkMode}
+                url={group.meetingLink}
+                linkModeAvailable={group.linkModeAvailable}
+                onSaved={handleClassLinkSaved}
+              />
             </>
           )}
 

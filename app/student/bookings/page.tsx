@@ -445,15 +445,31 @@ function ClassJoinButton({ groupId }: { groupId: string }) {
   const [err, setErr] = useState('');
 
   const join = useCallback(async () => {
+    // Open the tab now, while we are still inside the click. A window.open
+    // that runs after an await is no longer tied to a user gesture, so
+    // popup blockers (Safari on iOS in particular) swallowed it and Join
+    // looked dead. The blank tab is pointed at the link once it arrives.
+    const w = window.open('about:blank', '_blank');
     setLoading(true); setErr('');
     try {
       const res = await fetch(`/api/groups/${groupId}/meeting-link`);
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? 'No link available');
       const url = json?.join_url;
-      if (url) window.open(url, '_blank', 'noreferrer');
-      else throw new Error('No link available yet.');
+      // The tab we opened is about:blank, which shares this page's origin,
+      // so only ever send it to a web address. Class links are https-only
+      // in the database; this keeps that true here even if one slips by.
+      if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) throw new Error('No link available yet.');
+      if (w) {
+        w.opener = null;
+        w.location.href = url;
+      } else {
+        // Blocked anyway (or opened in a way that hid the handle): go there
+        // in this tab rather than do nothing.
+        window.location.href = url;
+      }
     } catch (e: any) {
+      w?.close();
       setErr(e?.message ?? 'Could not get link');
     } finally {
       setLoading(false);
