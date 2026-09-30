@@ -180,7 +180,7 @@ export async function fulfilClassInvite(
         via: params.via ?? (invite.role === 'parent' ? 'parent' : 'student'),
         days_since_sent: daysSinceSent,
       },
-      invite.tutor_id
+      { userId: invite.tutor_id }
     );
 
     await markGoalIfMet(admin, invite.tutor_id);
@@ -244,7 +244,7 @@ async function markGoalIfMet(admin: SupabaseClient, tutorId: string): Promise<vo
     await trackForUser(
       PRODUCT_EVENTS.LAUNCH_GOAL_MET,
       { joined: students.size, days_to_goal: daysToGoal },
-      tutorId
+      { userId: tutorId }
     );
   } catch (err) {
     console.error('[classInvites] goal stamp threw:', err);

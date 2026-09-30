@@ -259,8 +259,11 @@ export async function loadFinderSupply(service: SupabaseClient): Promise<SupplyR
   const out: SupplyRow[] = [];
 
   for (const row of visible) {
+    // The class's real sessions only. resolveScheduleEntries stopped reading
+    // the hand-typed schedule_data when the Sessions tab became the single
+    // source of a class's schedule (24ae2d1a), so passing it here no longer
+    // type-checks — and it was ignored anyway.
     const entries = resolveScheduleEntries({
-      scheduleData: row.schedule_data ?? null,
       sessionRows: rulesByGroup.get(row.id) ?? [],
       occurrences: occurrencesByGroup.get(row.id) ?? [],
     });
