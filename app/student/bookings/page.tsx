@@ -460,13 +460,18 @@ function ClassJoinButton({ groupId }: { groupId: string }) {
       // so only ever send it to a web address. Class links are https-only
       // in the database; this keeps that true here even if one slips by.
       if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) throw new Error('No link available yet.');
-      if (w) {
+      if (w && !w.closed) {
         w.opener = null;
         w.location.href = url;
       } else {
-        // Blocked anyway (or opened in a way that hid the handle): go there
-        // in this tab rather than do nothing.
-        window.location.href = url;
+        // Blocked anyway, or the student closed the blank tab while the link
+        // was on its way: open it now, or go there in this tab rather than do
+        // nothing.
+        // No 'noopener' in the features: with it window.open returns null even
+        // when the tab opened, which is indistinguishable from being blocked.
+        const again = window.open(url, '_blank');
+        if (again) again.opener = null;
+        else window.location.href = url;
       }
     } catch (e: any) {
       w?.close();

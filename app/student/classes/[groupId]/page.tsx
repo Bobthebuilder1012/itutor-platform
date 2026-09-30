@@ -68,7 +68,6 @@ type Session = {
   // 'late' is its own answer, not a shade of attended. A student looking at
   // their own record needs to see what the tutor actually wrote down.
   attendance: 'attended' | 'late' | 'missed' | 'pending';
-  meetingLink?: string | null;
 };
 
 type Member = {
@@ -147,6 +146,13 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
   const [actionReason, setActionReason] = useState<string | null>(null);
   const [suspendedUntil, setSuspendedUntil] = useState<Date | null>(null);
   const [nextMeetingLink, setNextMeetingLink] = useState<string | null>(null);
+
+  // One class link for the whole page: the header Join and every Sessions row
+  // read this, so a link the tutor changes reaches both at once. Called above
+  // the early returns (hooks can't be conditional) and switched on only once
+  // the class has loaded and this viewer may use it; memberState starts at
+  // 'active', so the group check is what keeps it quiet during the first load.
+  const classLink = useClassLink(groupId, nextMeetingLink, !!group && memberState === 'active');
 
   useEffect(() => {
     if (profileLoading) return;
@@ -279,7 +285,7 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
             </div>
           </div>
           {!blocked && (
-            <JoinSessionButton groupId={groupId} staticLink={nextMeetingLink} />
+            <JoinSessionButton link={classLink.link} checking={classLink.checking} />
           )}
         </div>
       </div>
@@ -366,7 +372,7 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
           </div>
 
           {tab === 'stream'    && <StreamTab   groupId={groupId} group={group} tutorName={tutorName} />}
-          {tab === 'sessions'  && <SessionsTab groupId={groupId} userId={profile!.id} group={group} />}
+          {tab === 'sessions'  && <SessionsTab groupId={groupId} userId={profile!.id} group={group} meetingLink={classLink.link} />}
           {tab === 'members'   && <MembersTab  groupId={groupId} userId={profile!.id} />}
           {tab === 'whatsapp'  && <ExternalChannelTab groupId={groupId} platform="whatsapp"  url={group.whatsapp_link!} tutorName={tutorName} />}
           {tab === 'classroom' && <ExternalChannelTab groupId={groupId} platform="classroom" url={group.google_classroom_link!} tutorName={tutorName} />}
@@ -391,11 +397,11 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
   );
 }
 
-/* ─── Join session button ───────────────────────────── */
+/* ─── Class link ─────────────────────────────────────── */
 
-function JoinSessionButton({ groupId, staticLink }: { groupId: string; staticLink: string | null }) {
+function useClassLink(groupId: string, initialLink: string | null, enabled: boolean) {
   // The group payload is read once at page load, so a link the tutor
-  // generates afterwards would leave this stuck on "Link not ready yet"
+  // generates afterwards would leave Join stuck on "Link not ready yet"
   // until a full refresh — which is what it did. It also went dead if the
   // group query fell back to a select tier without meeting_link.
   //
@@ -411,22 +417,33 @@ function JoinSessionButton({ groupId, staticLink }: { groupId: string; staticLin
   // keep the old URL and land in a room nobody is in. So the poll keeps
   // running and whatever the server says now wins: a new URL replaces the
   // old one, and a 404/403 (no link any more, or this viewer may no longer
-  // have it) takes the button back to its disabled state. Network errors and
+  // have it) takes Join back to its disabled state. Network errors and
   // other statuses change nothing, so a flaky connection can't hide a link
   // that is still good.
-  const [link, setLink] = useState<string | null>(staticLink);
+  //
+  // This lives on the page, not in the button, because the Sessions rows
+  // used to read the link once from GET /sessions and kept the old URL
+  // after the header had picked up the new one. One poller, one link.
+  const [link, setLink] = useState<string | null>(enabled ? initialLink : null);
   const [checking, setChecking] = useState(false);
 
   // The page reloads the group payload when the profile changes; adopt what
-  // it carried rather than keep a value from the previous load.
+  // it carried rather than keep a value from the previous load. A viewer who
+  // may no longer join gets nothing, whatever the payload said.
   useEffect(() => {
-    setLink(staticLink);
-  }, [staticLink]);
+    setLink(enabled ? initialLink : null);
+  }, [initialLink, enabled]);
 
   useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
+    // A request slower than the interval must not stack a second one behind
+    // it; on a bad connection that is how a poll turns into a queue.
+    let inFlight = false;
 
     const check = async () => {
+      if (inFlight) return;
+      inFlight = true;
       setChecking(true);
       try {
         const res = await fetch(`/api/groups/${groupId}/meeting-link`, {
@@ -442,22 +459,29 @@ function JoinSessionButton({ groupId, staticLink }: { groupId: string; staticLin
       } catch {
         /* offline or a transient failure — keep whatever we already have */
       } finally {
+        inFlight = false;
         if (!cancelled) setChecking(false);
       }
     };
 
     // The payload already answered for this moment when it carried a link,
     // so only ask straight away when it didn't.
-    if (!staticLink) check();
-    // Cheap poll so a student sitting on the page before class sees the
-    // button light up, or pick up a changed link, without reloading.
+    if (!initialLink) check();
+    // Cheap poll so a student sitting on the page before class sees Join
+    // light up, or picks up a changed link, without reloading.
     const timer = setInterval(check, 60_000);
     return () => {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [groupId, staticLink]);
+  }, [groupId, initialLink, enabled]);
 
+  return { link, checking };
+}
+
+/* ─── Join session button ───────────────────────────── */
+
+function JoinSessionButton({ link, checking }: { link: string | null; checking: boolean }) {
   if (!link) {
     return (
       <div className="w-full sm:w-auto shrink-0">
@@ -802,7 +826,15 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 
 /* ─── Sessions ───────────────────────────────────────── */
 
-function SessionsTab({ groupId, userId, group }: { groupId: string; userId: string; group: Group }) {
+function SessionsTab({ groupId, userId, group, meetingLink }: {
+  groupId: string;
+  userId: string;
+  group: Group;
+  /** The page's polled class link (useClassLink). GET /sessions also sends a
+   *  meeting_link, but it is read once when the tab opens, so rows built from
+   *  it kept a URL the tutor had since replaced while the header moved on. */
+  meetingLink: string | null;
+}) {
   // What this student actually holds. A room seat gets directions; an online
   // seat gets a link. On a hybrid class both exist and only one is theirs,
   // so guessing from the class format alone would send half the roster to
@@ -812,7 +844,6 @@ function SessionsTab({ groupId, userId, group }: { groupId: string; userId: stri
     (group.my_seat_type === null && group.class_format === 'physical');
   const venue = group.venue;
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [meetingLink, setMeetingLink] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -821,7 +852,6 @@ function SessionsTab({ groupId, userId, group }: { groupId: string; userId: stri
         const res = await fetch(`/api/groups/${groupId}/sessions`, { cache: 'no-store' });
         const d = await res.json();
 
-        setMeetingLink(d.meeting_link ?? null);
         const rawSessions: any[] = d.sessions ?? d.data ?? [];
 
         const allOccs: any[] = rawSessions.flatMap((s: any) =>
@@ -831,7 +861,6 @@ function SessionsTab({ groupId, userId, group }: { groupId: string; userId: stri
             topic: o.title ?? occurrenceTitle(s.title, o.scheduled_start_at),
             date: o.scheduled_start_at,
             durationMin: s.duration_minutes ?? 60,
-            meetingLink: null as string | null,
           }))
         );
 

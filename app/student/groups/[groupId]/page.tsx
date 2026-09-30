@@ -42,8 +42,8 @@ type Group = {
 type SessionRow = {
   id: string;
   scheduled_start_at: string;
+  scheduled_end_at: string;
   duration_minutes?: number | null;
-  meeting_link?: string | null;
   topic?: string | null;
 };
 
@@ -179,6 +179,83 @@ function markGroupPresent(groupId: string, occurrenceId?: string | null) {
   }
 }
 
+// The occurrence a header Join counts toward: the one under way, else the next
+// to start. Worked out at click time rather than load time, because the page is
+// often opened well before class and left open through it. Rows are this
+// class's only, sorted by start (see loadGroup).
+function occurrenceForJoin(rows: SessionRow[] | undefined): SessionRow | undefined {
+  const now = Date.now();
+  const live = (rows ?? []).filter((r) => new Date(r.scheduled_end_at).getTime() >= now);
+  return live.find((r) => new Date(r.scheduled_start_at).getTime() <= now) ?? live[0];
+}
+
+/* ─── Class link ──────────────────────────────────────────────────── */
+
+// The class link for the header Join and every Sessions row, from GET
+// /api/groups/[id]/meeting-link: the one membership-gated source. A member gets
+// { join_url }; anyone else, or a class with no link yet, gets a 403/404 and
+// simply sees no Join. Asked from the enrolled view rather than loadGroup so a
+// student only browsing the class never makes the call at all.
+//
+// It keeps asking every minute while the page is open, and whatever the server
+// says now wins: a tutor can paste their own link, swap it for another, or
+// switch the class back to generated Meet links, and a student who opened the
+// page before class would otherwise keep the old URL and land in a room nobody
+// is in. A 404/403 clears the link (none any more, or this viewer may no longer
+// have it); a network error or any other status changes nothing, so a flaky
+// connection can't hide a link that is still good.
+//
+// One poller for the page. The Sessions tab used to stamp GET /sessions'
+// meeting_link onto its rows once, so after a change the rows and the header
+// disagreed about where class was.
+function useClassLink(groupId: string, initialLink: string | null, enabled: boolean) {
+  const [link, setLink] = useState<string | null>(enabled ? initialLink : null);
+  const [checking, setChecking] = useState(false);
+
+  useEffect(() => {
+    setLink(enabled ? initialLink : null);
+  }, [initialLink, enabled]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    // A request slower than the interval must not stack a second one behind it.
+    let inFlight = false;
+
+    const check = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      setChecking(true);
+      try {
+        const res = await fetch(`/api/groups/${groupId}/meeting-link`, { cache: 'no-store' });
+        if (cancelled) return;
+        if (res.ok) {
+          const d = await res.json();
+          if (!cancelled && typeof d?.join_url === 'string' && d.join_url) setLink(d.join_url);
+        } else if (res.status === 404 || res.status === 403) {
+          setLink(null);
+        }
+      } catch {
+        /* offline or a transient failure — keep whatever we already have */
+      } finally {
+        inFlight = false;
+        if (!cancelled) setChecking(false);
+      }
+    };
+
+    // An initial link already answers for this moment, so only ask straight
+    // away when there wasn't one.
+    if (!initialLink) check();
+    const timer = setInterval(check, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [groupId, initialLink, enabled]);
+
+  return { link, checking };
+}
+
 /* ─── Main page ───────────────────────────────────────────────────── */
 
 export default function StudentGroupPage({ params }: { params: { groupId: string } }) {
@@ -249,13 +326,46 @@ export default function StudentGroupPage({ params }: { params: { groupId: string
       const ratings = (ratingRows ?? []).map((r: any) => Number(r.stars));
       const avgRating = ratings.length ? ratings.reduce((a: number, b: number) => a + b, 0) / ratings.length : null;
 
-      // Fetch upcoming sessions
-      const { data: occurrences } = await supabase
-        .from('group_session_occurrences')
-        .select('id, scheduled_start_at, duration_minutes')
-        .gte('scheduled_start_at', new Date().toISOString())
-        .order('scheduled_start_at', { ascending: true })
-        .limit(5);
+      // This class's next sessions, from the route the Sessions tab reads.
+      // The browser query this replaced had no class filter, so
+      // upcoming_sessions[0] could be another class's session — and the
+      // header Join marked the student present for it. It also asked for a
+      // duration_minutes column occurrences don't have (it is on the parent
+      // session), and occurrence RLS (migration 087) admits only the tutor
+      // and approved members, while the schedule text below is mostly for
+      // people who haven't joined. The route filters by class, reads with the
+      // service client and shows the timetable to any signed-in viewer. The
+      // class link it sends members is ignored here; see useClassLink.
+      //
+      // Kept while scheduled_end_at is still ahead, not scheduled_start_at,
+      // so a session already under way stays first in line: that is the one
+      // the header Join counts attendance toward.
+      let upcoming: SessionRow[] = [];
+      try {
+        const sessRes = await fetch(`/api/groups/${groupId}/sessions`, { cache: 'no-store' });
+        if (sessRes.ok) {
+          const d = await sessRes.json();
+          const now = Date.now();
+          upcoming = ((d?.sessions ?? []) as any[])
+            .flatMap((s: any) =>
+              ((s.occurrences ?? []) as any[])
+                .filter((o: any) =>
+                  o?.id && o.scheduled_start_at && o.scheduled_end_at &&
+                  o.status !== 'cancelled' &&
+                  new Date(o.scheduled_end_at).getTime() >= now)
+                .map((o: any): SessionRow => ({
+                  id: o.id,
+                  scheduled_start_at: o.scheduled_start_at,
+                  scheduled_end_at: o.scheduled_end_at,
+                  duration_minutes: s.duration_minutes ?? null,
+                })))
+            .sort((a, b) => new Date(a.scheduled_start_at).getTime() - new Date(b.scheduled_start_at).getTime())
+            .slice(0, 5);
+        }
+      } catch {
+        // Non-critical — the page reads "Schedule TBD" and Join still opens,
+        // it just has no occurrence to count attendance toward.
+      }
 
       const tutorObj = Array.isArray(grp.tutor) ? grp.tutor[0] : grp.tutor;
 
@@ -265,7 +375,7 @@ export default function StudentGroupPage({ params }: { params: { groupId: string
         tutor_rating: avgRating ?? undefined,
         tutor_reviews: ratings.length,
         enrollment_count: enrollCount ?? 0,
-        upcoming_sessions: (occurrences ?? []) as SessionRow[],
+        upcoming_sessions: upcoming,
       });
 
       // Fetch subscription access state for MONTHLY groups
@@ -718,23 +828,8 @@ function ClassHomepage({ group, memberStatus, userId, subscriptionAccess }: { gr
   const isBanned = memberStatus === 'banned' || memberStatus === 'removed' || memberStatus === 'rejected';
   const blocked = isSuspended || isBanned;
 
-  // The header Join URL, from the one membership-gated source. A member gets
-  // { join_url }; anyone else, or a class with no link yet, gets a 403/404
-  // and simply sees no Join button. Asked here rather than in loadGroup so a
-  // student only browsing the class never makes the call at all.
-  const [joinUrl, setJoinUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (blocked) { setJoinUrl(null); return; }
-    let cancelled = false;
-    fetch(`/api/groups/${group.id}/meeting-link`, { cache: 'no-store' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (!cancelled) setJoinUrl(typeof d?.join_url === 'string' && d.join_url ? d.join_url : null);
-      })
-      .catch(() => { if (!cancelled) setJoinUrl(null); });
-    return () => { cancelled = true; };
-  }, [group.id, blocked]);
+  // One link for the header Join and the Sessions rows; see useClassLink.
+  const { link: joinUrl } = useClassLink(group.id, null, !blocked);
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -766,7 +861,7 @@ function ClassHomepage({ group, memberStatus, userId, subscriptionAccess }: { gr
             <a href={joinUrl}
               target="_blank"
               rel="noreferrer"
-              onClick={() => markGroupPresent(group.id, group.upcoming_sessions?.[0]?.id)}
+              onClick={() => markGroupPresent(group.id, occurrenceForJoin(group.upcoming_sessions)?.id)}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white text-ink font-semibold text-sm hover:bg-white/90 shrink-0 transition">
               <Video className="size-4" /> Join next session
             </a>
@@ -829,7 +924,7 @@ function ClassHomepage({ group, memberStatus, userId, subscriptionAccess }: { gr
             ))}
           </div>
           {tab === 'stream' && <StreamTab groupId={group.id} group={group} tutorName={tutorName} />}
-          {tab === 'sessions' && <SessionsTab groupId={group.id} />}
+          {tab === 'sessions' && <SessionsTab groupId={group.id} meetingLink={joinUrl} />}
           {tab === 'members' && <MembersTab groupId={group.id} userId={userId} />}
         </>
       )}
@@ -967,7 +1062,11 @@ function StreamTab({ groupId, group, tutorName }: { groupId: string; group: Grou
 
 /* ─── Sessions Tab ────────────────────────────────────────────────── */
 
-function SessionsTab({ groupId }: { groupId: string }) {
+// meetingLink is the page's polled class link (useClassLink), not the
+// meeting_link GET /sessions also sends: that one is read once when the tab
+// opens, so rows built from it kept a URL the tutor had since replaced while
+// the header moved on.
+function SessionsTab({ groupId, meetingLink }: { groupId: string; meetingLink: string | null }) {
   const [sessions, setSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -975,7 +1074,6 @@ function SessionsTab({ groupId }: { groupId: string }) {
     fetch(`/api/groups/${groupId}/sessions`, { cache: 'no-store' })
       .then((r) => r.json())
       .then((d) => {
-        const groupLink: string | null = d.meeting_link ?? null;
         const raw: any[] = d.sessions ?? d.data ?? d ?? [];
         const occurrences: any[] = raw.flatMap((s: any) =>
           (s.occurrences ?? [s]).map((o: any) => ({
@@ -983,7 +1081,6 @@ function SessionsTab({ groupId }: { groupId: string }) {
             topic: o.topic ?? occurrenceTitle(s.title ?? s.topic, o.scheduled_start_at ?? s.scheduled_start_at),
             scheduled_start_at: o.scheduled_start_at ?? s.scheduled_start_at,
             duration_minutes: o.duration_minutes ?? s.duration_minutes ?? 60,
-            meeting_link: groupLink,
           }))
         );
         occurrences.sort((a, b) => new Date(b.scheduled_start_at).getTime() - new Date(a.scheduled_start_at).getTime());
@@ -1008,7 +1105,7 @@ function SessionsTab({ groupId }: { groupId: string }) {
     <div className="space-y-3">
       <div className="rounded-xl border border-dashed border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground flex items-start gap-2">
         <Video className="size-3.5 mt-0.5 shrink-0 text-brand-deep" />
-        <span>Your tutor's Zoom / Google Meet link for this class. The same link is reused for every session — join any time it's available.</span>
+        <span>Your tutor's class link — the same link is used for every session. Tap Join when it's time.</span>
       </div>
 
       {sessions.map((s) => {
@@ -1041,12 +1138,14 @@ function SessionsTab({ groupId }: { groupId: string }) {
                 </span>
               )}
             </div>
-            {s.meeting_link && (
-              <a href={s.meeting_link} target="_blank" rel="noreferrer"
+            {meetingLink ? (
+              <a href={meetingLink} target="_blank" rel="noreferrer"
                 onClick={() => markGroupPresent(groupId, s.id)}
                 className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand-deep shrink-0">
                 <Video className="size-3.5" /> Join
               </a>
+            ) : (
+              <span className="text-[11px] text-muted-foreground italic shrink-0">Link not shared yet</span>
             )}
           </div>
         );

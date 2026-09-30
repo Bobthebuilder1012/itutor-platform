@@ -64,6 +64,40 @@ export function safeReturnPath(from: unknown, fallback: string = DEFAULT_OAUTH_R
   return from;
 }
 
+/** The origin a request arrived on, as the browser saw it (Vercel sits behind a proxy). */
+function requestOrigin(request: Request): string | null {
+  const host = request.headers.get('x-forwarded-host') ?? request.headers.get('host');
+  if (!host) return null;
+  const isLocal = host.startsWith('localhost') || host.startsWith('127.');
+  const proto = request.headers.get('x-forwarded-proto') ?? (isLocal ? 'http' : 'https');
+  return `${proto}://${host}`;
+}
+
+/**
+ * Where to send a /connect request that started on a different host from the
+ * one the provider will return to, or null when they already match.
+ *
+ * The nonce cookie and the Supabase session cookie are both host-only, so a
+ * tutor who starts on one host (a preview URL, the *.vercel.app alias) and is
+ * returned by Zoom or Google to another (the fixed ZOOM_REDIRECT_URI /
+ * GOOGLE_REDIRECT_URI host) arrives at the callback with neither, and the
+ * callback has to refuse. Restarting /connect on the callback's host puts both
+ * cookies where the callback will look. If the tutor isn't signed in there,
+ * /connect sends them to log in on that host, which is the honest answer.
+ */
+export function connectOnCallbackHost(request: Request, redirectUri: string): string | null {
+  let target: URL;
+  try {
+    target = new URL(redirectUri);
+  } catch {
+    return null;
+  }
+  const here = requestOrigin(request);
+  if (!here || here === target.origin) return null;
+  const url = new URL(request.url);
+  return `${target.origin}${url.pathname}${url.search}`;
+}
+
 /** Build `state` for the consent URL, and the nonce to set as a cookie on the redirect. */
 export function createOAuthState(
   userId: string,

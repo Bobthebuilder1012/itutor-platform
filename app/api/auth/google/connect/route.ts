@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { resolveGoogleRedirectUri } from '@/lib/auth/resolveGoogleRedirectUri';
-import { createOAuthState, setOAuthNonceCookie } from '@/lib/auth/oauthState';
+import { connectOnCallbackHost, createOAuthState, setOAuthNonceCookie } from '@/lib/auth/oauthState';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,6 +58,12 @@ export async function GET(request: Request) {
       debug: true,
     }, { status: 500 });
   }
+
+  // The callback must see this browser's nonce and session cookies, which are
+  // host-only. If Google will return the tutor to another host, start again
+  // there. See connectOnCallbackHost.
+  const onCallbackHost = connectOnCallbackHost(request, redirectUri);
+  if (onCallbackHost) return NextResponse.redirect(onCallbackHost);
 
   // `state` used to be the plain "userId|returnPath", and the callback stored
   // Google's tokens against whatever id it found there, so anyone could make

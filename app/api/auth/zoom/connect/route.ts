@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
-import { createOAuthState, setOAuthNonceCookie } from '@/lib/auth/oauthState';
+import { connectOnCallbackHost, createOAuthState, setOAuthNonceCookie } from '@/lib/auth/oauthState';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,6 +69,12 @@ export async function GET(request: Request) {
   // #region agent log
   fetch('http://127.0.0.1:7242/ingest/96e0dc54-0d29-41a7-8439-97ee7ad5934e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/auth/zoom/connect/route.ts:65',message:'ENV vars loaded',data:{clientId,redirectUri,userId:user.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,C,E'})}).catch(()=>{});
   // #endregion
+
+  // The callback must see this browser's nonce and session cookies, which are
+  // host-only. If Zoom will return the tutor to another host, start again
+  // there. See connectOnCallbackHost.
+  const onCallbackHost = connectOnCallbackHost(request, redirectUri);
+  if (onCallbackHost) return NextResponse.redirect(onCallbackHost);
 
   // Signed state bound to a nonce cookie on this browser, not the old plain
   // "userId|returnPath" the callback trusted outright. See the Google connect

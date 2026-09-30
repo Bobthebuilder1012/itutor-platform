@@ -273,20 +273,17 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     await auditAdminOverride(actor, 'session.create', { sessionId: session.id });
 
-    // Notify approved members of new session. Not for a DRAFT class: it isn't
-    // listed and hasn't started taking students, so anyone in it is there for
-    // testing or by invitation ahead of launch — and the scheduling pop-up
-    // runs straight after a class is created, when the schedule is still being
-    // set up. The link goes to the class page itself; /groups only redirects
-    // to the dashboard, which dropped the student nowhere near this class.
-    const isDraft = String(actor.group?.status ?? '').toUpperCase() === 'DRAFT';
-    const { data: members } = isDraft
-      ? { data: null }
-      : await service
-          .from('group_members')
-          .select('user_id')
-          .eq('group_id', groupId)
-          .eq('status', 'approved');
+    // Notify approved members of new session. Not gated on status: the class
+    // Settings save stores every PRIVATE class as status DRAFT, and those have
+    // real members who need to hear about new sessions. A class fresh from the
+    // create page has no members yet, so the scheduling pop-up sends nothing.
+    // The link goes to the class page itself; /groups only redirects to the
+    // dashboard, which dropped the student nowhere near this class.
+    const { data: members } = await service
+      .from('group_members')
+      .select('user_id')
+      .eq('group_id', groupId)
+      .eq('status', 'approved');
 
     if (members && members.length > 0) {
       try {

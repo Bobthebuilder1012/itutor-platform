@@ -158,6 +158,17 @@ export async function POST(_req: NextRequest, { params }: Params) {
     try {
       meetingInfo = await createMeeting(sessionForMeeting);
     } catch (tokenErr: any) {
+      // A superadmin acting as tutor can't reconnect on the tutor's behalf:
+      // /connect requires the tutor role, and would bind the admin's own
+      // account even if it didn't. Say what has to happen instead.
+      if (actingForTutor) {
+        return NextResponse.json(
+          {
+            error: `This class's tutor needs to reconnect ${provider === 'zoom' ? 'Zoom' : 'Google Meet'} before a link can be generated.`,
+          },
+          { status: 422 },
+        );
+      }
       // Any failure generating the meeting link means the provider needs
       // reconnecting. The reconnect comes back to this class's Sessions tab —
       // where the tutor pressed Join — rather than to the class's first tab,

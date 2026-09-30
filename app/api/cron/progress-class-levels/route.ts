@@ -200,6 +200,7 @@ export async function GET(request: NextRequest) {
   let cursor: string | null = null;
   let exhausted = false;
   let outOfTime = false;
+  let failedMoves = 0;
 
   for (let page = 0; page < MAX_PAGES && !exhausted && !outOfTime; page++) {
     let query = service
@@ -264,6 +265,7 @@ export async function GET(request: NextRequest) {
         .select('id');
 
       if (moveError) {
+        failedMoves += 1;
         result.errors.push(`${row.id}: ${moveError.message}`);
         continue;
       }
@@ -312,5 +314,11 @@ export async function GET(request: NextRequest) {
     errors: result.errors,
   });
 
-  return NextResponse.json(result);
+  // A class that failed to move answers 500, so the run shows as failed on
+  // Vercel's cron dashboard. A row-specific failure (a CHECK the row violates,
+  // a trigger raising) recurs every night, and a 200 would let that class sit a
+  // year behind with nobody told — the subscription cron was changed to 500 on
+  // task failure for the same reason. A lost race, the time budget and the
+  // page cap stay 200: those classes are still candidates for the next run.
+  return NextResponse.json(result, { status: failedMoves > 0 ? 500 : 200 });
 }
