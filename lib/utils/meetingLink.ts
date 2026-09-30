@@ -54,10 +54,16 @@ export function normalizeClassLinkUrl(raw: unknown): ClassLinkResult {
   if (!s) return { ok: false, error: 'Enter your class link.' };
 
   if (/\s/.test(s)) {
-    const found = s.match(/https?:\/\/\S+/i);
+    // A bracketed link first — Outlook's plain-text invitations write
+    // "Join the meeting now<https://teams…>" — so the brackets aren't kept.
+    const found = s.match(/<(https?:\/\/[^>\s]+)>/i) ?? s.match(/(https?:\/\/\S+)/i);
     if (!found) return { ok: false, error: "That doesn't look like a link. Paste just the meeting link." };
-    s = found[0];
+    s = found[1];
   }
+  // Wrapping and sentence punctuation that came along with a copied link:
+  // "(https://zoom.us/j/1?pwd=abc)." would otherwise keep ")." and store a
+  // wrong passcode. No meeting link ends in any of these.
+  s = s.replace(/^[<(\["']+/, '').replace(/[>)\]}.,;:!?'"]+$/, '');
 
   if (!HAS_SCHEME_RE.test(s)) s = `https://${s}`;
   if (!/^https:\/\//i.test(s)) {

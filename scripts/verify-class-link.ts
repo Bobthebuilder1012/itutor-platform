@@ -24,8 +24,16 @@ const ACCEPT: Array<[string, string]> = [
   ],
   // A pasted invitation keeps only its link.
   ['Join Zoom Meeting\nhttps://zoom.us/j/999?pwd=x\nMeeting ID: 999', 'https://zoom.us/j/999?pwd=x'],
+  // Brackets and sentence punctuation that came with a copied link are dropped.
+  [
+    'Join the meeting now<https://teams.microsoft.com/l/meetup-join/19%3ameeting_abc%40thread.v2/0?context=%7b%22Tid%22%7d>',
+    'https://teams.microsoft.com/l/meetup-join/19%3ameeting_abc%40thread.v2/0?context=%7b%22Tid%22%7d',
+  ],
+  ['Join: (https://zoom.us/j/123?pwd=abc).', 'https://zoom.us/j/123?pwd=abc'],
+  ['https://zoom.us/j/123?pwd=abc.', 'https://zoom.us/j/123?pwd=abc'],
+  ['<https://meet.google.com/abc-defg-hij>', 'https://meet.google.com/abc-defg-hij'],
   // Characters that could break out of an attribute are percent-encoded.
-  ["https://x.com/a'b\"c<d>`e{f}", 'https://x.com/a%27b%22c%3Cd%3E%60e%7Bf%7D'],
+  ["https://x.com/a'b\"c<d>`e{f}g", 'https://x.com/a%27b%22c%3Cd%3E%60e%7Bf%7Dg'],
 ];
 
 const REJECT: string[] = [

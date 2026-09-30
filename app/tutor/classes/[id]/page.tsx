@@ -335,14 +335,16 @@ function ClassHubContent() {
       // comes from the server probe (service client) — the browser's RLS client
       // can't read archived/private groups the admin doesn't own. A background
       // refresh re-probes: reusing the arrival row would put back a class link
-      // the admin had just changed.
+      // the admin had just changed. For the same reason a failed re-probe
+      // yields no row at all, which leaves the group state as it is — the
+      // arrival row is only good for the first load.
       const [groupRes, { data: promoRows }] = await Promise.all([
         adminMode
           ? loadedOnceRef.current
             ? fetch(`/api/admin/classes/${groupId}/access`)
                 .then((r) => (r.ok ? r.json() : null))
-                .then((j) => ({ data: j?.group ?? adminGroupRow }))
-                .catch(() => ({ data: adminGroupRow }))
+                .then((j) => ({ data: j?.group ?? null }))
+                .catch(() => ({ data: null }))
             : Promise.resolve({ data: adminGroupRow })
           : supabase.from('groups').select('*').eq('id', groupId).single(),
         // `.is('user_id', null)` keeps this to class-level promotions. Personal
@@ -566,6 +568,12 @@ function ClassHubContent() {
   const handleSessionsCreated = (occurrences: CreatedOccurrence[], durationMin: number) => {
     if (!group) return;
     if (occurrences.length === 0) { fetchAll(group.id); return; }
+    // A background fetchAll still in flight may have read the sessions before
+    // this insert; landing after the merge it would replace the list, drop the
+    // new cards and bring back "No schedule yet". Bumping the sequence makes it
+    // discard its result, and the refetch at the end restores whatever else
+    // (members, posts) it was bringing.
+    fetchSeqRef.current++;
     const now = Date.now();
     const created: GroupSession[] = occurrences.map((o) => ({
       id: o.id,
@@ -574,7 +582,15 @@ function ClassHubContent() {
       status: new Date(o.scheduled_start_at).getTime() > now ? 'upcoming' : 'past',
       venueId: null,
     }));
-    setSessions((prev) => [...prev, ...created].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
+    setSessions((prev) => {
+      // A GET answered after the insert already holds these rows. Appending
+      // them again would show each card twice, under duplicate React keys.
+      const known = new Set(prev.map((s) => s.id));
+      return [...prev, ...created.filter((s) => !known.has(s.id))]
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    });
+    // The insert has committed, so this read already includes the new rows.
+    fetchAll(group.id);
   };
 
   // Saved from the pop-up, the Sessions strip or Settings. A new generated
@@ -2346,7 +2362,10 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
   const [section, setSection] = useState<SettingsSectionId>('basics');
   const tryChangeSection = (id: SettingsSectionId) => {
     if (dirty && !window.confirm('You have unsaved changes. Discard them and switch sections?')) return;
-    if (dirty) setDraft({ ...group });
+    // Back to the saved snapshot, exactly as the Discard button does. The live
+    // group can differ from it (a background refresh updates the enrolled
+    // count), and a draft taken from that would still read as dirty.
+    if (dirty) handleDiscard();
     setSection(id);
   };
   // Remember join-requests value from when class was public so we can restore it on public→private→public round-trip

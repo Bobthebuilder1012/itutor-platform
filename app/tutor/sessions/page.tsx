@@ -362,19 +362,31 @@ function TutorClassJoinButton({ groupId }: { groupId: string }) {
     setLoading(true);
     try {
       const res = await fetch(`/api/groups/${groupId}/meeting-link`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
+      // An expired Google/Zoom token: send the tutor to reconnect, as the
+      // class page's Join does, rather than alerting the bare code.
+      if (res.status === 401 && json?.error === 'token_expired' && json?.reconnectUrl) {
+        w?.close();
+        window.location.href = json.reconnectUrl;
+        return;
+      }
       const url = json?.join_url;
       // The tab we opened is about:blank, which shares this page's origin,
       // so only ever send it to a web address. Class links are https-only
       // in the database; this keeps that true here even if one slips by.
       if (typeof url === 'string' && /^https?:\/\//i.test(url)) {
-        if (w) {
+        if (w && !w.closed) {
           w.opener = null;
           w.location.href = url;
         } else {
-          // Blocked anyway (or opened in a way that hid the handle): go
-          // there in this tab rather than do nothing.
-          window.location.href = url;
+          // Blocked anyway, or the tutor closed the blank tab while the link
+          // was being made: open it now, or go there in this tab rather than
+          // do nothing.
+          // No 'noopener' in the features: with it window.open returns null even
+          // when the tab opened, which is indistinguishable from being blocked.
+          const again = window.open(url, '_blank');
+          if (again) again.opener = null;
+          else window.location.href = url;
         }
       } else {
         // Includes the 422 for a class in own-link mode with no link saved
