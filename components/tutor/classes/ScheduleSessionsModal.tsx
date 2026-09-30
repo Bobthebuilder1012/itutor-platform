@@ -14,7 +14,12 @@
  *           browser is in, so the labels say so.
  *   Step 2  How will students join? Generated Meet links, or the tutor's own
  *           link. Skipped for in-person-only classes, which have nothing to
- *           join.
+ *           join. A tutor who picks their own link but doesn't have it to hand
+ *           can "Continue and add link later": the class is saved as
+ *           custom-with-no-link (migration 263) and the sessions are created,
+ *           so the schedule — the thing that lists the class — isn't held
+ *           hostage to a Zoom room they haven't made yet. The Sessions tab
+ *           then asks for the link in amber until it's added.
  *
  * THE PREVIEW IS THE SERVER'S OWN ARITHMETIC. It is computed with
  * buildOccurrenceRows, the same function POST /api/groups/[groupId]/sessions
@@ -198,7 +203,8 @@ export type ScheduleSessionsModalProps = {
    */
   dismissOnBackdrop: boolean;
   onClose: () => void;
-  onLinkSaved: (mode: MeetingLinkMode, url: string) => void;
+  /** setAt: the saved link's meeting_link_set_at, null when unknown or no link. */
+  onLinkSaved: (mode: MeetingLinkMode, url: string, setAt: string | null) => void;
   /** Called with the server's occurrence rows (real ids) before the modal closes. */
   onSessionsCreated: (occurrences: CreatedOccurrence[], durationMin: number) => void;
 };
@@ -329,7 +335,13 @@ export default function ScheduleSessionsModal({
     }));
   };
 
-  const save = async (thenConnect = false) => {
+  /**
+   * `linkLater`: "Continue and add link later". The own-link choice is saved
+   * without a link (url null — the route stores custom mode, no link) and
+   * whatever is half-typed in the box is dropped rather than validated, then
+   * the sessions are created exactly as Save does.
+   */
+  const save = async (thenConnect = false, linkLater = false) => {
     if (saving) return;
     setError('');
 
@@ -337,24 +349,36 @@ export default function ScheduleSessionsModal({
     //    students join, and creating sessions they can't join is worse.
     let linkSavedNow = false;
     if (!physical) {
-      if (!resolvedLink.ok) {
+      let target: { mode: MeetingLinkMode; url: string | null };
+      if (linkLater) {
+        target = { mode: 'custom', url: null };
+      } else if (!resolvedLink.ok) {
         setShowLinkErrors(true);
         setLinkExpanded(true);
         setStep(2);
         setError(resolvedLink.error);
         return;
+      } else {
+        target = resolvedLink;
       }
-      if (classLinkChanged(resolvedLink, baseline)) {
+      if (classLinkChanged(target, baseline)) {
         setSaving(true);
-        const r = await saveClassLink(groupId, resolvedLink);
+        const r = await saveClassLink(groupId, target);
         if (!r.ok) {
           setSaving(false);
           setError(r.message);
           return;
         }
         setBaseline({ mode: r.mode, url: r.url });
-        onLinkSaved(r.mode, r.url);
+        onLinkSaved(r.mode, r.url, r.setAt);
         linkSavedNow = true;
+      }
+      // The box now matches what's saved (no link), so a later Cancel — say
+      // after the sessions failed — doesn't ask about discarding a link the
+      // tutor already chose to leave for later.
+      if (linkLater) {
+        setLinkDraft({ mode: 'custom', input: '' });
+        setShowLinkErrors(false);
       }
     }
 
@@ -408,7 +432,9 @@ export default function ScheduleSessionsModal({
       const msg = String(e?.message ?? 'The sessions could not be created').replace(/[.\s]+$/, '');
       setError(
         linkSavedNow
-          ? `Your class link was saved, but the sessions weren't created: ${msg}. Try again.`
+          ? linkLater
+            ? `Your link choice was saved, but the sessions weren't created: ${msg}. Try again.`
+            : `Your class link was saved, but the sessions weren't created: ${msg}. Try again.`
           : `${msg}.`,
       );
     } finally {
@@ -437,6 +463,15 @@ export default function ScheduleSessionsModal({
     linkDraft.mode === 'custom'
       ? `your own link${resolvedLink.ok ? ` (${displayLink(resolvedLink.url)})` : ''}`
       : `${generatedName} links, created when you press Join`;
+
+  // Only while choosing: the link-only editor exists to set a link, and a class
+  // that already has its own link has nothing to put off.
+  const offerLinkLater =
+    step === 2 &&
+    !linkOnly &&
+    !physical &&
+    linkDraft.mode === 'custom' &&
+    !(baseline.mode === 'custom' && baseline.url);
 
   const headerTitle = step === 1 ? 'Class schedule' : 'How will students join?';
   const headerStep = linkOnly || physical ? null : `Step ${step} of 2`;
@@ -699,7 +734,7 @@ export default function ScheduleSessionsModal({
                 <ArrowLeft className="size-3.5" /> Back
               </button>
             )}
-            <div className="ml-auto flex items-center gap-2">
+            <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={requestClose}
@@ -708,6 +743,16 @@ export default function ScheduleSessionsModal({
               >
                 Cancel
               </button>
+              {offerLinkLater && (
+                <button
+                  type="button"
+                  onClick={() => void save(false, true)}
+                  disabled={saving}
+                  className="px-3 py-1.5 rounded-lg border border-border bg-background text-sm font-semibold text-ink hover:bg-muted disabled:opacity-50"
+                >
+                  Continue and add link later
+                </button>
+              )}
               {step === 1 ? (
                 <button
                   type="button"

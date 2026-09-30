@@ -28,8 +28,12 @@ export type ClassLinkState = {
   mode: MeetingLinkMode;
   link: string | null;
   generatedAt: string | null;
+  /** When the current custom link was saved (migration 263); null if unknown. */
+  setAt: string | null;
   /** False when the database predates migration 262 — custom mode can't be stored. */
   modeColumn: boolean;
+  /** False when the database predates migration 263 — no link timestamp to write. */
+  setAtColumn: boolean;
 };
 
 function isSchemaMismatch(error: any): boolean {
@@ -42,6 +46,7 @@ function isSchemaMismatch(error: any): boolean {
 }
 
 const TIERS = [
+  'tutor_id, meeting_link, meeting_link_generated_at, meeting_link_mode, meeting_link_set_at',
   'tutor_id, meeting_link, meeting_link_generated_at, meeting_link_mode',
   'tutor_id, meeting_link, meeting_link_generated_at',
   'tutor_id, meeting_link',
@@ -64,10 +69,15 @@ export async function readClassLinkState(
       mode: row?.meeting_link_mode === 'custom' ? 'custom' : 'generated',
       link: row?.meeting_link ?? null,
       generatedAt: row?.meeting_link_generated_at ?? null,
+      setAt: row?.meeting_link_set_at ?? null,
       modeColumn: cols.includes('meeting_link_mode'),
+      setAtColumn: cols.includes('meeting_link_set_at'),
     };
   }
-  return { found: false, tutorId: null, mode: 'generated', link: null, generatedAt: null, modeColumn: false };
+  return {
+    found: false, tutorId: null, mode: 'generated', link: null, generatedAt: null,
+    setAt: null, modeColumn: false, setAtColumn: false,
+  };
 }
 
 /**

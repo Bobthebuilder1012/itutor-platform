@@ -146,8 +146,15 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     // (and would now wipe a tutor's own link). Tying it to the mode makes the
     // link a deliberate, separate save for every client, stale tabs included.
     //
-    //   -> custom                 the tutor's own link, normalised. Resending
-    //                             just the mode keeps the stored custom link.
+    //   -> custom + url           the tutor's own link, normalised. A link that
+    //                             differs from the stored one stamps
+    //                             meeting_link_set_at, which the monthly
+    //                             rotation reminder reads.
+    //   -> custom + null / ''     "Continue and add link later": own-link mode
+    //                             with no link yet. Join tells the tutor to add
+    //                             one and students see "Link not shared yet";
+    //                             nothing mints a Meet link over the choice.
+    //   -> custom, no link key    keeps whatever custom link is stored.
     //   custom -> generated       clear the link, so the next Join mints a Meet
     //                             link instead of reopening the tutor's room.
     //   generated -> generated    nothing: the cached Meet link stays.
@@ -165,23 +172,38 @@ export async function PATCH(req: NextRequest, { params }: Params) {
             { status: 409 },
           );
         }
-        const normalized = normalizeClassLinkUrl(
-          input.meeting_link ?? (linkState.mode === 'custom' ? linkState.link : undefined),
-        );
-        if (!normalized.ok) {
-          return NextResponse.json(
-            { ok: false, error: 'validation_failed', details: [{ field: 'meeting_link', message: normalized.error }] },
-            { status: 400 },
-          );
+        const linkSent = input.meeting_link !== undefined;
+        const storedCustom = linkState.mode === 'custom' ? linkState.link : null;
+        if (linkSent && !input.meeting_link) {
+          // Add the link later.
+          updates.meeting_link_mode = 'custom';
+          updates.meeting_link = null;
+          updates.meeting_link_generated_at = null;
+          if (linkState.setAtColumn) updates.meeting_link_set_at = null;
+        } else if (!linkSent && linkState.mode === 'custom' && !storedCustom) {
+          // Already own-link with none saved yet, and still none: nothing to do.
+        } else {
+          const normalized = normalizeClassLinkUrl(linkSent ? input.meeting_link : storedCustom ?? undefined);
+          if (!normalized.ok) {
+            return NextResponse.json(
+              { ok: false, error: 'validation_failed', details: [{ field: 'meeting_link', message: normalized.error }] },
+              { status: 400 },
+            );
+          }
+          updates.meeting_link_mode = 'custom';
+          updates.meeting_link = normalized.url;
+          // A tutor's own link is not a minted one: no 30-day reuse clock applies.
+          updates.meeting_link_generated_at = null;
+          // Re-saving the same link is not a rotation, so it keeps its date.
+          if (linkState.setAtColumn && normalized.url !== storedCustom) {
+            updates.meeting_link_set_at = new Date().toISOString();
+          }
         }
-        updates.meeting_link_mode = 'custom';
-        updates.meeting_link = normalized.url;
-        // A tutor's own link is not a minted one: no 30-day reuse clock applies.
-        updates.meeting_link_generated_at = null;
       } else if (linkState.mode === 'custom') {
         updates.meeting_link_mode = 'generated';
         updates.meeting_link = null;
         updates.meeting_link_generated_at = null;
+        if (linkState.setAtColumn) updates.meeting_link_set_at = null;
       }
     }
 

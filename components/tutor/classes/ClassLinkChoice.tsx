@@ -15,6 +15,15 @@
  *              schedule can be saved before Google Meet is connected.
  *   custom     The tutor's own room. Every Join button — the tutor's and every
  *              student's — opens it as-is, and nothing is ever generated.
+ *              The link itself may still be missing (migration 263): the
+ *              scheduling pop-up lets a tutor choose this and add the link
+ *              later. Until they do, their Join answers 422 no_class_link and
+ *              students see "Link not shared yet".
+ *
+ * A tutor's own room is usually permanent, so a student who leaves the class
+ * keeps a working link. The only fix is a new room, which is why every custom
+ * surface here asks for a new link each month, and LinkRotationBanner below
+ * nags at month end (the rule is in lib/classes/linkRotation.ts).
  *
  * Every write goes through PATCH /api/classes/[id]/settings, which honours
  * meeting_link only when meeting_link_mode is in the same body. That is what
@@ -28,10 +37,12 @@
  */
 
 import { useEffect, useId, useState } from 'react';
-import { AlertTriangle, Check, Copy, ExternalLink, Link as LinkIcon, Pencil, Video } from 'lucide-react';
+import { AlertTriangle, Check, Copy, ExternalLink, Link as LinkIcon, Pencil, RefreshCw, Video } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase/client';
 import { normalizeClassLinkUrl } from '@/lib/utils/meetingLink';
+import { inRotationWindow, isRotationDue, rotationWindowStart } from '@/lib/classes/linkRotation';
+import { trinidadToday } from '@/lib/payments/secureSpot';
 import type { MeetingLinkMode } from '@/lib/types/groups';
 
 // ── Video provider connection ───────────────────────────────────────────────
@@ -144,17 +155,21 @@ export function resolveClassLinkDraft(draft: ClassLinkDraft): ResolvedClassLink 
   return r.ok ? { ok: true, mode: 'custom', url: r.url } : { ok: false, error: r.error };
 }
 
-/** Would saving `next` change anything? Generated → generated never does. */
+/**
+ * Would saving `next` change anything? Generated → generated never does. A
+ * null url ("add the link later") counts as no link, the same as ''.
+ */
 export function classLinkChanged(
-  next: { mode: MeetingLinkMode; url: string },
+  next: { mode: MeetingLinkMode; url: string | null },
   current: { mode: MeetingLinkMode; url: string },
 ): boolean {
   if (next.mode !== current.mode) return true;
-  return next.mode === 'custom' && next.url !== current.url;
+  return next.mode === 'custom' && (next.url ?? '') !== current.url;
 }
 
 export type SaveClassLinkResult =
-  | { ok: true; mode: MeetingLinkMode; url: string }
+  /** setAt: groups.meeting_link_set_at as stored, null when unknown or no link. */
+  | { ok: true; mode: MeetingLinkMode; url: string; setAt: string | null }
   | { ok: false; message: string };
 
 /**
@@ -163,10 +178,14 @@ export type SaveClassLinkResult =
  * the stored values back rather than echoing what was sent — switching custom →
  * generated clears the link, and a generated → generated save returns whatever
  * Meet link is already there.
+ *
+ * `url: null` with custom mode is "add the link later": it is sent as an
+ * explicit meeting_link: null, which the route stores as custom-with-no-link.
+ * Leaving the key out would instead keep whatever link is stored.
  */
 export async function saveClassLink(
   groupId: string,
-  next: { mode: MeetingLinkMode; url: string },
+  next: { mode: MeetingLinkMode; url: string | null },
 ): Promise<SaveClassLinkResult> {
   try {
     const res = await fetch(`/api/classes/${groupId}/settings`, {
@@ -188,8 +207,18 @@ export async function saveClassLink(
     const row = json?.class ?? {};
     const mode: MeetingLinkMode =
       row.meeting_link_mode === 'custom' ? 'custom' : row.meeting_link_mode === 'generated' ? 'generated' : next.mode;
-    const url: string = typeof row.meeting_link === 'string' ? row.meeting_link : mode === 'custom' ? next.url : '';
-    return { ok: true, mode, url };
+    // A row that carries meeting_link as null has no link — only a row with
+    // no such key at all falls back to what was sent.
+    const url: string =
+      typeof row.meeting_link === 'string'
+        ? row.meeting_link
+        : 'meeting_link' in row || mode !== 'custom'
+          ? ''
+          : (next.url ?? '');
+    // Absent on a database without migration 263, where the page doesn't show
+    // the rotation reminder at all, so null is only ever read as "unknown".
+    const setAt: string | null = typeof row.meeting_link_set_at === 'string' ? row.meeting_link_set_at : null;
+    return { ok: true, mode, url, setAt };
   } catch {
     return { ok: false, message: 'Network error. Check your connection and try again.' };
   }
@@ -199,6 +228,14 @@ export async function saveClassLink(
 export function displayLink(url: string): string {
   return url.replace(/^https:\/\//i, '');
 }
+
+/**
+ * Said wherever a class uses the tutor's own link, with or without one saved:
+ * the editor, the Sessions strip and the Settings card. One string so the
+ * three can't drift apart.
+ */
+const ROTATION_NOTE =
+  "Rotate your class link every month. At the end of each month, create a new meeting link in Zoom, Teams or Meet and paste it here — students who have left the class can't keep joining with the old one.";
 
 // ── The choice ──────────────────────────────────────────────────────────────
 
@@ -326,9 +363,9 @@ export default function ClassLinkChoice({
                   </a>
                 </div>
               )}
-              <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-                A permanent room link can&apos;t be taken back: a student who leaves the class can still open it.
-                If that matters, change the room&apos;s link in Zoom or Teams and paste the new one here.
+              <p className="mt-2 flex items-start gap-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                <RefreshCw className="size-3 mt-0.5 shrink-0" />
+                <span>{ROTATION_NOTE}</span>
               </p>
             </div>
           ) : null}
@@ -394,6 +431,10 @@ function OptionCard({
  * scheduling pop-up straight at its link step, so there is one editor there.
  * Without it the panel edits in place with its own Save, which is how Settings
  * keeps the link out of its draft and its unsaved-changes bar.
+ *
+ * Custom mode with no link yet ("add link later" in the pop-up) is shown as
+ * something to do, in amber, with Add link as its one action — not as an
+ * error, because the tutor chose it.
  */
 export function ClassLinkPanel({
   groupId,
@@ -412,7 +453,7 @@ export function ClassLinkPanel({
   linkModeAvailable: boolean;
   compact?: boolean;
   onEdit?: () => void;
-  onSaved: (mode: MeetingLinkMode, url: string) => void;
+  onSaved: (mode: MeetingLinkMode, url: string, setAt: string | null) => void;
 }) {
   const connection = useVideoConnection(tutorId);
   const provider = providerLabel(connection.status === 'connected' ? connection.provider : null);
@@ -448,7 +489,7 @@ export function ClassLinkPanel({
       const r = await saveClassLink(groupId, resolved);
       setSaving(false);
       if (!r.ok) { setError(r.message); return; }
-      onSaved(r.mode, r.url);
+      onSaved(r.mode, r.url, r.setAt);
     }
     setEditing(false);
     if (thenConnect) window.location.href = connectUrl(groupId);
@@ -527,32 +568,50 @@ export function ClassLinkPanel({
     </div>
   );
 
+  // Own link chosen, none saved yet. Join can't work, so this is the one thing
+  // the panel asks for — Add link replaces Edit rather than sitting beside it.
+  const pending = mode === 'custom' && !url;
+  const pendingText = "Add your class link — students can't join until you do.";
+  const addLinkButton = (
+    <button
+      type="button"
+      onClick={startEdit}
+      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700"
+    >
+      <LinkIcon className="size-3.5" /> Add link
+    </button>
+  );
+
   if (compact) {
     return (
       <div className="space-y-3">
-        <div className="rounded-xl border border-dashed border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
-          {mode === 'custom'
-            ? <LinkIcon className="size-3.5 shrink-0 text-brand-deep" />
-            : <Video className="size-3.5 shrink-0 text-brand-deep" />}
-          <span className="min-w-0 flex-1">
-            {mode === 'custom' ? (
-              url ? (
+        {pending ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 flex items-center gap-2 flex-wrap">
+            <AlertTriangle className="size-3.5 shrink-0 text-amber-600" />
+            <span className="min-w-0 flex-1 font-semibold">{pendingText}</span>
+            {!editing && addLinkButton}
+            <RotationNoteLine className="text-amber-800" />
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
+            {mode === 'custom'
+              ? <LinkIcon className="size-3.5 shrink-0 text-brand-deep" />
+              : <Video className="size-3.5 shrink-0 text-brand-deep" />}
+            <span className="min-w-0 flex-1">
+              {mode === 'custom' ? (
                 <>Students join with your own link · <span className="font-medium text-ink break-all">{displayLink(url)}</span></>
               ) : (
-                <span className="font-medium text-rose-600">
-                  This class uses your own link, but none is saved yet — Join won&apos;t work until you add it.
-                </span>
-              )
-            ) : (
-              <>
-                Join links are generated with {provider} the first time you press Join, then reused for 30 days.
-                {notConnected}
-              </>
-            )}
-          </span>
-          {mode === 'custom' && copyButton}
-          {!editing && editButton}
-        </div>
+                <>
+                  Join links are generated with {provider} the first time you press Join, then reused for 30 days.
+                  {notConnected}
+                </>
+              )}
+            </span>
+            {mode === 'custom' && copyButton}
+            {!editing && editButton}
+            {mode === 'custom' && <RotationNoteLine />}
+          </div>
+        )}
         {editor}
       </div>
     );
@@ -561,34 +620,170 @@ export function ClassLinkPanel({
   return (
     <div className="space-y-3">
       {!editing ? (
-        <div className="rounded-xl border border-border p-4 flex flex-col sm:flex-row sm:items-start gap-3">
-          <div className="size-9 rounded-xl bg-brand/10 text-brand-deep grid place-items-center shrink-0">
-            {mode === 'custom' ? <LinkIcon className="size-4" /> : <Video className="size-4" />}
+        <div
+          className={cn(
+            'rounded-xl border p-4 flex flex-col sm:flex-row sm:items-start gap-3',
+            pending ? 'border-amber-200 bg-amber-50' : 'border-border',
+          )}
+        >
+          <div
+            className={cn(
+              'size-9 rounded-xl grid place-items-center shrink-0',
+              pending ? 'bg-amber-100 text-amber-700' : 'bg-brand/10 text-brand-deep',
+            )}
+          >
+            {pending ? <AlertTriangle className="size-4" /> : mode === 'custom' ? <LinkIcon className="size-4" /> : <Video className="size-4" />}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold text-ink">
-              {mode === 'custom' ? 'Your own class link' : `Generated ${provider} links`}
+            <div className={cn('text-sm font-semibold', pending ? 'text-amber-900' : 'text-ink')}>
+              {pending ? pendingText : mode === 'custom' ? 'Your own class link' : `Generated ${provider} links`}
             </div>
-            <div className="text-xs text-muted-foreground mt-0.5">
+            <div className={cn('text-xs mt-0.5', pending ? 'text-amber-800' : 'text-muted-foreground')}>
               {mode === 'custom'
-                ? 'Every Join button for this class — yours and your students\' — opens this link.'
+                ? pending
+                  ? 'This class uses your own Zoom, Teams or Meet room. Every Join button — yours and your students\' — will open it once it\'s added.'
+                  : 'Every Join button for this class — yours and your students\' — opens this link.'
                 : 'A link is created the first time you press Join, then reused for 30 days.'}
               {notConnected}
             </div>
-            {url ? (
-              <div className="mt-2 text-xs font-medium text-ink break-all">{url}</div>
-            ) : mode === 'custom' ? (
-              <div className="mt-2 text-xs font-medium text-rose-600">No link saved yet — Join won&apos;t work until you add one.</div>
-            ) : null}
+            {url && <div className="mt-2 text-xs font-medium text-ink break-all">{url}</div>}
+            {mode === 'custom' && <RotationNoteLine className={cn('mt-2', pending && 'text-amber-800')} />}
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            {copyButton}
-            {editButton}
+            {pending ? addLinkButton : (
+              <>
+                {copyButton}
+                {editButton}
+              </>
+            )}
           </div>
         </div>
       ) : (
         editor
       )}
+    </div>
+  );
+}
+
+/**
+ * The always-on monthly rotation reminder, as one small line. In the compact
+ * strip it is a flex child that takes a full row of its own (basis-full), so it
+ * sits under the link and its buttons rather than squeezing between them.
+ */
+function RotationNoteLine({ className }: { className?: string }) {
+  return (
+    <p className={cn('basis-full flex items-start gap-1.5 text-[11px] leading-relaxed text-muted-foreground', className)}>
+      <RefreshCw className="size-3 mt-0.5 shrink-0" />
+      <span>{ROTATION_NOTE}</span>
+    </p>
+  );
+}
+
+// ── Month-end rotation banner ───────────────────────────────────────────────
+
+/** Per class, so "Not now" on one class doesn't silence another. */
+function rotationDismissKey(groupId: string): string {
+  return `itutor:link-rotation-dismissed:${groupId}`;
+}
+
+/**
+ * "Time to rotate your class link", at the top of the Sessions tab.
+ *
+ * Shown for a custom-mode class with a link saved, once isRotationDue says the
+ * link predates the latest month-end window, and until a new link is saved —
+ * the caller passes the fresh meeting_link_set_at from the save, so it goes
+ * away the moment the tutor rotates. The caller decides whether the class has
+ * a link to rotate at all: an in-person-only class, or a database without
+ * migration 263 (where every setAt reads as unknown, i.e. due forever), must
+ * not render this.
+ *
+ * "Not now" is remembered per class in localStorage as the window it was
+ * dismissed in (rotationWindowStart), so it stays quiet for the rest of that
+ * window and comes back when the next one opens. Storage can throw (private
+ * windows, blocked site data); the banner then just can't remember, and "Not
+ * now" still hides it for as long as this component is mounted.
+ *
+ * Renders nothing until mounted: both the stored dismissal and "today" are
+ * browser-only facts, and reading them during the first render would differ
+ * from a server render.
+ */
+export function LinkRotationBanner({
+  groupId,
+  mode,
+  url,
+  setAt,
+  onRotate,
+}: {
+  groupId: string;
+  mode: MeetingLinkMode;
+  url: string;
+  setAt: string | null;
+  /** Opens the link editor — the same action as Edit on the Class link strip. */
+  onRotate: () => void;
+}) {
+  const [mounted, setMounted] = useState(false);
+  const [dismissedWindow, setDismissedWindow] = useState<string | null>(null);
+
+  useEffect(() => {
+    let stored: string | null = null;
+    try {
+      stored = window.localStorage.getItem(rotationDismissKey(groupId));
+    } catch {
+      /* storage unavailable — nothing remembered */
+    }
+    setDismissedWindow(stored);
+    setMounted(true);
+  }, [groupId]);
+
+  if (!mounted || mode !== 'custom' || !url || !isRotationDue(setAt)) return null;
+
+  const today = trinidadToday();
+  const windowStart = rotationWindowStart(today);
+  if (dismissedWindow === windowStart) return null;
+
+  const dismiss = () => {
+    setDismissedWindow(windowStart);
+    try {
+      window.localStorage.setItem(rotationDismissKey(groupId), windowStart);
+    } catch {
+      /* storage unavailable — hidden until the tab remounts */
+    }
+  };
+
+  // Due stays due past the window until a new link is saved, and a link from
+  // before migration 263 has no date at all, so "it's the end of the month"
+  // is only said when it is.
+  const body = inRotationWindow(today)
+    ? "It's the end of the month. Create a new meeting link in Zoom, Teams or Meet and paste it here, so students who have left the class can no longer join."
+    : "This class is still using a link from before the last month end. Create a new meeting link in Zoom, Teams or Meet and paste it here, so students who have left the class can no longer join.";
+
+  return (
+    <div role="status" className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
+      <div className="flex items-start gap-3 flex-1 min-w-0">
+        <div className="size-9 rounded-xl bg-amber-100 grid place-items-center shrink-0">
+          <RefreshCw className="size-4 text-amber-700" />
+        </div>
+        <div className="text-sm text-amber-900 min-w-0">
+          <div className="font-semibold">Time to rotate your class link</div>
+          <div className="text-xs text-amber-800 mt-0.5">{body}</div>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 shrink-0 sm:justify-end">
+        <button
+          type="button"
+          onClick={dismiss}
+          className="px-3 py-2 rounded-lg text-xs font-semibold text-amber-900 hover:bg-amber-100"
+        >
+          Not now
+        </button>
+        <button
+          type="button"
+          onClick={onRotate}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700"
+        >
+          <LinkIcon className="size-3.5" /> Paste new link
+        </button>
+      </div>
     </div>
   );
 }
