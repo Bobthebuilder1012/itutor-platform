@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, Users, User as UserIcon, ChevronRight, Check, X,
-  Globe, Lock, DollarSign, Info, AlertTriangle,
+  Globe, Lock, DollarSign, Info,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -294,10 +294,18 @@ function CreateClassContent() {
           venue_id:
             type === 'group' && inPerson.classFormat !== 'online' ? inPerson.venueId : null,
           venue_visibility: inPerson.venueVisibility,
-          max_students_online: type === 'group' ? inPerson.maxStudentsOnline : null,
-          max_students_physical: type === 'group' ? inPerson.maxStudentsPhysical : null,
-          price_online_ttd: type === 'group' ? inPerson.priceOnlineTtd : null,
-          price_physical_ttd: type === 'group' ? inPerson.pricePhysicalTtd : null,
+          // Only the seat types the format offers. InPersonSection keeps each
+          // seat's fields while the tutor flips formats, so an in-person limit
+          // typed before choosing "Online only" was sent, and summed into
+          // max_students — an online class capped at 12 read 0/24.
+          max_students_online:
+            type === 'group' && inPerson.classFormat !== 'physical' ? inPerson.maxStudentsOnline : null,
+          max_students_physical:
+            type === 'group' && inPerson.classFormat !== 'online' ? inPerson.maxStudentsPhysical : null,
+          price_online_ttd:
+            type === 'group' && inPerson.classFormat !== 'physical' ? inPerson.priceOnlineTtd : null,
+          price_physical_ttd:
+            type === 'group' && inPerson.classFormat !== 'online' ? inPerson.pricePhysicalTtd : null,
           accepts_cash:
             type === 'group' && inPerson.classFormat !== 'online' ? inPerson.acceptsCash : false,
         }),
@@ -594,37 +602,6 @@ function CreateClassContent() {
             </div>
             <p className="text-xs text-muted-foreground">AI-drafted monthly reports reviewed and approved by you before being sent to parents. Available soon.</p>
           </Card>
-
-          {/*
-            * Stated here because this form never asks for a schedule — it is set
-            * in the scheduling pop-up that opens on the class page straight after
-            * this saves (?schedule=1), along with how students join: Google Meet
-            * links generated per session, or the tutor's own class link.
-            * Publishing therefore does NOT put the class on the marketplace on
-            * its own, and a tutor who is not told that reasonably assumes it did
-            * — and may close the pop-up thinking the job is done. On production
-            * 18 of 38 published classes have no schedule, which is what this gap
-            * produces.
-            */}
-          <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
-            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />
-            <p className="text-xs leading-relaxed text-amber-800">
-              <span className="font-semibold">One more step after this.</span>{' '}
-              {type === 'group' && inPerson.classFormat === 'physical' ? (
-                // An in-person-only class has no online join, so the pop-up
-                // skips the link step for it — don't promise a choice it won't
-                // be offered.
-                <>Next you&rsquo;ll set the class schedule.</>
-              ) : (
-                <>
-                  Next you&rsquo;ll set the class schedule and choose how students join &mdash;
-                  Google Meet links we generate for each session, or your own class link.
-                </>
-              )}{' '}
-              A class only appears on the marketplace once it has a weekly schedule; until then
-              students and parents can&rsquo;t find or enrol in it.
-            </p>
-          </div>
 
           {saveError && (
             <div className="rounded-xl border border-rose-200 bg-rose-50 p-3">

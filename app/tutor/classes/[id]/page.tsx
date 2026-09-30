@@ -113,7 +113,7 @@ import { type ScheduleEntry } from '@/lib/utils/scheduleFormat';
 import { preorderReasonMessage, type PreorderIneligibility } from '@/lib/payments/secureSpot';
 import ClassPausePanel from '@/components/tutor/ClassPausePanel';
 import ScheduleSessionsModal, { type CreatedOccurrence } from '@/components/tutor/classes/ScheduleSessionsModal';
-import { ClassLinkPanel, providerLabel, useVideoConnection } from '@/components/tutor/classes/ClassLinkChoice';
+import { ClassLinkPanel, LinkRotationBanner, providerLabel, useVideoConnection } from '@/components/tutor/classes/ClassLinkChoice';
 import type { MeetingLinkMode } from '@/lib/types/groups';
 
 // Link posts have no dedicated link_url column — the composer writes the raw
@@ -123,7 +123,7 @@ const URL_LINE_RE = /^https?:\/\/\S+$/;
 // The seat-type rules live in one place. seatCapacity.ts holds the one that
 // matters — a class is not full until every seat type it offers is full — and
 // this page is one of the two callers it was written for.
-import type { ClassFormat } from '@/lib/utils/seatCapacity';
+import { formatOffersSeat, seatTypesFor, type ClassFormat } from '@/lib/utils/seatCapacity';
 import InPersonSection, { type InPersonDraft } from '@/components/tutor/classes/InPersonSection';
 import { usePhysicalClasses } from '@/lib/hooks/usePhysicalClasses';
 import ClassPayments from '@/components/tutor/classes/ClassPayments';
@@ -138,8 +138,9 @@ type GroupDetail = {
   enrolled: number;
   // ── In person (migration 242) ──
   // `capacity` above stays the class TOTAL — a trigger keeps groups.max_students
-  // as the sum of the two seat caps, so it is derived, not a third number to
-  // reconcile. These are the per-seat caps that actually gate enrolment.
+  // as the sum of the seat caps the format offers, so it is derived, not a
+  // third number to reconcile (see classCapacity below). These are the per-seat
+  // caps that actually gate enrolment.
   classFormat: ClassFormat;
   venueId: string | null;
   venueVisibility: 'public' | 'after_enrolment';
@@ -184,11 +185,41 @@ type GroupDetail = {
   meetingLinkGeneratedAt: string | null;
   /** False when the row has no meeting_link_mode column: the own-link option is hidden. */
   linkModeAvailable: boolean;
+  /** groups.meeting_link_set_at (migration 263): when the own link was saved. Drives the rotation banner. */
+  meetingLinkSetAt: string | null;
+  /**
+   * False when the row has no meeting_link_set_at column. The banner is then
+   * hidden: every link would read as unknown age, i.e. due, for good.
+   */
+  linkSetAtAvailable: boolean;
   coverImage?: string;
   scheduleDisplay?: string;
   scheduleData?: ScheduleEntry[];
   activePromotion?: { id: string; kind: string; discount: number; student_cap: number | null; duration_days: number | null } | null;
 };
+
+/**
+ * The class total, worked out the way sync_group_max_students (migration 263)
+ * stores it in groups.max_students: the sum of the caps for the seat types
+ * this format offers (a blank cap adds nothing), or — when none of those is
+ * set — the plain student limit, which the trigger then leaves alone.
+ *
+ * Computed here rather than read back because the stored number has been
+ * wrong: before 263 the trigger summed a cap the format doesn't offer, so an
+ * online class capped at 12 with a leftover in-person 12 read "0/24". Deriving
+ * it keeps the header, the Capacity tab and the Class type tab on one number
+ * — on load, while editing, and straight after a save — whatever the row says.
+ */
+function classCapacity(
+  format: ClassFormat,
+  online: number | null,
+  physical: number | null,
+  studentLimit: number,
+): number {
+  const caps = seatTypesFor(format).map((s) => (s === 'online' ? online : physical));
+  if (caps.every((c) => c == null)) return studentLimit;
+  return Math.max(1, caps.reduce<number>((sum, c) => sum + (c ?? 0), 0));
+}
 
 export default function TutorLessonDetailPage() {
   return (
@@ -371,7 +402,12 @@ function ClassHubContent() {
           coverImage: g.cover_image ?? '',
           scheduleDisplay: g.schedule_display ?? '',
           scheduleData: (() => { try { return g.schedule_data ? JSON.parse(g.schedule_data) : []; } catch { return []; } })(),
-          capacity: g.max_students ?? 20,
+          capacity: classCapacity(
+            (g.class_format ?? 'online') as ClassFormat,
+            g.max_students_online ?? null,
+            g.max_students_physical ?? null,
+            g.max_students ?? 20,
+          ),
           enrolled: 0,
           // Absent on any environment without migration 242, which is why every
           // one of these falls back rather than being read straight through.
@@ -410,6 +446,9 @@ function ClassHubContent() {
           meetingLinkGeneratedAt: g.meeting_link_generated_at ?? null,
           // select('*') simply has no such key where migration 262 isn't applied.
           linkModeAvailable: 'meeting_link_mode' in g,
+          // Likewise 263. Both the tutor's select and the admin probe are '*'.
+          meetingLinkSetAt: typeof g.meeting_link_set_at === 'string' ? g.meeting_link_set_at : null,
+          linkSetAtAvailable: 'meeting_link_set_at' in g,
           rating: null,
           reviewCount: 0,
           activePromotion,
@@ -595,13 +634,16 @@ function ClassHubContent() {
 
   // Saved from the pop-up, the Sessions strip or Settings. A new generated
   // link is minted on the next Join, so its timestamp resets whenever the mode
-  // changes or the link is the tutor's own.
-  const handleLinkSaved = (mode: MeetingLinkMode, url: string) =>
+  // changes or the link is the tutor's own. setAt is the server's, so a
+  // rotated link takes the month-end banner down at once; it only means
+  // anything for the tutor's own link.
+  const handleLinkSaved = (mode: MeetingLinkMode, url: string, setAt: string | null) =>
     setGroup((g) => g ? {
       ...g,
       meetingLinkMode: mode,
       meetingLink: url,
       meetingLinkGeneratedAt: mode === 'custom' || mode !== g.meetingLinkMode ? null : g.meetingLinkGeneratedAt,
+      meetingLinkSetAt: mode === 'custom' ? setAt : null,
     } : g);
 
   const OAUTH_ERRORS: Record<string, string> = {
@@ -1391,7 +1433,7 @@ function SessionsTab({ sessions, groupId, setSessions, reconnected, group, onOpe
   group: GroupDetail;
   /** Opens the scheduling pop-up — at step 1, or straight at the link step. */
   onOpenSchedule: (linkOnly: boolean) => void;
-  onLinkSaved: (mode: MeetingLinkMode, url: string) => void;
+  onLinkSaved: (mode: MeetingLinkMode, url: string, setAt: string | null) => void;
 }) {
   // Sessions arrive grouped by series (every Monday, then every Tuesday),
   // so a two-day class read as two separate years-long lists. Sort across
@@ -1443,12 +1485,25 @@ function SessionsTab({ sessions, groupId, setSessions, reconnected, group, onOpe
   // from the next fetchAll instead of a guess here.
   const handleLinkMinted = (url: string, mode: MeetingLinkMode) => {
     if (mode === 'generated' && group.meetingLinkMode === 'generated' && url !== group.meetingLink) {
-      onLinkSaved('generated', url);
+      onLinkSaved('generated', url, null);
     }
   };
 
   return (
     <div className="space-y-4">
+      {/* Month-end "rotate your own link". Not for an in-person-only class,
+          which has no link, nor where migration 263 is missing and no link has
+          a date — it would read as due every day. */}
+      {!physical && group.linkSetAtAvailable && (
+        <LinkRotationBanner
+          groupId={groupId}
+          mode={group.meetingLinkMode}
+          url={group.meetingLink}
+          setAt={group.meetingLinkSetAt}
+          onRotate={() => onOpenSchedule(true)}
+        />
+      )}
+
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-lg font-bold text-ink">Sessions</h2>
@@ -2296,7 +2351,7 @@ function RosterRow({ m, groupId, onUpdate, onRemoved, externalChannels, showSeat
 const SETTINGS_SECTIONS = [
   { id: 'basics',    label: 'Display',           icon: Info },
   { id: 'capacity',  label: 'Capacity',          icon: Users },
-  { id: 'inperson',  label: 'In person',         icon: MapPin },
+  { id: 'inperson',  label: 'Class type',        icon: MapPin },
   { id: 'billing',   label: 'Billing',           icon: DollarSign },
   { id: 'access',    label: 'Access & policies', icon: Lock },
   { id: 'classlink', label: 'Class link',        icon: Video },
@@ -2329,6 +2384,25 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
   const [draft, setDraft] = useState(() => ({ ...group }));
   const d = <K extends keyof GroupDetail>(k: K, v: GroupDetail[K]) =>
     setDraft((prev) => ({ ...prev, [k]: v }));
+
+  // The Capacity stepper and Class type's "Student limit" are one number on a
+  // class with one kind of seat. Once that seat has a cap, the trigger derives
+  // max_students from it and would quietly throw a stepper change away — the
+  // "I entered 12 and it shows something else" problem — so the stepper edits
+  // the cap too. With no cap set it is the plain limit, as it always was.
+  const setCapacity = (v: number) =>
+    setDraft((prev) => {
+      if (prev.classFormat === 'online' && prev.maxStudentsOnline != null) {
+        return { ...prev, capacity: v, maxStudentsOnline: v };
+      }
+      if (prev.classFormat === 'physical' && prev.maxStudentsPhysical != null) {
+        return { ...prev, capacity: v, maxStudentsPhysical: v };
+      }
+      return { ...prev, capacity: v };
+    });
+  // A hybrid class with either seat capped has a total that is only a sum.
+  const hybridCapsSetTotal =
+    draft.classFormat === 'hybrid' && (draft.maxStudentsOnline != null || draft.maxStudentsPhysical != null);
 
   // Can this class open preorders at all? Answered by the server, because the
   // recurrence lives in group_sessions and this page only holds flattened
@@ -2435,6 +2509,22 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
       const savedLevel = (JSON.parse(savedRef.current) as GroupDetail).level;
       const levelChanged = draft.level !== savedLevel;
 
+      // A cap or price for a seat type the format doesn't offer is sent as
+      // null. Class type keeps each seat's fields in the draft while the tutor
+      // flips between formats, so an in-person limit typed and then left
+      // behind by switching to "Online only" used to be saved and summed into
+      // max_students — the 0/24 on a class capped at 12. Migration 263 clears
+      // such a cap in the trigger too; this stops sending it at all.
+      const offersOnline = formatOffersSeat(draft.classFormat, 'online');
+      const offersPhysical = formatOffersSeat(draft.classFormat, 'physical');
+      const seats = {
+        maxStudentsOnline: offersOnline ? draft.maxStudentsOnline : null,
+        maxStudentsPhysical: offersPhysical ? draft.maxStudentsPhysical : null,
+        priceOnlineTtd: offersOnline ? draft.priceOnlineTtd : null,
+        pricePhysicalTtd: offersPhysical ? draft.pricePhysicalTtd : null,
+      };
+      const studentLimit = draft.capacity > 0 ? draft.capacity : 20;
+
       // Basics + capacity/billing → existing groups PATCH (name, description, subject, level, capacity, price, billing model)
       //
       // schedule_display / schedule_data are NOT sent. They were echo-only once
@@ -2452,24 +2542,24 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
           cover_image: draft.coverImage?.trim() || null,
           subject: draft.subject && draft.subject !== '—' ? draft.subject : null,
           ...(levelChanged ? { form_level: draft.level && draft.level !== '—' ? draft.level : null } : {}),
-          max_students: draft.capacity > 0 ? draft.capacity : 20,
+          max_students: studentLimit,
           status: draft.visibility === 'private' ? 'DRAFT' : 'PUBLISHED',
           // In person (migration 242). Sent to the groups PATCH rather than the
           // settings endpoint because that is where the venue-ownership and
           // format rules are enforced.
           //
           // max_students above is still sent, and a trigger will immediately
-          // overwrite it with the sum of the two seat caps once either is set.
+          // overwrite it with the sum of the seat caps once any is set.
           // That is the intended precedence — the caps are the fact, the total is
           // derived — and it is why the In person tab shows the derived total
           // read-only rather than offering a third number to edit.
           class_format: draft.classFormat,
           venue_id: draft.classFormat === 'online' ? null : draft.venueId,
           venue_visibility: draft.venueVisibility,
-          max_students_online: draft.maxStudentsOnline,
-          max_students_physical: draft.maxStudentsPhysical,
-          price_online_ttd: draft.priceOnlineTtd,
-          price_physical_ttd: draft.pricePhysicalTtd,
+          max_students_online: seats.maxStudentsOnline,
+          max_students_physical: seats.maxStudentsPhysical,
+          price_online_ttd: seats.priceOnlineTtd,
+          price_physical_ttd: seats.pricePhysicalTtd,
           accepts_cash: draft.classFormat === 'online' ? false : draft.acceptsCash,
         }),
       });
@@ -2511,18 +2601,43 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
         throw new Error(detail);
       }
 
+      // What was actually stored: the seat fields as sent, and the class total
+      // as the trigger derives it. The header's MEMBERS x/y reads
+      // group.capacity, and spreading the draft alone put back whatever
+      // total the draft held — the stale or summed number — until a reload.
+      // With no seat cap for this format the trigger keeps the plain limit
+      // that was sent, which the returned row confirms.
+      const storedLimit = Number(basicJson?.group?.max_students);
+      const saved: GroupDetail = {
+        ...draft,
+        ...seats,
+        capacity: classCapacity(
+          draft.classFormat,
+          seats.maxStudentsOnline,
+          seats.maxStudentsPhysical,
+          Number.isFinite(storedLimit) && storedLimit > 0 ? storedLimit : studentLimit,
+        ),
+      };
+
       // The link fields are the class's, not the draft's — they are saved
       // separately and may have changed (a Join minting a Meet link) since the
       // draft was taken.
       setGroup((g) => g ? {
         ...g,
-        ...draft,
+        ...saved,
         meetingLink: g.meetingLink,
         meetingLinkMode: g.meetingLinkMode,
         meetingLinkGeneratedAt: g.meetingLinkGeneratedAt,
         linkModeAvailable: g.linkModeAvailable,
+        meetingLinkSetAt: g.meetingLinkSetAt,
+        linkSetAtAvailable: g.linkSetAtAvailable,
       } : g);
-      savedRef.current = JSON.stringify(draft);
+      // The draft takes the stored values too, so the snapshot and the form
+      // agree — unless the tutor kept typing while this saved, in which case
+      // their newer edits stay and still read as unsaved.
+      const sentDraft = JSON.stringify(draft);
+      setDraft((prev) => (JSON.stringify(prev) === sentDraft ? saved : prev));
+      savedRef.current = JSON.stringify(saved);
       setSaveOk(true);
       setTimeout(() => setSaveOk(false), 2500);
     } catch (e: any) {
@@ -2542,11 +2657,12 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
   // result is folded into the class, the draft AND the saved snapshot at once;
   // leaving either copy behind would light up "unsaved changes" for something
   // that is already saved (or have Discard put the old link back on screen).
-  const handleClassLinkSaved = (mode: MeetingLinkMode, url: string) => {
+  const handleClassLinkSaved = (mode: MeetingLinkMode, url: string, setAt: string | null) => {
     const patch = {
       meetingLinkMode: mode,
       meetingLink: url,
       meetingLinkGeneratedAt: mode === 'custom' || mode !== group.meetingLinkMode ? null : group.meetingLinkGeneratedAt,
+      meetingLinkSetAt: mode === 'custom' ? setAt : null,
     };
     setGroup((g) => g ? { ...g, ...patch } : g);
     setDraft((prev) => ({ ...prev, ...patch }));
@@ -2693,6 +2809,17 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
                 <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
                   This is a 1-on-1 class — capacity is fixed at 1.
                 </div>
+              ) : hybridCapsSetTotal ? (
+                // Two kinds of seat, at least one capped: the total is derived
+                // from them and nothing typed here would survive the trigger,
+                // so the seat limits are shown, not a third number offered.
+                <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                  This class has online and in-person seats, so its limit is set per seat type
+                  {physicalClasses ? ' under Class type' : ''}:{' '}
+                  <strong className="font-semibold text-ink">
+                    {draft.maxStudentsOnline ?? 'no limit'} online · {draft.maxStudentsPhysical ?? 'no limit'} in person
+                  </strong>.
+                </div>
               ) : (
                 <SetField
                   label="Student limit"
@@ -2703,15 +2830,15 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
                     : 'Min 2 · Max 500.'}
                 >
                   <div className="inline-flex items-center gap-2">
-                    <button onClick={() => d('capacity', Math.max(capacityFloor, draft.capacity - 1))}
+                    <button onClick={() => setCapacity(Math.max(capacityFloor, draft.capacity - 1))}
                       disabled={draft.capacity <= capacityFloor}
                       className="size-9 grid place-items-center rounded-lg border border-border hover:bg-muted text-lg font-semibold disabled:opacity-40 disabled:hover:bg-transparent">−</button>
                     <input
                       type="number" value={draft.capacity} min={capacityFloor} max={500}
-                      onChange={(e) => d('capacity', Math.max(capacityFloor, Math.min(500, Number(e.target.value))))}
+                      onChange={(e) => setCapacity(Math.max(capacityFloor, Math.min(500, Number(e.target.value))))}
                       className="w-20 text-center px-3 py-2 rounded-lg border border-border bg-background text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-brand"
                     />
-                    <button onClick={() => d('capacity', Math.min(500, draft.capacity + 1))}
+                    <button onClick={() => setCapacity(Math.min(500, draft.capacity + 1))}
                       className="size-9 grid place-items-center rounded-lg border border-border hover:bg-muted text-lg font-semibold">+</button>
                   </div>
                   {capacityFloor > 2 && (
@@ -2727,7 +2854,7 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
           {section === 'inperson' && physicalClasses && (
             <>
               <SettingsHead
-                title="In person"
+                title="Class type"
                 desc="Run this class at a venue, online, or both."
               />
               {isOneOnOne ? (
@@ -2747,8 +2874,23 @@ function SettingsTab({ group, setGroup, isOneOnOne, onDirtyChange, enrolledCount
                     pricePhysicalTtd: draft.pricePhysicalTtd,
                     acceptsCash: draft.acceptsCash,
                   }}
+                  // The total follows the seat limits as they are typed, so the
+                  // Capacity tab and the preview card never show a number the
+                  // save would then replace. With every cap for the format
+                  // blank, the trigger keeps the plain limit already saved.
                   onChange={(patch: Partial<InPersonDraft>) =>
-                    setDraft((prev) => ({ ...prev, ...patch }))
+                    setDraft((prev) => {
+                      const next = { ...prev, ...patch };
+                      return {
+                        ...next,
+                        capacity: classCapacity(
+                          next.classFormat,
+                          next.maxStudentsOnline,
+                          next.maxStudentsPhysical,
+                          (JSON.parse(savedRef.current) as GroupDetail).capacity,
+                        ),
+                      };
+                    })
                   }
                   // Per-seat counts need group_enrollments.seat_type, which this
                   // page does not load. Passing the class total as the ONLINE

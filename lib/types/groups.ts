@@ -136,6 +136,8 @@ export interface Group {
   meeting_link?: string | null;
   meeting_link_generated_at?: string | null;
   meeting_link_mode?: MeetingLinkMode;
+  /** When the current custom link was saved (migration 263). Drives the monthly rotation reminder. */
+  meeting_link_set_at?: string | null;
   created_at: string;
   updated_at?: string;
   archived_at: string | null;

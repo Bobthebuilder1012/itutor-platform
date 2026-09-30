@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Class settings → In person. Where a class becomes physical or hybrid.
+ * Class settings → Class type. Where a class becomes physical or hybrid.
  *
  * A separate component rather than another branch inside the 3,200-line class
  * page, because it needs the venue list (its own fetch), it needs the seat-type

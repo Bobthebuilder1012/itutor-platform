@@ -17,6 +17,7 @@ import {
   schoolYearOf,
   suggestEndDate,
 } from '../lib/classes/academicCalendar';
+import { inRotationWindow, isRotationDue, rotationWindowStart } from '../lib/classes/linkRotation';
 
 const failures: string[] = [];
 function eq(label: string, actual: unknown, expected: unknown) {
@@ -82,6 +83,27 @@ eq('levelAfter(FORM_2, 0)', levelAfter('FORM_2', 0), 'FORM_2');
 eq('nextProgression(FORM_4, 2026, 2028-04-30)', JSON.stringify(nextProgression('FORM_4', 2026, '2028-04-30')), JSON.stringify({ toLevel: 'FORM_5', on: '2027-07-01' }));
 eq('nextProgression(FORM_2, 2026, 2027-06-30) ends first', nextProgression('FORM_2', 2026, '2027-06-30'), null);
 eq('nextProgression(FORM_5, 2026)', nextProgression('FORM_5', 2026, null), null);
+
+// ── Own-link rotation reminder (lib/classes/linkRotation.ts) ───────────────
+eq('window start 2026-09-29', rotationWindowStart('2026-09-29'), '2026-09-28');
+eq('window start 2026-09-27', rotationWindowStart('2026-09-27'), '2026-08-29');
+eq('window start 2026-10-15', rotationWindowStart('2026-10-15'), '2026-09-28');
+eq('window start 2027-01-05', rotationWindowStart('2027-01-05'), '2026-12-29');
+eq('window start 2028-02-27 (leap)', rotationWindowStart('2028-02-27'), '2028-02-27');
+eq('window start 2027-02-26', rotationWindowStart('2027-02-26'), '2027-02-26');
+eq('in window 2026-09-30', inRotationWindow('2026-09-30'), true);
+eq('in window 2026-09-27', inRotationWindow('2026-09-27'), false);
+// 2026-09-29 18:00 Trinidad = 22:00Z. A link set on 2026-09-10 is due; one set on the 28th is not.
+const at = new Date('2026-09-29T22:00:00Z');
+eq('due: set 2026-09-10', isRotationDue('2026-09-10T15:00:00Z', at), true);
+eq('not due: set 2026-09-28 in window', isRotationDue('2026-09-28T14:00:00Z', at), false);
+eq('due: unknown age', isRotationDue(null, at), true);
+// Trinidad date, not UTC: 2026-09-28 02:00Z is still the 27th in Trinidad, before the window.
+eq('due: set 27th evening AST', isRotationDue('2026-09-28T02:00:00Z', at), true);
+// Mid-October, a link rotated in the September window is not due again yet.
+eq('not due mid-month after rotating', isRotationDue('2026-09-29T12:00:00Z', new Date('2026-10-15T15:00:00Z')), false);
+// Ignored through October's window: due again from 29 Oct.
+eq('due again next window', isRotationDue('2026-09-29T12:00:00Z', new Date('2026-10-29T15:00:00Z')), true);
 
 if (failures.length) {
   console.error(`✗ ${failures.length} failure(s):`);
