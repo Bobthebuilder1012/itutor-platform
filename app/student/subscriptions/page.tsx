@@ -7,6 +7,7 @@ import {
   RefreshCw, CalendarCheck2, Play, Sparkles, TrendingUp, Clock, Star, LifeBuoy, MapPin, Video,
 } from 'lucide-react';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
+import { calculateGrossAmountForProvider } from '@/lib/payments/grossUp';
 import { cn } from '@/lib/utils';
 
 type Subscription = {
@@ -41,13 +42,13 @@ type Subscription = {
   } | null;
 };
 
-const LUNIPAY_PCT   = 0.03;
-const LUNIPAY_FIXED = 1.00;
-
+// Subscriptions bill through Stripe (lib/payments/groupSubscriptionCheckout.ts),
+// so the fee shown here has to be Stripe's schedule — this used to be
+// LuniPay's (3% + $1), left over from before subscriptions moved providers,
+// which understated the fee and the "per month" total actually charged.
 function calcGross(base: number): { gross: number; fee: number } {
-  const gross = Math.round(((base + LUNIPAY_FIXED) / (1 - LUNIPAY_PCT)) * 100) / 100;
-  const fee   = Math.round((gross - base) * 100) / 100;
-  return { gross, fee };
+  const { grossAmount, processingFee } = calculateGrossAmountForProvider(base, 'stripe');
+  return { gross: grossAmount, fee: processingFee };
 }
 
 function fmtDate(d: string | null) {

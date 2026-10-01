@@ -161,6 +161,16 @@ export function calculateGrossAmountForProvider(
 }
 
 /**
+ * Inverse of calculateGrossAmountForProvider: the base a gross charge was
+ * built from. Exact to the cent for any gross produced by that function under
+ * the same schedule (its rounding error is below half a cent).
+ */
+export function baseFromGrossForProvider(grossTtd: number, provider: PaymentProvider): number {
+  const { percentageFee, fixedFeeTtd } = FEE_SCHEDULES[provider];
+  return Math.max(0, Math.round((grossTtd * (1 - percentageFee) - fixedFeeTtd) * 100) / 100);
+}
+
+/**
  * LuniPay gross-up. Kept as the default export-shaped helper so the
  * existing LuniPay routes are untouched by the Stripe work.
  */

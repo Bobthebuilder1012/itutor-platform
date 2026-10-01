@@ -480,7 +480,10 @@ export async function createGroupSubscriptionCheckout(params: {
   };
 
   let promotions: any[] | null = null;
-  if (!isReusingEnrollment) {
+  // A student coming back to finish a held seat ("Complete payment") is quoted
+  // the same promotion a first-time checkout would get. A SECURED row converting
+  // to monthly is not: that place was bought under secure-spot terms.
+  if (!continuingFromSecured) {
     // This runs on the ADMIN client, so RLS does not scope it — the filter has
     // to be explicit here. A personal coupon (migration 231) belongs to one
     // buyer; without `user_id`, one coupon row would discount this class for
@@ -489,7 +492,7 @@ export async function createGroupSubscriptionCheckout(params: {
     const nowIso = new Date().toISOString();
     const { data: promoRows } = await admin
       .from('group_promotions')
-      .select('id, kind, discount, student_cap, duration_days, user_id, expires_at, price_duration_months')
+      .select('id, kind, discount, student_cap, duration_days, user_id, expires_at, price_duration_months, created_at')
       .eq('group_id', groupId)
       .eq('active', true)
       .or(`user_id.is.null,user_id.eq.${studentId}`)
@@ -515,17 +518,28 @@ export async function createGroupSubscriptionCheckout(params: {
         let applicable = true;
 
         if (promo.kind === 'early-bird' && promo.student_cap) {
-          // Count how many subscribers have used this promotion
-          const { count: usedCount } = await admin
+          // Count how many subscribers have used this promotion. A held seat
+          // being retried is excluded, or it would count against its own place.
+          let usedQuery = admin
             .from('group_enrollments')
             .select('id', { count: 'exact', head: true })
             .eq('group_id', groupId)
             .eq('promotion_id', promo.id)
             .neq('status', 'ACTIVATION_FAILED');
+          if (enrollmentId) usedQuery = usedQuery.neq('id', enrollmentId);
+          const { count: usedCount } = await usedQuery;
 
           if ((usedCount ?? 0) >= promo.student_cap) {
             applicable = false;
           }
+        }
+
+        // The window the class page advertises (created_at + duration_days).
+        // Without this an expired offer kept discounting checkouts.
+        if (promo.kind === 'time-limited' && promo.duration_days && promo.created_at) {
+          const windowEnd = new Date(promo.created_at);
+          windowEnd.setDate(windowEnd.getDate() + promo.duration_days);
+          if (windowEnd <= now) applicable = false;
         }
 
         if (applicable) {
@@ -662,30 +676,49 @@ export async function createGroupSubscriptionCheckout(params: {
       return { ok: false as const, status: 500, body: { error: 'Failed to create enrollment', detail } };
     }
     enrollmentId = newEnrollment.id;
-
-    // Auto-deactivate early-bird promotion if cap is now reached
-    if (promotionData.promotionId) {
-      const appliedPromo = promotions?.find((p: any) => p.id === promotionData.promotionId);
-      if (appliedPromo?.kind === 'early-bird' && appliedPromo.student_cap) {
-        const { count: newUsedCount } = await admin
-          .from('group_enrollments')
-          .select('id', { count: 'exact', head: true })
-          .eq('promotion_id', promotionData.promotionId)
-          .neq('status', 'ACTIVATION_FAILED');
-        if ((newUsedCount ?? 0) >= appliedPromo.student_cap) {
-          await admin
-            .from('group_promotions')
-            .update({ active: false })
-            .eq('id', promotionData.promotionId);
-        }
-      }
-    }
-  } else {
-    // Refresh expiry on existing PENDING_PAYMENT enrollment
+  } else if (continuingFromSecured) {
+    // A SECURED row keeps its price until this payment actually succeeds —
+    // activate_subscription syncs it then (migration 264).
     await admin
       .from('group_enrollments')
       .update({ pending_payment_expires_at: pendingExpiresAt })
       .eq('id', enrollmentId);
+  } else {
+    // A retried checkout is re-quoted above: the class price or its promotion
+    // can change between the attempt that created this row and this one, and
+    // every "Active — TT$X/mo" display reads plan_price_ttd.
+    await admin
+      .from('group_enrollments')
+      .update({
+        pending_payment_expires_at: pendingExpiresAt,
+        plan_price_ttd: finalPrice,
+        original_price_ttd: promotionData.originalPrice,
+        discount_percent: promotionData.discountPercent,
+        discounted_price_ttd: promotionData.discountPercent ? finalPrice : null,
+        promotion_id: promotionData.promotionId,
+        promotion_applied_at: promotionData.promotionAppliedAt,
+        promotion_duration_days_snapshot: promotionData.promotionDurationDaysSnapshot,
+        promotion_expires_at: promotionData.promotionExpiresAt,
+      })
+      .eq('id', enrollmentId);
+  }
+
+  // Auto-deactivate early-bird promotion if cap is now reached
+  if (promotionData.promotionId) {
+    const appliedPromo = promotions?.find((p: any) => p.id === promotionData.promotionId);
+    if (appliedPromo?.kind === 'early-bird' && appliedPromo.student_cap) {
+      const { count: newUsedCount } = await admin
+        .from('group_enrollments')
+        .select('id', { count: 'exact', head: true })
+        .eq('promotion_id', promotionData.promotionId)
+        .neq('status', 'ACTIVATION_FAILED');
+      if ((newUsedCount ?? 0) >= appliedPromo.student_cap) {
+        await admin
+          .from('group_promotions')
+          .update({ active: false })
+          .eq('id', promotionData.promotionId);
+      }
+    }
   }
 
   // Step 11: group_members is created by activate_subscription after payment
@@ -760,10 +793,42 @@ export async function createGroupSubscriptionCheckout(params: {
     const cancelAt = endDateToCancelAt((group as any).end_date);
 
     const stripe = getStripeClient();
+
+    // The recurring Price is the class's FULL price, shared by every
+    // subscriber, so a promotion has to reach Stripe as a discount — without
+    // one Stripe billed full price while checkout quoted and recorded the
+    // discount. Sized against the Price's real unit_amount (a cached Price may
+    // predate a fee-schedule change) so the invoice lands on amountCents
+    // exactly. 'forever': a promotion price holds for the subscription's life.
+    let discounts: Array<{ coupon: string }> | undefined;
+    if (promotionData.promotionId) {
+      const price = await stripe.prices.retrieve(priceId);
+      const amountOff = (price.unit_amount ?? 0) - amountCents;
+      if (amountOff > 0) {
+        const coupon = await stripe.coupons.create(
+          {
+            amount_off: amountOff,
+            currency: 'ttd',
+            duration: 'forever',
+            max_redemptions: 1,
+            name: `${promotionData.discountPercent}% off`,
+            metadata: {
+              group_id: groupId,
+              promotion_id: promotionData.promotionId,
+              payment_id: paymentRow.id,
+            },
+          },
+          { idempotencyKey: `promo-coupon-${paymentRow.id}` }
+        );
+        discounts = [{ coupon: coupon.id }];
+      }
+    }
+
     subscription = await stripe.subscriptions.create(
       {
         customer: customerId,
         items: [{ price: priceId }],
+        ...(discounts ? { discounts } : {}),
         // Don't activate until the first invoice is actually paid; the
         // enrollment stays PENDING_PAYMENT until the webhook says so.
         payment_behavior: 'default_incomplete',

@@ -34,6 +34,7 @@ import {
   centsToTtd,
   extractChargeFees,
 } from '@/lib/payments/stripeClient';
+import { baseFromGrossForProvider } from '@/lib/payments/grossUp';
 import { createSessionForBooking } from '@/lib/services/sessionService';
 import {
   fulfilParentApproval,
@@ -1344,10 +1345,20 @@ async function handleInvoicePaid(
   if (subMeta?.payment_id) {
     const { data } = await admin
       .from('subscription_payments')
-      .select('id')
+      .select('id, status, stripe_invoice_id')
       .eq('id', subMeta.payment_id)
       .maybeSingle();
-    sp = data ?? null;
+    // The Subscription's metadata is set once and rides on EVERY invoice, so
+    // on a renewal this names the FIRST cycle's row — already PAID, which made
+    // every renewal look like a redelivery of month one and get skipped. Only
+    // trust it for the invoice that row was staged for.
+    if (
+      data &&
+      (data.stripe_invoice_id === invoice.id ||
+        (!data.stripe_invoice_id && data.status === 'PENDING'))
+    ) {
+      sp = { id: data.id };
+    }
   }
 
   if (!sp) {
@@ -1365,6 +1376,8 @@ async function handleInvoicePaid(
       .select('id')
       .eq('stripe_subscription_id', subscriptionId)
       .eq('status', 'PENDING')
+      // A row staged for a different invoice is not this one's.
+      .is('stripe_invoice_id', null)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -1379,18 +1392,50 @@ async function handleInvoicePaid(
   }
 
   if (!sp) {
-    // A renewal Stripe charged without us having staged a row. The money
-    // is real, so record it rather than dropping it on the floor.
+    // A renewal: Stripe charged a cycle we never staged. The money is real,
+    // so record it. amount_ttd is the BASE (what commission and the tutor's
+    // payout are computed from), not the fee-inclusive invoice total: taken
+    // from the first cycle when this one charged the same total — exact even
+    // after a later fee-schedule change — otherwise reversed from the gross.
+    const paidCents = invoice.amount_paid ?? 0;
+    const paidTtd = centsToTtd(paidCents);
+
+    type FirstCycle = {
+      amount_ttd: number;
+      charged_processing_fee_ttd: number | null;
+      payer_id: string | null;
+    };
+    let first: FirstCycle | null = null;
+    if (subMeta?.payment_id) {
+      const { data } = await admin
+        .from('subscription_payments')
+        .select('amount_ttd, charged_processing_fee_ttd, payer_id')
+        .eq('id', subMeta.payment_id)
+        .maybeSingle();
+      first = (data as FirstCycle | null) ?? null;
+    }
+
+    const firstGrossCents = first
+      ? Math.round((Number(first.amount_ttd) + Number(first.charged_processing_fee_ttd ?? 0)) * 100)
+      : null;
+    const baseTtd =
+      first && firstGrossCents === paidCents
+        ? Number(first.amount_ttd)
+        : baseFromGrossForProvider(paidTtd, 'stripe');
+
     const { data: created, error: createErr } = await admin
       .from('subscription_payments')
       .insert({
         enrollment_id: enrollment.id,
         group_id: enrollment.group_id,
         student_id: enrollment.student_id,
+        payer_id: first?.payer_id ?? null,
         type: 'subscription_renewal',
-        amount_ttd: centsToTtd(invoice.amount_paid ?? 0),
+        amount_ttd: baseTtd,
+        // handleSubscriptionPayment computes the split from amount_ttd.
         platform_fee_ttd: 0,
         tutor_payout_ttd: 0,
+        charged_processing_fee_ttd: Math.max(0, Math.round((paidTtd - baseTtd) * 100) / 100),
         status: 'PENDING',
         stripe_invoice_id: invoice.id,
         stripe_subscription_id: subscriptionId,
