@@ -255,6 +255,32 @@ export function occurrencesToEntries(
 }
 
 /**
+ * Keeps only the session series a student could still attend: at least one
+ * occurrence that is neither cancelled nor over. A series whose sessions were
+ * all cancelled still carries its recurrence rule, so without this a class
+ * keeps advertising a day it no longer meets on while its dated list (and the
+ * tutor's Sessions tab) shows nothing on that day.
+ *
+ * A row loaded WITHOUT its occurrences (an older schema, a select that could not
+ * embed them) is kept — missing data is not evidence the series is empty.
+ */
+export function withRemainingSessions<
+  T extends { occurrences?: OccurrenceLike[] | null; group_session_occurrences?: OccurrenceLike[] | null },
+>(rows: T[] | null | undefined, opts?: { now?: Date }): T[] {
+  const now = (opts?.now ?? new Date()).getTime();
+  return (rows ?? []).filter((row) => {
+    const occurrences = row.occurrences ?? row.group_session_occurrences;
+    if (!Array.isArray(occurrences)) return true;
+    return occurrences.some((o) => {
+      if (!o?.scheduled_start_at || o.cancelled_at) return false;
+      if (o.status && String(o.status).toLowerCase() === 'cancelled') return false;
+      const end = new Date(o.scheduled_end_at ?? o.scheduled_start_at).getTime();
+      return Number.isFinite(end) && end > now;
+    });
+  });
+}
+
+/**
  * Single source of truth for how a class's recurring pattern is resolved, so
  * every card and page agrees. Precedence: a group_sessions recurrence rule,
  * then dated occurrences.

@@ -32,6 +32,7 @@ import {
   scheduleToDisplay,
   sessionPatternsToDisplay,
   sessionPatternWeekdays,
+  withRemainingSessions,
   occurrenceTitle,
   astWeekday,
   astDayOfMonth,
@@ -328,16 +329,19 @@ export function Detail({
   // Recurring schedule pattern. group_sessions — the Sessions tab, which is
   // what actually generates join links, reminders and attendance — is the
   // only version of "when this class meets" that can't drift from reality, so
-  // it goes first. The hand-written `schedule_data` field has no editor left
-  // (removed from Settings) and is read only as a last resort for a class
-  // that somehow still has one but no real session behind it.
+  // it goes first, and only series with a session still ahead are described.
+  // The hand-written `schedule_data` field has no editor left (removed from
+  // Settings) and is read only for a class with no session series at all — a
+  // class whose series have all run out has no schedule to advertise.
+  const liveSessions = useMemo(() => withRemainingSessions(group.sessions), [group.sessions]);
   const scheduleText = useMemo(() => {
-    const fromSessions = sessionPatternsToDisplay(group.sessions);
+    const fromSessions = sessionPatternsToDisplay(liveSessions);
     if (fromSessions) return fromSessions;
+    if ((group.sessions ?? []).length > 0) return null;
     const entries = parseScheduleData(group.schedule_data);
     if (entries.length) return scheduleToDisplay(entries);
     return group.schedule_display ?? null;
-  }, [group.schedule_data, group.schedule_display, group.sessions]);
+  }, [group.schedule_data, group.schedule_display, group.sessions, liveSessions]);
 
   // Real dated agenda from group_sessions occurrences
   const agenda = useMemo(() => buildAgenda(group.sessions), [group.sessions]);
@@ -347,17 +351,17 @@ export function Detail({
   // is what the tutor sees on their own class page. Falls back to the distinct
   // weekdays of upcoming dated occurrences, then to a hand-written schedule_data.
   const recurringDays = useMemo(() => {
-    const days = new Set<number>(sessionPatternWeekdays(group.sessions));
+    const days = new Set<number>(sessionPatternWeekdays(liveSessions));
     // AST weekday, not the viewer's — otherwise an evening class reads as the
     // next day for a student east of Trinidad.
     if (days.size === 0) for (const a of agenda) days.add(astWeekday(a.start));
-    if (days.size === 0) {
+    if (days.size === 0 && (group.sessions ?? []).length === 0) {
       for (const e of parseScheduleData(group.schedule_data)) {
         if (typeof e.day === 'number' && e.day >= 0 && e.day <= 6) days.add(e.day);
       }
     }
     return days;
-  }, [agenda, group.schedule_data, group.sessions]);
+  }, [agenda, group.schedule_data, group.sessions, liveSessions]);
 
   // Compact "at a glance" from real fields only
   const sessionSummary = useMemo(() => {
@@ -1790,8 +1794,9 @@ function ClassSummaryCard({ group }: { group: GroupData }) {
   const discountedPrice = promo ? Math.round(price * (1 - promo.discount / 100)) : null;
   const tutorName = group.tutor?.display_name || group.tutor?.full_name || 'Tutor';
   const schedule = (() => {
-    const fromSessions = sessionPatternsToDisplay(group.sessions);
+    const fromSessions = sessionPatternsToDisplay(withRemainingSessions(group.sessions));
     if (fromSessions) return fromSessions;
+    if ((group.sessions ?? []).length > 0) return null;
     const entries = parseScheduleData(group.schedule_data);
     if (entries.length) return scheduleToDisplay(entries);
     return group.schedule_display ?? null;

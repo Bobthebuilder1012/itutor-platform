@@ -32,6 +32,7 @@ import {
   sessionPatternsToDisplay,
   sessionPatternWeekdays,
   sessionPatternsDuration,
+  withRemainingSessions,
   type ScheduleEntry,
   type SessionPattern,
 } from '@/lib/utils/scheduleFormat';
@@ -140,8 +141,18 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ schedules: {} });
     }
 
-    const byGroup = new Map<string, { patterns: SessionPattern[]; occurrences: any[] }>();
+    // Every series, for the preorder rule below — it must keep reading what
+    // the secure-spot checkout reads, or the CTA and the route that takes the
+    // money would disagree. The displayed schedule uses only series with a
+    // session still ahead.
+    const allPatternsByGroup = new Map<string, SessionPattern[]>();
     for (const row of sessionRows ?? []) {
+      const key = String(row.group_id);
+      allPatternsByGroup.set(key, [...(allPatternsByGroup.get(key) ?? []), row as SessionPattern]);
+    }
+
+    const byGroup = new Map<string, { patterns: SessionPattern[]; occurrences: any[] }>();
+    for (const row of withRemainingSessions(sessionRows)) {
       const key = String(row.group_id);
       const bucket = byGroup.get(key) ?? { patterns: [], occurrences: [] };
       bucket.patterns.push(row as SessionPattern);
@@ -162,7 +173,7 @@ export async function GET(req: NextRequest) {
 
       const display = sessionPatternsToDisplay(patterns);
 
-      const eligibility = preorderEligibility(patterns);
+      const eligibility = preorderEligibility(allPatternsByGroup.get(groupId) ?? []);
       let preorder: GroupSchedule['preorder'];
 
       // A class is only preorderable if the tutor opened preorders on it.

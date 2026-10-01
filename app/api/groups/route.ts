@@ -6,6 +6,7 @@ import { trinidadToday } from '@/lib/payments/secureSpot';
 import {
   resolveScheduleEntries,
   scheduleMatchesDayTime,
+  withRemainingSessions,
   type ScheduleEntry,
   type TimeBand,
 } from '@/lib/utils/scheduleFormat';
@@ -248,7 +249,9 @@ export async function GET(request: NextRequest) {
 
       const rulesByGroup = new Map<string, any[]>();
       const occurrencesByGroup = new Map<string, any[]>();
-      for (const row of recurrenceRows ?? []) {
+      // Only series with a session still ahead: a fully cancelled series must
+      // not keep a day on the card or match a day filter.
+      for (const row of withRemainingSessions((recurrenceRows ?? []) as any[])) {
         const key = String((row as any).group_id);
         rulesByGroup.set(key, [...(rulesByGroup.get(key) ?? []), row]);
         occurrencesByGroup.set(key, [

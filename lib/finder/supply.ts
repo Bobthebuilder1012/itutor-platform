@@ -41,6 +41,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   resolveScheduleEntries,
+  withRemainingSessions,
   type ScheduleEntry,
 } from '@/lib/utils/scheduleFormat';
 import type { FinderCandidate } from '@/lib/matching/finder';
@@ -239,7 +240,8 @@ export async function loadFinderSupply(service: SupabaseClient): Promise<SupplyR
 
   const rulesByGroup = new Map<string, any[]>();
   const occurrencesByGroup = new Map<string, any[]>();
-  for (const row of sessionRows ?? []) {
+  // Same rule as the marketplace: a series with no session left does not count.
+  for (const row of withRemainingSessions((sessionRows ?? []) as any[])) {
     const key = String((row as any).group_id);
     rulesByGroup.set(key, [...(rulesByGroup.get(key) ?? []), row]);
     occurrencesByGroup.set(key, [
