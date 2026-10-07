@@ -12,6 +12,12 @@ function verifyCronSecret(request: NextRequest): boolean {
 
 export const dynamic = 'force-dynamic';
 
+/** onboarding_email_queue.stage is CHECK (0..4) — migration 067. */
+const LAST_STAGE = 4;
+
+/** Hours to wait before sending each step, keyed by the step about to be sent. */
+const STAGE_DELAY_HOURS: Record<number, number> = { 1: 24, 2: 48, 3: 48, 4: 48 };
+
 export async function GET(request: NextRequest) {
   if (!verifyCronSecret(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -89,22 +95,28 @@ export async function GET(request: NextRequest) {
         const result = await sendEmail({ to: profile.email, subject, html, text: template.text });
 
         if (result.success) {
-          const nextStage = queueItem.stage + 1;
-          const isComplete = nextStage > 4;
-          const delays: Record<number, number> = { 1: 24, 2: 48, 3: 48, 4: 48 };
-          const nextSendAt = isComplete
-            ? undefined
-            : new Date(Date.now() + (delays[nextStage] ?? 24) * 3_600_000).toISOString();
+          // THE LAST STEP ENDS THE SEQUENCE IN PLACE. This used to write
+          // stage: 5 alongside is_active: false, but the table's CHECK only
+          // allows stages 0-4, so the whole update was rejected — the row
+          // stayed active on step 4 with its old due date, and every run
+          // (every 15 minutes) re-sent "We're here to help". 51 users got it
+          // for days. Now the final step keeps stage 4 and only switches off.
+          const isComplete = queueItem.stage >= LAST_STAGE;
+          const nowIso = new Date().toISOString();
+          const advance = isComplete
+            ? { last_sent_at: nowIso, is_active: false, updated_at: nowIso }
+            : {
+                stage: queueItem.stage + 1,
+                last_sent_at: nowIso,
+                next_send_at: new Date(
+                  Date.now() + (STAGE_DELAY_HOURS[queueItem.stage + 1] ?? 24) * 3_600_000
+                ).toISOString(),
+                updated_at: nowIso,
+              };
 
-          await supabase
+          const { error: advanceError } = await supabase
             .from('onboarding_email_queue')
-            .update({
-              stage: nextStage,
-              last_sent_at: new Date().toISOString(),
-              next_send_at: nextSendAt,
-              is_active: !isComplete,
-              updated_at: new Date().toISOString(),
-            })
+            .update(advance)
             .eq('id', queueItem.id);
 
           await logEmailSend({
@@ -113,9 +125,36 @@ export async function GET(request: NextRequest) {
             recipientEmail: profile.email,
             subject,
             status: 'success',
+            stage: queueItem.stage,
+            messageId: result.messageId,
           });
 
           sentCount++;
+
+          // A row that could not be moved on would be picked up and mailed
+          // again on the next run. Never let that happen: switch it off, and
+          // if even that fails, stop this run rather than risk repeating any
+          // other row the same way.
+          if (advanceError) {
+            console.error(
+              `[send-onboarding-emails] could not advance ${queueItem.id}:`,
+              advanceError.message
+            );
+            const { error: stopError } = await supabase
+              .from('onboarding_email_queue')
+              .update({ is_active: false, updated_at: new Date().toISOString() })
+              .eq('id', queueItem.id);
+            if (stopError) {
+              console.error(
+                `[send-onboarding-emails] could not switch off ${queueItem.id}; aborting run:`,
+                stopError.message
+              );
+              return NextResponse.json(
+                { error: 'queue_write_failed', sent: sentCount, failed: failedCount },
+                { status: 500 }
+              );
+            }
+          }
         } else {
           await logEmailSend({
             userId: queueItem.user_id,

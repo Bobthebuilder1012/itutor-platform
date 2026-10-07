@@ -195,15 +195,27 @@ export function personalizeEmail(
 }
 
 /**
- * Log email send result to database
+ * Log email send result to database.
+ *
+ * WRITES ONLY THE COLUMNS email_send_logs ACTUALLY HAS. This used to insert
+ * `recipient_email` and `subject` (no such columns), omit `stage` (NOT NULL)
+ * and send status 'failed' (the CHECK allows 'success' | 'error'). PostgREST
+ * rejected every insert, the returned error was never read, and the table on
+ * production held zero rows — so nobody could see how many times the
+ * onboarding cron had re-sent the same email. `recipientEmail` and `subject`
+ * stay in the signature for the existing callers but are not stored.
  */
 export async function logEmailSend(params: {
   userId: string;
   emailType: string;
-  recipientEmail: string;
-  subject: string;
-  status: 'success' | 'failed';
+  recipientEmail?: string;
+  subject?: string;
+  status: 'success' | 'failed' | 'error';
   errorMessage?: string;
+  /** Sequence step. Defaults to the `_stage_N` suffix of emailType, else 0. */
+  stage?: number;
+  /** Resend's id for the message, when there is one. */
+  messageId?: string;
 }) {
   try {
     const { createClient } = await import('@supabase/supabase-js');
@@ -212,14 +224,20 @@ export async function logEmailSend(params: {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
-    await supabase.from('email_send_logs').insert({
+    const parsedStage = Number(/_stage_(\d+)$/.exec(params.emailType)?.[1]);
+    const stage = params.stage ?? (Number.isFinite(parsedStage) ? parsedStage : 0);
+
+    const { error } = await supabase.from('email_send_logs').insert({
       user_id: params.userId,
+      stage,
       email_type: params.emailType,
-      recipient_email: params.recipientEmail,
-      subject: params.subject,
-      status: params.status,
-      error_message: params.errorMessage,
+      status: params.status === 'success' ? 'success' : 'error',
+      error_message: params.errorMessage ?? null,
+      resend_email_id: params.messageId ?? null,
     });
+    if (error) {
+      console.error('[logEmailSend] insert rejected:', error.message);
+    }
   } catch (error) {
     console.error('Error logging email send:', error);
   }

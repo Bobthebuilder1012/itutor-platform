@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard, BookOpen, CalendarDays, Users, Wallet,
-  Settings, Bell, Search, LogOut, ChevronUp, PanelLeftClose, PanelLeftOpen, Lock,
+  Sparkles, Settings, Bell, Search, LogOut, ChevronUp, PanelLeftClose, PanelLeftOpen, Lock,
   Calendar as CalendarIcon, Star, Rocket, Menu, X, MessageSquareQuote,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
