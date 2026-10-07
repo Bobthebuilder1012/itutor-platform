@@ -45,6 +45,7 @@ import { matchFinderRequest, type FinderCandidate } from '@/lib/matching/finder'
 import { loadFinderSupply, type SupplyRow } from '@/lib/finder/supply';
 import { budgetMaxFor, validateAnswers } from '@/lib/finder/wizard';
 import { mintFinderToken, setFinderToken } from '@/lib/finder/token';
+import { resolveSubject } from '@/lib/finder/demandSubject';
 import { ANON_COOKIE } from '@/lib/analytics/attribution';
 import { getFinderMaxMatches, isFinderEnabled } from '@/lib/featureFlags/finder';
 import { getRequestAttribution, track } from '@/lib/analytics/track';
@@ -271,21 +272,14 @@ export async function POST(req: NextRequest) {
     runNumber = (priorRuns ?? 0) + 1;
   }
 
-  // Resolve the picked subject name to its canonical row, for the demand map's
-  // GROUP BY. A miss is tolerable — the name is what matching uses — so this
-  // never fails the request.
-  let subjectId: string | null = null;
-  try {
-    const { data: subjectRow } = await service
-      .from('subjects')
-      .select('id')
-      .ilike('name', body.subject.trim())
-      .limit(1)
-      .maybeSingle();
-    subjectId = (subjectRow as { id: string } | null)?.id ?? null;
-  } catch {
-    subjectId = null;
-  }
+  // Resolve the picked subject to its canonical row, for the demand map's
+  // grouping. The option list mixes curriculum names ("Mathematics") with class
+  // spellings ("CSEC Mathematics"), so this matches name OR label with the
+  // curriculum prefix stripped (lib/finder/demandSubject.ts). The text itself is
+  // stored too: a miss used to throw the pick away and surface on the Demand
+  // Map as "Unknown subject". Never fails the request.
+  const subjectText = body.subject.trim();
+  const { subjectId } = await resolveSubject(service, subjectText, learnerLevel);
 
   const budgetMax = budgetMaxFor(body.budgetBand);
   const deliveryPref: DeliveryPref | null = body.deliveryPref ?? null;
@@ -313,6 +307,7 @@ export async function POST(req: NextRequest) {
       child_label: body.childLabel?.trim() || null,
       run_number: runNumber,
       subject_id: subjectId,
+      subject_text: subjectText,
       level: learnerLevel,
       form_level_label: body.formLevelLabel ?? null,
       availability_blocks: body.availabilityBlocks,
@@ -322,7 +317,7 @@ export async function POST(req: NextRequest) {
       urgency: body.urgency,
       attribution,
     },
-    ['delivery_pref']
+    ['delivery_pref', 'subject_text']
   );
 
   if (insertError || !requestId) {
@@ -423,6 +418,7 @@ export async function POST(req: NextRequest) {
       request_id: requestId,
       user_id: userId,
       subject_id: subjectId,
+      subject_text: subjectText,
       level: learnerLevel,
       availability_blocks: body.availabilityBlocks,
       budget_max: budgetMax,
@@ -433,7 +429,7 @@ export async function POST(req: NextRequest) {
       delivery_pref: deliveryPref,
       match_class: matchClass,
     },
-    ['delivery_pref']
+    ['delivery_pref', 'subject_text']
   );
 
   if (demandError) {

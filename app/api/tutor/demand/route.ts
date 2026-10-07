@@ -32,6 +32,7 @@ import { getServerClient, getServiceClient } from '@/lib/supabase/server';
 import { levelLabel, type CanonicalLevel } from '@/lib/matching/levels';
 import { availabilityLabel } from '@/lib/finder/wizard';
 import { subjectMatches } from '@/lib/matching/subjects';
+import { signalSubjectLabel, subjectKey } from '@/lib/finder/demandSubject';
 import type { AvailabilityBlock } from '@/lib/matching/availability';
 import { isFinderEnabled } from '@/lib/featureFlags/finder';
 
@@ -50,9 +51,12 @@ interface SignalRow {
   resolved_at: string | null;
   created_at: string;
   subject: { name: string | null } | null;
+  subject_text?: string | null;
 }
 
 const SELECT_TIERS = [
+  `level, availability_blocks, budget_max, delivery_pref, match_class, subject_text,
+   notify_optin, resolved_at, created_at, subject:subjects(name)`,
   `level, availability_blocks, budget_max, delivery_pref, match_class,
    notify_optin, resolved_at, created_at, subject:subjects(name)`,
   `level, availability_blocks, budget_max, match_class,
@@ -190,7 +194,7 @@ export async function GET(_req: NextRequest) {
   // uses — not string equality. A tutor listed under "Mathematics" must see
   // demand recorded against "CSEC Mathematics", or the panel says zero while
   // the demand map says four.
-  const mine = rows.filter(row => subjectMatches(row.subject?.name ?? null, names));
+  const mine = rows.filter(row => subjectMatches(signalSubjectLabel(row), names));
 
   interface Cluster {
     key: string;
@@ -209,10 +213,10 @@ export async function GET(_req: NextRequest) {
   const blockCounts = new Map<string, Map<string, number>>();
 
   for (const row of mine) {
-    const subject = row.subject?.name ?? 'Unknown subject';
+    const subject = signalSubjectLabel(row) ?? 'Subject not recorded';
     const level = row.level ?? null;
     const delivery = row.delivery_pref ?? 'unspecified';
-    const key = `${subject.toLowerCase()}||${level ?? 'any'}||${delivery}`;
+    const key = `${subjectKey(subject)}||${level ?? 'any'}||${delivery}`;
 
     let cluster = byKey.get(key);
     if (!cluster) {

@@ -123,6 +123,99 @@ function FilterChip({
   );
 }
 
+/**
+ * "Tell me when a class opens".
+ *
+ * ANONYMOUSLY THIS ASKS FOR AN EMAIL RIGHT HERE. It used to be a link to signup
+ * carrying `&intent=notify`, which nothing ever read — so a family who clicked
+ * it was never opted in, and one who abandoned signup left no address at all.
+ * The opt-in is now recorded the moment the form posts (keyed by the run's
+ * cookie), with the typed address; leaving it blank still records the opt-in
+ * and goes on to signup, whose account supplies the address at claim time.
+ */
+function NotifyForm({
+  requestId,
+  notify,
+  isAnonymous,
+  role,
+}: {
+  requestId: string;
+  notify?: string;
+  isAnonymous: boolean;
+  role: 'student' | 'parent';
+}) {
+  if (notify === 'ok') {
+    // Confirming in place rather than re-offering the button: a CTA that looks
+    // unchanged after a click reads as broken.
+    return (
+      <p className="rounded-xl border border-brand/30 bg-brand-soft/40 px-4 py-3 text-[14px] text-ink">
+        Done. We will email you as soon as a class opens that fits.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <form action="/api/finder/notify-me" method="post" className="space-y-3">
+        {/* Kept for the no-JS post, but not an authorisation input: the route
+            picks the row from the session or the cookie and ignores this. */}
+        <input type="hidden" name="request_id" value={requestId} />
+        {isAnonymous ? (
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <label className="sr-only" htmlFor={`notify-email-${requestId}`}>
+              Your email address
+            </label>
+            <input
+              id={`notify-email-${requestId}`}
+              type="email"
+              name="email"
+              required
+              autoComplete="email"
+              placeholder="you@example.com"
+              className="min-w-0 flex-1 rounded-full border border-border bg-white px-5 py-3 text-[15px] text-ink placeholder:text-ink-muted/70 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/30"
+            />
+            <button
+              type="submit"
+              className="rounded-full bg-brand px-6 py-3 text-[15px] font-semibold text-white transition hover:brightness-110"
+            >
+              Email me when it opens
+            </button>
+          </div>
+        ) : (
+          <button
+            type="submit"
+            className="w-full rounded-full bg-brand px-6 py-3 text-[15px] font-semibold text-white transition hover:brightness-110 sm:w-auto"
+          >
+            Tell me when a class opens
+          </button>
+        )}
+      </form>
+      {isAnonymous ? (
+        <p className="text-[13px] text-ink-muted">
+          Or{' '}
+          <Link
+            href={signupThen(role, '/find/results')}
+            className="font-semibold text-brand-deep underline underline-offset-2"
+          >
+            create a free account
+          </Link>{' '}
+          to save your matches too.
+        </p>
+      ) : null}
+      {notify === 'failed' ? (
+        <p role="alert" className="text-[13px] text-coral">
+          That did not save. Please try again.
+        </p>
+      ) : null}
+      {notify === 'bad_email' ? (
+        <p role="alert" className="text-[13px] text-coral">
+          That email address does not look right. Please check it and try again.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export default async function MatchResults({
   row,
   notify,
@@ -261,43 +354,12 @@ export default async function MatchResults({
           </p>
 
           <div className="mt-5 space-y-3">
-            {notify === 'ok' ? (
-              // Confirming in place rather than re-offering the button: a CTA
-              // that looks unchanged after a click reads as broken.
-              <p className="rounded-xl border border-brand/30 bg-brand-soft/40 px-4 py-3 text-[14px] text-ink">
-                We will email you as soon as a class opens that fits.
-              </p>
-            ) : isAnonymous ? (
-              // NO ANONYMOUS OPT-IN BUTTON, on purpose. resolve-demand emails
-              // from profiles.email, so recording an opt-in with no account
-              // behind it is a promise the system cannot keep — ranked in the
-              // demand map and never honoured. Asking for the account here is
-              // the one place in this flow where it genuinely buys the visitor
-              // something, so the copy says what it buys.
-              <Link
-                href={`${signupThen(role, '/find/results')}&intent=notify`}
-                className="inline-flex rounded-full bg-brand px-6 py-3 text-[15px] font-semibold text-white transition hover:brightness-110"
-              >
-                Create a free account and we&rsquo;ll email you
-              </Link>
-            ) : (
-              <form action="/api/finder/notify-me" method="post">
-                {/* Kept for the no-JS post, but no longer an authorisation input:
-                    the route picks the row from the session and ignores this. */}
-                <input type="hidden" name="request_id" value={row.id} />
-                <button
-                  type="submit"
-                  className="w-full rounded-full bg-brand px-6 py-3 text-[15px] font-semibold text-white transition hover:brightness-110 sm:w-auto"
-                >
-                  Tell me when a class opens
-                </button>
-              </form>
-            )}
-            {notify === 'failed' ? (
-              <p role="alert" className="text-[13px] text-coral">
-                That did not save. Please try again.
-              </p>
-            ) : null}
+            <NotifyForm
+              requestId={row.id}
+              notify={notify}
+              isAnonymous={isAnonymous}
+              role={role}
+            />
 
             {/* /student/find-tutors is authed-only, and there is no working public
                 browse page — /classes and /search both read `groups` through the
@@ -362,6 +424,28 @@ export default async function MatchResults({
                 {nearMissButtonLabel(row.near_miss_on as GatingDimension)}
               </Link>
             </div>
+          ) : null}
+
+          {/* Not an exact fit: the same promise the no-match screen makes.
+              resolve-demand only ever announces an EXACT match, so this cannot
+              send them one of the classes already shown above. */}
+          {row.match_class === 'near' || row.match_class === 'fallback' ? (
+            <section className="mt-7 rounded-2xl border border-border bg-white p-5">
+              <h2 className="text-[16px] font-semibold text-ink">
+                Want an exact fit instead?
+              </h2>
+              <p className="mt-1.5 text-[14px] leading-relaxed text-ink-muted">
+                We will tell you when a class opens that matches everything you asked for.
+              </p>
+              <div className="mt-4">
+                <NotifyForm
+                  requestId={row.id}
+                  notify={notify}
+                  isAnonymous={isAnonymous}
+                  role={role}
+                />
+              </div>
+            </section>
           ) : null}
         </>
       )}

@@ -128,7 +128,7 @@ export interface EventProps {
   [PRODUCT_EVENTS.PAID]: { group_id: string; amount: number };
   [PRODUCT_EVENTS.RETAINED_30D]: { group_id: string };
   [PRODUCT_EVENTS.DEMAND_RECORDED]: { subject: string; level: string };
-  [PRODUCT_EVENTS.NOTIFY_ME_CLICKED]: { demand_id: string };
+  [PRODUCT_EVENTS.NOTIFY_ME_CLICKED]: { demand_id: string; anonymous?: boolean; with_email?: boolean };
   [PRODUCT_EVENTS.CLASS_SHARED]: { group_id: string; channel: ShareChannel };
   [PRODUCT_EVENTS.CLASS_INVITE_ACCEPTED]: {
     group_id: string;

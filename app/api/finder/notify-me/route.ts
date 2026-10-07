@@ -1,33 +1,28 @@
-// POST /api/finder/notify-me — the no-match opt-in.
+// POST /api/finder/notify-me — "tell me when a class opens".
 //
-// Flips `demand_signals.notify_optin` for the family's latest request. That flag
-// is the difference between soft demand and committed demand, and the demand map
-// ranks on it: raw counts include people who shrugged, opt-ins do not.
+// Flips `demand_signals.notify_optin` on the family's run and stamps
+// `notify_requested_at`. The flag is the difference between soft and committed
+// demand; the Demand Map ranks on it and its Notify list is built from it.
 //
 // Accepts a form POST (the results page posts without JavaScript, so the CTA
 // works even if the client bundle fails) and redirects back with a marker.
 //
-// ── AUTHORISATION CHANGED, AND IT GOT STRONGER ──────────────────────────────
-// This route used to authorise SOLELY by `user_id = <session>`, which is exactly
-// the authority a pre-auth run does not have. It now accepts either proof:
+// ── WHO CAN OPT IN, AND HOW WE REACH THEM ──────────────────────────────────
+//   a session              → the caller's latest run; emailed at profiles.email
+//   the finder_token cookie → the run that token names; emailed at the address
+//                             typed into the form (`email`), stored on
+//                             demand_signals.notify_email
 //
-//   a session  → the caller's own latest request
-//   the httpOnly finder_token cookie → the run that token names
+// THIS USED TO REFUSE ANONYMOUS OPT-INS and send the visitor to signup with
+// `&intent=notify` — a parameter nothing ever read. A family who clicked it and
+// made an account was never opted in; one who didn't finish signup left no
+// trace at all. Now the intent is recorded on the run THE MOMENT it is clicked,
+// with the email if one was given. Without an email the visitor still goes to
+// signup, but the opt-in already exists and lib/finder/claim.ts attaches the
+// account (and with it the address) when they arrive.
 //
-// THE POSTED `request_id` IS NO LONGER AN AUTHORISATION INPUT. It arrives from a
-// form field, so it was never a capability; previously the `user_id` filter was
-// what saved us, which meant a signed-in user could post any request_id and be
-// silently scoped back to their own. Now the cookie or the session picks the row
-// and the form field is ignored entirely. Strictly fewer ways to be wrong.
-//
-// ANONYMOUS OPT-INS ARE NOT ACCEPTED — deliberately, and this is a product
-// decision rather than an oversight. /api/cron/resolve-demand emails from
-// `profiles.email`, so a signal with no user behind it is a promise the system
-// cannot keep: recorded, ranked, and never honoured. The anonymous results screen
-// therefore offers "create a free account and we'll email you" instead, and the
-// claim flips this flag once there is an address to send to. A visitor who
-// reaches this route with a token but no session is redirected to that path
-// rather than being quietly told "we'll let you know".
+// THE POSTED `request_id` IS NOT AN AUTHORISATION INPUT. It arrives from a form
+// field; the session or the httpOnly cookie picks the row and it is ignored.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceClient, getServerClient } from '@/lib/supabase/server';
@@ -35,8 +30,65 @@ import { track } from '@/lib/analytics/track';
 import { PRODUCT_EVENTS } from '@/lib/analytics/events';
 import { isFinderEnabled } from '@/lib/featureFlags/finder';
 import { readFinderToken } from '@/lib/finder/token';
+import { signupThen } from '@/lib/finder/links';
+import { ANON_COOKIE } from '@/lib/analytics/attribution';
 
 export const dynamic = 'force-dynamic';
+
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+/** Same shape the database CHECK enforces (migration 265). */
+function cleanEmail(raw: FormDataEntryValue | null): string | null | 'invalid' {
+  if (typeof raw !== 'string') return null;
+  const value = raw.trim().toLowerCase();
+  if (!value) return null;
+  if (value.length > 254 || !EMAIL_RE.test(value)) return 'invalid';
+  return value;
+}
+
+function isSchemaMismatch(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  const msg = (error.message ?? '').toLowerCase();
+  return (
+    error.code === 'PGRST204' ||
+    error.code === '42703' ||
+    msg.includes('could not find') ||
+    msg.includes('does not exist')
+  );
+}
+
+/**
+ * Opt the run's ledger row in. Tolerant of an environment without migration
+ * 265: the flag itself (migration 240) is what matters, the stamp and address
+ * are retried away rather than failing the click.
+ */
+async function optIn(
+  service: ReturnType<typeof getServiceClient>,
+  requestId: string,
+  email: string | null
+): Promise<{ demandId: string | null; error: string | null }> {
+  const full: Record<string, unknown> = {
+    notify_optin: true,
+    notify_requested_at: new Date().toISOString(),
+  };
+  if (email) full.notify_email = email;
+
+  const run = (payload: Record<string, unknown>) =>
+    service
+      .from('demand_signals')
+      .update(payload)
+      .eq('request_id', requestId)
+      .select('id')
+      .limit(1);
+
+  let { data, error } = await run(full);
+  if (error && isSchemaMismatch(error)) {
+    console.warn('[finder/notify-me] migration 265 missing; recording the flag only');
+    ({ data, error } = await run({ notify_optin: true }));
+  }
+  if (error) return { demandId: null, error: error.message };
+  return { demandId: (data as Array<{ id: string }> | null)?.[0]?.id ?? null, error: null };
+}
 
 export async function POST(req: NextRequest) {
   if (!isFinderEnabled()) {
@@ -52,58 +104,84 @@ export async function POST(req: NextRequest) {
     userId = null;
   }
 
-  const service = getServiceClient();
+  let form: FormData | null = null;
+  try {
+    form = await req.formData();
+  } catch {
+    form = null;
+  }
+  const email = cleanEmail(form?.get('email') ?? null);
 
-  // No session: this can only be an anonymous visitor, whose opt-in we cannot
-  // deliver on. Send them to make an account, carrying the intent so the claim
-  // knows to flip the flag. A 401 JSON body would replace their results screen
-  // with raw JSON, which is the one thing a no-JS form post must never do.
-  if (!userId) {
-    const token = await readFinderToken();
-    const target = token
-      ? '/signup?redirect=%2Ffind%2Fclaim%3Fto%3D%252Ffind%252Fresults&intent=notify'
-      : '/find/results?notify=failed';
-    return NextResponse.redirect(new URL(target, req.url), 303);
+  const service = getServiceClient();
+  const back = (marker: string) =>
+    NextResponse.redirect(new URL(`/find/results?notify=${marker}`, req.url), 303);
+
+  // ── Signed in: the caller's latest run ──────────────────────────────────
+  if (userId) {
+    const { data: runRow, error: runError } = await service
+      .from('finder_requests')
+      .select('id')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (runError || !runRow) {
+      console.error('[finder/notify-me] no run to opt in:', runError?.message ?? 'none found');
+      return back('failed');
+    }
+
+    // The account's address is used; a typed one would only be a second copy.
+    const { demandId, error } = await optIn(service, (runRow as { id: string }).id, null);
+    if (error) {
+      console.error('[finder/notify-me] update failed:', error);
+      return back('failed');
+    }
+    if (demandId) {
+      await track(PRODUCT_EVENTS.NOTIFY_ME_CLICKED, { demand_id: demandId }, { userId });
+    }
+    return back('ok');
   }
 
-  // The caller's latest run. Ordered by created_at because run_number is only
-  // advisory (see migration 247) and an anonymous run always carries 1.
+  // ── No session: the run the cookie names ────────────────────────────────
+  if (email === 'invalid') return back('bad_email');
+
+  const token = await readFinderToken();
+  if (!token) return back('failed');
+
   const { data: runRow, error: runError } = await service
     .from('finder_requests')
-    .select('id')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false })
-    .limit(1)
+    .select('id, role')
+    .eq('token', token)
     .maybeSingle();
 
   if (runError || !runRow) {
-    console.error('[finder/notify-me] no run to opt in:', runError?.message ?? 'none found');
-    return NextResponse.redirect(new URL('/find/results?notify=failed', req.url), 303);
+    console.error('[finder/notify-me] token names no run:', runError?.message ?? 'none found');
+    return back('failed');
   }
+  const run = runRow as { id: string; role: string | null };
 
-  const requestId = (runRow as { id: string }).id;
-
-  // Not additionally scoped on user_id: the signal may legitimately still be
-  // unclaimed if the adoption's demand_signals write has not run yet, and
-  // request_id already came from a row we proved belongs to this account.
-  const { data: updated, error } = await service
-    .from('demand_signals')
-    .update({ notify_optin: true })
-    .eq('request_id', requestId)
-    .select('id')
-    .limit(1);
-
+  const { demandId, error } = await optIn(service, run.id, email);
   if (error) {
-    console.error('[finder/notify-me] update failed:', error.message);
-    return NextResponse.redirect(new URL('/find/results?notify=failed', req.url), 303);
+    console.error('[finder/notify-me] anonymous update failed:', error);
+    return back('failed');
   }
 
-  const demandId = (updated as Array<{ id: string }> | null)?.[0]?.id ?? null;
-
+  const anonId = req.cookies.get(ANON_COOKIE)?.value ?? null;
   if (demandId) {
-    await track(PRODUCT_EVENTS.NOTIFY_ME_CLICKED, { demand_id: demandId }, { userId });
+    await track(
+      PRODUCT_EVENTS.NOTIFY_ME_CLICKED,
+      { demand_id: demandId, anonymous: true, with_email: Boolean(email) },
+      { anonId }
+    );
   }
 
-  // 303 so the browser follows with GET rather than re-POSTing the form.
-  return NextResponse.redirect(new URL('/find/results?notify=ok', req.url), 303);
+  if (email) return back('ok');
+
+  // No address yet: the opt-in is already saved; the account supplies one.
+  const role = run.role === 'parent' ? 'parent' : 'student';
+  return NextResponse.redirect(
+    new URL(signupThen(role, '/find/results?notify=ok'), req.url),
+    303
+  );
 }

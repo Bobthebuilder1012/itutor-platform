@@ -38,6 +38,7 @@ import type { CanonicalLevel } from '@/lib/matching/levels';
 import type { DeliveryPref } from '@/lib/matching/delivery';
 import { renderEmail } from '@/lib/email/design';
 import { sendEmail } from '@/lib/services/emailService';
+import { signalSubjectLabel } from '@/lib/finder/demandSubject';
 
 export const dynamic = 'force-dynamic';
 
@@ -84,6 +85,8 @@ interface SignalRow {
   delivery_pref?: string | null;
   notify_optin: boolean;
   notify_count?: number | null;
+  notify_email?: string | null;
+  subject_text?: string | null;
   created_at: string;
   subject: { name: string | null } | null;
 }
@@ -95,6 +98,8 @@ interface SignalRow {
  * quietly stops existing.
  */
 const SELECT_TIERS = [
+  `id, user_id, subject_id, level, availability_blocks, budget_max, delivery_pref,
+   notify_optin, notify_count, notify_email, subject_text, created_at, subject:subjects(name)`,
   `id, user_id, subject_id, level, availability_blocks, budget_max, delivery_pref,
    notify_optin, notify_count, created_at, subject:subjects(name)`,
   `id, user_id, subject_id, level, availability_blocks, budget_max,
@@ -188,7 +193,7 @@ export async function GET(request: NextRequest) {
   const resolutions: Array<{ signal: SignalRow; match: SupplyRow }> = [];
 
   for (const signal of signals) {
-    const subjectName = signal.subject?.name ?? null;
+    const subjectName = signalSubjectLabel(signal);
 
     // A signal with no resolvable subject cannot be re-matched. Left OPEN
     // rather than closed: closing it would delete the evidence of demand
@@ -245,7 +250,7 @@ export async function GET(request: NextRequest) {
 
     const tooOld = Date.parse(signal.created_at) < notifyCutoff;
     const alreadyTold = (signal.notify_count ?? 0) >= MAX_NOTIFICATIONS;
-    if (signal.notify_optin && signal.user_id && !tooOld && !alreadyTold) {
+    if (signal.notify_optin && (signal.user_id || signal.notify_email) && !tooOld && !alreadyTold) {
       notifiable.push({ signal, match });
     }
   }
@@ -257,13 +262,20 @@ export async function GET(request: NextRequest) {
     // Read per-signal rather than batched: this loop is capped at MAX_PER_RUN
     // and the alternative is holding every family's address in memory to serve
     // the handful that are actually notifiable.
-    const { data: profile } = await service
-      .from('profiles')
-      .select('email, full_name')
-      .eq('id', signal.user_id as string)
-      .maybeSingle();
+    // The account's address wins; a visitor who never made one gave us theirs
+    // on the results screen (demand_signals.notify_email, migration 265).
+    type Recipient = { email?: string | null; full_name?: string | null };
+    let profile: Recipient | null = null;
+    if (signal.user_id) {
+      const { data } = await service
+        .from('profiles')
+        .select('email, full_name')
+        .eq('id', signal.user_id)
+        .maybeSingle();
+      profile = (data ?? null) as Recipient | null;
+    }
 
-    const to = (profile as { email?: string | null } | null)?.email ?? null;
+    const to = profile?.email ?? signal.notify_email ?? null;
     if (!to) continue;
 
     const fullName = (profile as { full_name?: string | null } | null)?.full_name ?? '';

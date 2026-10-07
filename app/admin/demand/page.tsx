@@ -3,86 +3,80 @@
 /**
  * /admin/demand — the demand map.
  *
- * The recruitment worklist. Every row is a sentence a recruiter can say out
- * loud: "four families want CSEC Physics on Saturday mornings, in person, under
- * $400 a month, and three of them asked us to tell them when it opens."
+ * Six tabs, one question each:
+ *   Overview     — the headline numbers and the top of every ranking
+ *   Subjects     — which subject to recruit for (rankable three ways)
+ *   Times        — which times families want, overall and per subject
+ *   Prices       — what families will pay, and what each price point serves
+ *   Recruit      — subject × year × format: one card = one teacher to find
+ *   Notify list  — every family who asked to be told, and how to reach them
  *
- * WHY OPT-INS ARE THE HEADLINE NUMBER AND NOT THE COUNT. A cluster of twenty
- * families who shrugged is a worse lead than four who left an email address, and
- * ranking by raw volume sends the recruiter to the wrong one. The count is shown
- * next to it so the ranking can be argued with rather than merely trusted.
- *
- * WHY THE NO-MATCH COLUMN MATTERS MORE THAN THE EXACT ONE. `exact` means the
- * platform already worked. `none` is the row that only a new teacher can fix,
- * and `fallback` is the row where we showed a family something in the subject
- * but not what they asked for — which is a softer version of the same gap.
+ * All arithmetic lives in lib/finder/demandMap.ts; this file only draws it.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import DashboardLayout from '@/components/DashboardLayout';
 import AdminBreadcrumb from '@/components/admin/AdminBreadcrumb';
 import { isEmailManagementOnlyAdmin } from '@/lib/auth/adminAccess';
+import type { DemandMap, NotifyEntry, NotifyStatus, SubjectRank } from '@/lib/finder/demandMap';
+import {
+  BarLegend,
+  Card,
+  Pill,
+  RankBar,
+  Segmented,
+  Stat,
+  fmtDate,
+  money,
+  pct,
+} from '@/components/admin/demand/DemandUi';
 
-type Cluster = {
-  key: string;
-  subject: string;
-  levelLabel: string;
-  deliveryLabel: string;
-  total: number;
-  unresolved: number;
-  optIns: number;
-  exact: number;
-  near: number;
-  fallback: number;
-  none: number;
-  topBlocks: Array<{ block: string; label: string; count: number }>;
-  lowestBudgetCeiling: number | null;
-  firstAskedAt: string;
-  lastAskedAt: string;
-};
+type Tab = 'overview' | 'subjects' | 'times' | 'prices' | 'recruit' | 'notify';
+type Range = '7' | '30' | '90' | 'all';
 
-type Totals = {
-  signals: number;
-  unresolved: number;
-  optIns: number;
-  exact: number;
-  near: number;
-  fallback: number;
-  none: number;
-  clusters: number;
-  truncated: boolean;
-};
+const TABS: Array<[Tab, string]> = [
+  ['overview', 'Overview'],
+  ['subjects', 'Subjects'],
+  ['times', 'Times'],
+  ['prices', 'Prices'],
+  ['recruit', 'Recruit'],
+  ['notify', 'Notify list'],
+];
 
-type Filter = 'unmet' | 'optins' | 'all';
-
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString('en-TT', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-}
-
-function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return (
-    <div className="rounded-xl border border-gray-700 bg-gray-800/60 px-4 py-3">
-      <p className="text-[11px] uppercase tracking-wide text-gray-400">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-white">{value}</p>
-      {hint ? <p className="mt-0.5 text-[11px] text-gray-500">{hint}</p> : null}
-    </div>
-  );
-}
+type Payload = DemandMap & { unavailable?: false; days: number | null };
 
 export default function AdminDemandPage() {
   const router = useRouter();
   const [authLoading, setAuthLoading] = useState(true);
   const [loading, setLoading] = useState(true);
-  const [clusters, setClusters] = useState<Cluster[]>([]);
-  const [totals, setTotals] = useState<Totals | null>(null);
+  const [data, setData] = useState<Payload | null>(null);
   const [unavailable, setUnavailable] = useState(false);
-  const [filter, setFilter] = useState<Filter>('unmet');
+  const [failed, setFailed] = useState(false);
+  const [tab, setTab] = useState<Tab>('overview');
+  const [range, setRange] = useState<Range>('all');
+
+  // The tab lives in the URL so a link to "the notify list" opens on it.
+  useEffect(() => {
+    try {
+      const fromUrl = new URLSearchParams(window.location.search).get('tab');
+      if (fromUrl && TABS.some(([t]) => t === fromUrl)) setTab(fromUrl as Tab);
+    } catch {
+      /* default tab */
+    }
+  }, []);
+
+  const changeTab = (next: Tab) => {
+    setTab(next);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', next);
+      window.history.replaceState(null, '', url.toString());
+    } catch {
+      /* URL sync is a convenience */
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -110,17 +104,25 @@ export default function AdminDemandPage() {
     })();
   }, [router]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (r: Range) => {
     setLoading(true);
+    setFailed(false);
     try {
-      const res = await fetch('/api/admin/demand', { cache: 'no-store' });
+      const res = await fetch(`/api/admin/demand${r === 'all' ? '' : `?days=${r}`}`, {
+        cache: 'no-store',
+      });
       const json = await res.json();
-      setClusters(json.clusters ?? []);
-      setTotals(json.totals ?? null);
-      setUnavailable(Boolean(json.unavailable));
+      if (!res.ok) throw new Error(json?.error ?? 'failed');
+      if (json.unavailable) {
+        setUnavailable(true);
+        setData(null);
+      } else {
+        setUnavailable(false);
+        setData(json as Payload);
+      }
     } catch {
-      setClusters([]);
-      setTotals(null);
+      setFailed(true);
+      setData(null);
     } finally {
       setLoading(false);
     }
@@ -128,199 +130,782 @@ export default function AdminDemandPage() {
 
   useEffect(() => {
     if (authLoading) return;
-    void load();
-  }, [authLoading, load]);
+    void load(range);
+  }, [authLoading, load, range]);
 
   if (authLoading) {
     return (
       <DashboardLayout role="admin" userName="Admin">
-        <div className="flex items-center justify-center py-20 text-gray-400">Loading…</div>
+        <div className="flex items-center justify-center py-20 text-gray-500">Loading…</div>
       </DashboardLayout>
     );
   }
-
-  const shown = clusters.filter(c => {
-    if (filter === 'optins') return c.optIns > 0;
-    // "Unmet" is not just `none`: a fallback row means a family was shown
-    // something in the subject that did not fit what they asked for, which is
-    // the same missing teacher wearing a politer label.
-    if (filter === 'unmet') return c.none > 0 || c.fallback > 0 || c.near > 0;
-    return true;
-  });
 
   return (
     <DashboardLayout role="admin" userName="Admin">
       <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
         <AdminBreadcrumb items={[{ label: 'Demand Map' }]} />
 
-        <header className="mt-4">
-          <h1 className="text-2xl font-semibold text-white">Demand Map</h1>
-          <p className="mt-1 max-w-2xl text-sm text-gray-400">
-            What families asked Find your iTutor for, clustered by subject, year
-            and how they want to learn. Ranked by the families who asked to be
-            told when a class opens — the ones worth calling a teacher about.
-          </p>
+        <header className="mt-4 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Demand Map</h1>
+            <p className="mt-1 max-w-2xl text-gray-600">
+              What families asked Find your iTutor for — which subjects, times and
+              prices to recruit teachers for, and who to tell when they arrive.
+            </p>
+          </div>
+          <Segmented<Range>
+            value={range}
+            onChange={setRange}
+            options={[
+              ['7', '7 days'],
+              ['30', '30 days'],
+              ['90', '90 days'],
+              ['all', 'All time'],
+            ]}
+          />
         </header>
 
-        {unavailable ? (
-          <div className="mt-6 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-            The demand ledger is not available on this environment — migration
-            240 has not been applied yet. Nothing is broken; there is simply
-            nothing to read.
-          </div>
-        ) : null}
-
-        {totals ? (
-          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-            <Stat label="Requests" value={String(totals.signals)} hint="all time" />
-            <Stat
-              label="Asked to be told"
-              value={String(totals.optIns)}
-              hint="committed demand"
-            />
-            <Stat
-              label="Nothing to show"
-              value={String(totals.none)}
-              hint="no class in the subject"
-            />
-            <Stat
-              label="Subject only"
-              value={String(totals.fallback)}
-              hint="wrong time, year or price"
-            />
-            <Stat label="Clusters" value={String(totals.clusters)} />
-          </div>
-        ) : null}
-
-        {totals?.truncated ? (
-          <p className="mt-3 text-[12px] text-amber-300">
-            Showing the most recent 5,000 requests only — older demand is not
-            counted in these figures.
-          </p>
-        ) : null}
-
-        <div className="mt-6 flex flex-wrap gap-2">
-          {(
-            [
-              ['unmet', 'Needs a teacher'],
-              ['optins', 'Asked to be told'],
-              ['all', 'Everything'],
-            ] as Array<[Filter, string]>
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setFilter(value)}
-              className={`rounded-full px-4 py-1.5 text-[13px] font-medium transition ${
-                filter === value
-                  ? 'bg-green-brand text-white'
-                  : 'border border-gray-700 bg-gray-800/60 text-gray-300 hover:bg-gray-800'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {loading ? (
-          <div className="py-16 text-center text-gray-400">Loading…</div>
-        ) : shown.length === 0 ? (
-          <div className="mt-6 rounded-xl border border-gray-700 bg-gray-800/40 px-4 py-10 text-center text-sm text-gray-400">
-            {clusters.length === 0
-              ? 'No Finder requests recorded yet.'
-              : 'Nothing in this view. Every cluster here was served.'}
-          </div>
-        ) : (
-          <div className="mt-4 space-y-3">
-            {shown.map(cluster => (
-              <article
-                key={cluster.key}
-                className="rounded-xl border border-gray-700 bg-gray-800/60 p-4"
+        <nav className="mt-6 border-b border-gray-200" aria-label="Demand Map sections">
+          <div className="-mb-px flex gap-1 overflow-x-auto">
+            {TABS.map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => changeTab(value)}
+                className={`whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-semibold transition ${
+                  tab === value
+                    ? 'border-itutor-green text-itutor-green'
+                    : 'border-transparent text-gray-600 hover:border-gray-300 hover:text-gray-900'
+                }`}
               >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <h2 className="text-base font-semibold text-white">
-                      {cluster.subject}
-                    </h2>
-                    <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-gray-400">
-                      <span>{cluster.levelLabel}</span>
-                      <span aria-hidden>·</span>
-                      <span>{cluster.deliveryLabel}</span>
-                      <span aria-hidden>·</span>
-                      <span>
-                        {cluster.lowestBudgetCeiling === null
-                          ? 'No budget ceiling given'
-                          : `Serves everyone at $${cluster.lowestBudgetCeiling}/month`}
-                      </span>
-                    </p>
-                  </div>
-
-                  <div className="flex shrink-0 items-center gap-2">
-                    {cluster.optIns > 0 ? (
-                      <span className="rounded-full bg-green-brand/20 px-3 py-1 text-[12px] font-semibold text-green-300">
-                        {cluster.optIns} asked to be told
-                      </span>
-                    ) : null}
-                    <span className="rounded-full border border-gray-600 px-3 py-1 text-[12px] text-gray-300">
-                      {cluster.total} {cluster.total === 1 ? 'request' : 'requests'}
-                    </span>
-                  </div>
-                </div>
-
-                {cluster.topBlocks.length > 0 ? (
-                  <div className="mt-3">
-                    <p className="text-[11px] uppercase tracking-wide text-gray-500">
-                      When they want it
-                    </p>
-                    <div className="mt-1.5 flex flex-wrap gap-1.5">
-                      {cluster.topBlocks.map(block => (
-                        <span
-                          key={block.block}
-                          className="rounded-lg bg-gray-900/70 px-2.5 py-1 text-[12px] text-gray-200"
-                        >
-                          {block.label}
-                          <span className="ml-1.5 text-gray-500">{block.count}</span>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
+                {label}
+                {value === 'notify' && data ? (
+                  <span
+                    className={`ml-2 rounded-full px-2 py-0.5 text-xs ${
+                      tab === value ? 'bg-emerald-50 text-itutor-green' : 'bg-gray-100 text-gray-700'
+                    }`}
+                  >
+                    {data.notifyList.length}
+                  </span>
                 ) : null}
-
-                <dl className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-[12px] text-gray-400">
-                  <div>
-                    <dt className="inline text-gray-500">Nothing to show: </dt>
-                    <dd className="inline font-medium text-gray-200">{cluster.none}</dd>
-                  </div>
-                  <div>
-                    <dt className="inline text-gray-500">Subject only: </dt>
-                    <dd className="inline font-medium text-gray-200">{cluster.fallback}</dd>
-                  </div>
-                  <div>
-                    <dt className="inline text-gray-500">Near miss: </dt>
-                    <dd className="inline font-medium text-gray-200">{cluster.near}</dd>
-                  </div>
-                  <div>
-                    <dt className="inline text-gray-500">Served: </dt>
-                    <dd className="inline font-medium text-gray-200">{cluster.exact}</dd>
-                  </div>
-                  <div>
-                    <dt className="inline text-gray-500">Still unmet: </dt>
-                    <dd className="inline font-medium text-gray-200">{cluster.unresolved}</dd>
-                  </div>
-                  <div>
-                    <dt className="inline text-gray-500">Asked: </dt>
-                    <dd className="inline text-gray-300">
-                      {cluster.firstAskedAt === cluster.lastAskedAt
-                        ? fmtDate(cluster.firstAskedAt)
-                        : `${fmtDate(cluster.firstAskedAt)} – ${fmtDate(cluster.lastAskedAt)}`}
-                    </dd>
-                  </div>
-                </dl>
-              </article>
+              </button>
             ))}
           </div>
-        )}
+        </nav>
+
+        <div className="mt-6">
+          {unavailable ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              The demand ledger is not available on this environment — migration 240
+              has not been applied yet. Nothing is broken; there is simply nothing to
+              read.
+            </div>
+          ) : failed ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              The demand map could not be loaded.{' '}
+              <button type="button" className="font-semibold underline" onClick={() => load(range)}>
+                Try again
+              </button>
+            </div>
+          ) : loading || !data ? (
+            <div className="py-16 text-center text-gray-500">Loading…</div>
+          ) : data.totals.signals === 0 ? (
+            <div className="rounded-xl border border-gray-200 bg-white px-4 py-12 text-center text-gray-600 shadow-sm">
+              No Finder requests in this period.
+            </div>
+          ) : (
+            <>
+              {data.totals.truncated ? (
+                <p className="mb-4 text-sm text-amber-700">
+                  Showing the most recent 5,000 requests only — older demand is not
+                  counted in these figures.
+                </p>
+              ) : null}
+              {tab === 'overview' ? <OverviewTab data={data} goTo={changeTab} /> : null}
+              {tab === 'subjects' ? <SubjectsTab data={data} /> : null}
+              {tab === 'times' ? <TimesTab data={data} /> : null}
+              {tab === 'prices' ? <PricesTab data={data} /> : null}
+              {tab === 'recruit' ? <RecruitTab data={data} /> : null}
+              {tab === 'notify' ? <NotifyTab data={data} /> : null}
+            </>
+          )}
+        </div>
       </div>
     </DashboardLayout>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Overview
+// ─────────────────────────────────────────────────────────────────────────
+
+function OverviewTab({ data, goTo }: { data: Payload; goTo: (t: Tab) => void }) {
+  const { totals } = data;
+  const maxSubject = data.subjects[0]?.total ?? 0;
+  const maxTime = data.times[0]?.total ?? 0;
+  const maxPrice = data.prices[0]?.total ?? 0;
+  const seeAll = (t: Tab) => (
+    <button type="button" onClick={() => goTo(t)} className="text-sm font-semibold text-itutor-green hover:text-emerald-700">
+      See all →
+    </button>
+  );
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat label="Requests" value={totals.signals} hint={`${totals.clusters} distinct asks`} />
+        <Stat
+          label="Still unmet"
+          value={totals.unmet}
+          hint={`${pct(totals.signals ? totals.unmet / totals.signals : 0)} had no exact class`}
+          tone="red"
+        />
+        <Stat
+          label="Asked to be told"
+          value={totals.optIns}
+          hint={
+            totals.optInsNoAddress > 0
+              ? `${totals.optInsReachable} reachable · ${totals.optInsNoAddress} no email yet`
+              : 'all reachable by email'
+          }
+          tone="green"
+        />
+        <Stat
+          label="Served exactly"
+          value={totals.exact}
+          hint={`${totals.near} near miss · ${totals.fallback} subject only · ${totals.none} nothing`}
+        />
+      </div>
+
+      {totals.unknownSubject > 0 ? (
+        <p className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+          {totals.unknownSubject} older {totals.unknownSubject === 1 ? 'request has' : 'requests have'} no
+          recorded subject — they predate subjects being saved as picked and could not be
+          recovered. They are listed as &ldquo;Subject not recorded&rdquo;.
+        </p>
+      ) : null}
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card title="Most wanted subjects" subtitle="By requests. The solid bar is what is still unmet." action={seeAll('subjects')}>
+          <BarLegend />
+          <ol className="mt-2 divide-y divide-gray-100">
+            {data.subjects.slice(0, 6).map((s, i) => (
+              <RankBar
+                key={s.key}
+                rank={i + 1}
+                label={s.label}
+                total={s.total}
+                unmet={s.unmet}
+                max={maxSubject}
+                right={<span><strong className="text-gray-900">{s.total}</strong> · {s.unmet} unmet</span>}
+              />
+            ))}
+          </ol>
+        </Card>
+
+        <Card title="Most wanted times" subtitle="Families can pick several, so these add up to more than the requests." action={seeAll('times')}>
+          <BarLegend />
+          <ol className="mt-2 divide-y divide-gray-100">
+            {data.times.map((t, i) => (
+              <RankBar
+                key={t.key}
+                rank={i + 1}
+                label={t.label}
+                total={t.total}
+                unmet={t.unmet}
+                max={maxTime}
+                right={<span><strong className="text-gray-900">{t.total}</strong> · {pct(t.share)}</span>}
+              />
+            ))}
+          </ol>
+        </Card>
+
+        <Card title="What families will pay" subtitle="Monthly ceiling picked, most common first." action={seeAll('prices')}>
+          <ol className="divide-y divide-gray-100">
+            {data.prices.map((p, i) => (
+              <RankBar
+                key={p.key}
+                rank={i + 1}
+                label={p.label}
+                total={p.total}
+                unmet={p.unmet}
+                max={maxPrice}
+                right={<span><strong className="text-gray-900">{p.total}</strong> · {pct(p.share)}</span>}
+              />
+            ))}
+          </ol>
+        </Card>
+
+        <Card title="Recruit next" subtitle="Ranked by families waiting to be told, then unmet demand." action={seeAll('recruit')}>
+          <ol className="space-y-3">
+            {data.clusters
+              .filter(c => c.unmet > 0)
+              .slice(0, 4)
+              .map((c, i) => (
+                <li key={c.key} className="flex items-start gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5">
+                  <span className="mt-0.5 w-5 text-right text-xs font-semibold text-gray-400">{i + 1}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-gray-900">
+                      {c.subject} <span className="font-normal text-gray-600">· {c.levelLabel} · {c.deliveryLabel}</span>
+                    </p>
+                    <p className="mt-0.5 text-xs text-gray-600">
+                      {c.unmet} unmet
+                      {c.optIns > 0 ? ` · ${c.optIns} waiting to be told` : ''}
+                      {c.times[0] ? ` · mostly ${c.times[0].label.toLowerCase()}` : ''}
+                      {c.recommendedPrice !== null ? ` · price at ${money(c.recommendedPrice)}/mo` : ''}
+                    </p>
+                  </div>
+                </li>
+              ))}
+          </ol>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card title="By year">
+          <ol className="divide-y divide-gray-100">
+            {data.levels.map((l, i) => (
+              <RankBar key={l.key} rank={i + 1} label={l.label} total={l.total} unmet={l.unmet} max={data.levels[0]?.total ?? 0} />
+            ))}
+          </ol>
+        </Card>
+        <Card title="Online or in person">
+          <ol className="divide-y divide-gray-100">
+            {data.delivery.map((d, i) => (
+              <RankBar key={d.key} rank={i + 1} label={d.label} total={d.total} unmet={d.unmet} max={data.delivery[0]?.total ?? 0} />
+            ))}
+          </ol>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Subjects
+// ─────────────────────────────────────────────────────────────────────────
+
+type SubjectSort = 'total' | 'unmet' | 'optIns';
+
+function SubjectsTab({ data }: { data: Payload }) {
+  const [sort, setSort] = useState<SubjectSort>('total');
+  const [query, setQuery] = useState('');
+
+  const rows = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const filtered = q ? data.subjects.filter(s => s.label.toLowerCase().includes(q)) : data.subjects;
+    return [...filtered].sort(
+      (a: SubjectRank, b: SubjectRank) =>
+        b[sort] - a[sort] || b.total - a.total || a.label.localeCompare(b.label)
+    );
+  }, [data.subjects, sort, query]);
+
+  return (
+    <Card
+      title="Subjects, ranked"
+      subtitle="Each subject merges every spelling families used (“CSEC Mathematics” and “Mathematics” are one)."
+      action={
+        <Segmented<SubjectSort>
+          value={sort}
+          onChange={setSort}
+          options={[
+            ['total', 'Most requested'],
+            ['unmet', 'Most unmet'],
+            ['optIns', 'Most waiting'],
+          ]}
+        />
+      }
+    >
+      <input
+        type="search"
+        value={query}
+        onChange={e => setQuery(e.target.value)}
+        placeholder="Search subjects…"
+        className="mb-4 w-full rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-itutor-green focus:outline-none focus:ring-2 focus:ring-itutor-green/20 sm:max-w-xs"
+      />
+      <div className="-mx-5 overflow-x-auto">
+        <table className="w-full min-w-[760px] text-sm">
+          <thead className="border-y border-gray-200 bg-gray-50 text-xs font-semibold uppercase tracking-wider text-gray-500">
+            <tr>
+              <th className="px-5 py-3 text-left">#</th>
+              <th className="px-3 py-3 text-left">Subject</th>
+              <th className="px-3 py-3 text-right">Requests</th>
+              <th className="px-3 py-3 text-right">Unmet</th>
+              <th className="px-3 py-3 text-right">Waiting</th>
+              <th className="px-3 py-3 text-left">Top year</th>
+              <th className="px-3 py-3 text-left">Top time</th>
+              <th className="px-5 py-3 text-right">Price at</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {rows.map((s, i) => (
+              <tr key={s.key} className="hover:bg-gray-50">
+                <td className="px-5 py-3 tabular-nums text-gray-400">{i + 1}</td>
+                <td className="px-3 py-3">
+                  <p className="font-medium text-gray-900">{s.label}</p>
+                  <p className="text-xs text-gray-500">
+                    {pct(s.share)} of requests · last {fmtDate(s.lastAskedAt)}
+                  </p>
+                </td>
+                <td className="px-3 py-3 text-right font-semibold tabular-nums text-gray-900">{s.total}</td>
+                <td className="px-3 py-3 text-right tabular-nums">
+                  <span className={s.unmet > 0 ? 'font-semibold text-red-600' : 'text-gray-500'}>{s.unmet}</span>
+                </td>
+                <td className="px-3 py-3 text-right tabular-nums">
+                  <span className={s.optIns > 0 ? 'font-semibold text-itutor-green' : 'text-gray-500'}>{s.optIns}</span>
+                </td>
+                <td className="px-3 py-3 text-gray-700">
+                  {s.topLevel ?? '—'}
+                  {s.levels.length > 1 ? <span className="text-xs text-gray-500"> +{s.levels.length - 1}</span> : null}
+                </td>
+                <td className="px-3 py-3 text-gray-700">{s.topTime ?? '—'}</td>
+                <td className="px-5 py-3 text-right font-medium tabular-nums text-gray-900">
+                  {s.recommendedPrice !== null ? `${money(s.recommendedPrice)}/mo` : '—'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-4 text-xs text-gray-600">
+        <strong>Waiting</strong> = asked to be told when a class opens. <strong>Price at</strong> = the
+        highest monthly price at least 75% of these families said they would pay.
+      </p>
+    </Card>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Times
+// ─────────────────────────────────────────────────────────────────────────
+
+function TimesTab({ data }: { data: Payload }) {
+  const max = data.times[0]?.total ?? 0;
+  const gridMax = Math.max(0, ...data.timeGrid.rows.flatMap(r => r.counts));
+
+  return (
+    <div className="space-y-6">
+      <Card title="Times, ranked" subtitle="How many requests named each time. Families can pick several.">
+        <BarLegend />
+        <ol className="mt-2 divide-y divide-gray-100">
+          {data.times.map((t, i) => (
+            <RankBar
+              key={t.key}
+              rank={i + 1}
+              label={t.label}
+              total={t.total}
+              unmet={t.unmet}
+              max={max}
+              right={
+                <span>
+                  <strong className="text-gray-900">{t.total}</strong> · {pct(t.share)} of requests
+                </span>
+              }
+              sub={`${t.unmet} unmet · ${t.optIns} waiting to be told`}
+            />
+          ))}
+        </ol>
+      </Card>
+
+      <Card title="Times by subject" subtitle="The ten most-requested subjects. Darker = more families want that time.">
+        <div className="-mx-5 overflow-x-auto">
+          <table className="w-full min-w-[760px] text-sm">
+            <thead className="border-y border-gray-200 bg-gray-50 text-xs font-semibold text-gray-600">
+              <tr>
+                <th className="px-5 py-3 text-left uppercase tracking-wider text-gray-500">Subject</th>
+                {data.timeGrid.blocks.map(b => (
+                  <th key={b.key} className="px-2 py-3 text-center font-semibold">
+                    {b.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {data.timeGrid.rows.map(row => (
+                <tr key={row.subject}>
+                  <td className="px-5 py-2.5 font-medium text-gray-900">{row.subject}</td>
+                  {row.counts.map((count, i) => {
+                    const strength = gridMax ? count / gridMax : 0;
+                    return (
+                      <td key={i} className="px-2 py-2 text-center">
+                        <span
+                          className={`inline-flex h-8 w-12 items-center justify-center rounded-md text-sm font-semibold tabular-nums ${
+                            count === 0
+                              ? 'bg-gray-50 text-gray-300'
+                              : strength > 0.6
+                                ? 'bg-itutor-green text-white'
+                                : strength > 0.3
+                                  ? 'bg-emerald-300 text-emerald-950'
+                                  : 'bg-emerald-100 text-emerald-900'
+                          }`}
+                        >
+                          {count}
+                        </span>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Prices
+// ─────────────────────────────────────────────────────────────────────────
+
+function PricesTab({ data }: { data: Payload }) {
+  const max = data.prices[0]?.total ?? 0;
+  const priced = [...data.subjects].filter(s => s.recommendedPrice !== null).slice(0, 12);
+
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-3 sm:grid-cols-3">
+        {data.pricePoints.map(p => (
+          <div key={p.price} className="rounded-xl border border-gray-200 bg-white px-4 py-4 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">A class at {money(p.price)}/month</p>
+            <p className="mt-1 text-2xl font-bold tabular-nums text-gray-900">{pct(p.servesShare)}</p>
+            <p className="mt-0.5 text-xs text-gray-600">of families could afford it ({p.servesCount} of {data.totals.signals})</p>
+            <div className="mt-3 h-2 rounded-full bg-gray-100">
+              <div className="h-2 rounded-full bg-itutor-green" style={{ width: `${p.servesShare * 100}%` }} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <Card title="Budgets, ranked" subtitle="The monthly ceiling families picked, most common first.">
+        <BarLegend />
+        <ol className="mt-2 divide-y divide-gray-100">
+          {data.prices.map((p, i) => (
+            <RankBar
+              key={p.key}
+              rank={i + 1}
+              label={p.label}
+              total={p.total}
+              unmet={p.unmet}
+              max={max}
+              right={
+                <span>
+                  <strong className="text-gray-900">{p.total}</strong> · {pct(p.share)}
+                </span>
+              }
+              sub={`${p.unmet} unmet · ${p.optIns} waiting to be told`}
+            />
+          ))}
+        </ol>
+      </Card>
+
+      <Card title="Price to quote, by subject" subtitle="The highest price at least 75% of that subject's families said they would pay.">
+        <ul className="grid gap-2 sm:grid-cols-2">
+          {priced.map(s => (
+            <li key={s.key} className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+              <span className="truncate text-sm font-medium text-gray-900">{s.label}</span>
+              <span className="ml-3 shrink-0 text-sm font-semibold tabular-nums text-itutor-green">
+                {money(s.recommendedPrice)}/mo
+              </span>
+            </li>
+          ))}
+        </ul>
+      </Card>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Recruit (clusters)
+// ─────────────────────────────────────────────────────────────────────────
+
+type ClusterFilter = 'unmet' | 'optins' | 'all';
+
+function RecruitTab({ data }: { data: Payload }) {
+  const [filter, setFilter] = useState<ClusterFilter>('unmet');
+  const shown = data.clusters.filter(c =>
+    filter === 'optins' ? c.optIns > 0 : filter === 'unmet' ? c.unmet > 0 : true
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="max-w-2xl text-sm text-gray-600">
+          One card per teacher to recruit: the same subject, year and format. Ranked by
+          families waiting to be told, then unmet requests.
+        </p>
+        <Segmented<ClusterFilter>
+          value={filter}
+          onChange={setFilter}
+          options={[
+            ['unmet', 'Needs a teacher'],
+            ['optins', 'Families waiting'],
+            ['all', 'Everything'],
+          ]}
+        />
+      </div>
+
+      {shown.length === 0 ? (
+        <div className="rounded-xl border border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-600 shadow-sm">
+          Nothing in this view.
+        </div>
+      ) : (
+        shown.map((c, i) => {
+          const timeMax = c.times[0]?.count ?? 0;
+          return (
+            <article key={c.key} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">#{i + 1}</p>
+                  <h3 className="text-lg font-semibold text-gray-900">{c.subject}</h3>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    <Pill>{c.levelLabel}</Pill>
+                    <Pill>{c.deliveryLabel}</Pill>
+                    {c.recommendedPrice !== null ? (
+                      <Pill tone="green">Price at {money(c.recommendedPrice)}/mo</Pill>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {c.optIns > 0 ? <Pill tone="green">{c.optIns} waiting to be told</Pill> : null}
+                  {c.urgentNow > 0 ? <Pill tone="amber">{c.urgentNow} want it right away</Pill> : null}
+                  <Pill tone={c.unmet > 0 ? 'red' : 'gray'}>
+                    {c.unmet} of {c.total} unmet
+                  </Pill>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-5 md:grid-cols-2">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">When they want it</p>
+                  <ul className="mt-2 space-y-1.5">
+                    {c.times.map(t => (
+                      <li key={t.block} className="flex items-center gap-3 text-sm">
+                        <span className="w-36 shrink-0 text-gray-800">{t.label}</span>
+                        <span className="h-2 flex-1 rounded-full bg-gray-100">
+                          <span
+                            className="block h-2 rounded-full bg-itutor-green"
+                            style={{ width: `${timeMax ? (t.count / timeMax) * 100 : 0}%` }}
+                          />
+                        </span>
+                        <span className="w-6 text-right font-semibold tabular-nums text-gray-900">{t.count}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">What they will pay</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {c.prices.map(p => (
+                      <Pill key={p.label}>
+                        {p.label} <strong className="text-gray-900">{p.count}</strong>
+                      </Pill>
+                    ))}
+                  </div>
+                  <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-gray-500">What we showed them</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <Pill tone={c.none > 0 ? 'red' : 'gray'}>Nothing {c.none}</Pill>
+                    <Pill tone={c.fallback > 0 ? 'amber' : 'gray'}>Subject only {c.fallback}</Pill>
+                    <Pill tone={c.near > 0 ? 'amber' : 'gray'}>Near miss {c.near}</Pill>
+                    <Pill tone={c.exact > 0 ? 'green' : 'gray'}>Exact {c.exact}</Pill>
+                  </div>
+                </div>
+              </div>
+
+              <p className="mt-4 text-xs text-gray-500">
+                Asked{' '}
+                {c.firstAskedAt === c.lastAskedAt
+                  ? fmtDate(c.firstAskedAt)
+                  : `${fmtDate(c.firstAskedAt)} – ${fmtDate(c.lastAskedAt)}`}
+              </p>
+            </article>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Notify list
+// ─────────────────────────────────────────────────────────────────────────
+
+type NotifyFilter = 'waiting' | 'no_address' | 'done' | 'all';
+
+const STATUS_PILL: Record<NotifyStatus, { label: string; tone: 'gray' | 'green' | 'amber' | 'red' | 'blue' }> = {
+  waiting: { label: 'Waiting for a class', tone: 'amber' },
+  notified: { label: 'Emailed', tone: 'green' },
+  resolved_not_sent: { label: 'Class opened, not emailed', tone: 'blue' },
+  no_address: { label: 'No email yet', tone: 'red' },
+};
+
+function csvCell(value: string | null): string {
+  const v = value ?? '';
+  return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+}
+
+function NotifyTab({ data }: { data: Payload }) {
+  const [filter, setFilter] = useState<NotifyFilter>('waiting');
+  const [copied, setCopied] = useState(false);
+
+  const list = data.notifyList.filter((e: NotifyEntry) =>
+    filter === 'all'
+      ? true
+      : filter === 'done'
+        ? e.status === 'notified' || e.status === 'resolved_not_sent'
+        : e.status === filter
+  );
+  const emails = Array.from(new Set(list.map(e => e.email).filter((e): e is string => Boolean(e))));
+
+  const copyEmails = async () => {
+    try {
+      await navigator.clipboard.writeText(emails.join(', '));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  const downloadCsv = () => {
+    const header = ['Name', 'Email', 'Email source', 'Learner', 'Subject', 'Year', 'Format', 'Times', 'Budget', 'Urgency', 'Asked', 'Status'];
+    const lines = list.map(e =>
+      [
+        e.name,
+        e.email,
+        e.emailSource,
+        e.learner,
+        e.subject,
+        e.levelLabel,
+        e.deliveryLabel,
+        e.times.join('; '),
+        e.budgetLabel,
+        e.urgency,
+        e.askedAt.slice(0, 10),
+        STATUS_PILL[e.status].label,
+      ]
+        .map(csvCell)
+        .join(',')
+    );
+    const blob = new Blob([[header.join(','), ...lines].join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `itutor-notify-list-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const counts = {
+    waiting: data.notifyList.filter(e => e.status === 'waiting').length,
+    no_address: data.notifyList.filter(e => e.status === 'no_address').length,
+    done: data.notifyList.filter(e => e.status === 'notified' || e.status === 'resolved_not_sent').length,
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat label="Asked to be told" value={data.notifyList.length} />
+        <Stat label="Waiting for a class" value={counts.waiting} tone="amber" hint="emailed automatically when an exact class opens" />
+        <Stat label="No email yet" value={counts.no_address} tone="red" hint="opted in, never finished signing up" />
+        <Stat label="Class opened" value={counts.done} tone="green" />
+      </div>
+
+      <Card
+        title="Families to tell"
+        subtitle="Everyone who asked to be told when a class opens. The daily resolve-demand job emails them the moment an exact match is published."
+        action={
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={copyEmails}
+              disabled={emails.length === 0}
+              className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              {copied ? 'Copied' : `Copy ${emails.length} email${emails.length === 1 ? '' : 's'}`}
+            </button>
+            <button
+              type="button"
+              onClick={downloadCsv}
+              disabled={list.length === 0}
+              className="rounded-xl bg-itutor-green px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+            >
+              Download CSV
+            </button>
+          </div>
+        }
+      >
+        <div className="mb-4">
+          <Segmented<NotifyFilter>
+            value={filter}
+            onChange={setFilter}
+            options={[
+              ['waiting', `Waiting (${counts.waiting})`],
+              ['no_address', `No email (${counts.no_address})`],
+              ['done', `Class opened (${counts.done})`],
+              ['all', 'All'],
+            ]}
+          />
+        </div>
+
+        {list.length === 0 ? (
+          <p className="py-8 text-center text-sm text-gray-600">Nobody in this view.</p>
+        ) : (
+          <div className="-mx-5 overflow-x-auto">
+            <table className="w-full min-w-[900px] text-sm">
+              <thead className="border-y border-gray-200 bg-gray-50 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                <tr>
+                  <th className="px-5 py-3 text-left">Family</th>
+                  <th className="px-3 py-3 text-left">Wants</th>
+                  <th className="px-3 py-3 text-left">When</th>
+                  <th className="px-3 py-3 text-left">Budget</th>
+                  <th className="px-3 py-3 text-left">Asked</th>
+                  <th className="px-5 py-3 text-left">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {list.map(e => (
+                  <tr key={e.id} className="align-top hover:bg-gray-50">
+                    <td className="px-5 py-3">
+                      <p className="font-medium text-gray-900">{e.name ?? (e.email ? 'No account' : 'Anonymous visitor')}</p>
+                      {e.email ? (
+                        <a href={`mailto:${e.email}`} className="text-itutor-green hover:text-emerald-700">
+                          {e.email}
+                        </a>
+                      ) : (
+                        <p className="text-gray-500">—</p>
+                      )}
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {e.emailSource === 'typed' ? <Pill tone="blue">Typed on results</Pill> : null}
+                        {e.role ? <Pill>{e.role}</Pill> : null}
+                        {e.learner ? <Pill>for {e.learner}</Pill> : null}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3">
+                      <p className="font-medium text-gray-900">{e.subject}</p>
+                      <p className="text-gray-600">
+                        {e.levelLabel} · {e.deliveryLabel}
+                      </p>
+                    </td>
+                    <td className="px-3 py-3 text-gray-700">{e.times.join(', ') || '—'}</td>
+                    <td className="px-3 py-3 text-gray-700">
+                      {e.budgetLabel}
+                      {e.urgency ? <p className="text-xs text-gray-500">{e.urgency}</p> : null}
+                    </td>
+                    <td className="px-3 py-3 tabular-nums text-gray-700">{fmtDate(e.askedAt)}</td>
+                    <td className="px-5 py-3">
+                      <Pill tone={STATUS_PILL[e.status].tone}>{STATUS_PILL[e.status].label}</Pill>
+                      {e.notifiedAt ? <p className="mt-1 text-xs text-gray-500">{fmtDate(e.notifiedAt)}</p> : null}
+                      {e.resolvedBy ? <p className="mt-1 text-xs text-gray-500">{e.resolvedBy}</p> : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
   );
 }
