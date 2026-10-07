@@ -13,6 +13,7 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/middleware/adminAuth';
 import { getServiceClient } from '@/lib/supabase/server';
+import { maskAccount } from '@/lib/payouts/payoutCycle';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -53,7 +54,8 @@ function buildGroup(
         line_count: 1,
         has_payout_account: !!account?.payout_account_identifier,
         payout_name: account?.payout_name ?? null,
-        account_number: account?.payout_account_identifier ?? null,
+        // Masked: the full number only ever leaves the server inside a CSV.
+        account_number: maskAccount(account?.payout_account_identifier),
         bank_name: account?.bank_name ?? null,
         branch: account?.branch ?? null,
         account_type: account?.account_type ?? null,
@@ -74,11 +76,14 @@ export async function GET() {
       .from('payout_ledger')
       .select('id, tutor_id, amount_ttd, status, created_at')
       .eq('status', 'release_ready')
-      .is('batch_id', null),
+      .is('batch_id', null)
+      // 1:1 only — lesson earnings live on Teacher Payouts (migration 266).
+      .not('session_id', 'is', null),
     admin
       .from('payout_ledger')
       .select('id, tutor_id, amount_ttd, status, created_at')
-      .eq('status', 'owed'),
+      .eq('status', 'owed')
+      .not('session_id', 'is', null),
   ]);
 
   if (readyErr) return NextResponse.json({ error: readyErr.message }, { status: 500 });

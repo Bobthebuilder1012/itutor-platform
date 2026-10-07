@@ -205,7 +205,9 @@ export default function AdminPayoutsPage() {
           <div>
             <h1 className="text-2xl font-bold text-ink">Payouts</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Generate the bank CSV for tutor payouts and reconcile each batch once the transfer clears.
+              Generate the bank CSV for one-on-one session payouts and reconcile each batch once the transfer clears.
+              Group class earnings are paid monthly per tutor from{' '}
+              <Link href="/admin/teacher-payouts" className="text-brand hover:underline">Teacher Payouts</Link>.
             </p>
           </div>
           <Link href="/admin/dashboard" className="text-sm text-brand hover:underline">← Back to dashboard</Link>
@@ -220,7 +222,7 @@ export default function AdminPayoutsPage() {
             <div>
               <h2 className="text-lg font-semibold text-ink">Unpaid earnings</h2>
               <p className="text-xs text-muted-foreground">
-                All tutor earnings not yet paid out. Generate a CSV to batch-pay via bank transfer.
+                One-on-one session earnings not yet paid out. Generate a CSV to batch-pay via bank transfer.
               </p>
             </div>
             <div className="text-right">
@@ -257,7 +259,7 @@ export default function AdminPayoutsPage() {
                           ? <span className="text-ink">{t.bank_name} <span className="text-xs text-muted-foreground">/ {t.branch}</span></span>
                           : <span className="text-amber-700 font-medium">Missing — tutor must add bank details</span>}
                       </td>
-                      <td className="py-2 pr-4 text-ink">{t.account_number ? `••••${t.account_number.slice(-4)}` : '—'}</td>
+                      <td className="py-2 pr-4 text-ink">{t.account_number ?? '—'}</td>
                       <td className="py-2 pr-4 text-right">{t.line_count}</td>
                       <td className="py-2 text-right font-semibold text-ink">${t.total_ttd.toFixed(2)}</td>
                     </tr>

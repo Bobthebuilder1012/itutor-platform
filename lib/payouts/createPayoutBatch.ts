@@ -1,0 +1,389 @@
+// Shared batch builder behind /api/admin/payouts/create-batch (by
+// subscription payment or ledger id) and /api/admin/tutor-payouts/generate
+// (by tutor). Moved out of the route unchanged so both paths apply the same
+// deductions, the same one-currency-per-batch rule and the same retained CSV.
+//
+// Creating a batch never marks anything paid. Rows are stamped with the batch
+// id; only mark_payout_batch_paid (an explicit admin confirmation) releases them.
+
+export type BatchSelection = {
+  ledgerIds?: string[] | null;
+  spIds?: string[];
+  batchType?: 'one_on_one' | 'lesson';
+};
+
+export type BatchResult = { status: number; body: Record<string, any> };
+
+export async function createPayoutBatch(
+  admin: any,
+  generatedBy: string,
+  selection: BatchSelection
+): Promise<BatchResult> {
+  const ledgerIds = selection.ledgerIds && selection.ledgerIds.length > 0 ? selection.ledgerIds : null;
+  const spIds = selection.spIds ?? [];
+  const batchType = selection.batchType;
+  if (!ledgerIds && spIds.length === 0) {
+    return { status: 400, body: { error: 'No payments selected' } };
+  }
+
+
+  // ── Load payout_ledger rows ───────────────────────────────────────────────
+  const { data: ledgerRows, error: ledgerErr } = ledgerIds
+    ? await admin
+        .from('payout_ledger')
+        .select('id, status, amount_ttd, amount_usd, payout_currency, tutor_id, batch_id')
+        .in('id', ledgerIds)
+        .not('status', 'in', '(reversed,admin_hold,released)')
+    : await admin
+        .from('payout_ledger')
+        .select('id, status, amount_ttd, amount_usd, payout_currency, tutor_id, batch_id')
+        .in('subscription_payment_id', spIds)
+        .not('status', 'in', '(reversed,admin_hold,released)');
+
+  if (ledgerErr) {
+    return { status: 500, body: { error: ledgerErr.message } };
+  }
+
+  const rows = (ledgerRows ?? []) as Array<{
+    id: string;
+    status: string;
+    amount_ttd: string | number;
+    amount_usd: string | number | null;
+    payout_currency: 'TTD' | 'USD';
+    tutor_id: string;
+    batch_id: string | null;
+  }>;
+
+  // Exclude already-batched rows
+  const unbatched = rows.filter((r) => !r.batch_id);
+  if (unbatched.length === 0) {
+    return { status: 400, body: { error: 'No unbatched payout ledger rows found for the selected payments' } };
+  }
+
+  // ── One currency per batch (migration 260) ───────────────────────────────
+  // A bank CSV pays in a single currency, so a selection that mixes TTD and
+  // USD tutors must be split. A USD row still waiting on its CBTT rate has
+  // no payable amount yet and cannot be batched.
+  const currencies = Array.from(new Set(unbatched.map((r) => r.payout_currency ?? 'TTD')));
+  if (currencies.length > 1) {
+    return { status: 400, body: { error: 'This selection mixes TTD and USD payouts. Create one batch per currency.' } };
+  }
+  const batchCurrency = (currencies[0] ?? 'TTD') as 'TTD' | 'USD';
+  if (batchCurrency === 'USD' && unbatched.some((r) => r.amount_usd == null)) {
+    return { status: 409, body: { error: "Some USD payouts have no exchange rate yet. Set the day's rate in admin, then retry." } };
+  }
+
+  // ── Force-flip 'owed' rows to 'release_ready' ────────────────────────────
+  const owedRows = unbatched.filter((r) => r.status === 'owed');
+  if (owedRows.length > 0) {
+    const owedIds = owedRows.map((r) => r.id);
+
+    // Update ledger status
+    const { error: flipErr } = await admin
+      .from('payout_ledger')
+      .update({ status: 'release_ready', updated_at: new Date().toISOString() })
+      .in('id', owedIds);
+
+    if (flipErr) {
+      console.error('[create-batch] flip owed→release_ready failed:', flipErr);
+      return { status: 500, body: { error: flipErr.message } };
+    }
+
+    // Move balance: pending_ttd -= amount, available_ttd += amount per tutor
+    const amountByTutor = new Map<string, number>();
+    for (const r of owedRows) {
+      amountByTutor.set(
+        r.tutor_id,
+        (amountByTutor.get(r.tutor_id) ?? 0) + Number(r.amount_ttd)
+      );
+    }
+
+    const tutorIdsToAdjust = Array.from(amountByTutor.keys());
+    if (tutorIdsToAdjust.length > 0) {
+      const { data: balanceRows } = await admin
+        .from('tutor_balances')
+        .select('tutor_id, pending_ttd, available_ttd')
+        .in('tutor_id', tutorIdsToAdjust);
+
+      const balanceMap = new Map<string, any>(
+        (balanceRows ?? []).map((b: any) => [b.tutor_id, b])
+      );
+
+      await Promise.all(
+        tutorIdsToAdjust.map((tutorId) => {
+          const amount  = Math.round((amountByTutor.get(tutorId) ?? 0) * 100) / 100;
+          const current = balanceMap.get(tutorId);
+          const newPending   = Math.max(0, Math.round(((current?.pending_ttd   ?? 0) - amount) * 100) / 100);
+          const newAvailable = Math.round(((current?.available_ttd ?? 0) + amount) * 100) / 100;
+
+          return admin
+            .from('tutor_balances')
+            .upsert(
+              { tutor_id: tutorId, pending_ttd: newPending, available_ttd: newAvailable, last_updated: new Date().toISOString() },
+              { onConflict: 'tutor_id' }
+            )
+            .then(({ error }: { error: any }) => {
+              if (error) console.error('[create-batch] tutor_balances upsert failed for', tutorId, error);
+            });
+        })
+      );
+    }
+  }
+
+  // ── Apply pending tutor deductions to this payout preview ────────────────
+  const grossByTutor = new Map<string, number>();
+  for (const r of unbatched) {
+    grossByTutor.set(
+      r.tutor_id,
+      (grossByTutor.get(r.tutor_id) ?? 0) + Number(r.amount_ttd)
+    );
+  }
+  const deductionPlan = await buildDeductionPlan(admin as any, grossByTutor);
+  const deductionByTutor = new Map<string, number>();
+  for (const item of deductionPlan) {
+    deductionByTutor.set(
+      item.tutorId,
+      (deductionByTutor.get(item.tutorId) ?? 0) + item.amountTtd
+    );
+  }
+
+  // ── Create batch via create_payout_batch_atomic ───────────────────────────
+  const eligibleIds = unbatched.map((r) => r.id);
+  const netByTutor = new Map<string, number>();
+  for (const [tutorId, gross] of grossByTutor) {
+    const deduction = deductionByTutor.get(tutorId) ?? 0;
+    netByTutor.set(tutorId, Math.max(0, Math.round((gross - deduction) * 100) / 100));
+  }
+  const totalAmount = Array.from(netByTutor.values()).reduce((s, amount) => s + amount, 0);
+  const uniqueTutors = Array.from(netByTutor.values()).filter((amount) => amount > 0).length;
+  const ts = new Date().toISOString().replace(/[:.]/g, '-');
+  const filename = `itutor-lesson-payouts-${ts}${batchCurrency === 'USD' ? '-usd' : ''}.csv`;
+
+  const { data: rpcResult, error: rpcErr } = await (admin as any).rpc(
+    'create_payout_batch_atomic',
+    {
+      p_generated_by:     generatedBy,
+      p_total_amount_ttd: Math.round(totalAmount * 100) / 100,
+      p_line_count:       uniqueTutors,
+      p_csv_filename:     filename,
+      p_ledger_ids:       eligibleIds,
+    }
+  );
+
+  if (rpcErr || !rpcResult) {
+    const msg = rpcErr?.message ?? 'Failed to create batch';
+    const status = msg.includes('no_eligible_lines') ? 409 : 500;
+    return { status, body: { error: msg } };
+  }
+
+  const rpc = rpcResult as Record<string, any>;
+
+  if (deductionPlan.length > 0) {
+    await reserveDeductionPlan(admin as any, deductionPlan, rpc.batch_id);
+  }
+
+  // ── Build CSV ─────────────────────────────────────────────────────────────
+  const tutorIds = Array.from(new Set(unbatched.map((r) => r.tutor_id)));
+  const [{ data: profiles }, { data: accounts }] = await Promise.all([
+    admin.from('profiles').select('id, full_name, email').in('id', tutorIds),
+    admin
+      .from('tutor_payout_accounts')
+      .select('tutor_id, payout_name, payout_account_identifier, bank_name, branch, account_type')
+      .in('tutor_id', tutorIds),
+  ]);
+
+  const profileById  = new Map<string, any>((profiles  ?? []).map((p: any) => [p.id, p]));
+  const accountByTutor = new Map<string, any>((accounts ?? []).map((a: any) => [a.tutor_id, a]));
+
+  const stampedIds = new Set<string>(
+    Array.isArray(rpc.stamped_ledger_ids) ? rpc.stamped_ledger_ids : []
+  );
+  const amountByTutorFinal = new Map<string, number>();
+  const usdByTutorFinal = new Map<string, number>();
+  for (const r of unbatched) {
+    if (!stampedIds.has(r.id)) continue;
+    amountByTutorFinal.set(
+      r.tutor_id,
+      (amountByTutorFinal.get(r.tutor_id) ?? 0) + Number(r.amount_ttd)
+    );
+    usdByTutorFinal.set(
+      r.tutor_id,
+      (usdByTutorFinal.get(r.tutor_id) ?? 0) + Number(r.amount_usd ?? 0)
+    );
+  }
+  // Deductions are owed in TTD. For a USD tutor they reduce the payout by the
+  // same PROPORTION, so every earning keeps the rate it was frozen at.
+  function netUsd(tutorId: string, grossTtd: number, netTtd: number): number {
+    const usd = usdByTutorFinal.get(tutorId) ?? 0;
+    if (grossTtd <= 0) return 0;
+    return Math.max(0, Math.round(usd * (netTtd / grossTtd) * 100) / 100);
+  }
+  let totalUsd = 0;
+
+  function cell(v: string | number | null | undefined): string {
+    if (v == null) return '';
+    const s = String(v);
+    return s.includes(',') || s.includes('"') || s.includes('\n')
+      ? `"${s.replace(/"/g, '""')}"` : s;
+  }
+
+  const amountColumn = batchCurrency === 'USD' ? 'amount_usd' : 'amount_ttd';
+  const csvRows = [`tutor_id,name,bank_name,branch,account_number,account_type,${amountColumn},reference`];
+  for (const [tutorId, amount] of amountByTutorFinal) {
+    const deduction = deductionByTutor.get(tutorId) ?? 0;
+    const netAmount = Math.max(0, Math.round((amount - deduction) * 100) / 100);
+    if (netAmount <= 0) continue;
+    const payAmount = batchCurrency === 'USD' ? netUsd(tutorId, amount, netAmount) : netAmount;
+    totalUsd += batchCurrency === 'USD' ? payAmount : 0;
+
+    const acc = accountByTutor.get(tutorId);
+    const pro = profileById.get(tutorId);
+    csvRows.push([
+      cell(tutorId),
+      cell(acc?.payout_name ?? pro?.full_name ?? ''),
+      cell(acc?.bank_name),
+      cell(acc?.branch),
+      cell(acc?.payout_account_identifier),
+      cell(acc?.account_type),
+      cell(payAmount.toFixed(2)),
+      cell(`ITUTOR-${rpc.batch_id?.slice(0, 8) ?? 'BATCH'}`),
+    ].join(','));
+  }
+
+  const csvBody = csvRows.join('\r\n') + '\r\n';
+
+  // Retain the CSV server-side so the batch satisfies the mark-paid
+  // download gate (mig 186) and the file can be re-downloaded later.
+  // batch_type follows the mode: subscription IDs → lesson, else 1:1.
+  await admin
+    .from('payout_batches')
+    .update({
+      csv_body: csvBody,
+      csv_generated_at: new Date().toISOString(),
+      batch_type: batchType ?? (ledgerIds ? 'one_on_one' : 'lesson'),
+      currency: batchCurrency,
+      total_amount_usd: batchCurrency === 'USD' ? Math.round(totalUsd * 100) / 100 : null,
+    })
+    .eq('id', rpc.batch_id);
+
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      batch: {
+        id:               rpc.batch_id,
+        generated_at:     rpc.generated_at,
+        total_amount_ttd: rpc.total_amount_ttd,
+        line_count:       rpc.line_count,
+        status:           rpc.status,
+        csv_filename:     filename,
+        currency:         batchCurrency,
+        total_amount_usd: batchCurrency === 'USD' ? Math.round(totalUsd * 100) / 100 : null,
+      },
+      csv:      csvBody,
+      filename,
+      stamped_count: stampedIds.size,
+      deductions_applied_ttd: +Array.from(deductionByTutor.values()).reduce((s, amount) => s + amount, 0).toFixed(2),
+    },
+  };
+}
+
+type DeductionAllocation = {
+  id: string;
+  tutorId: string;
+  amountTtd: number;
+  remainderTtd: number;
+  reason: string;
+  sourceEnrollmentId: string | null;
+  sourcePaymentId: string | null;
+  sourceSubscriptionPaymentId: string | null;
+};
+
+async function buildDeductionPlan(
+  admin: any,
+  grossByTutor: Map<string, number>
+): Promise<DeductionAllocation[]> {
+  const tutorIds = Array.from(grossByTutor.keys());
+  if (tutorIds.length === 0) return [];
+
+  const { data, error } = await admin
+    .from('tutor_deductions')
+    .select('id, tutor_id, amount_ttd, reason, source_enrollment_id, source_payment_id, source_subscription_payment_id')
+    .in('tutor_id', tutorIds)
+    .eq('status', 'pending')
+    .is('deducted_from_batch_id', null)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('[create-batch] failed to load tutor_deductions:', error);
+    return [];
+  }
+
+  const remainingByTutor = new Map(grossByTutor);
+  const plan: DeductionAllocation[] = [];
+
+  for (const row of data ?? []) {
+    const tutorId = row.tutor_id as string;
+    const availableGross = Math.round((remainingByTutor.get(tutorId) ?? 0) * 100) / 100;
+    if (availableGross <= 0) continue;
+
+    const rowAmount = Math.round(Number(row.amount_ttd ?? 0) * 100) / 100;
+    const allocation = Math.round(Math.min(rowAmount, availableGross) * 100) / 100;
+    if (allocation <= 0) continue;
+
+    plan.push({
+      id: row.id,
+      tutorId,
+      amountTtd: allocation,
+      remainderTtd: Math.round((rowAmount - allocation) * 100) / 100,
+      reason: row.reason,
+      sourceEnrollmentId: row.source_enrollment_id,
+      sourcePaymentId: row.source_payment_id,
+      sourceSubscriptionPaymentId: row.source_subscription_payment_id,
+    });
+
+    remainingByTutor.set(tutorId, Math.round((availableGross - allocation) * 100) / 100);
+  }
+
+  return plan;
+}
+
+async function reserveDeductionPlan(
+  admin: any,
+  plan: DeductionAllocation[],
+  batchId: string
+): Promise<void> {
+  for (const item of plan) {
+    const { error: updateError } = await admin
+      .from('tutor_deductions')
+      .update({
+        amount_ttd: item.amountTtd,
+        deducted_from_batch_id: batchId,
+      })
+      .eq('id', item.id)
+      .eq('status', 'pending');
+
+    if (updateError) {
+      console.error('[create-batch] failed to reserve tutor_deduction:', item.id, updateError);
+      continue;
+    }
+
+    if (item.remainderTtd > 0) {
+      const { error: insertError } = await admin
+        .from('tutor_deductions')
+        .insert({
+          tutor_id: item.tutorId,
+          amount_ttd: item.remainderTtd,
+          reason: item.reason,
+          source_enrollment_id: item.sourceEnrollmentId,
+          source_payment_id: item.sourcePaymentId,
+          source_subscription_payment_id: item.sourceSubscriptionPaymentId,
+          status: 'pending',
+        });
+
+      if (insertError) {
+        console.error('[create-batch] failed to carry tutor_deduction remainder:', item.id, insertError);
+      }
+    }
+  }
+}

@@ -85,12 +85,26 @@ export async function POST(
   }
 
   // ── Call the atomic RPC ───────────────────────────────────────────────────
-  const { data, error } = await admin.rpc('mark_payout_batch_paid', {
+  // p_paid_by (migration 266) records who confirmed, and the same transaction
+  // moves every lesson tutor in the batch to their next payout date. A
+  // second confirmation of the same batch is refused by the RPC.
+  let { data, error } = await admin.rpc('mark_payout_batch_paid', {
     p_batch_id: params.batchId,
+    p_paid_by:  auth.user!.id,
   });
+  // Before migration 266 the function takes p_batch_id only. PGRST202 is
+  // PostgREST finding no function with that argument list — nothing ran, so
+  // retrying with the old signature is safe.
+  if (error && (error as any).code === 'PGRST202') {
+    ({ data, error } = await admin.rpc('mark_payout_batch_paid', { p_batch_id: params.batchId }));
+  }
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    const alreadyPaid = error.message.includes('already_paid');
+    return NextResponse.json(
+      { error: alreadyPaid ? 'This batch was already confirmed paid.' : error.message },
+      { status: alreadyPaid ? 409 : 400 }
+    );
   }
 
   const now = new Date().toISOString();

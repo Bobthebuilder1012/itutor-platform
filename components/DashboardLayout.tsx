@@ -293,6 +293,8 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/admin/payments', label: 'Payments Overview', icon: icons.creditCard },
           { href: '/admin/payments/one-on-one', label: 'One-on-One Payments', icon: icons.creditCard },
           { href: '/admin/lesson-payments', label: 'Lesson Payments', icon: icons.banknote },
+          { href: '/admin/teacher-payouts', label: 'Teacher Payouts', icon: icons.banknote },
+          { href: '/admin/enrollments', label: 'Enrollments', icon: icons.userPlus },
           { href: '/admin/tutor-commissions', label: 'Tutor Commissions', icon: icons.banknote },
           { href: '/admin/payouts', label: 'Payouts', icon: icons.banknote },
           { href: '/admin/fx-rates', label: 'Exchange Rates', icon: icons.banknote },

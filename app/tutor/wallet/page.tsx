@@ -13,7 +13,7 @@ import PayoutSetupModal from '@/components/tutor/PayoutSetupModal';
 
 type Tab = 'overview' | 'transactions' | 'statements';
 
-type HistoryStatus = 'in_escrow' | 'awaiting_transfer' | 'paid' | 'reversed' | 'under_review' | 'unknown';
+type HistoryStatus = 'in_escrow' | 'scheduled' | 'awaiting_transfer' | 'paid' | 'reversed' | 'under_review' | 'unknown';
 
 interface WalletHistoryRow {
   ledger_id: string;
@@ -35,6 +35,8 @@ interface WalletHistoryRow {
   student_avatar_url: string | null;
   subject_name: string | null;
   source_type?: 'session' | 'subscription';
+  /** Group class earnings: the monthly payout date they go out on. */
+  scheduled_for?: string | null;
 }
 
 interface PendingDeduction {
@@ -60,6 +62,15 @@ interface WalletPayload {
   };
   pending_deductions: PendingDeduction[];
   history: WalletHistoryRow[];
+  /** Monthly group-class payout cycle (migration 266). Amounts are slices of balances. */
+  lesson_payout?: {
+    payout_day: number;
+    next_payout_on: string;
+    last_paid_at: string | null;
+    last_paid_cycle_on: string | null;
+    scheduled_ttd: number;
+    in_transfer_ttd: number;
+  } | null;
   payout_currency?: 'TTD' | 'USD';
   fx_rate?: { rate_date: string; ttd_per_usd: number; published_date: string | null } | null;
   /** Totals of USD-stamped ledger rows only. */
@@ -90,7 +101,19 @@ interface UpcomingSession {
 }
 
 const UPCOMING_STATUSES = ['SCHEDULED', 'JOIN_OPEN'];
-const EARNED_LEDGER_STATUSES: HistoryStatus[] = ['in_escrow', 'awaiting_transfer', 'paid'];
+const EARNED_LEDGER_STATUSES: HistoryStatus[] = ['in_escrow', 'scheduled', 'awaiting_transfer', 'paid'];
+
+// '2026-11-09' → 'Nov 9' without a time zone shifting the day.
+function fmtPayoutDay(date: string) {
+  const [y, m, d] = date.slice(0, 10).split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
+function ordinalDay(n: number) {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`;
+}
 
 function fmtTTD(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -390,8 +413,26 @@ function WalletContent() {
                 </span>
               </div>
             )}
+            {/* A slice of the total above, never added to it. Group class money
+                waits for the tutor's monthly payout day regardless of the
+                ready/escrow split, so say when it actually goes out. */}
+            {data?.lesson_payout && (data.lesson_payout.scheduled_ttd > 0 || data.lesson_payout.in_transfer_ttd > 0) && (
+              <div className="mt-3 rounded-xl bg-white/10 px-3 py-2 text-sm">
+                {data.lesson_payout.scheduled_ttd > 0 && (
+                  <div className="font-semibold text-white">
+                    TT$ {fmtTTD(data.lesson_payout.scheduled_ttd)} from group classes · next payout {fmtPayoutDay(data.lesson_payout.next_payout_on)}
+                  </div>
+                )}
+                {data.lesson_payout.in_transfer_ttd > 0 && (
+                  <div className="text-white/80">TT$ {fmtTTD(data.lesson_payout.in_transfer_ttd)} is being transferred now</div>
+                )}
+              </div>
+            )}
             <div className="mt-3 text-xs text-white/60">
-              iTutor pays out via bulk bank transfer on the next payout cycle. Earnings move from escrow to bank-transfer queue 7 days after each session completes.
+              iTutor pays out via bulk bank transfer. One-on-one earnings move from escrow to the bank-transfer queue 7 days after each session completes.
+              {data?.lesson_payout
+                ? ` Group class earnings are paid together once a month, on the ${ordinalDay(data.lesson_payout.payout_day)} (or the month's last day if shorter).`
+                : ''}
             </div>
           </div>
 
@@ -633,6 +674,7 @@ function TransactionsTab({ history, loading }: { history: WalletHistoryRow[]; lo
           className="px-3 py-2 rounded-lg border border-border bg-card text-sm">
           <option value="all">All statuses</option>
           <option value="in_escrow">In escrow</option>
+          <option value="scheduled">Scheduled (group classes)</option>
           <option value="awaiting_transfer">Awaiting bank transfer</option>
           <option value="paid">Paid</option>
           <option value="reversed">Reversed</option>
@@ -664,6 +706,7 @@ function TxRow({ row, detailed }: { row: WalletHistoryRow; detailed?: boolean })
         </div>
         <div className="text-xs text-muted-foreground">
           {dateLabel}
+          {row.status === 'scheduled' && row.scheduled_for ? ` · paid out ${fmtPayoutDay(row.scheduled_for)}` : ''}
           {row.batch_id && row.status === 'paid' && row.released_at
             ? ` · paid ${new Date(row.released_at).toLocaleDateString()} (batch ${row.batch_id.slice(0, 8)})`
             : ''}
@@ -686,6 +729,7 @@ function TxRow({ row, detailed }: { row: WalletHistoryRow; detailed?: boolean })
 function StatusPill({ status }: { status: HistoryStatus }) {
   const config: Record<HistoryStatus, { label: string; cls: string }> = {
     in_escrow:         { label: 'In escrow',         cls: 'bg-peach/50 text-ink' },
+    scheduled:         { label: 'Scheduled',         cls: 'bg-sky-100 text-sky-800' },
     awaiting_transfer: { label: 'Awaiting transfer', cls: 'bg-amber-100 text-amber-800' },
     paid:              { label: 'Paid',              cls: 'bg-brand-soft text-brand-deep' },
     reversed:          { label: 'Reversed',          cls: 'bg-coral-soft text-coral' },

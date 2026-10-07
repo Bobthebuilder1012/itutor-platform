@@ -24,6 +24,12 @@
 //   release_ready → 'awaiting_transfer'
 //   released      → 'paid'
 //   reversed      → 'reversed'
+//
+// Group class (subscription) rows follow the monthly payout cycle instead
+// (migration 266): unpaid and not yet in a CSV → 'scheduled' for the tutor's
+// next payout date; in a CSV finance hasn't confirmed → 'awaiting_transfer';
+// confirmed → 'paid'. The weekly owed→release_ready flip still runs on these
+// rows, so the ledger status alone would show "awaiting transfer" for weeks.
 // =====================================================
 
 import { NextResponse } from 'next/server';
@@ -41,7 +47,7 @@ interface WalletHistoryRow {
   // null for TTD rows and for USD rows still waiting on a CBTT rate.
   amount_usd: number | null;
   payout_currency: 'TTD' | 'USD';
-  status: 'in_escrow' | 'awaiting_transfer' | 'paid' | 'reversed' | 'under_review' | 'unknown';
+  status: 'in_escrow' | 'scheduled' | 'awaiting_transfer' | 'paid' | 'reversed' | 'under_review' | 'unknown';
   ledger_status: string;
   created_at: string;
   released_at: string | null;
@@ -54,6 +60,13 @@ interface WalletHistoryRow {
   student_avatar_url: string | null;
   subject_name: string | null;
   source_type: 'session' | 'subscription';
+  /** Group class rows waiting for the monthly payout: the date they go out. */
+  scheduled_for?: string | null;
+}
+
+function mapLessonStatus(s: string, batchId: string | null): WalletHistoryRow['status'] {
+  if (s === 'owed' || s === 'release_ready') return batchId ? 'awaiting_transfer' : 'scheduled';
+  return mapLedgerStatus(s);
 }
 
 function mapLedgerStatus(s: string): WalletHistoryRow['status'] {
@@ -291,7 +304,7 @@ export async function GET() {
           amount_ttd: Number(row.amount_ttd ?? 0),
           amount_usd: row.amount_usd == null ? null : Number(row.amount_usd),
           payout_currency: row.payout_currency ?? 'TTD',
-          status: mapLedgerStatus(row.status),
+          status: mapLessonStatus(row.status, row.batch_id ?? null),
           ledger_status: row.status,
           created_at: row.created_at,
           released_at: row.released_at ?? null,
@@ -475,7 +488,54 @@ export async function GET() {
   const pendingDeductionsTtd =
     Math.round(pendingDeductions.reduce((sum, d) => sum + (Number(d.amount_ttd) || 0), 0) * 100) / 100;
 
+  // -- Group class payout cycle (migration 266) --
+  // One bulk transfer a month on the tutor's payout day. scheduled_ttd is the
+  // part of the balances above that waits for that date (a slice, never added).
+  let lessonPayout: {
+    payout_day: number;
+    next_payout_on: string;
+    last_paid_at: string | null;
+    last_paid_cycle_on: string | null;
+    scheduled_ttd: number;
+    in_transfer_ttd: number;
+  } | null = null;
+  try {
+    const { data: sched } = await admin
+      .from('tutor_payout_schedules')
+      .select('payout_day, next_payout_on, last_paid_at, last_paid_cycle_on')
+      .eq('tutor_id', user.id)
+      .maybeSingle();
+    if (sched) {
+      const { data: openLesson } = await admin
+        .from('payout_ledger')
+        .select('amount_ttd, batch_id')
+        .eq('tutor_id', user.id)
+        .not('subscription_payment_id', 'is', null)
+        .in('status', ['owed', 'release_ready']);
+      const sumWhere = (inBatch: boolean) => Math.round(
+        (openLesson ?? []).filter((r: any) => !!r.batch_id === inBatch)
+          .reduce((t: number, r: any) => t + Number(r.amount_ttd ?? 0), 0) * 100
+      ) / 100;
+      lessonPayout = {
+        payout_day: sched.payout_day,
+        next_payout_on: sched.next_payout_on,
+        last_paid_at: sched.last_paid_at ?? null,
+        last_paid_cycle_on: sched.last_paid_cycle_on ?? null,
+        scheduled_ttd: sumWhere(false),
+        in_transfer_ttd: sumWhere(true),
+      };
+    }
+  } catch (err) {
+    console.warn('[wallet] payout schedule unavailable (non-fatal):', (err as Error)?.message);
+  }
+
+  if (lessonPayout) {
+    const payoutOn = lessonPayout.next_payout_on;
+    history = history.map((h) => (h.status === 'scheduled' ? { ...h, scheduled_for: payoutOn } : h));
+  }
+
   return NextResponse.json({
+    lesson_payout: lessonPayout,
     balances: {
       pending_ttd:       Math.round((pending + unprocessedPending) * 100) / 100,
       available_ttd:     available,

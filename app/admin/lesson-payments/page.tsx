@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import BatchAmount from '@/components/admin/BatchAmount';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
 import { isEmailManagementOnlyAdmin } from '@/lib/auth/adminAccess';
 import AdminBreadcrumb from '@/components/admin/AdminBreadcrumb';
 import DashboardLayout from '@/components/DashboardLayout';
 import {
   BookOpen, DollarSign, AlertTriangle, Loader2,
-  CheckSquare, Square, Download, RefreshCcw,
+  Download, RefreshCcw,
   X, CheckCircle,
 } from 'lucide-react';
 
@@ -279,121 +280,6 @@ function RefundModal({
   );
 }
 
-// ─── Batch modal ──────────────────────────────────────────────────────────────
-
-function BatchModal({
-  selected, allActive, onClose, onSuccess,
-}: {
-  selected: Set<string>;
-  allActive: ActiveSub[];
-  onClose: () => void;
-  onSuccess: () => void;
-}) {
-  const rows = allActive.filter((sp) => selected.has(sp.id));
-  const totalPayout    = rows.reduce((s, r) => s + Number(r.tutor_payout_ttd ?? 0), 0);
-  const totalPlatform  = rows.reduce((s, r) => s + Number(r.platform_fee_ttd ?? 0), 0);
-  const totalAmount    = rows.reduce((s, r) => s + Number(r.amount_ttd ?? 0), 0);
-
-  const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState('');
-
-  async function submit() {
-    setLoading(true); setError('');
-    try {
-      const res = await fetch('/api/admin/payouts/create-batch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subscription_payment_ids: Array.from(selected) }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Batch creation failed');
-
-      if (data.csv) {
-        const blob = new Blob([data.csv], { type: 'text/csv' });
-        const url  = URL.createObjectURL(blob);
-        const a    = document.createElement('a');
-        a.href     = url;
-        a.download = data.filename ?? 'lesson-payouts.csv';
-        a.click();
-        URL.revokeObjectURL(url);
-      }
-      onSuccess();
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
-      <div className="w-full max-w-lg rounded-2xl border border-gray-200 shadow-2xl" style={{ background: '#ffffff' }}>
-        <div className="flex items-center justify-between p-5 border-b border-gray-200">
-          <h2 className="text-base font-bold text-gray-900">Transfer to CSV Batch</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-900"><X className="size-5" /></button>
-        </div>
-
-        <div className="p-5 space-y-4">
-          {error && (
-            <div className="rounded-lg bg-rose-50 border border-rose-200 p-3 text-sm text-rose-700">{error}</div>
-          )}
-
-          <div className="rounded-xl border border-gray-200 p-4 space-y-2" style={{ background: '#f9fafb' }}>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Selected payments</span>
-              <span className="text-gray-900 font-semibold">{rows.length}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Total collected</span>
-              <span className="text-gray-900 tabular-nums">{fmtTTD(totalAmount)}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Platform commission</span>
-              <span className="text-rose-700 tabular-nums">−{fmtTTD(totalPlatform)}</span>
-            </div>
-            <div className="flex justify-between text-sm font-bold border-t border-gray-200 pt-2 mt-2">
-              <span className="text-gray-700">Tutor payout total</span>
-              <span className="text-emerald-700 tabular-nums">{fmtTTD(totalPayout)}</span>
-            </div>
-          </div>
-
-          <div className="max-h-48 overflow-y-auto space-y-1">
-            {rows.map((r) => {
-              const enrollment = normalize(r.enrollment);
-              const group      = normalize(r.group);
-              const student    = normalize(enrollment?.student);
-              const tutor      = normalize(group?.tutor);
-              return (
-                <div key={r.id} className="flex items-center justify-between py-1.5 px-2 rounded-lg bg-gray-50 text-xs">
-                  <div className="min-w-0">
-                    <p className="text-gray-700 truncate">{group?.name ?? '—'}</p>
-                    <p className="text-gray-500">{student?.full_name ?? '—'} · {tutor?.full_name ?? '—'}</p>
-                  </div>
-                  <span className="text-emerald-700 tabular-nums ml-3 shrink-0">{fmtTTD(r.tutor_payout_ttd)}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="flex gap-3 p-5 border-t border-gray-200">
-          <button onClick={onClose} className="flex-1 px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100">
-            Cancel
-          </button>
-          <button
-            onClick={submit}
-            disabled={loading || rows.length === 0}
-            className="flex-1 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50"
-          >
-            {loading ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
-            {loading ? 'Creating…' : 'Create & Download CSV'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function LessonPaymentsPage() {
@@ -409,8 +295,6 @@ export default function LessonPaymentsPage() {
   const [cancelledLeft, setCancelled] = useState<CancelledLeft[]>([]);
   const [stats, setStats]             = useState<Stats | null>(null);
 
-  const [selected, setSelected]   = useState<Set<string>>(new Set());
-  const [batchOpen, setBatchOpen] = useState(false);
   const [refundTarget, setRefundTarget] = useState<PendingRefund | null>(null);
 
   // CSV History (group/lesson batches, sourced from payout_batches)
@@ -446,7 +330,6 @@ export default function LessonPaymentsPage() {
       setPending(data.pending_refunds ?? []);
       setCancelled(data.cancelled_left ?? []);
       setStats(data.stats ?? null);
-      setSelected(new Set());
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -509,21 +392,6 @@ export default function LessonPaymentsPage() {
       alert('Mark paid failed: ' + e.message);
     } finally {
       setBatchBusy((p) => { const n = { ...p }; delete n[batchId]; return n; });
-    }
-  }
-
-  function toggleOne(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  }
-  function toggleAll() {
-    if (selected.size === active.length) {
-      setSelected(new Set());
-    } else {
-      setSelected(new Set(active.map((r) => r.id)));
     }
   }
 
@@ -602,25 +470,15 @@ export default function LessonPaymentsPage() {
             {/* Active Subscriptions */}
             {tab === 'active' && (
               <div className="space-y-3">
-                {active.length > 0 && (
-                  <div className="flex items-center justify-between">
-                    <button onClick={toggleAll} className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900">
-                      {selected.size === active.length ? <CheckSquare className="size-4 text-emerald-600" /> : <Square className="size-4" />}
-                      {selected.size === active.length ? 'Deselect all' : 'Select all'}
-                      {selected.size > 0 && <span className="text-gray-400">({selected.size} selected)</span>}
-                    </button>
-                    {selected.size > 0 && (
-                      <button onClick={() => setBatchOpen(true)} className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold flex items-center gap-2">
-                        <Download className="size-4" /> Transfer to CSV Batch ({selected.size})
-                      </button>
-                    )}
-                  </div>
-                )}
-                {active.length === 0 ? <EmptyState message="No active subscription payments to batch." /> : (
+                <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-800">
+                  Lesson payouts are now paid per tutor, once a month, from{' '}
+                  <Link href="/admin/teacher-payouts" className="font-semibold underline">Teacher Payouts</Link>.
+                  This list is read-only.
+                </div>
+                {active.length === 0 ? <EmptyState message="No unbatched lesson payments." /> : (
                   <Table>
                     <thead>
                       <tr className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
-                        <th className="px-4 py-3 text-left w-8" />
                         <th className="px-4 py-3 text-left">Group / Student</th>
                         <th className="px-4 py-3 text-left">Tutor</th>
                         <th className="px-4 py-3 text-right">Amount</th>
@@ -636,13 +494,8 @@ export default function LessonPaymentsPage() {
                         const student    = normalize(enrollment?.student);
                         const tutor      = normalize(group?.tutor);
                         const ledger     = normalize(sp.payout_ledger);
-                        const isSelected = selected.has(sp.id);
                         return (
-                          <tr key={sp.id} onClick={() => toggleOne(sp.id)}
-                            className={`cursor-pointer transition ${isSelected ? 'bg-emerald-500/8' : 'hover:bg-gray-50'}`}>
-                            <td className="px-4 py-3">
-                              {isSelected ? <CheckSquare className="size-4 text-emerald-600" /> : <Square className="size-4 text-gray-300" />}
-                            </td>
+                          <tr key={sp.id} className="hover:bg-gray-50">
                             <td className="px-4 py-3">
                               <p className="text-sm font-semibold text-gray-900">{group?.name ?? '—'}</p>
                               <p className="text-xs text-gray-500">{student?.full_name ?? '—'}</p>
@@ -844,12 +697,6 @@ export default function LessonPaymentsPage() {
           </>
         )}
       </div>
-
-      {batchOpen && (
-        <BatchModal selected={selected} allActive={active}
-          onClose={() => setBatchOpen(false)}
-          onSuccess={() => { setBatchOpen(false); loadData(); loadCsvHistory(); }} />
-      )}
 
       {refundTarget && (
         <RefundModal removal={refundTarget}

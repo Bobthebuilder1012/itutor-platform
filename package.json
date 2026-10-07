@@ -17,6 +17,7 @@
     "demand:verify": "npx ts-node --project scripts/tsconfig.verify.json scripts/verify-demand-map.ts",
     "calendar:verify": "npx ts-node --project scripts/tsconfig.verify.json scripts/verify-academic-calendar.ts",
     "classlink:verify": "npx ts-node --project scripts/tsconfig.verify.json scripts/verify-class-link.ts",
+    "payouts:verify": "npx ts-node --project scripts/tsconfig.verify.json scripts/verify-payout-cycle.ts",
     "finder:migrate": "npx ts-node scripts/apply-finder-migrations.ts"
   },
   "dependencies": {

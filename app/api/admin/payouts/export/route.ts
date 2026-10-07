@@ -44,6 +44,10 @@ export async function POST() {
     .select('id, tutor_id, amount_ttd')
     .eq('status', 'release_ready')
     .is('batch_id', null)
+    // 1:1 session payouts only. Lesson (group class) earnings are paid per
+    // tutor, on each tutor's monthly payout day, from Teacher Payouts
+    // (/admin/teacher-payouts) — this sweep must never pick them up.
+    .not('session_id', 'is', null)
     // USD payouts (migration 260) go out through the weekly move, which
     // writes single-currency batches. This sweep's CSV is TTD.
     .eq('payout_currency', 'TTD');
