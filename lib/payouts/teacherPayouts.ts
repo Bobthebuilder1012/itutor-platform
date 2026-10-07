@@ -9,6 +9,8 @@
 
 import {
   compareByUrgency,
+  cycleDate,
+  cycleIndexAfter,
   daysBetween,
   firstPayoutDate,
   payoutDayFrom,
@@ -184,7 +186,11 @@ export async function loadTeacherPayouts(
   const scheduleByTutor = new Map(schedules.map((s) => [s.tutor_id, s]));
 
   const byTutor = new Map<string, LessonPayoutRow[]>();
+  const lastReleasedByTutor = new Map<string, string>();
   for (const r of ledger) {
+    if (r.status === 'released' && r.released_at && r.released_at > (lastReleasedByTutor.get(r.tutor_id) ?? '')) {
+      lastReleasedByTutor.set(r.tutor_id, r.released_at);
+    }
     const sp = paymentById.get(r.subscription_payment_id);
     const enr = sp?.enrollment_id ? enrollmentById.get(sp.enrollment_id) : null;
     const batch = r.batch_id ? batchById.get(r.batch_id) : null;
@@ -239,11 +245,18 @@ export async function loadTeacherPayouts(
     const usdOwedRows = owedRows.filter((x) => x.payout_currency === 'USD');
     const usdAwaitingRate = usdOwedRows.some((x) => x.amount_usd == null);
     const currency: 'TTD' | 'USD' = acc?.payout_currency === 'USD' ? 'USD' : 'TTD';
-    // No schedule row only before migration 266 is applied: derive the first
-    // cycle from the earliest payment so the tutor still sorts correctly.
+    // No schedule row only before migration 266 is applied: derive the date
+    // the way its backfill does — anchored on the earliest payment, next is
+    // the first cycle after the last released lesson payout.
     const earliest = rows.map((x) => x.received_at).filter(Boolean).sort()[0] ?? null;
     const fallbackAnchor = earliest ? localDate(earliest) : null;
-    const next: string | null = sched?.next_payout_on ?? (fallbackAnchor ? firstPayoutDate(fallbackAnchor) : null);
+    const lastReleased = lastReleasedByTutor.get(tutorId);
+    const fallbackNext = fallbackAnchor
+      ? (lastReleased
+          ? cycleDate(fallbackAnchor, cycleIndexAfter(fallbackAnchor, localDate(lastReleased)))
+          : firstPayoutDate(fallbackAnchor))
+      : null;
+    const next: string | null = sched?.next_payout_on ?? fallbackNext;
     const lastPaidDate = sched?.last_paid_at ? localDate(sched.last_paid_at) : null;
     const pendingDeductions = round2(
       deductions
