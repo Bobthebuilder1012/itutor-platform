@@ -630,11 +630,17 @@ function RecruitTab({ data }: { data: Payload }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="max-w-2xl text-sm text-gray-600">
-          One card per teacher to recruit: the same subject, year and format. Ranked by
-          families waiting to be told, then unmet requests.
+      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+        <p className="font-semibold">How to read this tab</p>
+        <p className="mt-1">
+          Each card is <strong>one teacher worth recruiting</strong>. It groups every request for
+          the same subject, year and format (online or in person), because one class could serve
+          all of them. It shows who asked, when they want lessons, what they will pay and a
+          suggested monthly price. Cards with families waiting to be told come first.
         </p>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-end gap-3">
         <Segmented<ClusterFilter>
           value={filter}
           onChange={setFilter}
@@ -651,79 +657,183 @@ function RecruitTab({ data }: { data: Payload }) {
           Nothing in this view.
         </div>
       ) : (
-        shown.map((c, i) => {
-          const timeMax = c.times[0]?.count ?? 0;
-          return (
-            <article key={c.key} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">#{i + 1}</p>
-                  <h3 className="text-lg font-semibold text-gray-900">{c.subject}</h3>
-                  <div className="mt-1.5 flex flex-wrap gap-1.5">
-                    <Pill>{c.levelLabel}</Pill>
-                    <Pill>{c.deliveryLabel}</Pill>
-                    {c.recommendedPrice !== null ? (
-                      <Pill tone="green">Price at {money(c.recommendedPrice)}/mo</Pill>
-                    ) : null}
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  {c.optIns > 0 ? <Pill tone="green">{c.optIns} waiting to be told</Pill> : null}
-                  {c.urgentNow > 0 ? <Pill tone="amber">{c.urgentNow} want it right away</Pill> : null}
-                  <Pill tone={c.unmet > 0 ? 'red' : 'gray'}>
-                    {c.unmet} of {c.total} unmet
-                  </Pill>
-                </div>
-              </div>
-
-              <div className="mt-4 grid gap-5 md:grid-cols-2">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">When they want it</p>
-                  <ul className="mt-2 space-y-1.5">
-                    {c.times.map(t => (
-                      <li key={t.block} className="flex items-center gap-3 text-sm">
-                        <span className="w-36 shrink-0 text-gray-800">{t.label}</span>
-                        <span className="h-2 flex-1 rounded-full bg-gray-100">
-                          <span
-                            className="block h-2 rounded-full bg-itutor-green"
-                            style={{ width: `${timeMax ? (t.count / timeMax) * 100 : 0}%` }}
-                          />
-                        </span>
-                        <span className="w-6 text-right font-semibold tabular-nums text-gray-900">{t.count}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">What they will pay</p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {c.prices.map(p => (
-                      <Pill key={p.label}>
-                        {p.label} <strong className="text-gray-900">{p.count}</strong>
-                      </Pill>
-                    ))}
-                  </div>
-                  <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-gray-500">What we showed them</p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    <Pill tone={c.none > 0 ? 'red' : 'gray'}>Nothing {c.none}</Pill>
-                    <Pill tone={c.fallback > 0 ? 'amber' : 'gray'}>Subject only {c.fallback}</Pill>
-                    <Pill tone={c.near > 0 ? 'amber' : 'gray'}>Near miss {c.near}</Pill>
-                    <Pill tone={c.exact > 0 ? 'green' : 'gray'}>Exact {c.exact}</Pill>
-                  </div>
-                </div>
-              </div>
-
-              <p className="mt-4 text-xs text-gray-500">
-                Asked{' '}
-                {c.firstAskedAt === c.lastAskedAt
-                  ? fmtDate(c.firstAskedAt)
-                  : `${fmtDate(c.firstAskedAt)} – ${fmtDate(c.lastAskedAt)}`}
-              </p>
-            </article>
-          );
-        })
+        shown.map((c, i) => <RecruitCard key={c.key} c={c} rank={i + 1} />)
       )}
     </div>
+  );
+}
+
+type ClusterRow = Payload['clusters'][number];
+type ClusterRequestRow = ClusterRow['requests'][number];
+
+/**
+ * Who asked, in the best words we have. Find your iTutor asks a PARENT for the
+ * child's first name; it never asks a student for a name. So: the account name
+ * when they signed up, the child's name a parent typed, else an honest
+ * "Visitor".
+ */
+function personLabel(r: ClusterRequestRow): { primary: string; secondary: string | null } {
+  if (r.name && r.learner) return { primary: r.name, secondary: `Parent of ${r.learner}` };
+  if (r.name) {
+    return {
+      primary: r.name,
+      secondary: r.role === 'parent' ? 'Parent' : r.role === 'student' ? 'Student' : null,
+    };
+  }
+  if (r.learner) {
+    return { primary: `${r.learner}'s parent`, secondary: r.hasAccount ? null : 'No account yet' };
+  }
+  return r.hasAccount
+    ? { primary: 'Account with no name', secondary: null }
+    : { primary: 'Visitor', secondary: 'No account, so no name given' };
+}
+
+function RecruitCard({ c, rank }: { c: ClusterRow; rank: number }) {
+  const [open, setOpen] = useState(rank <= 3);
+  const timeMax = c.times[0]?.count ?? 0;
+  const families = c.total === 1 ? '1 family' : `${c.total} families`;
+  const format = c.delivery === 'unspecified' ? 'format not recorded' : c.deliveryLabel.toLowerCase();
+
+  return (
+    <article className="rounded-xl border border-gray-200 bg-white shadow-sm">
+      <div className="p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+              Recruit #{rank}
+            </p>
+            <h3 className="mt-0.5 text-lg font-semibold text-gray-900">
+              {c.subject} · {c.levelLabel}
+            </h3>
+            <p className="mt-1 text-sm text-gray-700">
+              <strong>{families}</strong> asked for {c.subject}, {c.levelLabel}, {format}.{' '}
+              {c.unmet === c.total
+                ? 'None of them got an exact class.'
+                : `${c.unmet} still without an exact class.`}
+              {c.optIns > 0 ? ` ${c.optIns} asked us to tell them when one opens.` : ''}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {c.optIns > 0 ? <Pill tone="green">{c.optIns} waiting to be told</Pill> : null}
+            {c.urgentNow > 0 ? <Pill tone="amber">{c.urgentNow} want it right away</Pill> : null}
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Best time</p>
+            <p className="mt-0.5 text-sm font-semibold text-gray-900">{c.times[0]?.label ?? '—'}</p>
+            <p className="text-xs text-gray-600">
+              {c.times[0] ? `${c.times[0].count} of ${families} can do it` : ''}
+            </p>
+          </div>
+          <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Suggested price</p>
+            <p className="mt-0.5 text-sm font-semibold text-itutor-green">
+              {c.recommendedPrice !== null ? `${money(c.recommendedPrice)} / month` : '—'}
+            </p>
+            <p className="text-xs text-gray-600">at least 3 in 4 of them can pay this</p>
+          </div>
+          <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Format</p>
+            <p className="mt-0.5 text-sm font-semibold text-gray-900">
+              {c.delivery === 'unspecified' ? 'Not recorded' : c.deliveryLabel}
+            </p>
+            <p className="text-xs text-gray-600">
+              {c.delivery === 'unspecified' ? 'asked before this question existed' : 'what they asked for'}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-5 md:grid-cols-2">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+              Times they can do (families pick several)
+            </p>
+            <ul className="mt-2 space-y-1.5">
+              {c.times.map(t => (
+                <li key={t.block} className="flex items-center gap-3 text-sm">
+                  <span className="w-36 shrink-0 text-gray-800">{t.label}</span>
+                  <span className="h-2 flex-1 rounded-full bg-gray-100">
+                    <span
+                      className="block h-2 rounded-full bg-itutor-green"
+                      style={{ width: `${timeMax ? (t.count / timeMax) * 100 : 0}%` }}
+                    />
+                  </span>
+                  <span className="w-6 text-right font-semibold tabular-nums text-gray-900">{t.count}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Monthly budget they picked</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {c.prices.map(p => (
+                <Pill key={p.label}>
+                  {p.label}: <strong className="text-gray-900">{p.count}</strong>
+                </Pill>
+              ))}
+            </div>
+            <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-gray-500">
+              What Find your iTutor showed them
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {c.none > 0 ? <Pill tone="red">No class at all: {c.none}</Pill> : null}
+              {c.fallback > 0 ? <Pill tone="amber">Same subject, wrong fit: {c.fallback}</Pill> : null}
+              {c.near > 0 ? <Pill tone="amber">Almost a fit: {c.near}</Pill> : null}
+              {c.exact > 0 ? <Pill tone="green">Exact class: {c.exact}</Pill> : null}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t border-gray-100">
+        <button
+          type="button"
+          onClick={() => setOpen(o => !o)}
+          className="flex w-full items-center justify-between px-5 py-3 text-left text-sm font-semibold text-gray-900 hover:bg-gray-50"
+        >
+          <span>Who asked ({c.total})</span>
+          <span className="text-itutor-green">{open ? 'Hide' : 'Show'}</span>
+        </button>
+        {open ? (
+          <div className="overflow-x-auto px-5 pb-4">
+            <table className="w-full min-w-[640px] text-sm">
+              <thead className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                <tr>
+                  <th className="py-2 pr-3 text-left">Name</th>
+                  <th className="px-3 py-2 text-left">Times</th>
+                  <th className="px-3 py-2 text-left">Budget</th>
+                  <th className="px-3 py-2 text-left">We showed</th>
+                  <th className="py-2 pl-3 text-left">Asked</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {c.requests.map(r => {
+                  const who = personLabel(r);
+                  return (
+                    <tr key={r.id} className="align-top">
+                      <td className="py-2.5 pr-3">
+                        <p className="font-medium text-gray-900">{who.primary}</p>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                          {who.secondary ? <span className="text-xs text-gray-600">{who.secondary}</span> : null}
+                          {r.waiting ? <Pill tone="green">Waiting to be told</Pill> : null}
+                          {r.urgency === 'Right away' ? <Pill tone="amber">Right away</Pill> : null}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 text-gray-700">{r.times.join(', ') || '—'}</td>
+                      <td className="px-3 py-2.5 text-gray-700">{r.budgetLabel}</td>
+                      <td className="px-3 py-2.5 text-gray-700">{r.shown}</td>
+                      <td className="py-2.5 pl-3 tabular-nums text-gray-700">{fmtDate(r.askedAt)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </div>
+    </article>
   );
 }
 

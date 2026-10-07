@@ -538,17 +538,22 @@ console.log('\nFinder matcher — behavioural checks\n');
     subject: 'Mathematics',
     availabilityBlocks: ['saturday_morning'],
     lessonType: 'group',
+    deliveryPref: 'online',
     budgetBand: 'under_200',
     urgency: 'now',
   };
 
   check('a minimal answer set passes', validateAnswers(valid) === null,
     String(validateAnswers(valid)));
-  check('level is optional', validateAnswers({ ...valid, level: null }) === null);
+  // Optional to the validator only: the route falls back to the profile and
+  // refuses the run if that is empty too.
+  check('level is optional to the validator', validateAnswers({ ...valid, level: null }) === null);
   check('a valid level passes', validateAnswers({ ...valid, level: 'FORM_4' }) === null);
   check('a junk level is rejected', validateAnswers({ ...valid, level: 'Form 4' }) === 'level');
   check('a junk role is rejected', validateAnswers({ ...valid, role: 'admin' }) === 'role');
-  check('parent is a valid role', validateAnswers({ ...valid, role: 'parent' }) === null);
+  check('parent is a valid role', validateAnswers({ ...valid, role: 'parent', childLabel: 'Ava' }) === null);
+  check('a parent run needs the child', validateAnswers({ ...valid, role: 'parent' }) === 'childLabel');
+  check('the delivery question cannot be skipped', validateAnswers({ ...valid, deliveryPref: undefined }) === 'deliveryPref');
 
   // The endpoint is public now, so `subject` is the only unbounded free text
   // that reaches the database from an unauthenticated caller.

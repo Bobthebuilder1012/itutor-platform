@@ -93,17 +93,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ unavailable: true }, { status: 200 });
   }
 
-  // Contacts for the notify list only — no reason to read every family's
-  // address to rank subjects.
-  const optedInUsers = Array.from(
-    new Set(rows.filter(r => r.notify_optin && r.user_id).map(r => r.user_id as string))
+  // Names for everyone with an account: the Recruit cards list who asked, and
+  // the notify list needs addresses. Chunked so a long id list stays well
+  // under PostgREST's URL length limit.
+  const accountUsers = Array.from(
+    new Set(rows.filter(r => r.user_id).map(r => r.user_id as string))
   );
   const contacts = new Map<string, ContactInfo>();
-  if (optedInUsers.length > 0) {
+  for (let i = 0; i < accountUsers.length; i += 150) {
     const { data, error } = await service
       .from('profiles')
       .select('id, full_name, email, role')
-      .in('id', optedInUsers);
+      .in('id', accountUsers.slice(i, i + 150));
     if (error) console.error('[admin/demand] contact read failed:', error.message);
     for (const p of (data ?? []) as Array<{
       id: string;

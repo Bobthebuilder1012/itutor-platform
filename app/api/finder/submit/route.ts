@@ -129,9 +129,9 @@ interface SubmitBody {
   subject: string;
   availabilityBlocks: AvailabilityBlock[];
   lessonType: 'group' | 'one_on_one' | 'either';
-  /** Optional on the wire: a client bundle cached from before migration 243
-   *  does not send it, and a stale tab should record null rather than 400. */
-  deliveryPref?: DeliveryPref | null;
+  /** Required: validateAnswers rejects a run without it, and the wizard
+   *  reopens the delivery question rather than recording "Not asked". */
+  deliveryPref: DeliveryPref;
   budgetBand: string;
   urgency: 'now' | 'this_month' | 'exploring';
   childLabel?: string | null;
@@ -242,6 +242,13 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // No year from the wizard AND none on the account: the question was skipped.
+  // Refused rather than recorded as "Any year" — the wizard answers this by
+  // opening the year question (stepForField('level')).
+  if (!learnerLevel) {
+    return NextResponse.json({ error: 'invalid_field', field: 'level' }, { status: 400 });
+  }
+
   // The run's role. The body carries the picker's answer; an authed run without
   // one falls back to the profile. Defaulting to 'student' at the very end is
   // safe because the column is CHECK-constrained to the same two values.
@@ -282,7 +289,7 @@ export async function POST(req: NextRequest) {
   const { subjectId } = await resolveSubject(service, subjectText, learnerLevel);
 
   const budgetMax = budgetMaxFor(body.budgetBand);
-  const deliveryPref: DeliveryPref | null = body.deliveryPref ?? null;
+  const deliveryPref: DeliveryPref = body.deliveryPref;
 
   // 1) Record the run first. Tolerant of delivery_pref being absent — see
   //    insertTolerant: a missing column fails the whole insert, and losing the

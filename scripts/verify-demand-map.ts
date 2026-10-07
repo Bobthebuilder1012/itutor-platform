@@ -7,6 +7,7 @@
 import './_alias';
 import { subjectKey, signalSubjectLabel } from '../lib/finder/demandSubject';
 import { buildDemandMap, recommendedPrice, type DemandSignalRow } from '../lib/finder/demandMap';
+import { STEP, firstUnansweredStep, stepForField, validateAnswers } from '../lib/finder/wizard';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail?: unknown) {
@@ -90,7 +91,33 @@ check('opt-in without any address is flagged', map.notifyList.some(e => e.status
 check('reachable count', map.totals.optInsReachable === 2 && map.totals.optInsNoAddress === 1, map.totals);
 check('clusters split by year and format', map.clusters.length === 3, map.clusters.map(c => c.key));
 check('cluster with opt-ins ranks first', map.clusters[0]?.optIns === 2, map.clusters[0]);
+check('every request is listed on its card', map.clusters.reduce((a, c) => a + c.requests.length, 0) === rows.length);
+check('account name shown on its card', map.clusters.some(c => c.requests.some(r => r.name === 'Ann Lee')));
+check('visitors are marked as no account', map.clusters.some(c => c.requests.some(r => !r.hasAccount && r.name === null)));
 check('time grid covers 7 blocks', map.timeGrid.blocks.length === 7);
+
+console.log('no question may be skipped');
+const full = {
+  childLabel: null,
+  level: 'FORM_5' as const,
+  subject: 'Mathematics',
+  availabilityBlocks: ['saturday_morning' as const],
+  lessonType: 'group' as const,
+  deliveryPref: 'online' as const,
+  budgetBand: '200_400',
+  urgency: 'now' as const,
+};
+check('complete student run has no gap', firstUnansweredStep(full, false) === null);
+check('missing delivery is found', firstUnansweredStep({ ...full, deliveryPref: null }, false) === STEP.DELIVERY);
+check('earliest gap wins', firstUnansweredStep({ ...full, level: null, budgetBand: null }, false) === STEP.LEVEL);
+check('parent without child name is a gap', firstUnansweredStep(full, true) === STEP.CHILD);
+const body = { ...full, role: 'student' };
+check('server accepts a complete run', validateAnswers(body) === null);
+check('server rejects missing delivery', validateAnswers({ ...body, deliveryPref: undefined }) === 'deliveryPref');
+check('server rejects null delivery', validateAnswers({ ...body, deliveryPref: null }) === 'deliveryPref');
+check('server rejects parent without child', validateAnswers({ ...body, role: 'parent' }) === 'childLabel');
+check('server accepts parent with child', validateAnswers({ ...body, role: 'parent', childLabel: 'Ava' }) === null);
+check('rejection maps back to the question', stepForField('deliveryPref') === STEP.DELIVERY && stepForField('level') === STEP.LEVEL);
 
 if (failures > 0) {
   console.log(`\n${failures} check(s) failed`);

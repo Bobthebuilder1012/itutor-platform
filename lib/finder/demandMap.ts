@@ -64,7 +64,7 @@ const DELIVERY_LABELS: Record<string, string> = {
   online: 'Online',
   in_person: 'In person',
   either: 'Online or in person',
-  unspecified: 'Not asked',
+  unspecified: 'Format not recorded',
 };
 
 const URGENCY_LABELS: Record<string, string> = {
@@ -171,7 +171,33 @@ export interface Cluster {
   recommendedPrice: number | null;
   firstAskedAt: string;
   lastAskedAt: string;
+  /** Every request behind the card, newest first — who actually asked. */
+  requests: ClusterRequest[];
 }
+
+/** One family behind a Recruit card. */
+export interface ClusterRequest {
+  id: string;
+  /** Account name, else null. */
+  name: string | null;
+  /** The child's first name a parent typed in the flow (students are not asked). */
+  learner: string | null;
+  role: string | null;
+  hasAccount: boolean;
+  times: string[];
+  budgetLabel: string;
+  urgency: string | null;
+  shown: string;
+  waiting: boolean;
+  askedAt: string;
+}
+
+const SHOWN_LABELS: Record<string, string> = {
+  exact: 'Exact match',
+  near: 'Near miss',
+  fallback: 'Subject only',
+  none: 'Nothing',
+};
 
 export type NotifyStatus = 'waiting' | 'notified' | 'resolved_not_sent' | 'no_address';
 
@@ -359,6 +385,7 @@ export function buildDemandMap(
           unmet: 0,
           optIns: 0,
           urgentNow: 0,
+          requests: [],
           exact: 0,
           near: 0,
           fallback: 0,
@@ -381,6 +408,22 @@ export function buildDemandMap(
     if (unmet) cl.unmet += 1;
     if (row.notify_optin) cl.optIns += 1;
     if (row.request?.urgency === 'now') cl.urgentNow += 1;
+    {
+      const who = row.user_id ? contacts.get(row.user_id) ?? null : null;
+      cl.requests.push({
+        id: row.id,
+        name: who?.name?.trim() || null,
+        learner: row.request?.child_label?.trim() || null,
+        role: who?.role ?? row.request?.role ?? null,
+        hasAccount: Boolean(row.user_id),
+        times: blocks.map(blockLabel),
+        budgetLabel: budgetLabel(ceiling),
+        urgency: row.request?.urgency ? URGENCY_LABELS[row.request.urgency] ?? null : null,
+        shown: SHOWN_LABELS[row.match_class ?? 'none'] ?? 'Nothing',
+        waiting: row.notify_optin,
+        askedAt: row.created_at,
+      });
+    }
     if (row.match_class === 'exact') cl.exact += 1;
     else if (row.match_class === 'near') cl.near += 1;
     else if (row.match_class === 'fallback') cl.fallback += 1;
@@ -450,6 +493,7 @@ export function buildDemandMap(
         (a, b) => b.count - a.count || (a.max ?? Infinity) - (b.max ?? Infinity)
       ),
       recommendedPrice: recommendedPrice(ceilings),
+      requests: [...cluster.requests].sort((a, b) => b.askedAt.localeCompare(a.askedAt)),
     }))
     // Commitment, then unmet volume, then headcount: four families who asked
     // to be told are a better lead than twenty who shrugged.

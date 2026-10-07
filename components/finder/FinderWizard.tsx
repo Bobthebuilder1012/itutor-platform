@@ -47,10 +47,12 @@ import {
   STEP,
   URGENCIES,
   emptyAnswers,
+  firstUnansweredStep,
   formLevelLabelFor,
   isStepAnswered,
   questionPosition,
   questionSequence,
+  stepForField,
   type CanonicalLevel,
   type DeliveryPref,
   type FinderAnswers,
@@ -349,6 +351,7 @@ export default function FinderWizard({
   const advance = useCallback(() => {
     if (!answered || index < 0) return;
     trackClient(PRODUCT_EVENTS.FINDER_STEP, { step, value: null });
+    setSubmitError(null);
     goToStep(seq[index + 1]);
   }, [answered, index, seq, step, goToStep]);
 
@@ -375,8 +378,20 @@ export default function FinderWizard({
 
   const submit = useCallback(async () => {
     if (submitting) return;
-    setSubmitting(true);
     setSubmitError(null);
+
+    // NO QUESTION MAY BE SKIPPED. A filter chip deep-links into one question
+    // and Continue only moves forward, so earlier gaps (e.g. the delivery
+    // question on a run from before it existed) used to be submitted blank.
+    // Send the visitor to the first gap instead.
+    const gap = firstUnansweredStep(answers, isParent);
+    if (gap !== null) {
+      setSubmitError('One more question before your matches.');
+      goToStep(gap);
+      return;
+    }
+
+    setSubmitting(true);
     try {
       const res = await fetch('/api/finder/submit', {
         method: 'POST',
@@ -401,6 +416,18 @@ export default function FinderWizard({
           childLabel: answers.childLabel,
         }),
       });
+      if (res.status === 400) {
+        // The server names the field it refused; open that question rather
+        // than leaving the family at a dead "could not save".
+        const json = (await res.json().catch(() => null)) as { field?: string } | null;
+        const target = stepForField(json?.field);
+        if (target !== null) {
+          setSubmitError('One more question before your matches.');
+          setSubmitting(false);
+          goToStep(target);
+          return;
+        }
+      }
       if (!res.ok) throw new Error(String(res.status));
       // Anonymous runs land on the public results page; the token cookie the
       // route just set is what identifies them there. Authed runs go to their
@@ -414,7 +441,7 @@ export default function FinderWizard({
       setSubmitError('We could not save your answers. Please try again.');
       setSubmitting(false);
     }
-  }, [answers, submitting, router, isParent, isAuthenticated, role]);
+  }, [answers, submitting, router, isParent, isAuthenticated, role, goToStep]);
 
   // ── step content ─────────────────────────────────────────────────────────
   let title = '';

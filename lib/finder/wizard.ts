@@ -290,6 +290,48 @@ export function isStepAnswered(
   }
 }
 
+/**
+ * The first question in the sequence that has no answer, or null when every one
+ * is answered.
+ *
+ * WHY THIS EXISTS. A filter chip on the results screen deep-links into ONE
+ * question (`/find?step=4`), and Continue only ever moves forward from there.
+ * Questions before the chip were never revisited, so anything the stored run
+ * lacked — the delivery question, for every run from before it was added — was
+ * silently submitted blank and showed up on the Demand Map as "Not asked". The
+ * wizard now calls this before submitting and sends the visitor to the gap.
+ */
+export function firstUnansweredStep(answers: FinderAnswers, isParent: boolean): number | null {
+  for (const step of questionSequence(isParent)) {
+    if (!isStepAnswered(step, answers, isParent)) return step;
+  }
+  return null;
+}
+
+/** Which question a server-side `invalid_field` rejection refers to. */
+export function stepForField(field: string | null | undefined): number | null {
+  switch (field) {
+    case 'childLabel':
+      return STEP.CHILD;
+    case 'level':
+      return STEP.LEVEL;
+    case 'subject':
+      return STEP.SUBJECT;
+    case 'availabilityBlocks':
+      return STEP.AVAILABILITY;
+    case 'lessonType':
+      return STEP.LESSON_TYPE;
+    case 'deliveryPref':
+      return STEP.DELIVERY;
+    case 'budgetBand':
+      return STEP.BUDGET;
+    case 'urgency':
+      return STEP.URGENCY;
+    default:
+      return null;
+  }
+}
+
 export function budgetMaxFor(band: string | null): number | null {
   if (!band) return null;
   return BUDGET_BANDS.find(b => b.value === band)?.max ?? null;
@@ -358,14 +400,13 @@ export function validateAnswers(input: unknown): string | null {
     return 'lessonType';
   }
 
-  // Accepted as absent as well as valid. A client built before migration 243
-  // (a cached bundle, a queued request) posts no deliveryPref, and rejecting
-  // that would 400 a family whose only fault is a stale tab. Absent records as
-  // null, which the matcher reads as unconstrained.
-  if (a.deliveryPref !== null && a.deliveryPref !== undefined) {
-    if (typeof a.deliveryPref !== 'string' || !DELIVERY_PREF_VALUES.has(a.deliveryPref)) {
-      return 'deliveryPref';
-    }
+  // REQUIRED. It used to be accepted as absent so a pre-243 bundle would not
+  // 400, and the cost was a "Not asked" bucket on the Demand Map that splits
+  // every recruitment card in two. The wizard now answers a rejection by
+  // opening the missing question (stepForField), so a stale tab costs one tap,
+  // not the run.
+  if (typeof a.deliveryPref !== 'string' || !DELIVERY_PREF_VALUES.has(a.deliveryPref)) {
+    return 'deliveryPref';
   }
   if (typeof a.budgetBand !== 'string' || !BUDGET_BANDS.some(b => b.value === a.budgetBand)) {
     return 'budgetBand';
@@ -374,9 +415,13 @@ export function validateAnswers(input: unknown): string | null {
     return 'urgency';
   }
 
-  // childLabel is optional (students never have one) but must be sane if given.
+  // childLabel: students never have one; a parent run must (the wizard asks it
+  // as the parent's first question). Sane length either way.
   if (a.childLabel !== null && a.childLabel !== undefined) {
     if (typeof a.childLabel !== 'string' || a.childLabel.length > 80) return 'childLabel';
+  }
+  if (a.role === 'parent' && (typeof a.childLabel !== 'string' || !a.childLabel.trim())) {
+    return 'childLabel';
   }
 
   return null;
