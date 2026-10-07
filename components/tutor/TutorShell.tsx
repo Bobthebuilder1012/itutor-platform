@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard, BookOpen, CalendarDays, Users, Wallet,
-  Sparkles, Settings, Bell, Search, LogOut, ChevronUp, PanelLeftClose, PanelLeftOpen, Lock,
+  Settings, Bell, Search, LogOut, ChevronUp, PanelLeftClose, PanelLeftOpen, Lock,
   Calendar as CalendarIcon, Star, Rocket, Menu, X, MessageSquareQuote,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -32,7 +32,6 @@ const nav: NavItem[] = [
   { to: '/tutor/wallet', label: 'My Wallet', icon: Wallet },
   { to: '/tutor/reviews', label: 'Reviews', icon: Star },
   { to: '/tutor/business', label: 'My Business', icon: Rocket, gated: true },
-  { to: '/tutor/tools', label: 'iTutor AI', icon: Sparkles },
 ];
 
 const COLLAPSE_KEY = 'itutor.tutorSidebar.collapsed';

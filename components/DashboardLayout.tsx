@@ -240,7 +240,6 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
             icon: icons.tools,
             children: [
               { href: '/tutor/curriculum', label: 'Curriculum', icon: icons.book },
-              { href: '/tools/ai', label: 'iTutor AI', icon: icons.sparkles },
             ],
           },
           { href: '/tutor/settings', label: 'Settings', icon: icons.settings },
