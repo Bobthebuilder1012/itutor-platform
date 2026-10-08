@@ -13,6 +13,24 @@ import {
 const PROTECTED_ADMIN_PATHS = ['/admin'];
 const PROTECTED_REVIEWER_PATHS = ['/reviewer'];
 
+/**
+ * Upper bound on the pending-feedback round trip. That check calls Supabase
+ * Auth and Postgres, and with no bound a stalled database held EVERY page past
+ * Vercel's 25s middleware limit — the whole site answered
+ * 504 MIDDLEWARE_INVOCATION_TIMEOUT on 2026-10-08 UTC. A healthy check takes
+ * ~300ms; past this the page renders without it.
+ */
+const FEEDBACK_CHECK_TIMEOUT_MS = 2000;
+
+/**
+ * Root-level files served from /public: the push service worker, icons, OG
+ * images. The browser fetches /firebase-messaging-sw.js with the user's cookies
+ * on every load, so it used to run the pending-feedback gate as well.
+ *
+ * Single path segment only, so /admin/* and /tutors/[id] can never match.
+ */
+const ROOT_STATIC_FILE = /^\/[^/]+\.(?:js|css|png|svg|ico|jpe?g|webp|gif|txt|xml|json|html|webmanifest)$/i;
+
 function isPublicAssetPath(pathname: string) {
   return (
     pathname.startsWith('/_next/') ||
@@ -20,8 +38,19 @@ function isPublicAssetPath(pathname: string) {
     pathname.startsWith('/favicon') ||
     pathname === '/robots.txt' ||
     pathname === '/sitemap.xml' ||
-    pathname === '/manifest.json'
+    pathname === '/manifest.json' ||
+    ROOT_STATIC_FILE.test(pathname)
   );
+}
+
+/**
+ * True when the request carries a Supabase session cookie — sb-<ref>-auth-token,
+ * or its .0/.1 chunks (the -code-verifier cookie is not a session). The
+ * pending-feedback check can only ever redirect a signed-in user, so without
+ * one it is a guaranteed-useless round trip.
+ */
+function hasSessionCookie(request: NextRequest) {
+  return request.cookies.getAll().some(c => /^sb-.+-auth-token(?:\.\d+)?$/.test(c.name));
 }
 
 function isFeedbackExemptPath(pathname: string) {
@@ -181,11 +210,18 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  if (isAttributionRedirectPath(pathname) || isAnonymousFirstPath(pathname)) {
+  if (
+    isAttributionRedirectPath(pathname) ||
+    isAnonymousFirstPath(pathname) ||
+    !hasSessionCookie(request)
+  ) {
     return applyCookies(NextResponse.next(), attributionCookies);
   }
 
-  // Feedback redirect check for authenticated pages
+  // Feedback redirect check for authenticated pages. Time-boxed and fail-open:
+  // the abort also covers reading the body below.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FEEDBACK_CHECK_TIMEOUT_MS);
   try {
     const pendingUrl = new URL('/api/feedback/pending', request.url);
     const res = await fetch(pendingUrl, {
@@ -193,6 +229,7 @@ export async function middleware(request: NextRequest) {
         cookie: request.headers.get('cookie') || '',
       },
       cache: 'no-store',
+      signal: controller.signal,
     });
 
     if (!res.ok) {
@@ -209,7 +246,9 @@ export async function middleware(request: NextRequest) {
       );
     }
   } catch {
-    // If the check fails, do not block navigation.
+    // If the check fails or times out, do not block navigation.
+  } finally {
+    clearTimeout(timer);
   }
 
   return applyCookies(NextResponse.next(), attributionCookies);
