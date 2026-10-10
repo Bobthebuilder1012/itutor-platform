@@ -55,7 +55,7 @@ const TUTOR_SUBJECT_LIST = [
   'CSEC Physics', 'CSEC Chemistry', 'CSEC Biology', 'CSEC Human & Social Biology',
   'CSEC Information Technology', 'CSEC Principles of Accounts', 'CSEC Principles of Business',
   'CSEC Economics', 'CSEC Geography', 'CSEC History', 'CSEC Spanish', 'CSEC French',
-  'CSEC Social Studies', 'CSEC Religious Education',
+  'CSEC Social Studies', 'CSEC Religious Education', 'CSEC Entrepreneurship', 'CSEC Tourism',
   'CAPE Pure Mathematics', 'CAPE Applied Mathematics', 'CAPE Physics', 'CAPE Chemistry',
   'CAPE Biology', 'CAPE Computer Science', 'CAPE Economics', 'CAPE Accounting',
   'CAPE Management of Business', 'CAPE Sociology', 'CAPE Literatures in English',
