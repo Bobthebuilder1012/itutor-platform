@@ -1,5 +1,6 @@
 import type { User } from '@supabase/supabase-js';
 import { getServiceClient } from '@/lib/supabase/server';
+import { stampSignupAttribution } from '@/lib/analytics/track';
 
 function normalizeUsernameFromEmail(email: string) {
   const prefix = email.split('@')[0] || 'user';
@@ -90,5 +91,11 @@ export async function bootstrapProfileIfMissing(user: User): Promise<{ error: { 
   };
 
   const { error } = await admin.from('profiles').upsert(payload, { onConflict: 'id' });
-  return { error: error ? { message: error.message } : null };
+  if (error) return { error: { message: error.message } };
+
+  // Which link brought them, read from the attribution cookies. A separate,
+  // swallowed write rather than more columns in the insert above, so it can
+  // never be the reason a signup fails.
+  await stampSignupAttribution(user.id);
+  return { error: null };
 }

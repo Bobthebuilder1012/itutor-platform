@@ -118,7 +118,7 @@ export async function POST(req: Request) {
     // §2.1). Read from the httpOnly cookies middleware wrote on the landing
     // page, never from the request body — attribution the client can name is
     // attribution the payment reports in §7.2 cannot be trusted on.
-    const { attribution, anonId } = await getRequestAttribution();
+    const { attribution, last, anonId } = await getRequestAttribution();
 
     // Upsert profile
     const { error: profileError } = await supabase.from('profiles').upsert(
@@ -133,7 +133,9 @@ export async function POST(req: Request) {
         terms_accepted: true,
         terms_accepted_at: new Date().toISOString(),
         first_touch: attribution,
-        last_touch: attribution,
+        // The last-touch cookie, not `attribution` again: that one prefers the
+        // first touch, which made every profile's last_touch a copy of its first.
+        last_touch: last ?? attribution,
         signup_ref: attribution?.ref ?? null,
       },
       { onConflict: 'id' },

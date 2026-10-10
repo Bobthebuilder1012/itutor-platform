@@ -6,9 +6,10 @@
 // Resolves a creator / Captain / QR / school code, writes attribution, and
 // 307s to the Finder (or a ?to= target).
 //
-// Codes resolve against campaign_codes, which arrives in Phase 4. Until then
-// this route accepts any string and records it raw, so print and QR assets can
-// go out early without waiting on Phase 4 (plan §2.3).
+// Codes resolve against campaign_codes (migration 267), the named links on
+// /admin/link-tracking. Where that table is absent this route accepts any
+// string and records it raw, so print and QR assets could go out before it
+// existed (plan §2.3).
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceClient } from '@/lib/supabase/server';
@@ -32,9 +33,27 @@ const CODE_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
 interface CampaignCodeRow {
   code: string;
+  platform: string | null;
   kind: string | null;
   landing_path: string | null;
   active: boolean | null;
+}
+
+/**
+ * Link-preview fetchers and crawlers. Every platform these links are posted on
+ * fetches the URL to draw a preview card (Facebook and Instagram's
+ * facebookexternalhit, WhatsApp, Telegram), and each fetch would otherwise be
+ * a "click" on /admin/link-tracking.
+ *
+ * Deliberately a named list, not a bare /bot/: the in-app browsers that carry
+ * the real clicks (Instagram, FBAN/FBAV, TikTok's musical_ly / BytedanceWebview)
+ * must never match, and neither may phones whose model name ends in "bot".
+ */
+const CRAWLER_UA =
+  /facebookexternalhit|facebot|facebookcatalog|meta-external|whatsapp|telegrambot|twitterbot|slackbot|discordbot|linkedinbot|pinterestbot|redditbot|skypeuripreview|googlebot|google-inspectiontool|bingbot|applebot|bytespider|tiktokspider|petalbot|yandex|baiduspider|duckduckbot|semrushbot|ahrefsbot|embedly|headlesschrome|python-requests|curl\/|wget\//i;
+
+function isCrawler(request: NextRequest): boolean {
+  return CRAWLER_UA.test(request.headers.get('user-agent') ?? '');
 }
 
 /**
@@ -50,8 +69,10 @@ async function resolveCode(code: string): Promise<CampaignCodeRow | null | undef
     const service = getServiceClient();
     const { data, error } = await service
       .from('campaign_codes')
-      .select('code, kind, landing_path, active')
-      .eq('code', code)
+      .select('code, platform, kind, landing_path, active')
+      // Codes are stored lowercase (migration 267), so a link typed as
+      // /r/Instagram still finds its row.
+      .eq('code', code.toLowerCase())
       .maybeSingle();
 
     if (error) {
@@ -93,13 +114,14 @@ export async function GET(
   { params }: { params: { code: string } }
 ) {
   const { code: rawCode } = await params;
-  const code = (rawCode ?? '').trim();
+  let code = (rawCode ?? '').trim();
   const url = request.nextUrl;
 
   const requestedTarget = safeRelativePath(url.searchParams.get('to'));
 
   let landingPath = requestedTarget ?? getFinderLandingPath();
   let resolvedKind: string | null = null;
+  let resolvedPlatform: string | null = null;
   let resolution: RefResolution = 'unvalidated';
 
   if (!CODE_PATTERN.test(code)) {
@@ -113,16 +135,21 @@ export async function GET(
       resolution = 'unvalidated'; // campaign_codes absent (pre-Phase 4)
     } else if (row === null) {
       resolution = 'unresolved';
-    } else if (row.active === false) {
-      // A retired code still redirects; it just stops carrying its landing
-      // override. Killing the redirect would break assets already in the wild.
-      resolution = 'unresolved';
-      resolvedKind = row.kind ?? null;
     } else {
-      resolution = 'resolved';
+      // Record the row's spelling, not the visitor's, so /r/Instagram and
+      // /r/instagram count as one link on /admin/link-tracking.
+      code = row.code;
       resolvedKind = row.kind ?? null;
-      if (!requestedTarget) {
-        landingPath = safeRelativePath(row.landing_path) ?? landingPath;
+      resolvedPlatform = row.platform ?? null;
+      if (row.active === false) {
+        // A retired code still redirects; it just stops carrying its landing
+        // override. Killing the redirect would break assets already in the wild.
+        resolution = 'unresolved';
+      } else {
+        resolution = 'resolved';
+        if (!requestedTarget) {
+          landingPath = safeRelativePath(row.landing_path) ?? landingPath;
+        }
       }
     }
   }
@@ -131,7 +158,7 @@ export async function GET(
   // campaign touch, so it always produces one.
   const attribution: Attribution = {
     ref: code.slice(0, 200) || 'unknown',
-    utm_source: url.searchParams.get('utm_source')?.slice(0, 200) || 'ref',
+    utm_source: url.searchParams.get('utm_source')?.slice(0, 200) || resolvedPlatform || 'ref',
     utm_medium: url.searchParams.get('utm_medium')?.slice(0, 200) || resolvedKind || 'referral',
     utm_campaign: url.searchParams.get('utm_campaign')?.slice(0, 200) || undefined,
     utm_content: url.searchParams.get('utm_content')?.slice(0, 200) || undefined,
@@ -187,6 +214,12 @@ export async function GET(
 
   // Record the click itself. This is a pre-signup touch, so it is anon-keyed;
   // it is the only record that a printed asset was ever scanned.
+  //
+  // Not for link-preview crawlers, and not for HEAD (Next answers HEAD with
+  // this handler): neither is a person, and both would inflate the clicks on
+  // /admin/link-tracking. They still get the redirect.
+  if (request.method === 'HEAD' || isCrawler(request)) return response;
+
   try {
     const service = getServiceClient();
     await service.from('product_events').insert({

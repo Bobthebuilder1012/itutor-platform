@@ -127,6 +127,16 @@ interface PendingCookie {
 
 function collectAttributionCookies(request: NextRequest): PendingCookie[] {
   const pending: PendingCookie[] = [];
+
+  // /r/[code] writes all three cookies itself, and its first-touch cookie
+  // carries the link's code. Writing them here too would race it with a second
+  // Set-Cookie of each: Instagram appends ?utm_source=ig to every bio-link tap,
+  // so this function would mint a first touch WITHOUT the code, and if the
+  // browser kept that one the signup would never be credited to the link. A
+  // second itutor_anon would likewise split one visitor into two.
+  const { pathname } = request.nextUrl;
+  if (pathname === '/r' || pathname.startsWith('/r/')) return pending;
+
   const attribution = readAttributionFromUrl(request.nextUrl);
 
   if (attribution) {

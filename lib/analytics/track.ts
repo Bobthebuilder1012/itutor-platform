@@ -28,12 +28,16 @@ interface TrackOptions {
 }
 
 /**
- * Read attribution for the current request. Prefers first touch, falls back to
- * last touch — a returning user with no first-touch cookie (cleared, or from
- * before Phase 0 shipped) should still attribute somewhere rather than nowhere.
+ * Read attribution for the current request. `attribution` prefers first touch
+ * and falls back to last touch — a returning user with no first-touch cookie
+ * (cleared, or from before Phase 0 shipped) should still attribute somewhere
+ * rather than nowhere. `first` and `last` are the two cookies as they are, for
+ * the callers that store both.
  */
 export async function getRequestAttribution(): Promise<{
   attribution: Attribution | null;
+  first: Attribution | null;
+  last: Attribution | null;
   anonId: string | null;
 }> {
   try {
@@ -42,11 +46,58 @@ export async function getRequestAttribution(): Promise<{
     const last = parseAttribution(store.get(LAST_COOKIE)?.value);
     return {
       attribution: first ?? last,
+      first,
+      last,
       anonId: store.get(ANON_COOKIE)?.value ?? null,
     };
   } catch {
     // cookies() throws outside a request scope (e.g. a cron invocation).
-    return { attribution: null, anonId: null };
+    return { attribution: null, first: null, last: null, anonId: null };
+  }
+}
+
+/**
+ * Stamp the campaign that produced a NEW account onto its profile, for every
+ * signup path other than /api/auth/register (which writes the same three
+ * columns in its own insert). In practice that is Google: bootstrapProfileIfMissing
+ * creates every Google profile, and before this no Google signup — the
+ * majority of signups — recorded where it came from, so /admin/link-tracking
+ * would have credited links with email signups only.
+ *
+ * Fills only what is empty, so it can never rewrite an existing account's
+ * history, nor a signup_ref a class or teacher invitation already claimed.
+ * Never throws: a missed stamp costs a link one signup, not a person their
+ * account.
+ */
+export async function stampSignupAttribution(userId: string): Promise<void> {
+  try {
+    const { first, last } = await getRequestAttribution();
+    const firstTouch = first ?? last;
+    if (!firstTouch) return;
+
+    const service = getServiceClient();
+    const { error } = await service
+      .from('profiles')
+      .update({ first_touch: firstTouch, last_touch: last ?? firstTouch })
+      .eq('id', userId)
+      .is('first_touch', null);
+    if (error) {
+      console.error('[analytics] failed to stamp signup attribution:', error.message);
+      return;
+    }
+
+    if (firstTouch.ref) {
+      const { error: refError } = await service
+        .from('profiles')
+        .update({ signup_ref: firstTouch.ref })
+        .eq('id', userId)
+        .is('signup_ref', null);
+      if (refError) {
+        console.error('[analytics] failed to stamp signup_ref:', refError.message);
+      }
+    }
+  } catch (err) {
+    console.error('[analytics] threw while stamping signup attribution:', err);
   }
 }
 
