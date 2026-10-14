@@ -101,3 +101,36 @@ export interface ReferralRow {
   grant_id: string | null;
   created_at: string;
 }
+
+// ── GET /api/credits/me ──────────────────────────────────────────────────
+
+export interface CreditHistoryItem {
+  id: string;
+  label: string;
+  detail: string | null;
+  amount: number;
+  /** 'pending' grants are not spendable yet; 'held' spends wait on a payment. */
+  status: 'done' | 'pending' | 'held';
+  at: string;
+}
+
+export interface CreditsMePayload {
+  available: boolean;
+  role?: 'student' | 'parent';
+  suspended?: boolean;
+  programme?: {
+    referrals_enabled: boolean;
+    campaign_codes_enabled: boolean;
+    referrals_required: number;
+    credit_value_ttd: number;
+    min_qualifying_cash_ttd: number;
+    hold_days: number;
+  };
+  wallet?: { available: number; pending: number; reserved: number };
+  /** Open "apply to my next payment" credits, by enrolment. */
+  renewals?: Record<string, { credits: number; applies_on: string | null }>;
+  referral?: { code: string; link: string } | null;
+  progress?: { toward_next: number; required: number; rewards: number; friends: number };
+  friends?: Array<{ name: string; status: 'signed_up' | 'paid' | 'rewarded' | 'not_eligible'; at: string }>;
+  history?: CreditHistoryItem[];
+}

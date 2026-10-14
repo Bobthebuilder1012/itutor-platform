@@ -21,8 +21,10 @@ import {
   ReceiptText,
   Lock,
   UserPlus,
+  Gift,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { rewardsVisible, useCredits } from '@/lib/credits/useCredits';
 import { StudentStoreProvider } from '@/lib/student-store';
 import CampaignCta from '@/components/classMatchWeek/CampaignCta';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -63,6 +65,9 @@ const nav: NavItem[] = [
   { to: '/student/classes', label: 'My Classes', icon: GraduationCap, tint: 'bg-sky-500/20 text-sky-300 ring-1 ring-sky-400/30' },
   { to: '/student/bookings', label: 'My Bookings', icon: CalendarDays, tint: 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-400/30' },
   { to: '/student/subscriptions', label: 'Subscriptions', icon: CreditCard, tint: 'bg-purple-500/20 text-purple-300 ring-1 ring-purple-400/30' },
+  // iTutor credits (migration 268). Sixth, so the mobile bar (first five)
+  // leaves it out; on a phone it is reached from the dashboard's credit chip.
+  { to: '/student/rewards', label: 'Rewards', icon: Gift, tint: 'bg-teal-500/20 text-teal-300 ring-1 ring-teal-400/30' },
   // Transactions moved into Settings → Billing. A payment history is something a
   // student looks up occasionally; the sidebar is for the places they go weekly.
 ];
@@ -202,7 +207,11 @@ function ShellInner({
   /** Where the top-bar search box submits. Defaults to the student marketplace. */
   searchAction?: (query: string) => string;
 }) {
-  const nav = navItems;
+  // Rewards appears only once there is something there: a credit programme
+  // switched on, or a balance. Before launch nobody sees an empty page.
+  const credits = useCredits('lite', !anonymous);
+  const showRewards = !anonymous && rewardsVisible(credits.data);
+  const nav = navItems.filter((item) => item.to !== '/student/rewards' || showRewards);
   const pathname = usePathname();
   const router = useRouter();
   const { profile } = useProfile();

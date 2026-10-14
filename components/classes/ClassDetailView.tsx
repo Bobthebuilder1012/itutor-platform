@@ -42,6 +42,9 @@ import {
 import { preorderEligibility, computeReleaseDate, isShortClass } from '@/lib/payments/secureSpot';
 import { classCapacityDisplay } from '@/lib/utils/classCapacity';
 import TutorCredentials from '@/components/TutorCredentials';
+import CheckoutCreditsChoice, { type CreditChoice } from '@/components/credits/CheckoutCreditsChoice';
+import BalanceChip from '@/components/credits/BalanceChip';
+import { invalidateCredits, useCredits } from '@/lib/credits/useCredits';
 
 // 'cash-requested' is its own outcome rather than 'joined': the tutor has not
 // accepted yet and no seat is held, and telling someone they have joined would
@@ -636,6 +639,13 @@ export function Detail({
               {ctaLabel}
               {!group.enrolled && !ctaDisabled && !isFull && <ChevronRight className="size-4" />}
             </button>
+            {/* iTutor credits the visitor can put toward this class. Renders
+                nothing signed out, before launch, or with no balance. */}
+            {!group.enrolled && (
+              <div className="mt-2 flex justify-center">
+                <BalanceChip />
+              </div>
+            )}
             <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground">
               <span className={capacity.kind === 'spots_left' ? 'font-semibold text-coral' : undefined}>
                 {capacity.kind === 'hidden' ? '' : capacity.label}
@@ -1300,6 +1310,14 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
 
   const cashChosen = payMethod === 'cash' && price > 0 && !isFull;
 
+  // iTutor credits (migration 268): only on a card purchase of a paid class
+  // with a seat — not a preorder, a cash request or a parent's ask.
+  const [creditChoice, setCreditChoice] = useState<CreditChoice>('none');
+  const { data: creditData } = useCredits('lite');
+  const creditBalance = creditData?.wallet?.available ?? 0;
+  const creditsOffered = price > 0 && !isFull && !gated && !cashChosen && !preorder;
+  const usingCredits = creditsOffered ? creditChoice : 'none';
+
   const heading = isFull ? 'Join the waitlist'
     : gated ? `Ask ${parentLabel}`
     : cashChosen ? 'Ask to join & pay cash'
@@ -1314,6 +1332,7 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
     : preorder
       ? (price > 0 ? `Pay ${fmtTTD(price)} & reserve my place` : 'Reserve my place')
     : isRequest ? 'Send request to tutor'
+    : usingCredits === 'one_month' ? 'Join for one month'
     : 'Confirm & join class';
 
   const handleConfirm = async () => {
@@ -1372,6 +1391,23 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
         throw new Error('Could not start the payment. Please try again.');
       }
 
+      // One month paid with credits: done here when credits cover it, or a
+      // card checkout for the rest. Never renews.
+      if (usingCredits === 'one_month') {
+        const res = await fetch(`/api/groups/${group.id}/credit-month`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ seatType: chosenSeat, useCreditsTtd: creditBalance }),
+        });
+        const data = await res.json();
+        if (data.parent_approval_required) { onSuccess('awaiting-parent'); return; }
+        if (!res.ok) throw new Error(data.error || 'Could not use your credits. Please try again.');
+        invalidateCredits();
+        if (data.checkout_url) { window.location.href = data.checkout_url; return; }
+        if (data.completed) { onSuccess('joined'); return; }
+        throw new Error('Could not start the purchase. Please try again.');
+      }
+
       if (price > 0 && !isFull) {
         const res = await fetch(`/api/groups/${group.id}/subscribe`, {
           method: 'POST',
@@ -1381,7 +1417,13 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
           // seat that does not exist rather than downgrading it, because someone
           // who chose "in person" and got an online seat would find out by
           // turning up at a venue not expecting them.
-          body: JSON.stringify({ seatType: chosenSeat }),
+          //
+          // useCreditsTtd: credits off the first month. The server caps it at
+          // what the month allows and keeps the card charge at its minimum.
+          body: JSON.stringify({
+            seatType: chosenSeat,
+            ...(usingCredits === 'first_month' ? { useCreditsTtd: creditBalance } : {}),
+          }),
         });
         const data = await res.json();
         if (data.parent_approval_required) { onSuccess('awaiting-parent'); return; }
@@ -1560,6 +1602,10 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
             </p>
           )}
         </section>
+      )}
+
+      {creditsOffered && (
+        <CheckoutCreditsChoice groupId={group.id} value={creditChoice} onChange={setCreditChoice} />
       )}
 
       <section className="rounded-2xl border border-border bg-background p-5 space-y-3">

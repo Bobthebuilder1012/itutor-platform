@@ -7,7 +7,7 @@ import { useEffect, useState, type ComponentType } from 'react';
 import {
   LayoutDashboard, Users, Receipt, Settings, Bell,
   PanelLeftClose, PanelLeftOpen, ChevronUp, LogOut,
-  ShieldCheck, MessageSquareQuote, CalendarDays, Search, Compass,
+  ShieldCheck, MessageSquareQuote, CalendarDays, Search, Compass, Gift,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
@@ -16,10 +16,11 @@ import { subscribeToNotifications } from '@/lib/services/notificationService';
 import LogoutConfirmModal from '@/components/LogoutConfirmModal';
 import { FEEDBACK_SEEN_EVENT } from '@/lib/parent/feedbackSeen';
 import CampaignCta from '@/components/classMatchWeek/CampaignCta';
+import { rewardsVisible, useCredits } from '@/lib/credits/useCredits';
 
 type NavItem = { to: string; label: string; icon: ComponentType<{ className?: string }>; exact?: boolean; tint: string };
 
-const nav: NavItem[] = [
+const allNav: NavItem[] = [
   { to: '/parent/dashboard',     label: 'Home',          icon: LayoutDashboard, exact: true, tint: 'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-400/30' },
   // Explore earns a permanent slot. It was kept out on kit-fidelity grounds and
   // reached only from a top-bar button, which made browsing feel like a detour —
@@ -28,6 +29,9 @@ const nav: NavItem[] = [
   { to: '/parent/children',      label: 'Children',      icon: Users,                        tint: 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-400/30' },
   { to: '/parent/calendar',      label: 'Calendar',      icon: CalendarDays,                 tint: 'bg-sky-500/20 text-sky-300 ring-1 ring-sky-400/30' },
   { to: '/parent/feedback',      label: 'Feedback',      icon: MessageSquareQuote,           tint: 'bg-fuchsia-500/20 text-fuchsia-300 ring-1 ring-fuchsia-400/30' },
+  // iTutor credits (migration 268): the parent's own wallet, spendable on
+  // their children's classes.
+  { to: '/parent/rewards',       label: 'Rewards',       icon: Gift,                         tint: 'bg-teal-500/20 text-teal-300 ring-1 ring-teal-400/30' },
   // Last, and violet rather than amber. It sat second because an unseen request
   // expires two hours before the class with no email (§4.2) — the badge is what
   // actually carries that urgency, not the position, and amber made every other
@@ -64,6 +68,10 @@ export default function ParentShell({ children }: { children: React.ReactNode })
   const [unread, setUnread] = useState(0);
   const [pendingApprovals, setPendingApprovals] = useState(0);
   const [newFeedback, setNewFeedback] = useState(0);
+  // Rewards appears only once there is something there: a credit programme
+  // switched on, or a balance. Before launch nobody sees an empty page.
+  const credits = useCredits('lite');
+  const nav = allNav.filter((item) => item.to !== '/parent/rewards' || rewardsVisible(credits.data));
 
   useEffect(() => { try { const v = localStorage.getItem(COLLAPSE_KEY); if (v) setCollapsed(v === '1'); } catch {} }, []);
   useEffect(() => { try { localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0'); } catch {} }, [collapsed]);

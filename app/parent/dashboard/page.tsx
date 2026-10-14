@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase/client';
 import CampaignDashboardBanner from '@/components/classMatchWeek/CampaignDashboardBanner';
 import CampaignJoinCard from '@/components/classMatchWeek/CampaignJoinCard';
+import DashboardRewardsCard from '@/components/credits/DashboardRewardsCard';
 
 type ChildData = {
   id: string; name: string; initials: string; hue: number;
@@ -74,6 +75,10 @@ function DashboardContent() {
           <Search className="size-4" /> Find a class
         </Link>
       </div>
+
+      {/* iTutor credits: balance and the referral link. Nothing until the
+          programme is live or there is a balance. */}
+      <DashboardRewardsCard />
 
       {/* §9.1's dominant element, above the tiles. A pending approval closes two
           hours before the class and sends no email when it lapses, so it cannot

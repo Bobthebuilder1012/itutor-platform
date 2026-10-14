@@ -8,12 +8,16 @@ import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import ParentShell from '@/components/parent/ParentShell';
+import RenewalCreditsControl from '@/components/credits/RenewalCreditsControl';
 
 type Sub = {
   id: string; student_id: string; student_name: string; group_id: string;
   status: string; payment_status: string; plan_price_ttd: number | null;
   current_period_end: string | null; next_payment_due_at: string | null;
   cancel_at_period_end: boolean; enrolled_at: string;
+  billing_provider?: string | null;
+  /** Whoever's card pays (migration 230); null = the child pays themself. */
+  payer_id?: string | null;
   group: { name: string; subject: string | null; cover_image: string | null } | null;
 };
 
@@ -54,6 +58,7 @@ function SubscriptionsContent() {
         .select(`
           id, student_id, group_id, status, payment_status, plan_price_ttd,
           current_period_end, next_payment_due_at, cancel_at_period_end, enrolled_at,
+          billing_provider, payer_id,
           group:groups!group_enrollments_group_id_fkey(name, subject, cover_image)
         `)
         .in('student_id', childIds)
@@ -101,7 +106,7 @@ function SubscriptionsContent() {
         </div>
       ) : (
         <div className="space-y-3">
-          {[...active, ...other].map(sub => <SubCard key={sub.id} sub={sub} />)}
+          {[...active, ...other].map(sub => <SubCard key={sub.id} sub={sub} parentId={profile?.id ?? null} />)}
         </div>
       )}
     </div>
@@ -117,7 +122,7 @@ function StatCard({ label, value, tone }: { label: string; value: string; tone: 
   );
 }
 
-function SubCard({ sub }: { sub: Sub }) {
+function SubCard({ sub, parentId }: { sub: Sub; parentId: string | null }) {
   const statusMap: Record<string, { label: string; icon: any; cls: string }> = {
     ACTIVE:          { label: 'Active',          icon: CheckCircle, cls: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
     GRACE:           { label: 'Grace period',    icon: Clock,       cls: 'text-amber-700 bg-amber-50 border-amber-200' },
@@ -148,6 +153,16 @@ function SubCard({ sub }: { sub: Sub }) {
       </div>
       {sub.cancel_at_period_end && (
         <div className="text-xs text-amber-700 font-medium">Cancelling at end of current period · {fmtDate(sub.current_period_end)}</div>
+      )}
+      {/* The parent's own credits toward the next payment — only where the
+          parent's card pays; a child who pays for themself spends their own. */}
+      {parentId && sub.payer_id === parentId && (
+        <RenewalCreditsControl
+          enrollmentId={sub.id}
+          billingProvider={sub.billing_provider}
+          status={sub.status}
+          cancelling={sub.cancel_at_period_end}
+        />
       )}
     </div>
   );

@@ -24,6 +24,8 @@ import ChildPickerCheck from '@/components/parent/ChildPickerCheck';
 import { Detail, preorderFor, type GroupData } from '@/components/classes/ClassDetailView';
 import { fetchClassDetail } from '@/lib/classes/fetchClassDetail';
 import { isPaidGroup } from '@/lib/payments/groupPricing';
+import CheckoutCreditsChoice, { type CreditChoice } from '@/components/credits/CheckoutCreditsChoice';
+import { invalidateCredits, useCredits } from '@/lib/credits/useCredits';
 
 export default function ParentClassPage() {
   return (
@@ -41,6 +43,10 @@ function ClassContent() {
   const [readyChildId, setReadyChildId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The parent's own credits (migration 268), spent on the child's class.
+  const [creditChoice, setCreditChoice] = useState<CreditChoice>('none');
+  const { data: creditData } = useCredits('lite');
+  const creditBalance = creditData?.wallet?.available ?? 0;
   /** Set once the enrolment has actually happened — the modal then reports it. */
   const [done, setDone] = useState<{
     kind: 'enrolled' | 'requested' | 'waitlisted';
@@ -100,20 +106,29 @@ function ClassContent() {
       // routing it to the plain join would give the child a roster row where the
       // student path gives them a held place. The direct route still refuses
       // anything priced, so a mistake here cannot hand out a paid seat.
+      const credits = isPaid && !isPreorder ? creditChoice : 'none';
       const endpoint = isPreorder
         ? '/api/parent/enroll-child/secure-spot'
-        : isPaid
-          ? '/api/parent/enroll-child/subscribe'
-          : '/api/parent/enroll-child';
+        : credits === 'one_month'
+          ? '/api/parent/enroll-child/credit-month'
+          : isPaid
+            ? '/api/parent/enroll-child/subscribe'
+            : '/api/parent/enroll-child';
 
       const res = await fetch(
         endpoint,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ childId, groupId: group.id }),
+          body: JSON.stringify({
+            childId,
+            groupId: group.id,
+            // The server caps credits at what the purchase allows.
+            ...(credits !== 'none' ? { useCreditsTtd: creditBalance } : {}),
+          }),
         }
       );
+      if (credits !== 'none') invalidateCredits();
       const json = await res.json();
       if (!res.ok) {
         // detail carries the database's own words when a write fails. Without it
@@ -133,9 +148,9 @@ function ClassContent() {
         window.location.href = json.checkout_url;
         return;
       }
-      // A free reservation completes without Stripe — there is no checkout to
-      // send them to, and the place is already held.
-      if (json.free) {
+      // A free reservation, or a month the parent's credits covered, completes
+      // without Stripe — there is no checkout to send them to.
+      if (json.free || json.completed) {
         setDone({ kind: 'enrolled', childName: json.childName ?? null, position: null });
         await load();
         return;
@@ -223,6 +238,10 @@ function ClassContent() {
 
                 {/* The dialog's own h2 already asks it. */}
                 <ChildPickerCheck groupId={group.id} onReady={setReadyChildId} showHeading={false} />
+
+                {isPaid && !isPreorder ? (
+                  <CheckoutCreditsChoice groupId={group.id} value={creditChoice} onChange={setCreditChoice} />
+                ) : null}
 
                 <button
                   onClick={() => readyChildId && enroll(readyChildId)}
