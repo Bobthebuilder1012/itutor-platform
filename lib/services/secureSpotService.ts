@@ -24,6 +24,7 @@ import type { SessionPattern } from '@/lib/utils/scheduleFormat';
 import { STALE_HOLD_REMOVAL_REASON } from '@/lib/payments/staleSecureSpotHold';
 import { trackForUser } from '@/lib/analytics/track';
 import { PRODUCT_EVENTS } from '@/lib/analytics/events';
+import { recordQualifyingPayment } from '@/lib/credits/qualifyingPayment';
 
 export interface ConfirmSecuredSpotParams {
   admin: SupabaseClient;
@@ -260,6 +261,15 @@ export async function confirmSecuredSpot(
         dedupeKey: `join:${(enrollment as any).group_id}:${(enrollment as any).student_id}`,
       }
     );
+
+    // A secured spot is a card payment for a class, so it can convert a
+    // friend's referral. Never throws (lib/credits/qualifyingPayment.ts).
+    const { data: securePayment } = await admin
+      .from('subscription_payments')
+      .select('id')
+      .eq('stripe_payment_intent_id', stripePaymentIntentId)
+      .maybeSingle();
+    if (securePayment?.id) await recordQualifyingPayment(admin, securePayment.id as string);
   }
 
   return {

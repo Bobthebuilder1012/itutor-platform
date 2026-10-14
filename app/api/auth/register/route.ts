@@ -4,6 +4,7 @@ import { createHash } from 'crypto';
 import { isParentAccountsEnabled, PARENT_ACCOUNTS_DISABLED_MESSAGE } from '@/lib/featureFlags/parentAccounts';
 import { getRequestAttribution, track } from '@/lib/analytics/track';
 import { PRODUCT_EVENTS } from '@/lib/analytics/events';
+import { attachReferralFromCookie } from '@/lib/credits/attachReferral';
 import { syncProfileNow } from '@/lib/customerio/sync';
 
 export const dynamic = 'force-dynamic';
@@ -159,6 +160,8 @@ export async function POST(req: Request) {
     // Clean up verification code
     await supabase.from('verification_codes').delete().eq('id', codeRow.id);
 
+    // A friend's referral link, if this browser followed one. Never throws.
+    await attachReferralFromCookie(authData.user.id, authData.user.created_at);
     // Ship the profile to Customer.io BEFORE the signup event fires.
     // Customer.io auto-creates a profile when it receives an event for an
     // unknown id, and a profile born that way has no email address — so a

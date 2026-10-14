@@ -9,9 +9,23 @@
 // Codes resolve against campaign_codes, which arrives in Phase 4. Until then
 // this route accepts any string and records it raw, so print and QR assets can
 // go out early without waiting on Phase 4 (plan §2.3).
+//
+// A student's or parent's referral code (referral_codes, migration 268) is
+// checked FIRST. Besides the usual attribution it sets its own cookie,
+// itutor_referral: first-touch attribution keeps the visitor's first ever
+// campaign, so a friend's link clicked after an Instagram visit would
+// otherwise never reach signup. See lib/credits/attachReferral.ts.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceClient } from '@/lib/supabase/server';
+import {
+  REFERRAL_COOKIE,
+  REFERRAL_COOKIE_MAX_AGE,
+  parseReferralCookie,
+  resolveReferralCode,
+  serializeReferralCookie,
+} from '@/lib/credits/referralCodes';
+import { getCreditSettings } from '@/lib/credits/settings';
 import {
   ATTR_COOKIE,
   LAST_COOKIE,
@@ -69,6 +83,24 @@ async function resolveCode(code: string): Promise<CampaignCodeRow | null | undef
 }
 
 /**
+ * A student's or parent's referral code. `enabled` is false while the
+ * referral programme is switched off: the link still redirects and is still
+ * counted, it just stops earning anyone a reward.
+ */
+async function resolveReferralLink(code: string): Promise<{ code: string; enabled: boolean } | null> {
+  try {
+    const service = getServiceClient();
+    const row = await resolveReferralCode(service, code);
+    if (!row) return null;
+    const settings = await getCreditSettings(service);
+    return { code: row.code, enabled: settings?.referrals_enabled === true };
+  } catch (err) {
+    console.error('[r/code] referral lookup threw:', err);
+    return null;
+  }
+}
+
+/**
  * Only ever redirect to a path on this origin.
  *
  * `?to=` is attacker-controllable and these links are printed on physical
@@ -101,11 +133,21 @@ export async function GET(
   let landingPath = requestedTarget ?? getFinderLandingPath();
   let resolvedKind: string | null = null;
   let resolution: RefResolution = 'unvalidated';
+  // Set when this is a friend's referral link and the programme is on.
+  let referralCode: string | null = null;
+
+  const referral = CODE_PATTERN.test(code) ? await resolveReferralLink(code) : null;
 
   if (!CODE_PATTERN.test(code)) {
     // Never 404 a printed link — send the visitor somewhere useful and record
     // that the code was malformed.
     resolution = 'invalid';
+  } else if (referral) {
+    code = referral.code;
+    resolvedKind = 'referral';
+    resolvedPlatform = 'referral';
+    resolution = 'resolved';
+    referralCode = referral.enabled ? referral.code : null;
   } else {
     const row = await resolveCode(code);
 
@@ -187,6 +229,18 @@ export async function GET(
 
   // Record the click itself. This is a pre-signup touch, so it is anon-keyed;
   // it is the only record that a printed asset was ever scanned.
+
+  // A friend's referral link. First referral wins, like first-touch: a
+  // second friend's link does not take the credit from the first.
+  if (referralCode && !parseReferralCookie(request.cookies.get(REFERRAL_COOKIE)?.value)) {
+    response.cookies.set({
+      ...cookieBase,
+      name: REFERRAL_COOKIE,
+      value: serializeReferralCookie({ code: referralCode, at: new Date().toISOString() }),
+      maxAge: REFERRAL_COOKIE_MAX_AGE,
+    });
+  }
+
   try {
     const service = getServiceClient();
     await service.from('product_events').insert({

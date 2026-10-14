@@ -51,6 +51,10 @@
     {
       "path": "/api/cron/progress-class-levels",
       "schedule": "15 4 * * *"
+    },
+    {
+      "path": "/api/cron/credits-nightly",
+      "schedule": "15 6 * * *"
     }
   ]
 }

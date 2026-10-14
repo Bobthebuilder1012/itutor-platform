@@ -11,6 +11,7 @@ import { calculateCommissionForTutor } from '@/lib/utils/commissionCalculator';
 import type { SubscriptionPaymentType } from '@/lib/types/groups';
 import { trackForUser } from '@/lib/analytics/track';
 import { PRODUCT_EVENTS } from '@/lib/analytics/events';
+import { recordQualifyingPayment } from '@/lib/credits/qualifyingPayment';
 
 export interface CreatePendingPaymentParams {
   enrollmentId: string;
@@ -423,6 +424,11 @@ export async function handleSubscriptionPayment(
     // is triggered by the event above, not by the attribute.
   }
 
+  // Referral conversion, next to `paid` for the same reason: only a payment
+  // that actually got the student a seat can earn their friend a reward.
+  // Card payments only; never throws (lib/credits/qualifyingPayment.ts).
+  await recordQualifyingPayment(admin, sp.id);
+
   return { ok: true, enrollmentId: sp.enrollment_id, receipt };
 }
 
@@ -472,9 +478,11 @@ async function markActivationFailed(
     if (ne) console.warn('[handleSubscriptionPayment] activation_delayed notification failed:', ne);
   });
 
-  // Create admin exception
+  // Create admin exception. The column is subscription_payment_id: this wrote
+  // `payment_id`, which does not exist, so every one of these inserts failed
+  // and the exception never reached an admin.
   await admin.from('subscription_payment_exceptions').insert({
-    payment_id: sp.id,
+    subscription_payment_id: sp.id,
     enrollment_id: sp.enrollment_id,
     group_id: sp.group_id,
     student_id: sp.student_id,

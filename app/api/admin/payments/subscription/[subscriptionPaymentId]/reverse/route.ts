@@ -19,6 +19,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/middleware/adminAuth';
 import { getServiceClient } from '@/lib/supabase/server';
 import { logAdminAction } from '@/lib/services/adminAudit';
+import { onSubscriptionPaymentRefunded } from '@/lib/credits/refunds';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -99,6 +100,11 @@ export async function POST(request: NextRequest, { params }: Params) {
     .from('subscription_payments')
     .update({ status: 'REFUNDED', refunded_at: new Date().toISOString() })
     .eq('id', subscriptionPaymentId);
+
+  // Credits: give back any spent on this payment, and if it was a friend's
+  // qualifying payment take back the referral reward it earned. Idempotent;
+  // never throws.
+  await onSubscriptionPaymentRefunded(admin, subscriptionPaymentId, { full: true, source: 'admin_reverse' });
 
   // A secured spot that is reversed is no longer a held place: release the
   // seat rather than leaving a student occupying capacity they haven't paid
