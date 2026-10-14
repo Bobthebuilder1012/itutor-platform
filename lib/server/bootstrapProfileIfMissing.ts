@@ -1,6 +1,7 @@
 import type { User } from '@supabase/supabase-js';
 import { getServiceClient } from '@/lib/supabase/server';
 import { stampSignupAttribution } from '@/lib/analytics/track';
+import { attachReferralFromCookie } from '@/lib/credits/attachReferral';
 
 function normalizeUsernameFromEmail(email: string) {
   const prefix = email.split('@')[0] || 'user';
@@ -97,5 +98,8 @@ export async function bootstrapProfileIfMissing(user: User): Promise<{ error: { 
   // swallowed write rather than more columns in the insert above, so it can
   // never be the reason a signup fails.
   await stampSignupAttribution(user.id);
+  // A friend's referral link (Google signups never pass through the register
+  // route). Never throws.
+  await attachReferralFromCookie(user.id, user.created_at);
   return { error: null };
 }
