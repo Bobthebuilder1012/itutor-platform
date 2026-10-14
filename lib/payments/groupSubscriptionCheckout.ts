@@ -38,6 +38,20 @@ import {
 } from '@/lib/services/subscriptionPayments';
 import type { SeatType } from '@/lib/utils/seatCapacity';
 import { checkCapacity, joinWaitlist, loadCheckoutContext } from '@/lib/payments/groupEnrollmentEligibility';
+import { getCreditSettings } from '@/lib/credits/settings';
+import { creditAccountGuard } from '@/lib/credits/guard';
+import { quoteCredits, type CreditQuote } from '@/lib/credits/quote';
+import {
+  attachCouponToSpend,
+  CreditError,
+  getWallet,
+  noteSpendContext,
+  releaseCredits,
+  reserveCredits,
+  safely,
+} from '@/lib/credits/wallet';
+import { cancelIncompleteSubscription, createCreditCoupon } from '@/lib/credits/stripeCoupon';
+import { withOptionalCredits } from '@/lib/credits/cash';
 import { track } from '@/lib/analytics/track';
 import { PRODUCT_EVENTS } from '@/lib/analytics/events';
 
@@ -62,8 +76,15 @@ export async function createGroupSubscriptionCheckout(params: {
    * class can offer — so the default is history rather than a guess.
    */
   seatType?: SeatType | null;
+  /**
+   * TT$ of the PAYER's credits to put toward the first month (scenario C,
+   * migration 268). The quote may lower it: the first invoice must still be a
+   * real card charge of at least the minimum. Omitted or 0 = no credits.
+   */
+  useCreditsTtd?: number | null;
 }): Promise<CheckoutOutcome> {
   const { admin, groupId, studentId, payerId, payerEmail, seatType } = params;
+  const wantsCredits = Number(params.useCreditsTtd ?? 0) > 0;
 
   // Steps 2–8 — the class, the student's right to join it, and a seat — are
   // shared with the one-month credit purchase: lib/payments/groupEnrollmentEligibility.ts.
@@ -198,6 +219,40 @@ export async function createGroupSubscriptionCheckout(params: {
 
   const finalPrice = promotionData.discountedPrice;
   const pendingExpiresAt = new Date(now.getTime() + SEAT_RESERVATION_MS).toISOString();
+
+  // Step 9b: Credits toward the first month (scenario C). Quoted BEFORE any
+  // row is written, so a refusal leaves nothing behind. The wallet is the
+  // payer's: a parent spends their own credits on a child's class.
+  let creditQuote: CreditQuote | null = null;
+  if (wantsCredits) {
+    const settings = await getCreditSettings(admin);
+    if (!settings) {
+      return { ok: false as const, status: 409, body: { error: 'Credits are not available yet.', reason: 'credits_unavailable' } };
+    }
+    const guard = await creditAccountGuard(admin, payerId);
+    if (!guard.ok) return { ok: false as const, status: guard.status, body: guard.body };
+    const wallet = await getWallet(admin, payerId);
+    creditQuote = quoteCredits({
+      scenario: 'C',
+      baseTtd: finalPrice,
+      balanceTtd: wallet?.available ?? 0,
+      requestedTtd: params.useCreditsTtd,
+      minCashChargeTtd: settings.min_cash_charge_ttd,
+    });
+    if (creditQuote.creditsApplied <= 0) {
+      return {
+        ok: false as const,
+        status: 422,
+        body: {
+          error:
+            creditQuote.refusedReason === 'no_balance'
+              ? 'You have no credits available.'
+              : 'Credits cannot be used on this class: the card charge would fall below the minimum.',
+          reason: creditQuote.refusedReason ?? 'below_minimum',
+        },
+      };
+    }
+  }
 
   // Step 10: Create or reuse group_enrollments row
   if (!isReusingEnrollment) {
@@ -342,19 +397,33 @@ export async function createGroupSubscriptionCheckout(params: {
   // payment is confirmed and leave a stale member row if checkout is abandoned.
 
   // Step 12: Create pending subscription_payments row
-  // If reusing enrollment, expire the previous pending payment row first
+  // If reusing enrollment, expire the previous pending payment row first.
+  //
+  // Its Stripe subscription is cancelled first when still incomplete: a stale
+  // tab could otherwise pay that superseded invoice, and invoice.paid would
+  // find no enrolment pointing at it — money taken, nothing recorded. Any
+  // credits it reserved are released only after that, so its credit coupon
+  // can no longer reach a paid invoice.
   if (isReusingEnrollment) {
-    const { data: oldPayment } = await admin
-      .from('subscription_payments')
-      .select('id')
-      .eq('enrollment_id', enrollmentId!)
-      .eq('status', 'PENDING')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const { data: oldPayment } = await withOptionalCredits((on) =>
+      admin
+        .from('subscription_payments')
+        .select('id, stripe_subscription_id' + (on ? ', credit_spend_id' : ''))
+        .eq('enrollment_id', enrollmentId!)
+        .eq('status', 'PENDING')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    );
 
     if (oldPayment) {
+      if (oldPayment.stripe_subscription_id && process.env.STRIPE_SECRET_KEY) {
+        await cancelIncompleteSubscription(getStripeClient(), oldPayment.stripe_subscription_id);
+      }
       await expireSubscriptionPayment(admin as any, oldPayment.id);
+      if (oldPayment.credit_spend_id) {
+        await safely('release superseded reservation', () => releaseCredits(admin, oldPayment.credit_spend_id));
+      }
     }
   }
 
@@ -376,25 +445,53 @@ export async function createGroupSubscriptionCheckout(params: {
     .update({ checkout_expires_at: pendingExpiresAt })
     .eq('id', paymentRow.id);
 
-  // Step 13: Create the Stripe PaymentIntent for this cycle.
-  //
-  // NOT a Stripe Subscription object: we own the recurring cycle
-  // (group_enrollments.next_payment_due_at + the process-subscriptions
-  // cron), so Stripe just charges each period, exactly like the 1:1 flow.
-  const { grossAmount: grossFinalPrice, processingFee: subFee } =
-    calculateGrossAmountForProvider(finalPrice, 'stripe');
-  const amountCents = ttdToCents(grossFinalPrice);
+  // Step 12b: Hold the credits (scenario C). Reserved in the ledger and
+  // written onto the payment row BEFORE Stripe is called, so every later step
+  // — the webhook's commit, a retry's release, the nightly job — can find the
+  // reservation from the row.
+  let creditSpendId: string | null = null;
+  if (creditQuote) {
+    try {
+      creditSpendId = await reserveCredits(admin, {
+        userId: payerId,
+        amountTtd: creditQuote.creditsApplied,
+        key: `checkout:${paymentRow.id}`,
+        context: { scenario: 'C', base_ttd: finalPrice, enrollment_id: enrollmentId!, group_id: groupId },
+      });
+    } catch (err) {
+      await expireSubscriptionPayment(admin as any, paymentRow.id);
+      const insufficient = err instanceof CreditError && err.code === 'insufficient_credits';
+      return {
+        ok: false as const,
+        status: insufficient ? 409 : 500,
+        body: {
+          error: insufficient ? 'Your credit balance changed. Please try again.' : 'Could not apply your credits.',
+          reason: insufficient ? 'insufficient_credits' : 'credits_failed',
+        },
+      };
+    }
+    await admin
+      .from('subscription_payments')
+      .update({ credits_applied_ttd: creditQuote.creditsApplied, credit_spend_id: creditSpendId })
+      .eq('id', paymentRow.id);
+  }
+  const releaseHeldCredits = async () => {
+    if (creditSpendId) await safely('release checkout reservation', () => releaseCredits(admin, creditSpendId!));
+  };
 
-  // Get student email for checkout
-  const { data: profile } = await admin
-    .from('profiles')
-    .select('full_name')
-    .eq('id', studentId)
-    .single();
+  // Step 13: Create the Stripe Subscription and its first invoice.
+  const { grossAmount: grossFinalPrice, processingFee: fullPriceFee } =
+    calculateGrossAmountForProvider(finalPrice, 'stripe');
+  // What the class costs on the card before credits — the promotion price
+  // when there is one. Credits come off this, for the first invoice only.
+  const amountCents = ttdToCents(grossFinalPrice);
+  const subFee = creditQuote ? creditQuote.processingFee : fullPriceFee;
+  const chargedTotal = creditQuote ? creditQuote.cashGross : grossFinalPrice;
 
   const customerEmail = payerEmail;
 
   if (!customerEmail) {
+    await releaseHeldCredits();
     return { ok: false as const, status: 400, body: { error: 'Your account is missing an email address' } };
   }
 
@@ -403,12 +500,11 @@ export async function createGroupSubscriptionCheckout(params: {
   // Our process-subscriptions cron must therefore SKIP this enrollment,
   // which is what billing_provider='stripe' below signals.
   let subscription: Stripe.Subscription;
+  const stripe = getStripeClient();
   try {
     const customerId = await ensureStripeCustomer(admin, payerId);
     const priceId = await ensureGroupPrice(admin, group as any);
     const cancelAt = endDateToCancelAt((group as any).end_date);
-
-    const stripe = getStripeClient();
 
     // The recurring Price is the class's FULL price, shared by every
     // subscriber, so a promotion has to reach Stripe as a discount — without
@@ -416,10 +512,15 @@ export async function createGroupSubscriptionCheckout(params: {
     // discount. Sized against the Price's real unit_amount (a cached Price may
     // predate a fee-schedule change) so the invoice lands on amountCents
     // exactly. 'forever': a promotion price holds for the subscription's life.
-    let discounts: Array<{ coupon: string }> | undefined;
+    const price = await stripe.prices.retrieve(priceId);
+    const unitCents = price.unit_amount ?? 0;
+    // What every renewal will cost: the Price less any promotion. Stored on
+    // the subscription so invoice.paid can tell a normal renewal from one
+    // that was discounted by something it does not know about.
+    let recurringCents = unitCents;
+    const discounts: Array<{ coupon: string }> = [];
     if (promotionData.promotionId) {
-      const price = await stripe.prices.retrieve(priceId);
-      const amountOff = (price.unit_amount ?? 0) - amountCents;
+      const amountOff = unitCents - amountCents;
       if (amountOff > 0) {
         const coupon = await stripe.coupons.create(
           {
@@ -436,15 +537,31 @@ export async function createGroupSubscriptionCheckout(params: {
           },
           { idempotencyKey: `promo-coupon-${paymentRow.id}` }
         );
-        discounts = [{ coupon: coupon.id }];
+        discounts.push({ coupon: coupon.id });
+        recurringCents = unitCents - amountOff;
       }
+    }
+
+    // Credits: a 'once' coupon for the rest of the gap, so the first invoice
+    // lands on the quoted card charge to the cent (lib/credits/stripeCoupon.ts).
+    if (creditQuote && creditSpendId) {
+      const creditOff = recurringCents - creditQuote.cashGrossCents;
+      if (creditOff <= 0) throw new Error(`credit coupon would be ${creditOff} cents`);
+      const creditCoupon = await createCreditCoupon(stripe, {
+        amountOffCents: creditOff,
+        spendId: creditSpendId,
+        paymentId: paymentRow.id,
+        idempotencyKey: `credit-coupon-${paymentRow.id}`,
+      });
+      discounts.push({ coupon: creditCoupon.id });
+      await attachCouponToSpend(admin, creditSpendId, creditCoupon.id);
     }
 
     subscription = await stripe.subscriptions.create(
       {
         customer: customerId,
         items: [{ price: priceId }],
-        ...(discounts ? { discounts } : {}),
+        ...(discounts.length ? { discounts } : {}),
         // Don't activate until the first invoice is actually paid; the
         // enrollment stays PENDING_PAYMENT until the webhook says so.
         payment_behavior: 'default_incomplete',
@@ -475,6 +592,8 @@ export async function createGroupSubscriptionCheckout(params: {
           enrollment_id: enrollmentId!,
           payment_id: paymentRow.id,
           base_amount_ttd: String(finalPrice),
+          recurring_total_cents: String(recurringCents),
+          ...(creditSpendId ? { credit_spend_id: creditSpendId } : {}),
         },
       },
       { idempotencyKey: `subscribe-${paymentRow.id}` }
@@ -485,6 +604,8 @@ export async function createGroupSubscriptionCheckout(params: {
       '[subscribe] Stripe subscriptions.create failed:',
       isApiError ? { type: err.type, code: err.code, message: err.message } : err
     );
+    // No subscription exists, so no invoice can use the credit coupon.
+    await releaseHeldCredits();
     return { ok: false as const, status: 502, body: { error: 'Failed to create checkout session' } };
   }
 
@@ -502,6 +623,9 @@ export async function createGroupSubscriptionCheckout(params: {
         invoice: latestInvoice?.id,
       }
     );
+    // Cancel it so nothing can pay it, then the credits can go back.
+    await cancelIncompleteSubscription(stripe, subscription.id);
+    await releaseHeldCredits();
     return { ok: false as const, status: 502, body: { error: 'Failed to create checkout session' } };
   }
 
@@ -520,15 +644,27 @@ export async function createGroupSubscriptionCheckout(params: {
     })
     .eq('id', paymentRow.id);
 
+  if (creditSpendId) {
+    await safely('note subscription on reservation', () =>
+      noteSpendContext(admin, creditSpendId!, { stripe_subscription_id: subscription.id })
+    );
+  }
+
   // Mark the enrollment Stripe-billed so the self-managed dunning cron
   // leaves it alone. Set BEFORE the student pays: if they abandon
   // checkout the enrollment is still PENDING_PAYMENT and gets expired by
   // the normal seat-reservation task, which doesn't consult this flag.
+  //
+  // Except a month bought with credits being continued: it is ACTIVE, and
+  // stays billed 'credits' until this first invoice is paid — so if the
+  // student abandons this checkout, the credit month still ends on time
+  // (process-subscriptions completes 'credits' enrolments) instead of
+  // turning into a Stripe enrolment Stripe will never bill.
   await admin
     .from('group_enrollments')
     .update({
       stripe_subscription_id: subscription.id,
-      billing_provider: 'stripe',
+      ...(ctx.continuingFromCreditMonth ? {} : { billing_provider: 'stripe' }),
     })
     .eq('id', enrollmentId!);
 
@@ -563,8 +699,9 @@ export async function createGroupSubscriptionCheckout(params: {
       enrollment_id: enrollmentId,
       payment_id: paymentRow.id,
       amount: finalPrice,
+      credits_applied: creditQuote?.creditsApplied ?? 0,
       processing_fee: subFee,
-      total: grossFinalPrice,
+      total: chargedTotal,
       currency: 'TTD',
     },
   };

@@ -56,7 +56,12 @@ export interface Venue {
   region?: Region | null;
 }
 export type GroupWaitlistStatus = 'waiting' | 'offered' | 'expired' | 'accepted' | 'removed';
-export type SubscriptionPaymentType = 'subscription_initial' | 'subscription_renewal' | 'subscription_reactivation';
+export type SubscriptionPaymentType =
+  | 'subscription_initial'
+  | 'subscription_renewal'
+  | 'subscription_reactivation'
+  // One month bought with credits (migration 268). Never renews.
+  | 'credit_month';
 export type SubscriptionPaymentStatus = 'PENDING' | 'PAID' | 'REFUNDED' | 'PARTIALLY_REFUNDED' | 'ACTIVATION_FAILED' | 'expired';
 export type GroupRemovalStatus = 'auto_processed' | 'approved' | 'overturned';
 export type GroupVisibility = 'public' | 'unlisted' | 'private';

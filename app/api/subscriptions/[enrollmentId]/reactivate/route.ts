@@ -65,11 +65,11 @@ export async function POST(_req: NextRequest, { params }: Params) {
     //
     // Re-subscribing via /api/groups/[groupId]/subscribe mints a fresh
     // Stripe Subscription, which is the correct way back in.
-    if ((enrollment as any).billing_provider === 'stripe') {
+    if ((enrollment as any).billing_provider === 'stripe' || (enrollment as any).billing_provider === 'credits') {
       return NextResponse.json(
         {
           error: 'Please re-subscribe to this class to restart billing.',
-          billing_provider: 'stripe',
+          billing_provider: (enrollment as any).billing_provider,
           resubscribe_url: `/student/explore/${enrollment.group_id}`,
         },
         { status: 409 }

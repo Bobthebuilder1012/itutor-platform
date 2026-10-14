@@ -41,6 +41,12 @@ import {
   isParentApprovalSession,
 } from '@/lib/server/parentApprovalFulfilment';
 import { handleSubscriptionPayment } from '@/lib/services/subscriptionPayments';
+import {
+  creditSpendForInvoice,
+  creditsForRefundedCharge,
+  releaseSubscriptionReservations,
+} from '@/lib/credits/webhookCredits';
+import { invoicePaymentRefs } from '@/lib/credits/stripeLookup';
 import { confirmSecuredSpot } from '@/lib/services/secureSpotService';
 import { sendEmail } from '@/lib/services/emailService';
 import {
@@ -511,11 +517,15 @@ async function handleIntentSucceeded(
   // rows already exist (created by /subscribe as PENDING_PAYMENT);
   // this activates them. Reuses handleSubscriptionPayment, the same
   // function the LuniPay webhook calls, so activation logic exists once.
+  //
+  // A credit month (migration 268) whose credits did not cover the whole
+  // price is the same shape: rows created by /credit-month, the rest paid by
+  // this one-off PaymentIntent. handleSubscriptionPayment commits its credits.
   // -----------------------------------------------------------
-  if (intent.metadata?.kind === 'group_subscription') {
+  if (intent.metadata?.kind === 'group_subscription' || intent.metadata?.kind === 'credit_month') {
     const subscriptionPaymentId = intent.metadata?.payment_id;
     if (!subscriptionPaymentId) {
-      console.error('[stripe/webhook] group_subscription intent missing payment_id');
+      console.error(`[stripe/webhook] ${intent.metadata?.kind} intent missing payment_id`);
       await markProcessed(admin, event, null, 'skipped', attempts, 'missing payment_id');
       return NextResponse.json({ received: true, status: 'metadata_incomplete' });
     }
@@ -559,6 +569,13 @@ async function handleIntentSucceeded(
       attempts,
       result.ok ? undefined : result.error ?? undefined
     );
+
+    // A credit month gets its receipt here: it has no invoice, so the
+    // invoice.paid path that emails subscription receipts never runs for it.
+    if (result.ok && !result.idempotent && intent.metadata?.kind === 'credit_month') {
+      await sendSubscriptionEmails(admin, subscriptionPaymentId);
+    }
+
     return NextResponse.json({
       received: true,
       status: result.ok ? 'subscription_activated' : result.error,
@@ -1160,8 +1177,19 @@ async function handleChargeRefunded(
   }
 
   if (!payment) {
-    await markProcessed(admin, event, null, 'skipped', attempts, 'no local payment');
-    return NextResponse.json({ received: true, status: 'no_payment' });
+    // Not a 1:1 payment. A group payment's refund still has credit effects:
+    // spent credits go back, and a friend's refunded payment takes back the
+    // referral reward it earned (lib/credits/webhookCredits.ts).
+    const groupPayment = await creditsForRefundedCharge(admin as any, charge);
+    await markProcessed(
+      admin,
+      event,
+      null,
+      'skipped',
+      attempts,
+      groupPayment ? 'group payment: credit effects applied' : 'no local payment'
+    );
+    return NextResponse.json({ received: true, status: groupPayment ? 'group_payment_credits' : 'no_payment' });
   }
 
   const isFullRefund = charge.amount_refunded >= charge.amount;
@@ -1418,30 +1446,79 @@ async function handleInvoicePaid(
     const firstGrossCents = first
       ? Math.round((Number(first.amount_ttd) + Number(first.charged_processing_fee_ttd ?? 0)) * 100)
       : null;
-    const baseTtd =
-      first && firstGrossCents === paidCents
-        ? Number(first.amount_ttd)
-        : baseFromGrossForProvider(paidTtd, 'stripe');
+    // What a renewal of this subscription normally charges, recorded at
+    // checkout (absent on subscriptions created before migration 268's
+    // checkout change).
+    const recurringCents = Number(subMeta?.recurring_total_cents);
+    const metaBase = Number(subMeta?.base_amount_ttd);
+
+    // Credits applied to this renewal ("apply credits to my next payment").
+    // amount_ttd stays the FULL price, so the tutor is paid as if the student
+    // had paid it all; the part credits covered is recorded beside it.
+    // Never reversed from the discounted total — that would cut the tutor's
+    // payout by the credits, to zero on a fully covered invoice.
+    const creditSpend = await creditSpendForInvoice(admin as any, invoice.id, subscriptionId);
+
+    let baseTtd: number;
+    let mismatch = false;
+    if (creditSpend) {
+      baseTtd = creditSpend.baseTtd;
+    } else if (first && firstGrossCents === paidCents) {
+      baseTtd = Number(first.amount_ttd);
+    } else if (Number.isFinite(recurringCents) && recurringCents === paidCents && Number.isFinite(metaBase)) {
+      baseTtd = metaBase;
+    } else {
+      baseTtd = baseFromGrossForProvider(paidTtd, 'stripe');
+      // Paid LESS than this subscription normally costs, and nothing we know
+      // explains it. Recorded as before, but held up for an admin: the tutor's
+      // share was just computed from a discount we cannot account for.
+      const expectedCents = Number.isFinite(recurringCents) ? recurringCents : firstGrossCents;
+      mismatch = expectedCents !== null && paidCents < expectedCents - 1;
+    }
+    const creditsTtd = creditSpend ? Math.min(creditSpend.creditsTtd, baseTtd) : 0;
+    const cashBase = Math.max(0, Math.round((baseTtd - creditsTtd) * 100) / 100);
+
+    const renewalRow: Record<string, unknown> = {
+      enrollment_id: enrollment.id,
+      group_id: enrollment.group_id,
+      student_id: enrollment.student_id,
+      payer_id: first?.payer_id ?? null,
+      type: 'subscription_renewal',
+      amount_ttd: baseTtd,
+      // handleSubscriptionPayment computes the split from amount_ttd.
+      platform_fee_ttd: 0,
+      tutor_payout_ttd: 0,
+      charged_processing_fee_ttd: Math.max(0, Math.round((paidTtd - cashBase) * 100) / 100),
+      status: 'PENDING',
+      stripe_invoice_id: invoice.id,
+      stripe_subscription_id: subscriptionId,
+    };
+    if (creditSpend) {
+      renewalRow.credits_applied_ttd = creditsTtd;
+      renewalRow.credit_spend_id = creditSpend.spendId;
+      if (paidCents === 0) renewalRow.payment_method = 'credits';
+    }
 
     const { data: created, error: createErr } = await admin
       .from('subscription_payments')
-      .insert({
+      .insert(renewalRow)
+      .select('id')
+      .single();
+
+    if (!createErr && created && mismatch) {
+      await admin.from('subscription_payment_exceptions').insert({
+        subscription_payment_id: created.id,
         enrollment_id: enrollment.id,
         group_id: enrollment.group_id,
         student_id: enrollment.student_id,
-        payer_id: first?.payer_id ?? null,
-        type: 'subscription_renewal',
-        amount_ttd: baseTtd,
-        // handleSubscriptionPayment computes the split from amount_ttd.
-        platform_fee_ttd: 0,
-        tutor_payout_ttd: 0,
-        charged_processing_fee_ttd: Math.max(0, Math.round((paidTtd - baseTtd) * 100) / 100),
-        status: 'PENDING',
-        stripe_invoice_id: invoice.id,
-        stripe_subscription_id: subscriptionId,
-      })
-      .select('id')
-      .single();
+        exception_type: 'credit_mismatch',
+        status: 'open',
+        error_message:
+          `Renewal invoice ${invoice.id} paid ${paidTtd.toFixed(2)} TTD, less than this subscription ` +
+          'normally costs, with no credit reservation to explain it. The tutor share was computed from ' +
+          'the amount paid; check the invoice discounts and correct it if needed.',
+      });
+    }
 
     if (createErr || !created) {
       console.error('[stripe/webhook] Could not stage renewal payment:', createErr);
@@ -1454,15 +1531,31 @@ async function handleInvoicePaid(
     sp = created;
   }
 
+  // On the API version we pin, invoice.payment_intent and invoice.charge are
+  // null, so a renewal row never learned which charge paid it — and a refund
+  // or a referral's card check could not find it. Read them from the
+  // invoice's payments list (one extra call; skipped for a TT$0 invoice).
+  let invoicePi: string | null =
+    typeof (invoice as any).payment_intent === 'string'
+      ? (invoice as any).payment_intent
+      : (invoice as any).payment_intent?.id ?? null;
+  let invoiceCharge: string | null =
+    typeof (invoice as any).charge === 'string' ? (invoice as any).charge : null;
+  if (!invoicePi && !invoiceCharge && (invoice.amount_paid ?? 0) > 0) {
+    try {
+      const refs = await invoicePaymentRefs(getStripeClient(), invoice.id);
+      invoicePi = refs.paymentIntentId;
+      invoiceCharge = refs.chargeId;
+    } catch (err) {
+      console.warn('[stripe/webhook] could not read invoice payments:', err);
+    }
+  }
+
   const result = await handleSubscriptionPayment({
     admin: admin as any,
     subscriptionPaymentId: sp.id,
-    stripePaymentIntentId:
-      typeof (invoice as any).payment_intent === 'string'
-        ? (invoice as any).payment_intent
-        : (invoice as any).payment_intent?.id ?? null,
-    stripeChargeId:
-      typeof (invoice as any).charge === 'string' ? (invoice as any).charge : null,
+    stripePaymentIntentId: invoicePi,
+    stripeChargeId: invoiceCharge,
     receiptUrl: (invoice as any).hosted_invoice_url ?? null,
     source: 'webhook',
   });
@@ -1670,6 +1763,9 @@ async function handleSubscriptionDeleted(
   attempts: number
 ) {
   const subscription = event.data.object as Stripe.Subscription;
+
+  // Credits waiting for this subscription's next invoice will never be used.
+  await releaseSubscriptionReservations(admin as any, subscription.id);
 
   const { data: enrollment } = await admin
     .from('group_enrollments')
