@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerClient, getServiceClient } from '@/lib/supabase/server';
+import { cashBaseTtd, creditsAppliedTtd } from '@/lib/credits/cash';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,6 +18,8 @@ export interface Transaction {
   subtype: string | null;        // "Initial" | "Renewal" | "Reactivation" | null
   paid_at: string;
   amount_ttd: number;
+  /** Subscriptions only: paid with iTutor credits, on top of amount_ttd. */
+  credits_applied_ttd?: number;
   class_name: string | null;     // group name or subject name
   tutor_name: string | null;
   tutor_avatar: string | null;
@@ -32,6 +35,7 @@ function subtypeLabel(t: string): string {
   if (t === 'subscription_initial') return 'Initial';
   if (t === 'subscription_renewal') return 'Renewal';
   if (t === 'subscription_reactivation') return 'Reactivation';
+  if (t === 'credit_month') return 'One month';
   return t;
 }
 
@@ -55,6 +59,9 @@ export async function GET(_req: NextRequest) {
           tutor:profiles!tutor_id ( full_name, avatar_url )
         )
       `;
+    // credits_applied_ttd (migration 268) is a third tier above those.
+    const SUB_CREDITS =
+      `id, type, amount_ttd, credits_applied_ttd, paid_at, period_start, period_end, receipt_url, payment_method,` + SUB_JOIN;
     const SUB_FULL =
       `id, type, amount_ttd, paid_at, period_start, period_end, receipt_url, payment_method,` + SUB_JOIN;
     const SUB_BASE =
@@ -62,7 +69,7 @@ export async function GET(_req: NextRequest) {
 
     let subPayments: any[] | null = null;
     let spErr: any = null;
-    for (const cols of [SUB_FULL, SUB_BASE]) {
+    for (const cols of [SUB_CREDITS, SUB_FULL, SUB_BASE]) {
       const res = await admin
         .from('subscription_payments')
         .select(cols)
@@ -83,7 +90,10 @@ export async function GET(_req: NextRequest) {
       type: 'subscription',
       subtype: subtypeLabel(sp.type),
       paid_at: sp.paid_at,
-      amount_ttd: Number(sp.amount_ttd),
+      // What the student paid toward the class, without credits. (The card
+      // fee has never been part of this figure.)
+      amount_ttd: cashBaseTtd(sp),
+      credits_applied_ttd: creditsAppliedTtd(sp),
       class_name: sp.group?.name ?? null,
       tutor_name: sp.group?.tutor?.full_name ?? null,
       tutor_avatar: sp.group?.tutor?.avatar_url ?? null,

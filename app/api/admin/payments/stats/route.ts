@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/middleware/adminAuth';
 import { getServiceClient } from '@/lib/supabase/server';
+import { cashBaseTtd, creditsAppliedTtd, creditsCol, withOptionalCredits } from '@/lib/credits/cash';
 
 export const dynamic = 'force-dynamic';
 export const runtime  = 'nodejs';
@@ -28,11 +29,14 @@ export async function GET() {
       .select('amount_ttd, total_refunded_ttd, status')
       .in('status', ['succeeded', 'partially_refunded', 'refunded']),
 
-    // Subscription payments: total collected
-    admin
-      .from('subscription_payments')
-      .select('amount_ttd, platform_fee_ttd, tutor_payout_ttd, status')
-      .in('status', ['PAID', 'REFUNDED']),
+    // Subscription payments: total collected. credits_applied_ttd (migration
+    // 268) is the part of amount_ttd iTutor funded with credits — not cash.
+    withOptionalCredits((on) =>
+      admin
+        .from('subscription_payments')
+        .select('amount_ttd, platform_fee_ttd, tutor_payout_ttd, status' + creditsCol(on))
+        .in('status', ['PAID', 'REFUNDED'])
+    ),
 
     // Tutor balances
     admin
@@ -69,7 +73,11 @@ export async function GET() {
   const sessionRefundedTotal  = payments.reduce((s, p) => s + Number(p.total_refunded_ttd ?? 0), 0);
 
   // ── Subscription payment stats ──
-  const subTotalCollected = subPayments.reduce((s, p) => s + Number(p.amount_ttd ?? 0), 0);
+  // Cash only: a month paid partly with credits still pays the tutor on the
+  // full price, so counting amount_ttd here would book company-funded credits
+  // as revenue and inflate the platform-fee residual below.
+  const subTotalCollected = subPayments.reduce((s: number, p: any) => s + cashBaseTtd(p), 0);
+  const creditsFunded = subPayments.reduce((s: number, p: any) => s + creditsAppliedTtd(p), 0);
 
   // ── Combined ──
   const totalCollected  = +(sessionTotalCollected + subTotalCollected).toFixed(2);
@@ -99,6 +107,8 @@ export async function GET() {
     held_payout_ttd:      +heldTtd.toFixed(2),
     released_payout_ttd:  +releasedTtd.toFixed(2),
     platform_fees_ttd:    Math.max(0, platformFees),
+    // Credits iTutor paid toward class prices (tutors were paid in full).
+    credits_funded_ttd:   +creditsFunded.toFixed(2),
     open_cases_count:     openCasesRes.count ?? 0,
   });
 }

@@ -11,6 +11,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/middleware/adminAuth';
 import { getServiceClient } from '@/lib/supabase/server';
+// campaign_codes or campaign_link_stats absent = migration 267 not applied.
+import { isMissingSchema } from '@/lib/supabase/schemaErrors';
 import {
   EMPTY_STATS,
   LINK_CODE_PATTERN,
@@ -33,20 +35,6 @@ interface StatsRow {
   clicks: number | string;
   visitors: number | string;
   signups: number | string;
-}
-
-/** campaign_codes or campaign_link_stats absent — migration 267 not applied. */
-function isMissingSchema(error: { code?: unknown; message?: unknown } | null): boolean {
-  const code = String(error?.code ?? '');
-  const message = String(error?.message ?? '').toLowerCase();
-  return (
-    code === '42P01' ||
-    code === '42883' ||
-    code === 'PGRST202' ||
-    code === 'PGRST205' ||
-    message.includes('does not exist') ||
-    message.includes('could not find')
-  );
 }
 
 function toStats(row: StatsRow | undefined): LinkStats {

@@ -4,12 +4,13 @@
 // checkouts (PENDING_PAYMENT) are not enrolments and are left out.
 //
 // amount_paid_ttd is what the student was charged to enrol: their first paid
-// payment on the enrolment (base + processing fee). A cash enrolment has no
-// online payment, so it is reported as cash rather than as free.
+// payment on the enrolment (base − credits + processing fee). A cash enrolment
+// has no online payment, so it is reported as cash rather than as free.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/middleware/adminAuth';
 import { getServiceClient } from '@/lib/supabase/server';
+import { cashPaidTtd, creditsCol, withOptionalCredits } from '@/lib/credits/cash';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -42,13 +43,15 @@ export async function GET(request: NextRequest) {
   const ids = (rows ?? []).map((r: any) => r.id);
   const [{ data: payments }, { data: cash }] = ids.length
     ? await Promise.all([
-        admin
-          .from('subscription_payments')
-          .select('enrollment_id, amount_ttd, charged_processing_fee_ttd, paid_at')
-          .in('enrollment_id', ids)
-          .in('status', ['PAID', 'REFUNDED', 'PARTIALLY_REFUNDED'])
-          .not('paid_at', 'is', null)
-          .order('paid_at', { ascending: true }),
+        withOptionalCredits((on) =>
+          admin
+            .from('subscription_payments')
+            .select('enrollment_id, amount_ttd, charged_processing_fee_ttd, paid_at' + creditsCol(on))
+            .in('enrollment_id', ids)
+            .in('status', ['PAID', 'REFUNDED', 'PARTIALLY_REFUNDED'])
+            .not('paid_at', 'is', null)
+            .order('paid_at', { ascending: true })
+        ),
         admin
           .from('cash_join_requests')
           .select('enrollment_id')
@@ -77,9 +80,7 @@ export async function GET(request: NextRequest) {
       student_name: student?.full_name ?? student?.display_name ?? null,
       class_name: group?.name ?? null,
       tutor_name: tutor?.full_name ?? tutor?.display_name ?? null,
-      amount_paid_ttd: pay
-        ? Math.round((Number(pay.amount_ttd ?? 0) + Number(pay.charged_processing_fee_ttd ?? 0)) * 100) / 100
-        : null,
+      amount_paid_ttd: pay ? cashPaidTtd(pay) : null,
       payment_method: pay ? 'online' : cashIds.has(r.id) ? 'cash' : 'free',
     };
   });

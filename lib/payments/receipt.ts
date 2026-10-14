@@ -17,6 +17,7 @@
 // =====================================================
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { cashPaidTtd, creditsAppliedTtd, creditsCol, withOptionalCredits } from '@/lib/credits/cash';
 
 type AdminClient = SupabaseClient<any, 'public', 'public', any, any>;
 
@@ -182,8 +183,13 @@ export interface SubscriptionReceiptData {
   currency: string;
   /** Tutor's monthly price, before the processing fee. */
   amount: number;
+  /** Part of `amount` paid with iTutor credits (migration 268). */
+  creditsApplied: number;
   processingFee: number;
+  /** What the card was charged: amount − credits + fee. */
   total: number;
+  /** subscription_payments.type — 'credit_month' is a one-off month. */
+  paymentType: string;
   studentName: string;
   studentEmail: string | null;
   tutorName: string;
@@ -198,13 +204,16 @@ export async function buildSubscriptionReceiptData(
   admin: AdminClient,
   subscriptionPaymentId: string
 ): Promise<SubscriptionReceiptData | null> {
-  const { data: sp, error } = await admin
-    .from('subscription_payments')
-    .select(
-      'id, enrollment_id, group_id, student_id, amount_ttd, charged_processing_fee_ttd, paid_at, period_start, period_end, stripe_payment_intent_id, stripe_invoice_id'
-    )
-    .eq('id', subscriptionPaymentId)
-    .maybeSingle();
+  const { data: sp, error } = await withOptionalCredits((on) =>
+    admin
+      .from('subscription_payments')
+      .select(
+        'id, type, enrollment_id, group_id, student_id, amount_ttd, charged_processing_fee_ttd, paid_at, period_start, period_end, stripe_payment_intent_id, stripe_invoice_id' +
+          creditsCol(on)
+      )
+      .eq('id', subscriptionPaymentId)
+      .maybeSingle()
+  );
 
   if (error || !sp) return null;
 
@@ -237,8 +246,10 @@ export async function buildSubscriptionReceiptData(
     paidAt: sp.paid_at ?? null,
     currency: 'TTD',
     amount: base,
+    creditsApplied: creditsAppliedTtd(sp),
     processingFee: fee,
-    total: Math.round((base + fee) * 100) / 100,
+    total: cashPaidTtd(sp),
+    paymentType: String(sp.type ?? ''),
     studentName: student?.display_name || student?.full_name || 'Student',
     studentEmail: student?.email ?? null,
     tutorName: tutor?.display_name || tutor?.full_name || 'Tutor',
@@ -299,7 +310,15 @@ export function renderSubscriptionReceiptHtml(
       <tr>
         <td style="padding:10px 0 4px;color:#6b7280;font-size:14px;">Monthly class fee</td>
         <td style="padding:10px 0 4px;color:#111827;font-size:14px;text-align:right;">${fmtMoney(d.amount, d.currency)}</td>
-      </tr>
+      </tr>${
+        d.creditsApplied > 0
+          ? `
+      <tr>
+        <td style="padding:4px 0;color:#6b7280;font-size:14px;">iTutor credits applied</td>
+        <td style="padding:4px 0;color:${BRAND_GREEN};font-size:14px;text-align:right;">−${fmtMoney(d.creditsApplied, d.currency)}</td>
+      </tr>`
+          : ''
+      }
       <tr>
         <td style="padding:4px 0;color:#6b7280;font-size:14px;">Processing fee</td>
         <td style="padding:4px 0;color:#111827;font-size:14px;text-align:right;">${fmtMoney(d.processingFee, d.currency)}</td>
@@ -311,11 +330,20 @@ export function renderSubscriptionReceiptHtml(
     </table>
 
     <div style="margin-top:20px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:14px;">
-      <p style="margin:0;font-size:13px;line-height:1.6;color:#374151;">
-        <strong>This is a recurring payment.</strong> You'll be charged
+      <p style="margin:0;font-size:13px;line-height:1.6;color:#374151;">${
+        d.paymentType === 'credit_month'
+          ? `<strong>This is a one-month purchase.</strong> It does not renew. To keep
+        your place after this month, subscribe from the class page.`
+          : d.creditsApplied > 0
+            ? `<strong>This is a recurring payment.</strong> Credits covered part of
+        this month only; from next month you'll be charged the full monthly price
+        until the class ends or you cancel. You can cancel any time from your
+        account — you'll keep access for the period you've already paid for.`
+            : `<strong>This is a recurring payment.</strong> You'll be charged
         ${fmtMoney(d.total, d.currency)} each month until the class ends or you
         cancel. You can cancel any time from your account — you'll keep access
-        for the period you've already paid for.
+        for the period you've already paid for.`
+      }
       </p>
     </div>
 

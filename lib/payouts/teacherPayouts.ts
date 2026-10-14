@@ -20,6 +20,8 @@ import {
   payoutUrgency,
   type PayoutUrgency,
 } from './payoutCycle';
+import { cashPaidTtd } from '@/lib/credits/cash';
+import { isMissingSchema } from '@/lib/supabase/schemaErrors';
 
 export type LessonRowState =
   | 'owed'            // unpaid, goes in the next CSV
@@ -137,11 +139,16 @@ export async function loadTeacherPayouts(
   const ledger = await loadLessonLedger(admin, opts.tutorIds);
 
   const spIds = ledger.map((r) => r.subscription_payment_id);
-  const payments = await selectIn(
-    admin, 'subscription_payments',
-    'id, enrollment_id, group_id, student_id, type, amount_ttd, charged_processing_fee_ttd, paid_at, created_at',
-    'id', spIds
-  );
+  const paymentColumns =
+    'id, enrollment_id, group_id, student_id, type, amount_ttd, charged_processing_fee_ttd, paid_at, created_at';
+  let payments: any[];
+  try {
+    payments = await selectIn(admin, 'subscription_payments', `${paymentColumns}, credits_applied_ttd`, 'id', spIds);
+  } catch (e) {
+    // credits_applied_ttd arrives with migration 268.
+    if (!isMissingSchema({ message: e instanceof Error ? e.message : String(e) })) throw e;
+    payments = await selectIn(admin, 'subscription_payments', paymentColumns, 'id', spIds);
+  }
   const paymentById = new Map(payments.map((p) => [p.id, p]));
 
   const enrollmentIds = payments.map((p) => p.enrollment_id).filter(Boolean);
@@ -221,7 +228,9 @@ export async function loadTeacherPayouts(
       student_name: student?.display_name ?? student?.full_name ?? null,
       class_name: sp?.group_id ? groupById.get(sp.group_id)?.name ?? null : null,
       payment_type: sp?.type ?? null,
-      student_paid_ttd: sp ? round2(Number(sp.amount_ttd ?? 0) + Number(sp.charged_processing_fee_ttd ?? 0)) : null,
+      // What the student's card was charged. The tutor's amount_ttd below is
+      // computed on the full price even when credits paid part of it.
+      student_paid_ttd: sp ? cashPaidTtd(sp) : null,
       amount_ttd: Number(r.amount_ttd ?? 0),
       amount_usd: r.amount_usd == null ? null : Number(r.amount_usd),
       payout_currency: r.payout_currency === 'USD' ? 'USD' : 'TTD',
