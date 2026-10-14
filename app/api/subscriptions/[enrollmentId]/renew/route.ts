@@ -68,6 +68,17 @@ export async function GET(_req: NextRequest, { params }: Params) {
         { status: 409 }
       );
     }
+    // A month bought with credits never renews; subscribing is how to stay.
+    if ((enrollment as any).billing_provider === 'credits') {
+      return NextResponse.json(
+        {
+          error: 'This was a one-month purchase. Subscribe from the class page to keep your place.',
+          billing_provider: 'credits',
+          subscribe_url: `/student/explore/${(enrollment as any).group_id}`,
+        },
+        { status: 409 }
+      );
+    }
 
     // Must be in a renewable/resumable state
     if (!['ACTIVE', 'GRACE', 'SUSPENDED', 'CANCELLED', 'PENDING_PAYMENT'].includes(enrollment.status)) {

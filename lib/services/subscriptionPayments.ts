@@ -12,6 +12,8 @@ import type { SubscriptionPaymentType } from '@/lib/types/groups';
 import { trackForUser } from '@/lib/analytics/track';
 import { PRODUCT_EVENTS } from '@/lib/analytics/events';
 import { recordQualifyingPayment } from '@/lib/credits/qualifyingPayment';
+import { withOptionalCredits } from '@/lib/credits/cash';
+import { commitCredits, releaseCredits, safely } from '@/lib/credits/wallet';
 
 export interface CreatePendingPaymentParams {
   enrollmentId: string;
@@ -96,6 +98,31 @@ export async function expireSubscriptionPayment(
     .eq('status', 'PENDING');
 
   if (error) throw error;
+
+  // Credits reserved for this payment go back — unless they travel on a
+  // Stripe coupon, whose invoice might still be paid (a stale tab). Those are
+  // released by whoever cancels that subscription, or by the nightly job once
+  // Stripe has given up on it. Never throws.
+  try {
+    const { data: row } = await admin
+      .from('subscription_payments')
+      .select('credit_spend_id')
+      .eq('id', paymentId)
+      .maybeSingle();
+    const spendId = (row as { credit_spend_id?: string | null } | null)?.credit_spend_id;
+    if (spendId) {
+      const { data: spend } = await admin
+        .from('credit_ledger')
+        .select('stripe_coupon_id')
+        .eq('id', spendId)
+        .maybeSingle();
+      if (!spend?.stripe_coupon_id) {
+        await safely('release expired checkout', () => releaseCredits(admin, spendId));
+      }
+    }
+  } catch {
+    // credit_spend_id absent before migration 268: nothing was reserved.
+  }
 }
 
 export interface HandleSubscriptionPaymentParams {
@@ -112,7 +139,8 @@ export interface HandleSubscriptionPaymentParams {
   stripePaymentIntentId?: string | null;
   stripeChargeId?: string | null;
   receiptUrl?: string | null;
-  source: 'webhook' | 'finalize';
+  /** 'credits': a credit month paid entirely with credits — no gateway at all. */
+  source: 'webhook' | 'finalize' | 'credits';
 }
 
 export interface SubscriptionReceipt {
@@ -147,27 +175,39 @@ export async function handleSubscriptionPayment(
     source,
   } = params;
 
-  // Fetch the subscription_payment row + enrollment + group
-  const { data: sp, error: spErr } = await admin
-    .from('subscription_payments')
-    .select(`
-      id, enrollment_id, group_id, student_id, payer_id, type,
-      amount_ttd, platform_fee_ttd, tutor_payout_ttd,
-      status, checkout_expires_at, period_start, period_end,
-      enrollment:group_enrollments!enrollment_id (
-        id, status, payment_status, current_period_end,
-        pending_payment_expires_at, group_id,
-        group:groups!group_id (
-          tutor_id, grace_period_days, max_students, name, subject
+  // Fetch the subscription_payment row + enrollment + group. credit_spend_id
+  // arrives with migration 268, so the select retries without it.
+  const { data: sp, error: spErr } = await withOptionalCredits((on) =>
+    admin
+      .from('subscription_payments')
+      .select(`
+        id, enrollment_id, group_id, student_id, payer_id, type,
+        amount_ttd, platform_fee_ttd, tutor_payout_ttd,
+        status, checkout_expires_at, period_start, period_end${on ? ', credit_spend_id' : ''},
+        enrollment:group_enrollments!enrollment_id (
+          id, status, payment_status, current_period_end,
+          pending_payment_expires_at, group_id, billing_provider,
+          group:groups!group_id (
+            tutor_id, grace_period_days, max_students, name, subject
+          )
         )
-      )
-    `)
-    .eq('id', subscriptionPaymentId)
-    .single();
+      `)
+      .eq('id', subscriptionPaymentId)
+      .single()
+  );
 
   if (spErr || !sp) {
     console.error(`[handleSubscriptionPayment] Payment not found: ${subscriptionPaymentId}`, spErr);
     return { ok: false, error: 'subscription_payment_not_found' };
+  }
+
+  // Credits reserved for this payment are spent now — the money (or, for a
+  // credit month, the decision) is confirmed. BEFORE activation and on the
+  // replay path too: if activation then fails the discount has still been
+  // used, and a commit that failed once must be retried by the redelivery.
+  // Idempotent; never throws (the nightly job retries a failure).
+  if (sp.credit_spend_id) {
+    await safely('commit credits', () => commitCredits(admin, sp.credit_spend_id, sp.id));
   }
 
   // Idempotency: already activated
@@ -214,7 +254,26 @@ export async function handleSubscriptionPayment(
   let periodStart: Date;
   let periodEnd: Date;
 
-  if (sp.type === 'subscription_initial') {
+  if (sp.type === 'subscription_initial' && enrollment.status === 'ACTIVE') {
+    // A month bought with credits, now continuing as a subscription — the only
+    // way an ACTIVE enrolment receives an initial payment. The first paid month
+    // starts when the credit month ends, so the student is not charged again
+    // for days credits already covered.
+    //
+    // A SECURED spot continuing is deliberately not in here: on this branch it
+    // still bills from `now`, as it did before credits arrived. Moving it is a
+    // billing change, and it belongs with the secure-spot work, not this port.
+    const heldEnd = enrollment.current_period_end ? new Date(enrollment.current_period_end) : now;
+    periodStart = heldEnd > now ? heldEnd : now;
+    periodEnd = new Date(periodStart);
+    periodEnd.setMonth(periodEnd.getMonth() + 1);
+  } else if (sp.type === 'credit_month') {
+    // One month from now, bought with credits. Never renews: the
+    // process-subscriptions cron completes it when this period ends.
+    periodStart = now;
+    periodEnd = new Date(now);
+    periodEnd.setMonth(periodEnd.getMonth() + 1);
+  } else if (sp.type === 'subscription_initial') {
     periodStart = now;
     periodEnd = new Date(now);
     periodEnd.setMonth(periodEnd.getMonth() + 1);
@@ -242,8 +301,10 @@ export async function handleSubscriptionPayment(
 
   // Always re-check capacity for initial subscriptions at activation time.
   // Guards the TOCTOU race where two students complete checkout simultaneously
-  // against the last remaining slot.
-  if (sp.type === 'subscription_initial') {
+  // against the last remaining slot. A credit month takes a seat the same way.
+  // (The count leaves out this student's own row, so a continuing student is
+  // never counted against their own seat.)
+  if (sp.type === 'subscription_initial' || sp.type === 'credit_month') {
     const group = enrollment.group as any;
     if (group?.max_students) {
       const { count } = await admin
@@ -302,6 +363,17 @@ export async function handleSubscriptionPayment(
     .eq('id', subscriptionPaymentId)
     .neq('status', 'PAID'); // no-op if already set
 
+  // A credit month just converted to a paid subscription: from now on Stripe
+  // bills it. Left as 'credits' until this moment so an abandoned checkout
+  // could not strand the month as a Stripe enrolment Stripe never bills.
+  if (sp.type === 'subscription_initial' && enrollment.billing_provider === 'credits') {
+    await admin
+      .from('group_enrollments')
+      .update({ billing_provider: 'stripe' })
+      .eq('id', sp.enrollment_id)
+      .eq('billing_provider', 'credits');
+  }
+
   const group = (enrollment as any).group as any;
   const receipt: SubscriptionReceipt = {
     amountTtd: sp.amount_ttd,
@@ -339,7 +411,11 @@ export async function handleSubscriptionPayment(
   //
   // Only on the FIRST cycle: a renewal isn't someone joining, and a tutor
   // doesn't want "X joined your class" once a month forever.
-  if (sp.type === 'subscription_initial' || sp.type === 'subscription_reactivation') {
+  if (
+    (sp.type === 'subscription_initial' && enrollment.status !== 'ACTIVE') ||
+    sp.type === 'subscription_reactivation' ||
+    sp.type === 'credit_month'
+  ) {
     const group = (sp as any).enrollment?.group;
     const tutorId = group?.tutor_id;
     if (tutorId) {
@@ -451,11 +527,14 @@ async function markActivationFailed(
   //   initial   → set enrollment to ACTIVATION_FAILED
   //   renewal   → leave enrollment status alone (active access continues)
   //   reactivation → leave as SUSPENDED
-  if (sp.type === 'subscription_initial') {
+  if (sp.type === 'subscription_initial' || sp.type === 'credit_month') {
+    // A student continuing from a credit month (ACTIVE) keeps the month they
+    // already have; the failed payment is for the month after it.
     await admin
       .from('group_enrollments')
       .update({ status: 'ACTIVATION_FAILED', payment_status: 'ACTIVATION_FAILED' })
-      .eq('id', sp.enrollment_id);
+      .eq('id', sp.enrollment_id)
+      .neq('status', 'ACTIVE');
   } else if (sp.type === 'subscription_renewal') {
     await admin
       .from('group_enrollments')

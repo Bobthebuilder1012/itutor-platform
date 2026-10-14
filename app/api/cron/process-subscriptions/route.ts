@@ -11,6 +11,11 @@
 //  4. Send payment reminders (only when within grace window of due date)
 //  5. Enter grace period (overdue)
 //  6. Suspend (grace period elapsed)
+//  7. Complete one-month credit purchases whose month is over
+//
+// Tasks 4–6 skip billing_provider 'credits' (migration 268): a month bought
+// with credits never renews, so there is nothing to remind about, no grace
+// and no suspension — only Task 7, which ends it on time.
 //
 // ?dry_run=true  →  reads DB, returns what WOULD happen, makes zero writes.
 
@@ -303,7 +308,7 @@ export async function GET(req: NextRequest) {
       // Stripe owns the cycle for these — it charges, retries and duns them
       // itself. Running our reminders/grace/suspension against them too would
       // suspend a student while Stripe is still successfully retrying.
-      .neq('billing_provider', 'stripe')
+      .not('billing_provider', 'in', '(stripe,credits)')
       .eq('status', 'ACTIVE')
       .eq('cancel_at_period_end', false)
       .not('next_payment_due_at', 'is', null)
@@ -382,7 +387,7 @@ export async function GET(req: NextRequest) {
       // Stripe owns the cycle for these — it charges, retries and duns them
       // itself. Running our reminders/grace/suspension against them too would
       // suspend a student while Stripe is still successfully retrying.
-      .neq('billing_provider', 'stripe')
+      .not('billing_provider', 'in', '(stripe,credits)')
       .eq('status', 'ACTIVE')
       .eq('cancel_at_period_end', false)
       .lt('next_payment_due_at', nowIso);
@@ -550,7 +555,7 @@ export async function GET(req: NextRequest) {
       // Stripe owns the cycle for these — it charges, retries and duns them
       // itself. Running our reminders/grace/suspension against them too would
       // suspend a student while Stripe is still successfully retrying.
-      .neq('billing_provider', 'stripe')
+      .not('billing_provider', 'in', '(stripe,credits)')
       .eq('status', 'GRACE')
       .eq('cancel_at_period_end', false)
       .lt('grace_period_ends_at', nowIso);
@@ -605,6 +610,73 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     console.error('[cron/process-subscriptions] Task 6 failed:', err);
     results.task6_suspended = { error: String(err) };
+  }
+
+  // ─── TASK 7: Complete finished credit months ──────────────────────
+  // A month bought with credits ends when its period does. The seat is
+  // released (and offered to the waitlist), and the student is invited to
+  // subscribe. A student who already subscribed to continue has been moved
+  // to billing_provider 'stripe' by their first payment, so is not here.
+  try {
+    const { data: finished } = await admin
+      .from('group_enrollments')
+      .select('id, group_id, student_id')
+      .eq('enrollment_type', 'SUBSCRIPTION')
+      .eq('billing_provider', 'credits')
+      .eq('status', 'ACTIVE')
+      .lt('current_period_end', nowIso);
+
+    if (dryRun) {
+      results.task7_credit_months_completed = {
+        would_process: (finished ?? []).length,
+        rows: (finished ?? []).map((e) => ({ enrollment_id: e.id, group_id: e.group_id })),
+      };
+    } else {
+      let completed = 0;
+      const freedGroupIds = new Set<string>();
+
+      for (const e of finished ?? []) {
+        const { data: updated } = await admin
+          .from('group_enrollments')
+          .update({ status: 'COMPLETED', removal_reason: 'credit_month_ended', updated_at: nowIso })
+          .eq('id', e.id)
+          .eq('status', 'ACTIVE')
+          .eq('billing_provider', 'credits')
+          .select('id')
+          .maybeSingle();
+        if (!updated) continue;
+
+        await admin
+          .from('group_members')
+          .update({ status: 'removed' })
+          .eq('group_id', e.group_id)
+          .eq('user_id', e.student_id)
+          .neq('status', 'removed');
+
+        const { data: group } = await admin.from('groups').select('name').eq('id', e.group_id).single();
+        const { error: notifyError } = await admin.from('notifications').insert({
+          user_id: e.student_id,
+          type: 'credit_month_ended',
+          title: 'Your month is over',
+          message: `Your month in "${group?.name ?? 'your class'}" has ended. Subscribe to keep your place.`,
+          link: `/student/explore/${e.group_id}`,
+          group_id: e.group_id,
+        });
+        if (notifyError) console.warn('[cron/process-subscriptions] Task 7 notification failed:', notifyError.message);
+
+        freedGroupIds.add(e.group_id);
+        completed++;
+      }
+
+      for (const gid of freedGroupIds) {
+        await promoteNextFromWaitlist(admin as any, gid);
+      }
+
+      results.task7_credit_months_completed = { processed: completed };
+    }
+  } catch (err) {
+    console.error('[cron/process-subscriptions] Task 7 failed:', err);
+    results.task7_credit_months_completed = { error: String(err) };
   }
 
   // Every task above swallows its own error so one failure cannot stop the

@@ -99,6 +99,21 @@ export async function attachCouponToSpend(
   if (error) throw toCreditError(error);
 }
 
+/** Merge keys into a spend's context (e.g. the subscription it belongs to). */
+export async function noteSpendContext(
+  admin: SupabaseClient,
+  spendId: string,
+  extraContext: Partial<CreditSpendContext> & Record<string, unknown>
+): Promise<void> {
+  const { data: row } = await admin.from('credit_ledger').select('context').eq('id', spendId).maybeSingle();
+  const context = { ...((row?.context as Record<string, unknown>) ?? {}), ...extraContext };
+  const { error } = await admin
+    .from('credit_ledger')
+    .update({ context, updated_at: new Date().toISOString() })
+    .eq('id', spendId);
+  if (error) throw toCreditError(error);
+}
+
 /** Never throws: for release/commit attempts on a path that must not fail. */
 export async function safely<T>(label: string, fn: () => Promise<T>): Promise<T | null> {
   try {

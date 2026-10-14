@@ -18,7 +18,8 @@
     "classlink:verify": "npx ts-node --project scripts/tsconfig.verify.json scripts/verify-class-link.ts",
     "finder:migrate": "npx ts-node scripts/apply-finder-migrations.ts",
     "customerio:migrate": "npx ts-node scripts/apply-customerio-migrations.ts",
-    "customerio:smoke": "npx ts-node --project scripts/tsconfig.scripts.json scripts/customerio-smoke-test.ts"
+    "customerio:smoke": "npx ts-node --project scripts/tsconfig.scripts.json scripts/customerio-smoke-test.ts",
+    "credits:verify": "npx ts-node --project scripts/tsconfig.verify.json scripts/verify-credit-quote.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

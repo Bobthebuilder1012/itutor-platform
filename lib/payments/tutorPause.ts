@@ -18,6 +18,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getStripeClient } from './stripeClient';
+import { removeCreditsFromRenewal } from '@/lib/credits/renewalCredits';
 
 /** Minimum notice before a pause starts, extends, or ends early. */
 export const PAUSE_NOTICE_DAYS = 7;
@@ -367,6 +368,12 @@ export async function activateDuePauses(
 
   for (const row of rows) {
     if (row.stripe_subscription_id) {
+      // Credits set to apply to the next payment come off first: a paused
+      // subscription voids its invoices, which would use up the credit coupon
+      // on an invoice nobody pays. Never throws.
+      await removeCreditsFromRenewal({ admin, enrollmentId: row.id, force: true }).catch((e) =>
+        console.error(`[tutorPause] could not remove renewal credits for ${row.id}:`, e)
+      );
       try {
         const stripe = getStripeClient();
         await stripe.subscriptions.update(row.stripe_subscription_id, {

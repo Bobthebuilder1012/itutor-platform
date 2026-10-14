@@ -35,8 +35,11 @@ export async function POST(request: NextRequest) {
       childId?: string;
       groupId?: string;
       seatType?: string;
+      useCreditsTtd?: unknown;
     };
     const { childId, groupId } = body;
+    // The PARENT's credits toward the child's first month (migration 268).
+    const useCreditsTtd = Number(body.useCreditsTtd) > 0 ? Number(body.useCreditsTtd) : null;
     // Only 'physical' is meaningful here; anything else is online, which is what
     // an online-only class can offer and what every seat was before 242.
     const seatTypeFromBody = body.seatType === 'physical' ? 'physical' : 'online';
@@ -72,6 +75,7 @@ export async function POST(request: NextRequest) {
       payerId: parentProfile.id,
       payerEmail,
       seatType: seatTypeFromBody,
+      useCreditsTtd,
     });
 
     return NextResponse.json(result.body, { status: result.status });
