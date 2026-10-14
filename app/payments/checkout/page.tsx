@@ -33,6 +33,10 @@ type Summary = {
   clientSecret: string;
   statusId: string;
   amount: number;
+  /** Part of `amount` paid with iTutor credits. */
+  creditsApplied?: number;
+  /** A credit month: one month, never renews. */
+  oneMonth?: boolean;
   processingFee: number;
   total: number;
   currency: string;
@@ -122,6 +126,8 @@ export default function PaymentCheckout() {
           clientSecret: d.clientSecret,
           statusId: d.paymentIntentId,
           amount: d.amount,
+          creditsApplied: Number(d.creditsApplied ?? 0),
+          oneMonth: d.oneMonth === true,
           processingFee: d.processingFee,
           total: d.total,
           currency: d.currency,
@@ -597,14 +603,26 @@ export default function PaymentCheckout() {
                   <span className="text-gray-600">
                     {summary.isSecureSpot
                       ? `${summary.subject} — ${summary.shortClass ? 'full class' : 'first month'}`
-                      : summary.isSubscription
-                        ? `${summary.subject} — monthly`
-                        : `${summary.durationMinutes}-min lesson`}
+                      : summary.oneMonth
+                        ? `${summary.subject} — one month`
+                        : summary.isSubscription
+                          ? `${summary.subject} — monthly`
+                          : `${summary.durationMinutes}-min lesson`}
                   </span>
                   <span className="text-gray-900">
                     ${summary.amount.toFixed(2)} {summary.currency}
                   </span>
                 </div>
+                {summary.creditsApplied && summary.creditsApplied > 0 ? (
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">
+                      iTutor credits{summary.isSubscription && !summary.oneMonth ? ' (this month only)' : ''}
+                    </span>
+                    <span className="text-itutor-green">
+                      −${summary.creditsApplied.toFixed(2)} {summary.currency}
+                    </span>
+                  </div>
+                ) : null}
                 {/* One line, every payment type. The card/conversion/fixed
                     split is Stripe's internal arithmetic, not something a
                     student is buying, and itemising it made a small preorder

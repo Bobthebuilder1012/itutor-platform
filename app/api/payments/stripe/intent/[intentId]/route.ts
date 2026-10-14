@@ -21,6 +21,7 @@ import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { getStripeClient, centsToTtd } from '@/lib/payments/stripeClient';
 import { calculateGrossAmountForProvider } from '@/lib/payments/grossUp';
+import { cashBaseTtd, creditsAppliedTtd, creditsCol, withOptionalCredits } from '@/lib/credits/cash';
 import { firstUpcomingSession, computeReleaseDate, isShortClass } from '@/lib/payments/secureSpot';
 import type { SessionPattern } from '@/lib/utils/scheduleFormat';
 
@@ -110,11 +111,15 @@ export async function GET(
         { auth: { autoRefreshToken: false, persistSession: false } }
       );
 
-      const { data: sp } = await admin
-        .from('subscription_payments')
-        .select('id, enrollment_id, group_id, student_id, payer_id, amount_ttd, charged_processing_fee_ttd')
-        .eq('stripe_payment_intent_id', intentId)
-        .maybeSingle();
+      // credits_applied_ttd comes from our row too: an invoice's PaymentIntent
+      // carries no metadata, so Stripe can't tell us what credits covered.
+      const { data: sp } = await withOptionalCredits((on) =>
+        admin
+          .from('subscription_payments')
+          .select('id, type, enrollment_id, group_id, student_id, payer_id, amount_ttd, charged_processing_fee_ttd' + creditsCol(on))
+          .eq('stripe_payment_intent_id', intentId)
+          .maybeSingle()
+      );
 
       if (!sp) {
         return NextResponse.json({ error: 'Not a checkout payment' }, { status: 400 });
@@ -173,6 +178,7 @@ export async function GET(
 
       const base = Number(sp.amount_ttd ?? 0);
       const fee = Number(sp.charged_processing_fee_ttd ?? 0);
+      const credits = creditsAppliedTtd(sp);
 
       return NextResponse.json({
         kind: 'group_subscription',
@@ -180,8 +186,12 @@ export async function GET(
         clientSecret: intent.client_secret,
         paymentIntentId: intent.id,
         amount: base,
+        // Paid with iTutor credits; the card is charged on the rest.
+        creditsApplied: credits,
+        // A credit month is one month that never renews.
+        oneMonth: sp.type === 'credit_month',
         processingFee: fee,
-        feeBreakdown: feeBreakdownFor(base, fee),
+        feeBreakdown: feeBreakdownFor(cashBaseTtd(sp), fee),
         total: centsToTtd(intent.amount),
         currency: 'TTD',
         durationMinutes: group?.session_length_minutes ?? null,

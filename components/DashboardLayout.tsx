@@ -288,6 +288,9 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/admin/payments', label: 'Payments Overview', icon: icons.creditCard },
           { href: '/admin/payments/one-on-one', label: 'One-on-One Payments', icon: icons.creditCard },
           { href: '/admin/lesson-payments', label: 'Lesson Payments', icon: icons.banknote },
+          // Company-funded TT$ credits: the referral programme's settings,
+          // totals and fraud review (migration 268).
+          { href: '/admin/referrals', label: 'Referral Credits', icon: icons.sparkles },
           { href: '/admin/tutor-commissions', label: 'Tutor Commissions', icon: icons.banknote },
           { href: '/admin/payouts', label: 'Payouts', icon: icons.banknote },
           { href: '/admin/payout-cases', label: 'Payout Cases', icon: icons.banknote },

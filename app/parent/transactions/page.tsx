@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
+import { cashBaseTtd, creditsCol, withOptionalCredits } from '@/lib/credits/cash';
 import ParentShell from '@/components/parent/ParentShell';
 
 type TxnRow = {
@@ -57,19 +58,22 @@ function TransactionsContent() {
 
       if (!enrollmentIds.length) { setLoading(false); return; }
 
-      const { data: payments } = await supabase
-        .from('subscription_payments')
-        .select('id, enrollment_id, amount_ttd, status, created_at')
-        .in('enrollment_id', enrollmentIds)
-        .order('created_at', { ascending: false })
-        .limit(100);
+      const { data: payments } = await withOptionalCredits((on) =>
+        supabase
+          .from('subscription_payments')
+          .select('id, enrollment_id, amount_ttd, status, created_at' + creditsCol(on))
+          .in('enrollment_id', enrollmentIds)
+          .order('created_at', { ascending: false })
+          .limit(100)
+      );
 
       const rows: TxnRow[] = (payments ?? []).map((p: any) => {
         const info = enrollMap.get(p.enrollment_id);
         return {
           id: p.id,
           student_name: info ? (childMap.get(info.student_id) ?? 'Child') : 'Child',
-          amount_ttd: Number(p.amount_ttd ?? 0),
+          // Cash only: the part iTutor credits covered was not paid by you.
+          amount_ttd: cashBaseTtd(p),
           status: p.status ?? 'PENDING',
           created_at: p.created_at,
           enrollment_id: p.enrollment_id,
