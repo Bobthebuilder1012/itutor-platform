@@ -9,6 +9,7 @@ import {
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { calculateGrossAmountForProvider } from '@/lib/payments/grossUp';
 import { cn } from '@/lib/utils';
+import RenewalCreditsControl from '@/components/credits/RenewalCreditsControl';
 
 type Subscription = {
   id: string;
@@ -494,6 +495,15 @@ function SubscriptionCard({ sub, onCancel, onUndo, onSeatChanged, actionLoading 
             )}
           </div>
         )}
+
+        {/* iTutor credits toward the next renewal (migration 268). Renders
+            nothing for a student with no credits. */}
+        <RenewalCreditsControl
+          enrollmentId={sub.id}
+          billingProvider={sub.billing_provider}
+          status={sub.status}
+          cancelling={sub.cancel_at_period_end}
+        />
 
         {/* Actions */}
         <div className="flex items-center gap-2.5 flex-wrap">

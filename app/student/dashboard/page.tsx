@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 import ReliabilityPanel from '@/components/reliability/ReliabilityPanel';
 import CampaignDashboardBanner from '@/components/classMatchWeek/CampaignDashboardBanner';
 import CampaignJoinCard from '@/components/classMatchWeek/CampaignJoinCard';
+import DashboardRewardsCard from '@/components/credits/DashboardRewardsCard';
 
 type RecentTutor = {
   tutorId: string;
@@ -211,6 +212,11 @@ export default function StudentDashboard() {
           </div>
         )}
       </div>
+
+      {/* iTutor credits: balance and the referral link. Nothing until the
+          programme is live or there is a balance. On a phone this is also the
+          way to Rewards, which the five-slot bottom bar leaves out. */}
+      <DashboardRewardsCard />
 
       {/* Next session hero */}
       {nextSession && (
