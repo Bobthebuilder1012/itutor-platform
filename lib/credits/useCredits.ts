@@ -67,7 +67,9 @@ export function useCredits(mode: Mode = 'lite', enabled = true) {
   useEffect(() => {
     if (!enabled) return;
     void refresh(false);
-    const onInvalidate = () => void refresh(true);
+    // The cache was just cleared, so the first hook to react fetches and the
+    // rest share its in-flight request instead of each forcing their own.
+    const onInvalidate = () => void refresh(false);
     listeners.add(onInvalidate);
     return () => {
       listeners.delete(onInvalidate);
