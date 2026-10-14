@@ -1470,8 +1470,9 @@ async function handleInvoicePaid(
     } else {
       baseTtd = baseFromGrossForProvider(paidTtd, 'stripe');
       // Paid LESS than this subscription normally costs, and nothing we know
-      // explains it. Recorded as before, but held up for an admin: the tutor's
-      // share was just computed from a discount we cannot account for.
+      // explains it. Recorded and activated as before (the student keeps
+      // access), but flagged for an admin: the tutor's share was just computed
+      // from a discount we cannot account for.
       const expectedCents = Number.isFinite(recurringCents) ? recurringCents : firstGrossCents;
       mismatch = expectedCents !== null && paidCents < expectedCents - 1;
     }
