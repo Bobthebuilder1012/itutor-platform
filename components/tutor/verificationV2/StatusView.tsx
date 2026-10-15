@@ -68,6 +68,20 @@ export default function StatusView({ state, onBegin }: Props) {
         </Card>
       );
 
+    case 'REVERIFICATION_REQUIRED':
+      return (
+        <Card className="border-blue-200 bg-blue-50">
+          <h2 className="text-xl font-bold text-blue-900">Please verify again</h2>
+          <p className="mt-2 text-sm text-blue-900">
+            We have asked you to verify again. This is not a rejection. Check your details, add anything
+            that is missing and submit for review.
+          </p>
+          <div className="mt-5">
+            <PrimaryButton onClick={onBegin}>Start reverification</PrimaryButton>
+          </div>
+        </Card>
+      );
+
     case 'REVOKED':
       return (
         <Card className="border-red-200 bg-red-50">

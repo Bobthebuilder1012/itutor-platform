@@ -33,12 +33,13 @@ export interface VerificationRow {
   identity_error_code: string | null;
   identity_attempts: number;
   identity_verified_at: string | null;
+  identity_session_history: string[] | null;
   submitted_at: string | null;
   decision_reason: string | null;
 }
 
 const ROW_COLUMNS =
-  'tutor_id, status, consent_at, consent_version, stripe_identity_session_id, identity_status, identity_error_code, identity_attempts, identity_verified_at, submitted_at, decision_reason';
+  'tutor_id, status, consent_at, consent_version, stripe_identity_session_id, identity_status, identity_error_code, identity_attempts, identity_verified_at, identity_session_history, submitted_at, decision_reason';
 
 export function notFound() {
   return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -52,8 +53,8 @@ export function notFound() {
  * back to "in review". The wall is also in lib/verification/transitions.ts.
  */
 export async function guardV2(opts: { allowRevoked?: boolean } = {}): Promise<
-  | { error: NextResponse; tutorId?: undefined; db?: undefined; revoked?: undefined }
-  | { error: null; tutorId: string; db: Db; revoked: boolean }
+  | { error: NextResponse; tutorId?: undefined; db?: undefined; revoked?: undefined; profileStatus?: undefined }
+  | { error: null; tutorId: string; db: Db; revoked: boolean; profileStatus: string | null }
 > {
   if (!isVerificationV2Enabled()) return { error: notFound() };
   const auth = await requireTutor();
@@ -69,7 +70,13 @@ export async function guardV2(opts: { allowRevoked?: boolean } = {}): Promise<
       ),
     };
   }
-  return { error: null, tutorId: auth.user.id, db: getServiceClient() as Db, revoked };
+  return {
+    error: null,
+    tutorId: auth.user.id,
+    db: getServiceClient() as Db,
+    revoked,
+    profileStatus: auth.profile?.tutor_verification_status ?? null,
+  };
 }
 
 export async function loadRow(db: Db, tutorId: string): Promise<VerificationRow | null> {
@@ -83,7 +90,12 @@ export async function loadRow(db: Db, tutorId: string): Promise<VerificationRow 
 }
 
 export function isEditable(row: VerificationRow | null): boolean {
-  return !row || row.status === 'IN_PROGRESS' || row.status === 'REJECTED';
+  return (
+    !row ||
+    row.status === 'IN_PROGRESS' ||
+    row.status === 'REJECTED' ||
+    row.status === 'REVERIFICATION_REQUIRED'
+  );
 }
 
 /** Step 1 done. */
@@ -193,8 +205,9 @@ export function buildState(
   row: VerificationRow | null,
   credentials: CredentialDto[],
   extras: ExtraDto[],
-  revokedProfile = false
+  profileStatus: string | null = null
 ): VerificationV2StateDto {
+  const revokedProfile = profileStatus === 'REVOKED';
   const identityStatus = row?.identity_status ?? null;
   const attempts = row?.identity_attempts ?? 0;
   const manualPath = !!identityStatus && MANUAL_IDENTITY_STATUSES.includes(identityStatus);
@@ -206,7 +219,15 @@ export function buildState(
 
   // A teacher whose PROFILE is revoked is revoked here too, whatever the v2
   // row says (or whether it exists), and cannot edit.
-  const status = revokedProfile ? 'REVOKED' : (row?.status ?? 'NOT_STARTED');
+  // An admin asked this teacher to verify again (profile status). It shows until
+  // they submit, after which the v2 row's own IN_REVIEW takes over.
+  const reverify =
+    profileStatus === 'REVERIFICATION_REQUIRED' && (!row || row.status !== 'IN_REVIEW');
+  const status: VerificationV2StateDto['status'] = revokedProfile
+    ? 'REVOKED'
+    : reverify
+      ? 'REVERIFICATION_REQUIRED'
+      : (row?.status ?? 'NOT_STARTED');
 
   return {
     status,
@@ -235,14 +256,14 @@ export function buildState(
 export async function loadState(
   db: Db,
   tutorId: string,
-  revokedProfile = false
+  profileStatus: string | null = null
 ): Promise<VerificationV2StateDto> {
   let row = await loadRow(db, tutorId);
   // A revoked teacher's state is read-only: do not call Stripe on their behalf.
-  if (row && !revokedProfile) row = await refreshIdentityFromStripe(db, row);
+  if (row && profileStatus !== 'REVOKED') row = await refreshIdentityFromStripe(db, row);
   const [credentials, extras] = await Promise.all([
     loadCredentials(db, tutorId),
     loadExtras(db, tutorId),
   ]);
-  return buildState(row, credentials, extras, revokedProfile);
+  return buildState(row, credentials, extras, profileStatus);
 }

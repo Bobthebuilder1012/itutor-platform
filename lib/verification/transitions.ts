@@ -47,10 +47,14 @@ const REVOKE = '__revoke__' as unknown as VerificationActor[];
 const MAPS: Record<TransitionEntity, Edges> = {
   profile: {
     UNVERIFIED: { PENDING: ['tutor'], VERIFIED: STAFF, REJECTED: STAFF },
-    PENDING: { PROCESSING: ['system'], VERIFIED: STAFF, REJECTED: STAFF },
-    PROCESSING: { PENDING: ['system'], VERIFIED: STAFF, REJECTED: STAFF },
-    VERIFIED: { REVOKED: REVOKE },
+    PENDING: { PROCESSING: ['system'], VERIFIED: STAFF, REJECTED: STAFF, REVERIFICATION_REQUIRED: ['admin'] },
+    PROCESSING: { PENDING: ['system'], VERIFIED: STAFF, REJECTED: STAFF, REVERIFICATION_REQUIRED: ['admin'] },
+    VERIFIED: { REVOKED: REVOKE, REVERIFICATION_REQUIRED: ['admin'] },
     REJECTED: { PENDING: ['tutor'], VERIFIED: STAFF },
+    // An admin asked this teacher to verify again. Distinct from REJECTED (a
+    // decision on an application) and REVOKED (verification taken away). The
+    // teacher resubmits; staff then approve or reject as normal.
+    REVERIFICATION_REQUIRED: { PENDING: ['tutor'], PROCESSING: ['system'], VERIFIED: STAFF, REJECTED: STAFF },
     REVOKED: {},
   },
   request: {
@@ -69,10 +73,13 @@ const MAPS: Record<TransitionEntity, Edges> = {
     REJECTED: { APPROVED: ['admin'] }, // admin re-evaluation, as the approve route allows today
   },
   v2: {
-    IN_PROGRESS: { IN_REVIEW: ['tutor'] },
-    IN_REVIEW: { VERIFIED: STAFF, REJECTED: STAFF },
-    VERIFIED: { REVOKED: REVOKE },
-    REJECTED: { IN_REVIEW: ['tutor'] },
+    IN_PROGRESS: { IN_REVIEW: ['tutor'], REVERIFICATION_REQUIRED: ['admin'] },
+    IN_REVIEW: { VERIFIED: STAFF, REJECTED: STAFF, REVERIFICATION_REQUIRED: ['admin'] },
+    VERIFIED: { REVOKED: REVOKE, REVERIFICATION_REQUIRED: ['admin'] },
+    REJECTED: { IN_REVIEW: ['tutor'], REVERIFICATION_REQUIRED: ['admin'] },
+    // TODO(policy, undecided): whether a teacher sent back here must redo the
+    // Stripe ID check. Today a passed check stays passed (it is never downgraded).
+    REVERIFICATION_REQUIRED: { IN_REVIEW: ['tutor'] },
     REVOKED: {},
   },
   identity: {

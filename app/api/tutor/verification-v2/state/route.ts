@@ -14,7 +14,7 @@ export async function GET() {
   if (g.error) return g.error;
 
   try {
-    const state = await loadState(g.db, g.tutorId, g.revoked);
+    const state = await loadState(g.db, g.tutorId, g.profileStatus);
     return NextResponse.json(state, { headers: { 'Cache-Control': 'no-store' } });
   } catch (err) {
     console.error('[verification-v2/state] failed:', (err as Error).message);

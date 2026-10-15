@@ -5,7 +5,8 @@ export type VerificationV2Status =
   | 'IN_REVIEW'
   | 'VERIFIED'
   | 'REJECTED'
-  | 'REVOKED';
+  | 'REVOKED'
+  | 'REVERIFICATION_REQUIRED';
 
 /** What the page shows. NOT_STARTED means no row exists yet. */
 export type VerificationV2FlowStatus = 'NOT_STARTED' | VerificationV2Status;
