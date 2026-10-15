@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
-import { createClient } from '@supabase/supabase-js';
+import { isRuleRefusal, setProfileStatus } from '@/lib/verification/setStatus';
 
 export const dynamic = 'force-dynamic';
 
@@ -74,6 +74,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // A revoked teacher cannot resubmit through this flow. The same wall is in
+    // the transition map (lib/verification/transitions.ts); this stops it before
+    // a request row and an upload URL are created for nothing.
+    if (profile.tutor_verification_status === 'REVOKED') {
+      return NextResponse.json(
+        {
+          error: 'Your verification was revoked. Please contact support.',
+          code: 'locked_revoked',
+        },
+        { status: 403 }
+      );
+    }
+
     // Create verification request record
     const requestId = crypto.randomUUID();
     const filePath = `${user.id}/${requestId}/${originalFilename}`;
@@ -99,32 +112,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Update profile status to PENDING.
-    // Service role, not `supabase`: migration 217 guards
-    // tutor_verification_status against every authenticated request, because
-    // the same unrestricted profiles policy would otherwise let a tutor write
-    // VERIFIED onto themselves and appear verified in search. A tutor may ask
-    // to be verified; they may not declare it. The row is the caller's own and
-    // the caller is authenticated above, so nothing widens here but the writer.
-    const service = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      { auth: { autoRefreshToken: false, persistSession: false } }
-    );
-
-    const { error: statusError } = await service
-      .from('profiles')
-      .update({ tutor_verification_status: 'PENDING' })
-      .eq('id', user.id);
-
-    // Not fatal — the request row exists and the upload can still proceed. But
-    // this result was discarded before, which is how the status could sit stale
-    // with nothing anywhere saying why.
-    if (statusError) {
-      console.error(
-        '[verification/request] could not set tutor_verification_status:',
-        statusError.message
-      );
+    // Ask to be verified: profile status -> PENDING, through the one status
+    // function (service role inside; migration 217 refuses anyone else). A
+    // tutor may ask to be verified; they may not declare it.
+    //
+    // The map only allows this from UNVERIFIED or REJECTED. For a teacher who
+    // is already VERIFIED or mid-review it is refused, and that is correct: a
+    // new upload must not drop a verified teacher back to PENDING (it used to).
+    // The request row still exists, so a refusal is skipped, not fatal.
+    const asked = await setProfileStatus({ tutorId: user.id, to: 'PENDING', actor: 'tutor' });
+    let statusWarning: string | null = null;
+    if (!asked.ok && !isRuleRefusal(asked)) {
+      // A real fault, not a rule. The upload can still proceed, but it is
+      // returned to the caller instead of being discarded.
+      console.error('[verification/request] could not set tutor_verification_status:', asked.message);
+      statusWarning = 'Your request was saved but your status could not be updated.';
     }
 
     // Generate signed upload URL
@@ -157,6 +159,7 @@ export async function POST(request: NextRequest) {
       uploadUrl: uploadData.signedUrl,
       uploadPath: filePath,
       message: 'Verification request created. Please upload your document.',
+      ...(statusWarning ? { warning: statusWarning } : {}),
     });
   } catch (error: any) {
     console.error('Verification request error:', error);

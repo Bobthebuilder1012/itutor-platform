@@ -1,15 +1,16 @@
 // =====================================================
 // APPROVE VERIFICATION REQUEST (ADMIN)
 // =====================================================
-// Admin approves verification request and updates tutor status
+// Admin approves verification request and updates tutor status.
+// Status changes go through lib/verification/decide.ts (allowed-transition map).
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/middleware/adminAuth';
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
 import { getServiceClient } from '@/lib/supabase/server';
 import { sendEmail } from '@/lib/services/emailService';
 import { verificationCongratulationsEmail } from '@/lib/email-templates/tutor';
+import { applyRequestDecision, decisionActor } from '@/lib/verification/decide';
+import { statusErrorResponse } from '@/lib/verification/setStatus';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,29 +21,21 @@ export async function POST(
   const auth = await requireAdmin();
   if (auth.error) return auth.error;
 
-  const cookieStore = cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
-        },
-      },
-    }
-  );
+  const serviceSupabase = getServiceClient();
   const requestId = params.id;
 
   try {
-    // Get verification request
-    const { data: verificationRequest, error: fetchError } = await supabase
+    const { data: verificationRequest, error: fetchError } = await serviceSupabase
       .from('tutor_verification_requests')
       .select('tutor_id, status')
       .eq('id', requestId)
-      .single();
+      .maybeSingle();
 
-    if (fetchError || !verificationRequest) {
+    if (fetchError) {
+      console.error('Error loading request:', fetchError);
+      return NextResponse.json({ error: 'Could not load the request' }, { status: 500 });
+    }
+    if (!verificationRequest) {
       return NextResponse.json({ error: 'Verification request not found' }, { status: 404 });
     }
 
@@ -51,89 +44,69 @@ export async function POST(
     }
 
     // Check if any verified subjects were added
-    const { data: verifiedSubjects, error: subjectsError } = await supabase
+    const { data: verifiedSubjects, error: subjectsError } = await serviceSupabase
       .from('tutor_verified_subjects')
       .select('id')
       .eq('source_request_id', requestId);
 
-    if (subjectsError || !verifiedSubjects || verifiedSubjects.length === 0) {
+    if (subjectsError) {
+      console.error('Error checking verified subjects:', subjectsError);
+      return NextResponse.json({ error: 'Could not check the verified subjects' }, { status: 500 });
+    }
+    if (!verifiedSubjects || verifiedSubjects.length === 0) {
       return NextResponse.json(
         { error: 'Cannot approve: No verified subjects added to this request' },
         { status: 400 }
       );
     }
 
-    const now = new Date().toISOString();
+    const result = await applyRequestDecision({
+      requestId,
+      decision: 'APPROVE',
+      actor: decisionActor(auth.profile!),
+      reviewerId: auth.profile!.id,
+      db: serviceSupabase,
+    });
+    if (!result.ok) return statusErrorResponse(result, result.partial ? { partial: true } : {});
 
-    // Update verification request status
-    const { error: updateRequestError } = await supabase
-      .from('tutor_verification_requests')
-      .update({
-        status: 'APPROVED',
-        reviewer_decision: 'APPROVE',
-        reviewed_by: auth.profile!.id,
-        reviewed_at: now
-      })
-      .eq('id', requestId);
+    // Notification for the tutor. The status change is already saved, so a
+    // failure here is reported in the response rather than undoing it.
+    const { error: notificationError } = await serviceSupabase.from('notifications').insert({
+      user_id: result.tutorId,
+      type: 'VERIFICATION_APPROVED',
+      message: 'Your verification has been approved! You are now a verified tutor.',
+      data: { request_id: requestId },
+    });
+    if (notificationError) console.error('Failed to create notification:', notificationError.message);
 
-    if (updateRequestError) {
-      console.error('Error updating request:', updateRequestError);
-      return NextResponse.json({ error: 'Failed to approve request' }, { status: 500 });
-    }
-
-    // Update tutor profile verification status (service role so it always succeeds regardless of RLS)
-    const serviceSupabase = getServiceClient();
-    const { error: updateProfileError } = await serviceSupabase
-      .from('profiles')
-      .update({
-        tutor_verification_status: 'VERIFIED',
-        tutor_verified_at: now
-      })
-      .eq('id', verificationRequest.tutor_id);
-
-    if (updateProfileError) {
-      console.error('Error updating profile:', updateProfileError);
-      return NextResponse.json({ error: 'Failed to update tutor status' }, { status: 500 });
-    }
-
-    // Create notification for tutor
-    await supabase
-      .from('notifications')
-      .insert({
-        user_id: verificationRequest.tutor_id,
-        type: 'VERIFICATION_APPROVED',
-        message: 'Your verification has been approved! You are now a verified tutor.',
-        data: { request_id: requestId }
-      });
-
-    // Send congratulations email to tutor
+    // Congratulations email (existing behaviour, unchanged)
     const { data: tutorProfile } = await serviceSupabase
       .from('profiles')
       .select('email, full_name')
-      .eq('id', verificationRequest.tutor_id)
-      .single();
+      .eq('id', result.tutorId)
+      .maybeSingle();
 
     if (tutorProfile?.email) {
       const firstName = tutorProfile.full_name?.split(' ')[0] || 'there';
       const template = verificationCongratulationsEmail(firstName);
-      const result = await sendEmail({
+      const emailResult = await sendEmail({
         to: tutorProfile.email,
         subject: template.subject,
         html: template.html,
-          text: template.text,
+        text: template.text,
       });
-      if (!result.success) {
-        console.error('Failed to send verification congratulations email:', result.error);
+      if (!emailResult.success) {
+        console.error('Failed to send verification congratulations email:', emailResult.error);
       }
     }
 
     return NextResponse.json({
       message: 'Verification request approved successfully',
-      tutor_status: 'VERIFIED'
+      tutor_status: 'VERIFIED',
+      ...(notificationError ? { notification_error: true } : {}),
     });
   } catch (error) {
     console.error('Exception approving verification:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
-

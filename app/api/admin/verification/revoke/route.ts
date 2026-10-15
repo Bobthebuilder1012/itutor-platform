@@ -1,13 +1,15 @@
 // =====================================================
 // REVOKE TUTOR VERIFICATION (ADMIN)
 // =====================================================
-// Admin can revoke a tutor's verified status
+// The only way to take verified status away. Writes REVOKED (it used to write
+// REJECTED). Who may do it is config/verificationPolicy.ts (admin role only).
+// A revoked teacher cannot be moved back by any upload or review flow.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/middleware/adminAuth';
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
 import { getServiceClient } from '@/lib/supabase/server';
+import { decisionActor } from '@/lib/verification/decide';
+import { setProfileStatus, setV2Status, statusErrorResponse } from '@/lib/verification/setStatus';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,103 +18,89 @@ export async function POST(request: NextRequest) {
     const auth = await requireAdmin();
     if (auth.error) return auth.error;
 
-    const cookieStore = cookies();
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value;
-          },
-        },
-      }
-    );
-
-    const body = await request.json();
-    const { tutor_id, reason } = body;
+    const body = await request.json().catch(() => ({}));
+    const tutor_id: string | undefined = body?.tutor_id;
+    const reason = typeof body?.reason === 'string' ? body.reason.trim() : '';
 
     if (!tutor_id) {
       return NextResponse.json({ error: 'tutor_id is required' }, { status: 400 });
     }
-
-    if (!reason || reason.trim().length === 0) {
+    if (!reason) {
       return NextResponse.json({ error: 'Reason is required' }, { status: 400 });
     }
 
-    // Verify tutor exists and is verified
-    const { data: tutor, error: tutorError } = await supabase
+    const serviceSupabase = getServiceClient();
+    const actor = decisionActor(auth.profile!);
+
+    const { data: tutor, error: tutorError } = await serviceSupabase
       .from('profiles')
-      .select('id, full_name, tutor_verification_status')
+      .select('id')
       .eq('id', tutor_id)
       .eq('role', 'tutor')
-      .single();
+      .maybeSingle();
 
-    if (tutorError || !tutor) {
+    if (tutorError) {
       console.error('Tutor lookup error:', tutorError);
+      return NextResponse.json({ error: 'Could not look up the tutor' }, { status: 500 });
+    }
+    if (!tutor) {
       return NextResponse.json({ error: 'Tutor not found' }, { status: 404 });
     }
 
-    if (tutor.tutor_verification_status !== 'VERIFIED') {
-      return NextResponse.json({ error: 'Tutor is not verified' }, { status: 400 });
+    // VERIFIED -> REVOKED. The map refuses anything else, and refuses a
+    // non-admin actor (policy), with a clear code.
+    const revoked = await setProfileStatus({ tutorId: tutor_id, to: 'REVOKED', actor, db: serviceSupabase });
+    if (!revoked.ok) return statusErrorResponse(revoked);
+
+    // Keep the new flow consistent: a verified v2 record is revoked with it.
+    const warnings: string[] = [];
+    const v2 = await setV2Status({
+      tutorId: tutor_id,
+      to: 'REVOKED',
+      actor,
+      reviewerId: auth.profile!.id,
+      reason,
+      db: serviceSupabase,
+    });
+    if (!v2.ok && v2.code !== 'not_found' && v2.code !== 'transition_not_allowed') {
+      console.error('[revoke] v2 record not revoked:', v2.message);
+      warnings.push('The new-flow record could not be revoked.');
     }
 
-    const serviceSupabase = getServiceClient();
-
-    // Update tutor profile to remove verified status (service role so it always succeeds)
-    const { error: updateProfileError } = await serviceSupabase
-      .from('profiles')
-      .update({
-        tutor_verification_status: 'REJECTED',
-        tutor_verified_at: null
-      })
-      .eq('id', tutor_id);
-
-    if (updateProfileError) {
-      console.error('Error updating profile:', updateProfileError);
-      return NextResponse.json({ error: 'Failed to revoke verification' }, { status: 500 });
+    // Hide every public verified subject. A failure is returned, not logged away.
+    const { error: hideError } = await serviceSupabase
+      .from('tutor_verified_subjects')
+      .update({ is_public: false })
+      .eq('tutor_id', tutor_id);
+    if (hideError) {
+      console.error('[revoke] could not hide verified subjects:', hideError.message);
+      return NextResponse.json(
+        {
+          error: 'Verification was revoked but the public subjects could not be hidden. Retry the hide step.',
+          partial: true,
+        },
+        { status: 500 }
+      );
     }
 
-    // Hide all verified subjects (set is_public to false)
-    try {
-      await serviceSupabase
-        .from('tutor_verified_subjects')
-        .update({ is_public: false })
-        .eq('tutor_id', tutor_id);
-    } catch (e) {
-      console.log('tutor_verified_subjects update skipped:', e);
-    }
-
-    // Create notification for tutor
-    try {
-      await serviceSupabase
-        .from('notifications')
-        .insert({
-          user_id: tutor_id,
-          type: 'VERIFICATION_REVOKED',
-          message: 'Your verification status has been revoked. Please contact support for more information.',
-          data: { 
-            reason,
-            revoked_by: auth.profile!.id
-          }
-        });
-    } catch (e) {
-      // Notification failed but revocation succeeded
-      console.error('Failed to create notification:', e);
-    }
+    const { error: notificationError } = await serviceSupabase.from('notifications').insert({
+      user_id: tutor_id,
+      type: 'VERIFICATION_REVOKED',
+      message: 'Your verification status has been revoked. Please contact support for more information.',
+      data: { reason, revoked_by: auth.profile!.id },
+    });
+    if (notificationError) console.error('Failed to create notification:', notificationError.message);
 
     return NextResponse.json({
       message: 'Verification revoked successfully',
       tutor_id,
       reason,
-      success: true
+      success: true,
+      ...(warnings.length ? { warnings } : {}),
+      ...(notificationError ? { notification_error: true } : {}),
     });
   } catch (error) {
     console.error('Exception revoking verification:', error);
-    return NextResponse.json({ 
-      error: 'Internal server error', 
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
-

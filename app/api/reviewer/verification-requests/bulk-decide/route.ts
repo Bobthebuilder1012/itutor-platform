@@ -5,8 +5,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
-import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
+import { getServiceClient } from '@/lib/supabase/server';
+import { applyRequestDecision, decisionActor } from '@/lib/verification/decide';
 import { sendEmail } from '@/lib/services/emailService';
 import { verificationCongratulationsEmail } from '@/lib/email-templates/tutor';
 import { isEmailManagementOnlyAdmin } from '@/lib/auth/adminAccess';
@@ -87,10 +88,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Use service role for bulk operations
-    const serviceSupabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    const serviceSupabase = getServiceClient();
 
     // Get all verification requests
     const { data: requests, error: requestsError } = await serviceSupabase
@@ -146,38 +144,26 @@ export async function POST(request: NextRequest) {
         // Determine reason to use
         const reasonToUse = global_reviewer_reason || req.system_reason || null;
 
-        // Update verification request
-        const { error: updateError } = await serviceSupabase
-          .from('tutor_verification_requests')
-          .update({
-            status: decision === 'APPROVE' ? 'APPROVED' : 'REJECTED',
-            reviewed_by: user.id,
-            reviewer_decision: decision,
-            reviewer_reason: reasonToUse,
-            reviewed_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', req.id);
+        // Request + teacher status change through the allowed-transition map.
+        // A refused change (verified teacher, revoked teacher) is reported as
+        // this item's failure and the rest of the batch continues. The profile
+        // write used to be ignored here.
+        const decided = await applyRequestDecision({
+          requestId: req.id,
+          decision,
+          actor: decisionActor(profile),
+          reviewerId: user.id,
+          reason: reasonToUse,
+          db: serviceSupabase,
+        });
 
-        if (updateError) {
+        if (!decided.ok) {
           results.failed.push({
             requestId: req.id,
-            error: updateError.message,
+            error: decided.message,
           });
           continue;
         }
-
-        // Update tutor profile
-        const newProfileStatus =
-          decision === 'APPROVE' ? 'VERIFIED' : 'REJECTED';
-        await serviceSupabase
-          .from('profiles')
-          .update({
-            tutor_verification_status: newProfileStatus,
-            tutor_verified_at:
-              decision === 'APPROVE' ? new Date().toISOString() : null,
-          })
-          .eq('id', req.tutor_id);
 
         // Create notification
         const notificationMessage =

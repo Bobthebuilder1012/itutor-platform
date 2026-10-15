@@ -32,6 +32,17 @@ export async function POST(request: NextRequest) {
   );
   const tutorId = auth.profile!.id;
 
+  // A revoked teacher cannot resubmit through this flow either (requireTutor
+  // already loaded their status). Without this a revoked teacher could queue
+  // documents for a reviewer; the transition map would then refuse to verify
+  // them, but they should not be able to submit at all.
+  if (auth.profile!.tutor_verification_status === 'REVOKED') {
+    return NextResponse.json(
+      { error: 'Your verification was revoked. Please contact support.', code: 'locked_revoked' },
+      { status: 403 }
+    );
+  }
+
   try {
     // A pending review does not block a new upload. Documents queue: a tutor
     // can submit several and a reviewer decides each one on its own.
