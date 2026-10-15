@@ -7,12 +7,13 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard, BookOpen, CalendarDays, Users, Wallet,
   Sparkles, Settings, Bell, Search, LogOut, ChevronUp, PanelLeftClose, PanelLeftOpen, Lock,
-  Calendar as CalendarIcon, Star, Rocket, Menu, X, MessageSquareQuote, Send,
+  Calendar as CalendarIcon, Star, Rocket, Menu, X, MessageSquareQuote, Send, ShieldCheck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { useTutorCompletion } from '@/lib/hooks/useTutorCompletion';
 import { useSuspensionCheck } from '@/lib/hooks/useSuspensionCheck';
+import { useVerificationV2Enabled } from '@/lib/verificationV2/clientHooks';
 import { supabase } from '@/lib/supabase/client';
 import { getUnreadNotificationCount, subscribeToNotifications } from '@/lib/services/notificationService';
 import LogoutConfirmModal from '@/components/LogoutConfirmModal';
@@ -42,6 +43,9 @@ const nav: NavItem[] = [
 ];
 
 const COLLAPSE_KEY = 'itutor.tutorSidebar.collapsed';
+
+// Shown only when VERIFICATION_V2_ENABLED is on (see SidebarNav).
+const VERIFICATION_V2_NAV: NavItem = { to: '/tutor/verification-v2', label: 'Verification', icon: ShieldCheck };
 
 /**
  * @param actions - extra top-bar controls, rendered just before notifications.
@@ -270,10 +274,12 @@ function SidebarHeader({ collapsed, onToggle, onClose }: { collapsed: boolean; o
 }
 
 function SidebarNav({ collapsed, pathname, completion, onNavClick }: { collapsed: boolean; pathname: string; completion: ReturnType<typeof useTutorCompletion>; onNavClick: () => void }) {
+  const v2Enabled = useVerificationV2Enabled();
+  const items = v2Enabled ? [...nav, VERIFICATION_V2_NAV] : nav;
   return (
     <nav className="flex-1 overflow-y-auto py-3">
       <div className={cn('space-y-0.5', collapsed ? 'px-2' : 'px-3')}>
-        {nav.map((item) => {
+        {items.map((item) => {
           const active = item.exact ? pathname === item.to : pathname.startsWith(item.to);
           const Icon = item.icon;
           const locked = item.gated && !completion.loading && !completion.listed;

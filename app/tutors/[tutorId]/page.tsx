@@ -16,6 +16,7 @@ import { isUuid, resolveTutorIdFromUsername } from '@/lib/tutors/resolveTutorPar
 import { getAvatarColor } from '@/lib/utils/avatarColors';
 import Link from 'next/link';
 import { isTutorVerified } from '@/lib/verification/isVerified';
+import VerificationBadges from '@/components/verification/VerificationBadges';
 
 type TutorProfile = {
   id: string;
@@ -385,10 +386,14 @@ export default function PublicTutorProfilePage() {
             {/* Info */}
             <div className="flex-1">
               <div className="flex items-start justify-between mb-2">
-                <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
-                  {displayName}
-                  {isTutorVerified(tutor.tutor_verification_status) && <VerifiedBadge size="lg" />}
-                </h1>
+                <div>
+                  <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+                    {displayName}
+                    {isTutorVerified(tutor.tutor_verification_status) && <VerifiedBadge size="lg" />}
+                  </h1>
+                  {/* Three separate labels (v2 flow). Nothing renders unless the teacher is v2-verified. */}
+                  <VerificationBadges tutorId={tutorId} className="mt-2" />
+                </div>
 
                 {/* Three-dots menu */}
                 <div className="relative">

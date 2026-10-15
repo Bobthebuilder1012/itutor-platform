@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BadgeCheck } from "lucide-react";
 import { StarRating } from "./StarRating";
+import VerificationBadges from "@/components/verification/VerificationBadges";
 
 export type ClassCardData = {
   id: string;
@@ -8,6 +9,8 @@ export type ClassCardData = {
   subject: string;
   description: string;
   tutorName: string;
+  /** The teacher's profile id, for their verification labels. */
+  tutorId?: string;
   tutorAvatar?: string;
   verified?: boolean;
   rating: number;
@@ -42,6 +45,9 @@ export function ClassCard({ c }: { c: ClassCardData }) {
             </div>
           </div>
         </div>
+
+        {/* This whole card is a link, so the labels open their panel instead of navigating. */}
+        <VerificationBadges tutorId={c.tutorId} compact preventNav />
 
         <div>
           <h3 className="text-[16px] font-bold text-white leading-snug line-clamp-2">{c.name}</h3>

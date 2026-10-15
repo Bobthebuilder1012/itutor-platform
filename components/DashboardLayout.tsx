@@ -7,6 +7,7 @@ import Image from 'next/image';
 import { ReactNode, useEffect, useState } from 'react';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { useSuspensionCheck } from '@/lib/hooks/useSuspensionCheck';
+import { useVerificationV2Enabled } from '@/lib/verificationV2/clientHooks';
 import NotificationBell from '@/components/NotificationBell';
 import MessagesIcon from '@/components/MessagesIcon';
 import CalendarIcon from '@/components/CalendarIcon';
@@ -109,6 +110,8 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
   const effectiveEmail = authEmail || profile?.email || null;
   const emailOnlyAdmin = isEmailManagementOnlyAdmin(effectiveEmail);
   const showGroups = isGroupsFeatureEnabled();
+  // Behind VERIFICATION_V2_ENABLED (asked of the server, not a public env var).
+  const v2Enabled = useVerificationV2Enabled();
   const hideCommunities = isCommunitiesArchived();
   const showIcons = role !== 'reviewer' && !emailOnlyAdmin;
 
@@ -267,6 +270,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
         { label: 'Review', items: [
           { href: '/reviewer/dashboard', label: 'Dashboard', icon: icons.dashboard },
           { href: '/admin/verification/queue', label: 'Verification Queue', icon: icons.queue },
+          ...(v2Enabled ? [{ href: '/admin/verification-v2', label: 'Verification v2', icon: icons.shield }] : []),
           { href: '/admin/verified-tutors', label: 'Verified iTutors', icon: icons.shield },
           { href: '/admin/accounts', label: 'Account Management', icon: icons.users },
         ]},
@@ -276,6 +280,7 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/admin/dashboard', label: 'Dashboard', icon: icons.dashboard },
           { href: '/admin/accounts', label: 'Accounts', icon: icons.users },
           { href: '/admin/verification/queue', label: 'Verification Queue', icon: icons.queue },
+          ...(v2Enabled ? [{ href: '/admin/verification-v2', label: 'Verification v2', icon: icons.shield }] : []),
           { href: '/admin/verified-tutors', label: 'Verified iTutors', icon: icons.shield },
           // The marketplace ranking controls (boost/pin) shipped without a nav
           // entry, so the page was only reachable by typing the URL.

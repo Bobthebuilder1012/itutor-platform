@@ -24,12 +24,15 @@ import { cn } from '@/lib/utils';
 import { fmtTTD } from '@/lib/utils/formatCurrency';
 import { classCapacityDisplay } from '@/lib/utils/classCapacity';
 import type { ScheduleEntry } from '@/lib/utils/scheduleFormat';
+import VerificationBadges from '@/components/verification/VerificationBadges';
 
 /** Everything the card renders. Filter-only fields live on the caller. */
 export type ClassCardData = {
   id: string;
   title: string;
   tutor: string;
+  /** The teacher's profile id. Lets the card show their verification labels. */
+  tutorId?: string | null;
   tutorAvatar?: string | null;
   subject: string;
   level: string;
@@ -161,6 +164,8 @@ export default function ClassCard({
             <TutorAvatar avatarUrl={l.tutorAvatar} name={l.tutor} size={22} />
             <span className="text-sm text-muted-foreground">by {l.tutor}</span>
           </div>
+          {/* Three separate labels, only for teachers verified in the v2 flow. */}
+          <VerificationBadges tutorId={l.tutorId} compact className="mt-1.5" />
           <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1.5 flex-wrap">
             <span>{l.subject}{l.level ? ` · ${l.level}` : ''}</span>
             {l.hasWhatsapp && (

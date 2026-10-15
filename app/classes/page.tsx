@@ -62,6 +62,7 @@ export default function ClassesPage() {
           subject: g.subject || 'General',
           description: g.description || '',
           tutorName: tutor?.display_name || tutor?.full_name || 'Tutor',
+          tutorId: g.tutor_id ?? undefined,
           tutorAvatar: tutor?.avatar_url ?? undefined,
           verified: isTutorVerified(tutor?.tutor_verification_status),
           rating: Number(g.rating_average ?? 0),

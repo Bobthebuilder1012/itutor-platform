@@ -20,6 +20,7 @@ import ClassesSection from '@/components/tutor/public/ClassesSection';
 import BlurredBannerBackdrop from '@/components/tutor/BlurredBannerBackdrop';
 import TutorCredentials from '@/components/TutorCredentials';
 import { StarRow } from '@/components/ratings/StarInput';
+import VerificationBadges from '@/components/verification/VerificationBadges';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -654,6 +655,7 @@ export default function TutorProfilePage() {
                   </span>
                 )}
               </div>
+              <VerificationBadges tutorId={tutor.id} className="mt-2" />
               <p className="text-sm text-muted-foreground mt-0.5">{tutor.subjects.map((s) => s.name).join(' · ')}</p>
               <div className="flex items-center gap-3 mt-2 text-sm flex-wrap">
                 {tutor.average_rating !== null ? (

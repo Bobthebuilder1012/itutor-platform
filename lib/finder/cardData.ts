@@ -63,6 +63,7 @@ export function supplyRowToCard(row: SupplyRow): ClassCardData {
     id: row.groupId,
     title: row.name,
     tutor: row.tutorName ?? 'an iTutor',
+    tutorId: row.tutorId,
     tutorAvatar: row.tutorAvatarUrl,
     subject: row.subject ?? '',
     level: row.formLevel ? formatLevel(row.formLevel) : '',
