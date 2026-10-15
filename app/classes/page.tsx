@@ -5,6 +5,7 @@ import { ChevronDown } from "lucide-react";
 import { ClassesShell } from "@/components/classes/ClassesShell";
 import { ClassCard, type ClassCardData } from "@/components/classes/ClassCard";
 import { supabase } from "@/lib/supabase/client";
+import { isTutorVerified } from "@/lib/verification/isVerified";
 
 const SUBJECTS = ["All", "Mathematics", "English", "Biology", "Chemistry", "Physics", "Accounts", "History", "Geography"];
 const SORTS = ["Most Popular", "Newest", "Rating"];
@@ -62,7 +63,7 @@ export default function ClassesPage() {
           description: g.description || '',
           tutorName: tutor?.display_name || tutor?.full_name || 'Tutor',
           tutorAvatar: tutor?.avatar_url ?? undefined,
-          verified: tutor?.tutor_verification_status === 'verified',
+          verified: isTutorVerified(tutor?.tutor_verification_status),
           rating: Number(g.rating_average ?? 0),
           ratingCount: g.rating_count ?? 0,
           priceTTD: Number(g.price_monthly ?? g.price_per_session ?? 0),

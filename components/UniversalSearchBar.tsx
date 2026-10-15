@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase/client';
 import { Profile } from '@/lib/types/database';
 import { getDisplayName } from '@/lib/utils/displayName';
 import UserAvatar from '@/components/UserAvatar';
+import { VERIFIED_STATUS } from '@/lib/verification/isVerified';
 
 type SearchBarProps = {
   userRole: 'student' | 'tutor' | 'parent';
@@ -160,7 +161,7 @@ export default function UniversalSearchBar({ userRole, onResultClick }: SearchBa
       }
 
       if (filters.verifiedOnly && targetRole === 'tutor') {
-        queryBuilder = queryBuilder.eq('tutor_verification_status', 'verified');
+        queryBuilder = queryBuilder.eq('tutor_verification_status', VERIFIED_STATUS);
       }
 
       const { data, error } = await queryBuilder.limit(50);

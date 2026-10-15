@@ -44,6 +44,7 @@ import {
   type ScheduleEntry,
 } from '@/lib/utils/scheduleFormat';
 import type { FinderCandidate } from '@/lib/matching/finder';
+import { isTutorVerified } from '@/lib/verification/isVerified';
 
 /** Everything the results page renders, alongside what the matcher scores. */
 export interface SupplyRow extends FinderCandidate {
@@ -292,7 +293,7 @@ export async function loadFinderSupply(service: SupabaseClient): Promise<SupplyR
       seatsRemaining: seatsRemaining(row),
       // Verification ranks and badges; it is NOT a hard filter. Gating on it
       // cuts the catalogue to 2 classes.
-      tutorVerified: row.tutor?.tutor_verification_status === 'verified',
+      tutorVerified: isTutorVerified(row.tutor?.tutor_verification_status),
       rating: toNumber(row.tutor?.rating_average),
       sessionLengthMinutes: row.session_length_minutes,
     });

@@ -15,6 +15,7 @@ import { useAuthPrompt } from '@/hooks/useAuthPrompt';
 import { isUuid, resolveTutorIdFromUsername } from '@/lib/tutors/resolveTutorParam';
 import { getAvatarColor } from '@/lib/utils/avatarColors';
 import Link from 'next/link';
+import { isTutorVerified } from '@/lib/verification/isVerified';
 
 type TutorProfile = {
   id: string;
@@ -386,7 +387,7 @@ export default function PublicTutorProfilePage() {
               <div className="flex items-start justify-between mb-2">
                 <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
                   {displayName}
-                  {tutor.tutor_verification_status === 'verified' && <VerifiedBadge size="lg" />}
+                  {isTutorVerified(tutor.tutor_verification_status) && <VerifiedBadge size="lg" />}
                 </h1>
 
                 {/* Three-dots menu */}
@@ -473,7 +474,7 @@ export default function PublicTutorProfilePage() {
                 </div>
               )}
 
-              {tutor.tutor_verification_status === 'verified' && (
+              {isTutorVerified(tutor.tutor_verification_status) && (
                 <div className="mt-4 pt-4 border-t border-gray-200">
                   <VerifiedSubjectsButton onClick={() => setVerifiedSubjectsModalOpen(true)} variant="secondary" />
                 </div>
@@ -489,7 +490,7 @@ export default function PublicTutorProfilePage() {
             <TutorCredentials tutorId={tutorId} className="mb-6" />
 
             {/* Verified CXC Results */}
-            {tutor.tutor_verification_status === 'verified' && verifiedSubjects.length > 0 && (
+            {isTutorVerified(tutor.tutor_verification_status) && verifiedSubjects.length > 0 && (
               <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-300 shadow-xl rounded-2xl p-6 mb-6 hover:shadow-green-300/50 transition-all duration-300">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center">
