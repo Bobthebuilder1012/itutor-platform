@@ -122,7 +122,15 @@ export async function POST(request: NextRequest) {
       errorCode: null,
       actor: 'tutor',
       expectAttempts: used,
-      extra: { identity_attempts: attempt, stripe_identity_session_id: session.id },
+      extra: {
+        identity_attempts: attempt,
+        stripe_identity_session_id: session.id,
+        // Every session id, so each can be redacted later (a failed attempt still
+        // leaves the uploaded ID at Stripe).
+        identity_session_history: Array.from(
+          new Set([...(row!.identity_session_history ?? []), session.id])
+        ),
+      },
       db,
     });
     if (!started.ok) {

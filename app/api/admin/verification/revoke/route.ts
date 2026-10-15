@@ -9,6 +9,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/middleware/adminAuth';
 import { getServiceClient } from '@/lib/supabase/server';
 import { decisionActor } from '@/lib/verification/decide';
+import { isVerificationV2Enabled } from '@/lib/featureFlags/verificationV2';
+import { afterRevocation } from '@/lib/verificationV2/afterDecision';
 import { setProfileStatus, setV2Status, statusErrorResponse } from '@/lib/verification/setStatus';
 
 export const dynamic = 'force-dynamic';
@@ -83,6 +85,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // New-flow clean-up (ID data at Stripe, files after the retention period).
+    // Best effort and flag-gated: it never undoes or blocks the revoke.
+    let cleanup: unknown;
+    if (isVerificationV2Enabled()) {
+      const done = await afterRevocation(tutor_id, serviceSupabase);
+      cleanup = { redaction: done.redaction.ok ? 'ok' : 'failed', filesDeleted: !!done.files };
+    }
+
     const { error: notificationError } = await serviceSupabase.from('notifications').insert({
       user_id: tutor_id,
       type: 'VERIFICATION_REVOKED',
@@ -97,6 +107,7 @@ export async function POST(request: NextRequest) {
       reason,
       success: true,
       ...(warnings.length ? { warnings } : {}),
+      ...(cleanup ? { cleanup } : {}),
       ...(notificationError ? { notification_error: true } : {}),
     });
   } catch (error) {

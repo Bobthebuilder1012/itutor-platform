@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { removeCustomer } from '@/lib/customerio/sync';
+import { cleanupVerificationDataForAccountDeletion } from '@/lib/verificationV2/accountDeletion';
 
 export const dynamic = 'force-dynamic';
 
@@ -133,6 +134,13 @@ export async function DELETE() {
       console.error('Error deleting related data:', relatedError);
       // Continue anyway - profile deletion might still work
     }
+
+    // Verification files and the Stripe Identity session, deleted while the ids that
+    // locate them still exist. Never throws and gives up after a time limit, so
+    // it cannot block or break the deletion below.
+    await cleanupVerificationDataForAccountDeletion(user.id).catch((e) =>
+      console.error('Verification cleanup failed (account deletion continues):', e)
+    );
 
     // Remove the Customer.io profile before the local row goes, so a failure is
     // still attributable to a user we can look up. Left behind, the profile
