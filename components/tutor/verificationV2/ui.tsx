@@ -46,16 +46,17 @@ export function SecondaryButton(props: React.ButtonHTMLAttributes<HTMLButtonElem
   );
 }
 
-export function ManualVerificationNote({ reason }: { reason: string }) {
+/** Shown when the automatic check cannot continue. There is no manual identity review. */
+export function SupportNote({ reason }: { reason: string }) {
   return (
     <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
       <p className="font-semibold">{reason}</p>
       <p className="mt-1">
-        Please contact us for manual verification at{' '}
-        <a className="underline" href={`mailto:${SUPPORT_EMAIL}?subject=Manual%20teacher%20verification`}>
+        Please contact us at{' '}
+        <a className="underline" href={`mailto:${SUPPORT_EMAIL}?subject=Teacher%20identity%20check`}>
           {SUPPORT_EMAIL}
-        </a>
-        .
+        </a>{' '}
+        and we will help.
       </p>
     </div>
   );

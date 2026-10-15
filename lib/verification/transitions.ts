@@ -82,29 +82,42 @@ const MAPS: Record<TransitionEntity, Edges> = {
     REVERIFICATION_REQUIRED: { IN_REVIEW: ['tutor'] },
     REVOKED: {},
   },
+  // The NEUTRAL identity outcomes (lib/identity/types.ts). Provider-specific
+  // names never reach this map: lib/identity/mapping.ts converts them first.
   identity: {
     // 'NONE' = identity_status is NULL (no session started yet).
     NONE: { pending: ['tutor'] },
+    // Staff appear on verified / retryable_failure only for the MANUAL route, where
+    // a reviewer records the result instead of a provider.
     pending: {
       processing: ['system'],
-      verified: ['system'],
-      requires_input: ['system'],
+      verified: ['system', 'reviewer', 'admin'],
+      retryable_failure: ['system', 'reviewer', 'admin'],
+      not_supported: ['system'],
+      consent_declined: ['system'],
       canceled: ['system'],
-      consent_declined: ['system'],
-      under_supported_age: ['system'],
     },
-    processing: { verified: ['system'], requires_input: ['system'], canceled: ['system'] },
-    requires_input: {
-      pending: ['tutor'], // a new attempt
-      processing: ['system'],
-      verified: ['system'],
+    processing: {
+      verified: ['system', 'reviewer', 'admin'],
+      retryable_failure: ['system', 'reviewer', 'admin'],
+      not_supported: ['system'],
       consent_declined: ['system'],
-      under_supported_age: ['system'],
+      canceled: ['system'],
+    },
+    retryable_failure: {
+      pending: ['tutor'], // another attempt, same provider
+      processing: ['system'],
+      verified: ['system', 'reviewer', 'admin'],
+      not_supported: ['system'],
+      consent_declined: ['system'],
     },
     canceled: { pending: ['tutor'] },
+    // The next route. lib/identity/routing.ts decides WHICH provider; the map
+    // only allows the teacher to start again.
+    not_supported: { pending: ['tutor'] },
+    // Only the manual route is offered after this (enforced in routing, not here).
+    consent_declined: { pending: ['tutor'] },
     verified: {}, // a passed check is never downgraded
-    consent_declined: {}, // manual path only
-    under_supported_age: {}, // manual path only
   },
 };
 

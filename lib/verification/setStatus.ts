@@ -21,6 +21,7 @@ import {
   type TransitionErrorCode,
   type VerificationActor,
 } from './transitions';
+import { normalizeIdentityReason, normalizeIdentityStatus } from '@/lib/identity/mapping';
 
 export type Db = SupabaseClient<any, 'public', any>;
 
@@ -222,16 +223,23 @@ export async function setV2Status(opts: {
 // ---------------------------------------------------------------
 // identity (tutor_verification_v2.identity_status)
 // ---------------------------------------------------------------
+// Speaks the NEUTRAL outcomes only (lib/identity/types.ts). Old rows that still
+// hold Stripe's names are normalised on the way in, so they keep working.
 export async function setIdentityStatus(opts: {
   tutorId: string;
   to: string;
-  errorCode?: string | null;
+  /** The neutral reason (retry reason or not-supported reason), or null. */
+  reason?: string | null;
+  /** The provider's raw code, kept for coverage testing. Never branched on. */
+  providerCode?: string | null;
   actor: VerificationActor;
   /** Webhook / refresh: only apply if this is still the teacher's current session. */
-  sessionId?: string;
+  sessionRef?: string;
+  /** With sessionRef: the provider that session belongs to. */
+  provider?: string;
   /** Optimistic guard for starting an attempt. */
   expectAttempts?: number;
-  /** Extra columns written with the change (attempt count, new session id). */
+  /** Extra columns written with the change (attempt count, new session, country). */
   extra?: Record<string, unknown>;
   db?: Db;
 }): Promise<StatusSuccess | StatusFailure> {
@@ -239,38 +247,50 @@ export async function setIdentityStatus(opts: {
 
   const { data: cur, error } = await db
     .from('tutor_verification_v2')
-    .select('identity_status, identity_error_code, stripe_identity_session_id, identity_attempts')
+    .select(
+      'identity_status, identity_error_code, identity_provider, identity_provider_session_ref, stripe_identity_session_id, identity_attempts'
+    )
     .eq('tutor_id', opts.tutorId)
     .maybeSingle();
   if (error) return fail('db_error', 'Could not read the identity check');
   if (!cur) return fail('not_found', 'No verification in progress');
 
-  // An event for a session we already replaced must not touch the current one.
-  if (opts.sessionId && cur.stripe_identity_session_id !== opts.sessionId) {
+  // Rows from before provider-agnostic identity have no provider columns: their
+  // session is the old Stripe column.
+  const currentRef: string | null = cur.identity_provider_session_ref ?? cur.stripe_identity_session_id ?? null;
+  const currentProvider: string | null = cur.identity_provider ?? (cur.stripe_identity_session_id ? 'stripe' : null);
+
+  // An event for a session (or provider) we already replaced must not touch the current one.
+  if (opts.sessionRef && currentRef !== opts.sessionRef) {
     return fail('stale_session', 'That identity session is no longer the current one');
   }
+  if (opts.provider && currentProvider && currentProvider !== opts.provider) {
+    return fail('stale_session', 'That identity session belongs to a different provider');
+  }
 
-  const rawFrom: string | null = cur.identity_status ?? null;
-  const from = normalizeStatus('identity', rawFrom);
-  const check = checkTransition('identity', rawFrom, opts.to, opts.actor);
+  const storedFrom: string | null = cur.identity_status ?? null;
+  const normFrom = normalizeIdentityStatus(storedFrom);
+  const from = normalizeStatus('identity', normFrom);
+  const check = checkTransition('identity', normFrom, opts.to, opts.actor);
   if (!check.ok) return fail(check.code, check.message);
 
-  const errorCode = opts.errorCode ?? null;
-  const sameError = (cur.identity_error_code ?? null) === errorCode;
-  if (check.noop && sameError && !opts.extra) {
+  const reason = opts.reason ?? null;
+  const sameReason = normalizeIdentityReason(storedFrom, cur.identity_error_code) === reason;
+  if (check.noop && sameReason && !opts.extra && storedFrom === normFrom) {
     return { ok: true, from, to: opts.to, changed: false };
   }
 
   const patch: Record<string, unknown> = {
     identity_status: opts.to,
-    identity_error_code: errorCode,
+    identity_error_code: reason,
+    ...(opts.providerCode !== undefined ? { identity_provider_code: opts.providerCode } : {}),
     ...(opts.extra ?? {}),
   };
   if (opts.to === 'verified' && !check.noop) patch.identity_verified_at = now();
 
+  // Conditional on the value AS STORED (which may be a legacy name).
   let q = db.from('tutor_verification_v2').update(patch).eq('tutor_id', opts.tutorId);
-  q = rawFrom === null ? q.is('identity_status', null) : q.eq('identity_status', rawFrom);
-  if (opts.sessionId) q = q.eq('stripe_identity_session_id', opts.sessionId);
+  q = storedFrom === null ? q.is('identity_status', null) : q.eq('identity_status', storedFrom);
   if (opts.expectAttempts !== undefined) q = q.eq('identity_attempts', opts.expectAttempts);
 
   const { data, error: upErr } = await q.select('tutor_id');

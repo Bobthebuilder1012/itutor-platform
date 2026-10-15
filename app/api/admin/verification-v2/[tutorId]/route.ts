@@ -23,7 +23,7 @@ export async function GET(_req: NextRequest, { params }: { params: { tutorId: st
   const { data: row, error } = await g.db
     .from('tutor_verification_v2')
     .select(
-      'tutor_id, status, consent_at, identity_status, identity_error_code, identity_attempts, identity_verified_at, submitted_at, decision_reason, decided_at, identity_redacted_at, files_deleted_at'
+      'tutor_id, status, consent_at, identity_status, identity_error_code, identity_provider, identity_provider_code, identity_country, identity_attempts, identity_verified_at, submitted_at, decision_reason, decided_at, identity_redacted_at, files_deleted_at'
     )
     .eq('tutor_id', tutorId)
     .maybeSingle();
@@ -101,7 +101,12 @@ export async function GET(_req: NextRequest, { params }: { params: { tutorId: st
       consentAt: row.consent_at,
       identity: {
         status: row.identity_status,
+        /** The neutral reason. */
         errorCode: row.identity_error_code,
+        provider: row.identity_provider ?? null,
+        /** The provider's raw code: admin-only, for coverage testing. */
+        providerCode: row.identity_provider_code ?? null,
+        country: row.identity_country ?? null,
         attempts: row.identity_attempts,
         verifiedAt: row.identity_verified_at,
         redacted: !!row.identity_redacted_at,

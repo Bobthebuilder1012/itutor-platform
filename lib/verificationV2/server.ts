@@ -7,13 +7,14 @@ import { NextResponse } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { requireTutor } from '@/lib/middleware/tutorAuth';
 import { getServiceClient } from '@/lib/supabase/server';
-import { getStripeClient } from '@/lib/payments/stripeClient';
 import { isVerificationV2Enabled } from '@/lib/featureFlags/verificationV2';
-import { mapIdentitySession } from './identity';
 import { isRuleRefusal, setIdentityStatus } from '@/lib/verification/setStatus';
+import { identityRouting } from '@/config/identityRouting';
+import { normalizeIdentityReason, normalizeIdentityStatus, outcomeToStored } from '@/lib/identity/mapping';
+import { getProvider, routeForCountry } from '@/lib/identity/registry';
+import { decideNextStep } from '@/lib/identity/routing';
+import { isProviderName, type ProviderName } from '@/lib/identity/types';
 import {
-  MANUAL_IDENTITY_STATUSES,
-  MAX_IDENTITY_ATTEMPTS,
   type CredentialDto,
   type ExtraDto,
   type IdentityStatus,
@@ -28,18 +29,38 @@ export interface VerificationRow {
   status: VerificationV2Status;
   consent_at: string | null;
   consent_version: string | null;
+  /** Legacy Stripe column. New code reads identity_provider_session_ref. */
   stripe_identity_session_id: string | null;
   identity_status: IdentityStatus | null;
+  /** The NEUTRAL reason (retry reason / not-supported reason), not a provider code. */
   identity_error_code: string | null;
   identity_attempts: number;
   identity_verified_at: string | null;
+  /** Legacy Stripe history. New code reads identity_session_refs. */
   identity_session_history: string[] | null;
+  identity_provider: ProviderName | null;
+  identity_provider_session_ref: string | null;
+  identity_session_refs: { provider: ProviderName; ref: string }[] | null;
+  identity_providers_tried: ProviderName[] | null;
+  identity_country: string | null;
   submitted_at: string | null;
   decision_reason: string | null;
 }
 
 const ROW_COLUMNS =
-  'tutor_id, status, consent_at, consent_version, stripe_identity_session_id, identity_status, identity_error_code, identity_attempts, identity_verified_at, identity_session_history, submitted_at, decision_reason';
+  'tutor_id, status, consent_at, consent_version, stripe_identity_session_id, identity_status, identity_error_code, identity_attempts, identity_verified_at, identity_session_history, identity_provider, identity_provider_session_ref, identity_session_refs, identity_providers_tried, identity_country, submitted_at, decision_reason';
+
+/**
+ * Rows written before provider-agnostic identity hold Stripe's status names.
+ * Everything downstream of here only ever sees the neutral ones.
+ */
+function normalizeRow(raw: any): VerificationRow {
+  return {
+    ...raw,
+    identity_status: normalizeIdentityStatus(raw.identity_status),
+    identity_error_code: normalizeIdentityReason(raw.identity_status, raw.identity_error_code),
+  } as VerificationRow;
+}
 
 export function notFound() {
   return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -86,7 +107,7 @@ export async function loadRow(db: Db, tutorId: string): Promise<VerificationRow 
     .eq('tutor_id', tutorId)
     .maybeSingle();
   if (error) throw error;
-  return (data as VerificationRow | null) ?? null;
+  return data ? normalizeRow(data) : null;
 }
 
 export function isEditable(row: VerificationRow | null): boolean {
@@ -113,48 +134,42 @@ export function blocked(error: string, status = 409, extra: Record<string, unkno
 }
 
 /**
- * Asks Stripe where a session stands and stores the result. Used on page load
- * and when the teacher returns from Stripe, so the page does not depend on the
- * webhook arriving first. Never throws: if Stripe is unreachable the saved
- * status is returned unchanged.
+ * Asks the teacher's provider where their session stands and stores the result.
+ * Used on page load and when the teacher returns from the provider, so the page
+ * does not depend on a webhook arriving first. Never throws: if the provider is
+ * unreachable the saved status is returned unchanged. Provider-agnostic: it only
+ * ever sees neutral outcomes.
  */
-export async function refreshIdentityFromStripe(
-  db: Db,
-  row: VerificationRow
-): Promise<VerificationRow> {
-  const sessionId = row.stripe_identity_session_id;
-  const open: Array<IdentityStatus | null> = [null, 'pending', 'processing', 'requires_input'];
-  if (!sessionId || !open.includes(row.identity_status)) return row;
+export async function refreshIdentity(db: Db, row: VerificationRow): Promise<VerificationRow> {
+  const provider: ProviderName | null =
+    row.identity_provider ?? (row.stripe_identity_session_id ? 'stripe' : null);
+  const ref = row.identity_provider_session_ref ?? row.stripe_identity_session_id;
+  const open: Array<IdentityStatus | null> = [null, 'pending', 'processing', 'retryable_failure'];
+  if (!provider || !ref || !open.includes(row.identity_status)) return row;
   try {
-    const session = await getStripeClient().identity.verificationSessions.retrieve(sessionId);
-    const mapped = mapIdentitySession(session);
-    if (mapped.status === row.identity_status && mapped.errorCode === row.identity_error_code) {
-      return row;
-    }
+    const { outcome, providerCode } = await getProvider(provider).getOutcome(ref);
+    const stored = outcomeToStored(outcome);
+    if (stored.status === row.identity_status && stored.reason === row.identity_error_code) return row;
+
     // Through the one status function: a passed check is never downgraded and a
     // result for a replaced session is ignored.
     const result = await setIdentityStatus({
       tutorId: row.tutor_id,
-      to: mapped.status,
-      errorCode: mapped.errorCode,
+      to: stored.status,
+      reason: stored.reason,
+      providerCode,
       actor: 'system',
-      sessionId,
+      sessionRef: ref,
+      provider,
       db,
     });
     if (!result.ok) {
-      // Refusals (stale session, a rule) mean the stored value stands.
       if (!isRuleRefusal(result) && result.code !== 'stale_session' && result.code !== 'conflict') {
         console.warn('[verification-v2] identity refresh not saved:', result.message);
       }
       return row;
     }
-    return {
-      ...row,
-      identity_status: mapped.status as IdentityStatus,
-      identity_error_code: mapped.errorCode,
-      identity_verified_at:
-        mapped.status === 'verified' ? new Date().toISOString() : row.identity_verified_at,
-    };
+    return { ...row, identity_status: stored.status as IdentityStatus, identity_error_code: stored.reason };
   } catch (err) {
     console.warn('[verification-v2] identity refresh failed:', (err as Error).message);
     return row;
@@ -210,7 +225,23 @@ export function buildState(
   const revokedProfile = profileStatus === 'REVOKED';
   const identityStatus = row?.identity_status ?? null;
   const attempts = row?.identity_attempts ?? 0;
-  const manualPath = !!identityStatus && MANUAL_IDENTITY_STATUSES.includes(identityStatus);
+  const currentProvider: ProviderName | null =
+    row?.identity_provider && isProviderName(row.identity_provider)
+      ? row.identity_provider
+      : row?.stripe_identity_session_id
+        ? 'stripe'
+        : null;
+
+  // What the buttons offer, from the same routing the server uses to act.
+  const nextStep = decideNextStep({
+    route: routeForCountry(row?.identity_country),
+    status: identityStatus,
+    current: currentProvider,
+    attempts,
+    tried: (row?.identity_providers_tried ?? []) as ProviderName[],
+  });
+  const canRetry = nextStep.action === 'retry_same';
+  const furtherRoute = nextStep.action === 'next';
 
   let step: 1 | 2 | 3 | 4 = 1;
   if (hasConsent(row)) step = 2;
@@ -234,15 +265,13 @@ export function buildState(
     consentAt: row?.consent_at ?? null,
     identity: {
       status: identityStatus,
-      errorCode: row?.identity_error_code ?? null,
+      reason: row?.identity_error_code ?? null,
+      country: row?.identity_country ?? null,
       attempts,
-      maxAttempts: MAX_IDENTITY_ATTEMPTS,
-      canRetry:
-        !manualPath &&
-        identityStatus !== 'verified' &&
-        identityStatus !== 'processing' &&
-        attempts < MAX_IDENTITY_ATTEMPTS,
-      manualPath,
+      maxAttempts: identityRouting.maxAttemptsPerProvider,
+      canRetry,
+      furtherRoute,
+      countries: identityRouting.countries,
     },
     submittedAt: row?.submitted_at ?? null,
     decisionReason: row?.status === 'REJECTED' ? row.decision_reason : null,
@@ -260,7 +289,7 @@ export async function loadState(
 ): Promise<VerificationV2StateDto> {
   let row = await loadRow(db, tutorId);
   // A revoked teacher's state is read-only: do not call Stripe on their behalf.
-  if (row && profileStatus !== 'REVOKED') row = await refreshIdentityFromStripe(db, row);
+  if (row && profileStatus !== 'REVOKED') row = await refreshIdentity(db, row);
   const [credentials, extras] = await Promise.all([
     loadCredentials(db, tutorId),
     loadExtras(db, tutorId),

@@ -103,7 +103,7 @@ describe('POST /api/webhooks/stripe-identity', () => {
     expect(events()[0]).toMatchObject({ event_id: 'evt_1', processing_status: 'processed', session_id: 'vs_current' });
   });
 
-  it('a requires_input event records the reason code', async () => {
+  it('a requires_input event becomes a neutral retryable_failure and keeps the raw code separately', async () => {
     const res = await post(
       event(
         { id: 'evt_2', type: 'identity.verification_session.requires_input' },
@@ -111,7 +111,11 @@ describe('POST /api/webhooks/stripe-identity', () => {
       )
     );
     expect(res.status).toBe(200);
-    expect(row()).toMatchObject({ identity_status: 'requires_input', identity_error_code: 'document_expired' });
+    expect(row()).toMatchObject({
+      identity_status: 'retryable_failure',
+      identity_error_code: 'document_expired', // the neutral reason
+      identity_provider_code: 'document_expired', // Stripe's own code, for coverage testing
+    });
   });
 
   it('is idempotent: a replayed event is a duplicate and changes nothing', async () => {
@@ -149,7 +153,7 @@ describe('POST /api/webhooks/stripe-identity', () => {
     expect(everything).not.toContain('vs_secret_DO_NOT_STORE');
     expect(everything).not.toContain('verify.stripe.com');
     expect(Object.keys(events()[0]).sort()).toEqual(
-      ['attempts', 'error_message', 'event_id', 'event_type', 'livemode', 'processed_at', 'processing_status', 'session_id'].sort()
+      ['attempts', 'error_message', 'event_id', 'event_type', 'livemode', 'processed_at', 'processing_status', 'provider', 'session_id'].sort()
     );
   });
 

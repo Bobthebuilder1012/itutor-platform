@@ -11,14 +11,18 @@ export type VerificationV2Status =
 /** What the page shows. NOT_STARTED means no row exists yet. */
 export type VerificationV2FlowStatus = 'NOT_STARTED' | VerificationV2Status;
 
+/**
+ * The neutral identity outcomes (lib/identity/types.ts). Nothing here names a
+ * provider: the screens and the API describe what happened, not who decided.
+ */
 export type IdentityStatus =
-  | 'pending' // session exists, teacher has not finished the hosted flow
+  | 'pending' // a session exists, the teacher has not finished
   | 'processing'
   | 'verified'
-  | 'requires_input' // Stripe could not verify; errorCode says why
-  | 'canceled'
-  | 'consent_declined' // manual path
-  | 'under_supported_age'; // manual path
+  | 'retryable_failure' // the check failed; `reason` says why; trying again may work
+  | 'not_supported' // this route cannot check them (country, minor, document type)
+  | 'consent_declined'
+  | 'canceled';
 
 export type CredentialKind = 'CSEC' | 'CAPE' | 'DEGREE';
 
@@ -38,10 +42,6 @@ export const PROOF_TYPES: Record<string, string> = {
   'image/png': 'png',
 };
 
-export const MANUAL_IDENTITY_STATUSES: IdentityStatus[] = [
-  'consent_declined',
-  'under_supported_age',
-];
 
 export interface CredentialDto {
   id: string;
@@ -70,11 +70,18 @@ export interface VerificationV2StateDto {
   consentAt: string | null;
   identity: {
     status: IdentityStatus | null;
-    errorCode: string | null;
+    /** The neutral reason for retryable_failure or not_supported, else null. */
+    reason: string | null;
+    /** The document country the teacher chose (ISO alpha-2 or OTHER). */
+    country: string | null;
     attempts: number;
     maxAttempts: number;
+    /** Another attempt on the same route. */
     canRetry: boolean;
-    manualPath: boolean;
+    /** Another provider is available if this one cannot check them ("try another way"). */
+    furtherRoute: boolean;
+    /** What the teacher may pick as their document country. */
+    countries: { code: string; label: string }[];
   };
   submittedAt: string | null;
   decisionReason: string | null;

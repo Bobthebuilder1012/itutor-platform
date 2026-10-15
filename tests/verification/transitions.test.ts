@@ -158,37 +158,38 @@ describe('v2 status transitions', () => {
   });
 });
 
-describe('identity status transitions', () => {
+describe('identity status transitions (neutral outcomes)', () => {
   it('starts with a tutor beginning an attempt', () => {
     expect(checkTransition('identity', null, 'pending', 'tutor').ok).toBe(true);
     expect(code(checkTransition('identity', null, 'verified', 'system'))).toBe('transition_not_allowed');
   });
 
-  it('only the system records Stripe results', () => {
+  it('only the provider (system) records results; a tutor cannot', () => {
     expect(checkTransition('identity', 'pending', 'verified', 'system').ok).toBe(true);
     expect(code(checkTransition('identity', 'pending', 'verified', 'tutor'))).toBe('actor_not_allowed');
+    expect(code(checkTransition('identity', 'pending', 'not_supported', 'tutor'))).toBe('actor_not_allowed');
   });
 
   it('a passed check is never downgraded', () => {
-    for (const to of ['pending', 'processing', 'requires_input', 'canceled']) {
+    for (const to of ['pending', 'processing', 'retryable_failure', 'not_supported', 'consent_declined', 'canceled']) {
       for (const actor of ACTORS) {
         expect(checkTransition('identity', 'verified', to, actor).ok).toBe(false);
       }
     }
   });
 
-  it('the manual-path outcomes are terminal', () => {
-    for (const from of ['consent_declined', 'under_supported_age']) {
-      for (const to of ['pending', 'verified', 'requires_input']) {
-        expect(checkTransition('identity', from, to, 'tutor').ok).toBe(false);
-        expect(checkTransition('identity', from, to, 'system').ok).toBe(false);
-      }
+  it('a failed, cancelled, unsupported or declined attempt can start again (the route decides which provider)', () => {
+    for (const from of ['retryable_failure', 'canceled', 'not_supported', 'consent_declined']) {
+      expect(checkTransition('identity', from, 'pending', 'tutor').ok).toBe(true);
+      expect(checkTransition('identity', from, 'pending', 'system').ok).toBe(false);
     }
   });
 
-  it('a failed or cancelled attempt can be retried by the tutor', () => {
-    expect(checkTransition('identity', 'requires_input', 'pending', 'tutor').ok).toBe(true);
-    expect(checkTransition('identity', 'canceled', 'pending', 'tutor').ok).toBe(true);
+  it('knows only neutral names, never a provider name', () => {
+    expect(knownStatuses('identity').sort()).toEqual(
+      ['NONE', 'canceled', 'consent_declined', 'not_supported', 'pending', 'processing', 'retryable_failure', 'verified'].sort()
+    );
+    expect(code(checkTransition('identity', 'requires_input', 'verified', 'system'))).toBe('transition_not_allowed');
   });
 });
 

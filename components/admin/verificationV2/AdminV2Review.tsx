@@ -11,7 +11,7 @@ interface Detail {
   application: {
     status: string;
     consentAt: string | null;
-    identity: { status: string | null; errorCode: string | null; attempts: number; verifiedAt: string | null; redacted: boolean };
+    identity: { status: string | null; errorCode: string | null; provider: string | null; providerCode: string | null; country: string | null; attempts: number; verifiedAt: string | null; redacted: boolean };
     submittedAt: string | null;
     decisionReason: string | null;
     decidedAt: string | null;
@@ -129,6 +129,9 @@ export default function AdminV2Review({ tutorId }: { tutorId: string }) {
                 </span>
                 {detail.application.identity.errorCode && <> ({detail.application.identity.errorCode})</>} ·{' '}
                 {detail.application.identity.attempts} attempt(s)
+                {detail.application.identity.provider && (
+                  <> · checked by {detail.application.identity.provider}{detail.application.identity.country ? ` (document from ${detail.application.identity.country})` : ''}</>
+                )}
               </p>
               <p className="mt-1 text-xs text-gray-500">
                 iTutor never stores the ID or the selfie, so there is nothing to view here.
