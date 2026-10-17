@@ -497,7 +497,31 @@ export default function SignupCard({
                 {step === 'details' && (
                   <StepWrap key="details">
                     <StepHeader title="Create your account" sub="A few details to get started — you can change them later." />
-                    <form onSubmit={handleStep1} className="mt-6 space-y-4">
+
+                    {/* Google sits above the fields: most people arriving here
+                        already have an account they can reuse, so the one-tap
+                        route should be the first thing they see rather than
+                        something found below the form. */}
+                    {/* The callback decides where to land; pass the visitor's
+                        destination so it can honour it instead of defaulting
+                        to a dashboard. */}
+                    <div className="mt-6">
+                      <GoogleButton
+                        redirectTo={`${typeof window !== 'undefined' ? window.location.origin : ''}/auth/callback${
+                          redirectParam ? `?redirect=${encodeURIComponent(redirectParam)}` : ''
+                        }`}
+                        label="Continue with Google"
+                      />
+                    </div>
+
+                    <div className="relative py-4">
+                      <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-gray-200" /></div>
+                      <div className="relative flex justify-center text-xs uppercase">
+                        <span className="bg-white px-2 text-gray-400">or</span>
+                      </div>
+                    </div>
+
+                    <form onSubmit={handleStep1} className="space-y-4">
                       <Field label="Username" hint={username && usernameError ? usernameError : undefined}
                         suffix={usernameChecking ? <Loader2 className="h-4 w-4 animate-spin text-gray-400" /> : usernameAvailable && username ? <Check className="h-4 w-4 text-itutor-green" /> : undefined}>
                         <input
@@ -565,23 +589,6 @@ export default function SignupCard({
                         className="w-full rounded-xl bg-itutor-green py-3 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:opacity-40">
                         {loading ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : 'Continue'}
                       </button>
-
-                      <div className="relative py-1">
-                        <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-gray-200" /></div>
-                        <div className="relative flex justify-center text-xs uppercase">
-                          <span className="bg-white px-2 text-gray-400">or</span>
-                        </div>
-                      </div>
-
-                      {/* The callback decides where to land; pass the visitor's
-                          destination so it can honour it instead of defaulting
-                          to a dashboard. */}
-                      <GoogleButton
-                        redirectTo={`${typeof window !== 'undefined' ? window.location.origin : ''}/auth/callback${
-                          redirectParam ? `?redirect=${encodeURIComponent(redirectParam)}` : ''
-                        }`}
-                        label="Continue with Google"
-                      />
 
                       <p className="pt-1 text-center text-sm text-gray-500">
                         Already have an account?{' '}
