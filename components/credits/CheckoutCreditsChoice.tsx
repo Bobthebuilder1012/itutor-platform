@@ -9,6 +9,11 @@
 //
 // Renders nothing for someone with no credits. With some credits but not
 // enough for a month, it says how much more is needed.
+//
+// For a child who needs a parent's approval (askParentLabel set), 'none'
+// means "ask my parent" rather than "pay by card": credits they earned are
+// theirs to spend, so paying with them skips the approval and the parent is
+// emailed instead (app/api/groups/[groupId]/credit-month).
 
 import { useEffect, useState } from 'react';
 import { Gift } from 'lucide-react';
@@ -22,10 +27,13 @@ export default function CheckoutCreditsChoice({
   groupId,
   value,
   onChange,
+  askParentLabel,
 }: {
   groupId: string;
   value: CreditChoice;
   onChange: (choice: CreditChoice) => void;
+  /** Set for a dependent child: who would otherwise have to approve. */
+  askParentLabel?: string;
 }) {
   const { data } = useCredits('lite');
   const balance = data?.available && !data.suspended ? data.wallet?.available ?? 0 : 0;
@@ -64,14 +72,27 @@ export default function CheckoutCreditsChoice({
     );
   }
 
-  const options: Array<{ v: CreditChoice; title: string; detail: string }> = [
-    { v: 'none', title: 'Subscribe and pay by card', detail: 'Keep your credits for later.' },
-    {
-      v: 'one_month',
-      title: 'Pay for one month with credits',
-      detail: `Uses ${fmtCredits(month.creditsApplied)} of your credits. No card needed, and it does not renew — subscribe before it ends to keep your place.`,
-    },
-  ];
+  const options: Array<{ v: CreditChoice; title: string; detail: string }> = askParentLabel
+    ? [
+        {
+          v: 'one_month',
+          title: 'Join now with your credits',
+          detail: `Uses ${fmtCredits(month.creditsApplied)} of your credits for one month. No approval needed — we will email ${askParentLabel} to let them know you joined. It does not renew.`,
+        },
+        {
+          v: 'none',
+          title: `Ask ${askParentLabel} to enrol you`,
+          detail: 'Keep your credits. They approve and pay.',
+        },
+      ]
+    : [
+        { v: 'none', title: 'Subscribe and pay by card', detail: 'Keep your credits for later.' },
+        {
+          v: 'one_month',
+          title: 'Pay for one month with credits',
+          detail: `Uses ${fmtCredits(month.creditsApplied)} of your credits. No card needed, and it does not renew — subscribe before it ends to keep your place.`,
+        },
+      ];
 
   return (
     <section className="space-y-3 rounded-2xl border border-emerald-200 bg-brand-soft p-5">

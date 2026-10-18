@@ -24,6 +24,7 @@ export const TEMPLATE_TUTOR_JOIN_REQUEST = 'tutor_class_join_request';
 export const TEMPLATE_PARENT_CHILD_LEFT_CLASS = 'parent_child_left_class';
 export const TEMPLATE_STUDENT_ENROLLED_BY_PARENT = 'student_enrolled_by_parent';
 export const TEMPLATE_STUDENT_ASKED_PARENT = 'student_asked_parent_to_enrol';
+export const TEMPLATE_PARENT_CHILD_JOINED_WITH_CREDITS = 'parent_child_joined_with_credits';
 
 const escapeText = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -663,6 +664,122 @@ export async function notifyParentsChildLeftClass(
       html,
       text,
       emailType: TEMPLATE_PARENT_CHILD_LEFT_CLASS,
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// A child joined a class with their own credits
+// ---------------------------------------------------------------------------
+
+/**
+ * Told to every linked parent when a child who normally needs approval joins a
+ * class by spending credits THEY earned (owner's decision, Oct 2026: credits a
+ * student earned are theirs to spend without asking). The approval step is
+ * skipped, so this email is what keeps the parent from finding out by
+ * accident — it is sent after the fact, says what was paid, and says the
+ * month does not renew, so the next month comes back to them as usual.
+ */
+export async function notifyParentsChildJoinedWithCredits(
+  admin: SupabaseClient,
+  params: {
+    studentId: string;
+    groupId: string;
+    className: string;
+    tutorName: string;
+    scheduleLabel: string | null;
+    creditsTtd: number;
+    /** When the month of access ends. */
+    accessUntil: string | null;
+  }
+): Promise<void> {
+  const { data: links } = await admin
+    .from('parent_child_links')
+    .select('parent_id')
+    .eq('child_id', params.studentId);
+
+  const parentIds = ((links ?? []) as Array<{ parent_id: string }>).map((l) => l.parent_id);
+  if (parentIds.length === 0) return;
+
+  const { data: people } = await admin
+    .from('profiles')
+    .select('id, email, full_name, display_name')
+    .in('id', [...parentIds, params.studentId]);
+
+  const byId = new Map(
+    ((people ?? []) as Array<{
+      id: string;
+      email: string | null;
+      full_name: string | null;
+      display_name: string | null;
+    }>).map((p) => [p.id, p])
+  );
+
+  const child = byId.get(params.studentId);
+  const childName = child?.display_name || child?.full_name || 'Your child';
+  const credits = `TT$${params.creditsTtd.toLocaleString('en-TT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const until = params.accessUntil
+    ? new Date(params.accessUntil).toLocaleDateString('en-TT', { day: 'numeric', month: 'long', year: 'numeric' })
+    : null;
+
+  for (const parentId of parentIds) {
+    const parent = byId.get(parentId);
+
+    await notifyInApp(admin, {
+      userId: parentId,
+      type: 'child_joined_class',
+      title: `${childName} joined ${params.className}`,
+      message: `Paid with ${credits} of their iTutor credits${until ? ` · until ${until}` : ''}. Nothing was charged to you.`,
+      link: '/parent/children',
+      metadata: { groupId: params.groupId, childId: params.studentId, via: 'credits' },
+    });
+
+    if (!parent?.email) continue;
+
+    // Family 05, success tone: good news, already done. Nothing to approve,
+    // so no warning badge and no "review" button — just what happened.
+    const { subject, html, text } = renderEmail({
+      family: 'booking-confirmation',
+      subject: `${childName} joined ${params.className} with their credits`,
+      heading: `${childName} joined a class`,
+      intro: `Hi ${first(parent.display_name || parent.full_name)},`,
+      eyebrow: 'Joined with credits',
+      blocks: [
+        {
+          kind: 'paragraph',
+          text: `${escapeText(childName)} joined ${escapeText(params.className)} with ${escapeText(
+            params.tutorName
+          )}, paying with iTutor credits they earned. Nothing was charged to you.`,
+        },
+        {
+          kind: 'details',
+          rows: [
+            { label: 'Class', value: escapeText(params.className), strong: true },
+            { label: 'Tutor', value: escapeText(params.tutorName) },
+            ...(params.scheduleLabel
+              ? [{ label: 'Next session', value: escapeText(params.scheduleLabel) }]
+              : []),
+            { label: 'Paid', value: `${credits} in credits`, strong: true },
+            ...(until ? [{ label: 'Access until', value: escapeText(until) }] : []),
+          ],
+        },
+        {
+          kind: 'paragraph',
+          text: 'Credits a student earns are theirs to spend, so this did not need your approval. It covers one month and does not renew — continuing after that comes to you for approval as usual.',
+        },
+      ],
+      cta: { label: 'See their classes', href: appUrl('/parent/children') },
+    });
+
+    await sendIfAllowed(admin, {
+      userId: parentId,
+      type: 'child_joined_class',
+      childId: params.studentId,
+      to: parent.email,
+      subject,
+      html,
+      text,
+      emailType: TEMPLATE_PARENT_CHILD_JOINED_WITH_CREDITS,
     });
   }
 }

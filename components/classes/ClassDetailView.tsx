@@ -1311,20 +1311,29 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
   const cashChosen = payMethod === 'cash' && price > 0 && !isFull;
 
   // iTutor credits (migration 268): only on a card purchase of a paid class
-  // with a seat — not a preorder, a cash request or a parent's ask.
+  // with a seat — not a preorder or a cash request.
+  //
+  // A dependent child IS offered them (owner's decision, Oct 2026): credits
+  // they earned are theirs to spend, so a month paid entirely with credits
+  // skips the parent's approval and the parent is emailed instead. "Ask
+  // parent" stays the other choice, and the only one when credits fall short.
   const [creditChoice, setCreditChoice] = useState<CreditChoice>('none');
-  const creditsOffered = price > 0 && !isFull && !gated && !cashChosen && !preorder;
+  const creditsOffered = price > 0 && !isFull && (gated || !cashChosen) && !preorder;
   const usingCredits = creditsOffered ? creditChoice : 'none';
+  const creditBypass = gated && usingCredits === 'one_month';
+  const asking = gated && !creditBypass;
 
   const heading = isFull ? 'Join the waitlist'
-    : gated ? `Ask ${parentLabel}`
+    : creditBypass ? 'Join with your credits'
+    : asking ? `Ask ${parentLabel}`
     : cashChosen ? 'Ask to join & pay cash'
     : preorder ? 'Secure your spot'
     : isRequest ? 'Request to join'
     : 'Confirm your enrolment';
 
   const confirmLabel = isFull ? 'Add me to the waitlist'
-    : gated ? 'Ask parent to enrol'
+    : creditBypass ? 'Join for one month'
+    : asking ? 'Ask parent to enrol'
     // Nothing is paid here and nothing is held — the tutor decides first.
     : cashChosen ? 'Send request to tutor'
     : preorder
@@ -1339,7 +1348,7 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
     try {
       // The ask, and nothing else. This endpoint cannot enrol or charge, which
       // is why it is safe on a paid class where the join routes are not.
-      if (gated) {
+      if (asking) {
         const res = await fetch('/api/student/class-requests', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1460,13 +1469,25 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
       <ClassSummaryCard group={group} />
 
       {gated ? (
-        <ParentAskPanel
-          parentLabel={parentLabel}
-          price={price}
-          preorder={Boolean(preorder)}
-          requiresTutorApproval={isRequest}
-          alreadyPending={Boolean(parentGate?.pending)}
-        />
+        <>
+          {creditsOffered && (
+            <CheckoutCreditsChoice
+              groupId={group.id}
+              value={creditChoice}
+              onChange={setCreditChoice}
+              askParentLabel={parentLabel}
+            />
+          )}
+          {asking && (
+            <ParentAskPanel
+              parentLabel={parentLabel}
+              price={price}
+              preorder={Boolean(preorder)}
+              requiresTutorApproval={isRequest}
+              alreadyPending={Boolean(parentGate?.pending)}
+            />
+          )}
+        </>
       ) : (
       <>
       {/* Billing. A preorder is a one-time charge for a class that hasn't
