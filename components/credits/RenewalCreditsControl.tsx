@@ -69,7 +69,7 @@ export default function RenewalCreditsControl({
   };
 
   return (
-    <div className="rounded-xl border border-brand/30 bg-brand/5 px-4 py-3 text-sm">
+    <div className="rounded-xl border border-emerald-200 bg-brand-soft px-4 py-3 text-sm">
       {pending ? (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="inline-flex items-center gap-2 text-ink">

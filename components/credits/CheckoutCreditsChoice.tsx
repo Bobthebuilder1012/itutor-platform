@@ -54,7 +54,7 @@ export default function CheckoutCreditsChoice({
 
   if (!month.fullCoverage) {
     return (
-      <section className="flex items-start gap-2 rounded-2xl border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+      <section className="flex items-start gap-2 rounded-2xl border border-border bg-zinc-50 p-4 text-sm text-muted-foreground">
         <Gift className="mt-0.5 size-4 shrink-0 text-brand" />
         <span>
           You have {fmtCredits(balance)} in credits. Credits pay for a whole month, so you need{' '}
@@ -74,7 +74,7 @@ export default function CheckoutCreditsChoice({
   ];
 
   return (
-    <section className="space-y-3 rounded-2xl border border-brand/30 bg-brand/5 p-5">
+    <section className="space-y-3 rounded-2xl border border-emerald-200 bg-brand-soft p-5">
       <h2 className="inline-flex items-center gap-2 text-sm font-bold text-ink">
         <Gift className="size-4 text-brand" /> Use your credits
         <span className="font-normal text-muted-foreground">· {fmtCredits(balance)} available</span>
@@ -89,7 +89,7 @@ export default function CheckoutCreditsChoice({
               onClick={() => onChange(opt.v)}
               className={cn(
                 'flex w-full items-start gap-3 rounded-xl border bg-background px-4 py-3 text-left transition',
-                selected ? 'border-brand' : 'border-border hover:border-brand/50'
+                selected ? 'border-brand' : 'border-border hover:border-brand'
               )}
             >
               <span

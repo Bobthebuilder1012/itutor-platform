@@ -16,6 +16,7 @@ import { subscribeToNotifications } from '@/lib/services/notificationService';
 import LogoutConfirmModal from '@/components/LogoutConfirmModal';
 import { FEEDBACK_SEEN_EVENT } from '@/lib/parent/feedbackSeen';
 import CampaignCta from '@/components/classMatchWeek/CampaignCta';
+import CreditCounter from '@/components/credits/CreditCounter';
 import { rewardsVisible, useCredits } from '@/lib/credits/useCredits';
 
 type NavItem = { to: string; label: string; icon: ComponentType<{ className?: string }>; exact?: boolean; tint: string };
@@ -238,6 +239,7 @@ export default function ParentShell({ children }: { children: React.ReactNode })
                 from the portal — the pages gate on being signed in, not on role —
                 they simply had no link to it anywhere, which made it unreachable
                 in practice. Renders nothing when no campaign is live. */}
+            <CreditCounter />
             <CampaignCta />
             <div className="flex items-center gap-1">
               {/* Find a class lives in the top bar, on every page.

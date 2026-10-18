@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils';
 import { rewardsVisible, useCredits } from '@/lib/credits/useCredits';
 import { StudentStoreProvider } from '@/lib/student-store';
 import CampaignCta from '@/components/classMatchWeek/CampaignCta';
+import CreditCounter from '@/components/credits/CreditCounter';
 import { useProfile } from '@/lib/hooks/useProfile';
 import { supabase } from '@/lib/supabase/client';
 import dynamic from 'next/dynamic';
@@ -372,6 +373,7 @@ function ShellInner({
                 Anonymously it is skipped outright — the campaign's own pages
                 gate on a session, so the CTA would be an invitation to a login
                 wall. */}
+            {anonymous ? null : <CreditCounter />}
             {anonymous ? null : <CampaignCta />}
 
             {anonymous ? (

@@ -23,7 +23,7 @@ export default function DashboardRewardsCard() {
   const link = referralsOn ? full.data?.referral?.link ?? null : null;
 
   return (
-    <section className="rounded-2xl border border-brand/25 bg-gradient-to-br from-brand/10 to-transparent p-5">
+    <section className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-brand-soft to-transparent p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="grid size-10 place-items-center rounded-xl bg-brand text-white">

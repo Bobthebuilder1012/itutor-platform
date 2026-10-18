@@ -19,7 +19,7 @@ export default function BalanceChip({ className = '' }: { className?: string }) 
   return (
     <Link
       href={href}
-      className={`inline-flex items-center gap-1.5 rounded-full border border-brand/30 bg-brand/10 px-3 py-1 text-xs font-semibold text-brand-deep hover:bg-brand/15 transition ${className}`}
+      className={`inline-flex items-center gap-1.5 rounded-full bg-brand-soft px-3 py-1 text-xs font-semibold text-brand-deep hover:bg-brand-light transition-[transform,background-color] duration-150 active:scale-[0.97] ${className}`}
     >
       <Gift className="size-3.5" />
       {balance > 0 ? `${fmtCredits(balance)} credits` : pending > 0 ? `${fmtCredits(pending)} pending` : 'Earn credits'}
