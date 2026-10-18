@@ -288,15 +288,17 @@ export default function DashboardLayout({ children, role, userName }: DashboardL
           { href: '/admin/payments', label: 'Payments Overview', icon: icons.creditCard },
           { href: '/admin/payments/one-on-one', label: 'One-on-One Payments', icon: icons.creditCard },
           { href: '/admin/lesson-payments', label: 'Lesson Payments', icon: icons.banknote },
-          // Company-funded TT$ credits: the referral programme's settings,
-          // totals and fraud review (migration 268).
-          { href: '/admin/referrals', label: 'Referral Credits', icon: icons.sparkles },
-          // Campaign codes that fill the same wallet (migration 269).
-          { href: '/admin/credit-codes', label: 'Credit Codes', icon: icons.sparkles },
           { href: '/admin/tutor-commissions', label: 'Tutor Commissions', icon: icons.banknote },
           { href: '/admin/payouts', label: 'Payouts', icon: icons.banknote },
           { href: '/admin/payout-cases', label: 'Payout Cases', icon: icons.banknote },
           { href: '/admin/refunds', label: 'Refunds', icon: icons.refund },
+        ]},
+        // Company-funded TT$ credits (migrations 268/269): the programme's
+        // settings, totals and referral review, and the campaign codes that
+        // fill the same wallet. Its own section so it reads as one area.
+        { label: 'Credits', items: [
+          { href: '/admin/referrals', label: 'Credits & Referrals', icon: icons.sparkles },
+          { href: '/admin/credit-codes', label: 'Campaign Codes', icon: icons.sparkles },
         ]},
         { label: 'Trust & Safety', items: [
           { href: '/admin/disputes', label: 'Disputes & Reliability', icon: icons.shield },

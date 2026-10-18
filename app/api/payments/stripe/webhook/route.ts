@@ -518,9 +518,10 @@ async function handleIntentSucceeded(
   // this activates them. Reuses handleSubscriptionPayment, the same
   // function the LuniPay webhook calls, so activation logic exists once.
   //
-  // A credit month (migration 268) whose credits did not cover the whole
-  // price is the same shape: rows created by /credit-month, the rest paid by
-  // this one-off PaymentIntent. handleSubscriptionPayment commits its credits.
+  // 'credit_month' PaymentIntents came from an earlier design where credits
+  // could part-pay a month. Credits now pay a month in full with no Stripe
+  // call, so none are created; the branch stays so any already in flight
+  // still settle.
   // -----------------------------------------------------------
   if (intent.metadata?.kind === 'group_subscription' || intent.metadata?.kind === 'credit_month') {
     const subscriptionPaymentId = intent.metadata?.payment_id;

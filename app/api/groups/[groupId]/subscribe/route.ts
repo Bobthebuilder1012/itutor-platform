@@ -27,11 +27,8 @@ export async function POST(req: NextRequest, { params }: Params) {
     // Only 'physical' is meaningful; anything else is online, which is what an
     // online-only class can offer and what every seat was before migration 242.
     // A body is optional, so a client that sends none still enrols online.
-    const body = (await req.json().catch(() => ({}))) as { seatType?: string; useCreditsTtd?: unknown };
+    const body = (await req.json().catch(() => ({}))) as { seatType?: string };
     const seatTypeFromBody = body.seatType === 'physical' ? 'physical' : 'online';
-    // Credits toward the first month (migration 268). The checkout quotes it
-    // and may lower it; anything that is not a positive number means none.
-    const useCreditsTtd = Number(body.useCreditsTtd) > 0 ? Number(body.useCreditsTtd) : null;
 
     // Step 1: Auth — student only
     const supabase = await getServerClient();
@@ -75,7 +72,6 @@ export async function POST(req: NextRequest, { params }: Params) {
       // downstream against what the class actually offers, so an unknown or
       // absent value becomes 'online' rather than a rejection.
       seatType: seatTypeFromBody,
-      useCreditsTtd,
     });
 
     return NextResponse.json(result.body, { status: result.status });

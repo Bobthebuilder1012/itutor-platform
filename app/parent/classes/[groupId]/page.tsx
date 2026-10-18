@@ -25,7 +25,7 @@ import { Detail, preorderFor, type GroupData } from '@/components/classes/ClassD
 import { fetchClassDetail } from '@/lib/classes/fetchClassDetail';
 import { hasAnyPrice } from '@/lib/payments/groupPricing';
 import CheckoutCreditsChoice, { type CreditChoice } from '@/components/credits/CheckoutCreditsChoice';
-import { invalidateCredits, useCredits } from '@/lib/credits/useCredits';
+import { invalidateCredits } from '@/lib/credits/useCredits';
 
 export default function ParentClassPage() {
   return (
@@ -43,10 +43,9 @@ function ClassContent() {
   const [readyChildId, setReadyChildId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // The parent's own credits (migration 268), spent on the child's class.
+  // The parent's own credits (migration 268) can pay a whole month of the
+  // child's class.
   const [creditChoice, setCreditChoice] = useState<CreditChoice>('none');
-  const { data: creditData } = useCredits('lite');
-  const creditBalance = creditData?.wallet?.available ?? 0;
   /** Set once the enrolment has actually happened — the modal then reports it. */
   const [done, setDone] = useState<{
     kind: 'enrolled' | 'requested' | 'waitlisted';
@@ -137,12 +136,7 @@ function ClassContent() {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            childId,
-            groupId: group.id,
-            // The server caps credits at what the purchase allows.
-            ...(credits !== 'none' ? { useCreditsTtd: creditBalance } : {}),
-          }),
+          body: JSON.stringify({ childId, groupId: group.id }),
         }
       );
       if (credits !== 'none') invalidateCredits();

@@ -1,20 +1,21 @@
-// Scenario B: one month of a class, paid with credits (all of it, or part with
-// the rest by card). Never renews — process-subscriptions completes it when
-// the month ends, and the student is invited to subscribe.
+// Scenario B: one month of a class, paid ENTIRELY with credits. There is no
+// part-credit, part-card month: a wallet that holds less than the monthly
+// price cannot buy one (owner's decision, Oct 2026). Never renews —
+// process-subscriptions completes it when the month ends, and the student is
+// invited to subscribe.
 //
 // Shares every eligibility rule with the subscription checkout
 // (lib/payments/groupEnrollmentEligibility.ts). Differences, all deliberate:
 //   * a full class is refused, not waitlisted — a waitlist promises a seat
 //     when one frees up, and credits cannot be held that long;
 //   * no promotions — credits are already the discount;
-//   * no Stripe at all when credits cover the month.
+//   * no Stripe at all.
 //
 // The tutor is paid on the full monthly price either way: amount_ttd is the
 // price, credits_applied_ttd the part iTutor funded.
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getStripeClient } from '@/lib/payments/stripeClient';
-import { ensureStripeCustomer } from '@/lib/payments/stripeSubscriptions';
 import { checkCapacity, loadCheckoutContext } from '@/lib/payments/groupEnrollmentEligibility';
 import {
   createPendingSubscriptionPayment,
@@ -49,14 +50,11 @@ export async function createCreditMonthCheckout(params: {
   groupId: string;
   /** Who attends. */
   studentId: string;
-  /** Whose credits (and card, for any remainder). Equal to studentId for a student. */
+  /** Whose credits. Equal to studentId for a student. */
   payerId: string;
-  payerEmail: string | null | undefined;
   seatType?: SeatType | null;
-  /** Credits to apply; omitted = as many as the month allows. */
-  useCreditsTtd?: number | null;
 }): Promise<CreditMonthOutcome> {
-  const { admin, groupId, studentId, payerId, payerEmail, seatType } = params;
+  const { admin, groupId, studentId, payerId, seatType } = params;
 
   const settings = await getCreditSettings(admin);
   if (!settings) {
@@ -125,10 +123,8 @@ export async function createCreditMonthCheckout(params: {
     scenario: 'B',
     baseTtd: base,
     balanceTtd: wallet?.available ?? 0,
-    requestedTtd: params.useCreditsTtd,
-    minCashChargeTtd: settings.min_cash_charge_ttd,
   });
-  if (quote.creditsApplied <= 0) {
+  if (!quote.fullCoverage) {
     return {
       ok: false,
       status: 422,
@@ -136,19 +132,9 @@ export async function createCreditMonthCheckout(params: {
         error:
           quote.refusedReason === 'no_balance'
             ? 'You have no credits available.'
-            : 'Credits cannot be used on this class: the card charge would fall below the minimum.',
-        reason: quote.refusedReason ?? 'below_minimum',
-      },
-    };
-  }
-  if (!quote.fullCoverage && (!process.env.STRIPE_SECRET_KEY || !payerEmail)) {
-    return {
-      ok: false,
-      status: !payerEmail ? 400 : 503,
-      body: {
-        error: !payerEmail
-          ? 'Your account is missing an email address'
-          : 'Card payments are not available on this environment',
+            : `Credits can only pay for a whole month. You need ${quote.shortfallTtd.toFixed(2)} TTD more.`,
+        reason: quote.refusedReason ?? 'not_enough',
+        shortfall_ttd: quote.shortfallTtd,
       },
     };
   }
@@ -220,15 +206,15 @@ export async function createCreditMonthCheckout(params: {
     .update({
       credits_applied_ttd: quote.creditsApplied,
       credit_spend_id: spendId,
-      charged_processing_fee_ttd: quote.processingFee,
-      payment_method: quote.fullCoverage ? 'credits' : 'card',
+      charged_processing_fee_ttd: 0,
+      payment_method: 'credits',
     })
     .eq('id', payment.id);
 
   await track(PRODUCT_EVENTS.ENROLMENT_STARTED, { group_id: groupId }, { userId: studentId });
 
   // ── Credits cover the month: done, no Stripe ─────────────────────────
-  if (quote.fullCoverage) {
+  {
     const result = await handleSubscriptionPayment({ admin, subscriptionPaymentId: payment.id, source: 'credits' });
     if (!result.ok) {
       // handleSubscriptionPayment committed the credits before activating;
@@ -269,67 +255,5 @@ export async function createCreditMonthCheckout(params: {
         period_end: result.receipt?.periodEnd ?? null,
       },
     };
-  }
-
-  // ── Part credits, part card: a one-off PaymentIntent ─────────────────
-  try {
-    const stripe = getStripeClient();
-    const customerId = await ensureStripeCustomer(admin as any, payerId);
-    const intent = await stripe.paymentIntents.create(
-      {
-        amount: quote.cashGrossCents,
-        currency: 'ttd',
-        customer: customerId,
-        description: `One month — ${ctx.group.name ?? 'class'} (part paid with iTutor credits)`,
-        // Saved so subscribing after this month is a one-click confirm.
-        setup_future_usage: 'off_session',
-        automatic_payment_methods: { enabled: true },
-        metadata: {
-          // The webhook routes 'credit_month' through handleSubscriptionPayment.
-          kind: 'credit_month',
-          enrollment_id: enrollmentId,
-          group_id: groupId,
-          student_id: studentId,
-          payer_id: payerId === studentId ? '' : payerId,
-          payment_id: payment.id,
-          base_amount_ttd: String(base),
-          credits_applied_ttd: String(quote.creditsApplied),
-          processing_fee_ttd: String(quote.processingFee),
-        },
-      },
-      { idempotencyKey: `credit-month-${payment.id}` }
-    );
-
-    // Written BEFORE the redirect: the checkout page and the status route
-    // find this payment by its PaymentIntent id.
-    await admin
-      .from('subscription_payments')
-      .update({ stripe_payment_intent_id: intent.id })
-      .eq('id', payment.id);
-
-    return {
-      ok: true,
-      status: 201,
-      body: {
-        completed: false,
-        checkout_url: `/payments/checkout?pi=${intent.id}`,
-        client_secret: intent.client_secret,
-        payment_intent_id: intent.id,
-        enrollment_id: enrollmentId,
-        payment_id: payment.id,
-        amount: base,
-        credits_applied: quote.creditsApplied,
-        processing_fee: quote.processingFee,
-        total: quote.cashGross,
-        currency: 'TTD',
-      },
-    };
-  } catch (err) {
-    console.error('[credit-month] PaymentIntent failed:', err);
-    // No intent exists, so nothing can pay: hand the credits back.
-    await expireSubscriptionPayment(admin, payment.id);
-    await safely('release after Stripe failure', () => releaseCredits(admin, spendId));
-    await cancelEnrollment(admin, enrollmentId, 'checkout_failed');
-    return { ok: false, status: 502, body: { error: 'Failed to create checkout session' } };
   }
 }

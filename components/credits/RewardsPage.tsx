@@ -216,9 +216,8 @@ export default function RewardsPage({ role }: { role: 'student' | 'parent' }) {
               {fmtCredits(programme.credit_value_ttd)} in credits.
             </li>
           ) : null}
-          <li>• Spend credits on a group class: toward your next monthly payment, on one month of a class, or on the first month of a new subscription.</li>
-          <li>• Starting a new subscription always needs a card payment on the first month — credits can’t start one on their own.</li>
-          <li>• Credits are taken off the class price before the card fee, and your tutor is still paid in full.</li>
+          <li>• Credits pay for a whole payment: one month of a class, or your next monthly payment on a subscription. They can’t pay part of a payment, and they can’t start a new subscription.</li>
+          <li>• Your tutor is still paid in full when you pay with credits.</li>
           <li>• Credits have no cash value, can’t be transferred, and can be taken back if a payment is refunded or for misuse.</li>
         </ul>
       </Card>

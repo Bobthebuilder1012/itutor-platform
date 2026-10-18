@@ -600,6 +600,21 @@ export default function AdminDashboardPage() {
                 </span>
               )}
             </Link>
+
+            <Link
+              href="/admin/referrals"
+              className="flex items-center gap-4 p-6 border-2 border-gray-200 rounded-xl hover:border-teal-500 hover:bg-teal-50 transition-all group hover:shadow-lg"
+            >
+              <div className="bg-teal-100 rounded-lg p-4 group-hover:bg-teal-200 transition-colors">
+                <svg className="w-8 h-8 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900 text-lg">Credits</h3>
+                <p className="text-sm text-gray-600">Referral credits, campaign codes and balances</p>
+              </div>
+            </Link>
           </div>
 
           <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">

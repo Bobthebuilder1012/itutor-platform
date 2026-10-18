@@ -1,7 +1,9 @@
-// Scenario A: "apply credits to my next payment" on an existing Stripe
-// subscription. A single-use 'once' coupon is attached to the subscription and
-// discounts its NEXT renewal invoice; the ledger reservation waits until that
-// invoice is paid (invoice.paid commits it) or can no longer be (released).
+// Scenario A: "pay my next payment with credits" on an existing Stripe
+// subscription. Credits pay the WHOLE renewal or nothing — there is no
+// part-credit renewal (owner's decision, Oct 2026). A single-use 'once' coupon
+// for the full invoice is attached to the subscription, so its NEXT renewal is
+// a TT$0 invoice; the ledger reservation waits until that invoice is paid
+// (invoice.paid commits it) or can no longer be (released).
 //
 // Guards, each for a way the credits could be lost or double-counted:
 //   * only Stripe-billed, ACTIVE/GRACE, unpaused subscriptions — a paused one
@@ -176,23 +178,23 @@ export async function applyCreditsToRenewal(params: {
     baseTtd,
     balanceTtd: wallet?.available ?? 0,
     requestedTtd: params.requestedTtd,
-    minCashChargeTtd: settings.min_cash_charge_ttd,
   });
-  if (quote.creditsApplied <= 0) {
+  if (!quote.fullCoverage) {
     return {
       ok: false,
       status: 422,
       body: {
-        error: quote.refusedReason === 'no_balance' ? 'You have no credits available.' : 'Credits cannot cover this payment.',
-        reason: quote.refusedReason ?? 'below_minimum',
+        error:
+          quote.refusedReason === 'no_balance'
+            ? 'You have no credits available.'
+            : `Credits can only pay a whole payment. You need ${quote.shortfallTtd.toFixed(2)} TTD more to cover this one.`,
+        reason: quote.refusedReason ?? 'not_enough',
+        shortfall_ttd: quote.shortfallTtd,
       },
     };
   }
-  // Full coverage takes the whole invoice to TT$0.
-  const amountOffCents = quote.fullCoverage ? preCreditCents : preCreditCents - quote.cashGrossCents;
-  if (amountOffCents <= 0) {
-    return { ok: false, status: 422, body: { error: 'Credits cannot cover this payment.', reason: 'below_minimum' } };
-  }
+  // Credits pay the whole renewal: the coupon takes the invoice to TT$0.
+  const amountOffCents = preCreditCents;
 
   const periodEndIso = new Date(periodEnd).toISOString();
   let spendId: string;
@@ -247,8 +249,8 @@ export async function applyCreditsToRenewal(params: {
     body: {
       applied: true,
       credits_applied: quote.creditsApplied,
-      card_charge: quote.cashGross,
-      full_coverage: quote.fullCoverage,
+      card_charge: 0,
+      full_coverage: true,
       applies_on: periodEndIso,
     },
   };

@@ -1,9 +1,9 @@
 // POST /api/groups/[groupId]/credit-month
 // A student buys ONE month of a class with their iTutor credits (scenario B).
-// Body: { useCreditsTtd?, seatType? }
+// Body: { seatType? }
 //
-// Credits that cover the month finish it here: 201 { completed: true }. Credits
-// that cover part of it return a checkout_url for the rest, paid by card.
+// Credits must cover the whole month — there is no part-card payment. Success
+// is 201 { completed: true }; too few credits is 422 with shortfall_ttd.
 // The month never renews. See lib/credits/creditMonthCheckout.ts.
 //
 // Authorisation is the session, as for /subscribe — including the parent's
@@ -22,9 +22,8 @@ type Params = { params: Promise<{ groupId: string }> };
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const { groupId } = await params;
-    const body = (await req.json().catch(() => ({}))) as { seatType?: string; useCreditsTtd?: unknown };
+    const body = (await req.json().catch(() => ({}))) as { seatType?: string };
     const seatType = body.seatType === 'physical' ? 'physical' : 'online';
-    const useCreditsTtd = Number(body.useCreditsTtd) > 0 ? Number(body.useCreditsTtd) : null;
 
     const supabase = await getServerClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -56,9 +55,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       groupId,
       studentId: user.id,
       payerId: user.id,
-      payerEmail: user.email,
       seatType,
-      useCreditsTtd,
     });
     return NextResponse.json(result.body, { status: result.status });
   } catch (err) {

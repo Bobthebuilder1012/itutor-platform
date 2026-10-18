@@ -23,6 +23,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import AdminBreadcrumb from '@/components/admin/AdminBreadcrumb';
 import { isEmailManagementOnlyAdmin } from '@/lib/auth/adminAccess';
 import { Card, Pill, Stat } from '@/components/admin/demand/DemandUi';
+import CreditsAdminNav from '@/components/admin/credits/CreditsAdminNav';
 import { PUBLIC_BASE, downloadFile, renderBrandedQr, renderBrandedQrSvg } from '@/lib/qr/brandedQr';
 
 type Campaign = {
@@ -595,9 +596,10 @@ export default function AdminCreditCodesPage() {
   return (
     <DashboardLayout role="admin" userName="Admin">
       <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
-        <AdminBreadcrumb items={[{ label: 'Finance' }, { label: 'Credit Codes' }]} />
+        <AdminBreadcrumb items={[{ label: 'Credits' }, { label: 'Campaign codes' }]} />
+        <CreditsAdminNav />
         <header className="mt-4">
-          <h1 className="text-3xl font-bold text-gray-900">Credit Codes</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Campaign codes</h1>
           <p className="mt-1 max-w-3xl text-gray-600">
             Codes for iTutor’s own campaigns. Students and parents redeem them by typing the code, opening its link or
             scanning its QR, and the credits land in the same wallet as referral rewards.
