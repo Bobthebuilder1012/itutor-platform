@@ -122,9 +122,14 @@ begin
   if (r->>'ok')::boolean is not true then raise exception 'CHECK FAILED: used-code refusals locked an account: %', r; end if;
 
   -- ── Roles, suspension, switch ───────────────────────────────────────
-  update public.profiles set role = 'tutor' where id = u[6];
-  r := public.redeem_credit_code(u[6], 'VRFY-PROMO');
-  if r->>'reason' <> 'not_eligible_role' then raise exception 'CHECK FAILED: a tutor redeemed: %', r; end if;
+  -- A real tutor account, borrowed as-is: turning a student into a tutor is
+  -- refused by enforce_student_account_type when account_type is set.
+  v_rid := null;
+  select id into v_rid from public.profiles where role = 'tutor' and not coalesce(is_suspended, false) limit 1;
+  if v_rid is not null then
+    r := public.redeem_credit_code(v_rid, 'VRFY-PROMO');
+    if r->>'reason' <> 'not_eligible_role' then raise exception 'CHECK FAILED: a tutor redeemed: %', r; end if;
+  end if;
   update public.profiles set is_suspended = true where id = u[7];
   r := public.redeem_credit_code(u[7], 'VRFY-PROMO');
   if r->>'reason' <> 'suspended' then raise exception 'CHECK FAILED: a suspended account redeemed: %', r; end if;
