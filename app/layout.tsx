@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { Inter, Space_Grotesk } from 'next/font/google';
 import { AuthProvider } from '@/components/AuthProvider';
@@ -6,6 +6,20 @@ import SuppressHydrationWarnings from '@/components/SuppressHydrationWarnings';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans', display: 'swap' });
 const spaceGrotesk = Space_Grotesk({ subsets: ['latin'], variable: '--font-display', display: 'swap' });
+
+// viewport-fit=cover lets the app paint edge to edge on notched phones; the
+// shells pad their fixed bars back out with env(safe-area-inset-*) (without
+// this tag those values are all 0). Zoom stays enabled — iOS input zoom is
+// fixed at the cause (16px inputs on touch, see .app-native in globals.css).
+// The app is light-only and every top bar is white, so the browser chrome is
+// white in both OS colour schemes; the manifest's green is for the splash.
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  themeColor: '#ffffff',
+  colorScheme: 'light',
+};
 
 export const metadata: Metadata = {
   title: 'iTutor - Caribbean Education Platform',

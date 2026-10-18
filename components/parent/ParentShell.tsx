@@ -267,12 +267,12 @@ export default function ParentShell({ children }: { children: React.ReactNode })
           </div>
         </header>
 
-        <main className="flex-1 px-4 lg:px-8 py-6 lg:py-8 pb-24 lg:pb-8">
+        <main className="flex-1 px-4 lg:px-8 py-6 lg:py-8 pb-[calc(6rem+env(safe-area-inset-bottom))] lg:pb-8">
           {children}
         </main>
 
         {/* Opaque for the same reason as the header. */}
-        <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-border bg-background">
+        <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-border bg-background pb-[env(safe-area-inset-bottom)]">
           {/* Six columns now that Explore has a permanent slot. Driven off the
               nav length rather than a literal, so the bar cannot silently
               squash the next time an item is added. */}

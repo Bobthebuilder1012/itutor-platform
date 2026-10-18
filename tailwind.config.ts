@@ -1,6 +1,12 @@
 import type { Config } from 'tailwindcss'
 
 const config: Config = {
+  // `hover:` compiles to @media (hover: hover), so a tap on a phone no longer
+  // leaves a hover style stuck on until the next tap elsewhere. Touch press
+  // feedback belongs on `active:`.
+  future: {
+    hoverOnlyWhenSupported: true,
+  },
   content: [
     './pages/**/*.{js,ts,jsx,tsx,mdx}',
     './components/**/*.{js,ts,jsx,tsx,mdx}',

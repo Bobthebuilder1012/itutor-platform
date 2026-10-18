@@ -213,7 +213,7 @@ export default function TutorShell({ children, actions }: { children: ReactNode;
           <TutorHeaderStrip completion={completion} />
         </header>
 
-        <main className="flex-1 px-4 lg:px-8 py-6 lg:py-8 pb-24 lg:pb-8">
+        <main className="flex-1 px-4 lg:px-8 py-6 lg:py-8 pb-[calc(6rem+env(safe-area-inset-bottom))] lg:pb-8">
           {children}
         </main>
 
@@ -221,7 +221,7 @@ export default function TutorShell({ children, actions }: { children: ReactNode;
         {/* Opaque for the same reason as the header above — /95 on a var() token
             emitted nothing, so this bar was fully transparent with page content
             scrolling visibly through it. */}
-        <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-border bg-background">
+        <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-border bg-background pb-[env(safe-area-inset-bottom)]">
           <div className="grid grid-cols-5">
             {nav.slice(0, 5).map((item) => {
               const active = item.exact ? pathname === item.to : pathname.startsWith(item.to);

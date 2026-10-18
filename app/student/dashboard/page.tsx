@@ -19,6 +19,7 @@ import ReliabilityPanel from '@/components/reliability/ReliabilityPanel';
 import CampaignDashboardBanner from '@/components/classMatchWeek/CampaignDashboardBanner';
 import CampaignJoinCard from '@/components/classMatchWeek/CampaignJoinCard';
 import DashboardRewardsCard from '@/components/credits/DashboardRewardsCard';
+import { pressable } from '@/components/credits/press';
 
 type RecentTutor = {
   tutorId: string;
@@ -28,6 +29,8 @@ type RecentTutor = {
 };
 
 type EnrichedSession = Session & {
+  /** sessions.join_url — selected by * but missing from the shared Session type. */
+  join_url?: string | null;
   tutor?: { id: string; full_name?: string; display_name?: string; username?: string } | null;
   subject?: { id: string; label?: string; name?: string } | null;
 };
@@ -165,6 +168,8 @@ export default function StudentDashboard() {
   const fullName = profile ? getDisplayName(profile) : 'Student';
   const userInitials = fullName.slice(0, 2).toUpperCase();
   const nextSession = upcomingSessions[0];
+  const weekAhead = Date.now() + 7 * 24 * 60 * 60 * 1000;
+  const sessionsThisWeek = upcomingSessions.filter((s) => new Date(s.scheduled_start_at).getTime() < weekAhead).length;
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -179,7 +184,7 @@ export default function StudentDashboard() {
       {/* Mobile profile card */}
       <button
         onClick={() => setEditProfileModalOpen(true)}
-        className="lg:hidden w-full flex items-center gap-3 rounded-2xl bg-background border border-border p-3 shadow-sm hover:shadow-card transition text-left"
+        className={cn('lg:hidden w-full flex items-center gap-3 rounded-2xl bg-background border border-border p-3 shadow-sm text-left active:bg-muted', pressable)}
       >
         <div className="size-12 rounded-full bg-gradient-to-br from-coral to-peach grid place-items-center text-white font-semibold shadow-sm flex-shrink-0">
           {userInitials}
@@ -220,7 +225,7 @@ export default function StudentDashboard() {
 
       {/* Next session hero */}
       {nextSession && (
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand to-brand-deep p-6 lg:p-8 text-white shadow-pop">
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand-deep to-brand-dark p-6 lg:p-8 text-white shadow-pop">
           <div className="absolute -right-12 -top-12 size-56 rounded-full bg-white/10 blur-2xl" />
           <div className="relative flex flex-col lg:flex-row lg:items-center gap-6">
             <div className="flex-1">
@@ -243,12 +248,17 @@ export default function StudentDashboard() {
               </div>
             </div>
             <div className="flex gap-2">
-              {nextSession.status === 'JOIN_OPEN' && (
-                <button className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-white text-forest font-semibold hover:bg-white/90 transition">
+              {nextSession.status === 'JOIN_OPEN' && nextSession.join_url && (
+                <a
+                  href={nextSession.join_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={cn('inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-white text-forest font-semibold hover:bg-white/90', pressable)}
+                >
                   <Video className="size-4" /> Join lesson
-                </button>
+                </a>
               )}
-              <Link href="/student/bookings" className="px-4 py-3 rounded-2xl bg-white/15 text-white font-semibold hover:bg-white/25 transition">
+              <Link href="/student/bookings" className={cn('px-4 py-3 rounded-2xl bg-white/15 text-white font-semibold hover:bg-white/25 active:bg-white/25', pressable)}>
                 View bookings
               </Link>
             </div>
@@ -259,16 +269,16 @@ export default function StudentDashboard() {
       {/* Stat strip */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: 'Sessions this week', value: upcomingSessions.length.toString(), icon: Calendar, tint: 'bg-sky/40' },
-          { label: 'Hours studied', value: totalHoursTutored.toString(), icon: Clock, tint: 'bg-lavender/60' },
-          { label: 'Completed sessions', value: completedSessionsCount.toString(), icon: Trophy, tint: 'bg-peach/60' },
+          { label: 'Sessions this week', value: sessionsThisWeek.toString(), icon: Calendar, tint: 'bg-sky' },
+          { label: 'Hours studied', value: totalHoursTutored.toString(), icon: Clock, tint: 'bg-lavender' },
+          { label: 'Completed sessions', value: completedSessionsCount.toString(), icon: Trophy, tint: 'bg-peach' },
           { label: 'Subjects studying', value: (profile?.subjects_of_study?.length || 0).toString(), icon: CheckCircle2, tint: 'bg-brand-soft' },
         ].map((s) => (
           <div key={s.label} className="rounded-2xl bg-background border border-border p-4">
             <div className={cn('size-9 rounded-xl grid place-items-center mb-2', s.tint)}>
               <s.icon className="size-4 text-forest" />
             </div>
-            <div className="text-2xl font-bold text-ink">{loadingData ? '–' : s.value}</div>
+            <div className="text-2xl font-bold tracking-tight text-ink tabular-nums">{loadingData ? '–' : s.value}</div>
             <div className="text-xs text-muted-foreground">{s.label}</div>
           </div>
         ))}
@@ -296,7 +306,7 @@ export default function StudentDashboard() {
               </div>
               <p className="font-semibold text-ink">No upcoming lessons</p>
               <p className="text-sm text-muted-foreground mt-1 mb-4">Book a session with a tutor to get started.</p>
-              <Link href="/student/find-tutors" className="px-4 py-2 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep transition">
+              <Link href="/student/find-tutors" className={cn('inline-block px-4 py-2 rounded-xl bg-brand-deep text-white text-sm font-semibold hover:bg-brand-dark', pressable)}>
                 Find a tutor
               </Link>
             </div>
@@ -306,13 +316,13 @@ export default function StudentDashboard() {
                 const startDate = new Date(s.scheduled_start_at);
                 const tutorName = s.tutor ? getDisplayName(s.tutor) : 'Tutor';
                 const subjectName = s.subject?.label || s.subject?.name || 'Session';
-                const tints = ['bg-sky/50', 'bg-lavender/60', 'bg-brand-soft'];
+                const tints = ['bg-sky', 'bg-lavender', 'bg-brand-soft'];
                 const idx = upcomingSessions.indexOf(s);
                 return (
-                  <div key={s.id} className="flex items-center gap-3 p-3 rounded-2xl hover:bg-muted/60 transition cursor-pointer">
+                  <Link key={s.id} href="/student/bookings" className={cn('group flex items-center gap-3 p-3 rounded-2xl hover:bg-muted active:bg-muted', pressable)}>
                     <div className={cn('size-12 rounded-xl grid place-items-center flex-shrink-0', tints[idx % 3])}>
                       <div className="text-center leading-none">
-                        <div className="text-[10px] font-semibold text-forest/70 uppercase">{startDate.toLocaleDateString('en', { weekday: 'short' })}</div>
+                        <div className="text-[10px] font-semibold text-forest opacity-70 uppercase">{startDate.toLocaleDateString('en', { weekday: 'short' })}</div>
                         <div className="text-base font-bold text-forest">{startDate.getDate()}</div>
                       </div>
                     </div>
@@ -320,10 +330,10 @@ export default function StudentDashboard() {
                       <div className="font-semibold text-sm text-ink truncate">{subjectName}</div>
                       <div className="text-xs text-muted-foreground">{tutorName} · {startDate.toLocaleTimeString('en', { hour: 'numeric', minute: '2-digit' })}</div>
                     </div>
-                    <Link href="/student/bookings" className="text-xs font-semibold text-brand-deep px-3 py-1.5 rounded-full hover:bg-brand-soft">
+                    <span className="shrink-0 text-xs font-semibold text-brand-deep px-3 py-1.5 rounded-full group-hover:bg-brand-soft transition-colors">
                       Details
-                    </Link>
-                  </div>
+                    </span>
+                  </Link>
                 );
               })}
             </div>
@@ -345,7 +355,7 @@ export default function StudentDashboard() {
                 <button
                   key={t.tutorId}
                   onClick={() => router.push(`/student/tutors/${t.tutorId}`)}
-                  className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-muted transition text-left"
+                  className={cn('w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-muted active:bg-muted text-left', pressable)}
                 >
                   {t.avatarUrl ? (
                     <img src={t.avatarUrl} alt="" className="size-9 rounded-full object-cover flex-shrink-0" />
@@ -368,7 +378,7 @@ export default function StudentDashboard() {
                   run — it is deliberately NOT a nav tab. The wizard is an
                   interstitial shown once; its answers live on this surface, where
                   the filters can be edited. */}
-              <Link href="/student/matches" className="flex items-center gap-3 p-3 rounded-2xl bg-brand-soft hover:bg-mint-deep transition">
+              <Link href="/student/matches" className={cn('flex items-center gap-3 p-3 rounded-2xl bg-brand-soft hover:bg-mint-deep active:bg-mint-deep', pressable)}>
                 <div className="size-9 rounded-xl bg-brand grid place-items-center">
                   <span className="text-white text-lg">✨</span>
                 </div>
@@ -377,7 +387,7 @@ export default function StudentDashboard() {
                   <div className="text-xs text-muted-foreground">Classes picked for you</div>
                 </div>
               </Link>
-              <Link href="/student/find-tutors" className="flex items-center gap-3 p-3 rounded-2xl hover:bg-muted transition">
+              <Link href="/student/find-tutors" className={cn('flex items-center gap-3 p-3 rounded-2xl hover:bg-muted active:bg-muted', pressable)}>
                 <div className="size-9 rounded-xl bg-brand grid place-items-center">
                   <span className="text-white text-lg">🔍</span>
                 </div>
@@ -388,7 +398,7 @@ export default function StudentDashboard() {
               </Link>
               <button
                 onClick={() => setEditSubjectsModalOpen(true)}
-                className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-muted transition text-left"
+                className={cn('w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-muted active:bg-muted text-left', pressable)}
               >
                 <div className="size-9 rounded-xl bg-lavender grid place-items-center">
                   <span className="text-lg">📚</span>

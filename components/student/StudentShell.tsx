@@ -4,7 +4,7 @@ import Link from 'next/link';
 import LogoutConfirmModal from '@/components/LogoutConfirmModal';
 import { usePathname, useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { useEffect, useState, type ComponentType, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import {
   LayoutDashboard,
   Search,
@@ -85,6 +85,25 @@ function ProfileMenu({ collapsed, displayName, initials, roleLabel, avatarUrl }:
 }) {
   const [open, setOpen] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // A menu that only closes from its own button feels stuck: a tap anywhere
+  // else, or Escape, dismisses it.
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (e: PointerEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointer);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
 
   const handleLogout = async () => {
     localStorage.clear();
@@ -94,10 +113,12 @@ function ProfileMenu({ collapsed, displayName, initials, roleLabel, avatarUrl }:
   };
 
   return (
-    <div className="relative p-3 border-t border-border">
+    <div ref={menuRef} className="relative p-3 border-t border-border">
       <button
         onClick={() => setOpen((o) => !o)}
-        className={cn('w-full flex items-center gap-3 rounded-xl hover:bg-muted transition px-2 py-2', collapsed && 'justify-center px-0')}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        className={cn('w-full flex items-center gap-3 rounded-xl hover:bg-muted active:bg-muted transition-colors px-2 py-2', collapsed && 'justify-center px-0')}
       >
         {avatarUrl ? (
           <Image
@@ -124,13 +145,22 @@ function ProfileMenu({ collapsed, displayName, initials, roleLabel, avatarUrl }:
         )}
       </button>
       {open && (
-        <div className={cn('absolute bottom-full mb-2 rounded-xl bg-background border border-border shadow-pop p-1 z-30', collapsed ? 'left-full ml-2 w-48' : 'left-3 right-3')}>
-          <Link href="/student/settings" onClick={() => setOpen(false)} className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted text-sm">
+        <div
+          role="menu"
+          className={cn(
+            'animate-menu-pop absolute bottom-full mb-2 rounded-xl bg-background border border-border shadow-pop p-1 z-30',
+            // Grows out of the button that opened it: up from the trigger, or
+            // out sideways from the rail when collapsed.
+            collapsed ? 'left-full ml-2 w-48 origin-bottom-left' : 'left-3 right-3 origin-bottom'
+          )}
+        >
+          <Link href="/student/settings" role="menuitem" onClick={() => setOpen(false)} className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted active:bg-muted text-sm">
             <Settings className="size-4 text-muted-foreground" /> Account settings
           </Link>
           <button
+            role="menuitem"
             onClick={() => { setConfirmLogout(true); setOpen(false); }}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-coral-soft text-sm text-coral font-medium"
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-coral-soft active:bg-coral-soft text-sm text-coral font-medium"
           >
             <LogOut className="size-4" /> Log out
           </button>
@@ -272,12 +302,17 @@ function ShellInner({
   };
 
   return (
-    <div className="h-screen bg-background flex overflow-hidden">
+    // 100dvh, not 100vh: on a phone 100vh is the height with the URL bar
+    // hidden, so a 100vh shell overflows by the bar on load and the end of
+    // the page sits under it. h-screen stays as the fallback for browsers
+    // without dynamic viewport units.
+    <div className="app-native h-screen supports-[height:100dvh]:h-dvh bg-background flex overflow-hidden">
       {profile?.id && <PushTokenRegistrar />}
 
-      {/* Desktop sidebar */}
+      {/* Desktop sidebar. Only the width animates, on a strong in-out curve
+          (it is moving on screen, not entering). */}
       <aside className={cn(
-        'dark hidden lg:flex shrink-0 flex-col border-r border-border bg-ink text-foreground transition-all duration-200',
+        'dark hidden lg:flex shrink-0 flex-col border-r border-border bg-ink text-foreground transition-[width] duration-200 ease-[cubic-bezier(0.77,0,0.175,1)] motion-reduce:transition-none',
         collapsed ? 'w-16' : 'w-64'
       )}>
         <div className={cn('px-3 py-4 border-b border-border flex items-center gap-2', collapsed && 'justify-center')}>
@@ -292,8 +327,9 @@ function ShellInner({
           )}
           <button
             onClick={() => setCollapsed((c) => !c)}
-            className="size-8 grid place-items-center rounded-lg hover:bg-muted text-muted-foreground"
+            className="size-8 grid place-items-center rounded-lg hover:bg-muted active:bg-muted text-muted-foreground transition-colors"
             title={collapsed ? 'Expand' : 'Collapse'}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
             {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
           </button>
@@ -313,14 +349,17 @@ function ShellInner({
                 <Link
                   key={item.to}
                   href={item.to}
+                  aria-current={active ? 'page' : undefined}
                   title={locked ? `${item.label} — create a free account` : collapsed ? item.label : undefined}
                   className={cn(
-                    'flex items-center rounded-xl text-sm font-medium transition-colors group',
+                    'flex items-center rounded-xl text-sm font-medium transition-colors group select-none',
                     collapsed ? 'justify-center p-2' : 'gap-3 px-2 py-2',
-                    active ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                    // muted is a bare var() token: `bg-muted/60` emitted nothing,
+                    // so hovering a rail item never showed anything.
+                    active ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground active:bg-muted'
                   )}
                 >
-                  <span className={cn('size-8 rounded-lg grid place-items-center transition', item.tint, !active && 'opacity-80 group-hover:opacity-100', locked && 'opacity-40 group-hover:opacity-70')}>
+                  <span className={cn('size-8 rounded-lg grid place-items-center transition-opacity', item.tint, !active && 'opacity-80 group-hover:opacity-100', locked && 'opacity-40 group-hover:opacity-70')}>
                     <Icon className="size-4" />
                   </span>
                   {!collapsed && (
@@ -343,22 +382,34 @@ function ShellInner({
         )}
       </aside>
 
-      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto overflow-x-hidden">
+      {/* The page's one scroller. overscroll-y-contain keeps its own bounce
+          but stops it chaining to the document, so pulling down at the top
+          of an app screen does not trigger the browser's pull-to-refresh. */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto overflow-x-hidden overscroll-y-contain">
         {/* Top bar. Opaque, not frosted — `bg-background/90` emitted no
             background-color at all (the token is a bare var() with no
             <alpha-value>, so Tailwind drops the modifier utility), leaving a
             transparent bar whose backdrop-filter put it on its own composited
             layer and painted it bright over any overlay scrim. See TutorShell. */}
-        <header className="sticky top-0 z-30 bg-background border-b border-border">
-          <div className="flex items-center gap-3 px-4 lg:px-6 h-14">
-            <Link href="/" className="lg:hidden">
+        {/* pt = the status-bar inset in an installed (standalone) app; 0 in
+            the browser. */}
+        <header className="sticky top-0 z-30 bg-background border-b border-border pt-[env(safe-area-inset-top)]">
+          <div className="flex items-center gap-2 sm:gap-3 px-4 lg:px-6 h-14">
+            <Link href="/" className="lg:hidden shrink-0">
               <Image src="/assets/logo/itutor-logo-light.png" alt="iTutor" width={90} height={24} className="h-7 w-auto object-contain" />
             </Link>
 
-            <form onSubmit={onSearch} className="flex-1 max-w-xl">
+            {/* On a phone the bar also carries the credit counter, the
+                campaign button, notifications and settings; an inline search
+                box squeezed between them is too narrow to type into. Phones
+                get a search button instead (Explore is also in the tab bar). */}
+            <form onSubmit={onSearch} role="search" className="hidden sm:block flex-1 max-w-xl">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" aria-hidden />
                 <input
+                  type="search"
+                  enterKeyHint="search"
+                  aria-label="Search tutors, subjects and topics"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search tutors, subjects, topics…"
@@ -366,6 +417,14 @@ function ShellInner({
                 />
               </div>
             </form>
+            <div className="flex-1 sm:hidden" />
+            <Link
+              href={searchAction ? searchAction('') : '/student/find-tutors'}
+              aria-label="Search"
+              className="sm:hidden size-10 shrink-0 grid place-items-center rounded-full text-muted-foreground active:bg-muted transition-colors"
+            >
+              <Search className="size-[18px]" />
+            </Link>
 
             {/* Campaign entry point. In the shell rather than on the dashboard
                 so it is reachable from every student page; it renders nothing
@@ -382,30 +441,33 @@ function ShellInner({
               // unlock, and Log in is what this visitor might actually want.
               <Link
                 href={loginHref}
-                className="rounded-full border border-border px-4 py-1.5 text-sm font-semibold text-ink transition hover:bg-muted"
+                className="shrink-0 rounded-full border border-border px-4 py-1.5 text-sm font-semibold text-ink transition-colors hover:bg-muted active:bg-muted"
               >
                 Log in
               </Link>
             ) : (
-              <div className="flex items-center gap-1">
-                <Link href="/student/notifications" className="relative size-9 grid place-items-center rounded-full hover:bg-muted text-muted-foreground" title="Notifications">
-                  <Bell className="size-4" />
+              <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
+                <Link href="/student/notifications" aria-label="Notifications" className="relative size-10 grid place-items-center rounded-full hover:bg-muted active:bg-muted text-muted-foreground transition-colors" title="Notifications">
+                  <Bell className="size-[18px] sm:size-4" />
                 </Link>
-                <Link href="/student/settings" className="size-9 grid place-items-center rounded-full hover:bg-muted text-muted-foreground" title="Settings">
-                  <Settings className="size-4" />
+                <Link href="/student/settings" aria-label="Settings" className="size-10 grid place-items-center rounded-full hover:bg-muted active:bg-muted text-muted-foreground transition-colors" title="Settings">
+                  <Settings className="size-[18px] sm:size-4" />
                 </Link>
               </div>
             )}
           </div>
         </header>
 
-        <main className="flex-1 px-4 lg:px-8 py-6 lg:py-8 pb-24 lg:pb-8">
+        {/* Bottom padding clears the tab bar (4rem) AND the home indicator. */}
+        <main className="flex-1 px-4 lg:px-8 py-6 lg:py-8 pb-[calc(6rem+env(safe-area-inset-bottom))] lg:pb-8">
           {children}
         </main>
 
-        {/* Mobile bottom nav. Opaque for the same reason as the header. */}
-        <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-border bg-background">
-          <div className="grid grid-cols-5">
+        {/* Mobile tab bar. Opaque for the same reason as the header. The bar
+            is a fixed 4rem plus the home-indicator inset, so anything pinned
+            above it can sit at bottom-[calc(4rem+env(safe-area-inset-bottom))]. */}
+        <nav aria-label="Main" className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-border bg-background pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
+          <div className="grid h-16 grid-cols-5">
             {nav.slice(0, 5).map((item) => {
               const target = item.to.split('?')[0];
               const active = item.exact ? pathname === target : pathname.startsWith(target);
@@ -415,12 +477,27 @@ function ShellInner({
                 <Link
                   key={item.to}
                   href={item.to}
-                  className={cn('flex flex-col items-center gap-1 py-2 text-[10px] font-medium', active ? 'text-brand-deep' : 'text-muted-foreground', locked && 'opacity-50')}
+                  aria-current={active ? 'page' : undefined}
+                  className={cn(
+                    'group flex select-none flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors',
+                    active ? 'text-brand-deep' : 'text-muted-foreground',
+                    locked && 'opacity-50'
+                  )}
                 >
-                  <span className={cn('size-8 rounded-lg grid place-items-center', active ? item.tint : '')}>
-                    <Icon className="size-4" />
+                  {/* Press feedback lands on the icon the instant a finger
+                      does — on press, not on release. */}
+                  <span
+                    className={cn(
+                      'size-8 rounded-lg grid place-items-center transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] group-active:scale-90 motion-reduce:group-active:scale-100',
+                      // Not item.tint: those are the dark rail's colours
+                      // (text-emerald-300 etc.), near-invisible on this
+                      // white bar.
+                      active ? 'bg-brand-soft text-brand-deep' : ''
+                    )}
+                  >
+                    <Icon className="size-[18px]" />
                   </span>
-                  {item.label}
+                  <span className="max-w-full truncate px-0.5">{item.label}</span>
                 </Link>
               );
             })}
