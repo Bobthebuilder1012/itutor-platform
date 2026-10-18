@@ -1,10 +1,12 @@
 'use client';
 
-// "Apply credits to my next payment" on a monthly subscription (scenario A).
-// Shows nothing for someone with no credits. States:
-//   * credits already set to apply → the amount, the date, and Remove
+// "Pay my next payment with credits" on a monthly subscription (scenario A).
+// Credits pay the WHOLE renewal or nothing; the server refuses, with how much
+// more is needed, when the balance falls short. Shows nothing for someone with
+// no credits. States:
+//   * credits already set to pay it → the amount, the date, and Remove
 //   * a LuniPay-billed subscription → why credits cannot be used on it
-//   * otherwise → Apply, which attaches the credits to the next renewal
+//   * otherwise → the button
 
 import { useState } from 'react';
 import { Gift, Loader2 } from 'lucide-react';
@@ -53,9 +55,7 @@ export default function RenewalCreditsControl({
       if (method === 'POST') {
         setMessage({
           tone: 'ok',
-          text: json.full_coverage
-            ? `${fmtCredits(json.credits_applied)} will cover your payment on ${fmtDate(json.applies_on)} — nothing will be charged.`
-            : `${fmtCredits(json.credits_applied)} will come off your payment on ${fmtDate(json.applies_on)}. Your card pays ${fmtCredits(json.card_charge)}.`,
+          text: `${fmtCredits(json.credits_applied)} in credits will pay your payment on ${fmtDate(json.applies_on)} — nothing will be charged to your card.`,
         });
       } else {
         setMessage({ tone: 'ok', text: 'Your credits are back in your wallet.' });
@@ -74,7 +74,7 @@ export default function RenewalCreditsControl({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="inline-flex items-center gap-2 text-ink">
             <Gift className="size-4 text-brand" />
-            {fmtCredits(pending.credits)} in credits will apply to your payment on {fmtDate(pending.applies_on)}.
+            {fmtCredits(pending.credits)} in credits will pay your payment on {fmtDate(pending.applies_on)}.
           </span>
           <button
             type="button"
@@ -101,12 +101,12 @@ export default function RenewalCreditsControl({
             className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-deep transition disabled:opacity-50"
           >
             {busy ? <Loader2 className="size-3.5 animate-spin" /> : null}
-            Apply credits to my next payment
+            Pay my next payment with credits
           </button>
         </div>
       ) : (
         <span className="inline-flex items-center gap-2 text-muted-foreground">
-          <Gift className="size-4" /> Credits can be applied to an active monthly card subscription.
+          <Gift className="size-4" /> Credits can pay the next payment of an active monthly card subscription.
         </span>
       )}
       {message ? (

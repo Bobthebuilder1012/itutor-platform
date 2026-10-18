@@ -44,7 +44,7 @@ import { classCapacityDisplay } from '@/lib/utils/classCapacity';
 import TutorCredentials from '@/components/TutorCredentials';
 import CheckoutCreditsChoice, { type CreditChoice } from '@/components/credits/CheckoutCreditsChoice';
 import BalanceChip from '@/components/credits/BalanceChip';
-import { invalidateCredits, useCredits } from '@/lib/credits/useCredits';
+import { invalidateCredits } from '@/lib/credits/useCredits';
 
 // 'cash-requested' is its own outcome rather than 'joined': the tutor has not
 // accepted yet and no seat is held, and telling someone they have joined would
@@ -1313,8 +1313,6 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
   // iTutor credits (migration 268): only on a card purchase of a paid class
   // with a seat — not a preorder, a cash request or a parent's ask.
   const [creditChoice, setCreditChoice] = useState<CreditChoice>('none');
-  const { data: creditData } = useCredits('lite');
-  const creditBalance = creditData?.wallet?.available ?? 0;
   const creditsOffered = price > 0 && !isFull && !gated && !cashChosen && !preorder;
   const usingCredits = creditsOffered ? creditChoice : 'none';
 
@@ -1391,19 +1389,17 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
         throw new Error('Could not start the payment. Please try again.');
       }
 
-      // One month paid with credits: done here when credits cover it, or a
-      // card checkout for the rest. Never renews.
+      // One month paid entirely with credits, done here — no card. Never renews.
       if (usingCredits === 'one_month') {
         const res = await fetch(`/api/groups/${group.id}/credit-month`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ seatType: chosenSeat, useCreditsTtd: creditBalance }),
+          body: JSON.stringify({ seatType: chosenSeat }),
         });
         const data = await res.json();
         if (data.parent_approval_required) { onSuccess('awaiting-parent'); return; }
         if (!res.ok) throw new Error(data.error || 'Could not use your credits. Please try again.');
         invalidateCredits();
-        if (data.checkout_url) { window.location.href = data.checkout_url; return; }
         if (data.completed) { onSuccess('joined'); return; }
         throw new Error('Could not start the purchase. Please try again.');
       }
@@ -1417,13 +1413,7 @@ export function JoinFlow({ group, onBack, onSuccess, profile, hasLinkedParent, p
           // seat that does not exist rather than downgrading it, because someone
           // who chose "in person" and got an online seat would find out by
           // turning up at a venue not expecting them.
-          //
-          // useCreditsTtd: credits off the first month. The server caps it at
-          // what the month allows and keeps the card charge at its minimum.
-          body: JSON.stringify({
-            seatType: chosenSeat,
-            ...(usingCredits === 'first_month' ? { useCreditsTtd: creditBalance } : {}),
-          }),
+          body: JSON.stringify({ seatType: chosenSeat }),
         });
         const data = await res.json();
         if (data.parent_approval_required) { onSuccess('awaiting-parent'); return; }

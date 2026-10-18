@@ -1,8 +1,12 @@
 # iTutor credits: Stripe test-mode checklist
 
 This is how to prove the credits programme in Stripe **test mode** before
-launch. It covers referral rewards, campaign codes, and spending credits
-on group classes. Work through it on staging with test cards.
+launch. It covers referral rewards, campaign codes, and spending credits on
+group classes. Work through it on staging with test cards.
+
+**Rule since Oct 2026: credits pay a payment in full or not at all.** They
+pay for one whole month (B) or one whole renewal (A). There is no
+part-credit, part-card payment, and credits never start a new subscription.
 
 The database rules (lots, replays, clawbacks, lockout) are already tested by
 `supabase/_verify_credits.sql` and `supabase/_verify_credit_codes.sql`; the
@@ -28,8 +32,6 @@ real Stripe round trip can show.
    - Set friends per reward to **1**, so a single friend triggers a reward.
    - Set hold days to **0**.
    - Set the minimum qualifying payment to **TT$80**.
-   - Set the minimum card charge to Stripe's real TTD minimum, once known
-     (see §8). Until then leave **TT$5**.
 6. On `/admin/credit-codes`, switch campaign codes on.
 7. Pick a paid group class priced at TT$250 a month or more. Note its tutor's
    commission rate.
@@ -64,24 +66,19 @@ from credit_wallets w where user_id = '<user>';
 Give a test student credits with **Adjust a balance** on `/admin/referrals`.
 Use a positive amount and a reason.
 
-## 1. Scenario C: new subscription, credits on the first month
+## 1. Credits never start a subscription
 
 | # | Steps | Expected |
 |---|---|---|
-| C1 | Student with TT$100 credits opens the class and chooses "Use up to … on my first month". Pays with `4242 4242 4242 4242`. | The checkout page shows the price, then "iTutor credits (this month only)" at −TT$100, then the fee recomputed on TT$150, then the total. The Stripe invoice total equals the page total **to the cent**. After payment the row shows `amount_ttd` = full price and `credits_applied_ttd` = 100. The spend is `settled`. The wallet has 0 available and 0 reserved. The payout invariant holds. |
-| C2 | Same, with credits ≥ the price. | The quote leaves the minimum card charge. The first invoice is not TT$0. It is the minimum (e.g. TT$5.01). |
-| C3 | The month after C1, advance the subscription (Stripe test clock) to its renewal. | The renewal invoice is the full monthly total: the credit coupon was `once`. A new `subscription_renewal` row has `amount_ttd` = the full price and `credits_applied_ttd` = 0. |
-| C4 | Start a C checkout, close the tab, wait 24 h or advance a test clock past 23 h. Then run `/api/cron/credits-nightly`. | Stripe marks the subscription `incomplete_expired`. The nightly job releases the spend and the credits return to the wallet. |
-| C5 | Start a C checkout, go back and start it again. | The first incomplete subscription is **cancelled** in Stripe. Its reservation is released, and only the new one is reserved. |
-| C6 | Promotion and credits together: a class with an active early-bird promotion. | The invoice has two discounts: the promotion (`forever`) and the credits (`once`). The total equals the quote. Month two is billed at the promotion price. |
+| C1 | A student with credits ≥ the price opens a class. | The join flow offers "Subscribe and pay by card" or "Pay for one month with credits". There is no option to put credits toward a subscription's first month. |
+| C2 | Start a subscription checkout, go back and start it again. | The first incomplete Stripe subscription is **cancelled**, so a stale tab cannot pay it. |
 
 ## 2. Scenario B: one month with credits
 
 | # | Steps | Expected |
 |---|---|---|
 | B1 | Student with credits ≥ the price chooses "Pay for one month with credits". | No Stripe call. The enrolment is `ACTIVE` and billed `credits`. The `credit_month` row has `payment_method` = `credits`, cash 0 and fee 0. The payout invariant holds. The student is on the roster. |
-| B2 | Student with TT$100 credits chooses one month. | Card checkout for (price − 100) plus the fee. After `payment_intent.succeeded` the enrolment is `ACTIVE`, the spend is `settled`, and a receipt email arrives with a "Credits applied" line and one-month wording. |
-| B3 | B2, but abandon the card form. After 30 minutes, run the nightly job. | The PaymentIntent is cancelled, the payment `expired`, the enrolment `CANCELLED`, and the credits released. |
+| B2 | Student with TT$100 credits opens a TT$250 class. | No "pay with credits" option. The page says TT$150 more is needed. Calling the API directly answers 422 with `shortfall_ttd` 150. |
 | B4 | After B1, advance the clock past the month. Run `/api/cron/process-subscriptions`. | Task 7 moves the enrolment to `COMPLETED` and removes the member. The student gets a "Your month is over" notification. No reminder, grace or suspension email is sent at any point. |
 | B5 | During B1's month, the student subscribes from the class page. | The same enrolment row is converted. The first paid period starts when the credit month ends. Billing switches to `stripe` only after the invoice is paid. |
 | B6 | A full class. | One month is refused ("This class is full"). No waitlist row. |
@@ -92,7 +89,7 @@ Use a positive amount and a reason.
 |---|---|---|
 | A1 | Active Stripe subscription; student has credits ≥ one month. Subscriptions page → Apply. | The message shows the renewal date and "nothing will be charged". The Stripe subscription has the existing promotion discount plus a `once` credit coupon. The spend is `reserved` and the date shows on the Rewards page. |
 | A2 | Advance to the renewal. | **Confirm Stripe sends `invoice.paid` for a TT$0 invoice.** The renewal row has `amount_ttd` = the full price, `credits_applied_ttd` = the credits, and `payment_method` = `credits`. The spend is `settled` and the payout invariant holds. |
-| A3 | As A1 with partial credits. | The renewal charges the card the quoted amount, and the row records the split. |
+| A3 | As A1, with credits below the renewal price. | Refused with how much more is needed. Nothing is attached to the subscription. |
 | A4 | Apply, then Remove before the renewal. | The coupon is gone from the subscription and the credits are back. Applying again creates a **new** reservation; the old key is never revived. |
 | A5 | Apply within 2 h of the renewal, or while a draft invoice exists. | Refused: "Your renewal is being prepared". |
 | A6 | Apply, then pause the subscription (parent pause or tutor break). | The credits are removed and released before the pause takes effect. |
@@ -103,7 +100,7 @@ Use a positive amount and a reason.
 
 | # | Steps | Expected |
 |---|---|---|
-| R1 | Refund (in the Stripe dashboard) a C1 first invoice in full. | `charge.refunded` finds the subscription payment and the credits spent on it are **restored** to their original lots. The payment's own status and the tutor's payout are **not** changed by this. That is a pre-existing gap; reconcile with the admin reverse route. |
+| R1 | Refund (in the Stripe dashboard) an A2 renewal's charge in full, or any card payment that converted a referral. | `charge.refunded` finds the subscription payment and the credits spent on it are **restored** to their original lots. The payment's own status and the tutor's payout are **not** changed by this. That is a pre-existing gap; reconcile with the admin reverse route. |
 | R2 | Admin reverse route on a payment that used credits. | The credits are restored, and the reversal is audited. |
 | R3 | Partial refund of a credit-using payment. | Nothing is restored automatically. A `credit_mismatch` exception appears on the `/admin/referrals` review list. |
 
@@ -134,7 +131,7 @@ Use a positive amount and a reason.
 | K4 | A named promo with a cap of 2 and three accounts. | Two succeed and the third gets "reached its limit". Each account can redeem it only once. |
 | K5 | Pause, then resume; set an end date in the past. | "paused", then works again, then "has ended". |
 | K6 | Six wrong codes in a row. | The fourth is refused with the lockout message (limit 3, or whatever you set) for 15 minutes. |
-| K7 | Spend campaign credits in C, B and A. | Identical to referral credits. With both kinds in the wallet, the soonest-expiring lot is used first; check the spend row's `allocations`. |
+| K7 | Spend campaign credits in B and A. | Identical to referral credits. With both kinds in the wallet, the soonest-expiring lot is used first; check the spend row's `allocations`. |
 | K8 | A tracked link code on the print sheet. | Scans count on `/admin/link-tracking` and still land on the redeem page. |
 
 ## 7. Switches off
@@ -147,9 +144,6 @@ With both programmes switched off:
 
 ## 8. Facts still to confirm in Stripe
 
-- [ ] The minimum card charge for a TTD charge under our settlement currency.
-  It is US$0.50 equivalent under USD settlement, about TT$3.40. Put the real
-  figure in `min_cash_charge_ttd`.
 - [ ] A `once` coupon added mid-period applies to the **next** renewal (A8).
 - [ ] A TT$0 invoice still fires `invoice.paid` (A2).
 - [ ] `total_discount_amounts[].discount.source.coupon` is populated on the

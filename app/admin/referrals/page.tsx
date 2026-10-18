@@ -20,6 +20,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import AdminBreadcrumb from '@/components/admin/AdminBreadcrumb';
 import { isEmailManagementOnlyAdmin } from '@/lib/auth/adminAccess';
 import { Card, Pill, Stat } from '@/components/admin/demand/DemandUi';
+import CreditsAdminNav from '@/components/admin/credits/CreditsAdminNav';
 import type { CreditSettings, CreditSource } from '@/lib/credits/types';
 
 type Totals = {
@@ -213,7 +214,6 @@ function SettingsForm({
         {numberField('referrals_required', 'Converted friends per reward', 'Lowering it pays out people already part-way there within a day.')}
         {numberField('credit_value_ttd', 'Credit value per reward', 'Copied onto each reward when issued.', { money: true })}
         {numberField('min_qualifying_cash_ttd', 'Minimum qualifying payment', 'Real cash toward the class price, excluding the processing fee.', { money: true })}
-        {numberField('min_cash_charge_ttd', 'Minimum card charge when spending credits', 'Credits may not leave a card charge smaller than this. Confirm Stripe’s minimum.', { money: true })}
         {numberField('hold_days', 'Hold period (days)', 'New rewards are pending this long, so a refund can take them back before they are spent.')}
         {numberField('flag_conversions_threshold', 'Flag a referrer at', 'Converted friends before a referrer appears on the review list below.')}
         {numberField('max_rewards_per_user', 'Maximum rewards per person', 'Blank means unlimited.', { blankMeans: 'Unlimited' })}
@@ -598,10 +598,12 @@ export default function AdminReferralsPage() {
   return (
     <DashboardLayout role="admin" userName="Admin">
       <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
-        <AdminBreadcrumb items={[{ label: 'Finance' }, { label: 'Referral Credits' }]} />
+        <AdminBreadcrumb items={[{ label: 'Credits' }, { label: 'Overview & referrals' }]} />
+
+        <CreditsAdminNav />
 
         <header className="mt-4">
-          <h1 className="text-3xl font-bold text-gray-900">Referral Credits</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Credits</h1>
           <p className="mt-1 max-w-3xl text-gray-600">
             Students and parents earn TT$ credits when friends they referred pay real cash for a group
             class. Credits are spent at checkout and funded by iTutor; tutors are always paid on the full
