@@ -83,29 +83,70 @@ export default function ShareCard({ link, compact = false }: { link: string; com
     pressable
   );
 
-  return (
-    <div className={cn('space-y-3', compact && 'space-y-2')}>
-      <div className="flex items-center gap-2 rounded-xl border border-border bg-zinc-50 py-1.5 pl-3.5 pr-1.5">
-        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink" title={link}>
-          {link.replace(/^https?:\/\//, '')}
+  // Compact (the dashboard strip) is ONE row: link, Copy and a share icon.
+  // The phone's share sheet already holds WhatsApp, Instagram and the rest,
+  // so one icon stands in for all of them; where there is no share sheet
+  // (desktop Firefox), Copy is the whole job.
+  const linkRow = (
+    <div
+      className={cn(
+        'flex min-w-0 items-center gap-1.5 rounded-xl border border-border pl-3.5',
+        compact ? 'bg-white py-1 pr-1' : 'bg-zinc-50 py-1.5 pr-1.5'
+      )}
+    >
+      <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink" title={link}>
+        {link.replace(/^https?:\/\//, '')}
+      </span>
+      <button
+        type="button"
+        onClick={() => void copy()}
+        aria-label={copied ? 'Link copied' : 'Copy link'}
+        className={cn(
+          'grid shrink-0 rounded-lg bg-brand-deep px-3.5 text-xs font-semibold text-white hover:bg-brand-dark',
+          compact ? 'h-8' : 'h-9',
+          pressable
+        )}
+      >
+        <span aria-hidden className={cn(morph, copied ? hidden : shown)}>
+          <Copy className="size-3.5" /> Copy
         </span>
+        <span aria-hidden className={cn(morph, copied ? shown : hidden)}>
+          <Check className="size-3.5" /> Copied
+        </span>
+      </button>
+      {compact && canShare ? (
         <button
           type="button"
-          onClick={() => void copy()}
-          aria-label={copied ? 'Link copied' : 'Copy link'}
-          className={cn('grid h-9 shrink-0 rounded-lg bg-brand-deep px-3.5 text-xs font-semibold text-white hover:bg-brand-dark', pressable)}
+          onClick={() => void nativeShare()}
+          aria-label="Share your link"
+          title="Share your link"
+          className={cn(
+            'grid size-8 shrink-0 place-items-center rounded-lg border border-border bg-background text-ink hover:bg-zinc-100',
+            pressable
+          )}
         >
-          <span aria-hidden className={cn(morph, copied ? hidden : shown)}>
-            <Copy className="size-3.5" /> Copy
-          </span>
-          <span aria-hidden className={cn(morph, copied ? shown : hidden)}>
-            <Check className="size-3.5" /> Copied
-          </span>
+          <Share2 className="size-4" aria-hidden />
         </button>
-      </div>
-      <span className="sr-only" aria-live="polite">{copied ? 'Link copied' : ''}</span>
+      ) : null}
+    </div>
+  );
+  const live = <span className="sr-only" aria-live="polite">{copied ? 'Link copied' : ''}</span>;
 
-      <div className={cn('grid gap-2', compact ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-4')}>
+  if (compact) {
+    return (
+      <div className="min-w-0">
+        {linkRow}
+        {live}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {linkRow}
+      {live}
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <a href={whatsapp} target="_blank" rel="noopener noreferrer" className={button}>
           <MessageCircle className="size-4 shrink-0 text-green-600" aria-hidden /> WhatsApp
         </a>
@@ -121,11 +162,9 @@ export default function ShareCard({ link, compact = false }: { link: string; com
         >
           <InstagramGlyph className="size-4 shrink-0 text-pink-600" /> Instagram
         </button>
-        {!compact ? (
-          <button type="button" onClick={() => setShowQr((v) => !v)} aria-expanded={showQr} className={button}>
-            <QrCode className="size-4 shrink-0" aria-hidden /> {showQr ? 'Hide QR' : 'QR code'}
-          </button>
-        ) : null}
+        <button type="button" onClick={() => setShowQr((v) => !v)} aria-expanded={showQr} className={button}>
+          <QrCode className="size-4 shrink-0" aria-hidden /> {showQr ? 'Hide QR' : 'QR code'}
+        </button>
       </div>
 
       {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
