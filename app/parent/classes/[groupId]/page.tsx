@@ -21,6 +21,7 @@ import Link from 'next/link';
 import { Check, Clock, Loader2, Users, X } from 'lucide-react';
 import ParentShell from '@/components/parent/ParentShell';
 import ChildPickerCheck from '@/components/parent/ChildPickerCheck';
+import ParentSecureSpotBanner from '@/components/parent/ParentSecureSpotBanner';
 import { Detail, preorderFor, type GroupData } from '@/components/classes/ClassDetailView';
 import { fetchClassDetail } from '@/lib/classes/fetchClassDetail';
 import { isPaidGroup } from '@/lib/payments/groupPricing';
@@ -174,6 +175,13 @@ function ClassContent() {
           {error}
         </p>
       )}
+
+      {/* Above <Detail>, because it changes what the page below it means: the
+          view is written to sell this class to someone who is not in it, and a
+          parent whose child is already secured needs to know that before they
+          read a price. <Detail> cannot carry it — it renders the VIEWER's
+          membership, and the viewer here is the parent, who is never enrolled. */}
+      <ParentSecureSpotBanner groupId={group.id} onChanged={load} />
 
       {/* Every CTA inside the view funnels through onJoin, so the parent flow
           replaces the student's join without the view knowing which it is. */}
