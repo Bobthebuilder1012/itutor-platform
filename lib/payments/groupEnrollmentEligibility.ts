@@ -184,9 +184,12 @@ export async function loadCheckoutContext(params: {
 
   // Step 6b: Child schedule conflict — the student's own upcoming schedule
   // (1:1 + group) vs this class's occurrences. Block before creating a checkout.
-  // Skipped for a student continuing from a credit month: they are an ACTIVE
-  // member, so findGroupEnrollmentConflict would find this very class in their
-  // schedule and report it clashing with itself.
+  //
+  // findGroupEnrollmentConflict now leaves the group being joined out of the
+  // student's own busy windows, so a student already on this roster no longer
+  // clashes with themselves — which is what blocked a SECURED place from ever
+  // being continued. This skip is kept as belt and braces for the credit-month
+  // path that first ran into it; it is no longer load-bearing.
   if (!continuingFromCreditMonth) {
     const conflict = await findGroupEnrollmentConflict(admin, studentId, groupId);
     if (conflict) {

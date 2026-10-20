@@ -10,6 +10,16 @@ import { useParams } from 'next/navigation';
 import { ArrowLeft, Calendar, Clock, Check, X, BookOpen, Eye, Loader2, MessageSquare, Users, Pin, Ban } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+/**
+ * `releaseDate` is a bare YYYY-MM-DD. `new Date()` reads that as UTC midnight
+ * and renders it in the viewer's zone, which west of UTC is the evening before.
+ */
+function fmtDateOnly(d: string) {
+  return new Date(`${d}T00:00:00`).toLocaleDateString('en-TT', {
+    day: 'numeric', month: 'long', year: 'numeric',
+  });
+}
+
 /** Same vocabulary as the child attendance tab — §6 keeps it identical across
  *  surfaces rather than re-worded per screen. */
 const CLASS_ATT: Record<string, { label: string; icon: typeof Check; chip: string; text: string }> = {
@@ -27,6 +37,8 @@ type Member = { id: string; name: string; avatarUrl: string | null; isChild: boo
 type Data = {
   group: { id: string; name: string; subject: string | null; description: string | null; contentBlocks: unknown; tutorName: string };
   membershipStatus: string | null;
+  /** Set only on a Secure-your-spot place — see the class route. */
+  secureSpot: { status: 'SECURED' | 'COMPLETED'; releaseDate: string } | null;
   upcoming: { id: string; start: string; end: string }[];
   attendance: {
     key: string;
@@ -89,10 +101,42 @@ function Content() {
             </p>
             {data.membershipStatus && (
               <span className="mt-3 inline-flex text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-brand-soft text-brand-deep">
-                {['approved', 'active', 'ACTIVE', 'GRACE'].includes(data.membershipStatus) ? 'Enrolled' : data.membershipStatus}
+                {/* The secure-spot wording outranks the member row, which reads
+                    'approved' while the paid month runs and 'removed' once it
+                    lapses — the second of which rendered to the parent as the
+                    bare word "removed". */}
+                {data.secureSpot?.status === 'SECURED' ? 'Spot secured'
+                  : data.secureSpot?.status === 'COMPLETED' ? 'Month ended'
+                  : ['approved', 'active', 'ACTIVE', 'GRACE'].includes(data.membershipStatus) ? 'Enrolled'
+                  : data.membershipStatus}
               </span>
             )}
           </header>
+
+          {data.secureSpot && (
+            <div className="rounded-2xl border border-brand/30 bg-brand-soft/50 p-4">
+              <div className="text-sm font-bold text-ink">
+                {data.secureSpot.status === 'SECURED'
+                  ? 'Their first month is paid for'
+                  : 'Their paid month has ended'}
+              </div>
+              <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                {data.secureSpot.status === 'SECURED'
+                  ? <>You paid for the first month up front when this spot was secured, and it runs until{' '}
+                      <strong className="text-ink">{fmtDateOnly(data.secureSpot.releaseDate)}</strong>.
+                      Nothing is charged automatically — start a subscription before then to keep the place.</>
+                  : <>The first month you paid for ran until{' '}
+                      <strong className="text-ink">{fmtDateOnly(data.secureSpot.releaseDate)}</strong>, and
+                      nothing was charged after it, so the place was released. Subscribe to put them back in the class.</>}
+              </p>
+              <Link
+                href="/parent/subscriptions"
+                className="mt-3 inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2 text-xs font-semibold text-white hover:bg-brand-deep"
+              >
+                {data.secureSpot.status === 'SECURED' ? 'Continue this class' : 'Subscribe to continue'}
+              </Link>
+            </div>
+          )}
 
           {/* Class material */}
           <section className="rounded-2xl bg-background border border-border p-5">

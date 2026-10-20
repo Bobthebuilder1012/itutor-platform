@@ -126,6 +126,33 @@ export async function POST(request: NextRequest) {
 
     if (body.groupId) {
       const membership = await findMembership(admin, body.childId, body.groupId);
+
+      // A held place is the one membership that does NOT end the conversation.
+      // Reported as `continuing` rather than `alreadyIn` so the picker lets the
+      // parent through: the child keeps their seat, and the payment ahead is
+      // the monthly subscription that follows the month already paid for.
+      // The schedule check is still skipped — the child's own sessions are the
+      // ones that would "clash".
+      if (membership?.kind === 'secured') {
+        return NextResponse.json({
+          childLevel,
+          classFormLevel,
+          levelMismatch: false,
+          levelMessage: null,
+          schedule: { checked: false, reason: 'already_in_class' },
+          alternatives: [],
+          alreadyIn: null,
+          continuing: {
+            releaseDate: membership.releaseDate,
+            message: membership.releaseDate
+              ? `${childFirstName}'s spot is secured and paid for until ${new Date(
+                  `${membership.releaseDate}T00:00:00`
+                ).toLocaleDateString('en-TT', { day: 'numeric', month: 'long', year: 'numeric' })}. Continuing starts the monthly subscription that keeps their place after that.`
+              : `${childFirstName}'s spot is secured. Continuing starts the monthly subscription that keeps their place.`,
+          },
+        });
+      }
+
       if (membership) {
         return NextResponse.json({
           childLevel,
@@ -135,9 +162,9 @@ export async function POST(request: NextRequest) {
           schedule: { checked: false, reason: 'already_in_class' },
           alternatives: [],
           alreadyIn: {
-            status: membership,
+            status: membership.kind,
             message:
-              membership === 'pending'
+              membership.kind === 'pending'
                 ? `${childFirstName} has already asked to join this class — the tutor has not answered yet.`
                 : `${childFirstName} is already in this class.`,
           },
@@ -219,17 +246,27 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Is this child already in (or already waiting on) this class? Returns
- * 'enrolled', 'pending', or null. Both membership tables are consulted because
- * either one alone can carry a live place: group_members is the roster, and a
- * paid class's seat lives in group_enrollments.
+ * Is this child already in (or already waiting on) this class? Both membership
+ * tables are consulted because either one alone can carry a live place:
+ * group_members is the roster, and a paid class's seat lives in
+ * group_enrollments.
+ *
+ * A SECURED place is reported separately and is NOT a dead end. It used to come
+ * back as plain 'enrolled' — the child's group_members row is 'approved' — which
+ * stopped the picker, so the parent who had paid the first month could not start
+ * the subscription that keeps it. They are already in the class; the question
+ * the parent is answering is whether to carry on paying for it.
  */
 async function findMembership(
   admin: Awaited<ReturnType<typeof requireParentContext>>['admin'],
   childId: string,
   groupId: string
-): Promise<'enrolled' | 'pending' | null> {
-  const [{ data: member }, { data: enrollment }] = await Promise.all([
+): Promise<
+  | { kind: 'enrolled' | 'pending' }
+  | { kind: 'secured'; releaseDate: string | null }
+  | null
+> {
+  const [{ data: member }, { data: live }] = await Promise.all([
     admin
       .from('group_members')
       .select('status')
@@ -238,18 +275,23 @@ async function findMembership(
       .maybeSingle(),
     admin
       .from('group_enrollments')
-      .select('status')
+      .select('status, release_date')
       .eq('group_id', groupId)
       .eq('student_id', childId)
-      .in('status', ['ACTIVE', 'GRACE'])
+      .in('status', ['SECURED', 'ACTIVE', 'GRACE'])
       .maybeSingle(),
   ]);
 
-  if (enrollment) return 'enrolled';
+  const enrolment = live as { status: string; release_date: string | null } | null;
+  if (enrolment?.status === 'SECURED') {
+    return { kind: 'secured', releaseDate: enrolment.release_date ?? null };
+  }
+  if (enrolment) return { kind: 'enrolled' };
 
   // classifyMembership, not a literal list: group_members.status carries two
   // vocabularies depending on which route wrote the row.
-  return classifyMembership((member as { status: string | null } | null)?.status);
+  const classified = classifyMembership((member as { status: string | null } | null)?.status);
+  return classified ? { kind: classified } : null;
 }
 
 type Alternative = {

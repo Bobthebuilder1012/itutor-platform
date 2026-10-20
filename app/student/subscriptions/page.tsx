@@ -75,6 +75,26 @@ function fmtShortYear(d: string | null) {
   return `${dt.toLocaleDateString('en-TT', { day: 'numeric', month: 'short' })} ${dt.getFullYear()}`;
 }
 
+/**
+ * The other date formatters take timestamps. `release_date` is a bare
+ * YYYY-MM-DD, which `new Date()` reads as UTC midnight and then renders in the
+ * viewer's zone — west of UTC that is the previous evening, so a release date
+ * of the 24th was shown to a Trinidad student as the 23rd. Appending a local
+ * midnight keeps the calendar day the one the database actually stored.
+ */
+function fmtDateOnly(d: string | null) {
+  if (!d) return '—';
+  return new Date(`${d}T00:00:00`).toLocaleDateString('en-TT', {
+    day: 'numeric', month: 'short', year: 'numeric',
+  });
+}
+
+function fmtDateOnlyShortYear(d: string | null) {
+  if (!d) return '—';
+  const dt = new Date(`${d}T00:00:00`);
+  return `${dt.toLocaleDateString('en-TT', { day: 'numeric', month: 'short' })} ${dt.getFullYear()}`;
+}
+
 function daysLeft(d: string | null): number {
   if (!d) return 0;
   return Math.max(0, Math.ceil((new Date(d).getTime() - Date.now()) / 86400000));
@@ -301,7 +321,7 @@ function SubscriptionCard({ sub, onCancel, onUndo, onSeatChanged, actionLoading 
             {securedDaysLeft !== null && securedDaysLeft > 0
               ? `Your paid first month ends in ${securedDaysLeft} day${securedDaysLeft === 1 ? '' : 's'}`
               : 'Your paid first month has ended'}
-            {sub.release_date ? ` (${fmtDate(sub.release_date)})` : ''}. Continue to keep your place —
+            {sub.release_date ? ` (${fmtDateOnly(sub.release_date)})` : ''}. Continue to keep your place —
             if you do nothing, it simply ends. Nothing is charged automatically.
           </span>
         </div>
@@ -311,8 +331,8 @@ function SubscriptionCard({ sub, onCancel, onUndo, onSeatChanged, actionLoading 
           <CheckCircle className="size-4 shrink-0 mt-0.5" />
           <span>
             {shortClass
-              ? <>Paid in full{sub.release_date ? <> — this class runs to {fmtDate(sub.release_date)}</> : null}. Nothing further to pay.</>
-              : <>Your spot is secured and paid{sub.release_date ? <> through {fmtDate(sub.release_date)}</> : null}. Nothing renews automatically — we&apos;ll ask before then.</>}
+              ? <>Paid in full{sub.release_date ? <> — this class runs to {fmtDateOnly(sub.release_date)}</> : null}. Nothing further to pay.</>
+              : <>Your spot is secured and paid{sub.release_date ? <> through {fmtDateOnly(sub.release_date)}</> : null}. Nothing renews automatically — we&apos;ll ask before then.</>}
           </span>
         </div>
       )}
@@ -320,7 +340,7 @@ function SubscriptionCard({ sub, onCancel, onUndo, onSeatChanged, actionLoading 
         <div className="bg-brand/10 border-b border-brand/20 px-5 py-3 text-sm text-brand-deep flex items-start gap-2">
           <CreditCard className="size-4 shrink-0 mt-0.5" />
           <span>
-            Your paid first month{sub.release_date ? <> ran until {fmtDate(sub.release_date)}</> : null} and
+            Your paid first month{sub.release_date ? <> ran until {fmtDateOnly(sub.release_date)}</> : null} and
             your place has ended. Subscribe to pick the class back up.
           </span>
         </div>
@@ -430,7 +450,7 @@ function SubscriptionCard({ sub, onCancel, onUndo, onSeatChanged, actionLoading 
                 {shortClass ? 'Class runs to' : isLapsed ? 'First month ran to' : 'First month ends'}
               </div>
               <div className={cn('text-sm font-semibold', securedAsking ? 'text-amber-600' : 'text-ink')}>
-                {fmtShortYear(sub.release_date)}
+                {fmtDateOnlyShortYear(sub.release_date)}
               </div>
             </div>
           )}
