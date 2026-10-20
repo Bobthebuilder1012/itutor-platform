@@ -25,6 +25,11 @@ type Subscription = {
   cancelled_at: string | null;
   last_paid_at: string | null;
   pending_payment_expires_at: string | null;
+  /**
+   * Secure your spot only. The day the up-front first month runs to, frozen at
+   * payment and never recomputed — see lib/payments/secureSpot.
+   */
+  release_date: string | null;
   enrolled_at: string;
   next_cycle_paid: boolean;
   // Migration 242. Absent when the API fell back to its base select.
@@ -35,6 +40,8 @@ type Subscription = {
     name: string;
     cover_image: string | null;
     subject: string | null;
+    /** Needed to spot a class that finishes inside the paid month — nothing to continue. */
+    end_date?: string | null;
     class_format?: 'online' | 'physical' | 'hybrid' | null;
     price_online_ttd?: number | null;
     price_physical_ttd?: number | null;
@@ -157,6 +164,56 @@ function SubscriptionCard({ sub, onCancel, onUndo, onSeatChanged, actionLoading 
   // (covers the window between due date and when the cron moves it to GRACE)
   const isDueNow    = isActive && !!sub.next_payment_due_at && new Date(sub.next_payment_due_at) <= new Date() && !sub.next_cycle_paid;
 
+  // ── Secure your spot ───────────────────────────────────────────────────
+  //
+  // A secured place is a paid first month with no recurring charge behind it,
+  // and this page is where a student comes to settle their billing. It used to
+  // render as an ordinary card: no chip, no end date, no way to continue — so
+  // the one screen built for exactly this question answered none of it.
+  //
+  // A LAPSED row (COMPLETED with a release_date) was worse: it matched neither
+  // the active nor the cancelled filter below, so the class vanished from the
+  // page entirely the day it ended.
+  const isSecured  = sub.status === 'SECURED';
+  const isLapsed   = sub.status === 'COMPLETED' && !!sub.release_date;
+  const releaseAt  = sub.release_date
+    ? new Date(`${sub.release_date}T23:59:59-04:00`).getTime()
+    : null;
+  const securedDaysLeft = releaseAt ? Math.ceil((releaseAt - Date.now()) / 86_400_000) : null;
+  // The whole class finishes inside the paid month — they bought it outright
+  // and there is no second month to sell. Never prompt.
+  const shortClass = !!(
+    sub.group?.end_date && sub.release_date && sub.group.end_date <= sub.release_date
+  );
+  // Same seven-day window as the class page and the reminder cron, so a student
+  // is never asked in one place and reassured in another on the same day.
+  const securedAsking = isSecured && !shortClass && securedDaysLeft !== null && securedDaysLeft <= 7;
+
+  const [continuing, setContinuing] = useState(false);
+  const [continueError, setContinueError] = useState<string | null>(null);
+
+  async function continueSubscription() {
+    setContinuing(true);
+    setContinueError(null);
+    try {
+      const res = await fetch(`/api/groups/${sub.group_id}/subscribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.checkout_url) { window.location.href = data.checkout_url; return; }
+      if (data.parent_approval_required) {
+        setContinueError('Sent to your parent — continuing this class is theirs to approve.');
+        return;
+      }
+      setContinueError(data.error || 'Could not start your subscription. Please try again.');
+    } catch {
+      setContinueError('Could not start your subscription — check your connection.');
+    } finally {
+      setContinuing(false);
+    }
+  }
+
   // Seat switching. Only offered on a hybrid class — a class that meets one
   // way has no second seat to move to — and only on a live enrolment, since
   // a held place is not theirs yet and a cancelled one has no seat at all.
@@ -237,6 +294,37 @@ function SubscriptionCard({ sub, onCancel, onUndo, onSeatChanged, actionLoading 
           Cancels on {fmtDate(sub.current_period_end)} — access remains until then.
         </div>
       )}
+      {securedAsking && (
+        <div className="bg-amber-50 border-b border-amber-200 px-5 py-3 text-sm text-amber-900 flex items-start gap-2">
+          <Clock className="size-4 shrink-0 mt-0.5" />
+          <span>
+            {securedDaysLeft !== null && securedDaysLeft > 0
+              ? `Your paid first month ends in ${securedDaysLeft} day${securedDaysLeft === 1 ? '' : 's'}`
+              : 'Your paid first month has ended'}
+            {sub.release_date ? ` (${fmtDate(sub.release_date)})` : ''}. Continue to keep your place —
+            if you do nothing, it simply ends. Nothing is charged automatically.
+          </span>
+        </div>
+      )}
+      {isSecured && !securedAsking && (
+        <div className="bg-brand/10 border-b border-brand/20 px-5 py-3 text-sm text-brand-deep flex items-start gap-2">
+          <CheckCircle className="size-4 shrink-0 mt-0.5" />
+          <span>
+            {shortClass
+              ? <>Paid in full{sub.release_date ? <> — this class runs to {fmtDate(sub.release_date)}</> : null}. Nothing further to pay.</>
+              : <>Your spot is secured and paid{sub.release_date ? <> through {fmtDate(sub.release_date)}</> : null}. Nothing renews automatically — we&apos;ll ask before then.</>}
+          </span>
+        </div>
+      )}
+      {isLapsed && (
+        <div className="bg-brand/10 border-b border-brand/20 px-5 py-3 text-sm text-brand-deep flex items-start gap-2">
+          <CreditCard className="size-4 shrink-0 mt-0.5" />
+          <span>
+            Your paid first month{sub.release_date ? <> ran until {fmtDate(sub.release_date)}</> : null} and
+            your place has ended. Subscribe to pick the class back up.
+          </span>
+        </div>
+      )}
 
       <div className="p-6 space-y-5">
         {/* Header row */}
@@ -265,6 +353,12 @@ function SubscriptionCard({ sub, onCancel, onUndo, onSeatChanged, actionLoading 
               {isCancelling && <span className="text-xs font-semibold px-3 py-1 rounded-full bg-zinc-100 text-zinc-600">Cancelling</span>}
               {isPending    && <span className="text-xs font-semibold px-3 py-1 rounded-full bg-blue-100 text-blue-700">Pending</span>}
               {isCancelled  && <span className="text-xs font-semibold px-3 py-1 rounded-full bg-zinc-100 text-zinc-600">Cancelled</span>}
+              {isSecured    && (
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full border border-brand/40 text-brand-deep bg-brand/10">
+                  <CheckCircle className="size-3.5" /> Spot secured
+                </span>
+              )}
+              {isLapsed     && <span className="text-xs font-semibold px-3 py-1 rounded-full bg-zinc-100 text-zinc-600">Month ended</span>}
               {isActivating && <span className="text-xs font-semibold px-3 py-1 rounded-full bg-blue-100 text-blue-700">Activating</span>}
               {sub.next_cycle_paid && (
                 <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700">
@@ -328,6 +422,16 @@ function SubscriptionCard({ sub, onCancel, onUndo, onSeatChanged, actionLoading 
             <div>
               <div className="text-xs text-muted-foreground mb-1">Period end</div>
               <div className="text-sm font-semibold text-ink">{fmtShortYear(sub.current_period_end)}</div>
+            </div>
+          )}
+          {sub.release_date && (
+            <div>
+              <div className="text-xs text-muted-foreground mb-1">
+                {shortClass ? 'Class runs to' : isLapsed ? 'First month ran to' : 'First month ends'}
+              </div>
+              <div className={cn('text-sm font-semibold', securedAsking ? 'text-amber-600' : 'text-ink')}>
+                {fmtShortYear(sub.release_date)}
+              </div>
             </div>
           )}
           {sub.next_payment_due_at && (
@@ -415,6 +519,23 @@ function SubscriptionCard({ sub, onCancel, onUndo, onSeatChanged, actionLoading 
             </a>
           )}
 
+          {/* The switch itself. Offered on a lapsed place too — the student is
+              most likely to come looking for it here AFTER it has ended. Not
+              on a short class, which was bought whole and has no month two. */}
+          {((isSecured && !shortClass) || isLapsed) && (
+            <button
+              onClick={continueSubscription}
+              disabled={continuing}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep transition disabled:opacity-60">
+              {continuing ? <Loader2 className="size-3.5 animate-spin" /> : <CreditCard className="size-3.5" />}
+              {continuing
+                ? 'Starting…'
+                : isLapsed
+                  ? 'Subscribe to continue'
+                  : `Continue${sub.plan_price_ttd ? ` — ${fmtTTD(calcGross(sub.plan_price_ttd).gross)}/mo` : ''}`}
+            </button>
+          )}
+
           {/*
             "Pay next month" (advance payment) removed.
 
@@ -455,6 +576,10 @@ function SubscriptionCard({ sub, onCancel, onUndo, onSeatChanged, actionLoading 
             </button>
           )}
         </div>
+
+        {continueError && (
+          <p className="text-sm font-semibold text-rose-700">{continueError}</p>
+        )}
       </div>
     </div>
   );
@@ -508,6 +633,12 @@ export default function StudentSubscriptionsPage() {
   }
 
   const active   = subscriptions.filter((s) => ['SECURED','ACTIVE','GRACE','SUSPENDED','PENDING_PAYMENT','ACTIVATION_FAILED'].includes(s.status));
+  // A secure-spot place that ran out. COMPLETED matched neither list before, so
+  // the class disappeared from this page on the day it ended — the student had
+  // paid, lost access, and then found no record of it where their billing lives.
+  // Its own section rather than "Past subscriptions": these are the only ended
+  // rows a student can act on, and the point of the card is the button.
+  const lapsed   = subscriptions.filter((s) => s.status === 'COMPLETED' && !!s.release_date);
   const inactive = subscriptions.filter((s) => s.status === 'CANCELLED');
 
   const monthlyBill = active.reduce((sum, s) => sum + calcGross(s.plan_price_ttd ?? 0).gross, 0);
@@ -590,6 +721,24 @@ export default function StudentSubscriptionsPage() {
               <span className="text-sm text-muted-foreground">{active.length} subscription{active.length !== 1 ? 's' : ''}</span>
             </div>
             {active.map((sub) => (
+              <SubscriptionCard key={sub.id} sub={sub}
+                onCancel={() => setCancelTarget(sub)}
+                onUndo={() => undoCancel(sub.id)}
+                onSeatChanged={load}
+                actionLoading={actionLoading}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Secured months that ran out — still worth money, so above the dead ones */}
+        {lapsed.length > 0 && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-semibold text-ink">Ended — pick up where you left off</h2>
+              <span className="text-sm text-muted-foreground">{lapsed.length} class{lapsed.length !== 1 ? 'es' : ''}</span>
+            </div>
+            {lapsed.map((sub) => (
               <SubscriptionCard key={sub.id} sub={sub}
                 onCancel={() => setCancelTarget(sub)}
                 onUndo={() => undoCancel(sub.id)}

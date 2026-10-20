@@ -38,6 +38,12 @@ export async function fetchClassDetail(groupId: string): Promise<GroupData | nul
   const securedState: { releaseDate: string | null } | null = vm?.secured
     ? { releaseDate: vm.release_date ?? null }
     : null;
+  // Their secure-spot month ran out and they did not continue. Resolved by the
+  // API from the enrolment, because the member row alone cannot tell this apart
+  // from a tutor removing them.
+  const lapsedState: { releaseDate: string | null } | null = vm?.lapsed_secure_spot
+    ? { releaseDate: vm.lapsed_secure_spot.release_date ?? null }
+    : null;
 
 
   // Tutor verification + display name (defensive against schema drift)
@@ -112,6 +118,7 @@ export async function fetchClassDetail(groupId: string): Promise<GroupData | nul
     secure_spot_enabled: g.secure_spot_enabled === true,
     end_date: g.end_date ?? null,
     secured: securedState,
+    lapsed_secure_spot: lapsedState,
     // In person (migration 242). The venue arrives ALREADY FILTERED for this
     // viewer — the API nulls the street address and the notes unless they are
     // enrolled, secured, the tutor, or the class is public-address — so this

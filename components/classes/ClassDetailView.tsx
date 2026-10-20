@@ -129,6 +129,8 @@ export type GroupData = {
   end_date: string | null;
   /** Set when THIS student holds a secured spot in the class. */
   secured: { releaseDate: string | null } | null;
+  /** Set when this student's secured spot ran its month out and ended. */
+  lapsed_secure_spot: { releaseDate: string | null } | null;
   // ── In person (migration 242) ──
   // All optional: absent on any environment without 242, and on every class
   // created before it. Absent means online, which is what those classes are.
@@ -478,6 +480,7 @@ export function Detail({
       </Link>
 
       <SecuredStatusBanner group={group} />
+      <LapsedSpotBanner group={group} />
 
       {showExplainer && preorder && (
         <Modal onClose={() => setShowExplainer(false)}>
@@ -1081,6 +1084,76 @@ function InfoRow({ icon, label, children }: { icon: React.ReactNode; label: stri
  * shown (or is ignored) the student is never charged — which is the correct
  * failure mode, but also why it has to be prominent.
  */
+/**
+ * What a student sees when their secured month ran out and they did not
+ * continue.
+ *
+ * Shown instead of the ordinary join CTA, which on its own left them staring
+ * at "Join instantly" on a class they had already paid for and been removed
+ * from, with nothing saying why. The explanation and the way back are the same
+ * panel on purpose: the only useful thing to do here is subscribe.
+ */
+function LapsedSpotBanner({ group }: { group: GroupData }) {
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState('');
+  // Never shown over a live place. A student who lapsed and came back keeps the
+  // old COMPLETED row forever, and this must not haunt the class they rejoined.
+  if (!group.lapsed_secure_spot || group.secured || group.enrolled) return null;
+
+  const releaseDate = group.lapsed_secure_spot.releaseDate;
+  const price = group.price_monthly ?? 0;
+  const dateLabel = releaseDate
+    ? new Date(`${releaseDate}T00:00:00`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+    : null;
+
+  const handleSubscribe = async () => {
+    setSubmitting(true); setErr('');
+    try {
+      const res = await fetch(`/api/groups/${group.id}/subscribe`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (data.checkout_url) { window.location.href = data.checkout_url; return; }
+      if (data.parent_approval_required) {
+        setErr('Sent to your parent — rejoining this class is theirs to approve.');
+        return;
+      }
+      throw new Error(data.error || 'Could not start your subscription. Please try again.');
+    } catch (e: any) {
+      setErr(e?.message ?? 'Could not start your subscription. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="rounded-2xl border border-brand/30 bg-brand-soft/50 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <CreditCard className="mt-0.5 size-5 shrink-0 text-brand-deep" />
+          <div>
+            <div className="text-sm font-bold text-ink">Your paid month has ended</div>
+            <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+              You paid for your first month up front when you secured your spot
+              {dateLabel ? <>, and it ran until <strong className="text-ink">{dateLabel}</strong></> : null}.
+              {' '}Nothing was charged after that, so your place was released. Subscribe to pick
+              the class back up{price > 0 ? <> for {fmtTTD(price)} a month</> : null} — cancel any time.
+            </p>
+            {err && <p className="mt-1 text-xs font-semibold text-rose-700">{err}</p>}
+          </div>
+        </div>
+        <button
+          onClick={handleSubscribe}
+          disabled={submitting}
+          className="rounded-2xl bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-deep disabled:opacity-60"
+        >
+          {submitting ? 'Starting…' : 'Subscribe to continue'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function SecuredStatusBanner({ group }: { group: GroupData }) {
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState('');
