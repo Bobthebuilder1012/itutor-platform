@@ -30,10 +30,25 @@ export async function GET(_request: NextRequest, { params }: Params) {
     // The child's membership in this class (either system).
     const [{ data: mem }, { data: enr }, { data: tutor }] = await Promise.all([
       admin.from('group_members').select('status').eq('group_id', groupId).eq('user_id', childId).maybeSingle(),
-      admin.from('group_enrollments').select('status').eq('group_id', groupId).eq('student_id', childId).maybeSingle(),
+      admin.from('group_enrollments').select('status, release_date').eq('group_id', groupId).eq('student_id', childId).maybeSingle(),
       admin.from('profiles').select('full_name, display_name').eq('id', group.tutor_id).maybeSingle(),
     ]);
     const membershipStatus = (mem as any)?.status ?? (enr as any)?.status ?? null;
+
+    // Secure your spot, if that is what this place is. Sent separately because
+    // membershipStatus cannot carry it: the member row says 'approved' while the
+    // month is paid and 'removed' once it lapses, so this page showed a parent
+    // either "Enrolled" or the raw word "removed" with no mention of the month
+    // they bought or the fact that it ended.
+    const enrolment = enr as { status: string; release_date: string | null } | null;
+    const secureSpot =
+      enrolment?.release_date &&
+      (enrolment.status === 'SECURED' || enrolment.status === 'COMPLETED')
+        ? {
+            status: enrolment.status as 'SECURED' | 'COMPLETED',
+            releaseDate: enrolment.release_date,
+          }
+        : null;
 
     // Occurrences for this class, split into upcoming vs past.
     const { data: gsRows } = await admin.from('group_sessions').select('id').eq('group_id', groupId);
@@ -172,6 +187,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
         tutorName: (tutor as any)?.display_name || (tutor as any)?.full_name || 'Tutor',
       },
       membershipStatus,
+      secureSpot,
       upcoming,
       attendance,
       attendanceSummary,

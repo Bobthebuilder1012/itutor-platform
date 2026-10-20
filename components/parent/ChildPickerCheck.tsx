@@ -41,6 +41,13 @@ type CheckResult = {
   alternativesMessage?: string | null;
   /** Set when the child is already in — or already waiting on — this class. */
   alreadyIn?: { status: 'enrolled' | 'pending'; message: string } | null;
+  /**
+   * Set when the child holds a SECURED place: already in the class, with a paid
+   * first month running out. Unlike `alreadyIn` this does not block — the whole
+   * point of the screen is to let the parent start the subscription that keeps
+   * the seat.
+   */
+  continuing?: { releaseDate: string | null; message: string } | null;
 };
 
 export default function ChildPickerCheck({
@@ -115,6 +122,7 @@ export default function ChildPickerCheck({
   // §5's, not an accident: one is a fact about the child's diary, the other is a
   // judgement the parent is entitled to make.
   const alreadyIn = result?.alreadyIn ?? null;
+  const continuing = result?.continuing ?? null;
   const clashes = result?.schedule.checked === true && result.schedule.clear === false;
   const needsLevelAck = Boolean(result?.levelMismatch) && !levelAccepted;
   const canProceed =
@@ -185,7 +193,17 @@ export default function ChildPickerCheck({
         </Row>
       )}
 
-      {result && !checking && !alreadyIn && (
+      {/* Held place: stated, and the parent carries on. Shown in the same slot
+          as alreadyIn because it answers the same question — "is this child
+          already in?" — with the one reading where the answer is "yes, and
+          that is exactly why you are here". */}
+      {result && !checking && continuing && (
+        <Row tone="ok" icon={<Check className="size-4" />}>
+          {continuing.message}
+        </Row>
+      )}
+
+      {result && !checking && !alreadyIn && !continuing && (
         <div className="space-y-2">
           {result.schedule.checked === false ? (
             <Row tone="neutral" icon={<Info className="size-4" />}>

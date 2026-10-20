@@ -190,6 +190,13 @@ export async function createGroupSubscriptionCheckout(params: {
 
   // Step 6b: Child schedule conflict — the student's own upcoming schedule
   // (1:1 + group) vs this class's occurrences. Block before creating a checkout.
+  //
+  // findGroupEnrollmentConflict leaves the group being joined out of the
+  // student's own busy windows. Without that, a student ALREADY on this
+  // roster — a secured place being continued — had this class compared
+  // against itself, matched on the first occurrence, and was refused with
+  // "that time clashes with <this very class>". That is what stopped every
+  // secure-spot place on production from ever being continued.
   const conflict = await findGroupEnrollmentConflict(admin, studentId, groupId);
   if (conflict) {
     return { ok: false as const, status: 409, body: { error: conflictMessage(conflict) } };

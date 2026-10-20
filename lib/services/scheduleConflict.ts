@@ -93,7 +93,14 @@ export async function findGroupEnrollmentConflict(
     .limit(30);
   if (!groupOccs?.length) return null;
 
-  const busy = await childBusyWindows(admin, studentId, nowISO);
+  // The class being joined is excluded from the student's own busy windows.
+  // Nobody can clash with the class they are joining, and a student who is
+  // ALREADY in it — a secured place being continued, a credit month being
+  // renewed, a seat being switched — is a roster member of this very group, so
+  // its occurrences were being compared against themselves and matched every
+  // time. The caller that first hit this worked around it with its own skip;
+  // fixing it here covers every path instead of the one that noticed.
+  const busy = await childBusyWindows(admin, studentId, nowISO, groupId);
   for (const occ of groupOccs) {
     for (const b of busy) {
       if (b.start < occ.scheduled_end_at && occ.scheduled_start_at < b.end) {
@@ -106,7 +113,13 @@ export async function findGroupEnrollmentConflict(
 
 type Busy = { start: string; end: string; type: 'one_on_one' | 'group'; label: string };
 
-async function childBusyWindows(admin: ServiceClient, studentId: string, fromISO: string): Promise<Busy[]> {
+async function childBusyWindows(
+  admin: ServiceClient,
+  studentId: string,
+  fromISO: string,
+  /** A group to leave out — the one being joined. See findGroupEnrollmentConflict. */
+  excludeGroupId?: string | null
+): Promise<Busy[]> {
   const out: Busy[] = [];
   const { data: sessions } = await admin
     .from('sessions')
@@ -117,7 +130,7 @@ async function childBusyWindows(admin: ServiceClient, studentId: string, fromISO
     .limit(200);
   (sessions ?? []).forEach((s: any) => out.push({ start: s.scheduled_start_at, end: s.scheduled_end_at, type: 'one_on_one', label: 'a 1:1 session' }));
 
-  const groupIds = await childGroupIds(admin, studentId);
+  const groupIds = (await childGroupIds(admin, studentId)).filter((id) => id !== excludeGroupId);
   if (groupIds.length) {
     const [{ data: gsRows }, { data: groups }] = await Promise.all([
       admin.from('group_sessions').select('id, group_id').in('group_id', groupIds),
