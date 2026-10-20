@@ -281,6 +281,16 @@ export async function GET(req: NextRequest, { params }: Params) {
     // that renders a join CTA from having to remember both.
     let viewerEnrollmentStatus: string | null = null;
     let viewerReleaseDate: string | null = null;
+    /**
+     * Set when this viewer's secure-spot place has run out — the date their
+     * paid first month covered them to.
+     *
+     * Needed because the lapse leaves group_members.status = 'removed', which
+     * every surface reads as "this tutor threw you out". A student whose month
+     * simply ended has to be told that, and sold the subscription, not shown a
+     * ban notice.
+     */
+    let viewerLapsedReleaseDate: string | null = null;
     /** Which seat this viewer holds. Null before 242, or when not enrolled. */
     let viewerSeatType: string | null = null;
     // Guarded: this page is now browsable by signed-out visitors, who have no
@@ -316,6 +326,19 @@ export async function GET(req: NextRequest, { params }: Params) {
         null;
       viewerReleaseDate =
         (enrolRows ?? []).find((r: any) => String(r.status) === 'SECURED')?.release_date ?? null;
+
+      // COMPLETED + a release_date is the signature the lapse cron leaves, and
+      // nothing else writes that pair: an ordinary cancellation is CANCELLED,
+      // and a subscription that ran its course never had a release_date. Only
+      // consulted when there is no live enrolment — a student who lapsed and
+      // then subscribed again still has the old COMPLETED row, and must not be
+      // told they have lost the class they are currently paying for.
+      if (!viewerEnrollmentStatus) {
+        viewerLapsedReleaseDate =
+          (enrolRows ?? []).find(
+            (r: any) => String(r.status) === 'COMPLETED' && r.release_date
+          )?.release_date ?? null;
+      }
       // The seat that goes with the enrolment we actually settled on, not
       // whichever row happens to come back first — a student who cancelled a
       // room seat and rejoined online has two rows and only one live seat.
@@ -336,6 +359,10 @@ export async function GET(req: NextRequest, { params }: Params) {
       /** Place held by an up-front first-month payment (Secure your spot). */
       secured: viewerEnrollmentStatus === 'SECURED',
       release_date: viewerReleaseDate,
+      /** Their secure-spot month ran out and was not continued. */
+      lapsed_secure_spot: viewerLapsedReleaseDate
+        ? { release_date: viewerLapsedReleaseDate }
+        : null,
       /** 'online' | 'physical', or null before 242 / when not enrolled. */
       seat_type: viewerSeatType,
     };
