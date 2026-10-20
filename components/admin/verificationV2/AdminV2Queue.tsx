@@ -16,7 +16,7 @@ const TABS: { status: string; label: string }[] = [
   { status: 'REVOKED', label: 'Revoked' },
 ];
 
-interface Item {
+export interface Item {
   tutorId: string;
   name: string | null;
   email: string | null;
@@ -37,6 +37,51 @@ interface ReverifyReport {
 }
 
 const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '—');
+
+/** The queue's table with no fetching. Also used by the dev states gallery. */
+export function QueueTable({ items, status, loading = false }: { items: Item[]; status: string; loading?: boolean }) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
+      {loading ? (
+        <p className="p-6 text-sm text-gray-500">Loading…</p>
+      ) : items.length === 0 ? (
+        <p className="p-6 text-sm text-gray-500">Nothing here.</p>
+      ) : (
+        <table className="w-full text-left text-sm">
+          <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+            <tr>
+              <th className="px-4 py-3">Teacher</th>
+              <th className="px-4 py-3">Identity</th>
+              <th className="px-4 py-3">Credentials</th>
+              <th className="px-4 py-3">Extras</th>
+              <th className="px-4 py-3">{status === 'IN_REVIEW' ? 'Submitted' : 'Decided'}</th>
+              <th className="px-4 py-3" />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {items.map((i) => (
+              <tr key={i.tutorId}>
+                <td className="px-4 py-3">
+                  <p className="font-medium">{i.name ?? 'Unnamed'}</p>
+                  <p className="text-xs text-gray-500">{i.email}</p>
+                </td>
+                <td className="px-4 py-3">{i.identityStatus ?? '—'}</td>
+                <td className="px-4 py-3">{i.credentialCount}</td>
+                <td className="px-4 py-3">{i.extraCount}</td>
+                <td className="px-4 py-3">{fmt(status === 'IN_REVIEW' ? i.submittedAt : i.decidedAt)}</td>
+                <td className="px-4 py-3 text-right">
+                  <Link href={`/admin/verification-v2/${i.tutorId}`} className="font-semibold text-[#199356] hover:underline">
+                    Review
+                  </Link>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
 
 export default function AdminV2Queue() {
   const { profile, loading: profileLoading } = useProfile();
@@ -100,45 +145,7 @@ export default function AdminV2Queue() {
 
         {error && <div role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div>}
 
-        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
-          {loading ? (
-            <p className="p-6 text-sm text-gray-500">Loading…</p>
-          ) : items.length === 0 ? (
-            <p className="p-6 text-sm text-gray-500">Nothing here.</p>
-          ) : (
-            <table className="w-full text-left text-sm">
-              <thead className="bg-gray-50 text-xs uppercase text-gray-500">
-                <tr>
-                  <th className="px-4 py-3">Teacher</th>
-                  <th className="px-4 py-3">Identity</th>
-                  <th className="px-4 py-3">Credentials</th>
-                  <th className="px-4 py-3">Extras</th>
-                  <th className="px-4 py-3">{status === 'IN_REVIEW' ? 'Submitted' : 'Decided'}</th>
-                  <th className="px-4 py-3" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {items.map((i) => (
-                  <tr key={i.tutorId}>
-                    <td className="px-4 py-3">
-                      <p className="font-medium">{i.name ?? 'Unnamed'}</p>
-                      <p className="text-xs text-gray-500">{i.email}</p>
-                    </td>
-                    <td className="px-4 py-3">{i.identityStatus ?? '—'}</td>
-                    <td className="px-4 py-3">{i.credentialCount}</td>
-                    <td className="px-4 py-3">{i.extraCount}</td>
-                    <td className="px-4 py-3">{fmt(status === 'IN_REVIEW' ? i.submittedAt : i.decidedAt)}</td>
-                    <td className="px-4 py-3 text-right">
-                      <Link href={`/admin/verification-v2/${i.tutorId}`} className="font-semibold text-[#199356] hover:underline">
-                        Review
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        <QueueTable items={items} status={status} loading={loading} />
 
         {isAdmin && <ReverifyPanel onDone={load} />}
       </div>
