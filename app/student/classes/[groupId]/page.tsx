@@ -45,7 +45,17 @@ type Group = {
 };
 
 type Tab = 'stream' | 'sessions' | 'members' | 'whatsapp' | 'classroom';
-type MembershipState = 'active' | 'suspended' | 'banned';
+/**
+ * 'lapsed' is NOT a variety of 'banned', though the member row looks identical.
+ *
+ * The secure-spot lapse cron sets group_members.status = 'removed', which is
+ * the same value a tutor removing a student writes. Read as a removal it
+ * produced "You have been removed from this class. If a refund is due, it will
+ * be processed by the admin." for someone whose paid month had simply run out —
+ * an accusation, an irrelevant refund, and no way back in. It is told apart by
+ * the enrolment, not the member row: see lapsed_secure_spot on the class API.
+ */
+type MembershipState = 'active' | 'suspended' | 'banned' | 'lapsed';
 
 type StreamPost = {
   id: string;
@@ -115,6 +125,13 @@ function fmtJoined(dateStr: string) {
   return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 }
 
+/** A release_date is a bare YYYY-MM-DD; parsed as-is it lands a day early west of UTC. */
+function fmtLapseDate(iso: string) {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString('en-TT', {
+    day: 'numeric', month: 'long', year: 'numeric',
+  });
+}
+
 /* ─── Pill (sessions status badge) ──────────────────── */
 
 function Pill({ tone, icon: Icon, label }: { tone: 'emerald' | 'rose' | 'amber' | 'slate'; icon?: React.ComponentType<{ className?: string }>; label: string }) {
@@ -146,6 +163,12 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
   const [actionReason, setActionReason] = useState<string | null>(null);
   const [suspendedUntil, setSuspendedUntil] = useState<Date | null>(null);
   const [nextMeetingLink, setNextMeetingLink] = useState<string | null>(null);
+  // The date their paid first month covered them to, and the price of carrying
+  // on. Both only set when this viewer's secure-spot place has lapsed.
+  const [lapsedUntil, setLapsedUntil] = useState<string | null>(null);
+  const [monthlyPrice, setMonthlyPrice] = useState<number | null>(null);
+  const [resubmitting, setResubmitting] = useState(false);
+  const [resubError, setResubError] = useState<string | null>(null);
 
   // One class link for the whole page: the header Join and every Sessions row
   // read this, so a link the tutor changes reaches both at once. Called above
@@ -179,8 +202,20 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
       // Check if suspension has expired
       const suspUntil = membership?.suspended_until ? new Date(membership.suspended_until) : null;
       const suspExpired = suspUntil && suspUntil <= new Date();
+
+      // Only 'removed' and a missing row can be a lapse. An explicit 'banned'
+      // or 'rejected' is the tutor's decision and outranks it — a student who
+      // preordered and was later banned must still be told they were banned.
+      const lapse = grp.viewer_membership?.lapsed_secure_spot ?? null;
+      const lapsed = !!lapse && (s === 'removed' || !membership);
+      setLapsedUntil(lapsed ? (lapse.release_date ?? null) : null);
+      setMonthlyPrice(
+        typeof grp.price_monthly === 'number' ? grp.price_monthly : Number(grp.price_monthly) || null
+      );
+
       setMemberState(
         (s === 'suspended' || s === 'suspended_payment') && !suspExpired ? 'suspended'
+        : lapsed ? 'lapsed'
         : s === 'banned' || s === 'removed' || s === 'rejected' ? 'banned'
         : s === 'approved' || s === 'active' || s === 'invited' ? 'active'
         : 'banned'
@@ -224,6 +259,38 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
       console.error('[EnrolledClassPage]', err);
     } finally {
       setLoading(false);
+    }
+  }
+
+  /**
+   * Start the subscription that brings a lapsed place back.
+   *
+   * The same endpoint the "Continue this class" prompt uses before the month
+   * runs out — there is no separate rejoin product, and sending them to the
+   * marketplace to find their own class again would be the long way round to
+   * the identical checkout.
+   */
+  async function resubscribe() {
+    setResubmitting(true);
+    setResubError(null);
+    try {
+      const res = await fetch(`/api/groups/${groupId}/subscribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.checkout_url) { window.location.href = data.checkout_url; return; }
+      // Their parent holds the card. The request is raised and waiting — not a
+      // failure, and saying "try again" would have them raise a second one.
+      if (data.parent_approval_required) {
+        setResubError('Sent to your parent — rejoining this class is theirs to approve.');
+        return;
+      }
+      setResubError(data.error || 'Could not start your subscription. Please try again.');
+    } catch {
+      setResubError('Could not start your subscription — check your connection.');
+    } finally {
+      setResubmitting(false);
     }
   }
 
@@ -289,6 +356,43 @@ export default function EnrolledClassPage({ params }: { params: { groupId: strin
           )}
         </div>
       </div>
+
+      {/* Secure-spot month ran out — the one blocked state that is nobody's fault */}
+      {memberState === 'lapsed' && (
+        <div className="rounded-2xl border border-brand/30 bg-brand-soft/50 p-5 flex flex-col sm:flex-row sm:items-start gap-4">
+          <div className="size-12 rounded-xl bg-brand/15 grid place-items-center shrink-0">
+            <CreditCard className="size-5 text-brand-deep" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="font-bold text-ink">Your paid month has ended</div>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              You secured your spot in <strong className="text-ink">{group.name}</strong> and paid for
+              your first month{lapsedUntil ? <>, which ran until <strong className="text-ink">{fmtLapseDate(lapsedUntil)}</strong></> : null}.
+              {' '}Nothing was charged after that, so your place was released. Subscribe to pick the
+              class back up.
+            </p>
+            {resubError && <p className="text-sm font-semibold text-rose-700 mt-2">{resubError}</p>}
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                onClick={resubscribe}
+                disabled={resubmitting}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-brand text-white text-sm font-semibold hover:bg-brand-deep transition disabled:opacity-60">
+                <CreditCard className="size-3.5" />
+                {resubmitting
+                  ? 'Starting…'
+                  : monthlyPrice && monthlyPrice > 0
+                    ? `Subscribe — TT$${monthlyPrice} a month`
+                    : 'Subscribe to continue'}
+              </button>
+              <Link href="/student/classes"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-sm font-semibold text-ink hover:bg-muted transition">
+                My Classes
+              </Link>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">Cancel any time. Your tutor keeps your seat as long as you&apos;re subscribed.</p>
+          </div>
+        </div>
+      )}
 
       {/* Suspended */}
       {memberState === 'suspended' && (

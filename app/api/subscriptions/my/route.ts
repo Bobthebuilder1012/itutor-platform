@@ -27,17 +27,18 @@ export async function GET(_req: NextRequest) {
         cancel_at_period_end, cancelled_at,
         last_paid_at, reminder_count,
         pending_payment_expires_at,
+        release_date,
         enrolled_at, updated_at,
       `;
     const GROUP_BASE = `
         group:groups!group_id (
-          id, name, cover_image, subject, tutor_id,
+          id, name, cover_image, subject, tutor_id, end_date,
           tutor:profiles!tutor_id ( id, full_name, avatar_url )
         )
       `;
     const GROUP_FULL = `
         group:groups!group_id (
-          id, name, cover_image, subject, tutor_id,
+          id, name, cover_image, subject, tutor_id, end_date,
           class_format, price_online_ttd, price_physical_ttd,
           venue:venues(id, name, region:regions(id, name)),
           tutor:profiles!tutor_id ( id, full_name, avatar_url )
