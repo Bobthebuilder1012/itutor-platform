@@ -232,6 +232,8 @@ export async function setIdentityStatus(opts: {
   reason?: string | null;
   /** The provider's raw code, kept for coverage testing. Never branched on. */
   providerCode?: string | null;
+  /** The document type the provider reported, for the outcomes log. A label only. */
+  documentType?: string | null;
   actor: VerificationActor;
   /** Webhook / refresh: only apply if this is still the teacher's current session. */
   sessionRef?: string;
@@ -248,7 +250,7 @@ export async function setIdentityStatus(opts: {
   const { data: cur, error } = await db
     .from('tutor_verification_v2')
     .select(
-      'identity_status, identity_error_code, identity_provider, identity_provider_session_ref, stripe_identity_session_id, identity_attempts'
+      'identity_status, identity_error_code, identity_provider, identity_provider_session_ref, stripe_identity_session_id, identity_attempts, identity_country, identity_started_at'
     )
     .eq('tutor_id', opts.tutorId)
     .maybeSingle();
@@ -296,5 +298,27 @@ export async function setIdentityStatus(opts: {
   const { data, error: upErr } = await q.select('tutor_id');
   if (upErr) return fail('db_error', 'Could not update the identity check');
   if (!data || data.length === 0) return fail('conflict', 'The identity check changed. Please refresh.');
+
+  // One row per FINISHED attempt, for the coverage scorecard. Never personal data:
+  // provider, country, document TYPE, neutral outcome, codes, timing. A failure to
+  // log never undoes or blocks the status change.
+  if (FINISHED.includes(opts.to)) {
+    const started = cur.identity_started_at ? Date.parse(cur.identity_started_at) : NaN;
+    const { error: logErr } = await db.from('identity_outcomes').insert({
+      tutor_id: opts.tutorId,
+      provider: cur.identity_provider ?? currentProvider,
+      session_ref: currentRef,
+      country: cur.identity_country ?? null,
+      document_type: opts.documentType ?? null,
+      outcome: opts.to,
+      reason: reason,
+      provider_code: opts.providerCode ?? null,
+      attempt: cur.identity_attempts ?? null,
+      duration_seconds: Number.isFinite(started) ? Math.max(0, Math.round((Date.now() - started) / 1000)) : null,
+    });
+    if (logErr) console.error('[identity-outcomes] could not log outcome:', logErr.message);
+  }
   return { ok: true, from, to: opts.to, changed: true };
 }
+
+const FINISHED = ['verified', 'retryable_failure', 'not_supported', 'consent_declined', 'canceled'];

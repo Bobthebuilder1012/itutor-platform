@@ -147,7 +147,7 @@ export async function refreshIdentity(db: Db, row: VerificationRow): Promise<Ver
   const open: Array<IdentityStatus | null> = [null, 'pending', 'processing', 'retryable_failure'];
   if (!provider || !ref || !open.includes(row.identity_status)) return row;
   try {
-    const { outcome, providerCode } = await getProvider(provider).getOutcome(ref);
+    const { outcome, providerCode, documentType } = await getProvider(provider).getOutcome(ref);
     const stored = outcomeToStored(outcome);
     if (stored.status === row.identity_status && stored.reason === row.identity_error_code) return row;
 
@@ -158,6 +158,7 @@ export async function refreshIdentity(db: Db, row: VerificationRow): Promise<Ver
       to: stored.status,
       reason: stored.reason,
       providerCode,
+      documentType,
       actor: 'system',
       sessionRef: ref,
       provider,
@@ -268,7 +269,7 @@ export function buildState(
       reason: row?.identity_error_code ?? null,
       country: row?.identity_country ?? null,
       attempts,
-      maxAttempts: identityRouting.maxAttemptsPerProvider,
+      maxAttempts: identityRouting.maxTotalAttempts,
       canRetry,
       furtherRoute,
       countries: identityRouting.countries,

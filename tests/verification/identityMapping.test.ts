@@ -79,7 +79,7 @@ describe('Didit -> neutral outcomes', () => {
       ['QR_NOT_DETECTED', 'document_invalid'],
     ];
     for (const [raw, neutral] of table) {
-      expect(mapDiditDecision(decision('Declined', [raw]), opts)).toEqual({
+      expect(mapDiditDecision(decision('Declined', [raw]), opts)).toMatchObject({
         outcome: { kind: 'retryable_failure', reason: neutral }, providerCode: raw,
       });
     }
@@ -91,7 +91,7 @@ describe('Didit -> neutral outcomes', () => {
   });
 
   it('an undocumented decline reason is retryable/unknown with the raw code kept (the coverage test must resolve it)', () => {
-    expect(mapDiditDecision(decision('Declined', ['SOME_UNLISTED_RISK']), opts)).toEqual({
+    expect(mapDiditDecision(decision('Declined', ['SOME_UNLISTED_RISK']), opts)).toMatchObject({
       outcome: { kind: 'retryable_failure', reason: 'unknown' }, providerCode: 'SOME_UNLISTED_RISK',
     });
     expect(mapDiditDecision(decision('Declined'), opts).outcome).toEqual({ kind: 'retryable_failure', reason: 'unknown' });

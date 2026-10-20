@@ -90,6 +90,7 @@ export async function applyProviderOutcome(
     to: stored.status,
     reason: stored.reason,
     providerCode: result.providerCode,
+    documentType: result.documentType ?? null,
     actor: 'system',
     sessionRef: ev.sessionRef,
     provider,

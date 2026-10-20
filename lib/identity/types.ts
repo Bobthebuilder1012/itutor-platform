@@ -51,6 +51,8 @@ export interface ProviderOutcome {
   providerCode: string | null;
   /** The hosted page, when the session is still open and the provider can give it back. */
   resumeUrl?: string | null;
+  /** The document type the provider reports (passport, ID card, driver's licence). A label only. */
+  documentType?: string | null;
 }
 
 export interface CreateSessionInput {

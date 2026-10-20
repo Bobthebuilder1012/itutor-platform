@@ -22,7 +22,7 @@ export type NextStep =
   | { action: 'retry_same'; provider: ProviderName } // new attempt on the same provider
   | { action: 'next'; provider: ProviderName } // fall back to the next route
   | { action: 'done' } // already verified
-  | { action: 'none'; reason: 'no_route' | 'consent_declined' }; // nothing left: contact support
+  | { action: 'none'; reason: 'no_route' | 'consent_declined' | 'attempt_limit' }; // nothing left: contact support
 
 /**
  * Decides what the "start / continue / try again" button does.
@@ -30,7 +30,8 @@ export type NextStep =
  *  not started             -> first provider on the route
  *  pending / processing    -> reuse the open session
  *  retryable_failure, canceled
- *                          -> try again on the same provider, until the attempts run out, then the next route
+ *                          -> try again on the same provider
+ *  any new session         -> only while the teacher's TOTAL attempts (all providers) are under the cap
  *  not_supported           -> the next route, automatically
  *  consent_declined        -> nothing: the teacher chose not to be checked (contact support)
  *  verified                -> done
@@ -44,17 +45,22 @@ export function decideNextStep(input: {
   maxAttempts?: number;
 }): NextStep {
   const { route, status, current } = input;
-  const max = input.maxAttempts ?? identityRouting.maxAttemptsPerProvider;
+  const max = input.maxAttempts ?? identityRouting.maxTotalAttempts;
   if (status === 'verified') return { action: 'done' };
   if (route.length === 0) return { action: 'none', reason: 'no_route' };
+  // An open session can always be continued; a NEW one needs an attempt left.
+  const exhausted = input.attempts >= max;
 
   const next = (): NextStep => {
+    if (exhausted) return { action: 'none', reason: 'attempt_limit' };
     const from = current ? route.indexOf(current) : -1;
     const candidate = route.slice(from + 1).find((p) => !input.tried.includes(p));
     return candidate ? { action: 'next', provider: candidate } : { action: 'none', reason: 'no_route' };
   };
 
-  if (!current || status === null) return { action: 'start', provider: route[0]! };
+  if (!current || status === null) {
+    return exhausted ? { action: 'none', reason: 'attempt_limit' } : { action: 'start', provider: route[0]! };
+  }
 
   switch (status) {
     case 'pending':
@@ -63,7 +69,7 @@ export function decideNextStep(input: {
     case 'retryable_failure':
     case 'canceled':
       // A provider that dropped out of the route (credentials removed) cannot be retried.
-      if (route.includes(current) && input.attempts < max) return { action: 'retry_same', provider: current };
+      if (route.includes(current) && !exhausted) return { action: 'retry_same', provider: current };
       return next();
     case 'not_supported':
       return next();
@@ -72,7 +78,7 @@ export function decideNextStep(input: {
       // provider is tried. There is no manual identity route in the chain.
       return { action: 'none', reason: 'consent_declined' };
     default:
-      return { action: 'start', provider: route[0]! };
+      return exhausted ? { action: 'none', reason: 'attempt_limit' } : { action: 'start', provider: route[0]! };
   }
 }
 

@@ -80,7 +80,7 @@ export async function startIdentityCheck(opts: {
   if (step.action === 'none') {
     return fail(
       409,
-      step.reason === 'consent_declined' ? 'consent_declined' : 'no_route',
+      step.reason === 'consent_declined' ? 'consent_declined' : step.reason === 'attempt_limit' ? 'attempt_limit' : 'no_route',
       step.reason === 'consent_declined'
         ? 'The identity check was declined. Please contact support.'
         : 'We could not complete the identity check automatically. Please contact support.',
@@ -100,6 +100,7 @@ export async function startIdentityCheck(opts: {
           to: stored.status,
           reason: stored.reason,
           providerCode: existing.providerCode,
+          documentType: existing.documentType ?? null,
           actor: 'system',
           sessionRef: currentRef,
           provider: current,
@@ -153,9 +154,9 @@ async function startFresh(
     target = redo.provider;
   }
 
-  // Attempts are counted per provider; a new provider starts at 1.
-  const attempt = (target === current ? row.identity_attempts : 0) + 1;
-  if (attempt > identityRouting.maxAttemptsPerProvider) {
+  // Attempts are counted IN TOTAL across providers (config maxTotalAttempts).
+  const attempt = row.identity_attempts + 1;
+  if (attempt > identityRouting.maxTotalAttempts) {
     return fail(429, 'attempt_limit', 'You have used all identity check attempts', { support: true });
   }
 
@@ -199,6 +200,7 @@ async function startFresh(
       identity_session_refs: refs,
       identity_providers_tried: Array.from(new Set([...tried, target])),
       identity_country: country,
+      identity_started_at: new Date().toISOString(),
       ...legacy,
     },
     db,

@@ -58,16 +58,36 @@ describe('decideNextStep: the fallback chain', () => {
     expect(r).toEqual({ action: 'none', reason: 'no_route' });
   });
 
-  it('a retryable failure retries the same provider until the attempt cap, then falls back', () => {
+  it('a retryable failure retries the same provider while the TOTAL attempts are under the cap', () => {
     for (const attempts of [1, 2]) {
       expect(decideNextStep({ ...base, status: 'retryable_failure', current: 'stripe', attempts, tried: ['stripe'] })).toEqual({ action: 'retry_same', provider: 'stripe' });
     }
-    expect(decideNextStep({ ...base, status: 'retryable_failure', current: 'stripe', attempts: 3, tried: ['stripe'] })).toEqual({ action: 'next', provider: 'didit' });
   });
 
-  it('the attempt cap is the configured one', () => {
-    expect(identityRouting.maxAttemptsPerProvider).toBe(3);
-    expect(decideNextStep({ ...base, status: 'canceled', current: 'stripe', attempts: 2, tried: ['stripe'], maxAttempts: 2 })).toEqual({ action: 'next', provider: 'didit' });
+  it('the attempt cap is TOTAL across providers: when it is used up nothing new starts, whatever the outcome', () => {
+    expect(identityRouting.maxTotalAttempts).toBe(3);
+    for (const status of ['retryable_failure', 'canceled', 'not_supported'] as const) {
+      expect(decideNextStep({ ...base, status, current: 'stripe', attempts: 3, tried: ['stripe'] })).toEqual({ action: 'none', reason: 'attempt_limit' });
+    }
+    expect(decideNextStep({ ...base, status: null, current: null, attempts: 3 })).toEqual({ action: 'none', reason: 'attempt_limit' });
+  });
+
+  it('the cap is configurable per call', () => {
+    expect(decideNextStep({ ...base, status: 'canceled', current: 'stripe', attempts: 2, tried: ['stripe'], maxAttempts: 2 })).toEqual({ action: 'none', reason: 'attempt_limit' });
+    expect(decideNextStep({ ...base, status: 'canceled', current: 'stripe', attempts: 2, tried: ['stripe'], maxAttempts: 5 })).toEqual({ action: 'retry_same', provider: 'stripe' });
+  });
+
+  it('an open session can always be continued, even at the cap', () => {
+    expect(decideNextStep({ ...base, status: 'pending', current: 'didit', attempts: 3, tried: ['stripe', 'didit'] })).toEqual({ action: 'reuse', provider: 'didit' });
+    expect(decideNextStep({ ...base, status: 'processing', current: 'didit', attempts: 3, tried: ['stripe', 'didit'] })).toEqual({ action: 'reuse', provider: 'didit' });
+  });
+
+  it('one try on each of stripe, didit and veriff fits in the default cap', () => {
+    // stripe says not_supported after attempt 1, didit after attempt 2, then veriff can still start (attempts 2 < 3)
+    expect(decideNextStep({ ...base, status: 'not_supported', current: 'stripe', attempts: 1, tried: ['stripe'] })).toEqual({ action: 'next', provider: 'didit' });
+    expect(decideNextStep({ ...base, status: 'not_supported', current: 'didit', attempts: 2, tried: ['stripe', 'didit'] })).toEqual({ action: 'next', provider: 'veriff' });
+    // veriff said not_supported on attempt 3: every provider tried, contact support
+    expect(decideNextStep({ ...base, status: 'not_supported', current: 'veriff', attempts: 3, tried: ['stripe', 'didit', 'veriff'] })).toEqual({ action: 'none', reason: 'attempt_limit' });
   });
 
   it('a cancelled check is treated like a retryable failure', () => {
@@ -179,13 +199,13 @@ describe('startIdentityCheck', () => {
     expect(rowOf(db).identity_session_refs).toEqual([{ provider: 'stripe', ref }]);
   });
 
-  it('not_supported falls back to the next provider automatically, resetting the attempt count', async () => {
+  it('not_supported falls back to the next provider automatically (and the attempt still counts)', async () => {
     const db = seed({ identity_status: 'not_supported', identity_error_code: 'country', identity_provider: 'stripe',
       identity_provider_session_ref: 'stripe_old', stripe_identity_session_id: 'stripe_old', identity_attempts: 1,
       identity_providers_tried: ['stripe'], identity_session_refs: [{ provider: 'stripe', ref: 'stripe_old' }], identity_country: 'GY' });
     const r = await start(db, null);
     expect(r).toMatchObject({ ok: true, kind: 'redirect', provider: 'didit' });
-    expect(rowOf(db)).toMatchObject({ identity_status: 'pending', identity_provider: 'didit', identity_attempts: 1, identity_providers_tried: ['stripe', 'didit'] });
+    expect(rowOf(db)).toMatchObject({ identity_status: 'pending', identity_provider: 'didit', identity_attempts: 2, identity_providers_tried: ['stripe', 'didit'] });
     expect(rowOf(db).identity_session_refs).toHaveLength(2); // both kept, so both can be redacted later
     expect(h.providers.stripe.createSession).not.toHaveBeenCalled();
   });
@@ -197,7 +217,7 @@ describe('startIdentityCheck', () => {
     expect(r).toMatchObject({ ok: false, code: 'no_route', httpStatus: 409, extra: { support: true } });
   });
 
-  it('a failure retries the same provider until the cap, then moves on', async () => {
+  it('a failure retries the same provider until the TOTAL cap, then reports contact support', async () => {
     const fail = { identity_status: 'retryable_failure', identity_error_code: 'document_expired', identity_provider: 'stripe',
       identity_provider_session_ref: 's', stripe_identity_session_id: 's', identity_providers_tried: ['stripe'], identity_country: 'TT' };
 
@@ -206,8 +226,31 @@ describe('startIdentityCheck', () => {
     expect(rowOf(db1).identity_attempts).toBe(3);
 
     const db2 = seed({ ...fail, identity_attempts: 3 });
-    expect(await start(db2, null)).toMatchObject({ ok: true, provider: 'didit' });
-    expect(rowOf(db2).identity_attempts).toBe(1);
+    expect(await start(db2, null)).toMatchObject({ ok: false, code: 'attempt_limit', extra: { support: true } });
+    expect(h.providers.didit.createSession).not.toHaveBeenCalled();
+    expect(rowOf(db2).identity_attempts).toBe(3);
+  });
+
+  it('attempts accumulate across providers: stripe -> didit -> veriff uses 3 and then stops', async () => {
+    h.providers.stripe.getOutcome = vi.fn();
+    const db = seed();
+    expect(await start(db, 'GY')).toMatchObject({ ok: true, provider: 'stripe' });
+    expect(rowOf(db).identity_attempts).toBe(1);
+
+    for (const [next, expected] of [['didit', 2], ['veriff', 3]] as const) {
+      Object.assign(rowOf(db), { identity_status: 'not_supported', identity_error_code: 'country' });
+      expect(await start(db, null)).toMatchObject({ ok: true, provider: next });
+      expect(rowOf(db).identity_attempts).toBe(expected);
+    }
+    Object.assign(rowOf(db), { identity_status: 'not_supported', identity_error_code: 'country' });
+    expect(await start(db, null)).toMatchObject({ ok: false, code: 'attempt_limit', httpStatus: 409, extra: { support: true } });
+    expect(rowOf(db).identity_providers_tried).toEqual(['stripe', 'didit', 'veriff']);
+  });
+
+  it('records when the check started, for timing', async () => {
+    const db = seed();
+    await start(db);
+    expect(Date.parse(rowOf(db).identity_started_at)).toBeGreaterThan(0);
   });
 
   it('consent declined offers nothing: no other provider, no manual route', async () => {
