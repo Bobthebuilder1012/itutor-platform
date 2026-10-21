@@ -9,8 +9,8 @@ const script = path.resolve(__dirname, '../../scripts/seed-verification-test-use
 
 // Every case here must stop BEFORE any network call, so the test is offline.
 function seed(env: Record<string, string>, args: string[] = []) {
-  const clean: Record<string, string> = { PATH: process.env.PATH ?? '', SystemRoot: process.env.SystemRoot ?? '' };
-  const r = spawnSync(process.execPath, [script, ...args], { env: { ...clean, ...env }, encoding: 'utf8', timeout: 20000 });
+  const clean: NodeJS.ProcessEnv = { NODE_ENV: 'test', PATH: process.env.PATH ?? '', SystemRoot: process.env.SystemRoot ?? '' };
+  const r = spawnSync(process.execPath, [script, ...args], { env: { ...clean, ...env }, encoding: 'utf8' as const, timeout: 20000 });
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
 }
 
@@ -55,8 +55,8 @@ describe('the seed script refuses anything that is not local or your own project
 const applyScript = path.resolve(__dirname, '../../scripts/apply-migrations-local.mjs');
 
 function apply(env: Record<string, string>, args: string[] = []) {
-  const clean: Record<string, string> = { PATH: process.env.PATH ?? '', SystemRoot: process.env.SystemRoot ?? '' };
-  const r = spawnSync(process.execPath, [applyScript, ...args], { env: { ...clean, ...env }, encoding: 'utf8', timeout: 20000 });
+  const clean: NodeJS.ProcessEnv = { NODE_ENV: 'test', PATH: process.env.PATH ?? '', SystemRoot: process.env.SystemRoot ?? '' };
+  const r = spawnSync(process.execPath, [applyScript, ...args], { env: { ...clean, ...env }, encoding: 'utf8' as const, timeout: 20000 });
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
 }
 

@@ -45,8 +45,10 @@ VERIFF_API_KEY=
 VERIFF_SHARED_SECRET=
 # VERIFF_BASE_URL=                   # only if your Customer Portal shows a different API host
 
-# --- leave these UNSET so no real email is ever sent ---
-# RESEND_API_KEY
+# --- no real email: a FAKE key (some existing routes build a Resend client at start-up and
+#     the app will not build or start without one) plus an allow-list nobody is on ---
+RESEND_API_KEY=re_placeholder_not_a_real_key
+EMAIL_ALLOWLIST=nobody@example.test   # anything not on this list is suppressed by the app's mail sender
 ```
 
 A provider with missing credentials is **skipped automatically**: with only Stripe set, the chain is just Stripe.
@@ -150,7 +152,7 @@ A wrong signature must return `400`. Didit's webhook is **not** trusted for the 
 ## 8. Useful facts
 
 - Everything new is behind `VERIFICATION_V2_ENABLED`. Off: the pages and APIs return 404, the nav links are hidden, the identity webhooks are acknowledged and ignored.
-- No email or notification is sent by any of this, and `RESEND_API_KEY` should stay unset.
+- No email is sent by any of this. Keep the fake `RESEND_API_KEY` and the `EMAIL_ALLOWLIST` above: with a fake key a send would simply be rejected by Resend, and the app's own mail sender suppresses everything off the allow-list.
 - Policy knobs are config files with placeholders: `config/verificationPolicy.ts` (who may revoke), `config/verificationReview.ts` (named reviewer, under-18, restrictions), `config/verificationEvidence.ts` (evidence criteria), `config/verificationRetention.ts` (retention days), `config/identityRouting.ts` (providers, countries, attempt cap).
 - Tests: `npm test` (offline). Migration check without a database: `npm install --no-save @electric-sql/pglite && node scripts/verify-verification-migrations.mjs`.
 
@@ -162,3 +164,4 @@ A wrong signature must return `400`. Didit's webhook is **not** trusted for the 
 - **Real passports and ID cards** from Trinidad and Tobago, Guyana and Barbados: see `docs/IDENTITY_COVERAGE_TEST.md`. Stripe test mode cannot prove country coverage.
 - **The seeded listing and class rows** use column names read from the code; if your schema differs the seed prints which row failed.
 - **Lint** was not run (the repo has no ESLint configuration).
+- **`npm run build` needs `RESEND_API_KEY` set** (any placeholder): `/api/auth/send-verification` constructs a Resend client when it is imported. That is existing code, not part of this work.

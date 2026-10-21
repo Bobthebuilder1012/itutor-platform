@@ -1,0 +1,192 @@
+[
+  {
+    "name": "phone-375: gallery loads (200)",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "phone-375: no horizontal page scroll",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "phone-375: shows many states (55)",
+    "pass": false,
+    "extra": "55"
+  },
+  {
+    "name": "phone-375: the three badge labels appear",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "phone-375: no provider name leaks into teacher screens",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "phone-375: no manual identity route is offered anywhere",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "phone-375: not_supported on stripe falls back to didit",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "phone-375: not_supported on didit falls back to veriff",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "phone-375: all attempts used shows contact support",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "phone-375: consent declined tries nothing else",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "phone-375: provider selector changes the admin \"checked by\"",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "phone-375: start is disabled until a country is chosen",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "phone-375: start enables after choosing a country",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "phone-375: pressing start reports the chosen country",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "phone-375: no console errors",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "desktop-1280: gallery loads (200)",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "desktop-1280: no horizontal page scroll",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "desktop-1280: shows many states (55)",
+    "pass": false,
+    "extra": "55"
+  },
+  {
+    "name": "desktop-1280: the three badge labels appear",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "desktop-1280: no provider name leaks into teacher screens",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "desktop-1280: no manual identity route is offered anywhere",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "desktop-1280: not_supported on stripe falls back to didit",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "desktop-1280: not_supported on didit falls back to veriff",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "desktop-1280: all attempts used shows contact support",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "desktop-1280: consent declined tries nothing else",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "desktop-1280: provider selector changes the admin \"checked by\"",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "desktop-1280: start is disabled until a country is chosen",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "desktop-1280: start enables after choosing a country",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "desktop-1280: pressing start reports the chosen country",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "desktop-1280: no console errors",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "flag endpoint answers with a boolean",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "cron endpoint refuses without the secret (401)",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "/api/webhooks/stripe-identity never accepts an unsigned request (500)",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "/api/webhooks/identity/didit never accepts an unsigned request (500)",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "/api/webhooks/identity/veriff never accepts an unsigned request (500)",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "unknown provider webhook is 404",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "OCR endpoint without a session is 401",
+    "pass": true,
+    "extra": ""
+  },
+  {
+    "name": "admin queue API without a session is not served (401/403/404)",
+    "pass": true,
+    "extra": ""
+  }
+]
