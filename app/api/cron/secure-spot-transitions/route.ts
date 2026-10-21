@@ -40,8 +40,18 @@ import { releaseStaleSecureSpotHold } from '@/lib/payments/staleSecureSpotHold';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-/** How long before release_date the student is asked to continue. */
-const REMIND_DAYS_BEFORE = 7;
+/**
+ * When the student is asked to continue, as days relative to release_date:
+ * a week out, three days out, then three days INTO the grace window. That last
+ * one lands after the place has technically ended but while it is still held —
+ * the moment it is both urgent and still actionable.
+ *
+ * The index into this array is the enrolment's reminder_count, so no step is
+ * ever sent twice. The test is "due on or before today" rather than "today
+ * exactly", so a run that is missed, or a send that fails, is picked up by the
+ * next run instead of skipping that step for good.
+ */
+const REMIND_DAY_OFFSETS = [7, 3, -3];
 
 /** How long after release_date the seat is held while they decide. */
 const GRACE_DAYS_AFTER = 7;
@@ -63,6 +73,13 @@ function addDays(iso: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** Whole days from `from` to `to`, both bare YYYY-MM-DD. Negative once past. */
+function daysBetween(from: string, to: string): number {
+  const a = new Date(`${from}T00:00:00Z`).getTime();
+  const b = new Date(`${to}T00:00:00Z`).getTime();
+  return Math.round((b - a) / 86_400_000);
+}
+
 function fmtDate(iso: string): string {
   return new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', {
     month: 'long', day: 'numeric', year: 'numeric',
@@ -79,27 +96,28 @@ export async function GET(request: NextRequest) {
   const today = trinidadToday();
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? '';
 
-  const result = { reminded: 0, lapsed: 0, holdsReleased: 0, holdsKept: 0, errors: [] as string[] };
+  const result = { reminded: 0, notDelivered: 0, lapsed: 0, holdsReleased: 0, holdsKept: 0, errors: [] as string[] };
 
   // ---------------------------------------------------------------
-  // 1. REMIND — release_date within the next REMIND_DAYS_BEFORE days
+  // 1. REMIND — walk each secured place through REMIND_DAY_OFFSETS
   // ---------------------------------------------------------------
   try {
     const { data: due, error } = await admin
       .from('group_enrollments')
       .select(`
         id, student_id, group_id, release_date, plan_price_ttd, reminder_count,
+        last_reminder_sent_at,
         student:profiles!student_id ( id, full_name, email ),
         group:groups!group_id ( id, name, end_date, price_monthly )
       `)
       .eq('status', 'SECURED')
       .not('release_date', 'is', null)
-      .gte('release_date', today)
-      .lte('release_date', addDays(today, REMIND_DAYS_BEFORE))
-      // reminder_count is the existing per-enrolment counter used by the
-      // subscription dunning. Reusing it keeps "have we already asked?" in one
-      // place, and stops a daily cron emailing the same student seven times.
-      .or('reminder_count.is.null,reminder_count.eq.0');
+      // From a week before the place ends to the last day it is still held.
+      // Anything older has lapsed and belongs to section 2. The per-step
+      // filtering happens below, because which chase is due depends on
+      // reminder_count as well as the date.
+      .gte('release_date', addDays(today, -GRACE_DAYS_AFTER))
+      .lte('release_date', addDays(today, REMIND_DAY_OFFSETS[0]));
 
     if (error) throw error;
 
@@ -108,6 +126,24 @@ export async function GET(request: NextRequest) {
       const group = (row as any).group;
       const releaseDate: string = (row as any).release_date;
 
+      // Which chase is next for this enrolment, and has it come due?
+      const sentSoFar = Number((row as any).reminder_count ?? 0);
+      if (sentSoFar >= REMIND_DAY_OFFSETS.length) continue;
+      const daysLeft = daysBetween(today, releaseDate);
+
+      // The LAST step that has come due, not simply the next one in sequence.
+      // If a run is missed for days, catching up should send today's message
+      // once — not replay every chase it slept through on consecutive days.
+      let step = -1;
+      for (let i = sentSoFar; i < REMIND_DAY_OFFSETS.length; i++) {
+        if (daysLeft <= REMIND_DAY_OFFSETS[i]) step = i;
+      }
+      if (step < 0) continue;
+
+      // At most one chase a day, even if the cron is run more than once.
+      const lastSent = (row as any).last_reminder_sent_at;
+      if (lastSent && String(lastSent).slice(0, 10) === today) continue;
+
       // A class that ends inside the first month has nothing to renew — the
       // student bought the whole thing. Skip rather than invite them to
       // subscribe to a class that is over.
@@ -115,7 +151,11 @@ export async function GET(request: NextRequest) {
       if (endDate && endDate <= releaseDate) continue;
 
       const price = Number(group?.price_monthly ?? (row as any).plan_price_ttd ?? 0);
-      const link = `${appUrl}/student/explore/${row.group_id}`;
+      // /student/subscriptions, not the class page: that is where the Continue
+      // button lives, both for a place still running and one that has ended.
+      const link = `${appUrl}/student/subscriptions`;
+      const inGrace = daysLeft <= 0;
+      const heldUntil = addDays(releaseDate, GRACE_DAYS_AFTER);
 
       if (student?.email) {
         const className = group?.name ?? 'your class';
@@ -125,8 +165,10 @@ export async function GET(request: NextRequest) {
         // paragraph, because a family that misreads it stops trusting preorders.
         const email = renderEmail({
           family: 'schedule-change',
-          subject: `Your first month of ${group?.name ?? 'class'} ends ${fmtDate(releaseDate)}`,
-          heading: 'Your first month is ending',
+          subject: inGrace
+            ? `Your place in ${group?.name ?? 'class'} is held until ${fmtDate(heldUntil)}`
+            : `Your first month of ${group?.name ?? 'class'} ends ${fmtDate(releaseDate)}`,
+          heading: inGrace ? 'Your place is still held' : 'Your first month is ending',
           intro: `Hi ${student.full_name ?? 'there'},`,
           eyebrow: 'Decide whether to continue',
           blocks: [
@@ -134,7 +176,9 @@ export async function GET(request: NextRequest) {
               kind: 'details',
               rows: [
                 { label: 'Class', value: className, strong: true },
-                { label: 'First month ends', value: fmtDate(releaseDate) },
+                inGrace
+                  ? { label: 'Held until', value: fmtDate(heldUntil) }
+                  : { label: 'First month ends', value: fmtDate(releaseDate) },
                 {
                   label: 'To continue',
                   value: price > 0 ? `TT$${price} a month` : 'See the class page',
@@ -157,12 +201,26 @@ export async function GET(request: NextRequest) {
           ],
           cta: { label: `Continue in ${className}`, href: link },
         });
-        await sendEmail({
+        // sendEmail NEVER throws. It returns success:false on a real failure,
+        // and success:TRUE with a sentinel id when the send was disabled (no
+        // RESEND_API_KEY) or suppressed (EMAIL_ALLOWLIST). The old code ignored
+        // all three and bumped the counter regardless, so mail that never left
+        // the building was recorded as sent and never retried — which is why
+        // two students were marked reminded on 2026-10-14 and heard nothing.
+        const sent = await sendEmail({
           to: student.email,
           subject: email.subject,
           html: email.html,
           text: email.text,
         });
+        if (!sent.success) {
+          // Leave the step un-bumped: tomorrow's run tries this one again.
+          result.errors.push(`remind ${row.id}: ${sent.error ?? 'send failed'}`);
+          continue;
+        }
+        if (sent.messageId === 'disabled' || sent.messageId === 'suppressed') {
+          result.notDelivered += 1;
+        }
       }
 
       await admin.from('notifications').insert({
@@ -177,7 +235,7 @@ export async function GET(request: NextRequest) {
       await admin
         .from('group_enrollments')
         .update({
-          reminder_count: ((row as any).reminder_count ?? 0) + 1,
+          reminder_count: step + 1,
           last_reminder_sent_at: new Date().toISOString(),
         })
         .eq('id', row.id);

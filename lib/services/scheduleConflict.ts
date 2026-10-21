@@ -93,7 +93,11 @@ export async function findGroupEnrollmentConflict(
     .limit(30);
   if (!groupOccs?.length) return null;
 
-  const busy = await childBusyWindows(admin, studentId, nowISO);
+  // Exclude the class being joined. A SECURED student is already on this
+  // roster with status 'approved', so without this the class is matched
+  // against its own occurrences and every attempt to continue is refused
+  // with "that time clashes with <this very class>".
+  const busy = await childBusyWindows(admin, studentId, nowISO, groupId);
   for (const occ of groupOccs) {
     for (const b of busy) {
       if (b.start < occ.scheduled_end_at && occ.scheduled_start_at < b.end) {
@@ -106,7 +110,12 @@ export async function findGroupEnrollmentConflict(
 
 type Busy = { start: string; end: string; type: 'one_on_one' | 'group'; label: string };
 
-async function childBusyWindows(admin: ServiceClient, studentId: string, fromISO: string): Promise<Busy[]> {
+async function childBusyWindows(
+  admin: ServiceClient,
+  studentId: string,
+  fromISO: string,
+  excludeGroupId?: string | null
+): Promise<Busy[]> {
   const out: Busy[] = [];
   const { data: sessions } = await admin
     .from('sessions')
@@ -117,7 +126,7 @@ async function childBusyWindows(admin: ServiceClient, studentId: string, fromISO
     .limit(200);
   (sessions ?? []).forEach((s: any) => out.push({ start: s.scheduled_start_at, end: s.scheduled_end_at, type: 'one_on_one', label: 'a 1:1 session' }));
 
-  const groupIds = await childGroupIds(admin, studentId);
+  const groupIds = (await childGroupIds(admin, studentId)).filter((id) => id !== excludeGroupId);
   if (groupIds.length) {
     const [{ data: gsRows }, { data: groups }] = await Promise.all([
       admin.from('group_sessions').select('id, group_id').in('group_id', groupIds),
