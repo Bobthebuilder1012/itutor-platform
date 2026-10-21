@@ -3,6 +3,7 @@ import './globals.css';
 import { Inter, Space_Grotesk } from 'next/font/google';
 import { AuthProvider } from '@/components/AuthProvider';
 import SuppressHydrationWarnings from '@/components/SuppressHydrationWarnings';
+import ImpersonationBanner from '@/components/admin/ImpersonationBanner';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans', display: 'swap' });
 const spaceGrotesk = Space_Grotesk({ subsets: ['latin'], variable: '--font-display', display: 'swap' });
@@ -58,6 +59,7 @@ export default function RootLayout({
         <SuppressHydrationWarnings />
         <AuthProvider>
           {children}
+          <ImpersonationBanner />
         </AuthProvider>
       </body>
     </html>
