@@ -19,7 +19,7 @@ vi.mock('@/lib/payments/stripeClient', () => ({
 
 import { POST as genericPOST, GET as genericGET } from '@/app/api/webhooks/identity/[provider]/route';
 import { POST as stripePOST } from '@/app/api/webhooks/stripe-identity/route';
-import { diditProvider, verifyDiditSignature } from '@/lib/identity/providers/didit';
+import { diditCanonicalJson, diditProvider, verifyDiditSignature, verifyDiditWebhookSignature } from '@/lib/identity/providers/didit';
 import { stripeProvider } from '@/lib/identity/providers/stripe';
 import { veriffProvider } from '@/lib/identity/providers/veriff';
 import { WebhookSignatureError } from '@/lib/identity/types';
@@ -110,9 +110,9 @@ describe('Didit webhook: signature failures', () => {
     ).rejects.toBeInstanceOf(WebhookSignatureError);
   });
 
-  it('a delivery carrying ONLY X-Signature-V2 is rejected (V2 is a documented TODO, never guessed)', async () => {
+  it('a delivery with a V2 header that does not match the canonical body is rejected', async () => {
     const body = JSON.stringify(diditPayload());
-    const res = await call(diditRequest(body, { 'x-signature-v2': sign(body), 'x-timestamp': String(NOW) }));
+    const res = await call(diditRequest(body, { 'x-signature-v2': 'forged', 'x-timestamp': String(NOW) }));
     expect(res.status).toBe(400);
   });
 
@@ -128,6 +128,66 @@ describe('Didit webhook: signature failures', () => {
     delete process.env.DIDIT_WEBHOOK_SECRET;
     const body = JSON.stringify(diditPayload());
     expect((await call(diditRequest(body, { 'x-signature': sign(body), 'x-timestamp': String(NOW) }))).status).toBe(500);
+  });
+});
+
+describe('Didit webhook: X-Signature-V2 and secret rotation', () => {
+  const v2 = (body: string, secret = SECRET) => createHmac('sha256', secret).update(diditCanonicalJson(body)!, 'utf8').digest('hex');
+  const hdr = (o: Record<string, string>) => ({ get: (n: string) => o[n] ?? null });
+  const ok = (body: string, o: Record<string, string>, prev?: string) =>
+    verifyDiditWebhookSignature(body, hdr({ 'x-timestamp': String(NOW), ...o }), { current: SECRET, previous: prev }, NOW);
+
+  it('canonical JSON sorts keys recursively, is compact, keeps Unicode, and treats 75.0 as 75', () => {
+    expect(diditCanonicalJson('{"b":1,"a":{"d":[{"z":1,"y":2}],"c":"é☃"}}')).toBe('{"a":{"c":"é☃","d":[{"y":2,"z":1}]},"b":1}');
+    expect(diditCanonicalJson('{"score":75.0,"n":1}')).toBe('{"n":1,"score":75}');
+    expect(diditCanonicalJson('not json')).toBeNull();
+  });
+
+  it('sorts keys by code point, as Python does (an astral character sorts after U+FFFF)', () => {
+    const lo = String.fromCodePoint(0xffff);
+    const hi = String.fromCodePoint(0x1f600);
+    const out = diditCanonicalJson(JSON.stringify({ [hi]: 1, [lo]: 2 }))!;
+    expect(out.indexOf(lo)).toBeLessThan(out.indexOf(hi));
+  });
+
+  it('accepts a valid V2 signature even when the body key order differs from the canonical one', () => {
+    const body = '{"session_id":"s1","status":"Approved","nested":{"b":2,"a":1.0},"name":"Zoë"}';
+    expect(ok(body, { 'x-signature-v2': v2(body) })).toBe(true);
+  });
+
+  it('rejects V2 for a tampered body, a wrong secret and a stale timestamp', () => {
+    const body = JSON.stringify(diditPayload());
+    expect(ok(body.replace('Approved', 'Declined'), { 'x-signature-v2': v2(body) })).toBe(false);
+    expect(ok(body, { 'x-signature-v2': v2(body, 'other') })).toBe(false);
+    expect(verifyDiditWebhookSignature(body, hdr({ 'x-timestamp': String(NOW - 301), 'x-signature-v2': v2(body) }), { current: SECRET }, NOW)).toBe(false);
+  });
+
+  it('falls back to X-Signature when V2 is absent or wrong, and still rejects X-Signature-Simple', () => {
+    const body = JSON.stringify(diditPayload());
+    expect(ok(body, { 'x-signature': sign(body) })).toBe(true);
+    expect(ok(body, { 'x-signature-v2': 'wrong', 'x-signature': sign(body) })).toBe(true);
+    expect(ok(body, { 'x-signature-simple': sign(body) })).toBe(false);
+  });
+
+  it('accepts the -Previous headers only when a previous secret is configured', () => {
+    const body = JSON.stringify(diditPayload());
+    const headers = { 'x-signature-v2-previous': v2(body, 'old-secret'), 'x-signature-previous': sign(body, 'old-secret') };
+    expect(ok(body, headers)).toBe(false);
+    expect(ok(body, headers, 'old-secret')).toBe(true);
+    expect(ok(body, { 'x-signature-previous': sign(body, 'old-secret') }, 'old-secret')).toBe(true);
+    expect(ok(body, headers, 'a-different-old-secret')).toBe(false);
+  });
+
+  it('an empty current secret never validates', () => {
+    const body = JSON.stringify(diditPayload());
+    expect(verifyDiditWebhookSignature(body, hdr({ 'x-timestamp': String(NOW), 'x-signature-v2': v2(body, '') }), { current: '' }, NOW)).toBe(false);
+  });
+
+  it('route: a V2-only delivery is accepted end to end', async () => {
+    const body = JSON.stringify(diditPayload());
+    fetchMock.mockResolvedValue(approved());
+    const res = await call(diditRequest(body, { 'x-signature-v2': v2(body), 'x-timestamp': String(NOW) }));
+    expect(res.status).toBe(200);
   });
 });
 

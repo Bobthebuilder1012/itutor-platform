@@ -15,13 +15,24 @@
 //   createSession   POST /v3/session/            implemented
 //   getOutcome      GET  /v3/session/{id}/decision/  implemented
 //   redact          DELETE /v3/session/{id}/delete/  implemented
-//   verifyWebhook   X-Signature (HMAC-SHA256 hex over the RAW body) + X-Timestamp
-//                   within 300 s: implemented.
+//   verifyWebhook   X-Signature-V2 (recommended), then X-Signature (raw bytes), in
+//                   Didit's own order, both HMAC-SHA256 hex with the destination
+//                   secret, plus X-Timestamp within 300 s. The "-Previous" headers
+//                   Didit sends for 24 h after a secret rotation are accepted against
+//                   DIDIT_WEBHOOK_SECRET_PREVIOUS when that is set. The deprecated
+//                   X-Signature-Simple (it does not cover the decision) is NOT accepted.
 //
-// TODO(didit, unclear in the docs): X-Signature-V2 (recommended by Didit). It is
-//   signed over "sorted, Unicode-preserved compact JSON" after a `shortenFloats`
-//   step the docs call but do not define, so it cannot be reproduced without
-//   guessing. Not implemented: a delivery carrying only V2 is rejected.
+//   V2 (checked against the docs again): parse the body, sort keys recursively in
+//   code-point order, serialise compactly with Unicode left unescaped, and turn
+//   whole-valued floats into integers, then HMAC that string. JSON.parse already
+//   makes 75.0 and 75 the same number, so the float step needs no extra code in
+//   Node. Edge cases (1e21, numbers beyond 2^53) can differ from Python's output;
+//   X-Signature (raw bytes) is the fallback, exactly as Didit's order intends.
+//
+// The decision is STILL re-fetched with getOutcome(), although V2 and X-Signature
+// cover the whole body: the decision endpoint is authoritative and webhooks can
+// arrive out of order.
+//
 // TODO(didit, unclear): idempotency on session creation is not documented, so
 //   a repeated create makes a second session. lib/identity/start.ts deletes the
 //   orphan when it loses a race.
@@ -74,6 +85,48 @@ async function diditFetch(path: string, init: { method: string; body?: unknown }
   }
 }
 
+const hmacHex = (payload: string, secret: string) => createHmac('sha256', secret).update(payload, 'utf8').digest('hex');
+
+function safeEqual(expected: string, given: string | null): boolean {
+  if (!given) return false;
+  const a = Buffer.from(expected, 'utf8');
+  const b = Buffer.from(given.trim(), 'utf8');
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/** Code-point order, as Python sorts strings. (JS's default is UTF-16 order.) */
+function compareCodePoints(a: string, b: string): number {
+  const A = Array.from(a);
+  const B = Array.from(b);
+  for (let i = 0; i < Math.min(A.length, B.length); i++) {
+    const d = A[i]!.codePointAt(0)! - B[i]!.codePointAt(0)!;
+    if (d !== 0) return d;
+  }
+  return A.length - B.length;
+}
+
+function sortDeep(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortDeep);
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(value as object).sort(compareCodePoints)) {
+      out[key] = sortDeep((value as Record<string, unknown>)[key]);
+    }
+    return out;
+  }
+  return value;
+}
+
+/** Didit's X-Signature-V2 canonical string, or null if the body is not JSON. Exported for tests. */
+export function diditCanonicalJson(rawBody: string): string | null {
+  try {
+    // Compact separators and unescaped Unicode are JSON.stringify's defaults.
+    return JSON.stringify(sortDeep(JSON.parse(rawBody)));
+  } catch {
+    return null;
+  }
+}
+
 /** Exported for tests: the X-Signature check over the raw body. */
 export function verifyDiditSignature(
   rawBody: string,
@@ -85,10 +138,37 @@ export function verifyDiditSignature(
   if (!signature || !timestamp || !secret) return false;
   const ts = Number.parseInt(timestamp, 10);
   if (!Number.isFinite(ts) || Math.abs(nowSeconds - ts) > TIMESTAMP_TOLERANCE_SECONDS) return false;
-  const expected = createHmac('sha256', secret).update(rawBody, 'utf8').digest('hex');
-  const a = Buffer.from(expected, 'utf8');
-  const b = Buffer.from(signature.trim(), 'utf8');
-  return a.length === b.length && timingSafeEqual(a, b);
+  return safeEqual(hmacHex(rawBody, secret), signature);
+}
+
+/**
+ * The full webhook check, in Didit's documented order: X-Signature-V2, then
+ * X-Signature, then (only while a secret rotation is in its 24 hour window) the
+ * "-Previous" variants against the previous secret. Always inside the 300 second
+ * timestamp window. Exported for tests.
+ */
+export function verifyDiditWebhookSignature(
+  rawBody: string,
+  headers: HeaderReader,
+  secrets: { current: string; previous?: string | null },
+  nowSeconds: number = Math.floor(Date.now() / 1000)
+): boolean {
+  const timestamp = headers.get('x-timestamp');
+  const ts = Number.parseInt(timestamp ?? '', 10);
+  if (!Number.isFinite(ts) || Math.abs(nowSeconds - ts) > TIMESTAMP_TOLERANCE_SECONDS) return false;
+
+  const canonical = diditCanonicalJson(rawBody);
+  const attempts: Array<[string, string | null | undefined, string | null]> = [
+    ['x-signature-v2', secrets.current, canonical],
+    ['x-signature', secrets.current, rawBody],
+    ['x-signature-v2-previous', secrets.previous, canonical],
+    ['x-signature-previous', secrets.previous, rawBody],
+  ];
+  for (const [header, secret, payload] of attempts) {
+    const given = headers.get(header);
+    if (given && secret && payload !== null && safeEqual(hmacHex(payload, secret), given)) return true;
+  }
+  return false;
 }
 
 export const diditProvider: IdentityProvider = {
@@ -117,7 +197,8 @@ export const diditProvider: IdentityProvider = {
 
   async verifyWebhook(rawBody: string, headers: HeaderReader): Promise<ProviderWebhookEvent> {
     const secret = process.env.DIDIT_WEBHOOK_SECRET ?? '';
-    if (!verifyDiditSignature(rawBody, headers.get('x-signature'), headers.get('x-timestamp'), secret)) {
+    const previous = process.env.DIDIT_WEBHOOK_SECRET_PREVIOUS || null;
+    if (!verifyDiditWebhookSignature(rawBody, headers, { current: secret, previous })) {
       throw new WebhookSignatureError();
     }
 

@@ -6,17 +6,19 @@ import type { IdentityProvider, ProviderName } from '@/lib/identity/types';
 
 // ---------- pure routing ----------
 describe('routeFor / availableRoute', () => {
-  it('the default route is stripe -> didit -> veriff, with no manual step', () => {
-    expect(routeFor(null)).toEqual(['stripe', 'didit', 'veriff']);
-    expect(routeFor('TT')).toEqual(['stripe', 'didit', 'veriff']);
+  it('the default route is didit -> stripe -> veriff, with no manual step', () => {
+    delete process.env.IDENTITY_PRIMARY_PROVIDER;
+    expect(routeFor(null)).toEqual(['didit', 'stripe', 'veriff']);
+    expect(routeFor('TT')).toEqual(['didit', 'stripe', 'veriff']);
     expect(routeFor('TT')).not.toContain('manual');
   });
 
   it('a per-country override replaces the route for that country only', () => {
+    delete process.env.IDENTITY_PRIMARY_PROVIDER;
     const cfg = { ...identityRouting, countryRoutes: { GY: ['didit', 'veriff'] as ProviderName[] } };
     expect(routeFor('GY', cfg)).toEqual(['didit', 'veriff']);
     expect(routeFor('gy', cfg)).toEqual(['didit', 'veriff']);
-    expect(routeFor('TT', cfg)).toEqual(['stripe', 'didit', 'veriff']);
+    expect(routeFor('TT', cfg)).toEqual(['didit', 'stripe', 'veriff']);
   });
 
   it('the default provider goes first even if the chain lists it later', () => {
@@ -173,6 +175,9 @@ const start = (db: ReturnType<typeof seed>, country: string | null = 'TT') =>
   startIdentityCheck({ db: db as any, tutorId: T, row: rowOf(db) as any, country, returnUrl: 'http://localhost:3000/back' });
 
 beforeEach(() => {
+  // These tests are about the mechanics of starting and falling back, written with
+  // Stripe first. The primary-provider switch has its own file (identityPrimary.test.ts).
+  process.env.IDENTITY_PRIMARY_PROVIDER = 'stripe';
   h.configured = ['stripe', 'didit', 'veriff'];
   h.providers = { stripe: fakeProvider('stripe'), didit: fakeProvider('didit'), veriff: fakeProvider('veriff') };
 });

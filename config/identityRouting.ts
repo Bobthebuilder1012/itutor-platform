@@ -2,7 +2,10 @@
 // check them. CONFIG: change here, never in the flow.
 //
 //   route for a country = countryRoutes[country] if present,
-//                         otherwise [defaultProvider, ...the rest of fallbackChain]
+//                         otherwise [primary provider, ...the rest of fallbackChain]
+//   The primary provider is ONE environment variable, IDENTITY_PRIMARY_PROVIDER
+//   (didit | stripe | veriff). Unset or invalid means didit. Didit is primary and
+//   Stripe is the backup; set IDENTITY_PRIMARY_PROVIDER=stripe to swap them.
 //   A provider that is not configured (no credentials) is skipped, so with only
 //   Stripe configured the default config behaves as just stripe.
 //   There is NO manual identity review in the chain.
@@ -14,6 +17,12 @@
 
 import type { ProviderName } from '@/lib/identity/types';
 
+/** The primary provider, read from IDENTITY_PRIMARY_PROVIDER on every call (so a restart is the only deploy step). */
+export function primaryProviderFromEnv(env: Record<string, string | undefined> = process.env): ProviderName {
+  const v = (env.IDENTITY_PRIMARY_PROVIDER ?? '').trim().toLowerCase();
+  return v === 'stripe' || v === 'didit' || v === 'veriff' ? v : 'didit';
+}
+
 export interface DocumentCountry {
   /** ISO 3166-1 alpha-2, or 'OTHER'. */
   code: string;
@@ -22,7 +31,7 @@ export interface DocumentCountry {
 
 export interface IdentityRoutingConfig {
   defaultProvider: ProviderName;
-  /** Tried in this order after the default: stripe -> didit -> veriff. */
+  /** Tried in this order after the primary: didit -> stripe -> veriff. */
   fallbackChain: ProviderName[];
   /** Per-country override: the full ordered route for that document country. */
   countryRoutes: Partial<Record<string, ProviderName[]>>;
@@ -44,8 +53,10 @@ export interface IdentityRoutingConfig {
 }
 
 export const identityRouting: IdentityRoutingConfig = {
-  defaultProvider: 'stripe',
-  fallbackChain: ['stripe', 'didit', 'veriff'],
+  get defaultProvider() {
+    return primaryProviderFromEnv();
+  },
+  fallbackChain: ['didit', 'stripe', 'veriff'],
   countryRoutes: {
     // Examples, deliberately empty until the coverage test (docs/IDENTITY_COVERAGE_TEST.md)
     // says which provider reads which country's documents:
