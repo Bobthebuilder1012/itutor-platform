@@ -1,0 +1,15 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "YOUR_TEAM_ID.com.myitutor.app",
+        "paths": [
+          "NOT /auth/*",
+          "NOT /api/*",
+          "*"
+        ]
+      }
+    ]
+  }
+}

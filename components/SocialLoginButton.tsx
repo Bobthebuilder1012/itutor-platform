@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
+import { isNativeApp } from '@/lib/native/platform';
+import { startNativeOAuth } from '@/lib/native/oauth';
 
 type Provider = 'google' | 'apple' | 'facebook';
 
@@ -77,6 +79,15 @@ export default function SocialLoginButton({
     try {
       setLoading(true);
       setError('');
+
+      // In the native shell the provider page must open in the system browser
+      // (Google rejects embedded WebViews), and the session comes back through
+      // com.myitutor.app://auth/callback.
+      if (isNativeApp() && (provider === 'google' || provider === 'apple')) {
+        await startNativeOAuth(provider, redirectTo);
+        setLoading(false);
+        return;
+      }
 
       // Build redirect URL
       const redirectUrl = redirectTo

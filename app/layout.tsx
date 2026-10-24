@@ -4,6 +4,7 @@ import { Inter, Space_Grotesk } from 'next/font/google';
 import { AuthProvider } from '@/components/AuthProvider';
 import SuppressHydrationWarnings from '@/components/SuppressHydrationWarnings';
 import ImpersonationBanner from '@/components/admin/ImpersonationBanner';
+import NativeAppBridge from '@/components/native/NativeAppBridge';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans', display: 'swap' });
 const spaceGrotesk = Space_Grotesk({ subsets: ['latin'], variable: '--font-display', display: 'swap' });
@@ -71,6 +72,7 @@ export default function RootLayout({
     <html lang="en" className={`${inter.variable} ${spaceGrotesk.variable} scroll-smooth`}>
       <body>
         <SuppressHydrationWarnings />
+        <NativeAppBridge />
         <AuthProvider>
           {children}
           <ImpersonationBanner />

@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>You're offline — iTutor</title>
+    <style>
+      :root { color-scheme: light dark; }
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+      body {
+        margin: 0; min-height: 100vh; min-height: 100dvh;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 20px; padding: 32px calc(16px + env(safe-area-inset-left)) calc(32px + env(safe-area-inset-bottom));
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+        text-align: center; background: #ffffff; color: #111827;
+      }
+      img { width: 72px; height: 72px; border-radius: 18px; }
+      h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+      p { margin: 0; max-width: 32ch; font-size: 15px; line-height: 1.5; color: #4b5563; }
+      button {
+        margin-top: 4px; padding: 13px 30px; border: 0; border-radius: 999px;
+        background: #199356; color: #fff; font: inherit; font-weight: 600; font-size: 16px;
+        cursor: pointer; transition: opacity .15s ease;
+      }
+      button:active { opacity: .75; }
+      @media (prefers-color-scheme: dark) {
+        body { background: #0b0f14; color: #f3f4f6; }
+        p { color: #9ca3af; }
+      }
+    </style>
+  </head>
+  <body>
+    <img src="icon.png" alt="" />
+    <h1>You're offline</h1>
+    <p>iTutor needs a connection to load your classes, messages and sessions. Check your network and try again.</p>
+    <button type="button" onclick="location.replace('https://myitutor.com/')">Try again</button>
+    <script>
+      // Reload the moment the device reports a connection, so the user does
+      // not have to notice and tap.
+      addEventListener('online', function () { location.replace('https://myitutor.com/'); });
+    </script>
+  </body>
+</html>

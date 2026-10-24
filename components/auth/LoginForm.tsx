@@ -8,6 +8,7 @@ import {
   isEmailManagementOnlyAdmin,
 } from '@/lib/auth/adminAccess';
 import SocialLoginButton from '@/components/SocialLoginButton';
+import AppleSignInForIOS from '@/components/native/AppleSignInForIOS';
 
 interface LoginFormProps {
   onSwitchMode: () => void;
@@ -125,6 +126,7 @@ export default function LoginForm({ onSwitchMode, onSuccess, redirectTo }: Login
   return (
     <div className="space-y-4">
       <SocialLoginButton provider="google" mode="login" />
+      <AppleSignInForIOS />
 
       <div className="relative">
         <div className="absolute inset-0 flex items-center">

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Xcode switches this to "production" when you Archive with automatic
+	     signing. Confirm it before uploading an App Store build. -->
+	<key>aps-environment</key>
+	<string>development</string>
+	<!-- Guideline 4.8: required because the app offers Google sign-in. -->
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
+	<!-- Needs public/.well-known/apple-app-site-association live on the domain. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:myitutor.com</string>
+	</array>
+</dict>
+</plist>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { isNativeApp } from '@/lib/native/platform';
 
 const TOKEN_STORAGE_KEY = 'itutor_push_token_web_v1';
 
@@ -40,6 +41,11 @@ export default function PushTokenRegistrar() {
   const ranRef = useRef(false);
 
   useEffect(() => {
+    // The native shell registers its own FCM token through NativeAppBridge.
+    // Running web push here as well would register a second, undeliverable
+    // token for the same device.
+    if (isNativeApp()) return;
+
     // In development, remove stale service workers unless push testing is explicitly enabled.
     if (
       typeof window !== 'undefined' &&

@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import SocialLoginButton from '@/components/SocialLoginButton';
+import AppleSignInForIOS from '@/components/native/AppleSignInForIOS';
 
 // Helper function to detect network errors
 function isNetworkError(error: unknown): boolean {
@@ -106,6 +107,7 @@ export default function TutorLoginPage() {
 
         <div className="mb-6 space-y-3">
           <SocialLoginButton provider="google" mode="login" />
+          <AppleSignInForIOS />
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-gray-300" />

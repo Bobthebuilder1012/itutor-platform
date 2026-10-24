@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { isNativeApp } from '@/lib/native/platform';
 
 interface IOSInstallPromptProps {
   onDismiss?: () => void;
@@ -112,6 +113,10 @@ export default function IOSInstallPrompt({ onDismiss }: IOSInstallPromptProps) {
     logDebug('checkShouldShow:start', 'Function called', {windowUndefined:typeof window==='undefined'});
     // #endregion
     if (typeof window === 'undefined') return;
+
+    // Inside the native shell the app is already installed, and iOS has no
+    // Add to Home Screen to offer.
+    if (isNativeApp()) return;
 
     // Detect if user is on iOS
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
