@@ -1,9 +1,10 @@
 // GET /api/cron/verification-cleanup[?apply=1]
 //
-// The retention sweep as a cron endpoint. NOT in vercel.json: nothing schedules
-// it. Protected by CRON_SECRET like the other cron routes. A dry run unless
-// `apply=1`, so calling it by hand is safe. Does nothing when
-// VERIFICATION_V2_ENABLED is off.
+// The retention sweep as a cron endpoint. Scheduled daily in vercel.json with
+// ?apply=1. Protected by CRON_SECRET like the other cron routes. Called by hand
+// without apply=1 it is a dry run, so that is safe. Does nothing at all (no sweep,
+// no database client) when VERIFICATION_V2_ENABLED is off, so the schedule stays
+// idle until the flag is turned on.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { isVerificationV2Enabled } from '@/lib/featureFlags/verificationV2';

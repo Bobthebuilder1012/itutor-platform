@@ -5,9 +5,9 @@
 //   3. old-flow requests REJECTED longer ago than rejectedDays -> delete that request's file and OCR text
 //   4. any decided v2 record whose Stripe session is not yet redacted -> redact it (retry)
 //
-// NOT SCHEDULED. Nothing calls this on a timer. It is exposed through
-// app/api/cron/verification-cleanup/route.ts (CRON_SECRET) and an admin-only
-// route, both dry-run by default. Setup is described in docs/VERIFICATION_V2_LOCAL_TESTING.md.
+// Scheduled daily by vercel.json (/api/cron/verification-cleanup?apply=1), which does
+// nothing while VERIFICATION_V2_ENABLED is off. Also exposed through an admin-only
+// route. Called by hand it is a dry run unless apply is set. See docs/staging-handoff.md.
 //
 // Limit: old-flow REVOKED teachers have no decision date (the old revoke clears
 // tutor_verified_at and writes no audit), so step 2 covers v2 records only.
