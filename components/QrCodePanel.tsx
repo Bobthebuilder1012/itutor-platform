@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
-import { PUBLIC_BASE, renderBrandedQr } from '@/lib/qr/brandedQr';
+import { CANONICAL_BASE, publicBase, renderBrandedQr } from '@/lib/qr/brandedQr';
 
 type ClassLite = { id: string; name: string | null };
 
@@ -23,10 +23,19 @@ export default function QrCodePanel({
 }) {
   const classSig = classes.map((c) => c.id).join(',');
 
+  // item.url is rendered, so the first paint has to match what the server
+  // sent. Start on the canonical domain and adopt the real origin after
+  // mount: identical in production, and on staging the QR then points at
+  // staging instead of a page that only exists in production.
+  const [base, setBase] = useState(CANONICAL_BASE);
+  useEffect(() => {
+    setBase(publicBase());
+  }, []);
+
   const items = useMemo<QrItem[]>(
     () => [
       ...(showProfile
-        ? [{ key: 'profile', label: 'Profile', url: `${PUBLIC_BASE}/tutors/${tutorId}` }]
+        ? [{ key: 'profile', label: 'Profile', url: `${base}/tutors/${tutorId}` }]
         : []),
       // Point at the class page a prospective student should actually land on
       // — the one with the banner, schedule and Join button. /classes/[id] is
@@ -35,11 +44,11 @@ export default function QrCodePanel({
       ...classes.map((c) => ({
         key: `class-${c.id}`,
         label: c.name || 'Untitled class',
-        url: `${PUBLIC_BASE}/student/explore/${c.id}`,
+        url: `${base}/student/explore/${c.id}`,
       })),
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tutorId, classSig, showProfile]
+    [base, tutorId, classSig, showProfile]
   );
 
   const [pngs, setPngs] = useState<Record<string, string>>({});

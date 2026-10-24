@@ -9,11 +9,11 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import { PUBLIC_BASE, renderBrandedQr } from '@/lib/qr/brandedQr';
+import { publicBase, renderBrandedQr } from '@/lib/qr/brandedQr';
 
 function qrTarget(code: string, linkCode: string): string {
   const redeem = `/redeem/${encodeURIComponent(code)}`;
-  return linkCode ? `${PUBLIC_BASE}/r/${encodeURIComponent(linkCode)}?to=${encodeURIComponent(redeem)}` : `${PUBLIC_BASE}${redeem}`;
+  return linkCode ? `${publicBase()}/r/${encodeURIComponent(linkCode)}?to=${encodeURIComponent(redeem)}` : `${publicBase()}${redeem}`;
 }
 
 export default function PrintCodesPage() {

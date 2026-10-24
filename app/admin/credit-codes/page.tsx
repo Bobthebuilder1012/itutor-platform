@@ -7,8 +7,10 @@
  *   batch  N single-use codes for events, school visits and printed cards
  *   promo  one named code (BACKTOSCHOOL) that many accounts redeem once each
  *
- * Every code redeems at myitutor.com/redeem/<code>, by link or QR. A printed
- * QR can also record where scans came from by going through a tracked link:
+ * Every code redeems at /redeem/<code> on whichever site issued it, by link
+ * or QR — a QR made on staging stays on staging, since the code only exists
+ * in that database. A QR can also record where scans came from by going
+ * through a tracked link:
  * /r/<link code>?to=/redeem/<code>.
  *
  * Reviewers can look; changing anything needs role 'admin'. Data:
@@ -24,7 +26,7 @@ import AdminBreadcrumb from '@/components/admin/AdminBreadcrumb';
 import { isEmailManagementOnlyAdmin } from '@/lib/auth/adminAccess';
 import { Card, Pill, Stat } from '@/components/admin/demand/DemandUi';
 import CreditsAdminNav from '@/components/admin/credits/CreditsAdminNav';
-import { PUBLIC_BASE, downloadFile, renderBrandedQr, renderBrandedQrSvg } from '@/lib/qr/brandedQr';
+import { publicBase, downloadFile, renderBrandedQr, renderBrandedQrSvg } from '@/lib/qr/brandedQr';
 
 type Campaign = {
   id: string;
@@ -81,7 +83,7 @@ const STATUS_TONE: Record<Campaign['status'], 'green' | 'amber' | 'gray' | 'red'
 function qrTarget(code: string, linkCode: string): string {
   const redeem = `/redeem/${encodeURIComponent(code)}`;
   const tracked = linkCode.trim().toLowerCase();
-  return tracked ? `${PUBLIC_BASE}/r/${encodeURIComponent(tracked)}?to=${encodeURIComponent(redeem)}` : `${PUBLIC_BASE}${redeem}`;
+  return tracked ? `${publicBase()}/r/${encodeURIComponent(tracked)}?to=${encodeURIComponent(redeem)}` : `${publicBase()}${redeem}`;
 }
 
 async function sendJson(url: string, method: string, body: unknown): Promise<{ ok: boolean; json: any }> {
@@ -403,7 +405,7 @@ function CampaignDetail({ id, canEdit, onChanged }: { id: string; canEdit: boole
       <div className="mt-5 rounded-lg border border-gray-200 p-4">
         <h3 className="text-sm font-semibold text-gray-900">QR codes and exports</h3>
         <p className="mt-1 text-xs text-gray-600">
-          Each QR opens myitutor.com/redeem/&lt;code&gt;, which asks before redeeming. To also count scans on Link
+          Each QR opens /redeem/&lt;code&gt; on this site, which asks before redeeming. To also count scans on Link
           Tracking, enter a tracked link code: the QR then goes through /r/&lt;link&gt; first.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
